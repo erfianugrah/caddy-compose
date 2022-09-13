@@ -1,0 +1,849 @@
+{
+	email {env.EMAIL}
+	acme_dns cloudflare {env.CF_API_TOKEN}
+	cert_issuer acme
+	debug
+	grace_period 5s
+	log {
+		level debug
+		output file /var/log/access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
+	servers {
+		protocol {
+			strict_sni_host on
+			#	experimental_http3
+		}
+	}
+	dynamic_dns {
+		provider cloudflare {env.CF_API_TOKEN}
+		domains {
+			erfianugrah.com @ port servarr plex readarr hydra nzb sonarr radarr lidarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin tdarr synapse synapse-admin rclone change beets element tautulli
+		}
+		check_interval 1m
+		ip_source upnp
+		ip_source simple_http https://icanhazip.com
+		ip_source simple_http https://api.ipify.org
+		ip_source simple_http https://myip.addr.space
+		ip_source simple_http https://ifconfig.me
+		ip_source simple_http https://icanhazip.com
+		ip_source simple_http https://ident.me
+		ip_source simple_http https://bot.whatismyipaddress.com
+		ip_source simple_http https://ipecho.net/plain
+	}
+}
+
+erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
+	header @image {
+		defer
+		Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000"
+		Access-Control-Allow-Origin "*"
+		Access-Control-Max-Age "86400"
+	}
+	encode zstd gzip
+	reverse_proxy 172.18.0.2:2368 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+port.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.33.0.2:9000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+	reverse_proxy 172.33.0.2:8000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+servarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy localhost:90 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+plex.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.8:32400 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+hydra.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.7:5076 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+nzb.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.6:7000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+sonarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.3:8989 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+lidarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.5:8686 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+radarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.2:7878 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+bazarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.4:6767 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+nextcloud.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	redir /.well-known/carddav /remote.php/dav 301
+	redir /.well-known/caldav /remote.php/dav 301
+	@forbidden {
+		path /.htaccess
+		path /data/*
+		path /config/*
+		path /db_structure
+		path /.xml
+		path /README
+		path /3rdparty/*
+		path /lib/*
+		path /templates/*
+		path /occ
+		path /console.php
+	}
+	respond @forbidden 404
+	encode zstd gzip
+	reverse_proxy 172.21.0.2:80 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+grafana-unraid.erfianugrah.com {
+	encode gzip
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.29.0.2:3000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+prom-unraid.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.29.0.3:9090 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+vaultwarden.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy /notifications/hub 172.20.0.2:3012
+	reverse_proxy 172.20.0.2:80 {
+		header_up X-Real-IP {remote_host}
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+jackett.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.9:9117 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+prowlarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.10:9696 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+readarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.11:8787 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+file.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	@image path_regexp image ^.*\.(jpe?g|png|gif|avif|tiff|web|mkv|mp4|flac|mp3|wav|ogg|aac|mov|flv|avi)$
+	header @image {
+		defer
+		Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000"
+		Access-Control-Allow-Origin "*"
+		Access-Control-Max-Age "86400"
+	}
+	encode zstd gzip
+	reverse_proxy 172.26.0.2:80 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+jellyfin.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.15:8096 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+qbit.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.27.0.2:8080 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+pastebin.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.30.0.2:8000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+pihole.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.28.0.3:80 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+change.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.31.0.2:5000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+rclone.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy /auth 172.32.0.2:53682 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+	reverse_proxy 172.32.0.2:5572 {
+		trusted_proxies private_ranges 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+synapse.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	header /.well-known/matrix/* {
+		Content-Type application/json
+		Access-Control-Allow-Origin *
+	}
+	respond /.well-known/matrix/server 200 {
+		body `{"m.server": "synapse.erfianugrah.com:443"}`
+		close
+	}
+	respond /.well-known/matrix/client 200 {
+		body `{"m.homeserver":{"base_url":"https://synapse.erfianugrah.com"},"m.identity_server":{"base_url":"https://synapse.erfianugrah.com"}}`
+		close
+	}
+	encode zstd gzip
+	reverse_proxy 172.34.0.2:8008 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+	reverse_proxy /_synapse/metrics 172.34.0.2:9000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+synapse-admin.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	reverse_proxy 172.34.0.5:80 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+coturn.erfianugrah.com {
+	tls {
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+}
+
+overseerr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.13:5055 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+tautulli.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.14:8181 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+grav.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.36.0.2:80 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+element.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	@nocache path_regexp nocache \/(config\..*\.json|config.json|i18n|home|sites|index\.html)
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+		X-XSS-Protection "1; mode=block"
+		Content-Security-Policy "frame-ancestors 'none'"
+	}
+	header @nocache {
+		Cache-Control: no-cache
+	}
+	encode zstd gzip
+	reverse_proxy 172.34.0.6:80 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+keycloak.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.38.0.2:8080 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+tdarr.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.35.0.2:8265 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+stack.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.39.0.2:3000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+git.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.40.0.2:3000 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+beets.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.16:8337 {
+		trusted_proxies private_ranges 118.189.189.102 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
