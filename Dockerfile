@@ -7,7 +7,7 @@ RUN xcaddy build v${VERSION} \
     #--with github.com/lucaslorentz/caddy-docker-proxy/plugin \
     --with github.com/mholt/caddy-dynamicdns \
     #--with github.com/hslatman/caddy-crowdsec-bouncer \
-    --with github.com/kirsch33/realip \
+    #--with github.com/kirsch33/realip \
     # Security
     --with github.com/greenpau/caddy-trace \
     --with github.com/greenpau/caddy-security \
