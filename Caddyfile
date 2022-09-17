@@ -1,6 +1,6 @@
 {
-	email {env.EMAIL}
-	acme_dns cloudflare {env.CF_API_TOKEN}
+	email {$EMAIL}
+	acme_dns cloudflare {$CF_API_TOKEN}
 	cert_issuer acme
 	debug
 	grace_period 5s
@@ -22,7 +22,7 @@
 		}
 	}
 	dynamic_dns {
-		provider cloudflare {env.CF_API_TOKEN}
+		provider cloudflare {$CF_API_TOKEN}
 		domains {
 			erfianugrah.com @ port servarr plex readarr hydra nzb sonarr radarr lidarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin tdarr synapse synapse-admin rclone change beets element tautulli
 		}
@@ -42,13 +42,13 @@
 erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -71,13 +71,13 @@ erfianugrah.com {
 port.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -97,13 +97,13 @@ port.erfianugrah.com {
 servarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -119,13 +119,13 @@ servarr.erfianugrah.com {
 plex.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -141,13 +141,13 @@ plex.erfianugrah.com {
 hydra.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -163,13 +163,13 @@ hydra.erfianugrah.com {
 nzb.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -185,13 +185,13 @@ nzb.erfianugrah.com {
 sonarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -207,13 +207,13 @@ sonarr.erfianugrah.com {
 lidarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -229,13 +229,13 @@ lidarr.erfianugrah.com {
 radarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -251,13 +251,13 @@ radarr.erfianugrah.com {
 bazarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -273,13 +273,13 @@ bazarr.erfianugrah.com {
 nextcloud.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -312,13 +312,13 @@ grafana-unraid.erfianugrah.com {
 	encode gzip
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -334,13 +334,13 @@ grafana-unraid.erfianugrah.com {
 prom-unraid.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -356,13 +356,13 @@ prom-unraid.erfianugrah.com {
 vaultwarden.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -380,13 +380,13 @@ vaultwarden.erfianugrah.com {
 jackett.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -402,13 +402,13 @@ jackett.erfianugrah.com {
 prowlarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -424,13 +424,13 @@ prowlarr.erfianugrah.com {
 readarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -446,13 +446,13 @@ readarr.erfianugrah.com {
 file.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -475,13 +475,13 @@ file.erfianugrah.com {
 jellyfin.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -497,13 +497,13 @@ jellyfin.erfianugrah.com {
 qbit.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -519,13 +519,13 @@ qbit.erfianugrah.com {
 pastebin.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -541,13 +541,13 @@ pastebin.erfianugrah.com {
 pihole.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -563,13 +563,13 @@ pihole.erfianugrah.com {
 change.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -585,13 +585,13 @@ change.erfianugrah.com {
 rclone.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -611,13 +611,13 @@ rclone.erfianugrah.com {
 synapse.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -649,13 +649,13 @@ synapse.erfianugrah.com {
 synapse-admin.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -670,7 +670,7 @@ synapse-admin.erfianugrah.com {
 coturn.erfianugrah.com {
 	tls {
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -682,13 +682,13 @@ coturn.erfianugrah.com {
 overseerr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -704,13 +704,13 @@ overseerr.erfianugrah.com {
 tautulli.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -726,13 +726,13 @@ tautulli.erfianugrah.com {
 grav.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -748,13 +748,13 @@ grav.erfianugrah.com {
 element.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -780,13 +780,13 @@ element.erfianugrah.com {
 keycloak.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -802,13 +802,13 @@ keycloak.erfianugrah.com {
 tdarr.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -824,13 +824,13 @@ tdarr.erfianugrah.com {
 stack.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -846,13 +846,13 @@ stack.erfianugrah.com {
 git.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -868,13 +868,13 @@ git.erfianugrah.com {
 beets.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
 		issuer zerossl {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
