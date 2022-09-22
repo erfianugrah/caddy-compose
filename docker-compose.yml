@@ -7,8 +7,12 @@ services:
     container_name: caddy
     restart: unless-stopped
     network_mode: host
-    mem_limit: 512m
-    cpu_count: 4
+    deploy:
+      resources:
+        limits:
+          cpus: '4000000000'
+          memory: 512M
+          pids: 1
     volumes:
       - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile
       - /mnt/user/data/caddy/site:/srv
