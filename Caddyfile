@@ -16,9 +16,9 @@
 		}
 	}
 	servers {
-		protocol {
+		protocols {
 			strict_sni_host on
-			#	experimental_http3
+			h3
 		}
 	}
 	dynamic_dns {
