@@ -1036,7 +1036,6 @@ dillinger.erfianugrah.com {
 	header /js/main.bundle.js {
 		defer
 		Cache-Control "public, max-age=3600, stale-while-revalidate=3600"
-		Content-Type application/json
 	}
 	reverse_proxy 172.44.0.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
