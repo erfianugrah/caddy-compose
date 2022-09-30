@@ -1034,6 +1034,7 @@ dillinger.erfianugrah.com {
 	}
 	encode zstd gzip
 	header /js/main.bundle.js {
+		defer
 		Cache-Control "public, max-age=3600, stale-while-revalidate=3600"
 		Content-Type application/json
 	}
