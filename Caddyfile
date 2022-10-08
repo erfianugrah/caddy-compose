@@ -40,7 +40,7 @@
 erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
+			dns cloudflare {env.CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -110,7 +110,7 @@ servarr.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy localhost:90 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -132,7 +132,7 @@ plex.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.8:32400 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -154,7 +154,7 @@ hydra.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.7:5076 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -176,7 +176,7 @@ nzb.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.6:7000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -198,29 +198,7 @@ sonarr.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.3:8989 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
-
-lidarr.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.0.17:8686 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -242,7 +220,7 @@ radarr.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.2:7878 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -264,47 +242,47 @@ bazarr.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.4:6767 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
-nextcloud.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	redir /.well-known/carddav /remote.php/dav 301
-	redir /.well-known/caldav /remote.php/dav 301
-	@forbidden {
-		path /.htaccess
-		path /data/*
-		path /config/*
-		path /db_structure
-		path /.xml
-		path /README
-		path /3rdparty/*
-		path /lib/*
-		path /templates/*
-		path /occ
-		path /console.php
-	}
-	respond @forbidden 404
-	encode zstd gzip
-	reverse_proxy 172.21.0.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
+# nextcloud.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	redir /.well-known/carddav /remote.php/dav 301
+# 	redir /.well-known/caldav /remote.php/dav 301
+# 	@forbidden {
+# 		path /.htaccess
+# 		path /data/*
+# 		path /config/*
+# 		path /db_structure
+# 		path /.xml
+# 		path /README
+# 		path /3rdparty/*
+# 		path /lib/*
+# 		path /templates/*
+# 		path /occ
+# 		path /console.php
+# 	}
+# 	respond @forbidden 404
+# 	encode zstd gzip
+# 	reverse_proxy 172.21.0.2:80 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# }
 
 grafana-unraid.erfianugrah.com {
 	encode gzip
@@ -325,7 +303,7 @@ grafana-unraid.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.29.0.2:3000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -347,7 +325,7 @@ prom-unraid.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.29.0.3:9090 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -371,7 +349,7 @@ vaultwarden.erfianugrah.com {
 	reverse_proxy 172.20.0.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -393,7 +371,7 @@ jackett.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.9:9117 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -415,31 +393,31 @@ prowlarr.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.10:9696 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
-readarr.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.0.11:8787 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
+# readarr.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy 172.19.0.11:8787 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# }
 
 file.erfianugrah.com {
 	tls {
@@ -466,7 +444,7 @@ file.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.26.0.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -510,7 +488,7 @@ qbit.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.27.0.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -532,31 +510,31 @@ pastebin.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.30.0.2:8000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
-
-pihole.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.28.0.3:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
+
+# pihole.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy 172.28.0.3:80 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# }
 
 change.erfianugrah.com {
 	tls {
@@ -576,7 +554,7 @@ change.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.31.0.2:5000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -598,11 +576,11 @@ rclone.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy /auth 172.32.0.2:53682 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 	reverse_proxy 172.32.0.2:5572 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -636,11 +614,11 @@ synapse.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.34.0.2:8008 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 	reverse_proxy /_synapse/metrics 172.34.0.2:9000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -661,7 +639,7 @@ synapse-admin.erfianugrah.com {
 	}
 	reverse_proxy 172.34.0.5:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -695,7 +673,7 @@ overseerr.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.13:5055 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -717,29 +695,7 @@ tautulli.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.14:8181 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
-
-grav.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.36.0.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -760,8 +716,8 @@ element.erfianugrah.com {
 	}
 	@nocache path_regexp nocache \/(config\..*\.json|config.json|i18n|home|sites|index\.html)
 	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
 		X-XSS-Protection "1; mode=block"
 		Content-Security-Policy "frame-ancestors 'none'"
 	}
@@ -771,7 +727,7 @@ element.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.34.0.6:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -793,51 +749,7 @@ keycloak.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.38.0.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
-
-tdarr.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.35.0.2:8265 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
-
-stack.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.39.0.2:3000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -859,7 +771,7 @@ git.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.40.0.2:3000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -881,7 +793,7 @@ beets.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.19.0.16:8337 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -903,7 +815,7 @@ joplin.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.41.0.2:22300 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -925,7 +837,7 @@ etherpad.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.42.0.2:9001 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -947,29 +859,7 @@ cadvisor.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.43.0.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
-	}
-}
-
-registry.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.45.0.2:5000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -991,7 +881,7 @@ httpbun.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.46.0.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
@@ -1013,7 +903,7 @@ ihatemoney.erfianugrah.com {
 	encode zstd gzip
 	reverse_proxy 172.47.0.2:8000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}	
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 }
 
