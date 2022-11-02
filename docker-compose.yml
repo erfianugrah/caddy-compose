@@ -12,7 +12,6 @@ services:
         limits:
           cpus: '4'
           memory: 512M
-          pids: 1
     volumes:
       - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile
       - /mnt/user/data/caddy/site:/srv
