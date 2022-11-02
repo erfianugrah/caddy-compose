@@ -10,7 +10,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4000000000'
+          cpus: '4'
           memory: 512M
           pids: 1
     volumes:
