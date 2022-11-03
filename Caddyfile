@@ -994,8 +994,8 @@ airsonic.erfianugrah.com {
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.17:4040 {
-		transparent
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		header_up Host {http.reverse_proxy.upstream.hostport}
 	}
 }
