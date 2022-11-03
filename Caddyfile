@@ -22,7 +22,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com @ port servarr airsonic plex readarr hydra nzb sonarr radarr lidarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin tdarr synapse synapse-admin rclone change beets element tautulli
+			erfianugrah.com @ port servarr airsonic. plex readarr hydra nzb sonarr radarr lidarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin tdarr synapse synapse-admin rclone change beets element tautulli
 		}
 		check_interval 1m
 		ip_source upnp
@@ -994,6 +994,7 @@ airsonic.erfianugrah.com {
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.17:4040 {
+		transparent
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
