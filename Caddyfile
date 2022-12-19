@@ -1103,7 +1103,7 @@ files.standardnotes.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.56.0.7:3125 {
+	reverse_proxy 172.56.0.7:3000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
