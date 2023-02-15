@@ -35,13 +35,6 @@
 		ip_source simple_http https://bot.whatismyipaddress.com
 		ip_source simple_http https://ipecho.net/plain
 	}
-	crowdsec {
-        api_url http://172.50.0.2:8080
-        api_key {$CROWDSEC_API_KEY}
-        ticker_interval 15s
-        #disable_streaming
-        #enable_hard_fails
-    }
 }
 
 erfianugrah.com {
