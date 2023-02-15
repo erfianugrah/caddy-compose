@@ -6,8 +6,8 @@ RUN xcaddy build v${VERSION} \
     --with github.com/caddy-dns/cloudflare \
     #--with github.com/mholt/caddy-l4/layer4 \
     #--with github.com/lucaslorentz/caddy-docker-proxy/plugin \
-    --with github.com/mholt/caddy-dynamicdns 
-    #--with github.com/hslatman/caddy-crowdsec-bouncer \
+    --with github.com/mholt/caddy-dynamicdns \
+    --with github.com/hslatman/caddy-crowdsec-bouncer 
     #--with github.com/kirsch33/realip \
     # Security
     #--with github.com/greenpau/caddy-trace \
