@@ -1,4 +1,4 @@
-ARG VERSION=2.6.3
+ARG VERSION=2.6.4
 
 FROM caddy:${VERSION}-builder-alpine AS builder
 ARG VERSION
