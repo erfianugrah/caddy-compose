@@ -17,7 +17,7 @@
 	}
 	servers {
 		#strict_sni_host on
-		protocols h1 h2 h3
+		protocols h1 h2
 	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
