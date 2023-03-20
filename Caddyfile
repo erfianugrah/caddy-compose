@@ -22,7 +22,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com @ port servarr plex navidrome hydra nzb sonarr radarr lidarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin synapse synapse-admin rclone change beets element tautulli hedgedoc
+			erfianugrah.com @ port servarr plex navidrome hydra nzb sonarr radarr lidarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin synapse synapse-admin rclone change beets element tautulli hedgedoc sabnzbd
 		}
 		check_interval 1m
 		ip_source upnp
@@ -1108,6 +1108,28 @@ grafana-loki.erfianugrah.com {
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.8:3100 {
+		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+}
+
+sabnzbd.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.19.0.8:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
