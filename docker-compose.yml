@@ -10,8 +10,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 512M
+          cpus: '8'
+          memory: 1024M
     volumes:
       - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile
       - /mnt/user/data/caddy/site:/srv
