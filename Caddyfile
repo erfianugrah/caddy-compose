@@ -1136,8 +1136,11 @@ sabnzbd.erfianugrah.com {
 }
 
 fileservarr.erfianugrah.com {
-	file_server /data {
+	root * /files
+	file_server {
 		browse
+		precompressed zstd br gzip
+
 	}
 
 	tls {
