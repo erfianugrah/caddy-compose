@@ -64,6 +64,17 @@ erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/erfianugrahcom-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 port.erfianugrah.com {
@@ -90,6 +101,17 @@ port.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/portainer-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 servarr.erfianugrah.com {
@@ -111,6 +133,17 @@ servarr.erfianugrah.com {
 	reverse_proxy localhost:90 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/servarr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -134,6 +167,17 @@ plex.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/plex-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 hydra.erfianugrah.com {
@@ -156,29 +200,51 @@ hydra.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/hydra-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
-nzb.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.0.6:7000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-	}
-}
+# nzb.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy 172.19.0.6:7000 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	log {
+# 		level debug
+# 		output file /var/log/nzb-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 720h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
 
 sonarr.erfianugrah.com {
 	tls {
@@ -199,6 +265,17 @@ sonarr.erfianugrah.com {
 	reverse_proxy 172.19.0.3:8989 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/sonarr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -222,6 +299,17 @@ radarr.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/radarr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 bazarr.erfianugrah.com {
@@ -243,6 +331,17 @@ bazarr.erfianugrah.com {
 	reverse_proxy 172.19.0.4:6767 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/bazarr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -285,7 +384,6 @@ bazarr.erfianugrah.com {
 # }
 
 grafana-unraid.erfianugrah.com {
-	encode gzip
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -304,6 +402,17 @@ grafana-unraid.erfianugrah.com {
 	reverse_proxy 172.29.0.2:3000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/grafana-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -326,6 +435,17 @@ prom-unraid.erfianugrah.com {
 	reverse_proxy 172.29.0.3:9090 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/prometheus-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -355,6 +475,17 @@ vaultwarden.erfianugrah.com {
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/vaultwarden-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 jackett.erfianugrah.com {
@@ -377,6 +508,17 @@ jackett.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/jackett-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 prowlarr.erfianugrah.com {
@@ -398,6 +540,17 @@ prowlarr.erfianugrah.com {
 	reverse_proxy 172.19.0.10:9696 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/prowlarr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -450,6 +603,17 @@ file.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/file-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 jellyfin.erfianugrah.com {
@@ -471,6 +635,17 @@ jellyfin.erfianugrah.com {
 	reverse_proxy 172.19.0.15:8096 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/jellyfin-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -494,6 +669,17 @@ qbit.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/qbit-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 pastebin.erfianugrah.com {
@@ -515,6 +701,17 @@ pastebin.erfianugrah.com {
 	reverse_proxy 172.30.0.2:8000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/pastebin-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -560,6 +757,17 @@ change.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/change-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 rclone.erfianugrah.com {
@@ -585,6 +793,17 @@ rclone.erfianugrah.com {
 	reverse_proxy 172.32.0.2:5572 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/rclone-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -624,6 +843,17 @@ synapse.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/synapse-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 synapse-admin.erfianugrah.com {
@@ -645,6 +875,17 @@ synapse-admin.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/synapse-admin-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 coturn.erfianugrah.com {
@@ -657,6 +898,17 @@ coturn.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
+	log {
+		level debug
+		output file /var/log/coturn-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 overseerr.erfianugrah.com {
@@ -679,6 +931,17 @@ overseerr.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/overseerr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 tautulli.erfianugrah.com {
@@ -700,6 +963,17 @@ tautulli.erfianugrah.com {
 	reverse_proxy 172.19.0.14:8181 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/tautulli-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -733,6 +1007,17 @@ element.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/element-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 keycloak.erfianugrah.com {
@@ -755,29 +1040,40 @@ keycloak.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/keycloak-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
-git.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.40.0.2:3000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-	}
-}
+# git.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy 172.40.0.2:3000 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# }
 
 beets.erfianugrah.com {
 	tls {
@@ -798,6 +1094,17 @@ beets.erfianugrah.com {
 	reverse_proxy 172.19.0.16:8337 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/beets-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -820,6 +1127,17 @@ joplin.erfianugrah.com {
 	reverse_proxy 172.41.0.2:22300 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/joplin-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -865,6 +1183,17 @@ cadvisor.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/cadvisor-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 httpbun.erfianugrah.com {
@@ -886,6 +1215,17 @@ httpbun.erfianugrah.com {
 	reverse_proxy 172.46.0.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/httpbun-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -909,6 +1249,17 @@ httpbin.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/httpbin-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 ihatemoney.erfianugrah.com {
@@ -930,6 +1281,17 @@ ihatemoney.erfianugrah.com {
 	reverse_proxy 172.47.0.2:8000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/ihatemoney-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -957,6 +1319,17 @@ dillinger.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/dillinger-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 firefly.erfianugrah.com {
@@ -978,6 +1351,17 @@ firefly.erfianugrah.com {
 	reverse_proxy 172.49.0.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/firefly-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -1022,6 +1406,17 @@ navidrome.erfianugrah.com {
 	reverse_proxy 172.19.0.17:4533 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/navidrome-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -1111,6 +1506,17 @@ hedgedoc.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/hedgedoc-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 grafana-loki.erfianugrah.com {
@@ -1132,6 +1538,17 @@ grafana-loki.erfianugrah.com {
 	reverse_proxy 172.29.0.8:3100 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/loki-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
 	}
 }
 
@@ -1155,6 +1572,17 @@ sabnzbd.erfianugrah.com {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
+	log {
+		level debug
+		output file /var/log/sabnzbd-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
 
 fileservarr.erfianugrah.com {
@@ -1162,7 +1590,6 @@ fileservarr.erfianugrah.com {
 	file_server {
 		browse
 		precompressed zstd br gzip
-
 	}
 
 	tls {
@@ -1180,4 +1607,48 @@ fileservarr.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
+	log {
+		level debug
+		output file /var/log/fileservarr-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+nodered.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.58.0.2:1880 {
+		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/nodered-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
 }
