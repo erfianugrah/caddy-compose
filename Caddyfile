@@ -23,7 +23,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com @ port servarr fileservarr plex navidrome hydra sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin synapse synapse-admin rclone change beets element tautulli hedgedoc
+			erfianugrah.com @ port servarr fileservarr plex navidrome hydra sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin synapse synapse-admin rclone change beets element tautulli hedgedoc privatebin photoprism coredns-prom-exporter-sg nodered
 		}
 		check_interval 1m
 		ip_source upnp
@@ -1711,9 +1711,47 @@ privatebin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert MIIF3zCCA8egAwIBAgIUCGQR3PDP7aG8AjsCf/ww/rziwtUwDQYJKoZIhvcNAQELBQAwfzELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRUwEwYDVQQKDAxPcmdhbml6YXRpb24xDTALBgNVBAsMBEVyZmkxIjAgBgNVBAMMGXBhcGVybGVzcy5lcmZpYW51Z3JhaC5jb20wHhcNMjMxMDMwMTQwMTQ0WhcNMjYwODE5MTQwMTQ0WjB/MQswCQYDVQQGEwJTRzESMBAGA1UECAwJU2luZ2Fwb3JlMRIwEAYDVQQHDAlTaW5nYXBvcmUxFTATBgNVBAoMDE9yZ2FuaXphdGlvbjENMAsGA1UECwwERXJmaTEiMCAGA1UEAwwZcGFwZXJsZXNzLmVyZmlhbnVncmFoLmNvbTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAKK25g5SudUFEd/8IAYmbgsZ98+ItfeWyw6MIcf0A5qId9ikcl2CyLUXPn6S3QghzrkTIzbwHK0U8mEFefUGZ+S2pPUlHR3bxOiBId+F/kjGeUjvnE0yK/9wi5nccCrvdGWVoc5NYrSR1pqmWh8SyNGoltYHGHKVi2mnIy8XQHj9NgL5DsvkEqxkexF6OD1bgUTdz1+c03eVtt510oeAQt3kKCSw1Y9BmEtqtlhrzx8p3wuAVOsY7LvBro5r9+/Mw8Zxca0VSpGLebyHLlQ3y5W3vr3c4mQIMvNjMJk01fR8iCqw+BHdxbaTL6zrYDZMXjykZwKMiJNK5wgZMxJRx3Fjogzw9B3Vkhx5qIiuOxUf0gD30kbAld6SMvLLzQkPo30n/HASoqxkrPIp8hvP7oAiRnJNbMCqIwAIAN+Tr4+wF5a52kMtBxJ2rglNKva0vuRGqYuKbS1aFyJtpQQb414JPltdAD0uPdkPYwBlr21tNnwIHiX8ySWlZOJN3ibBvXPWG0y+eCZ0tAF04xHnI2wiV+C2KpfwFNXAsq13tAasqIqrXDXn3dAAOcI5tp2l/U7tnf7FPLs/H8BGUmFJM7l+9JlJlELGNe2dIP7j1wL/UvSS15eHcj6kVKN3NfOOby9CKDoDs0dTiJRFOnRdMsKc+FtyagpzvZyLNS5CT40NAgMBAAGjUzBRMB0GA1UdDgQWBBRWol7VyEsTOaXWmet+rC+EHUqpHDAfBgNVHSMEGDAWgBRWol7VyEsTOaXWmet+rC+EHUqpHDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4ICAQAwuq/HstKT3X7QXx/xVBSl7jqpeLrG63Am/8+ZMvoROM5R9n1QbNL0Y+PnIABIh9myA9DUl1KQJEogWQf8p3XtX6zr7zlvuAkyzI+/8iSAE7zujFk5vg591Xkw80jOQmNkNH8QrBa89SrKIuFks8DW3GqJYT6yd7+QjlXX7qz6pp/0bKzt+jUAHx/wOygvFRY14scsHLPge2s0AkYiYsX3lO2DwuTx7dlTPl+asvJgZvQhlSTUBtfnxWIYG07FsFZ1mQ+E+EtNQLCck8StiXKjp2WOb2z1InYTzn0vsqC6twP29gdr5uphycEkip/cFEYl0cUp4k/kGMMHrPfktF5iwLBHw87sfmLuKZKOEwM7r7pc8tiz7xgM7XfIssIojJfKqykng0hHmGYryG2y9IU4cqC0bUy8+jPTpRue8lG4F5DQ5D8UW6+UlzxJzVt7gm0YPACAmbNZVShJ+ro3+SWJvfttETJ2aQGU0c1LHq4A1Apha77z9Tfk4izPBf6qi3kldoG7LM8eWGtwUUQjzggXMqDI8J59Uvq2nDo3pi/3aDn+aVbeZu1co67nCzB2iYt5SAzi9mzoGUyrLPUO23qSFO43wv02u+ue0Yr2h/ssoEgmmIau+lvGD2XcizdmdXJEy8+DW4JsQoQbC2OR511OiGe6RU/ekMBpkAm3bHK9wg==
+			trusted_leaf_cert MIIFlzCCA38CFBNgmacpJA3FRSqVxTXOlNOft+3KMA0GCSqGSIb3DQEBCwUAMH8xCzAJBgNVBAYTAlNHMRIwEAYDVQQIDAlTaW5nYXBvcmUxEjAQBgNVBAcMCVNpbmdhcG9yZTEVMBMGA1UECgwMT3JnYW5pemF0aW9uMQ0wCwYDVQQLDARFcmZpMSIwIAYDVQQDDBlwYXBlcmxlc3MuZXJmaWFudWdyYWguY29tMB4XDTIzMTAzMDE0MDIwNVoXDTI1MDMxMzE0MDIwNVowgZAxCzAJBgNVBAYTAlNHMQswCQYDVQQIDAJTRzELMAkGA1UEBwwCU0cxDTALBgNVBAoMBEVyZmkxDTALBgNVBAsMBEVyZmkxIjAgBgNVBAMMGXBhcGVybGVzcy5lcmZpYW51Z3JhaC5jb20xJTAjBgkqhkiG9w0BCQEWFmVyZmkuYW51Z3JhaEBnbWFpbC5jb20wggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDMrpnqkjJlePUcOUjuY33NeAl4Z5KHTdzYxUDOcdIhc5yJAh+y/Rh2uUeJJAmCJUDNSv0i/fftB+QTdn1YQY9itv0aE7n+NpYDooUCstrZEh9+3jRM8BQehBiH9AXXphvQPky7mUY/TInuQyenJ71MaTQkL8s+G1auqvBu13qiwUp8QnlAaa/M3MqX1nlvJ3GSDn78gox3nSYOD+UI17lsZJSyoD/5WbRmyGUMhVdN//cVNNwKKr9xWxapcS7ka/h4Mib9Tn9JgmavANbDqxNOj701o47aGzR6WPQgFPs6Ky4k1XWe4Vm66TmXcdKMeYSZCzPZSn4aEGNeoqZ8mGT7aETgqGLTx8zZMBfKgMsNGx7VEUEgWzoXRK0CXIRiXxEWrKl5l65TFyteOA189ymhIos4MMU+Oye64H/BAtdsGYeX95eECJcgKVq2GTangFmFcaDAomXUx5IM6KSXNVUnGrvF3LtJAP6l7wGejE5CtspEkmszmsz+4aeQHnj0TDXNzxULzJLJyamUOGW+A8Zm3gqCebt70DblX86RkH3TIBLfZfZdhVss/ELW6ruU3pwFWSSAm2kCNtmztOyEV2IHTLs0YQpJK06qOMKtFcWdby0Xt9zHK+hZPFGHdRcSFM1Kv34u4GUMy5bDyY3UbIprYH+VNcouGFbal6VMJ2n9NwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQAqV3N77z8oseQg/tbUry16prFQ8mvI/PHkX6COc0zvJzR7GPV+Tjs798/3AZ0zNuxaKHNpA4rd5TJkJhmOnYR0rUNrOojocxUIyWXa70bnBoh5GDEbs4uWip+uIN3DEG6xEV/lO1KCQcKz82mprcy4VS+V1zLfiuVwrWA3wa43Kuleb7+IMUxgn9jnSHbPX8kF0883HwckLWxUrN/U/dxyd0wl00leQvcvIOnZoJ6r7iiMqnvSXG+qa1df/nu9lkVEhtf5neZVwJL0B/9yIPSjg31lGyXMYjlZMWqsmvIpVSG+pfTUDV9ZrDlmf0MfajiiFzmlu7MMNMes5k7C0KOw7KaRKZVUumorHwYK1HWE7OxaAGayjaK6xjIbH94fJYLKnvvtVIX6xDyebUkzaEm/0u8Nrzw4bPYExhH9k2ZJT76/NF1Djzh1cTED88E0q3bFiIGHb3+ko0YMd2g9P1dM/bi9QI5X2bqt1gclI50vvtKkK6aDfCp6zgp/CPrTBeYJIvwzam5/XfTH8DW+ucKIWe+PfXQ0UEy9PSyHI/kJoEALE19KFv5ukO7+L98iHbSibSlgpcm5RqulFm1vhvj5ybhkB/cn+JOKi3rxqMd3tLJFJ5a1AHeDwZstydWr/TTKHmVWtT8y+pk2kcpcKA2lQoMZDqshrJFYubw1JwqqTQ==
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.60.0.2:8080 {
+		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/privatebin-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+photoprism.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.60.0.2:2342 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
