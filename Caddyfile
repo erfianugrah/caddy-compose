@@ -23,7 +23,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com @ port servarr fileservarr plex navidrome hydra sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin synapse synapse-admin rclone change beets element tautulli hedgedoc privatebin photoprism coredns-prom-exporter-sg nodered
+			erfianugrah.com @ port servarr fileservarr plex navidrome hydra sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden jackett ping kvm file jellyfin pastebin synapse synapse-admin rclone change beets element tautulli hedgedoc privatebin photoprism coredns-prom-exporter-sg nodered immich
 		}
 		check_interval 1m
 		ip_source upnp
@@ -1751,13 +1751,46 @@ photoprism.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.60.0.2:2342 {
+	reverse_proxy 172.63.0.2:2342 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
 	log {
 		level debug
-		output file /var/log/privatebin-access.log {
+		output file /var/log/photoprism-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+immich.erfianugrah.com {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	reverse_proxy 172.63.0.2:2342 {
+		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	log {
+		level debug
+		output file /var/log/immich-access.log {
 			roll_size 1gb
 			roll_keep 5
 			roll_keep_for 720h
