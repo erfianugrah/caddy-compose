@@ -23,7 +23,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com @ port servarr fileservarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change beets element tautulli hedgedoc privatebin photoprism coredns-prom-exporter-sg nodered immich caddy-prometheus
+			erfianugrah.com @ port servarr fileservarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change beets element tautulli hedgedoc privatebin photoprism coredns-prom-exporter-sg nodered immich caddy-prometheus cdn
 		}
 		check_interval 1m
 		ip_source upnp
@@ -37,8 +37,11 @@
 		ip_source simple_http https://ipecho.net/plain
 	}
 }
+:2018 {
+	metrics
+}
 
-erfianugrah.com, www.erfianugrah.com {
+erfianugrah.com {
 	tls {
 		issuer acme {
 			dns cloudflare {env.CF_API_TOKEN}
@@ -61,18 +64,20 @@ erfianugrah.com, www.erfianugrah.com {
 		route {
 			@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
 			header @image {
-			>Cache-Control "public, max-age=315360001, stale-while-revalidate=31536000"
-			>Access-Control-Allow-Origin "*"
-			>Access-Control-Max-Age "86400"
+				>Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
+				# >Cloudflare-CDN-Cache-Control "max-age=31536000"
+				>Access-Control-Allow-Origin "*"
+				>Access-Control-Max-Age "86400"
 			}
-			header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+			# header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
 		}
 	}
-	handle_path /manifest.txt {
-		root * /data/manifest.txt
-		file_server
-		header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
-	}
+	# handle_path /manifest.txt {
+	# 	root * /data/manifest.txt
+	# 	file_server
+	# 	header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+	# 	header >Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000"
+	# }
 	encode zstd gzip
 	push
 	log {
@@ -1794,7 +1799,7 @@ immich.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.64.0.2:8080 {
+	reverse_proxy 172.64.0.9:3001 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1834,6 +1839,40 @@ caddy-prometheus.erfianugrah.com {
 	log {
 		level debug
 		output file /var/log/caddy-prometheus-access.log {
+			roll_size 1gb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+cdn.erfianugrah.com {
+	root * /revista-images
+	file_server {
+		browse
+		precompressed zstd br gzip
+	}
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+	encode zstd gzip
+	log {
+		level debug
+		output file /var/log/cdn-access.log {
 			roll_size 1gb
 			roll_keep 5
 			roll_keep_for 720h
