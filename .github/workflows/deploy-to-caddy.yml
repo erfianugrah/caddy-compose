@@ -12,9 +12,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Post Config to Caddy APi
+      - name: Post Config to Caddy API
         run: |
-          curl -X POST "https://caddy.erfianugrah.com/load" \
+          curl -X POST "https://caddy.erfianugrah.com/load/" \
           -H "CF-Access-Client-Id: ${{ secrets.ACCESS_ID}}" \
           -H "CF-Access-Client-Secret: ${{ secrets.ACCESS_KEY}}"\
           -H "Content-Type: text/caddyfile" \
