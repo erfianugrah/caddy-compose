@@ -400,44 +400,6 @@ bazarr.erfianugrah.com {
 	}
 }
 
-nextcloud.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	redir /.well-known/carddav /remote.php/dav 301
-	redir /.well-known/caldav /remote.php/dav 301
-	@forbidden {
-		path /.htaccess
-		path /data/*
-		path /config/*
-		path /db_structure
-		path /.xml
-		path /README
-		path /3rdparty/*
-		path /lib/*
-		path /templates/*
-		path /occ
-		path /console.php
-	}
-	respond @forbidden 404
-	encode zstd gzip
-	reverse_proxy 172.21.0.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-	}
-}
-
 grafana-unraid.erfianugrah.com {
 	tls {
 		issuer acme {
