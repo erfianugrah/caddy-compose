@@ -15,7 +15,7 @@ jobs:
       - name: Post Config to Caddy API
         run: |
           curl -v https://caddy.erfianugrah.com/load \
-          -H "CF-Access-Client-Id: ${{ secrets.ACCESS_ID}}" \
-          -H "CF-Access-Client-Secret: ${{ secrets.ACCESS_KEY}}"\
+          -H "CF-Access-Client-Id: ${{ secrets.ACCESS_ID }}" \
+          -H "CF-Access-Client-Secret: ${{ secrets.ACCESS_KEY }}" \
           -H "Content-Type: text/caddyfile" \
-          --data-binary ../../@Caddyfile
+          --data-binary @Caddyfile
