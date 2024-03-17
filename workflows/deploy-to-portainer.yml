@@ -1,0 +1,21 @@
+name: Deploy to Caddy API via Git
+
+on:
+  push:
+    branches:
+      - master # Adjust this as necessary
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Post Config to Caddy APi
+        run: |
+          curl -X POST "https://caddy.erfianugrah.com/load" \
+          -H "CF-Access-Client-Id: ${{ secrets.ACCESS_ID}}" \
+          -H "CF-Access-Client-Secret: ${{ secrets.ACCESS_KEY}}"\
+          -H "Content-Type: text/caddyfile" \
+          --data-binary @Caddyfile

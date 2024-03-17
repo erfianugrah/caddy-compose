@@ -1,4 +1,8 @@
 {
+	admin :2019 {
+		origins localhost:2019 caddy.erfianugrah.com
+		enforce_origin
+	}
 	email {$EMAIL}
 	acme_dns cloudflare {$CF_API_TOKEN}
 	cert_issuer acme
@@ -9,7 +13,7 @@
 		output file /var/log/access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -23,7 +27,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com @ port servarr fileservarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change beets element tautulli hedgedoc privatebin photoprism coredns-prom-exporter-sg nodered immich caddy-prometheus cdn
+			erfianugrah.com port servarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change element tautulli hedgedoc privatebin coredns-prom-exporter-sg nodered immich caddy-prometheus qdirstat
 		}
 		check_interval 1m
 		ip_source upnp
@@ -37,14 +41,15 @@
 		ip_source simple_http https://ipecho.net/plain
 	}
 }
+
 :2018 {
 	metrics
 }
 
-erfianugrah.com {
+caddy.erfianugrah.com {
 	tls {
 		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -55,43 +60,77 @@ erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-	}
-	handle {
-		reverse_proxy 172.18.0.2:2368 {
-			trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		}
-		route {
-			@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
-			header @image {
-				>Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
-				# >Cloudflare-CDN-Cache-Control "max-age=31536000"
-				>Access-Control-Allow-Origin "*"
-				>Access-Control-Max-Age "86400"
-			}
-			# header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert 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
+			trusted_leaf_cert MIIGqTCCBJGgAwIBAgIUFnfDKut1l6z1okeHD9lh2S0ZncgwDQYJKoZIhvcNAQELBQAwfjELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxHjAcBgNVBAMMFWNhZGR5LmVyZmlhbnVncmFoLmNvbTAeFw0yNDAzMTcwNzI1NDhaFw0zNDAzMTUwNzI1NDhaMH4xCzAJBgNVBAYTAlNHMRIwEAYDVQQIDAlTaW5nYXBvcmUxEjAQBgNVBAcMCVNpbmdhcG9yZTESMBAGA1UECgwJRXJmaSBDb3JwMRMwEQYDVQQLDApFcmZpIFByb3h5MR4wHAYDVQQDDBVjYWRkeS5lcmZpYW51Z3JhaC5jb20wggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC9W2vDjGqfHWImTHnGnIMiGhDzlxEjIT800SbBU+MwEgNHYo9xZl/IviOKWjsf/mH/qYNalqRjJxVRLnqRuIokxrzIrjHdMtBTPkSLnEtyFEW3X95w2+dQ4+80jlGmChUCfbfWJE4Wd/FkZRpmKFQ5d6k+XGftWjH0GsZeGIQW7mDU7FnRAu8jPHw02mCkwMDz8eQeLWX5Wqfl6pY4EgKfzi7ic7ZHlhelmU0ojlRRYRQhGToxWszI2uB4+aPTqfrV4JWTaIXLzptaVa/BmefjkN+dDIEZX9YAfk8ZWaYwFpDVPU0fryE0HeSrq+5wzXIsg+QHU7prcIHgKkfqPSdncIvqJSdMHP5xwPqfthDcug3/kWjpg3lJWMLDkN9UAQnFz+60JNLX+6kQnDlKSqoO+kzScFpsM33VdVxZky54EdQp5xJNjw8gb440tpXJTdoNFdGqlJeTYDPeIs3HGF7g2oV2ayT3RkflaV/L6d0gUqVDlspBBGZEhbklf4z1UTsnuKkN/4G0Ik8VHdPqxq6zKcLzeaxPCOrenrUEWZf0vn4egKAnU/OdNI29cVO+ZwE7kDURuCDPKPAwQ8WFZFGJhbASDRpxUUqN3HFbLJU2iDLMJWkxlPyNUz7wLdeHsYbBtsclhl0YaFhatB+yRFGOoVhVvbhkV8SspT8t/ksodQIDAQABo4IBHTCCARkwgb0GA1UdIwSBtTCBsoAUlLlqm4knIghbQPjOLomVw4JaASOhgYOkgYAwfjELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxHjAcBgNVBAMMFWNhZGR5LmVyZmlhbnVncmFoLmNvbYIUFFfHj0qAwyWPO/bheELO/NxmiKIwCQYDVR0TBAIwADALBgNVHQ8EBAMCBPAwIAYDVR0RBBkwF4IVY2FkZHkuZXJmaWFudWdyYWguY29tMB0GA1UdDgQWBBSgTUpgM94youLXpjqxAx23GHIS6jANBgkqhkiG9w0BAQsFAAOCAgEAsWVOwuPLK1ejKPv56ookegD/TCfeHr9qX8No+WQe/pOhNtD9Fag7RwyQK8VExqx9xiDstV39Q6rmOXKuy7qGV6wW8bC3UfpfOLsk2hEYxTdxA6QA1S+alAkueGCgAMJxmdoI75k3g6fW/SelfcxfphtoWFDS1biQL0y9EBoba8zQOEdouBvH63lPM86s77Zj2XRGJ/BdOv+Ezp5fxn6tB1qAAgtxLkahnu/8vCCV+PVoMUTgsP7LC1MKi9Js2phTxg+Ld1szprlpriA3jyokRv1b/CTUXxF8OjlrAEJ9lPTg9WrJ90FkpmhNwPx6AmakcZRI2VYxEIzio6RUqNmVYM/u5POT6P1jnyL6COOR5f/0GQhhpJxvui97nfzh+GnQlzchhxZxqWQYz3l4PON4tCkgf+y5oh1YxPMXG3xDMq/jB+r3y9g1Q/DpySy9wXyDRNTvsv5mXPRLUw0KgaCvMna4qK02CAJuXlWm44xQUKBebO0nSJXy+dFblC87I3V7oQG+SalYd/HzzwevAq7j47nuheg1J3hRjpiVzmdBhovOOUSjcavsQJBJsdeFVHCqAm0HNNBk9A5nsJ5xA1KcaW08zSuG0Q7H33SChT42hcofhnIcp9qGSh8vgZ+/GW1Dr9CwIbZxMKYspcxK3FBUsJ+Co4sbXz0xtsFktlCKxkk=
 		}
 	}
-	# handle_path /manifest.txt {
-	# 	root * /data/manifest.txt
-	# 	file_server
-	# 	header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
-	# 	header >Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000"
-	# }
 	encode zstd gzip
-	push
+	reverse_proxy localhost:2019 {
+		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		header_up Origin https://caddy.erfianugrah.com
+	}
 	log {
 		level debug
-		output file /var/log/erfianugrahcom-access.log {
+		output file /var/log/caddy-api-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
 		}
 	}
 }
+
+# erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {env.CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	handle {
+# 		reverse_proxy 172.18.0.2:2368 {
+# 			trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 		}
+# 		route {
+# 			@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
+# 			header @image {
+# 				>Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
+# 				# >Cloudflare-CDN-Cache-Control "max-age=31536000"
+# 				>Access-Control-Allow-Origin "*"
+# 				>Access-Control-Max-Age "86400"
+# 			}
+# 			# header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+# 		}
+# 	}
+
+# 	encode zstd gzip
+# 	push
+# 	log {
+# 		level debug
+# 		output file /var/log/erfianugrahcom-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 168h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
 
 port.erfianugrah.com {
 	tls {
@@ -109,11 +148,11 @@ port.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.33.0.2:9000 {
+	reverse_proxy 172.17.0.2:9000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
-	reverse_proxy 172.33.0.2:8000 {
+	reverse_proxy 172.17.0.2:8000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -122,7 +161,7 @@ port.erfianugrah.com {
 		output file /var/log/portainer-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -155,7 +194,7 @@ servarr.erfianugrah.com {
 		output file /var/log/servarr-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -188,7 +227,7 @@ plex.erfianugrah.com {
 		output file /var/log/plex-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -221,7 +260,7 @@ plex.erfianugrah.com {
 # 		output file /var/log/hydra-access.log {
 # 			roll_size 1gb
 # 			roll_keep 5
-# 			roll_keep_for 720h
+# 			roll_keep_for 168h
 # 		}
 # 		format json {
 # 			time_format wall
@@ -254,7 +293,7 @@ plex.erfianugrah.com {
 # 		output file /var/log/nzb-access.log {
 # 			roll_size 1gb
 # 			roll_keep 5
-# 			roll_keep_for 720h
+# 			roll_keep_for 168h
 # 		}
 # 		format json {
 # 			time_format wall
@@ -287,7 +326,7 @@ sonarr.erfianugrah.com {
 		output file /var/log/sonarr-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -320,7 +359,7 @@ radarr.erfianugrah.com {
 		output file /var/log/radarr-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -353,7 +392,7 @@ bazarr.erfianugrah.com {
 		output file /var/log/bazarr-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -424,7 +463,7 @@ grafana-unraid.erfianugrah.com {
 		output file /var/log/grafana-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -457,7 +496,7 @@ prom-unraid.erfianugrah.com {
 		output file /var/log/prometheus-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -481,8 +520,8 @@ vaultwarden.erfianugrah.com {
 		}
 		client_auth {
 			mode require_and_verify
-			trusted_ca_cert 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
-			trusted_leaf_cert MIIFqjCCA5ICFBNgmacpJA3FRSqVxTXOlNOft+3IMA0GCSqGSIb3DQEBCwUAMIGBMQswCQYDVQQGEwJTRzESMBAGA1UECAwJU2luZ2Fwb3JlMRIwEAYDVQQHDAlTaW5nYXBvcmUxFTATBgNVBAoMDE9yZ2FuaXphdGlvbjENMAsGA1UECwwERXJmaTEkMCIGA1UEAwwbdmF1bHR3YXJkZW4uZXJmaWFudWdyYWguY29tMB4XDTIzMTAwOTA3NTUzNFoXDTI1MDIyMDA3NTUzNFowgaAxCzAJBgNVBAYTAlNHMRIwEAYDVQQIDAlTaW5nYXBvcmUxEjAQBgNVBAcMCVNpbmdhcG9yZTENMAsGA1UECgwERXJmaTENMAsGA1UECwwERXJmaTEkMCIGA1UEAwwbdmF1bHR3YXJkZW4uZXJmaWFudWdyYWguY29tMSUwIwYJKoZIhvcNAQkBFhZlcmZpLmFudWdyYWhAZ21haWwuY29tMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAnIHnG2hmToQ1W3SZn7ywXFyx7UgqXflGfxDwiRgdayzXJDyOI9nNT238EnLFAOi2nUhudvrcO7ZM9adHZATQtN+U3ckP3kfN8FHgAMR7XP89klIZRHmcxzoILxlo1QzQa61KIbztg83ASxyk6HvQyUAXo6gGPRTIVGBi1ouVdo8csBJ3M+yXYD4bY4ee1+6SZvLEgiZsSD9wNCkv0EUDY77VuomxFrtK7/fuNLqD3N8fDvVb86SK+dUoNDv1syWUNsTCMu/rDf2w48Dp55FA01UCZpr7UaUBOmScHDOClngAvvVmntkXqJ6wjVjCJypCJaV8fVPgtEkICEqDQqTkRzmliuAwZ2dmT7mTaPIpX3eV/xJkkFTZNag6DHdJvT4m4xyu1lF7kyI9COz2mmYmx6E8JDsms1YrOlx9vvjwkOgRMRPOspOFngpr+9nKeawbO1UscqAAu1EyDzm1nXP2cr7vqeuOY50JRjCXyyGtJHcO3gy+MYMAZ7oGOEgRlnCXNq3R8yOlu7OUtCQG4MgcqwKsFPZNZeOK8CRuSJbLF6rRdx0dmsoiiMaENotDE3nnlZh+OmMRpJZCo6J1tJSVadBo6+tn/58pkVuF4pjraXI7okEuGc0ZpI6WkEkZBoY1SD8qBLlZFyJGaTT9kqitGNGzgUxBs3Su0kVdFf1Gz9cCAwEAATANBgkqhkiG9w0BAQsFAAOCAgEAOjpPnCjr8UH4JIXt2WbheujOJ0JpzaO5+JvI6Xqk4/5bMwqhLqcSmGQFqUzVhUos+547g4cuBFkNOISBPxEh3e3f06u48Gteaefjc/1sM1f+BnuJMCUifJ2f9DH5Jdglqyc6UmWy58kE1w3jO6TnFcIx90151vM73FPXnTIumh7iRGSscPkgwLVZVcb5z5WSFpDZIe1LAl9DnBLsoPYCwuEF4dItVaZNdxfTFJjyt4ATAXdesvu/j8BojAxiilIIN8vxlSOSkPZ+GSIgbgU0i9OaC800iiif7V+e6YMwiwEw+v5P7HfThGtsQd62BmT4NbPMQQGzPPlhRMvXZzTiDt7xyYobC4s7Omav7RobhvaFBnAxGsipCfFeO2NHTKgt6Pjb8t8x9DCDh7QOYt/TMhOposmC0Tj9g1i7XaI/PqdFzpm9u/6cLPYApjmfvKm57zC/9FtamolDC5pSY12My+1Xt+goOECmO8roJB1FDRgZdydrIZC0szfT57/7J2id6T2ojLLlNZ3MjNVHUA7iK0nB4fjTAXdvvE90o+hp3SiiQjjIqY/h0t0HInaEogXHNHgAty0ifuNb46yd/0thYe2CQ71CAkp81WMv9MrcoA+OXudMzGzDFzMb//ZBB1ZfQCG+I4jLkYEQivq4Dixw1e2+vTy3lyaT6EETSWfsh2M=
+			trusted_ca_cert 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
+			trusted_leaf_cert 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
 		}
 	}
 	encode zstd gzip
@@ -501,7 +540,7 @@ vaultwarden.erfianugrah.com {
 		output file /var/log/vaultwarden-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -534,7 +573,7 @@ vaultwarden.erfianugrah.com {
 # 		output file /var/log/jackett-access.log {
 # 			roll_size 1gb
 # 			roll_keep 5
-# 			roll_keep_for 720h
+# 			roll_keep_for 168h
 # 		}
 # 		format json {
 # 			time_format wall
@@ -567,7 +606,7 @@ prowlarr.erfianugrah.com {
 		output file /var/log/prowlarr-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -611,6 +650,11 @@ file.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert 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
+			trusted_leaf_cert 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
+		}
 	}
 	@image path_regexp image ^.*\.(jpe?g|png|gif|avif|tiff|web|mkv|mp4|flac|mp3|wav|ogg|aac|mov|flv|avi)$
 	header @image {
@@ -629,7 +673,7 @@ file.erfianugrah.com {
 		output file /var/log/file-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -662,7 +706,7 @@ jellyfin.erfianugrah.com {
 		output file /var/log/jellyfin-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -695,7 +739,7 @@ qbit.erfianugrah.com {
 		output file /var/log/qbit-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -728,7 +772,7 @@ qbit.erfianugrah.com {
 # 		output file /var/log/pastebin-access.log {
 # 			roll_size 1gb
 # 			roll_keep 5
-# 			roll_keep_for 720h
+# 			roll_keep_for 168h
 # 		}
 # 		format json {
 # 			time_format wall
@@ -783,7 +827,7 @@ change.erfianugrah.com {
 		output file /var/log/change-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -820,7 +864,7 @@ rclone.erfianugrah.com {
 		output file /var/log/rclone-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -869,7 +913,7 @@ synapse.erfianugrah.com {
 		output file /var/log/synapse-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -901,7 +945,7 @@ synapse-admin.erfianugrah.com {
 		output file /var/log/synapse-admin-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -924,7 +968,7 @@ coturn.erfianugrah.com {
 		output file /var/log/coturn-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -957,7 +1001,7 @@ overseerr.erfianugrah.com {
 		output file /var/log/overseerr-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -990,7 +1034,7 @@ tautulli.erfianugrah.com {
 		output file /var/log/tautulli-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1033,7 +1077,7 @@ element.erfianugrah.com {
 		output file /var/log/element-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1066,7 +1110,7 @@ keycloak.erfianugrah.com {
 		output file /var/log/keycloak-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1096,38 +1140,38 @@ keycloak.erfianugrah.com {
 # 	}
 # }
 
-beets.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.0.16:8337 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-	}
-	log {
-		level debug
-		output file /var/log/beets-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 720h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
+# beets.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy 172.19.0.16:8337 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	log {
+# 		level debug
+# 		output file /var/log/beets-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 168h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
 
 joplin.erfianugrah.com {
 	tls {
@@ -1145,8 +1189,8 @@ joplin.erfianugrah.com {
 		}
 		client_auth {
 			mode require_and_verify
-			trusted_ca_cert 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
-			trusted_leaf_cert MIIFkTCCA3kCFBNgmacpJA3FRSqVxTXOlNOft+3JMA0GCSqGSIb3DQEBCwUAMHwxCzAJBgNVBAYTAlNHMRIwEAYDVQQIDAlTaW5nYXBvcmUxEjAQBgNVBAcMCVNpbmdhcG9yZTEVMBMGA1UECgwMT3JnYW5pemF0aW9uMQ0wCwYDVQQLDARFcmZpMR8wHQYDVQQDDBZqb3BsaW4uZXJmaWFudWdyYWguY29tMB4XDTIzMTAxNDA3MTk0N1oXDTI1MDIyNTA3MTk0N1owgY0xCzAJBgNVBAYTAlNHMQswCQYDVQQIDAJTRzELMAkGA1UEBwwCU0cxDTALBgNVBAoMBEVyZmkxDTALBgNVBAsMBEVyZmkxHzAdBgNVBAMMFmpvcGxpbi5lcmZpYW51Z3JhaC5jb20xJTAjBgkqhkiG9w0BCQEWFmVyZmkuYW51Z3JhaEBnbWFpbC5jb20wggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDAXatWIitP6Elxz84Y94Dl7RYAEsO7E4SHWTG+pTV9o6xMTfb+MWxZZJgWLx72KFy5pQX/BTAKe4MB1hMNgwkMP4CawpApyzZXy48QSNzECrn4HxHIxQAOt1NbTjDVTcuaZKG8D+zmpWFlOB8hVytHXTYkustJg8X54EEX9hsfDTsliSQ2Zi/av2nsUG6fqkCeKFY8g0XAEY5GE1ADa6E8iG9OhzLWo0G6mhTGL/BzD0ZOemKv8RD8OglH0Hfaz/EYQ88c99wyLiSmTGkjhQ2dPf3Ck8CS7z2mJCr3tfPpiK1+wdCg3Gq19kKYoloaIwSVdMZFH2apxJPtDHg4IXMJF7BuLIA4T1P4xkdH/3G1YjQJFu8r/C5//OMoI5Ib3alr6APXblWxhJ/mCIMgSY3WXa6OH+LXUfBKxSQs/kR+3SWAjjsNc5R4FavjPGfaiNq7g0l+2EEGG3XJUrVcBWy0E8Xm8saaHw827A5tjOAGcTnlFyceemFhgq8kDBC3n0GY4KI82R0Ynm/9S5adnM9l/1D9O5xca9NlOcCBGO+6iIyEGKyJoGkL3YKghp6PjbZwq9V2B6UiMZaJbEFFDM11P9Kh5yfjsCcdqJjmfuDgN/6K6WNFQegIZeyxda08IMIQhMWhwbxQuSz80hHgzn87MDHxNdUTkDxeRmo6twE6WwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQBUp3dYvtatvAtXZo6G5NNvvIpUAk1B+JaLOH4bABroxAsOEsUF+Q4eB7mWj+m6relqKHYvfbXHRjGXZ952qaCrpjxtPlj79bhtPcsvAyZuQ9pqWdBpEt6M8fwEPYSG+sp/32DXkLp5P28XLJ3WMBEFvgV+HzUJY9T0p4WY9biIfeeV7iosUIHtcDhoflZxnjJEy8wPdgmoOd6177IJfQwSzxygiS+pt/p4cHI1i85gdig6nBl6C0ouik+5BA9Bg7yD3vLq3xbac/F9x0k2KnPxz8ryX63h7CziBhdjAuSncQrJehgSB/8SUKdQTO6C9/qGblxzSGR2aW7MMhXJP55xs1S6DVIGY7g3AqP52wivVigHRPHgie8FQZZygzxVY1K31OCEjNSkMnbra0C9XThBnB2RKouQZbidPGj/PYDGPxY0dbJ9FA62X6156BlsVGnBhPMhCEj4G+6zxPsZepZD/CIgd7Zcc9pSimt54SIYcTRVoc9LQ9lLuXNK0pknkmkfYAgpZ5n19HMUVEqGmXBGuXizDcNVez8g0mwKzkjLQrI+XOo3OFbr2Spqx0qIHDYqLI0r6EDUvWVkyb6Enk8BlrGB5NfcfmRki6ZO1Zq9az7FXVcjsGR5ytKcb0xk/RJhtO842BcLM8+0tFmZLJ1+obQL0qZheIFgXzBWG1ncDA==
+			trusted_ca_cert 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
+			trusted_leaf_cert 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
 		}
 	}
 	encode zstd gzip
@@ -1159,7 +1203,7 @@ joplin.erfianugrah.com {
 		output file /var/log/joplin-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1214,7 +1258,7 @@ cadvisor.erfianugrah.com {
 		output file /var/log/cadvisor-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1247,7 +1291,7 @@ httpbun.erfianugrah.com {
 		output file /var/log/httpbun-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1280,7 +1324,7 @@ httpbin.erfianugrah.com {
 		output file /var/log/httpbin-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1313,7 +1357,7 @@ ihatemoney.erfianugrah.com {
 		output file /var/log/ihatemoney-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1350,7 +1394,7 @@ dillinger.erfianugrah.com {
 		output file /var/log/dillinger-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1383,7 +1427,7 @@ firefly.erfianugrah.com {
 		output file /var/log/firefly-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1438,7 +1482,7 @@ navidrome.erfianugrah.com {
 		output file /var/log/navidrome-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1537,7 +1581,7 @@ hedgedoc.erfianugrah.com {
 		output file /var/log/hedgedoc-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1570,7 +1614,7 @@ grafana-loki.erfianugrah.com {
 		output file /var/log/loki-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1603,7 +1647,7 @@ sabnzbd.erfianugrah.com {
 		output file /var/log/sabnzbd-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1611,40 +1655,40 @@ sabnzbd.erfianugrah.com {
 	}
 }
 
-fileservarr.erfianugrah.com {
-	root * /files
-	file_server {
-		browse
-		precompressed zstd br gzip
-	}
+# fileservarr.erfianugrah.com {
+# 	root * /files
+# 	file_server {
+# 		browse
+# 		precompressed zstd br gzip
+# 	}
 
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	log {
-		level debug
-		output file /var/log/fileservarr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 720h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	log {
+# 		level debug
+# 		output file /var/log/fileservarr-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 168h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
 
 nodered.erfianugrah.com {
 	tls {
@@ -1671,7 +1715,7 @@ nodered.erfianugrah.com {
 		output file /var/log/nodered-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1679,38 +1723,38 @@ nodered.erfianugrah.com {
 	}
 }
 
-coredns-prom-exporter-sg.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.23.0.2:9101 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-	}
-	log {
-		level debug
-		output file /var/log/coredns-prom-exporter-sg-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 720h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
+# coredns-prom-exporter-sg.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy 172.23.0.2:9101 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	log {
+# 		level debug
+# 		output file /var/log/coredns-prom-exporter-sg-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 168h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
 
 privatebin.erfianugrah.com {
 	tls {
@@ -1728,8 +1772,8 @@ privatebin.erfianugrah.com {
 		}
 		client_auth {
 			mode require_and_verify
-			trusted_ca_cert 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
-			trusted_leaf_cert MIIFmjCCA4ICFBNgmacpJA3FRSqVxTXOlNOft+3LMA0GCSqGSIb3DQEBCwUAMIGAMQswCQYDVQQGEwJTRzESMBAGA1UECAwJU2luZ2Fwb3JlMRIwEAYDVQQHDAlTaW5nYXBvcmUxFTATBgNVBAoMDE9yZ2FuaXphdGlvbjENMAsGA1UECwwERXJmaTEjMCEGA1UEAwwacHJpdmF0ZWJpbi5lcmZpYW51Z3JhaC5jb20wHhcNMjMxMTA1MTIyMTQ0WhcNMjUwMzE5MTIyMTQ0WjCBkTELMAkGA1UEBhMCU0cxCzAJBgNVBAgMAlNHMQswCQYDVQQHDAJTRzENMAsGA1UECgwERXJmaTENMAsGA1UECwwERXJmaTEjMCEGA1UEAwwacHJpdmF0ZWJpbi5lcmZpYW51Z3JhaC5jb20xJTAjBgkqhkiG9w0BCQEWFmVyZmkuYW51Z3JhaEBnbWFpbC5jb20wggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDaj+T5amhzqhC/Po/DAIdPecRFGR05Gj3nbVyYwDUnVt9+XFdmrc6eleA3LqevCgpabq63XS8/sh9B05BWo1KcXtF9DYv18PPveRFEdc35O6loXAxLrlyEFj/X30dKz2WcG8h2Jk/eeCP2lCF+GFI1MdIAxK4T8UObyJvD10Lrjc1peOXHVF5k/S0K1rRdeMBSKT0kGrDxJJ+BOH8pRNBd765nCMW2xvrwEr18pDOrTdmqoA0CwclMquN9/C1GDyUfVYn+BkywIn/55dZet9sIfMGJRlJVdPIBPL4OAFNmMfstaJvnOkC1zPZf7gLK6iWodQFe8g5ZGwlSqpymBz53Gdg98PQ8vgJucltQ/NVsOedwx4AfjW9uN9LJ5q44YVri4VIL9PoBcrfnzHL9pPYD7cQDk+wGKP2boZAz3CegIOqdIegK1WWYJ6T6fgr79nOwc0Ja2MJ36VSMUb/fUyzcy92vN98NCh4AIwzaN9sfYjF9cd/FkUD5qjKPB7UKMclEy9HXHqPDQnfwQFkDxfvfIvY+sQYG5RQJ+yCnTYd62Itbu+9opId9CvM8iNJumxEEPLh0JHtZVZI/dlF2NPmARdXZMsT9o+woJjweri5dhQzRqo6dOfuJsJ1NbmnLl/qoyBcGGAygsuEICo96DK94DkAXcAG2o/I+W4LvtGjHQwIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQBDc1Pn3YxOnY+gQ0QXW9hDe9wvmwOecVkrDByz5Xf2LQuwBcgr/5Uj3+BGueRvm4inkkZRf4MshVKKAJhWsiRNa+e0IP0KaLRknW+pBIUva95EXWVQbp4MiJLq4WyOJgK8heQsjxxk/62aHHfdxS3ndMME/WOZ29N5weW5kwdJiMk1cAvBYy+B3zdP+XhF9ZJ2dLrXD2qtvldKzh/TIeWkTKOitZzyD1r/GPHpiwqJOCjV7sOFeptrnj+bdNY4hgh62LCB8BaXjODVaj/YTgSgpMqrGAkN09Pgd8AnDKzPm9aqv1/f8YMJ57ng1v3OrFaxOj0dFTbrgbB621JlP/gqmm9iv2eSMa7KAPvAgj54QoawLME41Si7CXa6nqkTZAgVpWXBUiPqaNzUvEoLPs3KzV1z+cCXA1RkgUyAmOIT2xrh+CISYP684LP3dt9FSij08tDRTObNXa8S70jNMNpwZufDXQBja61+jYToGaUPdv11bEzTcrhcgTcw6sGpbXzARK9rx0LR8V1Qb/cSfzumt7RWRF2lrAj5YJfwJmYFWOBy13aq+jCy3KQrlAsGhn/svzTpHHXbrtUNZL0RBLt18kuWclckwVOYjzFONs9BmaD4YyaHPlIHc+8gsaoIKflrTmlYc1ojEqdTyD0iZIz9QrdY/zVFHlRZMU8JTCuO0w==
+			trusted_ca_cert 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
+			trusted_leaf_cert MIIGpzCCBI+gAwIBAgIUPX18MIYt9kFX1/ydB9PHF+sGPbMwDQYJKoZIhvcNAQELBQAwfDELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMREwDwYDVQQKDAhFcmZpIE9yZzENMAsGA1UECwwERXJmaTEjMCEGA1UEAwwacHJpdmF0ZWJpbi5lcmZpYW51Z3JhaC5jb20wHhcNMjQwMzEwMDc0NDAxWhcNMzQwMzA4MDc0NDAxWjB8MQswCQYDVQQGEwJTRzESMBAGA1UECAwJU2luZ2Fwb3JlMRIwEAYDVQQHDAlTaW5nYXBvcmUxETAPBgNVBAoMCEVyZmkgT3JnMQ0wCwYDVQQLDARFcmZpMSMwIQYDVQQDDBpwcml2YXRlYmluLmVyZmlhbnVncmFoLmNvbTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBANDJFV0/GxO9HUZwbZuCo29+XFdJwHyukFcTjM2bpjxxYQVh9jWYPAtVnHOS6kOhhi9uCTE6xzjlr7AEKxA+1OfmIxBb1R0q2ipiDWlY9OG/gTJZmsHlWJhPCtjza6qhOAlOA/WVZ9VMcNPRGnGTmeqiQexbPasPYRK3wja0414lgGf9dhJ6d4ltGrM7lEkl8xJqfwnaZQgCYVb78xTIpW6JhwYUGnvPqgSohPgM+qyM93Xz6omMpC8gB5dz1xuNrIsWN2/WNaK+Dxlko3ZM9sRlvccdesdBEOVo+b0Xkarl7JRnemyGlCcur7Ad+kKTD7a8ey968Bq3zf34HTkJbzQfsyAkoWrVvqmI+NJONa43EBuy+3TN854fMFIeLOE9kqtEn1VM/EKIHaNB0jZV6Goz4URHrWMCpVNduUVStWuSlffnDdnVujuK+2KzOF9I/CDJ1FWS3xr+jlwc2dspWIT3GerOVF9/3HLmUwiVPkFXkEI/X+/3Yx8zv+AR1+Gt7zvZi1S2ze71cBqMqouOwoSrLpQJJ9iSbkoxX8Afr3sBVlJEOkxIltxR0+fkXu0TnVMugfijQ1pAvuT55SvOaWJewkw3JPrvLWfm3C/UE52WwnGXOqAJ4raPSGHTxkvYZoBPfe9on8UJN3yubPSQjcKDV3HyXXA4Asp4RvuPqwhTAgMBAAGjggEfMIIBGzCBugYDVR0jBIGyMIGvgBRB1Xj4JGzDs20jdUzCi/TevXgPOaGBgKR+MHwxCzAJBgNVBAYTAlNHMRIwEAYDVQQIDAlTaW5nYXBvcmUxEjAQBgNVBAcMCVNpbmdhcG9yZTERMA8GA1UECgwIRXJmaSBPcmcxDTALBgNVBAsMBEVyZmkxIzAhBgNVBAMMGnByaXZhdGViaW4uZXJmaWFudWdyYWguY29tghRX4K2LyA5rqwmg8ONKLGQDhvqH6DAJBgNVHRMEAjAAMAsGA1UdDwQEAwIE8DAlBgNVHREEHjAcghpwcml2YXRlYmluLmVyZmlhbnVncmFoLmNvbTAdBgNVHQ4EFgQURvPJ7GRq5domxK32xsJrLjtCPi0wDQYJKoZIhvcNAQELBQADggIBACxEONx+c+YpzuduQuFkqK//BOWB6j/ow1mNXhMlNAzNDFnQAWTDhCiYVekO+83JDwW1mm0YfDd6QMEKdPox/9Q7F3N34smYAW/W4XOiq1IAW9Nw+N+eeSkxDlqvYFrACmMXvK0XVcBxzwzHOp334oRi/wjtFrbJqDeGPfKTU5FxAmV1wYKkpokr4+N7E8xAcUuZquIwcYEFSb4vhh9WsAYLpcdOjrgNvYWXbL8PaGFaZTUILDTBvM2zfFxCVcqlvQevwCVPAPCRM4p25anB7a13dzBKXlDXm9i0vxrWcTqC0QBVolSsgYd2gNCNQC6WnGonU0wLv0gU1r/CrfcSIAwRpjvqMQVOaQGPdkvXZyqSvY0y8CL7uH3Mu+h5plt6QtXOcSdV+Vb2SXDe+chejhrktI345kAh4TAphgNOVKx84KFjzWRXKYDJAwYoRPTQaeXQtyeUGjVhDTXzXAWssaGwlV+PepUBe9bj22GHjtyadFNDnFYEhzdiUbohVyavsnTkYE2c8kcjxkLig6T/hQIvDnh/kTb0GhGcPkfW9vbZeLb4WzdlpPOy2/FSr5EEgEfy5/q7itS1a/5Y3GwDRp0uEv29l7mKk6ffRrpi5h3y97myLWTKcMWPD6Gj3R01AbIN2ZM7L76+08AUSAq65CGkjHZHl2I7o9DiFhUSxv5x
 		}
 	}
 	encode zstd gzip
@@ -1742,7 +1786,7 @@ privatebin.erfianugrah.com {
 		output file /var/log/privatebin-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1775,7 +1819,7 @@ privatebin.erfianugrah.com {
 # 		output file /var/log/photoprism-access.log {
 # 			roll_size 1gb
 # 			roll_keep 5
-# 			roll_keep_for 720h
+# 			roll_keep_for 168h
 # 		}
 # 		format json {
 # 			time_format wall
@@ -1797,6 +1841,11 @@ immich.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert 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
+			trusted_leaf_cert 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
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.64.0.9:3001 {
@@ -1808,7 +1857,7 @@ immich.erfianugrah.com {
 		output file /var/log/immich-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1841,7 +1890,7 @@ caddy-prometheus.erfianugrah.com {
 		output file /var/log/caddy-prometheus-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
@@ -1849,12 +1898,7 @@ caddy-prometheus.erfianugrah.com {
 	}
 }
 
-cdn.erfianugrah.com {
-	root * /revista-images
-	file_server {
-		browse
-		precompressed zstd br gzip
-	}
+qdirstat.erfianugrah.com {
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1870,15 +1914,56 @@ cdn.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
+	reverse_proxy 172.65.0.2:3000 {
+		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
 	log {
 		level debug
-		output file /var/log/cdn-access.log {
+		output file /var/log/qdirstat-access.log {
 			roll_size 1gb
 			roll_keep 5
-			roll_keep_for 720h
+			roll_keep_for 168h
 		}
 		format json {
 			time_format wall
 		}
 	}
 }
+
+# cdn.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy /console/* 172.70.0.2:9001 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	reverse_proxy /* 172.70.0.2:9000 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	log {
+# 		level debug
+# 		output file /var/log/cdn-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 168h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
