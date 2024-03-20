@@ -4,7 +4,7 @@
 		enforce_origin
 	}
 	email {$EMAIL}
-	acme_dns cloudflare ${{ secrets.CF_DNS_API_TOKEN }}
+	acme_dns cloudflare blah
 	cert_issuer acme
 	debug
 	grace_period 5s
