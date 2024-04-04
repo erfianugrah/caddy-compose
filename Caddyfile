@@ -85,52 +85,52 @@ caddy.erfianugrah.com {
 	}
 }
 
-# erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {env.CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 	}
-# 	handle {
-# 		reverse_proxy 172.18.0.2:2368 {
-# 			trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 		}
-# 		route {
-# 			@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
-# 			header @image {
-# 				>Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
-# 				# >Cloudflare-CDN-Cache-Control "max-age=31536000"
-# 				>Access-Control-Allow-Origin "*"
-# 				>Access-Control-Max-Age "86400"
-# 			}
-# 			# header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
-# 		}
-# 	}
+erfianugrah.com {
+ 	tls {
+ 		issuer acme {
+ 			dns cloudflare {env.CF_API_TOKEN}
+ 			propagation_delay 60s
+ 			propagation_timeout -1
+			resolvers 1.1.1.1
+ 		}
+		issuer zerossl {
+ 			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+ 			propagation_timeout -1
+ 			resolvers 1.1.1.1
+ 		}
+ 	}
+ 	handle {
+ 		reverse_proxy 172.66.0.2:4321 {
+ 			trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+ 			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+ 		}
+ 		route {
+ 			@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
+ 			header @image {
+ 				>Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
+ 				# >Cloudflare-CDN-Cache-Control "max-age=31536000"
+ 				>Access-Control-Allow-Origin "*"
+ 				>Access-Control-Max-Age "86400"
+ 			}
+ 			# header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+ 		}
+ 	}
 
-# 	encode zstd gzip
-# 	push
-# 	log {
-# 		level debug
-# 		output file /var/log/erfianugrahcom-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
+ 	encode zstd gzip
+ 	push
+ 	log {
+ 		level debug
+ 		output file /var/log/erfianugrahcom-access.log {
+ 			roll_size 1gb
+ 			roll_keep 5
+ 			roll_keep_for 168h
+ 		}
+ 		format json {
+ 			time_format wall
+ 		}
+ 	}
+ }
 
 port.erfianugrah.com {
 	tls {
