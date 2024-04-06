@@ -27,7 +27,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com port servarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change element tautulli hedgedoc privatebin coredns-prom-exporter-sg nodered immich caddy-prometheus qdirstat ollama
+			erfianugrah.com port servarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change element tautulli hedgedoc privatebin coredns-prom-exporter-sg nodered immich caddy-prometheus qdirstat
 		}
 		check_interval 1m
 		ip_source upnp
@@ -1893,35 +1893,39 @@ qdirstat.erfianugrah.com {
 	}
 }
 
- ollama.erfianugrah.com {
- 	tls {
- 		issuer acme {
- 			dns cloudflare {$CF_API_TOKEN}
- 			propagation_delay 60s
- 			propagation_timeout -1
- 			resolvers 1.1.1.1
- 		}
- 		issuer zerossl {
- 			dns cloudflare {$CF_API_TOKEN}
- 			propagation_delay 60s
- 			propagation_timeout -1
- 			resolvers 1.1.1.1
- 		}
- 	}
- 	encode zstd gzip
- 	reverse_proxy 172.28.0.2:11434 {
- 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
- 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
- 	}
- 	log {
- 		level debug
- 		output file /var/log/ollama-access.log {
- 			roll_size 1gb
- 			roll_keep 5
- 			roll_keep_for 168h
- 		}
- 		format json {
- 			time_format wall
- 		}
- 	}
- }
+# cdn.erfianugrah.com {
+# 	tls {
+# 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 	}
+# 	encode zstd gzip
+# 	reverse_proxy /console/* 172.70.0.2:9001 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	reverse_proxy /* 172.70.0.2:9000 {
+# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+# 	}
+# 	log {
+# 		level debug
+# 		output file /var/log/cdn-access.log {
+# 			roll_size 1gb
+# 			roll_keep 5
+# 			roll_keep_for 168h
+# 		}
+# 		format json {
+# 			time_format wall
+# 		}
+# 	}
+# }
