@@ -54,6 +54,12 @@ caddy.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert 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
@@ -84,6 +90,12 @@ erfianugrah.com {
 	tls {
 		issuer acme {
 			dns cloudflare {env.CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -129,6 +141,12 @@ port.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.17.0.2:9000 {
@@ -155,6 +173,12 @@ port.erfianugrah.com {
 servarr.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -187,6 +211,12 @@ plex.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.8:32400 {
@@ -209,6 +239,12 @@ plex.erfianugrah.com {
 # hydra.erfianugrah.com {
 # 	tls {
 # 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
 # 			dns cloudflare {$CF_API_TOKEN}
 # 			propagation_delay 60s
 # 			propagation_timeout -1
@@ -241,6 +277,12 @@ plex.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.6:7000 {
@@ -263,6 +305,12 @@ plex.erfianugrah.com {
 sonarr.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -295,6 +343,12 @@ radarr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.2:7878 {
@@ -317,6 +371,12 @@ radarr.erfianugrah.com {
 bazarr.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -349,6 +409,12 @@ grafana-unraid.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.2:3000 {
@@ -376,6 +442,12 @@ prom-unraid.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.3:9090 {
@@ -398,6 +470,12 @@ prom-unraid.erfianugrah.com {
 vaultwarden.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -442,6 +520,12 @@ vaultwarden.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.9:9117 {
@@ -464,6 +548,12 @@ vaultwarden.erfianugrah.com {
 prowlarr.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -496,6 +586,12 @@ prowlarr.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.11:8787 {
@@ -507,6 +603,12 @@ prowlarr.erfianugrah.com {
 file.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -552,6 +654,12 @@ jellyfin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.15:8096 {
@@ -574,6 +682,12 @@ jellyfin.erfianugrah.com {
 qbit.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -606,6 +720,12 @@ qbit.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.30.0.2:8080 {
@@ -633,6 +753,12 @@ qbit.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.28.0.3:80 {
@@ -644,6 +770,12 @@ qbit.erfianugrah.com {
 change.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -676,6 +808,12 @@ rclone.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy /auth 172.32.0.2:53682 {
@@ -702,6 +840,12 @@ rclone.erfianugrah.com {
 synapse.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -750,6 +894,12 @@ synapse-admin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	reverse_proxy 172.34.0.5:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
@@ -769,6 +919,14 @@ synapse-admin.erfianugrah.com {
 }
 
 coturn.erfianugrah.com {
+	tls {
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
 	encode zstd gzip
 	log {
 		level debug
@@ -786,6 +944,12 @@ coturn.erfianugrah.com {
 overseerr.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -818,6 +982,12 @@ tautulli.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.14:8181 {
@@ -840,6 +1010,12 @@ tautulli.erfianugrah.com {
 element.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -882,6 +1058,12 @@ keycloak.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.38.0.2:8080 {
@@ -909,6 +1091,12 @@ keycloak.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.40.0.2:3000 {
@@ -920,6 +1108,12 @@ keycloak.erfianugrah.com {
 # beets.erfianugrah.com {
 # 	tls {
 # 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
 # 			dns cloudflare {$CF_API_TOKEN}
 # 			propagation_delay 60s
 # 			propagation_timeout -1
@@ -947,6 +1141,12 @@ keycloak.erfianugrah.com {
 joplin.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -984,6 +1184,12 @@ joplin.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.42.0.2:9001 {
@@ -995,6 +1201,12 @@ joplin.erfianugrah.com {
 cadvisor.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1027,6 +1239,12 @@ httpbun.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.46.0.2:80 {
@@ -1049,6 +1267,12 @@ httpbun.erfianugrah.com {
 httpbin.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1081,6 +1305,12 @@ ihatemoney.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.47.0.2:8000 {
@@ -1103,6 +1333,12 @@ ihatemoney.erfianugrah.com {
 dillinger.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1139,6 +1375,12 @@ firefly.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.49.0.2:8080 {
@@ -1166,6 +1408,12 @@ firefly.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.51.0.2:8080 {
@@ -1177,6 +1425,12 @@ firefly.erfianugrah.com {
 navidrome.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1209,6 +1463,12 @@ navidrome.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.50.0.2:8384 {
@@ -1220,6 +1480,12 @@ navidrome.erfianugrah.com {
 # soulseek.erfianugrah.com {
 # 	tls {
 # 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
 # 			dns cloudflare {$CF_API_TOKEN}
 # 			propagation_delay 60s
 # 			propagation_timeout -1
@@ -1241,6 +1507,12 @@ navidrome.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.53.0.2:3001 {
@@ -1252,6 +1524,12 @@ navidrome.erfianugrah.com {
 hedgedoc.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1284,6 +1562,12 @@ grafana-loki.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.8:3100 {
@@ -1306,6 +1590,12 @@ grafana-loki.erfianugrah.com {
 sabnzbd.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1344,6 +1634,12 @@ sabnzbd.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	log {
@@ -1362,6 +1658,12 @@ sabnzbd.erfianugrah.com {
 nodered.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1394,6 +1696,12 @@ nodered.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.23.0.2:9101 {
@@ -1416,6 +1724,12 @@ nodered.erfianugrah.com {
 privatebin.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1454,6 +1768,12 @@ privatebin.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
+# 		issuer zerossl {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.63.0.2:2342 {
@@ -1476,6 +1796,12 @@ privatebin.erfianugrah.com {
 immich.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
@@ -1514,6 +1840,12 @@ caddy-prometheus.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
@@ -1541,6 +1873,12 @@ qdirstat.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.65.0.2:3000 {
@@ -1563,6 +1901,12 @@ qdirstat.erfianugrah.com {
 # cdn.erfianugrah.com {
 # 	tls {
 # 		issuer acme {
+# 			dns cloudflare {$CF_API_TOKEN}
+# 			propagation_delay 60s
+# 			propagation_timeout -1
+# 			resolvers 1.1.1.1
+# 		}
+# 		issuer zerossl {
 # 			dns cloudflare {$CF_API_TOKEN}
 # 			propagation_delay 60s
 # 			propagation_timeout -1
@@ -1599,6 +1943,12 @@ ollama.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+		issuer zerossl {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.28.0.2:11434 {
@@ -1621,6 +1971,12 @@ ollama.erfianugrah.com {
 ollama-ui.erfianugrah.com {
 	tls {
 		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
 			propagation_delay 60s
 			propagation_timeout -1
