@@ -54,13 +54,6 @@ caddy.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert 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
@@ -91,13 +84,6 @@ erfianugrah.com {
 	tls {
 		issuer acme {
 			dns cloudflare {env.CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}			
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -143,13 +129,6 @@ port.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
 	}
 	encode zstd gzip
 	reverse_proxy 172.17.0.2:9000 {
@@ -181,13 +160,6 @@ servarr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
 	}
 	encode zstd gzip
 	reverse_proxy localhost:90 {
@@ -215,13 +187,7 @@ plex.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.8:32400 {
@@ -249,13 +215,7 @@ plex.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-#			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.7:5076 {
@@ -283,12 +243,7 @@ plex.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.6:7000 {
@@ -316,13 +271,7 @@ sonarr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.3:8989 {
@@ -350,13 +299,7 @@ radarr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.2:7878 {
@@ -384,13 +327,7 @@ bazarr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.4:6767 {
@@ -418,13 +355,7 @@ grafana-unraid.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.2:3000 {
@@ -452,13 +383,7 @@ prom-unraid.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.3:9090 {
@@ -486,13 +411,7 @@ vaultwarden.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert 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
@@ -565,13 +484,7 @@ prowlarr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.10:9696 {
@@ -599,12 +512,7 @@ prowlarr.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.11:8787 {
@@ -621,13 +529,7 @@ file.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert MIIGizCCBHOgAwIBAgIUFXARGaQ4Nsp34WLzFGSsgs2WPpEwDQYJKoZIhvcNAQELBQAwfTELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxHTAbBgNVBAMMFGZpbGUuZXJmaWFudWdyYWguY29tMB4XDTI0MDUwNDA1NDkxOVoXDTI3MDIyMjA1NDkxOVowfTELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxHTAbBgNVBAMMFGZpbGUuZXJmaWFudWdyYWguY29tMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAwVtDWzXqrKNtXLWOSxhzjJ4jKpN6WrmBGmNlor3RoV4ExfIpOXP0LBpgFUzkI8R5QLzt1L9Ia6ygsaSrwwWTW3ek8FFfn377CCcqSEop/wC8VphFpoteY/rzrXZcybrqSToKWaTLO5OMae+xsaWumasfaczuu3Dk9lc0iW4x/kLhWcrcopvRZmgzrIw69UeqOo23DLkk3vqAdQoTPgIPHxHFvtFo9Ra+KtT82J3H8dLSzfOY1kK8+nhrXEcgRW0P+VpGxhlKoFhM0/bzbpnJApfQ4twi8pynQ48KHahApX2NmP+Ffq5sFhJWja/1cR3G1oGXc1fF7pdnGMz95aVFphKVWrWw+9OGkQI+C+9D8IHhN1ezzbdjeQ2oAJxyqBdw2MoJyktqQqu6hI90qpP/YVQXJl+1BcoBS38wn8qfHPSZl5VWIn4gjkfoR99Ri0N6CKmLK/FwNJR2t4yMDkOpHsFlNEsYKeXE/ycSfw1MijRDme8Tcq/U1CmNdFeiOrVnHa+UM94avFuSTMzquqj1J/G7WcWn1BskC6Vt46/9EIhj2nf4dZy3EYarWEMJgok05pkRjZkU0UkRrH3F2cIUUYfDchDi3CmHORPqKnCdmKsPUKsVq2fqkQdb/SeBNKz5DIE7FyVYtZGN7PemN7CVUibYwfA/DQ2wpi6RTGHJrKMCAwEAAaOCAQEwgf4wHQYDVR0OBBYEFK5tF2JABht2213Seqr5s+veJXEbMIG7BgNVHSMEgbMwgbCAFK5tF2JABht2213Seqr5s+veJXEboYGBpH8wfTELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxHTAbBgNVBAMMFGZpbGUuZXJmaWFudWdyYWguY29tghQVcBEZpDg2ynfhYvMUZKyCzZY+kTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjANBgkqhkiG9w0BAQsFAAOCAgEAhYkeUNrctTlcgxp9gJhrgmbDK53bXKSNYO86Ml0w1qdzIrqJIdWV10FRHSrArCGyndwCYO8ZamEXK9JWYS3TDyE0JY1s0iZlxBNuPE0E6oaokPkppCmd8EROGFh8dRLDdwcyvDQBVL7Mi3pm3s9Gs4g7BPXJ99AlHIJhmpDN+YnL0qLt2RPTQyeAkcwkJ2QmiokiPtBcoervAcqq8p4EJVud9dTie8blthev+0A9NY3Kzj+oh/3LL+q/RGpEfTnoIXmQV+qKxao0gBEXX/yR4Kj2Ddt7T6YJLS+an9XdPI35bnlH1TnXdxmmrQrjri5utA7NgisqGGjyTwqLayugsCMfm1HnJ8hGAG7fqONfXJOV+kuilFRKjZhyLRbLXQdQPwFHQ4hgbt39KH9XMEeMQN5ABQqbUW3aOobXlUjCtPvXflIbQA+2sNJ8KuTI5Ufq4XL3Bpwey80ciPjVbLV7HuwKxWHigJKFxeYjBE1QogjDjn2+HY5lvcPhbNtA1EBkXdw7Qf/bqV2+4UjSSdPsITD4jyF2woLFrjbKKvttcBgdSuYZS6+P+gtSGEalEfRBL9ZAyAqYwxJKqUs0fhJNac/L8DKLlDLMPT3xJ0DewTZAU+eA0H1WW0RZ9gZg/WxQT8S8GZ/SVaflL31I+OPv2or8zPwBbqvJ7go6uOGmZRU=
@@ -668,13 +570,7 @@ jellyfin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.15:8096 {
@@ -702,13 +598,7 @@ qbit.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.27.0.2:8080 {
@@ -736,12 +626,7 @@ qbit.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.30.0.2:8080 {
@@ -769,12 +654,7 @@ qbit.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.28.0.3:80 {
@@ -791,13 +671,7 @@ change.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.31.0.2:5000 {
@@ -825,13 +699,7 @@ rclone.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy /auth 172.32.0.2:53682 {
@@ -863,13 +731,7 @@ synapse.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	header /.well-known/matrix/* {
 		Content-Type application/json
@@ -913,13 +775,7 @@ synapse-admin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	reverse_proxy 172.34.0.5:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
@@ -939,15 +795,6 @@ synapse-admin.erfianugrah.com {
 }
 
 coturn.erfianugrah.com {
-	tls {
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
 	encode zstd gzip
 	log {
 		level debug
@@ -970,13 +817,7 @@ overseerr.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.13:5055 {
@@ -1004,13 +845,7 @@ tautulli.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.14:8181 {
@@ -1038,13 +873,7 @@ element.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	@nocache path_regexp nocache \/(config\..*\.json|config.json|i18n|home|sites|index\.html)
 	header {
@@ -1082,13 +911,7 @@ keycloak.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.38.0.2:8080 {
@@ -1116,12 +939,7 @@ keycloak.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.40.0.2:3000 {
@@ -1138,12 +956,7 @@ keycloak.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.19.0.16:8337 {
@@ -1171,13 +984,7 @@ joplin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert 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
@@ -1232,13 +1039,7 @@ cadvisor.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.43.0.2:8080 {
@@ -1266,13 +1067,7 @@ httpbun.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.46.0.2:80 {
@@ -1300,13 +1095,7 @@ httpbin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.46.0.3:80 {
@@ -1334,13 +1123,7 @@ ihatemoney.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.47.0.2:8000 {
@@ -1368,13 +1151,7 @@ dillinger.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	header /js/main.bundle.js {
@@ -1406,13 +1183,7 @@ firefly.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.49.0.2:8080 {
@@ -1440,12 +1211,7 @@ firefly.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.51.0.2:8080 {
@@ -1462,13 +1228,7 @@ navidrome.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.17:4533 {
@@ -1496,12 +1256,7 @@ navidrome.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.50.0.2:8384 {
@@ -1518,12 +1273,7 @@ navidrome.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.51.0.2:6080 {
@@ -1540,12 +1290,7 @@ navidrome.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.53.0.2:3001 {
@@ -1562,13 +1307,7 @@ hedgedoc.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.57.0.2:3000 {
@@ -1596,13 +1335,7 @@ grafana-loki.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.29.0.8:3100 {
@@ -1630,13 +1363,7 @@ sabnzbd.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.0.19:6666 {
@@ -1670,12 +1397,7 @@ sabnzbd.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	log {
@@ -1699,13 +1421,7 @@ nodered.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.58.0.2:1880 {
@@ -1733,12 +1449,7 @@ nodered.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.23.0.2:9101 {
@@ -1766,13 +1477,7 @@ privatebin.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert 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
@@ -1806,12 +1511,7 @@ privatebin.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.63.0.2:2342 {
@@ -1839,13 +1539,7 @@ immich.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 		client_auth {
 			mode require_and_verify
 			trusted_ca_cert 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
@@ -1881,7 +1575,6 @@ caddy-prometheus.erfianugrah.com {
 		}
 		issuer zerossl {
 			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
@@ -1913,13 +1606,7 @@ qdirstat.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.65.0.2:3000 {
@@ -1947,12 +1634,7 @@ qdirstat.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
+
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy /console/* 172.70.0.2:9001 {
@@ -1984,13 +1666,7 @@ ollama.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.28.0.2:11434 {
@@ -2018,13 +1694,7 @@ ollama-ui.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			eab PjY6205dLc3V9cxL3Y8cYQ FXAidYarI-zeTBd8ygShrqF4Anc507X8209ghEJAxU3cdjauTeJf959YjMjG_BvjMQz-uyI8wJpm1OOjSgj36w
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.28.0.3:8080 {
