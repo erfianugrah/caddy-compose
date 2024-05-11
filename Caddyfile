@@ -1479,7 +1479,6 @@ privatebin.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy 172.63.0.2:2342 {
@@ -1594,7 +1593,6 @@ qdirstat.erfianugrah.com {
 # 			propagation_timeout -1
 # 			resolvers 1.1.1.1
 # 		}
-
 # 	}
 # 	encode zstd gzip
 # 	reverse_proxy /console/* 172.70.0.2:9001 {
@@ -1626,6 +1624,7 @@ ollama.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.8.2:11434 {
@@ -1653,6 +1652,7 @@ ollama-ui.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
+
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.8.3:8080 {
