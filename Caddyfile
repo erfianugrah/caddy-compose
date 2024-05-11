@@ -22,7 +22,7 @@
 	servers {
 		strict_sni_host on
 		protocols h1 h2 h3
-		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.19.22.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
 	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
@@ -90,7 +90,7 @@ erfianugrah.com {
 		}
 	}
 	handle {
-		reverse_proxy 172.66.0.2:4321 {
+		reverse_proxy 172.19.23.2:4321 {
 			trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 		}
@@ -358,7 +358,7 @@ grafana-unraid.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.29.0.2:3000 {
+	reverse_proxy 172.19.9.2:3000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -386,7 +386,7 @@ prom-unraid.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.29.0.3:9090 {
+	reverse_proxy 172.19.9.3:9090 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -545,7 +545,7 @@ file.erfianugrah.com {
 		Access-Control-Max-Age "86400"
 	}
 	encode zstd gzip
-	reverse_proxy 172.26.0.2:80 {
+	reverse_proxy 172.19.6.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -601,7 +601,7 @@ qbit.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.27.0.2:8080 {
+	reverse_proxy 172.19.7.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -702,11 +702,11 @@ rclone.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy /auth 172.32.0.2:53682 {
+	reverse_proxy /auth 172.19.10.2:53682 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
-	reverse_proxy 172.32.0.2:5572 {
+	reverse_proxy 172.19.10.2:5572 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -746,11 +746,11 @@ synapse.erfianugrah.com {
 		close
 	}
 	encode zstd gzip
-	reverse_proxy 172.34.0.2:8008 {
+	reverse_proxy 172.19.11.2:8008 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
-	reverse_proxy /_synapse/metrics 172.34.0.2:9000 {
+	reverse_proxy /_synapse/metrics 172.19.11.2:9000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -777,7 +777,7 @@ synapse-admin.erfianugrah.com {
 		}
 
 	}
-	reverse_proxy 172.34.0.5:80 {
+	reverse_proxy 172.19.11.5:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -886,7 +886,7 @@ element.erfianugrah.com {
 		Cache-Control: no-cache
 	}
 	encode zstd gzip
-	reverse_proxy 172.34.0.6:80 {
+	reverse_proxy 172.19.11.6:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -914,7 +914,7 @@ keycloak.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.38.0.2:8080 {
+	reverse_proxy 172.19.12.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -992,7 +992,7 @@ joplin.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.41.0.2:22300 {
+	reverse_proxy 172.19.13.2:22300 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1070,7 +1070,7 @@ httpbun.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.46.0.2:80 {
+	reverse_proxy 172.19.15.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1098,7 +1098,7 @@ httpbin.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.46.0.3:80 {
+	reverse_proxy 172.19.15.3:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1126,7 +1126,7 @@ ihatemoney.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.47.0.2:8000 {
+	reverse_proxy 172.19.16.2:8000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1158,7 +1158,7 @@ dillinger.erfianugrah.com {
 		defer
 		Cache-Control "public, max-age=3600, stale-while-revalidate=3600"
 	}
-	reverse_proxy 172.44.0.2:8080 {
+	reverse_proxy 172.19.14.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1186,7 +1186,7 @@ firefly.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.49.0.2:8080 {
+	reverse_proxy 172.19.18.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1293,7 +1293,7 @@ navidrome.erfianugrah.com {
 
 # 	}
 # 	encode zstd gzip
-# 	reverse_proxy 172.53.0.2:3001 {
+# 	reverse_proxy 172.19.19.2:3001 {
 # 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 # 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 # 	}
@@ -1338,7 +1338,7 @@ grafana-loki.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.29.0.8:3100 {
+	reverse_proxy 172.19.9.8:3100 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1424,7 +1424,7 @@ nodered.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.58.0.2:1880 {
+	reverse_proxy 172.19.20.2:1880 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1486,7 +1486,7 @@ privatebin.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.60.0.2:8080 {
+	reverse_proxy 172.19.21.2:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1548,7 +1548,7 @@ immich.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy 172.64.0.9:3001 {
+	reverse_proxy 172.19.22.9:3001 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1603,7 +1603,7 @@ qdirstat.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.65.0.2:3000 {
+	reverse_proxy 172.19.24.2:3000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1663,7 +1663,7 @@ ollama.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.28.0.2:11434 {
+	reverse_proxy 172.19.8.2:11434 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
@@ -1691,7 +1691,7 @@ ollama-ui.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.28.0.3:8080 {
+	reverse_proxy 172.19.8.3:8080 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
