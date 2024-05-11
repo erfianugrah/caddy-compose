@@ -19,7 +19,6 @@ services:
       - /mnt/user/data/caddy/config:/config
       - /mnt/user/data/caddy/log:/var/log
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /mnt/user/data/revista-images:/revista-images
     environment:
       - PUID=1000
       - PGID=100
