@@ -1573,12 +1573,6 @@ caddy-prometheus.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-		issuer zerossl {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
 	}
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
