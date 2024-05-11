@@ -420,12 +420,12 @@ vaultwarden.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
-	reverse_proxy /notifications/hub 172.20.0.2:3012 {
+	reverse_proxy /notifications/hub 172.19.4.2:3012 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
-	reverse_proxy 172.20.0.2:80 {
+	reverse_proxy 172.19.4.2:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
