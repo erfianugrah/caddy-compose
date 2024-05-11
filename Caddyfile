@@ -1624,7 +1624,6 @@ ollama.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.8.2:11434 {
@@ -1652,7 +1651,6 @@ ollama-ui.erfianugrah.com {
 			propagation_timeout -1
 			resolvers 1.1.1.1
 		}
-
 	}
 	encode zstd gzip
 	reverse_proxy 172.19.8.3:8080 {
