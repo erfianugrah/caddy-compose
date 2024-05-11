@@ -1,0 +1,4068 @@
+{
+  "admin": {
+    "enforce_origin": true,
+    "listen": ":2019",
+    "origins": [
+      "localhost:2019",
+      "caddy.erfianugrah.com"
+    ]
+  },
+  "apps": {
+    "dynamic_dns": {
+      "check_interval": 60000000000,
+      "dns_provider": {
+        "api_token": "xew_nSdKW8H4Gat0cJdAR0F_ECtdNHq0jW497kX-",
+        "name": "cloudflare"
+      },
+      "domains": {
+        "erfianugrah.com": [
+          "port",
+          "servarr",
+          "plex",
+          "navidrome",
+          "sonarr",
+          "radarr",
+          "bazarr",
+          "prowlarr",
+          "grafana-unraid",
+          "prom-unraid",
+          "vaultwarden",
+          "ping",
+          "kvm",
+          "file",
+          "jellyfin",
+          "synapse",
+          "synapse-admin",
+          "rclone",
+          "change",
+          "element",
+          "tautulli",
+          "hedgedoc",
+          "privatebin",
+          "coredns-prom-exporter-sg",
+          "nodered",
+          "immich",
+          "caddy-prometheus",
+          "qdirstat",
+          "ollama",
+          "ollama-ui"
+        ]
+      },
+      "ip_sources": [
+        {
+          "source": "upnp"
+        },
+        {
+          "endpoints": [
+            "https://icanhazip.com"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://api.ipify.org"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://myip.addr.space"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://ifconfig.me"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://icanhazip.com"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://ident.me"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://bot.whatismyipaddress.com"
+          ],
+          "source": "simple_http"
+        },
+        {
+          "endpoints": [
+            "https://ipecho.net/plain"
+          ],
+          "source": "simple_http"
+        }
+      ],
+      "versions": {}
+    },
+    "http": {
+      "grace_period": 5000000000,
+      "servers": {
+        "srv0": {
+          "listen": [
+            ":2018"
+          ],
+          "protocols": [
+            "h1",
+            "h2",
+            "h3"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "metrics"
+                }
+              ]
+            }
+          ],
+          "strict_sni_host": true,
+          "trusted_proxies": {
+            "ranges": [
+              "173.245.48.0/20",
+              "103.21.244.0/22",
+              "103.22.200.0/22",
+              "103.31.4.0/22",
+              "141.101.64.0/18",
+              "108.162.192.0/18",
+              "190.93.240.0/20",
+              "188.114.96.0/20",
+              "197.234.240.0/22",
+              "198.41.128.0/17",
+              "162.158.0.0/15",
+              "104.16.0.0/13",
+              "104.24.0.0/14",
+              "172.19.22.0/13",
+              "131.0.72.0/22",
+              "2400:cb00::/32",
+              "2606:4700::/32",
+              "2803:f800::/32",
+              "2405:b500::/32",
+              "2405:8100::/32",
+              "2a06:98c0::/29",
+              "2c0f:f248::/32"
+            ],
+            "source": "static"
+          }
+        },
+        "srv1": {
+          "listen": [
+            ":443"
+          ],
+          "logs": {
+            "logger_names": {
+              "bazarr.erfianugrah.com": [
+                "log7"
+              ],
+              "caddy-prometheus.erfianugrah.com": [
+                "log38"
+              ],
+              "caddy.erfianugrah.com": [
+                "log0"
+              ],
+              "cadvisor.erfianugrah.com": [
+                "log25"
+              ],
+              "change.erfianugrah.com": [
+                "log15"
+              ],
+              "coturn.erfianugrah.com": [
+                "log19"
+              ],
+              "dillinger.erfianugrah.com": [
+                "log29"
+              ],
+              "element.erfianugrah.com": [
+                "log22"
+              ],
+              "erfianugrah.com": [
+                "log1"
+              ],
+              "file.erfianugrah.com": [
+                "log12"
+              ],
+              "firefly.erfianugrah.com": [
+                "log30"
+              ],
+              "grafana-loki.erfianugrah.com": [
+                "log33"
+              ],
+              "grafana-unraid.erfianugrah.com": [
+                "log8"
+              ],
+              "hedgedoc.erfianugrah.com": [
+                "log32"
+              ],
+              "httpbin.erfianugrah.com": [
+                "log27"
+              ],
+              "httpbun.erfianugrah.com": [
+                "log26"
+              ],
+              "ihatemoney.erfianugrah.com": [
+                "log28"
+              ],
+              "immich.erfianugrah.com": [
+                "log37"
+              ],
+              "jellyfin.erfianugrah.com": [
+                "log13"
+              ],
+              "joplin.erfianugrah.com": [
+                "log24"
+              ],
+              "keycloak.erfianugrah.com": [
+                "log23"
+              ],
+              "navidrome.erfianugrah.com": [
+                "log31"
+              ],
+              "nodered.erfianugrah.com": [
+                "log35"
+              ],
+              "ollama-ui.erfianugrah.com": [
+                "log41"
+              ],
+              "ollama.erfianugrah.com": [
+                "log40"
+              ],
+              "overseerr.erfianugrah.com": [
+                "log20"
+              ],
+              "plex.erfianugrah.com": [
+                "log4"
+              ],
+              "port.erfianugrah.com": [
+                "log2"
+              ],
+              "privatebin.erfianugrah.com": [
+                "log36"
+              ],
+              "prom-unraid.erfianugrah.com": [
+                "log9"
+              ],
+              "prowlarr.erfianugrah.com": [
+                "log11"
+              ],
+              "qbit.erfianugrah.com": [
+                "log14"
+              ],
+              "qdirstat.erfianugrah.com": [
+                "log39"
+              ],
+              "radarr.erfianugrah.com": [
+                "log6"
+              ],
+              "rclone.erfianugrah.com": [
+                "log16"
+              ],
+              "sabnzbd.erfianugrah.com": [
+                "log34"
+              ],
+              "servarr.erfianugrah.com": [
+                "log3"
+              ],
+              "sonarr.erfianugrah.com": [
+                "log5"
+              ],
+              "synapse-admin.erfianugrah.com": [
+                "log18"
+              ],
+              "synapse.erfianugrah.com": [
+                "log17"
+              ],
+              "tautulli.erfianugrah.com": [
+                "log21"
+              ],
+              "vaultwarden.erfianugrah.com": [
+                "log10"
+              ]
+            }
+          },
+          "protocols": [
+            "h1",
+            "h2",
+            "h3"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "localhost:2019"
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/metrics"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "caddy-prometheus.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.9.2:3000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "grafana-unraid.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.11.5:80"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "synapse-admin.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.9.8:3100"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "grafana-loki.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.9.3:9090"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "prom-unraid.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ],
+                                "X-Real-Ip": [
+                                  "{http.request.remote.host}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.4.2:3012"
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/notifications/hub"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ],
+                                "X-Real-Ip": [
+                                  "{http.request.remote.host}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.4.2:80"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "vaultwarden.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.16.2:8000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "ihatemoney.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.21.2:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "privatebin.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.13:5055"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "overseerr.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "headers",
+                          "response": {
+                            "deferred": true,
+                            "set": {
+                              "Cache-Control": [
+                                "public, max-age=3600, stale-while-revalidate=3600"
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/js/main.bundle.js"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.14.2:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "dillinger.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.17:4533"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "navidrome.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.8.3:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "ollama-ui.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.10:9696"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "prowlarr.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.15:8096"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "jellyfin.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.14:8181"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "tautulli.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.12.2:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "keycloak.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.2.2:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "cadvisor.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.57.0.2:3000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "hedgedoc.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.24.2:3000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "qdirstat.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "localhost:90"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "servarr.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "headers",
+                          "response": {
+                            "set": {
+                              "Access-Control-Allow-Origin": [
+                                "*"
+                              ],
+                              "Content-Type": [
+                                "application/json"
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/.well-known/matrix/*"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "body": "{\"m.server\": \"synapse.erfianugrah.com:443\"}",
+                          "close": true,
+                          "handler": "static_response",
+                          "status_code": 200
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/.well-known/matrix/server"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "body": "{\"m.homeserver\":{\"base_url\":\"https://synapse.erfianugrah.com\"},\"m.identity_server\":{\"base_url\":\"https://synapse.erfianugrah.com\"}}",
+                          "close": true,
+                          "handler": "static_response",
+                          "status_code": 200
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/.well-known/matrix/client"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.11.2:9000"
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/_synapse/metrics"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.11.2:8008"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "synapse.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "headers",
+                          "response": {
+                            "set": {
+                              "Cache-Control": [
+                                "no-cache"
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path_regexp": {
+                            "name": "nocache",
+                            "pattern": "\\/(config\\..*\\.json|config.json|i18n|home|sites|index\\.html)"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "headers",
+                          "response": {
+                            "set": {
+                              "Content-Security-Policy": [
+                                "frame-ancestors 'none'"
+                              ],
+                              "X-Content-Type-Options": [
+                                "nosniff"
+                              ],
+                              "X-Frame-Options": [
+                                "SAMEORIGIN"
+                              ],
+                              "X-Xss-Protection": [
+                                "1; mode=block"
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.11.6:80"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "element.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.15.2:80"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "httpbun.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.15.3:80"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "httpbin.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.18.2:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "firefly.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.19:6666"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "sabnzbd.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.20.2:1880"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "nodered.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.3:8989"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "sonarr.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.2:7878"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "radarr.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.4:6767"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "bazarr.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.3.2:5000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "change.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.10.2:53682"
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/auth"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.10.2:5572"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "rclone.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "coturn.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.13.2:22300"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "joplin.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.22.9:3001"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "immich.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.8.2:11434"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "ollama.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "Origin": [
+                                  "https://caddy.erfianugrah.com"
+                                ],
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "localhost:2019"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "caddy.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.17.0.2:9000"
+                            }
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.17.0.2:8000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "port.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.1.8:32400"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "plex.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "headers",
+                          "response": {
+                            "deferred": true,
+                            "set": {
+                              "Access-Control-Allow-Origin": [
+                                "*"
+                              ],
+                              "Access-Control-Max-Age": [
+                                "86400"
+                              ],
+                              "Cache-Control": [
+                                "public, max-age=31536000, stale-while-revalidate=31536000"
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path_regexp": {
+                            "name": "image",
+                            "pattern": "^.*\\.(jpe?g|png|gif|avif|tiff|web|mkv|mp4|flac|mp3|wav|ogg|aac|mov|flv|avi)$"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.6.2:80"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "file.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "headers": {
+                            "request": {
+                              "set": {
+                                "X-Forwarded-For": [
+                                  "{http.request.header.CF-Connecting-IP}"
+                                ]
+                              }
+                            }
+                          },
+                          "trusted_proxies": [
+                            "192.168.0.0/16",
+                            "172.16.0.0/12",
+                            "10.0.0.0/8",
+                            "127.0.0.1/8",
+                            "fd00::/8",
+                            "::1"
+                          ],
+                          "upstreams": [
+                            {
+                              "dial": "172.19.7.2:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "qbit.erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode",
+                          "prefer": [
+                            "zstd",
+                            "gzip"
+                          ]
+                        },
+                        {
+                          "handler": "push"
+                        },
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "deferred": true,
+                                            "set": {
+                                              "Access-Control-Allow-Origin": [
+                                                "*"
+                                              ],
+                                              "Access-Control-Max-Age": [
+                                                "86400"
+                                              ],
+                                              "Cache-Control": [
+                                                "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
+                                              ],
+                                              "Cloudflare-Cdn-Cache-Control": [
+                                                "max-age=31536000"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "match": [
+                                        {
+                                          "path_regexp": {
+                                            "name": "image",
+                                            "pattern": "^.*\\.(jpe?g|png|gif|web)$"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "deferred": true,
+                                            "set": {
+                                              "Link": [
+                                                "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "handler": "reverse_proxy",
+                                  "headers": {
+                                    "request": {
+                                      "set": {
+                                        "X-Forwarded-For": [
+                                          "{http.request.header.CF-Connecting-IP}"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "trusted_proxies": [
+                                    "192.168.0.0/16",
+                                    "172.16.0.0/12",
+                                    "10.0.0.0/8",
+                                    "127.0.0.1/8",
+                                    "fd00::/8",
+                                    "::1"
+                                  ],
+                                  "upstreams": [
+                                    {
+                                      "dial": "172.19.23.2:4321"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "erfianugrah.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            }
+          ],
+          "strict_sni_host": true,
+          "tls_connection_policies": [
+            {
+              "client_authentication": {
+                "ca": {
+                  "provider": "inline",
+                  "trusted_ca_certs": [
+                    "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"
+                  ]
+                },
+                "mode": "require_and_verify",
+                "trusted_leaf_certs": [
+                  "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"
+                ]
+              },
+              "match": {
+                "sni": [
+                  "vaultwarden.erfianugrah.com"
+                ]
+              }
+            },
+            {
+              "client_authentication": {
+                "ca": {
+                  "provider": "inline",
+                  "trusted_ca_certs": [
+                    "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"
+                  ]
+                },
+                "mode": "require_and_verify",
+                "trusted_leaf_certs": [
+                  "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"
+                ]
+              },
+              "match": {
+                "sni": [
+                  "privatebin.erfianugrah.com"
+                ]
+              }
+            },
+            {
+              "client_authentication": {
+                "ca": {
+                  "provider": "inline",
+                  "trusted_ca_certs": [
+                    "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"
+                  ]
+                },
+                "mode": "require_and_verify",
+                "trusted_leaf_certs": [
+                  "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"
+                ]
+              },
+              "match": {
+                "sni": [
+                  "joplin.erfianugrah.com"
+                ]
+              }
+            },
+            {
+              "client_authentication": {
+                "ca": {
+                  "provider": "inline",
+                  "trusted_ca_certs": [
+                    "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"
+                  ]
+                },
+                "mode": "require_and_verify",
+                "trusted_leaf_certs": [
+                  "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"
+                ]
+              },
+              "match": {
+                "sni": [
+                  "immich.erfianugrah.com"
+                ]
+              }
+            },
+            {
+              "client_authentication": {
+                "ca": {
+                  "provider": "inline",
+                  "trusted_ca_certs": [
+                    "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"
+                  ]
+                },
+                "mode": "require_and_verify",
+                "trusted_leaf_certs": [
+                  "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"
+                ]
+              },
+              "match": {
+                "sni": [
+                  "caddy.erfianugrah.com"
+                ]
+              }
+            },
+            {
+              "client_authentication": {
+                "ca": {
+                  "provider": "inline",
+                  "trusted_ca_certs": [
+                    "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"
+                  ]
+                },
+                "mode": "require_and_verify",
+                "trusted_leaf_certs": [
+                  "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"
+                ]
+              },
+              "match": {
+                "sni": [
+                  "file.erfianugrah.com"
+                ]
+              }
+            },
+            {}
+          ],
+          "trusted_proxies": {
+            "ranges": [
+              "173.245.48.0/20",
+              "103.21.244.0/22",
+              "103.22.200.0/22",
+              "103.31.4.0/22",
+              "141.101.64.0/18",
+              "108.162.192.0/18",
+              "190.93.240.0/20",
+              "188.114.96.0/20",
+              "197.234.240.0/22",
+              "198.41.128.0/17",
+              "162.158.0.0/15",
+              "104.16.0.0/13",
+              "104.24.0.0/14",
+              "172.19.22.0/13",
+              "131.0.72.0/22",
+              "2400:cb00::/32",
+              "2606:4700::/32",
+              "2803:f800::/32",
+              "2405:b500::/32",
+              "2405:8100::/32",
+              "2a06:98c0::/29",
+              "2c0f:f248::/32"
+            ],
+            "source": "static"
+          }
+        }
+      }
+    },
+    "tls": {
+      "automation": {
+        "policies": [
+          {
+            "issuers": [
+              {
+                "challenges": {
+                  "dns": {
+                    "propagation_delay": 60000000000,
+                    "propagation_timeout": -1,
+                    "provider": {
+                      "api_token": "xew_nSdKW8H4Gat0cJdAR0F_ECtdNHq0jW497kX-",
+                      "name": "cloudflare"
+                    },
+                    "resolvers": [
+                      "1.1.1.1"
+                    ]
+                  }
+                },
+                "email": "REDACTED_EMAIL",
+                "module": "acme"
+              }
+            ],
+            "subjects": [
+              "caddy-prometheus.erfianugrah.com",
+              "grafana-unraid.erfianugrah.com",
+              "synapse-admin.erfianugrah.com",
+              "grafana-loki.erfianugrah.com",
+              "prom-unraid.erfianugrah.com",
+              "vaultwarden.erfianugrah.com",
+              "ihatemoney.erfianugrah.com",
+              "privatebin.erfianugrah.com",
+              "overseerr.erfianugrah.com",
+              "dillinger.erfianugrah.com",
+              "navidrome.erfianugrah.com",
+              "ollama-ui.erfianugrah.com",
+              "prowlarr.erfianugrah.com",
+              "jellyfin.erfianugrah.com",
+              "tautulli.erfianugrah.com",
+              "keycloak.erfianugrah.com",
+              "cadvisor.erfianugrah.com",
+              "hedgedoc.erfianugrah.com",
+              "qdirstat.erfianugrah.com",
+              "servarr.erfianugrah.com",
+              "synapse.erfianugrah.com",
+              "element.erfianugrah.com",
+              "httpbun.erfianugrah.com",
+              "httpbin.erfianugrah.com",
+              "firefly.erfianugrah.com",
+              "sabnzbd.erfianugrah.com",
+              "nodered.erfianugrah.com",
+              "sonarr.erfianugrah.com",
+              "radarr.erfianugrah.com",
+              "bazarr.erfianugrah.com",
+              "change.erfianugrah.com",
+              "rclone.erfianugrah.com",
+              "joplin.erfianugrah.com",
+              "immich.erfianugrah.com",
+              "ollama.erfianugrah.com",
+              "caddy.erfianugrah.com",
+              "port.erfianugrah.com",
+              "plex.erfianugrah.com",
+              "file.erfianugrah.com",
+              "qbit.erfianugrah.com"
+            ]
+          },
+          {
+            "issuers": [
+              {
+                "challenges": {
+                  "dns": {
+                    "propagation_delay": 60000000000,
+                    "propagation_timeout": -1,
+                    "provider": {
+                      "api_token": "{env.CF_API_TOKEN}",
+                      "name": "cloudflare"
+                    },
+                    "resolvers": [
+                      "1.1.1.1"
+                    ]
+                  }
+                },
+                "email": "REDACTED_EMAIL",
+                "module": "acme"
+              }
+            ],
+            "subjects": [
+              "erfianugrah.com"
+            ]
+          },
+          {
+            "issuers": [
+              {
+                "challenges": {
+                  "dns": {
+                    "provider": {
+                      "api_token": "xew_nSdKW8H4Gat0cJdAR0F_ECtdNHq0jW497kX-",
+                      "name": "cloudflare"
+                    }
+                  }
+                },
+                "email": "REDACTED_EMAIL",
+                "module": "acme"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "logging": {
+    "logs": {
+      "default": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "exclude": [
+          "http.log.access.log0",
+          "http.log.access.log1",
+          "http.log.access.log10",
+          "http.log.access.log11",
+          "http.log.access.log12",
+          "http.log.access.log13",
+          "http.log.access.log14",
+          "http.log.access.log15",
+          "http.log.access.log16",
+          "http.log.access.log17",
+          "http.log.access.log18",
+          "http.log.access.log19",
+          "http.log.access.log2",
+          "http.log.access.log20",
+          "http.log.access.log21",
+          "http.log.access.log22",
+          "http.log.access.log23",
+          "http.log.access.log24",
+          "http.log.access.log25",
+          "http.log.access.log26",
+          "http.log.access.log27",
+          "http.log.access.log28",
+          "http.log.access.log29",
+          "http.log.access.log3",
+          "http.log.access.log30",
+          "http.log.access.log31",
+          "http.log.access.log32",
+          "http.log.access.log33",
+          "http.log.access.log34",
+          "http.log.access.log35",
+          "http.log.access.log36",
+          "http.log.access.log37",
+          "http.log.access.log38",
+          "http.log.access.log39",
+          "http.log.access.log4",
+          "http.log.access.log40",
+          "http.log.access.log41",
+          "http.log.access.log5",
+          "http.log.access.log6",
+          "http.log.access.log7",
+          "http.log.access.log8",
+          "http.log.access.log9"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log0": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log0"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/caddy-api-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log1": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log1"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/erfianugrahcom-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log10": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log10"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/vaultwarden-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log11": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log11"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/prowlarr-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log12": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log12"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/file-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log13": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log13"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/jellyfin-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log14": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log14"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/qbit-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log15": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log15"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/change-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log16": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log16"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/rclone-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log17": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log17"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/synapse-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log18": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log18"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/synapse-admin-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log19": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log19"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/coturn-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log2": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log2"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/portainer-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log20": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log20"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/overseerr-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log21": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log21"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/tautulli-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log22": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log22"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/element-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log23": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log23"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/keycloak-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log24": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log24"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/joplin-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log25": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log25"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/cadvisor-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log26": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log26"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/httpbun-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log27": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log27"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/httpbin-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log28": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log28"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/ihatemoney-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log29": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log29"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/dillinger-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log3": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log3"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/servarr-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log30": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log30"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/firefly-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log31": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log31"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/navidrome-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log32": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log32"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/hedgedoc-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log33": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log33"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/loki-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log34": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log34"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/sabnzbd-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log35": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log35"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/nodered-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log36": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log36"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/privatebin-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log37": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log37"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/immich-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log38": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log38"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/caddy-prometheus-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log39": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log39"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/qdirstat-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log4": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log4"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/plex-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log40": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log40"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/ollama-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log41": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log41"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/ollama-ui-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log5": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log5"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/sonarr-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log6": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log6"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/radarr-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log7": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log7"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/bazarr-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log8": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log8"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/grafana-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      },
+      "log9": {
+        "encoder": {
+          "format": "json",
+          "time_format": "wall"
+        },
+        "include": [
+          "http.log.access.log9"
+        ],
+        "level": "debug",
+        "writer": {
+          "filename": "/var/log/prometheus-access.log",
+          "output": "file",
+          "roll_keep": 5,
+          "roll_keep_days": 7,
+          "roll_size_mb": 954
+        }
+      }
+    }
+  }
+}

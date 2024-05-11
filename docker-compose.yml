@@ -13,7 +13,7 @@ services:
           cpus: '8'
           memory: 1024M
     volumes:
-      - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile
+      # - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile
       - /mnt/user/data/caddy/site:/srv
       - /mnt/user/data/caddy/data:/data
       - /mnt/user/data/caddy/config:/config
