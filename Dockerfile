@@ -16,4 +16,5 @@ RUN xcaddy build \
 #--with github.com/greenpau/caddy-git
 FROM caddy:${VERSION}-alpine
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+COPY Caddyfile /etc/caddy/Caddyfile
 #CMD ["caddy", "docker-proxy"]
