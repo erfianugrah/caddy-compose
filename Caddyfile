@@ -674,7 +674,7 @@ change.erfianugrah.com {
 
 	}
 	encode zstd gzip
-	reverse_proxy 172.31.0.2:5000 {
+	reverse_proxy 172.19.3.2:5000 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
 	}
