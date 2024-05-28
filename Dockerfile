@@ -1,6 +1,6 @@
 ARG VERSION=2.8
 
-FROM caddy:${VERSION}-builder-alpine AS builder
+FROM caddy:${VERSION}-builder AS builder
 ARG VERSION
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare \
