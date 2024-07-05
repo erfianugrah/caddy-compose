@@ -45,13 +45,12 @@
 (cors) {
 	@cors_preflight method OPTIONS
 	handle @cors_preflight {
-		header Access-Control-Allow-Origin "{header.origin}"
+		header Access-Control-Allow-Origin "{http.request.header.origin}"
 		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
 		header Access-Control-Max-Age "3600"
 		respond "" 204
 	}
-	header Access-Control-Allow-Origin "{header.origin}"
-	header Access-Control-Allow-Credentials "true"
+	header Access-Control-Allow-Origin "{http.request.header.origin}"
 }
 
 :2018 {
@@ -59,7 +58,7 @@
 }
 
 caddy.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -95,7 +94,7 @@ caddy.erfianugrah.com {
 }
 
 erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {env.CF_API_TOKEN}
@@ -135,7 +134,7 @@ erfianugrah.com {
 }
 
 port.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -167,7 +166,7 @@ port.erfianugrah.com {
 }
 
 servarr.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -195,7 +194,7 @@ servarr.erfianugrah.com {
 }
 
 plex.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -279,7 +278,7 @@ plex.erfianugrah.com {
 # }
 
 sonarr.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -307,7 +306,7 @@ sonarr.erfianugrah.com {
 }
 
 radarr.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -335,7 +334,7 @@ radarr.erfianugrah.com {
 }
 
 bazarr.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -363,7 +362,7 @@ bazarr.erfianugrah.com {
 }
 
 grafana-unraid.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -391,7 +390,7 @@ grafana-unraid.erfianugrah.com {
 }
 
 prom-unraid.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -419,7 +418,7 @@ prom-unraid.erfianugrah.com {
 }
 
 vaultwarden.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -494,7 +493,7 @@ vaultwarden.erfianugrah.com {
 # }
 
 prowlarr.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -539,7 +538,7 @@ prowlarr.erfianugrah.com {
 # }
 
 file.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -609,7 +608,7 @@ jellyfin.erfianugrah.com {
 }
 
 qbit.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -682,7 +681,7 @@ qbit.erfianugrah.com {
 # }
 
 change.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -710,7 +709,7 @@ change.erfianugrah.com {
 }
 
 rclone.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -742,7 +741,7 @@ rclone.erfianugrah.com {
 }
 
 synapse.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -786,7 +785,7 @@ synapse.erfianugrah.com {
 }
 
 synapse-admin.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -813,7 +812,7 @@ synapse-admin.erfianugrah.com {
 }
 
 coturn.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	encode zstd gzip
 	log {
 		level debug
@@ -829,7 +828,7 @@ coturn.erfianugrah.com {
 }
 
 overseerr.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -857,7 +856,7 @@ overseerr.erfianugrah.com {
 }
 
 tautulli.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -885,7 +884,7 @@ tautulli.erfianugrah.com {
 }
 
 element.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -923,7 +922,7 @@ element.erfianugrah.com {
 }
 
 keycloak.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -996,7 +995,7 @@ keycloak.erfianugrah.com {
 # }
 
 joplin.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1054,7 +1053,7 @@ joplin.erfianugrah.com {
 # }
 
 cadvisor.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1082,7 +1081,7 @@ cadvisor.erfianugrah.com {
 }
 
 httpbun.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1110,7 +1109,7 @@ httpbun.erfianugrah.com {
 }
 
 httpbin.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1138,7 +1137,7 @@ httpbin.erfianugrah.com {
 }
 
 ihatemoney.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1166,7 +1165,7 @@ ihatemoney.erfianugrah.com {
 }
 
 dillinger.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1198,7 +1197,7 @@ dillinger.erfianugrah.com {
 }
 
 firefly.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1243,7 +1242,7 @@ firefly.erfianugrah.com {
 # }
 
 navidrome.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1322,7 +1321,7 @@ navidrome.erfianugrah.com {
 # }
 
 hedgedoc.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1350,7 +1349,7 @@ hedgedoc.erfianugrah.com {
 }
 
 grafana-loki.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1378,7 +1377,7 @@ grafana-loki.erfianugrah.com {
 }
 
 sabnzbd.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1436,7 +1435,7 @@ sabnzbd.erfianugrah.com {
 # }
 
 nodered.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1492,7 +1491,7 @@ nodered.erfianugrah.com {
 # }
 
 privatebin.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1555,7 +1554,7 @@ privatebin.erfianugrah.com {
 # }
 
 immich.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1591,7 +1590,7 @@ immich.erfianugrah.com {
 }
 
 caddy-prometheus.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1619,7 +1618,7 @@ caddy-prometheus.erfianugrah.com {
 }
 
 qdirstat.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1678,7 +1677,7 @@ qdirstat.erfianugrah.com {
 # }
 
 ollama.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -1706,7 +1705,7 @@ ollama.erfianugrah.com {
 }
 
 ollama-ui.erfianugrah.com {
-	import cors {header.origin}
+	import cors {http.request.header.origin}
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
