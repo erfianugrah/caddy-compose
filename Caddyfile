@@ -42,11 +42,18 @@
 	}
 }
 
+(cors) {
+	@origin header Origin {args[0]}
+	header @origin Access-Control-Allow-Origin "{args[0]}"
+	header @origin Access-Control-Allow-Methods "OPTIONS,HEAD,GET,POST,PUT,PATCH,DELETE"
+}
+
 :2018 {
 	metrics
 }
 
 caddy.erfianugrah.com {
+	import cors caddy.erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -82,6 +89,7 @@ caddy.erfianugrah.com {
 }
 
 erfianugrah.com {
+	import cors erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {env.CF_API_TOKEN}
@@ -123,6 +131,7 @@ erfianugrah.com {
 }
 
 port.erfianugrah.com {
+	import cors port.erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -154,6 +163,7 @@ port.erfianugrah.com {
 }
 
 servarr.erfianugrah.com {
+	import cors servarr.erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
