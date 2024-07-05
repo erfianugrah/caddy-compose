@@ -43,9 +43,15 @@
 }
 
 (cors) {
-	@origin header Origin {args[0]}
-	header @origin Access-Control-Allow-Origin "{args[0]}"
-	header @origin Access-Control-Allow-Methods "OPTIONS,HEAD,GET,POST,PUT,PATCH,DELETE"
+    @cors_preflight method OPTIONS
+    handle @cors_preflight {
+        header Access-Control-Allow-Origin "{args[0]}"
+        header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
+        header Access-Control-Allow-Headers "Content-Type"
+        header Access-Control-Max-Age "3600"
+        respond "" 204
+    }
+    header Access-Control-Allow-Origin "{args[0]}"
 }
 
 :2018 {
@@ -53,7 +59,7 @@
 }
 
 caddy.erfianugrah.com {
-	import cors caddy.erfianugrah.com
+	import cors https://caddy.erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -89,7 +95,7 @@ caddy.erfianugrah.com {
 }
 
 erfianugrah.com {
-	import cors erfianugrah.com
+	import cors https://erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {env.CF_API_TOKEN}
@@ -131,7 +137,7 @@ erfianugrah.com {
 }
 
 port.erfianugrah.com {
-	import cors port.erfianugrah.com
+	import cors https://port.erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
@@ -163,7 +169,7 @@ port.erfianugrah.com {
 }
 
 servarr.erfianugrah.com {
-	import cors servarr.erfianugrah.com
+	import cors https://servarr.erfianugrah.com
 	tls {
 		issuer acme {
 			dns cloudflare {$CF_API_TOKEN}
