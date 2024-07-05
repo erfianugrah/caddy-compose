@@ -717,10 +717,7 @@ qbit.erfianugrah.com {
 # 	reverse_proxy 172.30.0.2:8080 {
 # 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 # 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-header_down -Access-Control-Allow-Origin
-header_down -Access-Control-Allow-Methods
-header_down -Access-Control-Allow-Headers
-header_down -Access-Control-Max-Age
+
 # 	}
 # 	log {
 # 		level debug
