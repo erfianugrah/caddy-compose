@@ -43,15 +43,15 @@
 }
 
 (cors) {
-    @cors_preflight method OPTIONS
-    handle @cors_preflight {
-        header Access-Control-Allow-Origin "{header.origin}"
-        header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
-        header Access-Control-Max-Age "3600"
-        respond "" 204
-    }
-    header Access-Control-Allow-Origin "{header.origin}"
-    header Access-Control-Allow-Credentials "true"
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "{header.origin}"
+		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
+		header Access-Control-Max-Age "3600"
+		respond "" 204
+	}
+	header Access-Control-Allow-Origin "{header.origin}"
+	header Access-Control-Allow-Credentials "true"
 }
 
 :2018 {
