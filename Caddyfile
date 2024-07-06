@@ -119,12 +119,12 @@ erfianugrah.com {
 			header_down -Access-Control-Max-Age
 		}
 		route {
-			@image path_regexp image ^.*\.(jpe?g|png|gif|web)$
+			@image path_regexp image ^.*\.(jpe?g|png|gif|webp)$
 			header @image {
 				>Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
 				>Cloudflare-CDN-Cache-Control "max-age=31536000"
 			}
-			header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
+		#	header >Link "<https://erfianugrah.com/manifest.txt>; rel=prefetch"
 		}
 	}
 
