@@ -635,8 +635,8 @@ file.erfianugrah.com {
 		level debug
 		output file /var/log/file-access.log {
 			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
+			#roll_keep 5
+			#roll_keep_for 168h
 		}
 		format json {
 			time_format wall
