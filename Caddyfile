@@ -27,8 +27,9 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com port servarr plex navidrome sonarr radarr bazarr prowlarr grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change element tautulli hedgedoc privatebin coredns-prom-exporter-sg nodered immich caddy-prometheus qdirstat ollama ollama-ui
+			erfianugrah.com port servarr navidrome grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change element tautulli hedgedoc privatebin coredns-prom-exporter-sg nodered immich caddy-prometheus qdirstat ollama ollama-ui
 		}
+		versions ipv4
 		check_interval 1m
 		ip_source upnp
 		ip_source simple_http https://icanhazip.com
