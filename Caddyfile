@@ -121,7 +121,8 @@ erfianugrah.com {
 	header @image {
 		Cache-Control "public, max-age=0"
 		# Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
-		# Cloudflare-CDN-Cache-Control "max-age=31536000"
+		# Cloudflare-CDN-Cache-Control "max-age=31536000"        
+		Set-Cookie "ImageAccessed=true; Path=/; HttpOnly; Secure; SameSite=Strict"
 	}
 
 	reverse_proxy 172.19.23.2:80 {
