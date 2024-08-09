@@ -115,7 +115,7 @@ erfianugrah.com {
 	push
 
 	@image {
-		path_regexp image ^.*\.(jpe?g|png|gif|webp)$
+		path_regexp image (?i)\.(?:jpe?g|png|gif|webp|svg|avif|heic|heif|tiff?|bmp|ico|raw)$
 	}
 
 	header @image {
