@@ -1245,6 +1245,12 @@ httpbin.erfianugrah.com {
 		}
 	}
 	encode zstd gzip
+	@headers {
+        	path /headers
+    	}
+    	route @headers {
+        	header Cache-Control "max-age=0"
+    	}
 	reverse_proxy 172.19.15.3:80 {
 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
