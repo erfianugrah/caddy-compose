@@ -58,11 +58,12 @@ access_control:
     - domain: 'authelia.erfi.io'
       policy: 'bypass'
 
-    # Servarr dashboard — require two-factor
+    # Protected services — require two-factor
     - domain: 'servarr.erfi.io'
       policy: 'two_factor'
+    - domain: 'change.erfi.io'
+      policy: 'two_factor'
 
-    # All other erfi.io services — no Authelia enforcement (they have their own auth)
     # Add more rules here as you expand Authelia protection to other services.
 
 session:
