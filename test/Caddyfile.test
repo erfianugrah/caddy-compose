@@ -37,26 +37,42 @@
 }
 
 (waf) {
-	coraza_waf {
-		load_owasp_crs
-		directives `
+	@not_websocket {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket {
+		coraza_waf {
+			load_owasp_crs
+			directives `
 			Include /etc/caddy/coraza/pre-crs.conf
 			Include @crs-setup.conf.example
 			Include @owasp_crs/*.conf
 			Include /etc/caddy/coraza/post-crs.conf
 			SecRuleEngine On
-		`
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
 	}
 }
 
 (rate_limit) {
 	rate_limit {
 		zone {args[0]} {
+			match {
+				not header Connection *Upgrade*
+			}
 			key {http.request.remote.host}
 			events {args[1]}
 			window {args[2]}
 		}
 	}
+	header X-RateLimit-Limit "{args[1]}"
+	header X-RateLimit-Policy "{args[1]};w={args[2]};name=\"{args[0]}\""
 }
 
 (site_log) {
@@ -75,6 +91,15 @@
 	header_up X-Forwarded-For {remote_host}
 }
 
+(error_pages) {
+	handle_errors {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
 :8080 {
 	import cors
 	import security_headers
@@ -85,6 +110,7 @@
 	reverse_proxy httpbun:8080 {
 		import proxy_headers
 	}
+	import error_pages
 	import site_log test
 }
 

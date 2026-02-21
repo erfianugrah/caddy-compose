@@ -84,6 +84,8 @@
 
 # Coraza WAF — OWASP Core Rule Set for inline request security
 # Skips WebSocket upgrades (Coraza mangles the 101 handshake)
+# Includes handle_errors for 400 (malformed body), 403 (WAF deny),
+# and 429 (rate limit) so blocked requests get our custom error page.
 (waf) {
 	@not_websocket {
 		not header Connection *Upgrade*
@@ -103,9 +105,17 @@
 			`
 		}
 	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
 }
 
 # Configurable rate limit — per client IP, excludes WebSocket upgrades
+# Sets X-RateLimit-Limit and X-RateLimit-Policy headers on all responses.
+# The plugin automatically sets Retry-After on 429 responses.
 # Usage: import rate_limit <zone_name> <events> <window>
 # Example: import rate_limit sonarr 100 1m
 (rate_limit) {
@@ -119,6 +129,8 @@
 			window {args[2]}
 		}
 	}
+	header X-RateLimit-Limit "{args[1]}"
+	header X-RateLimit-Policy "{args[1]};w={args[2]};name=\"{args[0]}\""
 }
 
 # Common TLS config snippet
@@ -175,8 +187,10 @@
 	header_down -Content-Security-Policy
 }
 
-# Custom error pages — serves /srv/errors/error.html with Caddy templates
-# Covers 4xx/5xx: 403, 404, 429, 500, 502, 503, 504, and fallback for the rest.
+# Custom error pages — serves /etc/caddy/errors/error.html with Caddy templates
+# Covers remaining error codes not handled by the (waf) snippet.
+# The (waf) snippet handles 403 and 429 specifically; this catches the rest
+# (404, 500, 502, 503, 504, etc.)
 # Usage: import error_pages
 (error_pages) {
 	handle_errors {

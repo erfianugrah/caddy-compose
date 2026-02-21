@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Req.Host}} &mdash; {{.StatusCode}}</title>
+<title>{{.Req.Host}} &mdash; {{placeholder "http.error.status_code"}}</title>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html{height:100%}
@@ -37,27 +37,30 @@
 </head>
 <body>
 <div class="container">
-  <div class="code">{{.StatusCode}}</div>
+  <div class="code">{{placeholder "http.error.status_code"}}</div>
 
-  {{if eq .StatusCode 429}}
-  <p class="title">Slow down</p>
-  <p class="desc">You're sending requests too quickly. Wait a moment and try again.</p>
-  {{else if eq .StatusCode 403}}
+  {{if eq (placeholder "http.error.status_code") "400"}}
+  <p class="title">Bad request</p>
+  <p class="desc">The request was malformed or couldn't be understood by the server.</p>
+  {{else if eq (placeholder "http.error.status_code") "403"}}
   <p class="title">Access denied</p>
   <p class="desc">You don't have permission to view this page.</p>
-  {{else if eq .StatusCode 404}}
+  {{else if eq (placeholder "http.error.status_code") "404"}}
   <p class="title">Not found</p>
   <p class="desc">The page you're looking for doesn't exist or has been moved.</p>
-  {{else if eq .StatusCode 500}}
+  {{else if eq (placeholder "http.error.status_code") "429"}}
+  <p class="title">Slow down</p>
+  <p class="desc">You're sending requests too quickly. Wait a moment and try again.</p>
+  {{else if eq (placeholder "http.error.status_code") "500"}}
   <p class="title">Internal server error</p>
   <p class="desc">Something went wrong on our end. Try again in a few moments.</p>
-  {{else if eq .StatusCode 502}}
+  {{else if eq (placeholder "http.error.status_code") "502"}}
   <p class="title">Bad gateway</p>
   <p class="desc">The upstream service isn't responding. It may be restarting.</p>
-  {{else if eq .StatusCode 503}}
+  {{else if eq (placeholder "http.error.status_code") "503"}}
   <p class="title">Service unavailable</p>
   <p class="desc">This service is temporarily offline for maintenance.</p>
-  {{else if eq .StatusCode 504}}
+  {{else if eq (placeholder "http.error.status_code") "504"}}
   <p class="title">Gateway timeout</p>
   <p class="desc">The upstream service took too long to respond.</p>
   {{else}}

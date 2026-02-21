@@ -1,7 +1,6 @@
 ARG VERSION=2.10.2
 
 FROM caddy:${VERSION}-builder AS builder
-ARG VERSION
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
