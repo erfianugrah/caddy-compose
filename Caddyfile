@@ -65,6 +65,27 @@
 	header Vary Origin
 }
 
+# Static asset caching — sets Cache-Control only if the upstream didn't already.
+# Respects upstream headers from apps that set their own (Jellyfin, Vaultwarden, Immich).
+# Cloudflare edge and browsers both honour these.
+# Usage: import static_cache
+(static_cache) {
+	@fonts path *.woff *.woff2 *.ttf *.eot *.otf
+	header @fonts ?Cache-Control "public, max-age=31536000, immutable"
+
+	@images path *.png *.jpg *.jpeg *.gif *.webp *.avif *.svg *.ico
+	header @images ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@styles path *.css
+	header @styles ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@scripts path *.js
+	header @scripts ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@media path *.mp3 *.mp4 *.flac *.mkv *.avi *.ogg *.opus *.wav *.aac *.webm
+	header @media ?Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
+}
+
 # Global security headers — applied to every site via import
 (security_headers) {
 	header {
@@ -219,6 +240,7 @@ caddy.erfi.io {
 
 authelia.erfi.io {
 	import security_headers
+	import static_cache
 	import ipsum_blocklist
 	import rate_limit authelia 200 1m
 	import tls_config
@@ -233,6 +255,7 @@ authelia.erfi.io {
 servarr.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit servarr 1000 1m
@@ -249,6 +272,7 @@ servarr.erfi.io {
 sonarr.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit sonarr 300 1m
@@ -264,6 +288,7 @@ sonarr.erfi.io {
 radarr.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit radarr 300 1m
@@ -279,6 +304,7 @@ radarr.erfi.io {
 bazarr.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit bazarr 300 1m
@@ -294,6 +320,7 @@ bazarr.erfi.io {
 vault.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit vault 300 1m
@@ -314,6 +341,7 @@ vault.erfi.io {
 prowlarr.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit prowlarr 300 1m
@@ -329,6 +357,7 @@ prowlarr.erfi.io {
 jellyfin.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit jellyfin 1000 1m
@@ -344,6 +373,7 @@ jellyfin.erfi.io {
 qbit.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit qbit 300 1m
@@ -359,6 +389,7 @@ qbit.erfi.io {
 change.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import forward_auth
@@ -375,6 +406,7 @@ change.erfi.io {
 seerr.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit seerr 300 1m
@@ -390,6 +422,7 @@ seerr.erfi.io {
 keycloak.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit keycloak 100 1m
@@ -405,6 +438,7 @@ keycloak.erfi.io {
 joplin.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit joplin 300 1m
@@ -420,6 +454,7 @@ joplin.erfi.io {
 navidrome.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit navidrome 1000 1m
@@ -435,6 +470,7 @@ navidrome.erfi.io {
 sabnzbd.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit sabnzbd 300 1m
@@ -450,6 +486,7 @@ sabnzbd.erfi.io {
 immich.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit immich 1000 1m
@@ -481,6 +518,7 @@ caddy-prometheus.erfi.io {
 copyparty.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit copyparty 300 1m
@@ -496,6 +534,7 @@ copyparty.erfi.io {
 dockge-sg.erfi.io {
 	import cors
 	import security_headers
+	import static_cache
 	import waf
 	import ipsum_blocklist
 	import rate_limit dockge 100 1m
