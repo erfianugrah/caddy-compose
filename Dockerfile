@@ -26,6 +26,7 @@ FROM caddy:${VERSION}-alpine
 RUN apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=ipsum /tmp/ipsum_block.caddy /etc/caddy/ipsum_block.caddy
+COPY errors/ /etc/caddy/errors/
 COPY coraza/ /etc/caddy/coraza/
 COPY scripts/update-ipsum.sh /usr/local/bin/update-ipsum.sh
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
