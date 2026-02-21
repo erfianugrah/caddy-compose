@@ -190,6 +190,30 @@ A dark-themed error page (`errors/error.html`) is served for all HTTP errors via
 
 The error page is baked into the Docker image at `/etc/caddy/errors/` (not `/srv/`, which is overridden by the site bind mount).
 
+### Encrypted Client Hello (ECH)
+
+ECH hides the real domain name (SNI) from ISPs and network eavesdroppers during the TLS handshake. Without ECH, the SNI is sent in plaintext, revealing which service you're connecting to even though the traffic itself is encrypted.
+
+Caddy automatically generates ECH key pairs and publishes them as HTTPS DNS records via Cloudflare. The public name `ech.erfi.io` appears in the outer ClientHello instead of the real domain.
+
+**How it works:**
+
+1. Caddy generates ECH configs (public/private key pairs) and publishes HTTPS-type DNS records for all domains
+2. Client browsers look up the HTTPS record, get the ECH config, and encrypt the real SNI
+3. The ISP only sees connections to `ech.erfi.io` — not the actual service domain
+
+**Client requirements for full privacy:**
+
+- Browser must support ECH (Firefox, Chrome)
+- Browser must use **DNS-over-HTTPS (DoH)** or **DNS-over-TLS (DoT)** — plaintext DNS would leak the domain anyway
+  - Firefox: Settings > Privacy & Security > DNS over HTTPS > Max Protection
+- Clear DNS cache after enabling (`about:networking#dns` in Firefox)
+
+**Verification:**
+
+- Capture the TLS ClientHello with Wireshark — the SNI field should show `ech.erfi.io`, not the real domain
+- Check that ECH configs are published: `dig +short HTTPS jellyfin.erfi.io` should return a record with `ech=` data
+
 ### Other security layers
 
 - **Per-service rate limiting** via `import rate_limit <zone> <events> <window>` — WebSocket upgrades excluded
@@ -199,6 +223,7 @@ The error page is baked into the Docker image at `/etc/caddy/errors/` (not `/srv
 - **Strict SNI** host checking enabled
 - **Cloudflare trusted proxies** configured
 - **HTTP/1.1, HTTP/2, HTTP/3** all enabled (H3 via QUIC)
+- **ECH** — encrypts SNI to hide domain names from network observers
 
 ## Caddyfile snippets
 

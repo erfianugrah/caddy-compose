@@ -10,6 +10,11 @@
 	cert_issuer acme
 	grace_period 5s
 
+	# Encrypted Client Hello — hides real SNI from ISP/eavesdroppers
+	# Requires client DoH/DoT for full privacy benefit
+	dns cloudflare {$CF_API_TOKEN}
+	ech ech.erfi.io
+
 	# Coraza WAF must run before other handlers
 	order coraza_waf first
 
