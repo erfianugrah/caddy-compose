@@ -347,6 +347,7 @@ change.erfi.io {
 	import security_headers
 	import waf
 	import ipsum_blocklist
+	import forward_auth
 	import rate_limit change 300 1m
 	import tls_config
 	encode zstd gzip
@@ -454,6 +455,7 @@ caddy-prometheus.erfi.io {
 	import ipsum_blocklist
 	import rate_limit caddy-prometheus 100 1m
 	import tls_config
+	import forward_auth
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
 		import proxy_headers
