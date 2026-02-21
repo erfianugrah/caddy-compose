@@ -1,0 +1,110 @@
+services:
+  caddy:
+    image: erfianugrah/caddy:2.10.2
+    hostname: caddy
+    container_name: caddy
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      authelia:
+        condition: service_started
+        restart: true
+    volumes:
+      # Caddyfile mounted from host — source of truth, survives restarts
+      - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /mnt/user/data/caddy/site:/srv:ro
+      - /mnt/user/data/caddy/data:/data
+      - /mnt/user/data/caddy/config:/config
+      - /mnt/user/data/caddy/log:/var/log
+      # Temp dirs for read-only root filesystem
+      - tmpfs_run:/tmp
+      - tmpfs_caddy:/var/run
+    environment:
+      - TZ=Asia/Singapore
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      - EMAIL=${EMAIL}
+
+  authelia:
+    image: docker.io/authelia/authelia:latest
+    hostname: authelia
+    container_name: authelia
+    restart: unless-stopped
+    user: '1000:1000'
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--no-check-certificate", "--tries=1", "--spider", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      authelia:
+        ipv4_address: 172.19.99.2
+    volumes:
+      - /mnt/user/data/authelia/config:/config
+      # Authelia writes healthcheck metadata here at startup; bind-mount so read_only doesn't block it
+      - /mnt/user/data/authelia/config/.healthcheck.env:/app/.healthcheck.env
+    tmpfs:
+      - /tmp:size=32M
+    environment:
+      TZ: 'Asia/Singapore'
+      # Secrets — inject via env vars so configuration.yml stays secret-free
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: '${AUTHELIA_JWT_SECRET}'
+      AUTHELIA_SESSION_SECRET: '${AUTHELIA_SESSION_SECRET}'
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: '${AUTHELIA_STORAGE_ENCRYPTION_KEY}'
+
+networks:
+  authelia:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.99.0/24
+          gateway: 172.19.99.1
+
+volumes:
+  tmpfs_run:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=64m
+  tmpfs_caddy:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=64m

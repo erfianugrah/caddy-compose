@@ -1,0 +1,93 @@
+{
+	admin localhost:2019
+	order coraza_waf first
+	log {
+		level INFO
+		output stdout
+		format json
+	}
+	servers {
+		strict_sni_host insecure_off
+	}
+}
+
+(cors) {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://{http.request.host}"
+		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
+		header Access-Control-Allow-Headers "Content-Type"
+		header Access-Control-Max-Age "3600"
+		respond "" 204
+	}
+	header Access-Control-Allow-Origin "https://{http.request.host}"
+	header Vary Origin
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+		-X-Powered-By
+	}
+}
+
+(waf) {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			SecRuleEngine On
+		`
+	}
+}
+
+(rate_limit) {
+	rate_limit {
+		zone {args[0]} {
+			key {http.request.remote.host}
+			events {args[1]}
+			window {args[2]}
+		}
+	}
+}
+
+(site_log) {
+	log {
+		level INFO
+		output stdout
+		format json
+	}
+}
+
+(ipsum_blocklist) {
+	import /etc/caddy/ipsum_block.caddy
+}
+
+(proxy_headers) {
+	header_up X-Forwarded-For {remote_host}
+}
+
+:8080 {
+	import cors
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit test_zone 10 1m
+	encode zstd gzip
+	reverse_proxy httpbun:8080 {
+		import proxy_headers
+	}
+	import site_log test
+}
+
+:2018 {
+	metrics
+}

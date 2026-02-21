@@ -1,15 +1,20 @@
 {
-	admin :2019 {
-		origins localhost:2019 caddy.erfianugrah.com
-		enforce_origin
-	}
+	# Admin API — localhost only, no external exposure
+	admin localhost:2019
+
+	# Prometheus metrics — exposed via admin API at localhost:2019/metrics
+	metrics
+
 	email {$EMAIL}
 	acme_dns cloudflare {$CF_API_TOKEN}
 	cert_issuer acme
-	debug
 	grace_period 5s
+
+	# Coraza WAF must run before other handlers
+	order coraza_waf first
+
 	log {
-		level debug
+		level INFO
 		output file /var/log/access.log {
 			roll_size 1gb
 			roll_keep 5
@@ -22,12 +27,12 @@
 	servers {
 		strict_sni_host on
 		protocols h1 h2 h3
-		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.19.22.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
 	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfianugrah.com port servarr navidrome grafana-unraid prom-unraid vaultwarden ping kvm file jellyfin synapse synapse-admin rclone change element tautulli hedgedoc privatebin coredns-prom-exporter-sg nodered immich caddy-prometheus qdirstat ollama ollama-ui
+			erfi.io authelia caddy servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr joplin keycloak qbit change seerr copyparty dockge-sg
 		}
 		versions ipv4
 		check_interval 1m
@@ -36,7 +41,6 @@
 		ip_source simple_http https://api.ipify.org
 		ip_source simple_http https://myip.addr.space
 		ip_source simple_http https://ifconfig.me
-		ip_source simple_http https://icanhazip.com
 		ip_source simple_http https://ident.me
 		ip_source simple_http https://bot.whatismyipaddress.com
 		ip_source simple_http https://ipecho.net/plain
@@ -56,91 +60,66 @@
 	header Vary Origin
 }
 
-:2018 {
-	metrics
-}
-
-caddy.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-		client_auth {
-			mode require_and_verify
-			trust_pool inline {
-				trust_der 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
-			}
-			trusted_leaf_cert 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
-		}
-	}
-	encode zstd gzip
-	reverse_proxy localhost:2019 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_up Origin https://caddy.erfianugrah.com
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/caddy-api-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {env.CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-
-	encode zstd gzip
-	push
-
-	@image {
-		path_regexp image (?i)\.(?:jpe?g|png|gif|webp|svg|avif|heic|heif|tiff?|bmp|ico|raw)$
-	}
-
-	header @image {
-		#Cache-Control "public, max-age=0"
-		Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000, stale-if-error=3600"
-		Cloudflare-CDN-Cache-Control "max-age=31536000"
-		#Set-Cookie "ImageAccessed=true; Path=/; HttpOnly; Secure; SameSite=Strict"
-	}
-
+# Global security headers — applied to every site via import
+(security_headers) {
 	header {
-		Cache-tag "revista"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+		-X-Powered-By
 	}
+}
 
-	reverse_proxy 172.19.23.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+# Coraza WAF — OWASP Core Rule Set for inline request security
+(waf) {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+		Include /etc/caddy/coraza/pre-crs.conf
+		Include @crs-setup.conf.example
+		Include @owasp_crs/*.conf
+		Include /etc/caddy/coraza/post-crs.conf
+		SecRuleEngine On
+		SecAuditEngine RelevantOnly
+		SecAuditLog /var/log/coraza-audit.log
+		SecAuditLogFormat json
+		`
 	}
+}
 
+# Configurable rate limit — per client IP
+# Usage: import rate_limit <zone_name> <events> <window>
+# Example: import rate_limit sonarr 100 1m
+(rate_limit) {
+	rate_limit {
+		zone {args[0]} {
+			key {http.request.remote.host}
+			events {args[1]}
+			window {args[2]}
+		}
+	}
+}
+
+# Common TLS config snippet
+(tls_config) {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+}
+
+# Standard log config — INFO level, per-site log file
+(site_log) {
 	log {
-		level debug
-		output file /var/log/erfianugrahcom-access.log {
+		level INFO
+		output file /var/log/{args[0]}-access.log {
 			roll_size 1gb
 			roll_keep 5
 			roll_keep_for 168h
@@ -151,1784 +130,313 @@ erfianugrah.com {
 	}
 }
 
-port.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+# IPsum blocklist — auto-generated file with @ipsum_blocked matcher + abort
+# Updated daily by scripts/update-ipsum.sh via cron
+# Usage: import ipsum_blocklist
+(ipsum_blocklist) {
+	import /etc/caddy/ipsum_block.caddy
+}
+
+# Authelia forward auth — applied to protected services
+# Usage: import forward_auth
+(forward_auth) {
+	forward_auth 172.19.99.2:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 	}
+}
+
+# Common reverse proxy headers snippet
+(proxy_headers) {
+	trusted_proxies private_ranges
+	header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	header_down -Access-Control-Allow-Origin
+	header_down -Access-Control-Allow-Methods
+	header_down -Access-Control-Allow-Headers
+	header_down -Access-Control-Max-Age
+}
+
+# caddy.erfi.io — Admin API is localhost-only.
+# Use `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` to reload.
+# Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
+caddy.erfi.io {
+	import cors
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit caddy 15 1m
+	import tls_config
 	encode zstd gzip
-	reverse_proxy 172.17.0.2:9000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	reverse_proxy 172.17.0.2:8000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/portainer-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	respond "Caddy is running. Admin API available via localhost:2019 only." 200
+	import site_log caddy-api
 }
 
-servarr.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
+authelia.erfi.io {
+	import security_headers
+	import ipsum_blocklist
+	import rate_limit authelia 50 1m
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.99.2:9091 {
+		import proxy_headers
 	}
+	import site_log authelia
+}
+
+servarr.erfi.io {
+	import cors
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit servarr 15 1m
+	import tls_config
+	import forward_auth
 	encode zstd gzip
 	reverse_proxy localhost:90 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/servarr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log servarr
 }
 
-plex.erfianugrah.com {
+sonarr.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.1.8:32400 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/plex-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-# hydra.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.19.1.7:5076 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/hydra-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-# nzb.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.19.1.6:7000 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/nzb-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-sonarr.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit sonarr 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.3:8989 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/sonarr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log sonarr
 }
 
-radarr.erfianugrah.com {
+radarr.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit radarr 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.2:7878 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/radarr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log radarr
 }
 
-bazarr.erfianugrah.com {
+bazarr.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit bazarr 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.4:6767 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/bazarr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log bazarr
 }
 
-grafana-unraid.erfianugrah.com {
+vault.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.9.2:3000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/grafana-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-prom-unraid.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.9.3:9090 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/prometheus-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-vaultwarden.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-
-		client_auth {
-			mode require_and_verify
-			trust_pool inline {
-				trust_der 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
-			}
-			trusted_leaf_cert MIIGxDCCBKygAwIBAgIUEacKUwpqQN+TIGTD1p3rjdK4jQcwDQYJKoZIhvcNAQELBQAwgYQxCzAJBgNVBAYTAlNHMRIwEAYDVQQIDAlTaW5nYXBvcmUxEjAQBgNVBAcMCVNpbmdhcG9yZTESMBAGA1UECgwJRXJmaSBDb3JwMRMwEQYDVQQLDApFcmZpIFByb3h5MSQwIgYDVQQDDBt2YXVsdHdhcmRlbi5lcmZpYW51Z3JhaC5jb20wHhcNMjQwNTA0MDU0OTA4WhcNMzQwNTAyMDU0OTA4WjCBhDELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxJDAiBgNVBAMMG3ZhdWx0d2FyZGVuLmVyZmlhbnVncmFoLmNvbTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAKnGEqg3lkPUInxY/IMYkw9wLMMk5RdervWD6vDLSXk9FB/YQk2o/S39gTzR+Xa7hdb+hQ8zrxCK4CqqWuIIWgmiRGK0y4J5M/y28Z1pvS4V00BkT4lQTsDA67xaQNb/PzP8PDtyCeRuMPlJFkmyLL/lZZHLtHfvBhGnYKd5HLaSsgMa6KBMywO0vbHI3jO/nyc8KQUi7i9dmxKGH/QeNX1EVm0nyNlKwSGCvxvgyVxETNk2HukfqBgH4Mhg2XTsHPQSPLrmRohsFV+/+90uMZMVeV/8Uug1szgIEKDIWbZQdoohL9BUIqi7/8bSx4HnyhHvUer9DR+ENb2YC28kzwzUYqrz+mFoYu6CuJZ8+pS6QSv8h0Rky1xy80zA4jag/Yfs2XPmTjenXwdFV4FcaFyW44z0xesrG4DiOO/R1FFfFFyg/inpQQyCYDkha2N2LHzfcmDpBs5s4gTa+rZr6vpwAEOGAK87gDW9BLJg7Rm6mCE3oepzmmex4igMZ/9PoQLrguYZMCUKECw2iKP+TI5Fm+AHcFDjZR+n4hoUTnshHiaw9fy6bwi5pmCdRanlrtHZ4zW+bZHFNrmEHElRpRybdKO+NJzisajmlOCeBUHP8O+SJ4dGWn+OklauyX6fS+qDLGOa0OUT7xtTpeJ55mEsS6toxD/kgAx/ouedwkMxAgMBAAGjggEqMIIBJjCBxAYDVR0jBIG8MIG5gBTXu+pmK/IHy18H/dmTg/BHYQlMVqGBiqSBhzCBhDELMAkGA1UEBhMCU0cxEjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRIwEAYDVQQKDAlFcmZpIENvcnAxEzARBgNVBAsMCkVyZmkgUHJveHkxJDAiBgNVBAMMG3ZhdWx0d2FyZGVuLmVyZmlhbnVncmFoLmNvbYIUYKGqQRCAFDlxFviJuLFouLw8KzowCQYDVR0TBAIwADALBgNVHQ8EBAMCBPAwJgYDVR0RBB8wHYIbdmF1bHR3YXJkZW4uZXJmaWFudWdyYWguY29tMB0GA1UdDgQWBBTCAPtY1FQ+ePnuS5L71tWRFS2HpTANBgkqhkiG9w0BAQsFAAOCAgEAfXjEhvHo/X9PXHI8Iog0jbz8gNl/DyEwZ8ItCkbDFEWY9RaDzb3v+PVTMTy6PK4PSkk00LIe6gz8co0dziI2eal6ZrcprkUeUwB+TOQ4vu1Aq+hXQZsICyVBL7YYLHSBZHAoOUqozwB9ICgIsArVFnD7slhR23by4Ns9dNTggf2CFivGE/ozP0an9tO2H0QYhJMgYdob+H+ZItjlGIzJXxSd/X6UAXv95YepaKV8WXGKnMWqOjGcXb90kFb2X9TorvN+3V6GvvMp+ff8eNjnaZfyiyrUFbvlxnDzd7gwmJgv1smjS4dfyAnRlnnbrb/ZQ5wemU0B1lR3JX92foXGZ1w6jDBxUE3uRB07LmNApBIfpqJpZHax4cEhfzIKhJbAml05awfevak3xgTCEz73ote4+0+A06hENx5OsSd4tFKO/Aut9hcbuxPkHI/0qsRhq6VzIxZ7yFbxzt2PoUQWMUDr7Tedg/iKavTHgHhZtUdJWqD2Q0jLPG29JEFV6J0pC/VmayE/VChu7TwJ7Gz3ZHy66sHQW8xcFidod10N/CEXqVbaZv65v41dXlEUVgs6t9lL/cSN3Wo+tyXEdoHaKw1DMajqHnRQ4j6Yyf8IGbR1Fa1115ghGjT/8sW7SLp/L5o7n6gTyiylQKg9Bf68XvgNoGL68EHQHagwrc7/aH0=
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit vault 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy /notifications/hub 172.19.4.2:3012 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		import proxy_headers
 		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
 	}
 	reverse_proxy 172.19.4.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
+		import proxy_headers
 		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
 	}
-	log {
-		level debug
-		output file /var/log/vaultwarden-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log vaultwarden
 }
 
-# jackett.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.19.1.9:9117 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/jackett-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-prowlarr.erfianugrah.com {
+prowlarr.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit prowlarr 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.10:9696 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/prowlarr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log prowlarr
 }
 
-# readarr.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.19.1.11:8787 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-file.erfianugrah.com {
+jellyfin.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-
-		client_auth {
-			mode require_and_verify
-			trust_pool inline {
-				trust_der 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
-			}
-			trusted_leaf_cert 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
-		}
-	}
-	@image path_regexp image ^.*\.(jpe?g|png|gif|avif|tiff|web|mkv|mp4|flac|mp3|wav|ogg|aac|mov|flv|avi)$
-	header @image {
-		defer
-		Cache-Control "public, max-age=31536000, stale-while-revalidate=31536000"
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.6.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/file-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-jellyfin.erfianugrah.com {
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit jellyfin 300 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.15:8096 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/jellyfin-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log jellyfin
 }
 
-qbit.erfianugrah.com {
+qbit.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit qbit 15 1m
+	import tls_config
 	encode zstd gzip
-	reverse_proxy 172.19.7.2:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+	reverse_proxy 172.19.1.22:8080 {
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/qbit-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log qbit
 }
 
-# pastebin.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.30.0.2:8080 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/pastebin-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-# pihole.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.28.0.3:80 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-change.erfianugrah.com {
+change.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit change 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.3.2:5000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/change-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log change
 }
 
-rclone.erfianugrah.com {
+seerr.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit seerr 100 1m
+	import tls_config
 	encode zstd gzip
-	reverse_proxy /auth 172.19.10.2:53682 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+	reverse_proxy 172.19.1.21:5055 {
+		import proxy_headers
 	}
-	reverse_proxy 172.19.10.2:5572 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/rclone-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log seerr
 }
 
-synapse.erfianugrah.com {
+keycloak.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	header /.well-known/matrix/* {
-		Content-Type application/json
-		Access-Control-Allow-Origin *
-	}
-	respond /.well-known/matrix/server 200 {
-		body `{"m.server": "synapse.erfianugrah.com:443"}`
-		close
-	}
-	respond /.well-known/matrix/client 200 {
-		body `{"m.homeserver":{"base_url":"https://synapse.erfianugrah.com"},"m.identity_server":{"base_url":"https://synapse.erfianugrah.com"}}`
-		close
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.11.2:8008 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	reverse_proxy /_synapse/metrics 172.19.11.2:9000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/synapse-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-synapse-admin.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	reverse_proxy 172.19.11.5:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/synapse-admin-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-coturn.erfianugrah.com {
-	import cors
-	encode zstd gzip
-	log {
-		level debug
-		output file /var/log/coturn-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-overseerr.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.1.13:5055 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/overseerr-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-tautulli.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.1.14:8181 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/tautulli-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-element.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	@nocache path_regexp nocache \/(config\..*\.json|config.json|i18n|home|sites|index\.html)
-	header {
-		X-Frame-Options "SAMEORIGIN"
-		X-Content-Type-Options "nosniff"
-		X-XSS-Protection "1; mode=block"
-		Content-Security-Policy "frame-ancestors 'none'"
-	}
-	header @nocache {
-		Cache-Control: no-cache
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.11.6:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/element-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-keycloak.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit keycloak 15 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.12.2:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/keycloak-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log keycloak
 }
 
-# git.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.40.0.2:3000 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-# beets.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.19.1.16:8337 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/beets-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-joplin.erfianugrah.com {
+joplin.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-
-		client_auth {
-			mode require_and_verify
-			trust_pool inline {
-				trust_der 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
-			}
-			trusted_leaf_cert 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
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit joplin 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.13.2:22300 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/joplin-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log joplin
 }
 
-# etherpad.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 		issuer zerossl {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.42.0.2:9001 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-cadvisor.erfianugrah.com {
+navidrome.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.2.2:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/cadvisor-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-httpbun.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	#       @headers {
-	#      		path /headers
-	#      	}
-	#      	route @headers {
-	#      		header Cache-Control "max-age=0"
-	#      	}
-	reverse_proxy 172.19.15.2:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/httpbun-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-httpbin.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	#	@headers {
-	#		path /headers
-	#	}
-	#	route @headers {
-	#		header Cache-Control "max-age=0"
-	#	}
-	reverse_proxy 172.19.15.3:80 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/httpbin-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-ihatemoney.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.16.2:8000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/ihatemoney-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-dillinger.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	header /js/main.bundle.js {
-		defer
-		Cache-Control "public, max-age=3600, stale-while-revalidate=3600"
-	}
-	reverse_proxy 172.19.14.2:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/dillinger-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-firefly.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.18.2:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/firefly-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-# olaris.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.51.0.2:8080 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-navidrome.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit navidrome 300 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.17:4533 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/navidrome-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log navidrome
 }
 
-# syncthing.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.50.0.2:8384 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-# soulseek.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.51.0.2:6080 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-# kuma.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.19.19.2:3001 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# }
-
-hedgedoc.erfianugrah.com {
+sabnzbd.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.57.0.2:3000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/hedgedoc-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-grafana-loki.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.9.8:3100 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/loki-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-sabnzbd.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit sabnzbd 15 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.19:6666 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/sabnzbd-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log sabnzbd
 }
 
-# fileservarr.erfianugrah.com {
-# 	root * /files
-# 	file_server {
-# 		browse
-# 		precompressed zstd br gzip
-# 	}
-
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	log {
-# 		level debug
-# 		output file /var/log/fileservarr-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-nodered.erfianugrah.com {
+immich.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.20.2:1880 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/nodered-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-# coredns-prom-exporter-sg.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.23.0.2:9101 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/coredns-prom-exporter-sg-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-privatebin.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-
-		client_auth {
-			mode require_and_verify
-			trust_pool inline {
-				trust_der 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
-			}
-			trusted_leaf_cert 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
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.21.2:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/privatebin-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-# photoprism.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy 172.63.0.2:2342 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/photoprism-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-immich.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-
-		client_auth {
-			mode require_and_verify
-			trust_pool inline {
-				trust_der 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
-			}
-			trusted_leaf_cert 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
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit immich 100 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.22.2:2283 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/immich-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log immich
 }
 
-caddy-prometheus.erfianugrah.com {
+caddy-prometheus.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit caddy-prometheus 15 1m
+	import tls_config
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/caddy-prometheus-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log caddy-prometheus
 }
 
-qdirstat.erfianugrah.com {
+copyparty.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit copyparty 100 1m
+	import tls_config
 	encode zstd gzip
-	reverse_proxy 172.19.24.2:3000 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+	reverse_proxy 172.19.66.2:3923 {
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/qdirstat-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log copyparty
 }
 
-# cdn.erfianugrah.com {
-# 	tls {
-# 		issuer acme {
-# 			dns cloudflare {$CF_API_TOKEN}
-# 			propagation_delay 60s
-# 			propagation_timeout -1
-# 			resolvers 1.1.1.1
-# 		}
-# 	}
-# 	encode zstd gzip
-# 	reverse_proxy /console/* 172.70.0.2:9001 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	reverse_proxy /* 172.70.0.2:9000 {
-# 		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-# 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-# 	}
-# 	log {
-# 		level debug
-# 		output file /var/log/cdn-access.log {
-# 			roll_size 1gb
-# 			roll_keep 5
-# 			roll_keep_for 168h
-# 		}
-# 		format json {
-# 			time_format wall
-# 		}
-# 	}
-# }
-
-ollama.erfianugrah.com {
+dockge-sg.erfi.io {
 	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
+	import security_headers
+	import waf
+	import ipsum_blocklist
+	import rate_limit dockge 15 1m
+	import tls_config
 	encode zstd gzip
-	reverse_proxy 172.19.8.2:11434 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
+	reverse_proxy 172.17.0.2:5001 {
+		import proxy_headers
 	}
-	log {
-		level debug
-		output file /var/log/ollama-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-ollama-ui.erfianugrah.com {
-	import cors
-	tls {
-		issuer acme {
-			dns cloudflare {$CF_API_TOKEN}
-			propagation_delay 60s
-			propagation_timeout -1
-			resolvers 1.1.1.1
-		}
-	}
-	encode zstd gzip
-	reverse_proxy 172.19.8.3:8080 {
-		trusted_proxies private_ranges {$CF_IP_V4} {$CF_IP_V6}
-		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-		header_down -Access-Control-Allow-Origin
-		header_down -Access-Control-Allow-Methods
-		header_down -Access-Control-Allow-Headers
-		header_down -Access-Control-Max-Age
-	}
-	log {
-		level debug
-		output file /var/log/ollama-ui-access.log {
-			roll_size 1gb
-			roll_keep 5
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	import site_log dockge
 }
