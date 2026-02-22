@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:1.0.0-2.10.2
+    image: erfianugrah/caddy:1.1.0-2.10.2
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -47,7 +47,7 @@ services:
       - EMAIL=${EMAIL}
 
   authelia:
-    image: docker.io/authelia/authelia:latest
+    image: docker.io/authelia/authelia:4.39
     hostname: authelia
     container_name: authelia
     restart: unless-stopped
