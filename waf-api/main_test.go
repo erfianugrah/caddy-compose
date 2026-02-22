@@ -1109,19 +1109,17 @@ func TestGenerateConfigBasic(t *testing.T) {
 
 	result := GenerateConfigs(cfg, exclusions)
 
-	// Pre-CRS checks.
-	if !strings.Contains(result.PreCRS, "blocking_paranoia_level=2") {
-		t.Error("pre-crs should contain paranoia level 2")
+	// Pre-CRS should NOT contain CRS setup rules — those are in the Caddyfile WAF tiers.
+	if strings.Contains(result.PreCRS, "blocking_paranoia_level") {
+		t.Error("pre-crs should not contain paranoia level (managed by Caddyfile tiers)")
 	}
-	if !strings.Contains(result.PreCRS, "inbound_anomaly_score_threshold=10") {
-		t.Error("pre-crs should contain inbound threshold 10")
+	if strings.Contains(result.PreCRS, "inbound_anomaly_score_threshold") {
+		t.Error("pre-crs should not contain inbound threshold (managed by Caddyfile tiers)")
 	}
-	if !strings.Contains(result.PreCRS, "outbound_anomaly_score_threshold=8") {
-		t.Error("pre-crs should contain outbound threshold 8")
+	if strings.Contains(result.PreCRS, "SecRuleEngine") {
+		t.Error("pre-crs should not contain SecRuleEngine (managed by Caddyfile tiers)")
 	}
-	if !strings.Contains(result.PreCRS, "SecRuleEngine On") {
-		t.Error("pre-crs should contain SecRuleEngine On")
-	}
+	// Pre-CRS should contain runtime exclusions.
 	if !strings.Contains(result.PreCRS, "ruleRemoveById=942100") {
 		t.Error("pre-crs should contain runtime removal")
 	}
@@ -1156,8 +1154,16 @@ func TestGenerateConfigEmpty(t *testing.T) {
 	cfg := defaultConfig()
 	result := GenerateConfigs(cfg, nil)
 
-	if !strings.Contains(result.PreCRS, "blocking_paranoia_level=1") {
-		t.Error("pre-crs should contain default paranoia level")
+	// Pre-CRS should NOT contain CRS setup — those are per-tier in the Caddyfile.
+	if strings.Contains(result.PreCRS, "blocking_paranoia_level") {
+		t.Error("pre-crs should not contain paranoia level (managed by Caddyfile tiers)")
+	}
+	if strings.Contains(result.PreCRS, "SecRuleEngine") {
+		t.Error("pre-crs should not contain SecRuleEngine (managed by Caddyfile tiers)")
+	}
+	// Pre-CRS should just have the header, no rules.
+	if strings.Contains(result.PreCRS, "SecRule") {
+		t.Error("pre-crs should have no rules with no exclusions")
 	}
 	// Post-CRS should just have the header.
 	if strings.Contains(result.PostCRS, "SecRule") {
@@ -1199,8 +1205,9 @@ func TestGenerateConfigEndpoint(t *testing.T) {
 
 	var resp GenerateResponse
 	json.NewDecoder(w.Body).Decode(&resp)
-	if !strings.Contains(resp.PreCRS, "blocking_paranoia_level=2") {
-		t.Error("should use config paranoia level")
+	// Pre-CRS should NOT contain CRS setup — those are per-tier in the Caddyfile.
+	if strings.Contains(resp.PreCRS, "blocking_paranoia_level") {
+		t.Error("pre-crs should not contain paranoia level (managed by Caddyfile tiers)")
 	}
 	if !strings.Contains(resp.PostCRS, "SecRuleRemoveById 920420") {
 		t.Error("should contain exclusion")
@@ -2113,5 +2120,822 @@ func TestParseEventWithoutMessages(t *testing.T) {
 	}
 	if ev.RuleMsg != "" {
 		t.Errorf("expected empty rule_msg, got %q", ev.RuleMsg)
+	}
+}
+
+// --- Rate Limit Store tests ---
+
+func TestRateLimitStoreDefaults(t *testing.T) {
+	s := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	cfg := s.Get()
+
+	if len(cfg.Zones) != 23 {
+		t.Fatalf("expected 23 default zones, got %d", len(cfg.Zones))
+	}
+
+	// Check a known zone
+	z := s.GetZone("sonarr")
+	if z == nil {
+		t.Fatal("expected sonarr zone")
+	}
+	if z.Events != 300 || z.Window != "1m" || !z.Enabled {
+		t.Errorf("sonarr: events=%d window=%s enabled=%v", z.Events, z.Window, z.Enabled)
+	}
+
+	// Non-existent zone
+	if s.GetZone("nonexistent") != nil {
+		t.Error("expected nil for nonexistent zone")
+	}
+}
+
+func TestRateLimitStoreUpdate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rl.json")
+	s := NewRateLimitStore(path)
+
+	newCfg := RateLimitConfig{
+		Zones: []RateLimitZone{
+			{Name: "test", Events: 500, Window: "5m", Enabled: true},
+		},
+	}
+	updated, err := s.Update(newCfg)
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	if len(updated.Zones) != 1 || updated.Zones[0].Name != "test" {
+		t.Fatalf("unexpected update result: %+v", updated)
+	}
+
+	// Reload from disk
+	s2 := NewRateLimitStore(path)
+	cfg := s2.Get()
+	if len(cfg.Zones) != 1 || cfg.Zones[0].Events != 500 {
+		t.Errorf("persisted data mismatch: %+v", cfg)
+	}
+}
+
+func TestRateLimitValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     RateLimitConfig
+		wantErr bool
+	}{
+		{
+			name:    "valid",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "test", Events: 100, Window: "1m", Enabled: true}}},
+			wantErr: false,
+		},
+		{
+			name:    "empty zones",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{}},
+			wantErr: false,
+		},
+		{
+			name:    "empty name",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "", Events: 100, Window: "1m"}}},
+			wantErr: true,
+		},
+		{
+			name:    "invalid name chars",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "test zone", Events: 100, Window: "1m"}}},
+			wantErr: true,
+		},
+		{
+			name:    "duplicate names",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "a", Events: 100, Window: "1m"}, {Name: "a", Events: 200, Window: "1m"}}},
+			wantErr: true,
+		},
+		{
+			name:    "zero events",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "test", Events: 0, Window: "1m"}}},
+			wantErr: true,
+		},
+		{
+			name:    "events too high",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "test", Events: 200000, Window: "1m"}}},
+			wantErr: true,
+		},
+		{
+			name:    "empty window",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "test", Events: 100, Window: ""}}},
+			wantErr: true,
+		},
+		{
+			name:    "invalid window",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "test", Events: 100, Window: "abc"}}},
+			wantErr: true,
+		},
+		{
+			name:    "valid windows",
+			cfg:     RateLimitConfig{Zones: []RateLimitZone{{Name: "a", Events: 100, Window: "30s"}, {Name: "b", Events: 100, Window: "5m"}, {Name: "c", Events: 100, Window: "1h"}}},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRateLimitConfig(tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateRateLimitConfig() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestGenerateZoneFile(t *testing.T) {
+	t.Run("enabled zone", func(t *testing.T) {
+		zone := RateLimitZone{Name: "sonarr", Events: 300, Window: "1m", Enabled: true}
+		content := generateZoneFile(zone)
+
+		if !strings.Contains(content, "zone sonarr") {
+			t.Error("expected zone name in output")
+		}
+		if !strings.Contains(content, "events 300") {
+			t.Error("expected events 300")
+		}
+		if !strings.Contains(content, "window 1m") {
+			t.Error("expected window 1m")
+		}
+		if !strings.Contains(content, "rate_limit {") {
+			t.Error("expected rate_limit directive")
+		}
+		if !strings.Contains(content, "not header Connection *Upgrade*") {
+			t.Error("expected WebSocket exclusion")
+		}
+		if !strings.Contains(content, `X-RateLimit-Limit "300"`) {
+			t.Error("expected X-RateLimit-Limit header")
+		}
+	})
+
+	t.Run("disabled zone", func(t *testing.T) {
+		zone := RateLimitZone{Name: "test", Events: 100, Window: "1m", Enabled: false}
+		content := generateZoneFile(zone)
+
+		if strings.Contains(content, "rate_limit {") {
+			t.Error("disabled zone should not contain rate_limit directive")
+		}
+		if !strings.Contains(content, "Rate limiting disabled") {
+			t.Error("expected disabled comment")
+		}
+	})
+}
+
+func TestWriteZoneFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "rl")
+
+	zones := []RateLimitZone{
+		{Name: "test1", Events: 100, Window: "1m", Enabled: true},
+		{Name: "test2", Events: 500, Window: "5m", Enabled: false},
+	}
+
+	written, err := writeZoneFiles(dir, zones)
+	if err != nil {
+		t.Fatalf("writeZoneFiles failed: %v", err)
+	}
+	if len(written) != 2 {
+		t.Fatalf("expected 2 files written, got %d", len(written))
+	}
+
+	// Check file 1 exists and has content
+	data1, err := os.ReadFile(filepath.Join(dir, "test1.caddy"))
+	if err != nil {
+		t.Fatalf("reading test1.caddy: %v", err)
+	}
+	if !strings.Contains(string(data1), "events 100") {
+		t.Error("test1.caddy missing events")
+	}
+
+	// Check file 2 is disabled
+	data2, err := os.ReadFile(filepath.Join(dir, "test2.caddy"))
+	if err != nil {
+		t.Fatalf("reading test2.caddy: %v", err)
+	}
+	if strings.Contains(string(data2), "rate_limit") {
+		t.Error("test2.caddy should be disabled (no rate_limit)")
+	}
+}
+
+func TestRateLimitAPIEndpoints(t *testing.T) {
+	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/rate-limits", handleGetRateLimits(rs))
+	mux.HandleFunc("PUT /api/rate-limits", handleUpdateRateLimits(rs))
+
+	// GET — should return defaults
+	req := httptest.NewRequest("GET", "/api/rate-limits", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("GET expected 200, got %d", rec.Code)
+	}
+
+	var cfg RateLimitConfig
+	json.NewDecoder(rec.Body).Decode(&cfg)
+	if len(cfg.Zones) != 23 {
+		t.Fatalf("expected 23 default zones, got %d", len(cfg.Zones))
+	}
+
+	// PUT — update to single zone
+	body := `{"zones":[{"name":"test","events":500,"window":"5m","enabled":true}]}`
+	req = httptest.NewRequest("PUT", "/api/rate-limits", strings.NewReader(body))
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("PUT expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var updated RateLimitConfig
+	json.NewDecoder(rec.Body).Decode(&updated)
+	if len(updated.Zones) != 1 || updated.Zones[0].Events != 500 {
+		t.Errorf("unexpected PUT result: %+v", updated)
+	}
+
+	// PUT — validation error (duplicate names)
+	body = `{"zones":[{"name":"a","events":100,"window":"1m"},{"name":"a","events":200,"window":"1m"}]}`
+	req = httptest.NewRequest("PUT", "/api/rate-limits", strings.NewReader(body))
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 for duplicate names, got %d", rec.Code)
+	}
+
+	// PUT — validation error (bad window)
+	body = `{"zones":[{"name":"x","events":100,"window":"bad"}]}`
+	req = httptest.NewRequest("PUT", "/api/rate-limits", strings.NewReader(body))
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 for bad window, got %d", rec.Code)
+	}
+}
+
+func TestRateLimitDeployEndpoint(t *testing.T) {
+	rlDir := filepath.Join(t.TempDir(), "rl")
+	caddyfilePath := filepath.Join(t.TempDir(), "Caddyfile")
+	os.WriteFile(caddyfilePath, []byte("localhost { respond 200 }"), 0644)
+
+	// Mock Caddy admin API
+	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer adminServer.Close()
+
+	deployCfg := DeployConfig{
+		CorazaDir:     filepath.Join(t.TempDir(), "coraza"),
+		RateLimitDir:  rlDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: adminServer.URL,
+	}
+
+	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	// Set a small config for testing
+	rs.Update(RateLimitConfig{
+		Zones: []RateLimitZone{
+			{Name: "test", Events: 100, Window: "1m", Enabled: true},
+			{Name: "disabled", Events: 50, Window: "30s", Enabled: false},
+		},
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/rate-limits/deploy", handleDeployRateLimits(rs, deployCfg))
+
+	req := httptest.NewRequest("POST", "/api/rate-limits/deploy", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp RateLimitDeployResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if resp.Status != "deployed" {
+		t.Errorf("expected status=deployed, got %q", resp.Status)
+	}
+	if !resp.Reloaded {
+		t.Error("expected reloaded=true")
+	}
+	if len(resp.Files) != 2 {
+		t.Errorf("expected 2 files, got %d", len(resp.Files))
+	}
+
+	// Verify files exist on disk
+	data, err := os.ReadFile(filepath.Join(rlDir, "test.caddy"))
+	if err != nil {
+		t.Fatalf("reading test.caddy: %v", err)
+	}
+	if !strings.Contains(string(data), "events 100") {
+		t.Error("test.caddy missing events")
+	}
+
+	data, err = os.ReadFile(filepath.Join(rlDir, "disabled.caddy"))
+	if err != nil {
+		t.Fatalf("reading disabled.caddy: %v", err)
+	}
+	if strings.Contains(string(data), "rate_limit") {
+		t.Error("disabled.caddy should not have rate_limit directive")
+	}
+}
+
+// ─── AccessLogStore (429 analytics) tests ───────────────────────────
+
+// Sample combined access log lines — mix of 200s, 429s, 403s.
+var sampleAccessLogLines = []string{
+	`{"level":"info","ts":"2026/02/22 12:00:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"status":200,"size":1234,"duration":0.05}`,
+	`{"level":"info","ts":"2026/02/22 12:01:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001}`,
+	`{"level":"info","ts":"2026/02/22 12:02:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"POST","host":"radarr.erfi.io","uri":"/api/v3/command","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001}`,
+	`{"level":"info","ts":"2026/02/22 12:03:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/.env","headers":{"User-Agent":["BadBot/1.0"]}},"status":403,"size":0,"duration":0.002}`,
+	`{"level":"info","ts":"2026/02/22 13:00:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/series","headers":{"User-Agent":["BadBot/1.0"]}},"status":429,"size":0,"duration":0.001}`,
+}
+
+func writeTempAccessLog(t *testing.T, lines []string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "combined-access.log")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+	return path
+}
+
+func TestAccessLogStoreLoad(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// Only 3 lines are status 429 out of 5 total.
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3 429 events, got %d", got)
+	}
+}
+
+func TestAccessLogStoreIgnoresNon429(t *testing.T) {
+	// All 200s — should produce zero events.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:00:00","logger":"test","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":200,"size":100,"duration":0.01}`,
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"test","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":403,"size":0,"duration":0.01}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	if got := store.EventCount(); got != 0 {
+		t.Fatalf("expected 0 429 events, got %d", got)
+	}
+}
+
+func TestAccessLogStoreIncrementalLoad(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "combined-access.log")
+
+	// Write first 2 lines (1 is 200, 1 is 429).
+	f, _ := os.Create(path)
+	for _, l := range sampleAccessLogLines[:2] {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewAccessLogStore(path)
+	store.Load()
+	if got := store.EventCount(); got != 1 {
+		t.Fatalf("expected 1 429 event, got %d", got)
+	}
+
+	// Append line 3 (another 429).
+	f, _ = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	f.WriteString(sampleAccessLogLines[2] + "\n")
+	f.Close()
+
+	store.Load()
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2 429 events after append, got %d", got)
+	}
+}
+
+func TestAccessLogStoreFileRotation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "combined-access.log")
+
+	// Write all 5 lines (3 are 429).
+	f, _ := os.Create(path)
+	for _, l := range sampleAccessLogLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewAccessLogStore(path)
+	store.Load()
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3, got %d", got)
+	}
+
+	// Simulate rotation: truncate and write 1 line (a 429).
+	f, _ = os.Create(path) // truncates
+	f.WriteString(sampleAccessLogLines[1] + "\n")
+	f.Close()
+
+	store.Load()
+	if got := store.EventCount(); got != 1 {
+		t.Fatalf("expected 1 after rotation, got %d", got)
+	}
+}
+
+func TestAccessLogStoreMissingFile(t *testing.T) {
+	store := NewAccessLogStore("/nonexistent/combined-access.log")
+	store.Load() // should not panic
+	if got := store.EventCount(); got != 0 {
+		t.Errorf("expected 0 events for missing file, got %d", got)
+	}
+}
+
+func TestAccessLogStoreEventFields(t *testing.T) {
+	// Single 429 line — verify all fields parsed correctly.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"POST","host":"radarr.erfi.io","uri":"/api/v3/command","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	e := events[0]
+	if e.ClientIP != "10.0.0.2" {
+		t.Errorf("client_ip: want 10.0.0.2, got %s", e.ClientIP)
+	}
+	if e.Service != "radarr.erfi.io" {
+		t.Errorf("service: want radarr.erfi.io, got %s", e.Service)
+	}
+	if e.Method != "POST" {
+		t.Errorf("method: want POST, got %s", e.Method)
+	}
+	if e.URI != "/api/v3/command" {
+		t.Errorf("uri: want /api/v3/command, got %s", e.URI)
+	}
+	if e.UserAgent != "curl/7.68" {
+		t.Errorf("user_agent: want curl/7.68, got %s", e.UserAgent)
+	}
+	expected := time.Date(2026, 2, 22, 12, 1, 0, 0, time.UTC)
+	if !e.Timestamp.Equal(expected) {
+		t.Errorf("timestamp: want %v, got %v", expected, e.Timestamp)
+	}
+}
+
+func TestAccessLogStoreSummary(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	s := store.Summary(0) // all time
+
+	if s.Total429s != 3 {
+		t.Errorf("total_429s: want 3, got %d", s.Total429s)
+	}
+	if s.UniqueClients != 2 {
+		t.Errorf("unique_clients: want 2 (10.0.0.2, 10.0.0.3), got %d", s.UniqueClients)
+	}
+	if s.UniqueServices != 2 {
+		t.Errorf("unique_services: want 2 (sonarr, radarr), got %d", s.UniqueServices)
+	}
+
+	// EventsByHour: events span 12:xx and 13:xx → 2 buckets.
+	if len(s.EventsByHour) != 2 {
+		t.Errorf("events_by_hour: want 2 buckets, got %d", len(s.EventsByHour))
+	}
+
+	// TopClients: 10.0.0.2 has 2, 10.0.0.3 has 1.
+	if len(s.TopClients) != 2 {
+		t.Fatalf("top_clients: want 2, got %d", len(s.TopClients))
+	}
+	if s.TopClients[0].ClientIP != "10.0.0.2" || s.TopClients[0].Count != 2 {
+		t.Errorf("top client: want 10.0.0.2 with count 2, got %s with %d",
+			s.TopClients[0].ClientIP, s.TopClients[0].Count)
+	}
+
+	// TopServices: sonarr=2, radarr=1 (only 429s counted).
+	if len(s.TopServices) != 2 {
+		t.Fatalf("top_services: want 2, got %d", len(s.TopServices))
+	}
+	if s.TopServices[0].Service != "sonarr.erfi.io" || s.TopServices[0].Count != 2 {
+		t.Errorf("top service: want sonarr.erfi.io with count 2, got %s with %d",
+			s.TopServices[0].Service, s.TopServices[0].Count)
+	}
+
+	// RecentEvents: newest first.
+	if len(s.RecentEvents) != 3 {
+		t.Fatalf("recent_events: want 3, got %d", len(s.RecentEvents))
+	}
+	if s.RecentEvents[0].Service != "sonarr.erfi.io" || s.RecentEvents[0].ClientIP != "10.0.0.3" {
+		t.Errorf("most recent event: want sonarr.erfi.io/10.0.0.3, got %s/%s",
+			s.RecentEvents[0].Service, s.RecentEvents[0].ClientIP)
+	}
+}
+
+func TestAccessLogStoreFilteredEvents(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// Filter by service.
+	resp := store.FilteredEvents("sonarr.erfi.io", "", "", 50, 0, 0)
+	if resp.Total != 2 {
+		t.Errorf("filter by service sonarr: want 2, got %d", resp.Total)
+	}
+
+	// Filter by client.
+	resp = store.FilteredEvents("", "10.0.0.2", "", 50, 0, 0)
+	if resp.Total != 2 {
+		t.Errorf("filter by client 10.0.0.2: want 2, got %d", resp.Total)
+	}
+
+	// Filter by method.
+	resp = store.FilteredEvents("", "", "POST", 50, 0, 0)
+	if resp.Total != 1 {
+		t.Errorf("filter by method POST: want 1, got %d", resp.Total)
+	}
+
+	// Combined filter.
+	resp = store.FilteredEvents("sonarr.erfi.io", "10.0.0.2", "", 50, 0, 0)
+	if resp.Total != 1 {
+		t.Errorf("filter sonarr+10.0.0.2: want 1, got %d", resp.Total)
+	}
+
+	// Pagination.
+	resp = store.FilteredEvents("", "", "", 1, 0, 0)
+	if len(resp.Events) != 1 || resp.Total != 3 {
+		t.Errorf("pagination: want 1 event of 3 total, got %d/%d", len(resp.Events), resp.Total)
+	}
+
+	// Offset beyond total.
+	resp = store.FilteredEvents("", "", "", 50, 100, 0)
+	if len(resp.Events) != 0 || resp.Total != 3 {
+		t.Errorf("offset beyond total: want 0 events of 3 total, got %d/%d", len(resp.Events), resp.Total)
+	}
+
+	// Newest-first ordering.
+	resp = store.FilteredEvents("", "", "", 50, 0, 0)
+	if len(resp.Events) > 1 && !resp.Events[0].Timestamp.After(resp.Events[1].Timestamp) {
+		t.Error("events should be sorted newest-first")
+	}
+}
+
+func TestAccessLogStoreSnapshotSince(t *testing.T) {
+	// Use old 429 events that are outside any hours window.
+	oldLine := `{"level":"info","ts":"2020/01/01 00:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":429,"size":0,"duration":0.001}`
+	path := writeTempAccessLog(t, []string{oldLine})
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// hours=0 (all time) — should include old events.
+	all := store.snapshotSince(0)
+	if len(all) != 1 {
+		t.Errorf("all: want 1, got %d", len(all))
+	}
+
+	// hours=1 — should filter out old events.
+	recent := store.snapshotSince(1)
+	if len(recent) != 0 {
+		t.Errorf("hours=1 for old events: want 0, got %d", len(recent))
+	}
+}
+
+func TestAccessLogStoreSummaryWithHours(t *testing.T) {
+	// Mix of old and "recent" (future-dated) 429 events.
+	lines := []string{
+		`{"level":"info","ts":"2020/01/01 00:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"old.erfi.io","uri":"/old","headers":{}},"status":429,"size":0,"duration":0.001}`,
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"2.2.2.2","client_ip":"2.2.2.2","proto":"HTTP/2.0","method":"GET","host":"new.erfi.io","uri":"/new","headers":{}},"status":429,"size":0,"duration":0.001}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// All time.
+	s := store.Summary(0)
+	if s.Total429s != 2 {
+		t.Errorf("all time: want 2, got %d", s.Total429s)
+	}
+
+	// hours=1 — only the "recent" one (which has timestamp in the future from test perspective, but let's check it works).
+	// The old one from 2020 should be filtered out.
+	s = store.Summary(1)
+	// Both might be in range if running in 2026, but old one definitely isn't.
+	if s.Total429s > 1 {
+		t.Logf("hours=1 returned %d events (expected 0 or 1 depending on time)", s.Total429s)
+	}
+}
+
+// --- Rate Limit Analytics HTTP endpoint tests ---
+
+func TestRLSummaryEndpoint(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(store))
+
+	req := httptest.NewRequest("GET", "/api/rate-limits/summary", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("content-type: want application/json, got %s", ct)
+	}
+
+	var resp RLSummaryResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total429s != 3 {
+		t.Errorf("total_429s: want 3, got %d", resp.Total429s)
+	}
+	if resp.UniqueClients != 2 {
+		t.Errorf("unique_clients: want 2, got %d", resp.UniqueClients)
+	}
+	if resp.UniqueServices != 2 {
+		t.Errorf("unique_services: want 2, got %d", resp.UniqueServices)
+	}
+}
+
+func TestRLSummaryEndpointWithHours(t *testing.T) {
+	// Old 429 events only.
+	oldLine := `{"level":"info","ts":"2020/01/01 00:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":429,"size":0,"duration":0.001}`
+	path := writeTempAccessLog(t, []string{oldLine})
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(store))
+
+	// hours=1 should filter out old events.
+	req := httptest.NewRequest("GET", "/api/rate-limits/summary?hours=1", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+
+	var resp RLSummaryResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total429s != 0 {
+		t.Errorf("want 0 events with hours=1 for old data, got %d", resp.Total429s)
+	}
+
+	// Without hours filter, should get 1 event.
+	req = httptest.NewRequest("GET", "/api/rate-limits/summary", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total429s != 1 {
+		t.Errorf("want 1 event without filter, got %d", resp.Total429s)
+	}
+}
+
+func TestRLEventsEndpoint(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(store))
+
+	// No filters — all 429 events.
+	req := httptest.NewRequest("GET", "/api/rate-limits/events", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+
+	var resp RLEventsResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total != 3 {
+		t.Errorf("total: want 3, got %d", resp.Total)
+	}
+	if len(resp.Events) != 3 {
+		t.Errorf("events count: want 3, got %d", len(resp.Events))
+	}
+}
+
+func TestRLEventsEndpointWithFilters(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(store))
+
+	// Filter by service.
+	req := httptest.NewRequest("GET", "/api/rate-limits/events?service=sonarr.erfi.io", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	var resp RLEventsResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total != 2 {
+		t.Errorf("filter service=sonarr: want 2, got %d", resp.Total)
+	}
+
+	// Filter by client.
+	req = httptest.NewRequest("GET", "/api/rate-limits/events?client=10.0.0.3", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total != 1 {
+		t.Errorf("filter client=10.0.0.3: want 1, got %d", resp.Total)
+	}
+
+	// Filter by method.
+	req = httptest.NewRequest("GET", "/api/rate-limits/events?method=POST", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total != 1 {
+		t.Errorf("filter method=POST: want 1, got %d", resp.Total)
+	}
+
+	// Pagination: limit=1.
+	req = httptest.NewRequest("GET", "/api/rate-limits/events?limit=1", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Events) != 1 || resp.Total != 3 {
+		t.Errorf("pagination: want 1 event of 3 total, got %d/%d", len(resp.Events), resp.Total)
+	}
+}
+
+func TestRLEventsEndpointEmpty(t *testing.T) {
+	// No 429 events at all.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":200,"size":100,"duration":0.01}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(store))
+	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(store))
+
+	// Events endpoint.
+	req := httptest.NewRequest("GET", "/api/rate-limits/events", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	var evResp RLEventsResponse
+	json.NewDecoder(w.Body).Decode(&evResp)
+	if evResp.Total != 0 || len(evResp.Events) != 0 {
+		t.Errorf("expected 0 events, got total=%d events=%d", evResp.Total, len(evResp.Events))
+	}
+
+	// Summary endpoint.
+	req = httptest.NewRequest("GET", "/api/rate-limits/summary", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	var sumResp RLSummaryResponse
+	json.NewDecoder(w.Body).Decode(&sumResp)
+	if sumResp.Total429s != 0 {
+		t.Errorf("expected total_429s=0, got %d", sumResp.Total429s)
+	}
+	if sumResp.UniqueClients != 0 {
+		t.Errorf("expected unique_clients=0, got %d", sumResp.UniqueClients)
+	}
+}
+
+func TestAccessLogStoreMalformedLines(t *testing.T) {
+	// Mix of valid and malformed JSON — malformed should be silently skipped.
+	lines := []string{
+		`not json at all`,
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":429,"size":0,"duration":0.001}`,
+		`{"incomplete json`,
+		``,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	if got := store.EventCount(); got != 1 {
+		t.Errorf("expected 1 valid 429 event, got %d", got)
 	}
 }

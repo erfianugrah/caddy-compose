@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:1.9.0-2.10.2
+    image: erfianugrah/caddy:1.11.0-2.10.2
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -40,6 +40,8 @@ services:
       - /mnt/user/data/caddy/log:/var/log
       # Dynamic WAF overrides — written by waf-api Policy Engine
       - /mnt/user/data/caddy/coraza:/data/coraza
+      # Dynamic rate limit zone files — written by waf-api Rate Limit Engine
+      - /mnt/user/data/caddy/rl:/data/caddy/rl
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
       - tmpfs_caddy:/var/run
@@ -127,6 +129,8 @@ services:
       - /mnt/user/data/waf-api:/data
       # Dynamic WAF overrides — shared with Caddy
       - /mnt/user/data/caddy/coraza:/data/coraza
+      # Dynamic rate limit zone files — shared with Caddy
+      - /mnt/user/data/caddy/rl:/data/rl
       # Caddyfile — read-only, needed for reload via admin API
       - /mnt/user/data/caddy/Caddyfile:/data/Caddyfile:ro
     environment:
@@ -134,7 +138,10 @@ services:
       - WAF_AUDIT_LOG=/var/log/coraza-audit.log
       - WAF_EXCLUSIONS_FILE=/data/exclusions.json
       - WAF_CONFIG_FILE=/data/waf-config.json
+      - WAF_RATELIMIT_FILE=/data/rate-limits.json
+      - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
       - WAF_CORAZA_DIR=/data/coraza
+      - WAF_RATELIMIT_DIR=/data/rl
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
 

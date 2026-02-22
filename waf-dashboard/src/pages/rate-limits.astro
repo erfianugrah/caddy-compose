@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import RateLimitsPanel from "../components/RateLimitsPanel";
+---
+
+<DashboardLayout title="WAF Dashboard — Rate Limits" active="rate-limits">
+  <RateLimitsPanel client:load />
+</DashboardLayout>

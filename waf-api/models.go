@@ -306,6 +306,28 @@ var validGroupOperators = map[string]bool{
 	"or":  true,
 }
 
+// Rate limit zone configuration
+
+type RateLimitZone struct {
+	Name    string `json:"name"`
+	Events  int    `json:"events"`  // Max events in window
+	Window  string `json:"window"`  // Duration string (e.g. "1m", "30s", "1h")
+	Enabled bool   `json:"enabled"` // Whether rate limiting is active for this zone
+}
+
+type RateLimitConfig struct {
+	Zones []RateLimitZone `json:"zones"`
+}
+
+// RateLimitDeployResponse is returned by the rate limit deploy endpoint.
+type RateLimitDeployResponse struct {
+	Status    string   `json:"status"`
+	Message   string   `json:"message"`
+	Files     []string `json:"files"`
+	Reloaded  bool     `json:"reloaded"`
+	Timestamp string   `json:"timestamp"`
+}
+
 // Valid hours filter values
 var validHours = map[int]bool{
 	1:   true,

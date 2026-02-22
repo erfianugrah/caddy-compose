@@ -720,3 +720,119 @@ export async function updateConfig(data: Partial<WAFConfig>): Promise<WAFConfig>
     service_profiles: mapServicesToProfiles(raw.services),
   };
 }
+
+// ─── Rate Limits ────────────────────────────────────────────────────
+
+export interface RateLimitZone {
+  name: string;
+  events: number;
+  window: string;
+  enabled: boolean;
+}
+
+export interface RateLimitConfig {
+  zones: RateLimitZone[];
+}
+
+export interface RateLimitDeployResult {
+  status: "deployed" | "partial";
+  message: string;
+  files: string[];
+  reloaded: boolean;
+  timestamp: string;
+}
+
+export async function getRateLimits(): Promise<RateLimitConfig> {
+  const raw = await fetchJSON<RateLimitConfig>(`${API_BASE}/rate-limits`);
+  return {
+    zones: (raw.zones ?? []).map((z) => ({
+      name: z.name,
+      events: z.events,
+      window: z.window,
+      enabled: z.enabled,
+    })),
+  };
+}
+
+export async function updateRateLimits(config: RateLimitConfig): Promise<RateLimitConfig> {
+  return putJSON<RateLimitConfig>(`${API_BASE}/rate-limits`, config);
+}
+
+export async function deployRateLimits(): Promise<RateLimitDeployResult> {
+  return postJSON<RateLimitDeployResult>(`${API_BASE}/rate-limits/deploy`, {});
+}
+
+// ─── Rate Limit Analytics (429 events) ──────────────────────────────
+
+export interface RLTimelinePoint {
+  hour: string;
+  count: number;
+  blocked: number;
+}
+
+export interface RLClientCount {
+  client_ip: string;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface RLServiceCount {
+  service: string;
+  count: number;
+}
+
+export interface RLURICount {
+  uri: string;
+  count: number;
+  services: string[];
+}
+
+export interface RateLimitEvent {
+  timestamp: string;
+  client_ip: string;
+  service: string;
+  method: string;
+  uri: string;
+  user_agent: string;
+}
+
+export interface RLSummaryData {
+  total_429s: number;
+  unique_clients: number;
+  unique_services: number;
+  events_by_hour: RLTimelinePoint[];
+  top_clients: RLClientCount[];
+  top_services: RLServiceCount[];
+  top_uris: RLURICount[];
+  recent_events: RateLimitEvent[];
+}
+
+export interface RLEventsData {
+  total: number;
+  events: RateLimitEvent[];
+}
+
+export async function getRLSummary(hours?: number): Promise<RLSummaryData> {
+  const qs = hours ? `?hours=${hours}` : "";
+  return fetchJSON<RLSummaryData>(`${API_BASE}/rate-limits/summary${qs}`);
+}
+
+export async function getRLEvents(params?: {
+  service?: string;
+  client?: string;
+  method?: string;
+  limit?: number;
+  offset?: number;
+  hours?: number;
+}): Promise<RLEventsData> {
+  const q = new URLSearchParams();
+  if (params?.service) q.set("service", params.service);
+  if (params?.client) q.set("client", params.client);
+  if (params?.method) q.set("method", params.method);
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.offset) q.set("offset", String(params.offset));
+  if (params?.hours) q.set("hours", String(params.hours));
+  const qs = q.toString();
+  return fetchJSON<RLEventsData>(`${API_BASE}/rate-limits/events${qs ? `?${qs}` : ""}`);
+}

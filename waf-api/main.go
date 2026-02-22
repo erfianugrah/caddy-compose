@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -17,9 +18,12 @@ func main() {
 	port := envOr("WAF_API_PORT", "8080")
 	exclusionsFile := envOr("WAF_EXCLUSIONS_FILE", "/data/exclusions.json")
 	configFile := envOr("WAF_CONFIG_FILE", "/data/waf-config.json")
+	rateLimitFile := envOr("WAF_RATELIMIT_FILE", "/data/rate-limits.json")
+	combinedAccessLog := envOr("WAF_COMBINED_ACCESS_LOG", "/var/log/combined-access.log")
 
 	deployCfg := DeployConfig{
 		CorazaDir:     envOr("WAF_CORAZA_DIR", "/data/coraza"),
+		RateLimitDir:  envOr("WAF_RATELIMIT_DIR", "/data/rl"),
 		CaddyfilePath: envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
 		CaddyAdminURL: envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
 	}
@@ -29,14 +33,23 @@ func main() {
 		log.Printf("warning: could not initialize coraza dir: %v", err)
 	}
 
-	log.Printf("waf-api starting: log=%s port=%s exclusions=%s config=%s coraza_dir=%s",
-		logPath, port, exclusionsFile, configFile, deployCfg.CorazaDir)
+	// Ensure rate limit directory exists.
+	if err := ensureRateLimitDir(deployCfg.RateLimitDir); err != nil {
+		log.Printf("warning: could not initialize rate limit dir: %v", err)
+	}
+
+	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir)
 
 	store := NewStore(logPath)
 	store.StartTailing(30 * time.Second)
 
+	accessLogStore := NewAccessLogStore(combinedAccessLog)
+	accessLogStore.StartTailing(30 * time.Second)
+
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	configStore := NewConfigStore(configFile)
+	rateLimitStore := NewRateLimitStore(rateLimitFile)
 
 	mux := http.NewServeMux()
 
@@ -72,6 +85,15 @@ func main() {
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore))
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
+
+	// Rate Limits
+	mux.HandleFunc("GET /api/rate-limits", handleGetRateLimits(rateLimitStore))
+	mux.HandleFunc("PUT /api/rate-limits", handleUpdateRateLimits(rateLimitStore))
+	mux.HandleFunc("POST /api/rate-limits/deploy", handleDeployRateLimits(rateLimitStore, deployCfg))
+
+	// Rate Limit Analytics (429 events from combined access log)
+	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(accessLogStore))
+	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(accessLogStore))
 
 	handler := corsMiddleware(mux)
 
@@ -442,6 +464,100 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) h
 			Reloaded:  reloaded,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		})
+	}
+}
+
+// --- Handlers: Rate Limits ---
+
+func handleGetRateLimits(rs *RateLimitStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, rs.Get())
+	}
+}
+
+func handleUpdateRateLimits(rs *RateLimitStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var cfg RateLimitConfig
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body", Details: err.Error()})
+			return
+		}
+		if err := validateRateLimitConfig(cfg); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
+			return
+		}
+		updated, err := rs.Update(cfg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update rate limits", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
+	}
+}
+
+func handleDeployRateLimits(rs *RateLimitStore, deployCfg DeployConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		cfg := rs.Get()
+
+		// Write zone files to the shared volume.
+		written, err := writeZoneFiles(deployCfg.RateLimitDir, cfg.Zones)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to write zone files",
+				Details: err.Error(),
+			})
+			return
+		}
+
+		// Reload Caddy via admin API.
+		reloaded := true
+		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
+			log.Printf("warning: Caddy reload failed after rate limit deploy: %v", err)
+			reloaded = false
+		}
+
+		status := "deployed"
+		msg := fmt.Sprintf("Wrote %d zone files and Caddy reloaded successfully", len(written))
+		if !reloaded {
+			status = "partial"
+			msg = fmt.Sprintf("Wrote %d zone files but Caddy reload failed — manual reload may be needed", len(written))
+		}
+
+		writeJSON(w, http.StatusOK, RateLimitDeployResponse{
+			Status:    status,
+			Message:   msg,
+			Files:     written,
+			Reloaded:  reloaded,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+}
+
+// ─── Rate Limit Analytics handlers ──────────────────────────────────
+
+func handleRLSummary(als *AccessLogStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hours := parseHours(r)
+		writeJSON(w, http.StatusOK, als.Summary(hours))
+	}
+}
+
+func handleRLEvents(als *AccessLogStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		service := q.Get("service")
+		client := q.Get("client")
+		method := q.Get("method")
+		limit := queryInt(q.Get("limit"), 50)
+		if limit <= 0 || limit > 1000 {
+			limit = 50
+		}
+		offset := queryInt(q.Get("offset"), 0)
+		if offset < 0 {
+			offset = 0
+		}
+		hours := parseHours(r)
+		writeJSON(w, http.StatusOK, als.FilteredEvents(service, client, method, limit, offset, hours))
 	}
 }
 

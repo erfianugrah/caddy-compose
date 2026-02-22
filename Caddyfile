@@ -217,25 +217,12 @@
 	# No WAF processing — placeholder snippet for services that don't need it.
 }
 
-# Configurable rate limit — per client IP, excludes WebSocket upgrades
-# Sets X-RateLimit-Limit and X-RateLimit-Policy headers on all responses.
+# Rate limiting — per-zone .caddy files managed by waf-api Rate Limit Engine.
+# Each site block imports its zone file via glob pattern:
+#   import /data/caddy/rl/<zone>*.caddy
+# If no file exists for a zone, the glob is a no-op (no rate limit applied).
+# Zone files are written by waf-api and contain rate_limit directives.
 # The plugin automatically sets Retry-After on 429 responses.
-# Usage: import rate_limit <zone_name> <events> <window>
-# Example: import rate_limit sonarr 100 1m
-(rate_limit) {
-	rate_limit {
-		zone {args[0]} {
-			match {
-				not header Connection *Upgrade*
-			}
-			key {http.request.remote.host}
-			events {args[1]}
-			window {args[2]}
-		}
-	}
-	header X-RateLimit-Limit "{args[1]}"
-	header X-RateLimit-Policy "{args[1]};w={args[2]};name=\"{args[0]}\""
-}
 
 # Common TLS config snippet
 (tls_config) {
@@ -249,13 +236,24 @@
 	}
 }
 
-# Standard log config — INFO level, per-site log file
+# Standard log config — INFO level, per-site log file + combined log
 (site_log) {
 	log {
 		level INFO
 		output file /var/log/{args[0]}-access.log {
 			roll_size 256mb
 			roll_keep 5
+			roll_keep_for 168h
+		}
+		format json {
+			time_format wall
+		}
+	}
+	log combined {
+		level INFO
+		output file /var/log/combined-access.log {
+			roll_size 256mb
+			roll_keep 3
 			roll_keep_for 168h
 		}
 		format json {
@@ -311,7 +309,7 @@ caddy.erfi.io {
 	import cors
 	import security_headers
 	import ipsum_blocklist
-	import rate_limit caddy 100 1m
+	import /data/caddy/rl/caddy*.caddy
 	import tls_config
 	encode zstd gzip
 	respond "Caddy is running. Admin API available via localhost:2019 only." 200
@@ -324,7 +322,7 @@ waf.erfi.io {
 	import security_headers
 	import forward_auth
 	import ipsum_blocklist
-	import rate_limit waf 200 1m
+	import /data/caddy/rl/waf*.caddy
 	import tls_config
 	encode zstd gzip
 	handle /api/* {
@@ -351,7 +349,7 @@ authelia.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit authelia 200 1m
+	import /data/caddy/rl/authelia*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.99.2:9091 {
@@ -367,7 +365,7 @@ servarr.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit servarr 1000 1m
+	import /data/caddy/rl/servarr*.caddy
 	import tls_config
 	import forward_auth
 	encode zstd gzip
@@ -384,7 +382,7 @@ sonarr.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit sonarr 300 1m
+	import /data/caddy/rl/sonarr*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.3:8989 {
@@ -400,7 +398,7 @@ radarr.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit radarr 300 1m
+	import /data/caddy/rl/radarr*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.2:7878 {
@@ -416,7 +414,7 @@ bazarr.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit bazarr 300 1m
+	import /data/caddy/rl/bazarr*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.4:6767 {
@@ -432,7 +430,7 @@ vault.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit vault 300 1m
+	import /data/caddy/rl/vault*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.4.2:80 {
@@ -449,7 +447,7 @@ prowlarr.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit prowlarr 300 1m
+	import /data/caddy/rl/prowlarr*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.10:9696 {
@@ -465,7 +463,7 @@ jellyfin.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit jellyfin 1000 1m
+	import /data/caddy/rl/jellyfin*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.15:8096 {
@@ -481,7 +479,7 @@ qbit.erfi.io {
 	import static_cache
 	import waf_moderate
 	import ipsum_blocklist
-	import rate_limit qbit 300 1m
+	import /data/caddy/rl/qbit*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.22:8080 {
@@ -498,7 +496,7 @@ change.erfi.io {
 	import waf
 	import ipsum_blocklist
 	import forward_auth
-	import rate_limit change 300 1m
+	import /data/caddy/rl/change*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.3.2:5000 {
@@ -514,7 +512,7 @@ seerr.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit seerr 300 1m
+	import /data/caddy/rl/seerr*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.21:5055 {
@@ -530,7 +528,7 @@ keycloak.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit keycloak 100 1m
+	import /data/caddy/rl/keycloak*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.12.2:8080 {
@@ -546,7 +544,7 @@ joplin.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit joplin 300 1m
+	import /data/caddy/rl/joplin*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.13.2:22300 {
@@ -562,7 +560,7 @@ navidrome.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit navidrome 1000 1m
+	import /data/caddy/rl/navidrome*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.17:4533 {
@@ -578,7 +576,7 @@ sabnzbd.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit sabnzbd 300 1m
+	import /data/caddy/rl/sabnzbd*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.19:6666 {
@@ -594,7 +592,7 @@ immich.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit immich 1000 1m
+	import /data/caddy/rl/immich*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.22.2:2283 {
@@ -609,7 +607,7 @@ caddy-prometheus.erfi.io {
 	import security_headers
 	import waf_off
 	import ipsum_blocklist
-	import rate_limit caddy-prometheus 100 1m
+	import /data/caddy/rl/caddy-prometheus*.caddy
 	import tls_config
 	import forward_auth
 	encode zstd gzip
@@ -626,7 +624,7 @@ copyparty.erfi.io {
 	import static_cache
 	import waf
 	import ipsum_blocklist
-	import rate_limit copyparty 300 1m
+	import /data/caddy/rl/copyparty*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.66.2:3923 {
@@ -642,7 +640,7 @@ dockge-sg.erfi.io {
 	import static_cache
 	import waf_moderate
 	import ipsum_blocklist
-	import rate_limit dockge 100 1m
+	import /data/caddy/rl/dockge*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.17.0.2:5001 {
@@ -658,7 +656,7 @@ httpbun.erfi.io {
 	import static_cache
 	import waf_strict
 	import ipsum_blocklist
-	import rate_limit httpbun 100 1m
+	import /data/caddy/rl/httpbun*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.15.2:80 {
@@ -674,7 +672,7 @@ httpbin.erfi.io {
 	import static_cache
 	import waf_strict
 	import ipsum_blocklist
-	import rate_limit httpbin 100 1m
+	import /data/caddy/rl/httpbin*.caddy
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.15.3:80 {
@@ -687,9 +685,11 @@ httpbin.erfi.io {
 # Internal admin API proxy — allows waf-api to trigger Caddy reloads.
 # Restricted to the waf-api Docker subnet (172.19.98.0/24).
 :2020 {
-	@allowed remote_ip 172.19.98.0/24
+	@allowed remote_ip 172.19.98.0/24 172.17.0.0/16
 	handle @allowed {
-		reverse_proxy localhost:2019
+		reverse_proxy localhost:2019 {
+			header_up Host localhost:2019
+		}
 	}
 	handle {
 		respond "Forbidden" 403

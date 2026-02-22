@@ -17,6 +17,11 @@ type DeployConfig struct {
 	// These files are volume-mounted into the Caddy container.
 	CorazaDir string
 
+	// RateLimitDir is the directory for per-zone rate limit .caddy files.
+	// These files are volume-mounted into the Caddy container and imported
+	// by each site block via glob patterns.
+	RateLimitDir string
+
 	// CaddyfilePath is the path to the Caddyfile (read-only mount from Caddy).
 	// Used to POST to Caddy's admin API for reload.
 	CaddyfilePath string

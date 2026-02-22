@@ -27,14 +27,10 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion) string {
 	b.WriteString("# This file is loaded BEFORE the CRS rules.\n")
 	b.WriteString("# ============================================================\n\n")
 
-	// CRS Setup Variables
-	b.WriteString("# --- CRS Setup ---\n")
-	b.WriteString(fmt.Sprintf("SecAction \"id:900000,phase:1,pass,t:none,nolog,setvar:tx.blocking_paranoia_level=%d\"\n", cfg.ParanoiaLevel))
-	b.WriteString(fmt.Sprintf("SecAction \"id:900001,phase:1,pass,t:none,nolog,setvar:tx.detection_paranoia_level=%d\"\n", cfg.ParanoiaLevel))
-	b.WriteString(fmt.Sprintf("SecAction \"id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=%d\"\n", cfg.InboundThreshold))
-	b.WriteString(fmt.Sprintf("SecAction \"id:900111,phase:1,pass,t:none,nolog,setvar:tx.outbound_anomaly_score_threshold=%d\"\n", cfg.OutboundThreshold))
-	b.WriteString(fmt.Sprintf("\nSecRuleEngine %s\n", cfg.RuleEngine))
-	b.WriteString("\n")
+	// CRS setup (paranoia level, thresholds, engine mode) is NOT generated here.
+	// Those are defined per-tier in the Caddyfile WAF snippets (waf, waf_moderate,
+	// waf_strict) with different threshold values per tier. Writing them here
+	// would flatten all tiers to the same values and cause duplicate rule ID errors.
 
 	// Pre-CRS exclusions: quick actions, runtime ctl: rules, and raw rules.
 	preCRSExclusions := filterExclusions(exclusions, true)
