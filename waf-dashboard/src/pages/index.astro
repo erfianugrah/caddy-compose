@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import OverviewDashboard from "../components/OverviewDashboard";
+---
+
+<DashboardLayout title="WAF Dashboard — Overview" active="overview">
+  <OverviewDashboard client:load />
+</DashboardLayout>

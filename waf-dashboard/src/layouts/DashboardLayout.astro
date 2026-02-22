@@ -1,0 +1,252 @@
+---
+import "../styles/globals.css";
+
+interface Props {
+  title?: string;
+  active?: string;
+}
+
+const { title = "WAF Dashboard", active = "overview" } = Astro.props;
+
+const navItems = [
+  { id: "overview", label: "Overview", href: "/", icon: "grid" },
+  { id: "analytics", label: "Analytics", href: "/analytics", icon: "bar-chart" },
+  { id: "services", label: "Services", href: "/services", icon: "server" },
+  { id: "events", label: "Events", href: "/events", icon: "list" },
+  { id: "policy", label: "Policy", href: "/policy", icon: "shield" },
+  { id: "settings", label: "Settings", href: "/settings", icon: "settings" },
+];
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="min-h-screen bg-background text-foreground antialiased">
+    <div class="flex min-h-screen">
+      <!-- Sidebar -->
+      <aside
+        id="sidebar"
+        class="hidden w-60 flex-shrink-0 border-r border-border bg-navy-950 md:block"
+      >
+        <div class="flex h-full flex-col">
+          <!-- Logo area -->
+          <div class="flex h-14 items-center gap-2 border-b border-border px-4">
+            <div class="flex h-8 w-8 items-center justify-center rounded-md bg-neon-green/10">
+              <svg
+                class="h-5 w-5 text-neon-green"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+            <span
+              class="text-sm font-bold tracking-wider text-neon-green glow-green"
+            >
+              WAF CTRL
+            </span>
+          </div>
+
+          <!-- Navigation -->
+          <nav class="flex-1 space-y-1 px-2 py-4">
+            {
+              navItems.map((item) => (
+                <a
+                  href={item.href}
+                  class:list={[
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    active === item.id
+                      ? "bg-neon-green/10 text-neon-green"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  ]}
+                >
+                  {/* Grid / Overview */}
+                  {item.icon === "grid" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <rect x="3" y="3" width="7" height="7" />
+                      <rect x="14" y="3" width="7" height="7" />
+                      <rect x="3" y="14" width="7" height="7" />
+                      <rect x="14" y="14" width="7" height="7" />
+                    </svg>
+                  )}
+                  {/* Bar Chart / Analytics */}
+                  {item.icon === "bar-chart" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <line x1="18" y1="20" x2="18" y2="10" />
+                      <line x1="12" y1="20" x2="12" y2="4" />
+                      <line x1="6" y1="20" x2="6" y2="14" />
+                    </svg>
+                  )}
+                  {/* Server / Services */}
+                  {item.icon === "server" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                      <rect
+                        x="2"
+                        y="14"
+                        width="20"
+                        height="8"
+                        rx="2"
+                        ry="2"
+                      />
+                      <line x1="6" y1="6" x2="6.01" y2="6" />
+                      <line x1="6" y1="18" x2="6.01" y2="18" />
+                    </svg>
+                  )}
+                  {/* List / Events */}
+                  {item.icon === "list" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <line x1="8" y1="6" x2="21" y2="6" />
+                      <line x1="8" y1="12" x2="21" y2="12" />
+                      <line x1="8" y1="18" x2="21" y2="18" />
+                      <line x1="3" y1="6" x2="3.01" y2="6" />
+                      <line x1="3" y1="12" x2="3.01" y2="12" />
+                      <line x1="3" y1="18" x2="3.01" y2="18" />
+                    </svg>
+                  )}
+                  {/* Shield / Policy */}
+                  {item.icon === "shield" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  )}
+                  {/* Settings / Gear */}
+                  {item.icon === "settings" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  )}
+                  <span>{item.label}</span>
+                </a>
+              ))
+            }
+          </nav>
+
+          <!-- Footer -->
+          <div class="border-t border-border px-4 py-3">
+            <div class="text-xs text-muted-foreground">ModSecurity + CRS</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main content area -->
+      <div class="flex flex-1 flex-col">
+        <!-- Header -->
+        <header
+          class="flex h-14 items-center justify-between border-b border-border bg-navy-950/50 px-6"
+        >
+          <!-- Mobile menu button -->
+          <button
+            class="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent md:hidden"
+            aria-label="Toggle menu"
+            id="mobile-menu-btn"
+          >
+            <svg
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+
+          <h1 class="text-sm font-medium text-foreground">
+            {title}
+          </h1>
+
+          <div class="flex items-center gap-3">
+            <!-- Status indicator -->
+            <div class="flex items-center gap-2">
+              <span class="relative flex h-2 w-2">
+                <span
+                  class="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon-green opacity-75"
+                ></span>
+                <span
+                  class="relative inline-flex h-2 w-2 rounded-full bg-neon-green"
+                ></span>
+              </span>
+              <span class="text-xs text-muted-foreground">MONITORING</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- Page content -->
+        <main class="flex-1 overflow-auto p-6">
+          <slot />
+        </main>
+      </div>
+    </div>
+
+    <!-- Mobile nav overlay -->
+    <script>
+      const btn = document.getElementById("mobile-menu-btn");
+      const sidebar = document.getElementById("sidebar");
+      if (btn && sidebar) {
+        btn.addEventListener("click", () => {
+          sidebar.classList.toggle("hidden");
+          sidebar.classList.toggle("fixed");
+          sidebar.classList.toggle("inset-0");
+          sidebar.classList.toggle("z-50");
+          sidebar.classList.toggle("w-60");
+        });
+        // Close sidebar when clicking a link on mobile
+        sidebar.querySelectorAll("a").forEach((link) => {
+          link.addEventListener("click", () => {
+            if (sidebar.classList.contains("fixed")) {
+              sidebar.classList.add("hidden");
+              sidebar.classList.remove("fixed", "inset-0", "z-50");
+            }
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

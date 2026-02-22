@@ -87,6 +87,45 @@ services:
       AUTHELIA_SESSION_SECRET: '${AUTHELIA_SESSION_SECRET}'
       AUTHELIA_STORAGE_ENCRYPTION_KEY: '${AUTHELIA_STORAGE_ENCRYPTION_KEY}'
 
+  waf-api:
+    build:
+      context: .
+      dockerfile: waf-api/Dockerfile
+    image: erfianugrah/waf-api:latest
+    hostname: waf-api
+    container_name: waf-api
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      waf:
+        ipv4_address: 172.19.98.2
+    volumes:
+      - /mnt/user/data/caddy/log:/var/log:ro
+      - /mnt/user/data/waf-api:/data
+    environment:
+      - TZ=Asia/Singapore
+      - WAF_AUDIT_LOG=/var/log/coraza-audit.log
+      - WAF_EXCLUSIONS_FILE=/data/exclusions.json
+      - WAF_CONFIG_FILE=/data/waf-config.json
+
 networks:
   authelia:
     driver: bridge
@@ -94,6 +133,12 @@ networks:
       config:
         - subnet: 172.19.99.0/24
           gateway: 172.19.99.1
+  waf:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.98.0/24
+          gateway: 172.19.98.1
 
 volumes:
   tmpfs_run:

@@ -1,0 +1,683 @@
+import { useState, useEffect, useCallback } from "react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  Search,
+  Globe,
+  Shield,
+  Target,
+  AlertTriangle,
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  lookupIP,
+  fetchTopBlockedIPs,
+  fetchTopTargetedURIs,
+  type IPLookupData,
+  type TopBlockedIP,
+  type TopTargetedURI,
+} from "@/lib/api";
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function formatDateTime(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return ts;
+  }
+}
+
+const chartTooltipStyle = {
+  contentStyle: {
+    backgroundColor: "#0f1538",
+    border: "1px solid #1e275c",
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#e0e6f0",
+  },
+  itemStyle: { color: "#e0e6f0" },
+  labelStyle: { color: "#7a8baa" },
+};
+
+// ─── IP Lookup Panel ────────────────────────────────────────────────
+
+function IPLookupPanel() {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<IPLookupData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSearch = useCallback(() => {
+    const ip = query.trim();
+    if (!ip) return;
+    setLoading(true);
+    setError(null);
+    lookupIP(ip)
+      .then(setData)
+      .catch((err) => {
+        setError(err.message);
+        setData(null);
+      })
+      .finally(() => setLoading(false));
+  }, [query]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSearch();
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Search bar */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Enter IP address (e.g., 192.168.1.100)"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="flex-1"
+            />
+            <Button
+              onClick={handleSearch}
+              disabled={!query.trim() || loading}
+              size="sm"
+            >
+              {loading ? "Searching..." : "Lookup"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Lookup Failed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {loading && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-5 w-full" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <Skeleton className="h-[200px] w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {data && !loading && (
+        <div className="space-y-4">
+          {/* IP Details + Timeline */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* IP Details Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-neon-cyan" />
+                  <CardTitle className="text-sm font-mono">{data.ip}</CardTitle>
+                </div>
+                <CardDescription>IP address details</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      First Seen
+                    </p>
+                    <p className="text-sm font-medium">
+                      {formatDateTime(data.first_seen)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Last Seen
+                    </p>
+                    <p className="text-sm font-medium">
+                      {formatDateTime(data.last_seen)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Total Events
+                    </p>
+                    <p className="text-sm font-bold text-neon-cyan">
+                      {data.total_events.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Blocked
+                    </p>
+                    <p className="text-sm font-bold text-neon-pink">
+                      {data.blocked_count.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Per-service breakdown */}
+                {data.services.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Per-Service Breakdown
+                    </p>
+                    <div className="space-y-1">
+                      {data.services.map((svc) => (
+                        <div
+                          key={svc.service}
+                          className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
+                        >
+                          <span className="font-medium">{svc.service}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="tabular-nums text-muted-foreground">
+                              {svc.total} total
+                            </span>
+                            {svc.blocked > 0 && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[10px] px-1.5 py-0"
+                              >
+                                {svc.blocked} blocked
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Event Timeline for this IP */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Event Timeline</CardTitle>
+                <CardDescription>Events from this IP over time</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data.timeline.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart
+                      data={data.timeline}
+                      margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="ipGradBlocked" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ff006e" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#ff006e" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="ipGradLogged" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#00d4ff" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
+                      <XAxis dataKey="hour" stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip {...chartTooltipStyle} />
+                      <Area type="monotone" dataKey="blocked" stroke="#ff006e" fill="url(#ipGradBlocked)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="logged" stroke="#00d4ff" fill="url(#ipGradLogged)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="py-8 text-center text-xs text-muted-foreground">
+                    No timeline data available
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Events for this IP */}
+          {data.recent_events.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Recent Events</CardTitle>
+                <CardDescription>Latest events from {data.ip}</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Time</TableHead>
+                      <TableHead>Service</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>URI</TableHead>
+                      <TableHead>Rule</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.recent_events.slice(0, 20).map((evt, idx) => (
+                      <TableRow key={evt.id || idx}>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {formatDateTime(evt.timestamp)}
+                        </TableCell>
+                        <TableCell className="text-xs">{evt.service}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                            {evt.method}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-xs font-mono">
+                          {evt.uri}
+                        </TableCell>
+                        <TableCell>
+                          {evt.rule_id ? (
+                            <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                              {evt.rule_id}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {evt.blocked ? (
+                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                              BLOCKED
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              LOGGED
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {!data && !loading && !error && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Search className="mb-3 h-8 w-8 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              Enter an IP address above to view its WAF event history
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Top Blocked IPs Panel ──────────────────────────────────────────
+
+function TopBlockedIPsPanel() {
+  const [data, setData] = useState<TopBlockedIP[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchTopBlockedIPs()
+      .then(setData)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Shield className="h-4 w-4 text-neon-pink" />
+          <CardTitle className="text-sm">Top Blocked IPs</CardTitle>
+        </div>
+        <CardDescription>IP addresses with the most blocked events</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <div className="space-y-2 p-6">
+            {[...Array(8)].map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : data.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>IP Address</TableHead>
+                <TableHead className="text-right">Events</TableHead>
+                <TableHead className="text-right">Blocked</TableHead>
+                <TableHead>Block Rate</TableHead>
+                <TableHead>First Seen</TableHead>
+                <TableHead>Last Seen</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.map((ip) => (
+                <TableRow key={ip.client_ip}>
+                  <TableCell className="font-mono text-xs">
+                    {ip.client_ip}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {ip.total.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs text-neon-pink">
+                    {ip.blocked.toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-12 overflow-hidden rounded-full bg-navy-800">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            ip.block_rate > 50
+                              ? "bg-neon-pink"
+                              : ip.block_rate > 20
+                                ? "bg-neon-amber"
+                                : "bg-neon-green"
+                          }`}
+                          style={{ width: `${Math.min(ip.block_rate, 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {ip.block_rate.toFixed(1)}%
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatDateTime(ip.first_seen)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatDateTime(ip.last_seen)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            No blocked IP data available
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Top Targeted URIs Panel ────────────────────────────────────────
+
+function TopTargetedURIsPanel() {
+  const [data, setData] = useState<TopTargetedURI[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchTopTargetedURIs()
+      .then(setData)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Target className="h-4 w-4 text-neon-amber" />
+          <CardTitle className="text-sm">Top Targeted URIs</CardTitle>
+        </div>
+        <CardDescription>Most-hit URIs across all services</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <div className="space-y-2 p-6">
+            {[...Array(8)].map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : data.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="max-w-[300px]">URI</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Blocked</TableHead>
+                <TableHead>Services</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.map((uri, idx) => (
+                <TableRow key={idx}>
+                  <TableCell className="max-w-[300px] truncate font-mono text-xs">
+                    {uri.uri}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {uri.total.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs text-neon-pink">
+                    {uri.blocked.toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {uri.services.slice(0, 3).map((s) => (
+                        <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0">
+                          {s}
+                        </Badge>
+                      ))}
+                      {uri.services.length > 3 && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          +{uri.services.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            No URI data available
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Geographic Placeholder Panel ───────────────────────────────────
+
+function GeoPlaceholderPanel() {
+  const [data, setData] = useState<TopBlockedIP[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchTopBlockedIPs()
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Group IPs by first two octets as a rough "grouping"
+  const grouped = data.reduce<Record<string, { count: number; ips: string[] }>>((acc, ip) => {
+    const parts = ip.client_ip.split(".");
+    const prefix = parts.length >= 2 ? `${parts[0]}.${parts[1]}.x.x` : ip.client_ip;
+    if (!acc[prefix]) acc[prefix] = { count: 0, ips: [] };
+    acc[prefix].count += ip.total;
+    acc[prefix].ips.push(ip.client_ip);
+    return acc;
+  }, {});
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Globe className="h-4 w-4 text-neon-cyan" />
+          <CardTitle className="text-sm">IP Address Groups</CardTitle>
+        </div>
+        <CardDescription>
+          IP addresses grouped by subnet prefix (GeoIP enrichment placeholder)
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : Object.keys(grouped).length > 0 ? (
+          <div className="space-y-2">
+            {Object.entries(grouped)
+              .sort((a, b) => b[1].count - a[1].count)
+              .map(([prefix, info]) => (
+                <div
+                  key={prefix}
+                  className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-4 py-2.5"
+                >
+                  <div>
+                    <p className="text-sm font-mono font-medium">{prefix}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {info.ips.length} unique IP{info.ips.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold tabular-nums text-neon-cyan">
+                      {info.count.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">events</p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="py-8 text-center">
+            <Globe className="mx-auto mb-3 h-8 w-8 text-muted-foreground/30" />
+            <p className="text-xs text-muted-foreground">
+              No IP data available. GeoIP enrichment will be added in a future update.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Main Analytics Dashboard ───────────────────────────────────────
+
+export default function AnalyticsDashboard() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Analytics</h2>
+        <p className="text-sm text-muted-foreground">
+          Deep-dive into WAF event data with IP lookup, top threats, and targeting analysis.
+        </p>
+      </div>
+
+      <Tabs defaultValue="lookup" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="lookup" className="gap-1.5">
+            <Search className="h-3.5 w-3.5" />
+            IP Lookup
+          </TabsTrigger>
+          <TabsTrigger value="top-ips" className="gap-1.5">
+            <Shield className="h-3.5 w-3.5" />
+            Top Blocked IPs
+          </TabsTrigger>
+          <TabsTrigger value="top-uris" className="gap-1.5">
+            <Target className="h-3.5 w-3.5" />
+            Top URIs
+          </TabsTrigger>
+          <TabsTrigger value="geo" className="gap-1.5">
+            <Globe className="h-3.5 w-3.5" />
+            Geography
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="lookup">
+          <IPLookupPanel />
+        </TabsContent>
+
+        <TabsContent value="top-ips">
+          <TopBlockedIPsPanel />
+        </TabsContent>
+
+        <TabsContent value="top-uris">
+          <TopTargetedURIsPanel />
+        </TabsContent>
+
+        <TabsContent value="geo">
+          <GeoPlaceholderPanel />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

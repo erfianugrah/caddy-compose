@@ -37,7 +37,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr joplin keycloak qbit change seerr copyparty dockge-sg httpbun httpbin
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr joplin keycloak qbit change seerr copyparty dockge-sg httpbun httpbin
 		}
 		versions ipv4
 		check_interval 5m
@@ -235,6 +235,28 @@ caddy.erfi.io {
 	respond "Caddy is running. Admin API available via localhost:2019 only." 200
 	import error_pages
 	import site_log caddy-api
+}
+
+waf.erfi.io {
+	import cors
+	import security_headers
+	import forward_auth
+	import ipsum_blocklist
+	import rate_limit waf 200 1m
+	import tls_config
+	encode zstd gzip
+	handle /api/* {
+		reverse_proxy 172.19.98.2:8080 {
+			import proxy_headers
+		}
+	}
+	handle {
+		root * /etc/caddy/waf-ui
+		try_files {path} /index.html
+		file_server
+	}
+	import error_pages
+	import site_log waf
 }
 
 authelia.erfi.io {

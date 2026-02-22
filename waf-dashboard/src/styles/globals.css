@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  /* Dark navy / neon terminal palette */
+  --color-navy-950: #050816;
+  --color-navy-900: #0a0e27;
+  --color-navy-800: #0f1538;
+  --color-navy-700: #161d4a;
+  --color-navy-600: #1e275c;
+  --color-neon-green: #00ff41;
+  --color-neon-green-dim: #00cc34;
+  --color-neon-pink: #ff006e;
+  --color-neon-pink-dim: #cc0058;
+  --color-neon-cyan: #00d4ff;
+  --color-neon-amber: #ffbe0b;
+
+  /* shadcn CSS variable mapping */
+  --color-background: #0a0e27;
+  --color-foreground: #e0e6f0;
+  --color-card: #0f1538;
+  --color-card-foreground: #e0e6f0;
+  --color-popover: #0f1538;
+  --color-popover-foreground: #e0e6f0;
+  --color-primary: #00ff41;
+  --color-primary-foreground: #050816;
+  --color-secondary: #161d4a;
+  --color-secondary-foreground: #e0e6f0;
+  --color-muted: #161d4a;
+  --color-muted-foreground: #7a8baa;
+  --color-accent: #1e275c;
+  --color-accent-foreground: #e0e6f0;
+  --color-destructive: #ff006e;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #1e275c;
+  --color-input: #1e275c;
+  --color-ring: #00ff41;
+
+  /* Chart colors */
+  --color-chart-1: #00ff41;
+  --color-chart-2: #ff006e;
+  --color-chart-3: #00d4ff;
+  --color-chart-4: #ffbe0b;
+  --color-chart-5: #a855f7;
+
+  /* Radius */
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
+      SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Neon glow utilities */
+  .glow-green {
+    text-shadow: 0 0 10px rgba(0, 255, 65, 0.5),
+      0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+  }
+
+  .glow-pink {
+    text-shadow: 0 0 10px rgba(255, 0, 110, 0.5),
+      0 0 20px rgba(255, 0, 110, 0.3), 0 0 40px rgba(255, 0, 110, 0.1);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-navy-950);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-navy-600);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neon-green);
+  }
+
+  /* Scanline overlay effect */
+  .scanlines::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.05) 2px,
+      rgba(0, 0, 0, 0.05) 4px
+    );
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  /* Stat card fade-in animation */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.4s ease-out forwards;
+  }
+}

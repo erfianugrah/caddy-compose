@@ -34,11 +34,27 @@ RUN apk add --no-cache curl \
 	     echo; \
 	   } > /tmp/cf_trusted_proxies.caddy
 
+# Build WAF dashboard static site
+FROM node:22-alpine AS waf-dashboard
+WORKDIR /build
+COPY waf-dashboard/package.json waf-dashboard/package-lock.json ./
+RUN npm ci
+COPY waf-dashboard/ ./
+RUN npm run build
+
+# Build WAF API sidecar
+FROM golang:1.23-alpine AS waf-api
+WORKDIR /build
+COPY waf-api/go.mod ./
+COPY waf-api/*.go ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o waf-api .
+
 FROM caddy:${VERSION}-alpine
 RUN apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=ipsum /tmp/ipsum_block.caddy /etc/caddy/ipsum_block.caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
+COPY --from=waf-dashboard /build/dist/ /etc/caddy/waf-ui/
 COPY errors/ /etc/caddy/errors/
 COPY coraza/ /etc/caddy/coraza/
 COPY scripts/update-ipsum.sh /usr/local/bin/update-ipsum.sh
