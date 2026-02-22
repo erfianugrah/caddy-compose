@@ -20,10 +20,22 @@ type Store struct {
 	// file tailing state
 	path   string
 	offset int64
+
+	// maxAge is the maximum age of events to retain. Events older than this
+	// are evicted during each Load() call. Zero means no eviction.
+	maxAge time.Duration
 }
 
 func NewStore(path string) *Store {
 	return &Store{path: path}
+}
+
+// SetMaxAge configures the TTL for in-memory event retention.
+// Events older than maxAge are evicted during each Load() cycle.
+func (s *Store) SetMaxAge(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxAge = d
 }
 
 // Load reads new lines appended since last offset and parses them.
@@ -102,6 +114,34 @@ func (s *Store) Load() {
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
 		log.Printf("loaded %d new events (%d total)", len(newEvents), s.EventCount())
+	}
+
+	// Evict events older than maxAge.
+	s.evict()
+}
+
+// evict removes events older than maxAge from the in-memory store.
+func (s *Store) evict() {
+	if s.maxAge <= 0 {
+		return
+	}
+
+	cutoff := time.Now().UTC().Add(-s.maxAge)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Events are appended chronologically, so find the first event within range.
+	idx := 0
+	for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
+		idx++
+	}
+	if idx > 0 {
+		evicted := idx
+		// Compact the slice to release memory.
+		remaining := make([]Event, len(s.events)-idx)
+		copy(remaining, s.events[idx:])
+		s.events = remaining
+		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
 	}
 }
 

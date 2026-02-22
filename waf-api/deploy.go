@@ -53,7 +53,7 @@ func ensureCorazaDir(dir string) error {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			header := fmt.Sprintf("# Managed by waf-api Policy Engine\n# Created: %s\n# This file is empty until exclusions are deployed.\n",
 				time.Now().UTC().Format(time.RFC3339))
-			if err := os.WriteFile(path, []byte(header), 0644); err != nil {
+			if err := atomicWriteFile(path, []byte(header), 0644); err != nil {
 				return fmt.Errorf("creating placeholder %s: %w", path, err)
 			}
 			log.Printf("created placeholder: %s", path)
@@ -62,17 +62,17 @@ func ensureCorazaDir(dir string) error {
 	return nil
 }
 
-// writeConfFiles writes the generated pre-CRS and post-CRS configs to disk.
+// writeConfFiles writes the generated pre-CRS and post-CRS configs to disk atomically.
 func writeConfFiles(dir, preCRS, postCRS string) error {
 	prePath := filepath.Join(dir, "custom-pre-crs.conf")
 	postPath := filepath.Join(dir, "custom-post-crs.conf")
 
-	if err := os.WriteFile(prePath, []byte(preCRS), 0644); err != nil {
+	if err := atomicWriteFile(prePath, []byte(preCRS), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", prePath, err)
 	}
 	log.Printf("wrote %s (%d bytes)", prePath, len(preCRS))
 
-	if err := os.WriteFile(postPath, []byte(postCRS), 0644); err != nil {
+	if err := atomicWriteFile(postPath, []byte(postCRS), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", postPath, err)
 	}
 	log.Printf("wrote %s (%d bytes)", postPath, len(postCRS))

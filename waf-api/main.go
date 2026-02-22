@@ -39,14 +39,32 @@ func main() {
 		log.Printf("warning: could not initialize rate limit dir: %v", err)
 	}
 
-	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir)
+	// Event retention: maximum age for in-memory events (default 168h = 7 days).
+	maxAgeStr := envOr("WAF_EVENT_MAX_AGE", "168h")
+	maxAge, err := time.ParseDuration(maxAgeStr)
+	if err != nil {
+		log.Printf("warning: invalid WAF_EVENT_MAX_AGE %q, using 168h", maxAgeStr)
+		maxAge = 168 * time.Hour
+	}
+
+	// Tailing interval (default 5s).
+	tailIntervalStr := envOr("WAF_TAIL_INTERVAL", "5s")
+	tailInterval, err := time.ParseDuration(tailIntervalStr)
+	if err != nil {
+		log.Printf("warning: invalid WAF_TAIL_INTERVAL %q, using 5s", tailIntervalStr)
+		tailInterval = 5 * time.Second
+	}
+
+	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval)
 
 	store := NewStore(logPath)
-	store.StartTailing(30 * time.Second)
+	store.SetMaxAge(maxAge)
+	store.StartTailing(tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
-	accessLogStore.StartTailing(30 * time.Second)
+	accessLogStore.SetMaxAge(maxAge)
+	accessLogStore.StartTailing(tailInterval)
 
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	configStore := NewConfigStore(configFile)
@@ -96,7 +114,10 @@ func main() {
 	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(accessLogStore))
 	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(accessLogStore))
 
-	handler := corsMiddleware(mux)
+	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
+	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
+	allowedOrigins := strings.Split(corsOrigins, ",")
+	handler := newCORSMiddleware(allowedOrigins)(mux)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -121,19 +142,49 @@ func envOr(key, fallback string) string {
 
 // --- CORS middleware ---
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+// corsMiddleware validates the Origin header against a set of allowed origins.
+// If allowedOrigins is empty or contains "*", all origins are allowed (backward compat).
+func newCORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	// Build a set for O(1) lookup.
+	allowAll := false
+	originSet := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		o = strings.TrimSpace(o)
+		if o == "*" || o == "" {
+			allowAll = true
 		}
+		originSet[o] = true
+	}
 
-		next.ServeHTTP(w, r)
-	})
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if origin != "" && originSet[origin] {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			} else if origin != "" {
+				// Origin not allowed — reject preflight, still serve GET/POST
+				// (browser will block the response due to missing CORS header).
+				if r.Method == http.MethodOptions {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // --- Query parameter helpers ---

@@ -8,8 +8,10 @@ import (
 
 // GenerateConfigs produces pre-crs.conf and post-crs.conf text from the
 // current WAF config and enabled exclusions.
+// Each call uses its own rule ID counter, making it safe for concurrent use.
 func GenerateConfigs(cfg WAFConfig, exclusions []RuleExclusion) GenerateResponse {
-	pre := generatePreCRS(cfg, exclusions)
+	idGen := newRuleIDGen()
+	pre := generatePreCRS(cfg, exclusions, idGen)
 	post := generatePostCRS(cfg, exclusions)
 	return GenerateResponse{
 		PreCRS:  pre,
@@ -18,7 +20,7 @@ func GenerateConfigs(cfg WAFConfig, exclusions []RuleExclusion) GenerateResponse
 }
 
 // generatePreCRS builds the pre-CRS configuration file.
-func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion) string {
+func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion, idGen *ruleIDGen) string {
 	var b strings.Builder
 
 	b.WriteString("# ============================================================\n")
@@ -52,7 +54,7 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion) string {
 			b.WriteString("# Allow/block/skip rules generated from the Policy Engine UI.\n\n")
 			for _, e := range quickActions {
 				writeExclusionComment(&b, e)
-				writeConditionRule(&b, e)
+				writeConditionRule(&b, e, idGen)
 				b.WriteString("\n")
 			}
 		}
@@ -62,7 +64,7 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion) string {
 			b.WriteString("# These use ctl: actions to conditionally remove rules at request time.\n\n")
 			for _, e := range runtimeExcl {
 				writeExclusionComment(&b, e)
-				writeAdvancedRuntimeRule(&b, e)
+				writeAdvancedRuntimeRule(&b, e, idGen)
 				b.WriteString("\n")
 			}
 		}
@@ -220,7 +222,7 @@ func formatSecRuleOperator(c Condition) string {
 
 // writeConditionRule generates SecRule(s) for allow/block/skip_rule exclusions
 // based on the conditions array.
-func writeConditionRule(b *strings.Builder, e RuleExclusion) {
+func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 	if len(e.Conditions) == 0 {
 		return
 	}
@@ -235,11 +237,11 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion) {
 
 	if groupOp == "and" {
 		// AND: chain all conditions into one rule.
-		writeChainedRule(b, e.Conditions, action)
+		writeChainedRule(b, e.Conditions, action, idGen)
 	} else {
 		// OR: each condition gets its own standalone rule with the same action.
 		for _, c := range e.Conditions {
-			writeChainedRule(b, []Condition{c}, action)
+			writeChainedRule(b, []Condition{c}, action, idGen)
 		}
 	}
 }
@@ -266,8 +268,8 @@ func conditionAction(e RuleExclusion) string {
 
 // writeChainedRule writes a single SecRule (possibly chained) for a set of conditions.
 // The first condition gets the rule ID and action; subsequent conditions are chained.
-func writeChainedRule(b *strings.Builder, conditions []Condition, action string) {
-	ruleID := generateRuleID()
+func writeChainedRule(b *strings.Builder, conditions []Condition, action string, idGen *ruleIDGen) {
+	ruleID := idGen.next()
 
 	for i, c := range conditions {
 		variable := conditionVariable(c)
@@ -298,7 +300,7 @@ func writeChainedRule(b *strings.Builder, conditions []Condition, action string)
 
 // writeAdvancedRuntimeRule generates a SecRule for advanced runtime exclusion types
 // using conditions for path matching and ctl: actions.
-func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion) {
+func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 	var ctlAction string
 	switch e.Type {
 	case "runtime_remove_by_id":
@@ -314,10 +316,10 @@ func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion) {
 	action := fmt.Sprintf("pass,t:none,nolog,%s", ctlAction)
 
 	if len(e.Conditions) > 0 {
-		writeChainedRule(b, e.Conditions, action)
+		writeChainedRule(b, e.Conditions, action, idGen)
 	} else {
 		// Fallback: unconditional (shouldn't happen with validation, but be safe).
-		ruleID := generateRuleID()
+		ruleID := idGen.next()
 		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,%s\"\n", ruleID, action))
 	}
 }
@@ -339,17 +341,25 @@ func escapeSecRuleValue(s string) string {
 	return strings.ReplaceAll(s, `"`, `\"`)
 }
 
-// ruleIDCounter is a simple counter for generating unique rule IDs in the
-// 9500000+ range (reserved for local exclusions).
-var ruleIDCounter int
-
-// generateRuleID produces a unique rule ID for generated SecRules.
-func generateRuleID() string {
-	ruleIDCounter++
-	return fmt.Sprintf("95%05d", ruleIDCounter)
+// ruleIDGen is a per-invocation counter for generating unique rule IDs
+// in the 9500000+ range (reserved for local exclusions).
+// Using a struct instead of a package-level variable prevents concurrent
+// calls from producing duplicate IDs.
+type ruleIDGen struct {
+	counter int
 }
 
-// ResetRuleIDCounter resets the counter (useful for deterministic tests).
+func newRuleIDGen() *ruleIDGen {
+	return &ruleIDGen{}
+}
+
+func (g *ruleIDGen) next() string {
+	g.counter++
+	return fmt.Sprintf("95%05d", g.counter)
+}
+
+// ResetRuleIDCounter is kept for backward compatibility in tests.
+// It is now a no-op since rule IDs are generated per-invocation.
 func ResetRuleIDCounter() {
-	ruleIDCounter = 0
+	// no-op: rule IDs are now per-invocation via ruleIDGen
 }

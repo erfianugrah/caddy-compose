@@ -6,10 +6,53 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
+
+// atomicWriteFile writes data to a file atomically by first writing to a
+// temporary file in the same directory, then renaming it to the target path.
+// This prevents corruption if the process crashes mid-write.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	// Clean up the temp file on any error.
+	success := false
+	defer func() {
+		if !success {
+			tmp.Close()
+			os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		return fmt.Errorf("writing temp file: %w", err)
+	}
+	// Sync to ensure data is flushed to disk before rename.
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("syncing temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	// Atomic rename: on POSIX, rename within the same filesystem is atomic.
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("renaming temp file to %s: %w", path, err)
+	}
+
+	success = true
+	return nil
+}
 
 // generateUUID produces a v4 UUID using crypto/rand.
 func generateUUID() string {
@@ -84,13 +127,13 @@ func (s *ExclusionStore) load() {
 	log.Printf("loaded %d exclusions from %s", len(exclusions), s.filePath)
 }
 
-// save writes the current exclusions to the JSON file.
+// save writes the current exclusions to the JSON file atomically.
 func (s *ExclusionStore) save() error {
 	data, err := json.MarshalIndent(s.exclusions, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling exclusions: %w", err)
 	}
-	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+	if err := atomicWriteFile(s.filePath, data, 0644); err != nil {
 		return fmt.Errorf("error writing exclusions file: %w", err)
 	}
 	return nil

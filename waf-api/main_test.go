@@ -283,10 +283,10 @@ func TestEventsEndpointWithFilters(t *testing.T) {
 	}
 }
 
-func TestCORSHeaders(t *testing.T) {
+func TestCORSHeadersWildcard(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handleHealth)
-	handler := corsMiddleware(mux)
+	handler := newCORSMiddleware([]string{"*"})(mux)
 
 	req := httptest.NewRequest("GET", "/api/health", nil)
 	w := httptest.NewRecorder()
@@ -304,17 +304,76 @@ func TestCORSHeaders(t *testing.T) {
 	}
 }
 
-func TestCORSPreflight(t *testing.T) {
+func TestCORSHeadersAllowedOrigin(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handleHealth)
-	handler := corsMiddleware(mux)
+	handler := newCORSMiddleware([]string{"https://waf.erfi.io", "https://dash.erfi.io"})(mux)
+
+	// Allowed origin.
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	req.Header.Set("Origin", "https://waf.erfi.io")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if origin := w.Header().Get("Access-Control-Allow-Origin"); origin != "https://waf.erfi.io" {
+		t.Errorf("CORS allowed origin: want https://waf.erfi.io, got %s", origin)
+	}
+	if vary := w.Header().Get("Vary"); vary != "Origin" {
+		t.Errorf("Vary header: want Origin, got %s", vary)
+	}
+
+	// Disallowed origin — no CORS header set.
+	req = httptest.NewRequest("GET", "/api/health", nil)
+	req.Header.Set("Origin", "https://evil.com")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if origin := w.Header().Get("Access-Control-Allow-Origin"); origin != "" {
+		t.Errorf("CORS disallowed origin: want empty, got %s", origin)
+	}
+}
+
+func TestCORSPreflightAllowed(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", handleHealth)
+	handler := newCORSMiddleware([]string{"https://waf.erfi.io"})(mux)
+
+	req := httptest.NewRequest("OPTIONS", "/api/health", nil)
+	req.Header.Set("Origin", "https://waf.erfi.io")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("preflight allowed: want 204, got %d", w.Code)
+	}
+}
+
+func TestCORSPreflightRejected(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", handleHealth)
+	handler := newCORSMiddleware([]string{"https://waf.erfi.io"})(mux)
+
+	req := httptest.NewRequest("OPTIONS", "/api/health", nil)
+	req.Header.Set("Origin", "https://evil.com")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("preflight rejected: want 403, got %d", w.Code)
+	}
+}
+
+func TestCORSPreflightWildcard(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", handleHealth)
+	handler := newCORSMiddleware([]string{"*"})(mux)
 
 	req := httptest.NewRequest("OPTIONS", "/api/health", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNoContent {
-		t.Errorf("preflight: want 204, got %d", w.Code)
+		t.Errorf("preflight wildcard: want 204, got %d", w.Code)
 	}
 }
 
@@ -3150,6 +3209,114 @@ func TestEventsEventTypeFilter(t *testing.T) {
 				t.Errorf("event_type=%s filter: event %s has type %s", tt.eventType, ev.ID, ev.EventType)
 			}
 		}
+	}
+}
+
+// --- Eviction tests ---
+
+func TestStoreEviction(t *testing.T) {
+	// Create events: one old (2020), one recent (2026).
+	lines := []string{
+		`{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`,
+	}
+	// Append one of the recent sample lines.
+	lines = append(lines, sampleLines[0])
+
+	path := writeTempLog(t, lines)
+	store := NewStore(path)
+	// Set max age to 168 hours (7 days) — the 2020 event should be evicted, but today's event kept.
+	store.SetMaxAge(168 * time.Hour)
+	store.Load()
+
+	// The old event from 2020 should have been evicted, leaving only the recent one.
+	if got := store.EventCount(); got != 1 {
+		t.Errorf("expected 1 event after eviction, got %d", got)
+	}
+}
+
+func TestStoreEvictionNoMaxAge(t *testing.T) {
+	// With no maxAge set, nothing should be evicted.
+	lines := []string{
+		`{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`,
+	}
+	path := writeTempLog(t, lines)
+	store := NewStore(path)
+	// No SetMaxAge call — default is zero (no eviction).
+	store.Load()
+
+	if got := store.EventCount(); got != 1 {
+		t.Errorf("expected 1 event (no eviction), got %d", got)
+	}
+}
+
+func TestAccessLogStoreEviction(t *testing.T) {
+	lines := []string{
+		// Old 429 event (2020).
+		`{"level":"info","ts":"2020/01/01 00:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":429,"size":0,"duration":0.001}`,
+		// Recent 429 event (today).
+		sampleAccessLogLines[1],
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	// 7 days — keeps today's event, evicts 2020 event.
+	store.SetMaxAge(168 * time.Hour)
+	store.Load()
+
+	// Only the recent event should remain.
+	if got := store.EventCount(); got != 1 {
+		t.Errorf("expected 1 event after eviction, got %d", got)
+	}
+}
+
+// --- Atomic write tests ---
+
+func TestAtomicWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.json")
+	data := []byte(`{"key": "value"}`)
+
+	if err := atomicWriteFile(path, data, 0644); err != nil {
+		t.Fatalf("atomicWriteFile failed: %v", err)
+	}
+
+	// Verify content.
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading written file: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("content mismatch: want %q, got %q", string(data), string(got))
+	}
+
+	// Verify permissions.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("permissions: want 0644, got %o", info.Mode().Perm())
+	}
+
+	// Verify no temp files left behind.
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("expected 1 file in dir, got %d", len(entries))
+	}
+}
+
+func TestAtomicWriteFileOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.json")
+
+	// Write initial content.
+	atomicWriteFile(path, []byte("initial"), 0644)
+
+	// Overwrite.
+	atomicWriteFile(path, []byte("updated"), 0644)
+
+	got, _ := os.ReadFile(path)
+	if string(got) != "updated" {
+		t.Errorf("overwrite: want 'updated', got %q", string(got))
 	}
 }
 

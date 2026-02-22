@@ -91,7 +91,7 @@ func (s *RateLimitStore) save() error {
 	if err != nil {
 		return fmt.Errorf("error marshaling rate limit config: %w", err)
 	}
-	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+	if err := atomicWriteFile(s.filePath, data, 0644); err != nil {
 		return fmt.Errorf("error writing rate limit config: %w", err)
 	}
 	return nil
@@ -221,7 +221,7 @@ func writeZoneFiles(dir string, zones []RateLimitZone) ([]string, error) {
 	for _, zone := range zones {
 		content := generateZoneFile(zone)
 		path := filepath.Join(dir, zone.Name+".caddy")
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := atomicWriteFile(path, []byte(content), 0644); err != nil {
 			return written, fmt.Errorf("writing zone file %s: %w", path, err)
 		}
 		log.Printf("wrote rate limit zone file: %s (%d bytes, enabled=%v)", path, len(content), zone.Enabled)

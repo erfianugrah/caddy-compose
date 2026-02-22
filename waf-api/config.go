@@ -62,13 +62,13 @@ func (s *ConfigStore) load() {
 	log.Printf("loaded config from %s", s.filePath)
 }
 
-// save writes the current config to the JSON file.
+// save writes the current config to the JSON file atomically.
 func (s *ConfigStore) save() error {
 	data, err := json.MarshalIndent(s.config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling config: %w", err)
 	}
-	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+	if err := atomicWriteFile(s.filePath, data, 0644); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 	return nil
