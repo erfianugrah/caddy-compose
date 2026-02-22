@@ -5,7 +5,27 @@ import "time"
 // Raw JSON structure from Coraza audit log
 
 type AuditLogEntry struct {
-	Transaction Transaction `json:"transaction"`
+	Transaction Transaction    `json:"transaction"`
+	Messages    []AuditMessage `json:"messages,omitempty"`
+}
+
+// AuditMessage represents a matched rule in the Coraza audit log (part H).
+type AuditMessage struct {
+	Actionset string           `json:"actionset"`
+	Message   string           `json:"message"`
+	Data      AuditMessageData `json:"data"`
+}
+
+type AuditMessageData struct {
+	File     string   `json:"file"`
+	Line     int      `json:"line"`
+	ID       int      `json:"id"`
+	Rev      string   `json:"rev"`
+	Msg      string   `json:"msg"`
+	Data     string   `json:"data"`
+	Severity int      `json:"severity"`
+	Ver      string   `json:"ver"`
+	Tags     []string `json:"tags"`
 }
 
 type Transaction struct {
@@ -65,35 +85,48 @@ type Event struct {
 	IsBlocked      bool      `json:"is_blocked"`
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
+	// Rule match data (from audit log messages/part H)
+	RuleID      int      `json:"rule_id,omitempty"`
+	RuleMsg     string   `json:"rule_msg,omitempty"`
+	Severity    int      `json:"severity,omitempty"`
+	MatchedData string   `json:"matched_data,omitempty"`
+	RuleTags    []string `json:"rule_tags,omitempty"`
 }
 
 // API response types
 
 type SummaryResponse struct {
-	TotalEvents    int            `json:"total_events"`
-	BlockedEvents  int            `json:"blocked_events"`
-	LoggedEvents   int            `json:"logged_events"`
-	UniqueClients  int            `json:"unique_clients"`
-	UniqueServices int            `json:"unique_services"`
-	EventsByHour   []HourCount    `json:"events_by_hour"`
-	TopServices    []ServiceCount `json:"top_services"`
-	TopClients     []ClientCount  `json:"top_clients"`
-	TopURIs        []URICount     `json:"top_uris"`
+	TotalEvents      int             `json:"total_events"`
+	BlockedEvents    int             `json:"blocked_events"`
+	LoggedEvents     int             `json:"logged_events"`
+	UniqueClients    int             `json:"unique_clients"`
+	UniqueServices   int             `json:"unique_services"`
+	EventsByHour     []HourCount     `json:"events_by_hour"`
+	TopServices      []ServiceCount  `json:"top_services"`
+	TopClients       []ClientCount   `json:"top_clients"`
+	TopURIs          []URICount      `json:"top_uris"`
+	ServiceBreakdown []ServiceDetail `json:"service_breakdown"`
+	RecentBlocks     []Event         `json:"recent_blocks"`
 }
 
 type HourCount struct {
-	Hour  string `json:"hour"`
-	Count int    `json:"count"`
+	Hour    string `json:"hour"`
+	Count   int    `json:"count"`
+	Blocked int    `json:"blocked"`
+	Logged  int    `json:"logged"`
 }
 
 type ServiceCount struct {
 	Service string `json:"service"`
 	Count   int    `json:"count"`
+	Blocked int    `json:"blocked"`
+	Logged  int    `json:"logged"`
 }
 
 type ClientCount struct {
-	Client string `json:"client"`
-	Count  int    `json:"count"`
+	Client  string `json:"client"`
+	Count   int    `json:"count"`
+	Blocked int    `json:"blocked"`
 }
 
 type URICount struct {
@@ -135,19 +168,26 @@ type IPLookupResponse struct {
 
 // Rule Exclusion model
 
+type Condition struct {
+	Field    string `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query"
+	Operator string `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in"
+	Value    string `json:"value"`
+}
+
 type RuleExclusion struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Type        string    `json:"type"`
-	RuleID      string    `json:"rule_id"`
-	RuleTag     string    `json:"rule_tag"`
-	Variable    string    `json:"variable"`
-	Condition   string    `json:"condition"`
-	Service     string    `json:"service"`
-	Enabled     bool      `json:"enabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Type        string      `json:"type"`
+	Conditions  []Condition `json:"conditions,omitempty"`     // Dynamic conditions (field/operator/value)
+	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
+	RuleID      string      `json:"rule_id,omitempty"`        // For skip_rule + advanced types
+	RuleTag     string      `json:"rule_tag,omitempty"`       // For skip_rule + advanced types
+	Variable    string      `json:"variable,omitempty"`       // For advanced target types
+	RawRule     string      `json:"raw_rule,omitempty"`       // Raw SecRule directive for raw editor
+	Enabled     bool        `json:"enabled"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 // WAF Configuration model
@@ -186,8 +226,27 @@ type ExclusionExport struct {
 	Exclusions []RuleExclusion `json:"exclusions"`
 }
 
+// Analytics response types
+
+type TopBlockedIP struct {
+	ClientIP  string  `json:"client_ip"`
+	Total     int     `json:"total"`
+	Blocked   int     `json:"blocked"`
+	BlockRate float64 `json:"block_rate"`
+	FirstSeen string  `json:"first_seen"`
+	LastSeen  string  `json:"last_seen"`
+}
+
+type TopTargetedURI struct {
+	URI      string   `json:"uri"`
+	Total    int      `json:"total"`
+	Blocked  int      `json:"blocked"`
+	Services []string `json:"services"`
+}
+
 // Valid exclusion types
 var validExclusionTypes = map[string]bool{
+	// Advanced (ModSecurity directive types)
 	"remove_by_id":                true,
 	"remove_by_tag":               true,
 	"update_target_by_id":         true,
@@ -195,6 +254,56 @@ var validExclusionTypes = map[string]bool{
 	"runtime_remove_by_id":        true,
 	"runtime_remove_by_tag":       true,
 	"runtime_remove_target_by_id": true,
+	// Quick Actions (condition-based)
+	"allow":     true, // Whitelist — bypass WAF checks
+	"block":     true, // Deny requests
+	"skip_rule": true, // Skip specific CRS rules
+	// Raw editor
+	"raw": true, // Raw SecRule directive
+}
+
+// Valid condition fields
+var validConditionFields = map[string]bool{
+	"ip":         true,
+	"path":       true,
+	"host":       true,
+	"method":     true,
+	"user_agent": true,
+	"header":     true,
+	"query":      true,
+}
+
+// Valid operators per field type
+var validOperatorsForField = map[string]map[string]bool{
+	"ip": {
+		"eq": true, "neq": true, "ip_match": true, "not_ip_match": true,
+	},
+	"path": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true,
+	},
+	"host": {
+		"eq": true, "neq": true, "contains": true,
+	},
+	"method": {
+		"eq": true, "neq": true, "in": true,
+	},
+	"user_agent": {
+		"eq": true, "contains": true, "regex": true,
+	},
+	"header": {
+		"eq": true, "contains": true, "regex": true,
+	},
+	"query": {
+		"contains": true, "regex": true,
+	},
+}
+
+// Valid group operators
+var validGroupOperators = map[string]bool{
+	"":    true, // default = "and"
+	"and": true,
+	"or":  true,
 }
 
 // Valid hours filter values

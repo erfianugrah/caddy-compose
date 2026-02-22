@@ -66,6 +66,36 @@ function formatDate(ts: string): string {
   }
 }
 
+/** Format ISO timestamp to HH:MM for chart X-axis ticks */
+function formatHourTick(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return ts;
+  }
+}
+
+/** Format ISO timestamp to readable date+time for chart tooltips */
+function formatTooltipLabel(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return ts;
+  }
+}
+
 // ─── Count-up animation hook ────────────────────────────────────────
 
 function useCountUp(target: number, duration = 800): number {
@@ -355,6 +385,7 @@ export default function OverviewDashboard() {
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
+                    tickFormatter={formatHourTick}
                   />
                   <YAxis
                     stroke="#7a8baa"
@@ -363,7 +394,10 @@ export default function OverviewDashboard() {
                     axisLine={false}
                     tickFormatter={formatNumber}
                   />
-                  <Tooltip {...chartTooltipStyle} />
+                  <Tooltip
+                    {...chartTooltipStyle}
+                    labelFormatter={formatTooltipLabel}
+                  />
                   <Area
                     type="monotone"
                     dataKey="blocked"

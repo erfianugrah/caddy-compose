@@ -7,6 +7,9 @@
 # Out-of-sync API config dump (contains hardcoded tokens)
 config.json
 
+# Go binaries
+waf-api/waf-api
+
 # Caddy runtime data
 /data/
 /config/

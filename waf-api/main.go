@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +18,19 @@ func main() {
 	exclusionsFile := envOr("WAF_EXCLUSIONS_FILE", "/data/exclusions.json")
 	configFile := envOr("WAF_CONFIG_FILE", "/data/waf-config.json")
 
-	log.Printf("waf-api starting: log=%s port=%s exclusions=%s config=%s", logPath, port, exclusionsFile, configFile)
+	deployCfg := DeployConfig{
+		CorazaDir:     envOr("WAF_CORAZA_DIR", "/data/coraza"),
+		CaddyfilePath: envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
+		CaddyAdminURL: envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
+	}
+
+	// Ensure custom coraza config directory and placeholder files exist.
+	if err := ensureCorazaDir(deployCfg.CorazaDir); err != nil {
+		log.Printf("warning: could not initialize coraza dir: %v", err)
+	}
+
+	log.Printf("waf-api starting: log=%s port=%s exclusions=%s config=%s coraza_dir=%s",
+		logPath, port, exclusionsFile, configFile, deployCfg.CorazaDir)
 
 	store := NewStore(logPath)
 	store.StartTailing(30 * time.Second)
@@ -33,6 +46,10 @@ func main() {
 	mux.HandleFunc("GET /api/events", handleEvents(store))
 	mux.HandleFunc("GET /api/services", handleServices(store))
 
+	// Analytics
+	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store))
+	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store))
+
 	// IP Lookup
 	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
 
@@ -46,10 +63,15 @@ func main() {
 	mux.HandleFunc("PUT /api/exclusions/{id}", handleUpdateExclusion(exclusionStore))
 	mux.HandleFunc("DELETE /api/exclusions/{id}", handleDeleteExclusion(exclusionStore))
 
+	// CRS Catalog
+	mux.HandleFunc("GET /api/crs/rules", handleCRSRules)
+	mux.HandleFunc("GET /api/crs/autocomplete", handleCRSAutocomplete)
+
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
 
 	handler := corsMiddleware(mux)
 
@@ -156,6 +178,30 @@ func handleServices(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		hours := parseHours(r)
 		writeJSON(w, http.StatusOK, store.Services(hours))
+	}
+}
+
+// --- Handlers: Analytics ---
+
+func handleTopBlockedIPs(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hours := parseHours(r)
+		limit := queryInt(r.URL.Query().Get("limit"), 50)
+		if limit <= 0 || limit > 500 {
+			limit = 50
+		}
+		writeJSON(w, http.StatusOK, store.TopBlockedIPs(hours, limit))
+	}
+}
+
+func handleTopTargetedURIs(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hours := parseHours(r)
+		limit := queryInt(r.URL.Query().Get("limit"), 50)
+		if limit <= 0 || limit > 500 {
+			limit = 50
+		}
+		writeJSON(w, http.StatusOK, store.TopTargetedURIs(hours, limit))
 	}
 }
 
@@ -304,6 +350,16 @@ func handleImportExclusions(es *ExclusionStore) http.HandlerFunc {
 	}
 }
 
+// --- Handlers: CRS Catalog ---
+
+func handleCRSRules(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, GetCRSCatalog())
+}
+
+func handleCRSAutocomplete(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, GetCRSAutocomplete())
+}
+
 // --- Handlers: WAF Config ---
 
 func handleGetConfig(cs *ConfigStore) http.HandlerFunc {
@@ -344,7 +400,50 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 	}
 }
 
-// --- Helpers ---
+// --- Handler: Deploy ---
+
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		cfg := cs.Get()
+		exclusions := es.EnabledExclusions()
+		ResetRuleIDCounter()
+		result := GenerateConfigs(cfg, exclusions)
+
+		// Write config files to the shared volume.
+		if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to write config files",
+				Details: err.Error(),
+			})
+			return
+		}
+
+		// Reload Caddy via admin API.
+		reloaded := true
+		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
+			log.Printf("warning: Caddy reload failed: %v", err)
+			reloaded = false
+			// Don't fail the request — files were written successfully.
+			// The user can manually reload or investigate.
+		}
+
+		status := "deployed"
+		msg := "Config files written and Caddy reloaded successfully"
+		if !reloaded {
+			status = "partial"
+			msg = "Config files written but Caddy reload failed — manual reload may be needed"
+		}
+
+		writeJSON(w, http.StatusOK, DeployResponse{
+			Status:    status,
+			Message:   msg,
+			PreCRS:    filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
+			PostCRS:   filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
+			Reloaded:  reloaded,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")

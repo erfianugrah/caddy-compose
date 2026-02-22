@@ -1,5 +1,5 @@
 {
-	# Admin API — localhost only, no external exposure
+	# Admin API — localhost for healthcheck/metrics + Unix socket for waf-api reload
 	admin localhost:2019
 
 	# Prometheus metrics — exposed via admin API at localhost:2019/metrics
@@ -96,7 +96,7 @@
 		Cross-Origin-Opener-Policy "same-origin"
 		Cross-Origin-Resource-Policy "same-origin"
 		X-Permitted-Cross-Domain-Policies "none"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' wss: ws: https:; media-src 'self' blob: https:; frame-src 'self' https:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+		?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' wss: ws: https:; media-src 'self' blob: https:; frame-src 'self' https:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
 		-Server
 		-X-Powered-By
 	}
@@ -105,11 +105,17 @@
 # Coraza WAF — OWASP CRS with three operational tiers.
 # All tiers skip WebSocket upgrades (Coraza mangles the 101 handshake).
 #
-# (waf)        — Tuning mode: PL1, anomaly thresholds at 10000 (logs everything, blocks nothing).
-#                Use while collecting baseline data on false positives.
-# (waf_strict) — Enforcing mode: PL1, anomaly thresholds at 5/4 (CRS defaults, blocks attacks).
-#                For public-facing or hardened services after tuning is complete.
-# (waf_off)    — No WAF processing. For static-respond-only or metrics-only services.
+# (waf)          — Tuning mode: PL1, anomaly thresholds at 10000 (logs everything, blocks nothing).
+# (waf_moderate) — Moderate mode: PL1, anomaly thresholds at 15/15 (blocks obvious attacks, tolerates API quirks).
+# (waf_strict)   — Enforcing mode: PL1, anomaly thresholds at 5/4 (CRS defaults, blocks attacks).
+# (waf_off)      — No WAF processing. For static-respond-only or metrics-only services.
+#
+# Each tier loads configs in order:
+#   1. /etc/caddy/coraza/pre-crs.conf         — Baked-in defaults (image build)
+#   2. /data/coraza/custom-pre-crs.conf       — Dynamic overrides (Policy Engine UI)
+#   3. CRS setup + CRS rules
+#   4. /etc/caddy/coraza/post-crs.conf        — Baked-in defaults (image build)
+#   5. /data/coraza/custom-post-crs.conf      — Dynamic overrides (Policy Engine UI)
 
 (waf) {
 	@not_websocket {
@@ -120,15 +126,50 @@
 			load_owasp_crs
 			directives `
 			Include /etc/caddy/coraza/pre-crs.conf
+			Include /data/coraza/custom-pre-crs.conf
 			Include @crs-setup.conf.example
 			Include @owasp_crs/*.conf
 			Include /etc/caddy/coraza/post-crs.conf
+			Include /data/coraza/custom-post-crs.conf
 			SecRuleEngine On
 			SecAuditEngine RelevantOnly
 			SecAuditLog /var/log/coraza-audit.log
 			SecAuditLogFormat json
+			SecAuditLogParts ABCFHZ
 			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
 			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=10000,setvar:tx.outbound_anomaly_score_threshold=10000"
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(waf_moderate) {
+	@not_websocket_moderate {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket_moderate {
+		coraza_waf {
+			load_owasp_crs
+			directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include /data/coraza/custom-pre-crs.conf
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			Include /data/coraza/custom-post-crs.conf
+			SecRuleEngine On
+			SecAuditEngine RelevantOnly
+			SecAuditLog /var/log/coraza-audit.log
+			SecAuditLogFormat json
+			SecAuditLogParts ABCFHZ
+			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
+			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=15,setvar:tx.outbound_anomaly_score_threshold=15"
 			`
 		}
 	}
@@ -149,13 +190,16 @@
 			load_owasp_crs
 			directives `
 			Include /etc/caddy/coraza/pre-crs.conf
+			Include /data/coraza/custom-pre-crs.conf
 			Include @crs-setup.conf.example
 			Include @owasp_crs/*.conf
 			Include /etc/caddy/coraza/post-crs.conf
+			Include /data/coraza/custom-post-crs.conf
 			SecRuleEngine On
 			SecAuditEngine RelevantOnly
 			SecAuditLog /var/log/coraza-audit.log
 			SecAuditLogFormat json
+			SecAuditLogParts ABCFHZ
 			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
 			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=5,setvar:tx.outbound_anomaly_score_threshold=4"
 			`
@@ -239,12 +283,11 @@
 # Common reverse proxy headers snippet
 (proxy_headers) {
 	trusted_proxies private_ranges
-	header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	header_up X-Forwarded-For {client_ip}
 	header_down -Access-Control-Allow-Origin
 	header_down -Access-Control-Allow-Methods
 	header_down -Access-Control-Allow-Headers
 	header_down -Access-Control-Max-Age
-	header_down -Content-Security-Policy
 }
 
 # Custom error pages — serves /etc/caddy/errors/error.html with Caddy templates
@@ -289,9 +332,14 @@ waf.erfi.io {
 			import proxy_headers
 		}
 	}
+	# Fallback: auth redirects and HTML get no-store (prevents Cloudflare/browser caching 302s)
+	header ?Cache-Control "no-store"
 	handle {
 		root * /etc/caddy/waf-ui
-		try_files {path} /index.html
+		# Hashed assets are immutable — only reached after forward_auth succeeds
+		@waf_hashed path /_astro/*
+		header @waf_hashed Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} {path}/index.html /index.html
 		file_server
 	}
 	import error_pages
@@ -431,7 +479,7 @@ qbit.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
+	import waf_moderate
 	import ipsum_blocklist
 	import rate_limit qbit 300 1m
 	import tls_config
@@ -592,7 +640,7 @@ dockge-sg.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
+	import waf_moderate
 	import ipsum_blocklist
 	import rate_limit dockge 100 1m
 	import tls_config
@@ -634,4 +682,16 @@ httpbin.erfi.io {
 	}
 	import error_pages
 	import site_log httpbin
+}
+
+# Internal admin API proxy — allows waf-api to trigger Caddy reloads.
+# Restricted to the waf-api Docker subnet (172.19.98.0/24).
+:2020 {
+	@allowed remote_ip 172.19.98.0/24
+	handle @allowed {
+		reverse_proxy localhost:2019
+	}
+	handle {
+		respond "Forbidden" 403
+	}
 }

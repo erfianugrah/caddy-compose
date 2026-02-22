@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -212,8 +213,56 @@ func validateExclusion(e RuleExclusion) error {
 		return fmt.Errorf("invalid exclusion type: %q", e.Type)
 	}
 
+	// Validate group operator.
+	if !validGroupOperators[e.GroupOp] {
+		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", e.GroupOp)
+	}
+
+	// Validate conditions.
+	for i, c := range e.Conditions {
+		if !validConditionFields[c.Field] {
+			return fmt.Errorf("condition[%d]: invalid field %q", i, c.Field)
+		}
+		ops, ok := validOperatorsForField[c.Field]
+		if !ok || !ops[c.Operator] {
+			return fmt.Errorf("condition[%d]: invalid operator %q for field %q", i, c.Operator, c.Field)
+		}
+		if c.Value == "" {
+			return fmt.Errorf("condition[%d]: value is required", i)
+		}
+		// Validate method values.
+		if c.Field == "method" {
+			validMethods := map[string]bool{
+				"GET": true, "POST": true, "PUT": true, "DELETE": true,
+				"PATCH": true, "HEAD": true, "OPTIONS": true, "TRACE": true,
+			}
+			for _, m := range splitPipe(c.Value) {
+				if !validMethods[m] {
+					return fmt.Errorf("condition[%d]: invalid HTTP method %q", i, m)
+				}
+			}
+		}
+	}
+
 	// Type-specific validation.
 	switch e.Type {
+	case "allow", "block":
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("%s requires at least one condition", e.Type)
+		}
+	case "skip_rule":
+		if e.RuleID == "" && e.RuleTag == "" {
+			return fmt.Errorf("skip_rule requires rule_id or rule_tag")
+		}
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("skip_rule requires at least one condition")
+		}
+	case "raw":
+		if e.RawRule == "" {
+			return fmt.Errorf("raw_rule is required for type \"raw\"")
+		}
+
+	// Advanced types — these still use RuleID/RuleTag/Variable directly
 	case "remove_by_id", "update_target_by_id", "runtime_remove_by_id", "runtime_remove_target_by_id":
 		if e.RuleID == "" {
 			return fmt.Errorf("rule_id is required for type %q", e.Type)
@@ -232,13 +281,25 @@ func validateExclusion(e RuleExclusion) error {
 		}
 	}
 
-	// Condition required for runtime types.
+	// Runtime advanced types need at least a path condition.
 	switch e.Type {
 	case "runtime_remove_by_id", "runtime_remove_by_tag", "runtime_remove_target_by_id":
-		if e.Condition == "" {
-			return fmt.Errorf("condition is required for runtime type %q", e.Type)
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("conditions required for runtime type %q (need at least a path condition)", e.Type)
 		}
 	}
 
 	return nil
+}
+
+// splitPipe splits a pipe-delimited string and trims whitespace.
+func splitPipe(s string) []string {
+	var parts []string
+	for _, p := range strings.Split(s, "|") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return parts
 }

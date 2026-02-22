@@ -1,7 +1,7 @@
 ---
 # Authelia configuration
-# Secrets are injected via environment variables (AUTHELIA_*_FILE or AUTHELIA_*)
-# See .env for the required variables.
+# Secrets are loaded from files via AUTHELIA_*_FILE env vars (see compose.yaml).
+# Secret files live in /mnt/user/data/authelia/secrets/ (0600, owned by 1000:1000).
 
 server:
   address: 'tcp4://:9091'
@@ -62,6 +62,8 @@ access_control:
     - domain: 'servarr.erfi.io'
       policy: 'two_factor'
     - domain: 'change.erfi.io'
+      policy: 'two_factor'
+    - domain: 'waf.erfi.io'
       policy: 'two_factor'
 
     # Add more rules here as you expand Authelia protection to other services.

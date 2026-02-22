@@ -129,7 +129,7 @@ func parseEvent(entry AuditLogEntry) Event {
 
 	ua := headerValue(tx.Request.Headers, "User-Agent")
 
-	return Event{
+	ev := Event{
 		ID:             tx.ID,
 		Timestamp:      ts,
 		ClientIP:       tx.ClientIP,
@@ -141,6 +141,31 @@ func parseEvent(entry AuditLogEntry) Event {
 		ResponseStatus: tx.Response.Status,
 		UserAgent:      ua,
 	}
+
+	// Extract rule match data from the messages array (audit log part H).
+	// Use the highest-severity (lowest number) matched rule as the primary.
+	if len(entry.Messages) > 0 {
+		best := entry.Messages[0]
+		for _, m := range entry.Messages[1:] {
+			// Lower severity number = higher severity. 0 means unset.
+			if m.Data.Severity > 0 && (best.Data.Severity == 0 || m.Data.Severity < best.Data.Severity) {
+				best = m
+			}
+			// Prefer rules with an actual ID (skip anomaly scoring rules 949110/980170)
+			if best.Data.ID == 949110 || best.Data.ID == 980170 {
+				if m.Data.ID != 949110 && m.Data.ID != 980170 && m.Data.ID != 0 {
+					best = m
+				}
+			}
+		}
+		ev.RuleID = best.Data.ID
+		ev.RuleMsg = best.Data.Msg
+		ev.Severity = best.Data.Severity
+		ev.MatchedData = best.Data.Data
+		ev.RuleTags = best.Data.Tags
+	}
+
+	return ev
 }
 
 // parseTimestamp parses Coraza's "2006/01/02 15:04:05" format.
@@ -201,37 +226,152 @@ func (s *Store) SnapshotSince(hours int) []Event {
 func (s *Store) Summary(hours int) SummaryResponse {
 	events := s.SnapshotSince(hours)
 
-	var blocked, logged int
-	clients := make(map[string]int)
-	services := make(map[string]int)
-	uris := make(map[string]int)
-	hourBuckets := make(map[string]int)
+	var totalBlocked, totalLogged int
 
-	for i := range events {
+	// Per-hour breakdown with blocked/logged.
+	type hourStats struct {
+		total, blocked int
+	}
+	hourMap := make(map[string]*hourStats)
+
+	// Per-service breakdown with blocked/logged.
+	type svcStats struct {
+		total, blocked int
+	}
+	svcMap := make(map[string]*svcStats)
+
+	// Per-client breakdown with blocked.
+	type clientStats struct {
+		total, blocked int
+	}
+	clientMap := make(map[string]*clientStats)
+
+	uris := make(map[string]int)
+
+	// Collect recent blocks (newest first, up to 10).
+	var recentBlocks []Event
+
+	for i := len(events) - 1; i >= 0; i-- {
 		ev := &events[i]
 		if ev.IsBlocked {
-			blocked++
+			totalBlocked++
+			if len(recentBlocks) < 10 {
+				recentBlocks = append(recentBlocks, *ev)
+			}
 		} else {
-			logged++
+			totalLogged++
 		}
-		clients[ev.ClientIP]++
-		services[ev.Service]++
-		uris[ev.URI]++
 
+		// Per-hour.
 		hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
-		hourBuckets[hourKey]++
+		hs, ok := hourMap[hourKey]
+		if !ok {
+			hs = &hourStats{}
+			hourMap[hourKey] = hs
+		}
+		hs.total++
+		if ev.IsBlocked {
+			hs.blocked++
+		}
+
+		// Per-service.
+		ss, ok := svcMap[ev.Service]
+		if !ok {
+			ss = &svcStats{}
+			svcMap[ev.Service] = ss
+		}
+		ss.total++
+		if ev.IsBlocked {
+			ss.blocked++
+		}
+
+		// Per-client.
+		cs, ok := clientMap[ev.ClientIP]
+		if !ok {
+			cs = &clientStats{}
+			clientMap[ev.ClientIP] = cs
+		}
+		cs.total++
+		if ev.IsBlocked {
+			cs.blocked++
+		}
+
+		uris[ev.URI]++
+	}
+
+	// Build sorted hour buckets.
+	hourCounts := make([]HourCount, 0, len(hourMap))
+	for k, v := range hourMap {
+		hourCounts = append(hourCounts, HourCount{
+			Hour:    k,
+			Count:   v.total,
+			Blocked: v.blocked,
+			Logged:  v.total - v.blocked,
+		})
+	}
+	sort.Slice(hourCounts, func(i, j int) bool {
+		return hourCounts[i].Hour < hourCounts[j].Hour
+	})
+
+	// Build service counts (for top_services).
+	svcCounts := make([]ServiceCount, 0, len(svcMap))
+	for k, v := range svcMap {
+		svcCounts = append(svcCounts, ServiceCount{
+			Service: k,
+			Count:   v.total,
+			Blocked: v.blocked,
+			Logged:  v.total - v.blocked,
+		})
+	}
+	sort.Slice(svcCounts, func(i, j int) bool {
+		return svcCounts[i].Count > svcCounts[j].Count
+	})
+	if len(svcCounts) > 20 {
+		svcCounts = svcCounts[:20]
+	}
+
+	// Build service breakdown (same data, different type for convenience).
+	svcBreakdown := make([]ServiceDetail, 0, len(svcMap))
+	for k, v := range svcMap {
+		svcBreakdown = append(svcBreakdown, ServiceDetail{
+			Service: k,
+			Total:   v.total,
+			Blocked: v.blocked,
+			Logged:  v.total - v.blocked,
+		})
+	}
+	sort.Slice(svcBreakdown, func(i, j int) bool {
+		return svcBreakdown[i].Total > svcBreakdown[j].Total
+	})
+
+	// Build client counts.
+	clientCounts := make([]ClientCount, 0, len(clientMap))
+	for k, v := range clientMap {
+		clientCounts = append(clientCounts, ClientCount{
+			Client:  k,
+			Count:   v.total,
+			Blocked: v.blocked,
+		})
+	}
+	sort.Slice(clientCounts, func(i, j int) bool {
+		return clientCounts[i].Count > clientCounts[j].Count
+	})
+	if len(clientCounts) > 20 {
+		clientCounts = clientCounts[:20]
 	}
 
 	return SummaryResponse{
-		TotalEvents:    len(events),
-		BlockedEvents:  blocked,
-		LoggedEvents:   logged,
-		UniqueClients:  len(clients),
-		UniqueServices: len(services),
-		EventsByHour:   sortedHours(hourBuckets),
-		TopServices:    topN(services, 20, func(k string, c int) ServiceCount { return ServiceCount{k, c} }),
-		TopClients:     topN(clients, 20, func(k string, c int) ClientCount { return ClientCount{k, c} }),
-		TopURIs:        topN(uris, 20, func(k string, c int) URICount { return URICount{k, c} }),
+		TotalEvents:      len(events),
+		BlockedEvents:    totalBlocked,
+		LoggedEvents:     totalLogged,
+		UniqueClients:    len(clientMap),
+		UniqueServices:   len(svcMap),
+		EventsByHour:     hourCounts,
+		TopServices:      svcCounts,
+		TopClients:       clientCounts,
+		TopURIs:          topN(uris, 20, func(k string, c int) URICount { return URICount{k, c} }),
+		ServiceBreakdown: svcBreakdown,
+		RecentBlocks:     recentBlocks,
 	}
 }
 
@@ -381,18 +521,114 @@ func (s *Store) IPLookup(ip string, hours int) IPLookupResponse {
 	return resp
 }
 
-// --- helpers ---
+// TopBlockedIPs returns the top N IPs by blocked count.
+func (s *Store) TopBlockedIPs(hours, n int) []TopBlockedIP {
+	events := s.SnapshotSince(hours)
 
-func sortedHours(m map[string]int) []HourCount {
-	result := make([]HourCount, 0, len(m))
-	for k, v := range m {
-		result = append(result, HourCount{Hour: k, Count: v})
+	type ipStats struct {
+		total, blocked int
+		first, last    time.Time
 	}
+	m := make(map[string]*ipStats)
+
+	for i := range events {
+		ev := &events[i]
+		st, ok := m[ev.ClientIP]
+		if !ok {
+			st = &ipStats{first: ev.Timestamp, last: ev.Timestamp}
+			m[ev.ClientIP] = st
+		}
+		st.total++
+		if ev.IsBlocked {
+			st.blocked++
+		}
+		if ev.Timestamp.Before(st.first) {
+			st.first = ev.Timestamp
+		}
+		if ev.Timestamp.After(st.last) {
+			st.last = ev.Timestamp
+		}
+	}
+
+	result := make([]TopBlockedIP, 0, len(m))
+	for ip, st := range m {
+		if st.blocked == 0 {
+			continue // only include IPs that have at least one block
+		}
+		rate := 0.0
+		if st.total > 0 {
+			rate = float64(st.blocked) / float64(st.total) * 100
+		}
+		result = append(result, TopBlockedIP{
+			ClientIP:  ip,
+			Total:     st.total,
+			Blocked:   st.blocked,
+			BlockRate: rate,
+			FirstSeen: st.first.Format(time.RFC3339),
+			LastSeen:  st.last.Format(time.RFC3339),
+		})
+	}
+
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Hour < result[j].Hour
+		return result[i].Blocked > result[j].Blocked
 	})
+	if len(result) > n {
+		result = result[:n]
+	}
 	return result
 }
+
+// TopTargetedURIs returns the top N URIs by total event count.
+func (s *Store) TopTargetedURIs(hours, n int) []TopTargetedURI {
+	events := s.SnapshotSince(hours)
+
+	type uriStats struct {
+		total, blocked int
+		services       map[string]bool
+	}
+	m := make(map[string]*uriStats)
+
+	for i := range events {
+		ev := &events[i]
+		st, ok := m[ev.URI]
+		if !ok {
+			st = &uriStats{services: make(map[string]bool)}
+			m[ev.URI] = st
+		}
+		st.total++
+		if ev.IsBlocked {
+			st.blocked++
+		}
+		if ev.Service != "" {
+			st.services[ev.Service] = true
+		}
+	}
+
+	result := make([]TopTargetedURI, 0, len(m))
+	for uri, st := range m {
+		svcs := make([]string, 0, len(st.services))
+		for svc := range st.services {
+			svcs = append(svcs, svc)
+		}
+		sort.Strings(svcs)
+		result = append(result, TopTargetedURI{
+			URI:      uri,
+			Total:    st.total,
+			Blocked:  st.blocked,
+			Services: svcs,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Total > result[j].Total
+	})
+	if len(result) > n {
+		result = result[:n]
+	}
+	return result
+}
+
+// --- helpers ---
 
 // topN is a generic helper that converts a map into a sorted top-N slice.
 func topN[T any](m map[string]int, n int, conv func(string, int) T) []T {

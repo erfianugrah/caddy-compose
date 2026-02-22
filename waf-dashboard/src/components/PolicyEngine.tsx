@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Shield,
+  ShieldCheck,
+  ShieldBan,
+  SkipForward,
   FileCode,
   Plus,
   Trash2,
@@ -9,14 +12,13 @@ import {
   Check,
   GripVertical,
   AlertTriangle,
-  ToggleLeft,
   Code2,
-  Wand2,
+  Zap,
   Rocket,
   Download,
   Upload,
   X,
-  Power,
+  Search,
 } from "lucide-react";
 import {
   Card,
@@ -24,12 +26,10 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -65,45 +65,144 @@ import {
   updateExclusion,
   deleteExclusion,
   generateConfig,
+  deployConfig,
   fetchServices,
   exportExclusions,
   importExclusions,
+  fetchCRSRules,
+  fetchCRSAutocomplete,
   type Exclusion,
   type ExclusionType,
   type ExclusionCreateData,
+  type Condition,
+  type ConditionField,
+  type ConditionOperator,
+  type GroupOperator,
   type GeneratedConfig,
+  type DeployResult,
   type ServiceDetail,
+  type CRSRule,
+  type CRSCatalogResponse,
+  type CRSAutocompleteResponse,
 } from "@/lib/api";
+import SecRuleEditor from "./SecRuleEditor";
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const EXCLUSION_TYPES: { value: ExclusionType; label: string; description: string }[] = [
-  { value: "SecRuleRemoveById", label: "Remove entire rule", description: "SecRuleRemoveById — removes a rule globally" },
-  { value: "SecRuleRemoveByTag", label: "Remove rule category", description: "SecRuleRemoveByTag — removes all rules in a tag category" },
-  { value: "SecRuleUpdateTargetById", label: "Exclude variable from rule", description: "SecRuleUpdateTargetById — excludes a specific variable from a rule" },
-  { value: "SecRuleUpdateTargetByTag", label: "Exclude variable from category", description: "SecRuleUpdateTargetByTag — excludes a variable from all rules in a tag" },
-  { value: "ctl:ruleRemoveById", label: "Remove rule for URI", description: "Runtime ctl:ruleRemoveById — removes a rule only for matching URIs" },
-  { value: "ctl:ruleRemoveByTag", label: "Remove category for URI", description: "Runtime ctl:ruleRemoveByTag — removes a tag category for matching URIs" },
-  { value: "ctl:ruleRemoveTargetById", label: "Exclude variable for URI", description: "Runtime ctl:ruleRemoveTargetById — excludes a variable for matching URIs" },
+// Quick Action types
+type QuickActionType = "allow" | "block" | "skip_rule";
+
+const QUICK_ACTIONS: { value: QuickActionType; label: string; description: string; icon: typeof Shield }[] = [
+  { value: "allow", label: "Allow", description: "Whitelist IP, path, or service — bypass WAF checks", icon: ShieldCheck },
+  { value: "block", label: "Block", description: "Deny requests by IP, path, or user agent", icon: ShieldBan },
+  { value: "skip_rule", label: "Skip / Bypass", description: "Skip specific CRS rules for a path or service", icon: SkipForward },
+];
+
+// All exclusion types for the Advanced tab (includes quick action types for editing)
+const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; description: string; group: "quick" | "advanced" | "runtime" }[] = [
+  // Quick action types (mainly created from Quick Actions tab, but editable here)
+  { value: "allow", label: "Allow", description: "Whitelist — bypass WAF checks", group: "quick" },
+  { value: "block", label: "Block", description: "Deny matching requests", group: "quick" },
+  { value: "skip_rule", label: "Skip / Bypass", description: "Skip specific CRS rules", group: "quick" },
+  // Configure-time advanced types
+  { value: "SecRuleRemoveById", label: "Remove entire rule", description: "SecRuleRemoveById — removes a rule globally", group: "advanced" },
+  { value: "SecRuleRemoveByTag", label: "Remove rule category", description: "SecRuleRemoveByTag — removes all rules in a tag category", group: "advanced" },
+  { value: "SecRuleUpdateTargetById", label: "Exclude variable from rule", description: "SecRuleUpdateTargetById — excludes a specific variable from a rule", group: "advanced" },
+  { value: "SecRuleUpdateTargetByTag", label: "Exclude variable from category", description: "SecRuleUpdateTargetByTag — excludes a variable from all rules in a tag", group: "advanced" },
+  // Runtime ctl: types
+  { value: "ctl:ruleRemoveById", label: "Remove rule for URI", description: "Runtime ctl:ruleRemoveById — removes a rule only for matching requests", group: "runtime" },
+  { value: "ctl:ruleRemoveByTag", label: "Remove category for URI", description: "Runtime ctl:ruleRemoveByTag — removes a tag category for matching requests", group: "runtime" },
+  { value: "ctl:ruleRemoveTargetById", label: "Exclude variable for URI", description: "Runtime ctl:ruleRemoveTargetById — excludes a variable for matching requests", group: "runtime" },
 ];
 
 const RULE_TAGS = [
-  "attack-sqli",
-  "attack-xss",
-  "attack-rce",
-  "attack-lfi",
-  "attack-rfi",
-  "attack-protocol",
-  "attack-injection-php",
-  "attack-injection-generic",
-  "attack-reputation-ip",
-  "attack-disclosure",
-  "attack-fixation",
-  "paranoia-level/1",
-  "paranoia-level/2",
-  "paranoia-level/3",
-  "paranoia-level/4",
+  "attack-sqli", "attack-xss", "attack-rce", "attack-lfi", "attack-rfi",
+  "attack-protocol", "attack-injection-php", "attack-injection-generic",
+  "attack-reputation-ip", "attack-disclosure", "attack-fixation",
+  "paranoia-level/1", "paranoia-level/2", "paranoia-level/3", "paranoia-level/4",
 ];
+
+// ─── Condition builder field/operator definitions ───────────────────
+
+interface FieldDef {
+  value: ConditionField;
+  label: string;
+  operators: { value: ConditionOperator; label: string }[];
+  placeholder: string;
+}
+
+const CONDITION_FIELDS: FieldDef[] = [
+  {
+    value: "ip", label: "IP Address",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "ip_match", label: "is in (CIDR)" },
+      { value: "not_ip_match", label: "is not in (CIDR)" },
+    ],
+    placeholder: "e.g., 195.240.81.42 or 10.0.0.0/8",
+  },
+  {
+    value: "path", label: "Path / URI",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "begins_with", label: "begins with" },
+      { value: "ends_with", label: "ends with" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., /api/v3/, /socket.io/",
+  },
+  {
+    value: "host", label: "Host / Service",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+    ],
+    placeholder: "e.g., radarr.erfi.io",
+  },
+  {
+    value: "method", label: "HTTP Method",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "in", label: "is in" },
+    ],
+    placeholder: "e.g., POST or GET|POST|PUT",
+  },
+  {
+    value: "user_agent", label: "User Agent",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., BadBot.*, curl/.*",
+  },
+  {
+    value: "header", label: "Request Header",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., X-Custom-Header:value",
+  },
+  {
+    value: "query", label: "Query String",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., debug=true",
+  },
+];
+
+function getFieldDef(field: ConditionField): FieldDef {
+  return CONDITION_FIELDS.find((f) => f.value === field) ?? CONDITION_FIELDS[0];
+}
 
 function isById(type: ExclusionType): boolean {
   return type.includes("ById");
@@ -121,7 +220,7 @@ function isRuntimeType(type: ExclusionType): boolean {
   return type.startsWith("ctl:");
 }
 
-// ─── Copy Button ────────────────────────────────────────────────────
+// ─── Utility Components ─────────────────────────────────────────────
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -153,8 +252,6 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   );
 }
 
-// ─── Condition Chip ─────────────────────────────────────────────────
-
 function ConditionChip({
   label,
   value,
@@ -180,69 +277,556 @@ function ConditionChip({
   );
 }
 
-// ─── Guided Builder Form ────────────────────────────────────────────
+// ─── CRS Rule Picker (searchable dropdown) ──────────────────────────
 
-interface BuilderFormState {
+function CRSRulePicker({
+  rules,
+  categories,
+  selectedRuleId,
+  onSelect,
+}: {
+  rules: CRSRule[];
+  categories: { id: string; name: string }[];
+  selectedRuleId: string;
+  onSelect: (ruleId: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filteredRules = useMemo(() => {
+    if (!search) return rules.slice(0, 50); // Show first 50 by default
+    const q = search.toLowerCase();
+    return rules.filter(
+      (r) =>
+        r.id.includes(q) ||
+        r.description.toLowerCase().includes(q) ||
+        r.category.toLowerCase().includes(q)
+    ).slice(0, 50);
+  }, [rules, search]);
+
+  const categoryMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of categories) m[c.id] = c.name;
+    return m;
+  }, [categories]);
+
+  const selectedRule = rules.find((r) => r.id === selectedRuleId);
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        CRS Rule
+      </Label>
+      <div className="relative">
+        <div
+          className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:border-ring"
+          onClick={() => setOpen(!open)}
+        >
+          {selectedRule ? (
+            <span>
+              <span className="font-mono text-neon-cyan">{selectedRule.id}</span>
+              <span className="ml-2 text-muted-foreground">{selectedRule.description}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Select a CRS rule to skip...</span>
+          )}
+          <Search className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+
+        {open && (
+          <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+            <div className="p-2 border-b border-border">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by ID, description, or category..."
+                className="h-8 text-xs"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-[300px] overflow-y-auto p-1">
+              {filteredRules.length > 0 ? (
+                filteredRules.map((rule) => (
+                  <button
+                    key={rule.id}
+                    className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent"
+                    onClick={() => {
+                      onSelect(rule.id);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                  >
+                    <span className="shrink-0 font-mono text-neon-cyan">{rule.id}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate">{rule.description}</p>
+                      <p className="text-muted-foreground">
+                        {categoryMap[rule.category] ?? rule.category}
+                        {rule.severity && (
+                          <Badge variant="outline" className="ml-1.5 text-[9px] px-1 py-0">
+                            {rule.severity}
+                          </Badge>
+                        )}
+                      </p>
+                    </div>
+                    {rule.id === selectedRuleId && (
+                      <Check className="h-3.5 w-3.5 shrink-0 text-neon-green" />
+                    )}
+                  </button>
+                ))
+              ) : (
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                  No rules found
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Allow manual entry too */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">or enter manually:</span>
+        <Input
+          value={selectedRuleId}
+          onChange={(e) => onSelect(e.target.value)}
+          placeholder="e.g., 920420 or 942000-942999"
+          className="h-7 text-xs font-mono flex-1"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Condition Row Component ────────────────────────────────────────
+
+function ConditionRow({
+  condition,
+  index,
+  onChange,
+  onRemove,
+  services,
+}: {
+  condition: Condition;
+  index: number;
+  onChange: (index: number, condition: Condition) => void;
+  onRemove: (index: number) => void;
+  services: ServiceDetail[];
+}) {
+  const fieldDef = getFieldDef(condition.field);
+  const operators = fieldDef.operators;
+
+  return (
+    <div className="flex items-start gap-2">
+      {/* Field selector */}
+      <Select
+        value={condition.field}
+        onValueChange={(v) => {
+          const newField = v as ConditionField;
+          const newFieldDef = getFieldDef(newField);
+          onChange(index, {
+            field: newField,
+            operator: newFieldDef.operators[0].value,
+            value: "",
+          });
+        }}
+      >
+        <SelectTrigger className="w-[160px] shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {CONDITION_FIELDS.map((f) => (
+            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Operator selector */}
+      <Select
+        value={condition.operator}
+        onValueChange={(v) => onChange(index, { ...condition, operator: v as ConditionOperator })}
+      >
+        <SelectTrigger className="w-[160px] shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {operators.map((op) => (
+            <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Value input — special case for host field (show service dropdown) */}
+      {condition.field === "host" ? (
+        <Select
+          value={condition.value || "__custom__"}
+          onValueChange={(v) => onChange(index, { ...condition, value: v === "__custom__" ? "" : v })}
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder="Select host or type custom" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__custom__">Custom...</SelectItem>
+            {services.map((s) => (
+              <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          value={condition.value}
+          onChange={(e) => onChange(index, { ...condition, value: e.target.value })}
+          placeholder={fieldDef.placeholder}
+          className="flex-1"
+        />
+      )}
+
+      {/* Remove button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 shrink-0 text-muted-foreground hover:text-neon-pink"
+        onClick={() => onRemove(index)}
+      >
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+// ─── Quick Actions Form ─────────────────────────────────────────────
+
+function QuickActionsForm({
+  services,
+  crsRules,
+  crsCategories,
+  onSubmit,
+}: {
+  services: ServiceDetail[];
+  crsRules: CRSRule[];
+  crsCategories: { id: string; name: string }[];
+  onSubmit: (data: ExclusionCreateData) => void;
+}) {
+  const [actionType, setActionType] = useState<QuickActionType>("allow");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [conditions, setConditions] = useState<Condition[]>([
+    { field: "ip", operator: "ip_match", value: "" },
+  ]);
+  const [groupOp, setGroupOp] = useState<GroupOperator>("and");
+  const [ruleId, setRuleId] = useState("");
+  const [ruleTag, setRuleTag] = useState("");
+  const [skipMode, setSkipMode] = useState<"id" | "tag">("id");
+  const [enabled, setEnabled] = useState(true);
+
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setConditions([{ field: "ip", operator: "ip_match", value: "" }]);
+    setGroupOp("and");
+    setRuleId("");
+    setRuleTag("");
+    setSkipMode("id");
+    setEnabled(true);
+  };
+
+  const updateCondition = (index: number, condition: Condition) => {
+    setConditions((prev) => prev.map((c, i) => (i === index ? condition : c)));
+  };
+
+  const removeCondition = (index: number) => {
+    setConditions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addCondition = () => {
+    setConditions((prev) => [...prev, { field: "path", operator: "eq", value: "" }]);
+  };
+
+  const handleSubmit = () => {
+    const validConditions = conditions.filter((c) => c.value.trim() !== "");
+    const data: ExclusionCreateData = {
+      name: name || `${actionType} rule`,
+      description,
+      type: actionType,
+      conditions: validConditions,
+      group_operator: groupOp,
+      enabled,
+    };
+
+    if (actionType === "skip_rule") {
+      if (skipMode === "id" && ruleId) data.rule_id = ruleId;
+      if (skipMode === "tag" && ruleTag) data.rule_tag = ruleTag;
+    }
+
+    onSubmit(data);
+    resetForm();
+  };
+
+  const validConditions = conditions.filter((c) => c.value.trim() !== "");
+  const isValid = (() => {
+    if (!name.trim()) return false;
+    if (validConditions.length === 0) return false;
+    if (actionType === "skip_rule") {
+      return !!(skipMode === "id" ? ruleId : ruleTag);
+    }
+    return true;
+  })();
+
+  const SelectedIcon = QUICK_ACTIONS.find((a) => a.value === actionType)?.icon ?? Shield;
+
+  return (
+    <div className="space-y-4">
+      {/* Action Type Selector */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {QUICK_ACTIONS.map((action) => {
+          const Icon = action.icon;
+          const isActive = actionType === action.value;
+          return (
+            <button
+              key={action.value}
+              className={`flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors ${
+                isActive
+                  ? "border-neon-cyan bg-neon-cyan/5"
+                  : "border-border hover:border-muted-foreground/50"
+              }`}
+              onClick={() => setActionType(action.value)}
+            >
+              <div className="flex items-center gap-2">
+                <Icon className={`h-4 w-4 ${isActive ? "text-neon-cyan" : "text-muted-foreground"}`} />
+                <span className={`text-sm font-medium ${isActive ? "text-neon-cyan" : ""}`}>
+                  {action.label}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">{action.description}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <Separator />
+
+      {/* Name & Description */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Name</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={
+              actionType === "allow" ? "e.g., Allow admin IP"
+              : actionType === "block" ? "e.g., Block bad actor"
+              : "e.g., Skip SQLi for API"
+            }
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Description</Label>
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional description"
+          />
+        </div>
+      </div>
+
+      {/* Condition Builder */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            When incoming requests match...
+          </Label>
+          {conditions.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Match:</span>
+              <Select value={groupOp} onValueChange={(v) => setGroupOp(v as GroupOperator)}>
+                <SelectTrigger className="h-7 w-[90px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="and">All (AND)</SelectItem>
+                  <SelectItem value="or">Any (OR)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2 rounded-md border border-border bg-navy-950/30 p-3">
+          {conditions.map((c, i) => (
+            <div key={i}>
+              {i > 0 && (
+                <div className="flex items-center gap-2 py-1">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                    {groupOp}
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+              )}
+              <ConditionRow
+                condition={c}
+                index={i}
+                onChange={updateCondition}
+                onRemove={removeCondition}
+                services={services}
+              />
+            </div>
+          ))}
+
+          <Button variant="outline" size="sm" onClick={addCondition} className="mt-1">
+            <Plus className="h-3.5 w-3.5" />
+            Add condition
+          </Button>
+        </div>
+      </div>
+
+      {/* Skip/Bypass: CRS Rule Picker */}
+      {actionType === "skip_rule" && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Skip by:</Label>
+            <div className="flex gap-2">
+              <Button
+                variant={skipMode === "id" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSkipMode("id")}
+              >
+                Rule ID
+              </Button>
+              <Button
+                variant={skipMode === "tag" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSkipMode("tag")}
+              >
+                Rule Tag
+              </Button>
+            </div>
+          </div>
+
+          {skipMode === "id" ? (
+            <CRSRulePicker
+              rules={crsRules}
+              categories={crsCategories}
+              selectedRuleId={ruleId}
+              onSelect={setRuleId}
+            />
+          ) : (
+            <div className="space-y-1.5">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Rule Tag
+              </Label>
+              <Select value={ruleTag} onValueChange={setRuleTag}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a tag category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RULE_TAGS.map((tag) => (
+                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Enabled + Submit */}
+      <div className="flex items-center gap-4 pt-2">
+        <Button onClick={handleSubmit} disabled={!isValid}>
+          <SelectedIcon className="h-4 w-4" />
+          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : "Add Skip Rule"}
+        </Button>
+        <div className="flex items-center gap-2">
+          <Switch checked={enabled} onCheckedChange={setEnabled} id="qa-enabled" />
+          <Label htmlFor="qa-enabled" className="text-sm">
+            {enabled ? "Enabled" : "Disabled"}
+          </Label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Advanced Builder Form ──────────────────────────────────────────
+
+interface AdvancedFormState {
   name: string;
   description: string;
   type: ExclusionType;
   rule_id: string;
   rule_tag: string;
   variable: string;
-  uri: string;
-  service: string;
+  // Runtime ctl: types use conditions for URI/method/host matching
+  conditions: Condition[];
+  group_operator: GroupOperator;
   enabled: boolean;
 }
 
-const emptyForm: BuilderFormState = {
+const emptyAdvancedForm: AdvancedFormState = {
   name: "",
   description: "",
   type: "SecRuleRemoveById",
   rule_id: "",
   rule_tag: "",
   variable: "",
-  uri: "",
-  service: "",
+  conditions: [],
+  group_operator: "and",
   enabled: true,
 };
 
-function GuidedBuilderForm({
+function AdvancedBuilderForm({
   initial,
   services,
   onSubmit,
   onCancel,
   submitLabel,
 }: {
-  initial?: BuilderFormState;
+  initial?: AdvancedFormState;
   services: ServiceDetail[];
   onSubmit: (data: ExclusionCreateData) => void;
   onCancel?: () => void;
   submitLabel: string;
 }) {
-  const [form, setForm] = useState<BuilderFormState>(initial ?? emptyForm);
+  const [form, setForm] = useState<AdvancedFormState>(initial ?? emptyAdvancedForm);
 
-  const update = (field: keyof BuilderFormState, value: string | boolean) => {
+  const update = (field: keyof AdvancedFormState, value: string | boolean | Condition[] | GroupOperator) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const selectedType = EXCLUSION_TYPES.find((t) => t.value === form.type);
-  const needsRuleId = isById(form.type);
-  const needsRuleTag = isByTag(form.type);
+  const isQuickAction = ["allow", "block", "skip_rule"].includes(form.type);
+  const needsRuleId = isById(form.type) || form.type === "skip_rule";
+  const needsRuleTag = isByTag(form.type) || form.type === "skip_rule";
   const needsVariable = isTargetType(form.type);
-  const needsUri = isRuntimeType(form.type);
+  const needsConditions = isRuntimeType(form.type) || isQuickAction;
 
-  const chips = useMemo(() => {
-    const result: { label: string; value: string; field: keyof BuilderFormState }[] = [];
-    if (form.type) result.push({ label: "Type", value: form.type, field: "type" });
-    if (form.rule_id) result.push({ label: "Rule", value: form.rule_id, field: "rule_id" });
-    if (form.rule_tag) result.push({ label: "Tag", value: form.rule_tag, field: "rule_tag" });
-    if (form.variable) result.push({ label: "Variable", value: form.variable, field: "variable" });
-    if (form.uri) result.push({ label: "URI", value: form.uri, field: "uri" });
-    if (form.service) result.push({ label: "Service", value: form.service, field: "service" });
-    return result;
-  }, [form]);
+  // Condition management for runtime types
+  const updateCondition = (index: number, condition: Condition) => {
+    const next = form.conditions.map((c, i) => (i === index ? condition : c));
+    update("conditions", next);
+  };
+
+  const removeCondition = (index: number) => {
+    update("conditions", form.conditions.filter((_, i) => i !== index));
+  };
+
+  const addCondition = () => {
+    update("conditions", [...form.conditions, { field: "path", operator: "eq", value: "" }]);
+  };
+
+  // When switching to a type that needs conditions, ensure at least one exists
+  const handleTypeChange = (v: string) => {
+    const newType = v as ExclusionType;
+    const willNeedConditions = isRuntimeType(newType) || ["allow", "block", "skip_rule"].includes(newType);
+    const hadConditions = form.conditions.length > 0;
+    setForm((prev) => ({
+      ...prev,
+      type: newType,
+      conditions: willNeedConditions && !hadConditions
+        ? [{ field: "path", operator: "eq", value: "" }]
+        : prev.conditions,
+    }));
+  };
 
   const handleSubmit = () => {
+    const validConditions = form.conditions.filter((c) => c.value.trim() !== "");
     const data: ExclusionCreateData = {
       name: form.name || `${form.type} exclusion`,
       description: form.description,
@@ -252,53 +836,54 @@ function GuidedBuilderForm({
     if (needsRuleId && form.rule_id) data.rule_id = form.rule_id;
     if (needsRuleTag && form.rule_tag) data.rule_tag = form.rule_tag;
     if (needsVariable && form.variable) data.variable = form.variable;
-    if (needsUri && form.uri) data.uri = form.uri;
-    if (form.service) data.service = form.service;
+    if (needsConditions && validConditions.length > 0) {
+      data.conditions = validConditions;
+      data.group_operator = form.group_operator;
+    }
     onSubmit(data);
   };
 
-  const isValid =
-    form.name.trim() !== "" &&
-    ((needsRuleId && form.rule_id.trim() !== "") ||
-      (needsRuleTag && form.rule_tag.trim() !== ""));
+  const isValid = (() => {
+    if (form.name.trim() === "") return false;
+    // skip_rule needs either rule_id or rule_tag
+    if (form.type === "skip_rule") {
+      if (form.rule_id.trim() === "" && form.rule_tag.trim() === "") return false;
+    } else {
+      // configure-time types: ById needs rule_id, ByTag needs rule_tag
+      if (isById(form.type) && form.rule_id.trim() === "") return false;
+      if (isByTag(form.type) && form.rule_tag.trim() === "") return false;
+    }
+    // Types that need conditions (runtime ctl: + quick actions)
+    if (needsConditions) {
+      const validConds = form.conditions.filter((c) => c.value.trim() !== "");
+      if (validConds.length === 0) return false;
+    }
+    return true;
+  })();
 
   return (
     <div className="space-y-4">
       {/* Name & Description */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Name
-          </Label>
-          <Input
-            value={form.name}
-            onChange={(e) => update("name", e.target.value)}
-            placeholder="e.g., Allow WordPress admin"
-          />
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Name</Label>
+          <Input value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="e.g., Allow WordPress admin" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Description
-          </Label>
-          <Input
-            value={form.description}
-            onChange={(e) => update("description", e.target.value)}
-            placeholder="Optional description"
-          />
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Description</Label>
+          <Input value={form.description} onChange={(e) => update("description", e.target.value)} placeholder="Optional description" />
         </div>
       </div>
 
       {/* Exclusion Type */}
       <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-          Exclusion Type
-        </Label>
-        <Select value={form.type} onValueChange={(v) => update("type", v)}>
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Exclusion Type</Label>
+        <Select value={form.type} onValueChange={handleTypeChange}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {EXCLUSION_TYPES.map((t) => (
+            {ALL_EXCLUSION_TYPES.map((t) => (
               <SelectItem key={t.value} value={t.value}>
                 <div className="flex flex-col">
                   <span>{t.label}</span>
@@ -310,125 +895,95 @@ function GuidedBuilderForm({
         </Select>
       </div>
 
-      {/* Conditional fields */}
+      {/* Rule ID / Tag / Variable fields */}
       <div className="grid gap-3 sm:grid-cols-2">
         {needsRuleId && (
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Rule ID / Range
-            </Label>
-            <Input
-              value={form.rule_id}
-              onChange={(e) => update("rule_id", e.target.value)}
-              placeholder="e.g., 941100 or 941000-941999"
-            />
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Rule ID / Range</Label>
+            <Input value={form.rule_id} onChange={(e) => update("rule_id", e.target.value)} placeholder="e.g., 941100 or 941000-941999" />
           </div>
         )}
-
         {needsRuleTag && (
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Rule Tag
-            </Label>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Rule Tag</Label>
             <Select value={form.rule_tag} onValueChange={(v) => update("rule_tag", v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a tag" />
               </SelectTrigger>
               <SelectContent>
                 {RULE_TAGS.map((tag) => (
-                  <SelectItem key={tag} value={tag}>
-                    {tag}
-                  </SelectItem>
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         )}
-
         {needsVariable && (
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Variable
-            </Label>
-            <Input
-              value={form.variable}
-              onChange={(e) => update("variable", e.target.value)}
-              placeholder='e.g., ARGS:wp_post, REQUEST_COOKIES:/^uid_.*/'
-            />
-          </div>
-        )}
-
-        {needsUri && (
-          <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-              URI Condition
-            </Label>
-            <Input
-              value={form.uri}
-              onChange={(e) => update("uri", e.target.value)}
-              placeholder="e.g., /socket.io/, /api/v3/"
-            />
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Variable</Label>
+            <Input value={form.variable} onChange={(e) => update("variable", e.target.value)} placeholder='e.g., ARGS:wp_post, REQUEST_COOKIES:/^uid_.*/' />
           </div>
         )}
       </div>
 
-      {/* Service filter (optional) */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Service (optional)
-          </Label>
-          <Select value={form.service} onValueChange={(v) => update("service", v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="All services" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All Services</SelectItem>
-              {services.map((s) => (
-                <SelectItem key={s.service} value={s.service}>
-                  {s.service}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-end gap-3 pb-0.5">
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={form.enabled}
-              onCheckedChange={(v) => update("enabled", v)}
-              id="enabled-toggle"
-            />
-            <Label htmlFor="enabled-toggle" className="text-sm">
-              {form.enabled ? "Enabled" : "Disabled"}
+      {/* Condition builder for runtime ctl: types */}
+      {needsConditions && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Apply when requests match...
             </Label>
+            {form.conditions.length > 1 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Match:</span>
+                <Select value={form.group_operator} onValueChange={(v) => update("group_operator", v as GroupOperator)}>
+                  <SelectTrigger className="h-7 w-[90px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="and">All (AND)</SelectItem>
+                    <SelectItem value="or">Any (OR)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
 
-      {/* Condition chips preview */}
-      {chips.length > 0 && (
-        <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Conditions
-          </Label>
-          <div className="flex flex-wrap gap-2">
-            {chips.map((chip) => (
-              <ConditionChip
-                key={chip.field}
-                label={chip.label}
-                value={chip.value}
-                onRemove={
-                  chip.field !== "type"
-                    ? () => update(chip.field, "")
-                    : undefined
-                }
-              />
+          <div className="space-y-2 rounded-md border border-border bg-navy-950/30 p-3">
+            {form.conditions.map((c, i) => (
+              <div key={i}>
+                {i > 0 && (
+                  <div className="flex items-center gap-2 py-1">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                      {form.group_operator}
+                    </span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                )}
+                <ConditionRow
+                  condition={c}
+                  index={i}
+                  onChange={updateCondition}
+                  onRemove={removeCondition}
+                  services={services}
+                />
+              </div>
             ))}
+
+            <Button variant="outline" size="sm" onClick={addCondition} className="mt-1">
+              <Plus className="h-3.5 w-3.5" />
+              Add condition
+            </Button>
           </div>
         </div>
       )}
+
+      {/* Enabled */}
+      <div className="flex items-center gap-2">
+        <Switch checked={form.enabled} onCheckedChange={(v) => update("enabled", v)} id="adv-enabled" />
+        <Label htmlFor="adv-enabled" className="text-sm">{form.enabled ? "Enabled" : "Disabled"}</Label>
+      </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-2">
@@ -437,37 +992,35 @@ function GuidedBuilderForm({
           {submitLabel}
         </Button>
         {onCancel && (
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
         )}
       </div>
     </div>
   );
 }
 
-// ─── Advanced Expression Mode ───────────────────────────────────────
+// ─── Raw Editor Form ────────────────────────────────────────────────
 
-function AdvancedExpressionForm({
-  services,
+function RawEditorForm({
+  autocompleteData,
+  crsRules,
   onSubmit,
 }: {
-  services: ServiceDetail[];
+  autocompleteData: CRSAutocompleteResponse | null;
+  crsRules: CRSRule[];
   onSubmit: (data: ExclusionCreateData) => void;
 }) {
   const [name, setName] = useState("");
   const [rawRule, setRawRule] = useState("");
-  const [service, setService] = useState("");
 
   const handleSubmit = () => {
     if (!name.trim() || !rawRule.trim()) return;
     onSubmit({
       name,
       description: "Raw SecRule expression",
-      type: "SecRuleRemoveById",
+      type: "raw",
       enabled: true,
       raw_rule: rawRule,
-      service: service || undefined,
     });
     setName("");
     setRawRule("");
@@ -475,44 +1028,24 @@ function AdvancedExpressionForm({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Name
-          </Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Exclusion name"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Service (optional)
-          </Label>
-          <Select value={service} onValueChange={setService}>
-            <SelectTrigger>
-              <SelectValue placeholder="All services" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All Services</SelectItem>
-              {services.map((s) => (
-                <SelectItem key={s.service} value={s.service}>
-                  {s.service}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Name</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Exclusion name" />
       </div>
 
       <div className="space-y-1.5">
         <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-          Raw SecRule Directive
+          SecRule Directive
         </Label>
-        <Textarea
+        <p className="text-xs text-muted-foreground mb-2">
+          Type @ for operators, uppercase for variables, digits for CRS rule IDs. Ctrl+Space for completions.
+        </p>
+        <SecRuleEditor
           value={rawRule}
-          onChange={(e) => setRawRule(e.target.value)}
+          onChange={setRawRule}
+          autocompleteData={autocompleteData}
+          crsRules={crsRules}
+          minHeight="250px"
           placeholder={`SecRule REQUEST_URI "@streq /api/upload" \\
     "id:10001,\\
     phase:1,\\
@@ -520,17 +1053,12 @@ function AdvancedExpressionForm({
     t:none,\\
     nolog,\\
     ctl:ruleRemoveById=942100"`}
-          rows={8}
-          className="font-mono text-xs text-neon-green/80"
         />
       </div>
 
-      <Button
-        onClick={handleSubmit}
-        disabled={!name.trim() || !rawRule.trim()}
-      >
+      <Button onClick={handleSubmit} disabled={!name.trim() || !rawRule.trim()}>
         <Plus className="h-4 w-4" />
-        Add Exclusion
+        Add Raw Rule
       </Button>
     </div>
   );
@@ -541,7 +1069,6 @@ function AdvancedExpressionForm({
 function ConfigViewer({ config }: { config: GeneratedConfig }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      {/* pre-crs.conf */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -554,15 +1081,11 @@ function ConfigViewer({ config }: { config: GeneratedConfig }) {
         <CardContent className="p-0">
           <div className="relative max-h-[400px] overflow-auto">
             <pre className="p-4 text-xs leading-relaxed">
-              <code className="text-neon-green/80">
-                {config.pre_crs || "# No pre-CRS exclusions configured"}
-              </code>
+              <code className="text-neon-green/80">{config.pre_crs || "# No pre-CRS exclusions configured"}</code>
             </pre>
           </div>
         </CardContent>
       </Card>
-
-      {/* post-crs.conf */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -575,9 +1098,7 @@ function ConfigViewer({ config }: { config: GeneratedConfig }) {
         <CardContent className="p-0">
           <div className="relative max-h-[400px] overflow-auto">
             <pre className="p-4 text-xs leading-relaxed">
-              <code className="text-neon-cyan/80">
-                {config.post_crs || "# No post-CRS exclusions configured"}
-              </code>
+              <code className="text-neon-cyan/80">{config.post_crs || "# No post-CRS exclusions configured"}</code>
             </pre>
           </div>
         </CardContent>
@@ -586,26 +1107,82 @@ function ConfigViewer({ config }: { config: GeneratedConfig }) {
   );
 }
 
+// ─── Exclusion type label helper ────────────────────────────────────
+
+function conditionsSummary(excl: Exclusion): string {
+  // For raw rules, show raw_rule snippet
+  if (excl.type === "raw" && excl.raw_rule) {
+    return excl.raw_rule.length > 50 ? excl.raw_rule.slice(0, 50) + "..." : excl.raw_rule;
+  }
+  // For configure-time types without conditions, show rule_id or rule_tag
+  if (excl.rule_id) return `Rule ${excl.rule_id}`;
+  if (excl.rule_tag) return `Tag: ${excl.rule_tag}`;
+  // Show conditions summary
+  if (excl.conditions && excl.conditions.length > 0) {
+    const parts = excl.conditions.map((c) => {
+      const fieldLabel = CONDITION_FIELDS.find((f) => f.value === c.field)?.label ?? c.field;
+      const opLabel = CONDITION_FIELDS.find((f) => f.value === c.field)
+        ?.operators.find((o) => o.value === c.operator)?.label ?? c.operator;
+      const val = c.value.length > 30 ? c.value.slice(0, 30) + "..." : c.value;
+      return `${fieldLabel} ${opLabel} ${val}`;
+    });
+    const joiner = excl.group_operator === "or" ? " OR " : " AND ";
+    const joined = parts.join(joiner);
+    return joined.length > 80 ? joined.slice(0, 80) + "..." : joined;
+  }
+  return "-";
+}
+
+function exclusionTypeLabel(type: ExclusionType): string {
+  switch (type) {
+    case "allow": return "Allow";
+    case "block": return "Block";
+    case "skip_rule": return "Skip";
+    case "raw": return "Raw";
+    default: return type;
+  }
+}
+
+function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "outline" | "secondary" | "destructive" {
+  switch (type) {
+    case "allow": return "default";
+    case "block": return "destructive";
+    case "skip_rule": return "secondary";
+    default: return "outline";
+  }
+}
+
 // ─── Main Policy Engine Component ───────────────────────────────────
 
 export default function PolicyEngine() {
   const [exclusions, setExclusions] = useState<Exclusion[]>([]);
   const [services, setServices] = useState<ServiceDetail[]>([]);
+  const [crsData, setCrsData] = useState<CRSCatalogResponse | null>(null);
+  const [autocompleteData, setAutocompleteData] = useState<CRSAutocompleteResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [generatedConfig, setGeneratedConfig] = useState<GeneratedConfig | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getExclusions(), fetchServices()])
-      .then(([excl, svcs]) => {
+    Promise.all([
+      getExclusions(),
+      fetchServices(),
+      fetchCRSRules().catch(() => null),
+      fetchCRSAutocomplete().catch(() => null),
+    ])
+      .then(([excl, svcs, crs, ac]) => {
         setExclusions(excl);
         setServices(svcs);
+        if (crs) setCrsData(crs);
+        if (ac) setAutocompleteData(ac);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -673,12 +1250,28 @@ export default function PolicyEngine() {
     }
   };
 
+  const handleDeploy = async () => {
+    setDeploying(true);
+    setDeployResult(null);
+    try {
+      const result = await deployConfig();
+      setDeployResult(result);
+      if (result.status === "deployed") {
+        showSuccess("Configuration deployed and Caddy reloaded");
+      } else {
+        showSuccess("Config files written — Caddy reload needs manual intervention");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeploying(false);
+    }
+  };
+
   const handleExport = async () => {
     try {
       const data = await exportExclusions();
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json",
-      });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -711,11 +1304,10 @@ export default function PolicyEngine() {
     input.click();
   };
 
-  const exclusionToEdit = editingId
-    ? exclusions.find((e) => e.id === editingId)
-    : null;
+  // Editing: determine which tab the exclusion belongs to so we show the edit form in the right tab
+  const exclusionToEdit = editingId ? exclusions.find((e) => e.id === editingId) : null;
 
-  const editFormState: BuilderFormState | undefined = exclusionToEdit
+  const editFormState: AdvancedFormState | undefined = exclusionToEdit
     ? {
         name: exclusionToEdit.name,
         description: exclusionToEdit.description,
@@ -723,19 +1315,23 @@ export default function PolicyEngine() {
         rule_id: exclusionToEdit.rule_id ?? "",
         rule_tag: exclusionToEdit.rule_tag ?? "",
         variable: exclusionToEdit.variable ?? "",
-        uri: exclusionToEdit.uri ?? "",
-        service: exclusionToEdit.service ?? "",
+        conditions: exclusionToEdit.conditions ?? [],
+        group_operator: exclusionToEdit.group_operator ?? "and",
         enabled: exclusionToEdit.enabled,
       }
     : undefined;
 
+  // Determine the editing tab — always route to advanced tab for edits (it supports all types now)
+  const isEditingRaw = exclusionToEdit?.type === "raw";
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Policy Engine</h2>
           <p className="text-sm text-muted-foreground">
-            Build and manage CRS rule exclusions. Create exclusions visually or write raw SecRule directives.
+            Create allow/block rules, manage CRS exclusions, or write raw SecRule directives.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -766,43 +1362,56 @@ export default function PolicyEngine() {
         </Alert>
       )}
 
-      {/* Builder Section */}
+      {/* Builder Section — 3 Tabs */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-neon-green" />
             <CardTitle className="text-sm">
-              {editingId ? "Edit Exclusion" : "Create Exclusion"}
+              {editingId ? "Edit Rule" : "Create Rule"}
             </CardTitle>
           </div>
           <CardDescription>
-            Use the guided builder or write raw ModSecurity directives
+            Use Quick Actions for common tasks, Advanced for ModSecurity experts, or Raw Editor for full control
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="guided">
+          <Tabs defaultValue={isEditingRaw ? "raw" : editingId ? "advanced" : "quick"}>
             <TabsList className="mb-4">
-              <TabsTrigger value="guided" className="gap-1.5">
-                <Wand2 className="h-3.5 w-3.5" />
-                Guided Builder
+              <TabsTrigger value="quick" className="gap-1.5">
+                <Zap className="h-3.5 w-3.5" />
+                Quick Actions
               </TabsTrigger>
               <TabsTrigger value="advanced" className="gap-1.5">
                 <Code2 className="h-3.5 w-3.5" />
-                Advanced Expression
+                Advanced
+              </TabsTrigger>
+              <TabsTrigger value="raw" className="gap-1.5">
+                <FileCode className="h-3.5 w-3.5" />
+                Raw Editor
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="guided">
-              {editingId && editFormState ? (
-                <GuidedBuilderForm
+            <TabsContent value="quick">
+              <QuickActionsForm
+                services={services}
+                crsRules={crsData?.rules ?? []}
+                crsCategories={crsData?.categories ?? []}
+                onSubmit={handleCreate}
+              />
+            </TabsContent>
+
+            <TabsContent value="advanced">
+              {editingId && editFormState && !isEditingRaw ? (
+                <AdvancedBuilderForm
                   initial={editFormState}
                   services={services}
                   onSubmit={(data) => handleUpdate(editingId, data)}
                   onCancel={() => setEditingId(null)}
-                  submitLabel="Update Exclusion"
+                  submitLabel="Update Rule"
                 />
               ) : (
-                <GuidedBuilderForm
+                <AdvancedBuilderForm
                   services={services}
                   onSubmit={handleCreate}
                   submitLabel="Add Exclusion"
@@ -810,9 +1419,10 @@ export default function PolicyEngine() {
               )}
             </TabsContent>
 
-            <TabsContent value="advanced">
-              <AdvancedExpressionForm
-                services={services}
+            <TabsContent value="raw">
+              <RawEditorForm
+                autocompleteData={autocompleteData}
+                crsRules={crsData?.rules ?? []}
                 onSubmit={handleCreate}
               />
             </TabsContent>
@@ -825,18 +1435,10 @@ export default function PolicyEngine() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm">
-                Exclusions ({exclusions.length})
-              </CardTitle>
-              <CardDescription>
-                Manage your WAF rule exclusions
-              </CardDescription>
+              <CardTitle className="text-sm">Rules ({exclusions.length})</CardTitle>
+              <CardDescription>Manage your WAF rules and exclusions</CardDescription>
             </div>
-            <Button
-              onClick={handleGenerateConfig}
-              disabled={generating || exclusions.length === 0}
-              size="sm"
-            >
+            <Button onClick={handleGenerateConfig} disabled={generating || exclusions.length === 0} size="sm">
               <FileCode className="h-3.5 w-3.5" />
               {generating ? "Generating..." : "Generate Config"}
             </Button>
@@ -856,8 +1458,7 @@ export default function PolicyEngine() {
                   <TableHead className="w-8" />
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Rule / Tag</TableHead>
-                  <TableHead>Service</TableHead>
+                  <TableHead>Target / Conditions</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -872,24 +1473,17 @@ export default function PolicyEngine() {
                       <div>
                         <p className="text-xs font-medium">{excl.name}</p>
                         {excl.description && (
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {excl.description}
-                          </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">{excl.description}</p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                        {excl.type}
+                      <Badge variant={exclusionTypeBadgeVariant(excl.type)} className="text-[10px] px-1.5 py-0 font-mono">
+                        {exclusionTypeLabel(excl.type)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {excl.rule_id || excl.rule_tag || "-"}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {excl.service || (
-                        <span className="text-muted-foreground">All</span>
-                      )}
+                    <TableCell className="text-xs font-mono max-w-[300px] truncate" title={conditionsSummary(excl)}>
+                      {conditionsSummary(excl)}
                     </TableCell>
                     <TableCell>
                       <Switch
@@ -924,12 +1518,8 @@ export default function PolicyEngine() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12">
               <Shield className="mb-3 h-8 w-8 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">
-                No exclusions configured yet
-              </p>
-              <p className="text-xs text-muted-foreground/70">
-                Use the builder above to create your first exclusion
-              </p>
+              <p className="text-sm text-muted-foreground">No rules configured yet</p>
+              <p className="text-xs text-muted-foreground/70">Use the builder above to create your first rule</p>
             </div>
           )}
         </CardContent>
@@ -940,37 +1530,43 @@ export default function PolicyEngine() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Generated Configuration</h3>
-            <Button variant="outline" size="sm" disabled>
+            <Button variant="default" size="sm" onClick={handleDeploy} disabled={deploying}>
               <Rocket className="h-3.5 w-3.5" />
-              Deploy (coming soon)
+              {deploying ? "Deploying..." : "Deploy to Caddy"}
             </Button>
           </div>
+          {deployResult && (
+            <Alert variant={deployResult.status === "deployed" ? "default" : "destructive"}>
+              <AlertTitle>
+                {deployResult.status === "deployed" ? "Deployed Successfully" : "Partial Deploy"}
+              </AlertTitle>
+              <AlertDescription>
+                <p>{deployResult.message}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {deployResult.timestamp}
+                  {!deployResult.reloaded && (
+                    <span className="ml-2 text-yellow-600">
+                      Caddy reload failed — run manually: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+                    </span>
+                  )}
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
           <ConfigViewer config={generatedConfig} />
         </div>
       )}
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteConfirmId !== null}
-        onOpenChange={(open) => !open && setDeleteConfirmId(null)}
-      >
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Exclusion</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this exclusion? This action cannot be undone.
-            </DialogDescription>
+            <DialogTitle>Delete Rule</DialogTitle>
+            <DialogDescription>Are you sure you want to delete this rule? This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
-            >
-              Delete
-            </Button>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

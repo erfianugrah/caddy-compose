@@ -66,6 +66,17 @@ function formatDate(ts: string): string {
   }
 }
 
+const SEVERITY_MAP: Record<number, { label: string; color: string }> = {
+  2: { label: "CRITICAL", color: "text-neon-pink" },
+  3: { label: "ERROR", color: "text-neon-amber" },
+  4: { label: "WARNING", color: "text-yellow-400" },
+  5: { label: "NOTICE", color: "text-neon-blue" },
+};
+
+function formatSeverity(severity: number): { label: string; color: string } {
+  return SEVERITY_MAP[severity] ?? { label: severity ? `Level ${severity}` : "N/A", color: "text-muted-foreground" };
+}
+
 function EventDetailPanel({ event }: { event: WAFEvent }) {
   return (
     <div className="space-y-3 p-4">
@@ -108,7 +119,7 @@ function EventDetailPanel({ event }: { event: WAFEvent }) {
             <div className="flex gap-2">
               <span className="text-muted-foreground">Rule ID:</span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                {event.rule_id || "N/A"}
+                {event.rule_id ? event.rule_id : "N/A"}
               </Badge>
             </div>
             <div className="flex gap-2">
@@ -119,9 +130,10 @@ function EventDetailPanel({ event }: { event: WAFEvent }) {
             </div>
             <div className="flex gap-2">
               <span className="text-muted-foreground">Severity:</span>
-              <span className="text-foreground">
-                {event.severity || "N/A"}
-              </span>
+              {(() => {
+                const sev = formatSeverity(event.severity);
+                return <span className={sev.color}>{sev.label}</span>;
+              })()}
             </div>
             {event.matched_data && (
               <div className="flex gap-2">
@@ -129,6 +141,16 @@ function EventDetailPanel({ event }: { event: WAFEvent }) {
                 <code className="break-all text-neon-amber">
                   {event.matched_data}
                 </code>
+              </div>
+            )}
+            {event.rule_tags && event.rule_tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                <span className="text-muted-foreground">Tags:</span>
+                {event.rule_tags.map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 font-mono text-muted-foreground">
+                    {tag}
+                  </Badge>
+                ))}
               </div>
             )}
           </div>
@@ -302,6 +324,7 @@ export default function EventsTable() {
                 <TableHead>Method</TableHead>
                 <TableHead className="max-w-[200px]">URI</TableHead>
                 <TableHead>Client IP</TableHead>
+                <TableHead>Rule</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -310,7 +333,7 @@ export default function EventsTable() {
                 [...Array(10)].map((_, i) => (
                   <TableRow key={i}>
                     <TableCell />
-                    {[...Array(6)].map((_, j) => (
+                    {[...Array(7)].map((_, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -356,6 +379,15 @@ export default function EventsTable() {
                       <TableCell className="text-xs font-mono">
                         {evt.client_ip}
                       </TableCell>
+                      <TableCell className="text-xs">
+                        {evt.rule_id ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                            {evt.rule_id}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {evt.blocked ? (
                           <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
@@ -373,7 +405,7 @@ export default function EventsTable() {
                         key={`${evt.id}-detail`}
                         className="hover:bg-transparent"
                       >
-                        <TableCell colSpan={7} className="bg-navy-950/50 p-0">
+                        <TableCell colSpan={8} className="bg-navy-950/50 p-0">
                           <EventDetailPanel event={evt} />
                         </TableCell>
                       </TableRow>
@@ -384,7 +416,7 @@ export default function EventsTable() {
               {!loading && events.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="py-8 text-center text-muted-foreground"
                   >
                     No events found matching the current filters.

@@ -641,12 +641,12 @@ func TestValidateExclusion(t *testing.T) {
 		},
 		{
 			name:    "valid runtime_remove_by_id",
-			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_by_id", RuleID: "920420", Condition: "/api/"},
+			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_by_id", RuleID: "920420", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}}},
 			wantErr: false,
 		},
 		{
 			name:    "valid runtime_remove_target_by_id",
-			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_target_by_id", RuleID: "920420", Variable: "ARGS:x", Condition: "/api/"},
+			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_target_by_id", RuleID: "920420", Variable: "ARGS:x", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}}},
 			wantErr: false,
 		},
 		{
@@ -675,7 +675,7 @@ func TestValidateExclusion(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "runtime_remove_by_id missing condition",
+			name:    "runtime_remove_by_id missing conditions",
 			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_by_id", RuleID: "920420"},
 			wantErr: true,
 		},
@@ -880,11 +880,11 @@ func TestExclusionEndpointGenerate(t *testing.T) {
 		Enabled: true,
 	})
 	es.Create(RuleExclusion{
-		Name:      "Runtime remove",
-		Type:      "runtime_remove_by_id",
-		RuleID:    "941100",
-		Condition: "/api/webhook",
-		Enabled:   true,
+		Name:       "Runtime remove",
+		Type:       "runtime_remove_by_id",
+		RuleID:     "941100",
+		Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/webhook"}},
+		Enabled:    true,
 	})
 
 	req := httptest.NewRequest("POST", "/api/exclusions/generate", nil)
@@ -1103,8 +1103,8 @@ func TestGenerateConfigBasic(t *testing.T) {
 		{Name: "Remove 920420", Type: "remove_by_id", RuleID: "920420", Enabled: true},
 		{Name: "Remove sqli tag", Type: "remove_by_tag", RuleTag: "attack-sqli", Enabled: true},
 		{Name: "Update target", Type: "update_target_by_id", RuleID: "941100", Variable: "ARGS:body", Enabled: true},
-		{Name: "Runtime remove", Type: "runtime_remove_by_id", RuleID: "942100", Condition: "/api/hook", Enabled: true},
-		{Name: "Runtime remove target", Type: "runtime_remove_target_by_id", RuleID: "943100", Variable: "ARGS:data", Condition: "/webhook", Enabled: true},
+		{Name: "Runtime remove", Type: "runtime_remove_by_id", RuleID: "942100", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/hook"}}, Enabled: true},
+		{Name: "Runtime remove target", Type: "runtime_remove_target_by_id", RuleID: "943100", Variable: "ARGS:data", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/webhook"}}, Enabled: true},
 	}
 
 	result := GenerateConfigs(cfg, exclusions)
@@ -1256,5 +1256,862 @@ func TestSnapshotSince(t *testing.T) {
 	all2 := store2.SnapshotSince(0)
 	if len(all2) != 3 {
 		t.Errorf("all sampleLines: want 3, got %d", len(all2))
+	}
+}
+
+// --- Enhanced generator tests (method chaining, path operators) ---
+
+func TestGenerateWithMethodFilter(t *testing.T) {
+	ResetRuleIDCounter()
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{
+			Name:   "POST-only upload exclusion",
+			Type:   "runtime_remove_by_id",
+			RuleID: "942100",
+			Conditions: []Condition{
+				{Field: "method", Operator: "eq", Value: "POST"},
+				{Field: "path", Operator: "eq", Value: "/api/upload"},
+			},
+			Enabled: true,
+		},
+	}
+
+	result := GenerateConfigs(cfg, exclusions)
+
+	// Should have a chained rule: METHOD match then URI match
+	if !strings.Contains(result.PreCRS, `REQUEST_METHOD "@streq POST"`) {
+		t.Error("pre-crs should contain REQUEST_METHOD chain for POST")
+	}
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("pre-crs should contain chain action for method filter")
+	}
+	if !strings.Contains(result.PreCRS, "ruleRemoveById=942100") {
+		t.Error("pre-crs should contain the ctl action")
+	}
+}
+
+func TestGenerateWithMultiMethodFilter(t *testing.T) {
+	ResetRuleIDCounter()
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{
+			Name:   "POST|PUT upload exclusion",
+			Type:   "runtime_remove_by_id",
+			RuleID: "942100",
+			Conditions: []Condition{
+				{Field: "method", Operator: "in", Value: "POST|PUT"},
+				{Field: "path", Operator: "eq", Value: "/api/upload"},
+			},
+			Enabled: true,
+		},
+	}
+
+	result := GenerateConfigs(cfg, exclusions)
+
+	// Multiple methods should use @pm
+	if !strings.Contains(result.PreCRS, `@pm POST|PUT`) {
+		t.Error("pre-crs should use @pm for multiple methods")
+	}
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("pre-crs should contain chain action")
+	}
+}
+
+func TestGenerateWithPathOperator(t *testing.T) {
+	ResetRuleIDCounter()
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{
+			Name:       "Regex path exclusion",
+			Type:       "runtime_remove_by_id",
+			RuleID:     "941100",
+			Conditions: []Condition{{Field: "path", Operator: "regex", Value: "^/api/v[0-9]+/webhook"}},
+			Enabled:    true,
+		},
+		{
+			Name:       "Prefix path exclusion",
+			Type:       "runtime_remove_by_tag",
+			RuleTag:    "attack-sqli",
+			Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api/"}},
+			Enabled:    true,
+		},
+	}
+
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, `@rx ^/api/v[0-9]+/webhook`) {
+		t.Error("pre-crs should contain @rx operator")
+	}
+	if !strings.Contains(result.PreCRS, `@beginsWith /api/`) {
+		t.Error("pre-crs should contain @beginsWith operator")
+	}
+}
+
+func TestGenerateWithMethodAndOperator(t *testing.T) {
+	ResetRuleIDCounter()
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{
+			Name:     "POST + regex combo",
+			Type:     "runtime_remove_target_by_id",
+			RuleID:   "943100",
+			Variable: "ARGS:data",
+			Conditions: []Condition{
+				{Field: "method", Operator: "eq", Value: "POST"},
+				{Field: "path", Operator: "regex", Value: "^/webhook/"},
+			},
+			Enabled: true,
+		},
+	}
+
+	result := GenerateConfigs(cfg, exclusions)
+
+	// Should have chained: METHOD then URI with @rx
+	if !strings.Contains(result.PreCRS, `REQUEST_METHOD "@streq POST"`) {
+		t.Error("should contain method match")
+	}
+	if !strings.Contains(result.PreCRS, `@rx ^/webhook/`) {
+		t.Error("should contain @rx operator")
+	}
+	if !strings.Contains(result.PreCRS, "ruleRemoveTargetById=943100;ARGS:data") {
+		t.Error("should contain target removal action")
+	}
+}
+
+// --- Condition validation tests ---
+
+func TestValidateConditionFields(t *testing.T) {
+	// Valid: all field types with appropriate operators
+	validCases := []Condition{
+		{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"},
+		{Field: "ip", Operator: "eq", Value: "1.2.3.4"},
+		{Field: "path", Operator: "eq", Value: "/api/"},
+		{Field: "path", Operator: "regex", Value: "^/api/v[0-9]+/"},
+		{Field: "path", Operator: "begins_with", Value: "/api/"},
+		{Field: "host", Operator: "eq", Value: "radarr.erfi.io"},
+		{Field: "method", Operator: "eq", Value: "POST"},
+		{Field: "method", Operator: "in", Value: "GET|POST"},
+		{Field: "user_agent", Operator: "regex", Value: "BadBot.*"},
+		{Field: "header", Operator: "eq", Value: "X-Custom:value"},
+		{Field: "query", Operator: "contains", Value: "debug=true"},
+	}
+
+	for _, c := range validCases {
+		e := RuleExclusion{
+			Name:       "test",
+			Type:       "allow",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("condition %s/%s should be valid, got: %v", c.Field, c.Operator, err)
+		}
+	}
+
+	// Invalid field
+	e := RuleExclusion{
+		Name:       "test",
+		Type:       "allow",
+		Conditions: []Condition{{Field: "invalid_field", Operator: "eq", Value: "x"}},
+	}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for invalid condition field")
+	}
+
+	// Invalid operator for field
+	e.Conditions = []Condition{{Field: "ip", Operator: "begins_with", Value: "1.2.3.4"}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for invalid operator on ip field")
+	}
+
+	// Empty value
+	e.Conditions = []Condition{{Field: "path", Operator: "eq", Value: ""}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for empty condition value")
+	}
+
+	// Invalid method value
+	e.Conditions = []Condition{{Field: "method", Operator: "eq", Value: "INVALID"}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for invalid method value")
+	}
+
+	// Partially invalid method
+	e.Conditions = []Condition{{Field: "method", Operator: "in", Value: "GET|INVALID"}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for partially invalid method value")
+	}
+}
+
+func TestValidateGroupOperator(t *testing.T) {
+	base := RuleExclusion{
+		Name:       "test",
+		Type:       "allow",
+		Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}},
+	}
+
+	for _, op := range []string{"", "and", "or"} {
+		e := base
+		e.GroupOp = op
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("group_operator %q should be valid, got: %v", op, err)
+		}
+	}
+
+	e := base
+	e.GroupOp = "invalid"
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for invalid group_operator")
+	}
+}
+
+// --- Quick Action validation tests ---
+
+func TestValidateAllowAction(t *testing.T) {
+	// Valid: allow by IP
+	e := RuleExclusion{Name: "Allow my IP", Type: "allow", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "195.240.81.42"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("allow by IP should be valid: %v", err)
+	}
+
+	// Valid: allow by path
+	e = RuleExclusion{Name: "Allow API", Type: "allow", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/health"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("allow by path should be valid: %v", err)
+	}
+
+	// Invalid: no conditions
+	e = RuleExclusion{Name: "Empty allow", Type: "allow"}
+	if err := validateExclusion(e); err == nil {
+		t.Error("allow with no conditions should fail validation")
+	}
+}
+
+func TestValidateBlockAction(t *testing.T) {
+	// Valid: block by IP
+	e := RuleExclusion{Name: "Block bad IP", Type: "block", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "10.0.0.1"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("block by IP should be valid: %v", err)
+	}
+
+	// Valid: block by UA
+	e = RuleExclusion{Name: "Block bot", Type: "block", Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "BadBot/1.0"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("block by UA should be valid: %v", err)
+	}
+
+	// Invalid: no conditions
+	e = RuleExclusion{Name: "Empty block", Type: "block"}
+	if err := validateExclusion(e); err == nil {
+		t.Error("block with no conditions should fail validation")
+	}
+}
+
+func TestValidateSkipRuleAction(t *testing.T) {
+	// Valid: skip rule by ID + path
+	e := RuleExclusion{Name: "Skip 920420", Type: "skip_rule", RuleID: "920420", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/socket.io/"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("skip_rule should be valid: %v", err)
+	}
+
+	// Invalid: no rule ID/tag
+	e = RuleExclusion{Name: "Skip nothing", Type: "skip_rule", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("skip_rule without rule_id or rule_tag should fail")
+	}
+
+	// Invalid: no conditions
+	e = RuleExclusion{Name: "Skip everywhere", Type: "skip_rule", RuleID: "920420"}
+	if err := validateExclusion(e); err == nil {
+		t.Error("skip_rule without conditions should fail")
+	}
+}
+
+func TestValidateRawAction(t *testing.T) {
+	// Valid
+	e := RuleExclusion{Name: "Custom rule", Type: "raw", RawRule: "SecRule REQUEST_URI \"@streq /test\" \"id:10001,phase:1,pass,nolog\""}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("raw with raw_rule should be valid: %v", err)
+	}
+
+	// Invalid: no raw_rule
+	e = RuleExclusion{Name: "Empty raw", Type: "raw"}
+	if err := validateExclusion(e); err == nil {
+		t.Error("raw without raw_rule should fail")
+	}
+}
+
+// --- Quick Action generator tests ---
+
+func TestGenerateAllowByIP(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Allow my IP", Type: "allow", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "195.240.81.42"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "@ipMatch 195.240.81.42") {
+		t.Error("expected @ipMatch in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "allow") {
+		t.Error("expected allow action in pre-CRS output")
+	}
+}
+
+func TestGenerateAllowByIPAndPath(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Allow my IP on API", Type: "allow", Conditions: []Condition{
+			{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"},
+			{Field: "path", Operator: "begins_with", Value: "/api/"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "@ipMatch 10.0.0.0/8") {
+		t.Error("expected @ipMatch in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("expected chain for IP+path allow rule")
+	}
+	if !strings.Contains(result.PreCRS, "@beginsWith /api/") {
+		t.Error("expected @beginsWith in chained rule")
+	}
+}
+
+func TestGenerateBlockByIP(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad actor", Type: "block", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "192.168.1.100"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "@ipMatch 192.168.1.100") {
+		t.Error("expected @ipMatch in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "deny,status:403") {
+		t.Error("expected deny action in pre-CRS output")
+	}
+}
+
+func TestGenerateBlockByUA(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad bot", Type: "block", Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "BadBot.*"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:User-Agent") {
+		t.Error("expected User-Agent check in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "@rx BadBot.*") {
+		t.Error("expected @rx operator for UA pattern")
+	}
+}
+
+func TestGenerateSkipRule(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip 920420 for socket.io", Type: "skip_rule", RuleID: "920420", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/socket.io/"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=920420") {
+		t.Error("expected ctl:ruleRemoveById in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "@streq /socket.io/") {
+		t.Error("expected path condition in pre-CRS output")
+	}
+}
+
+func TestGenerateSkipRuleByTag(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip SQLi for API", Type: "skip_rule", RuleTag: "attack-sqli", Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api/v3/"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveByTag=attack-sqli") {
+		t.Error("expected ctl:ruleRemoveByTag in pre-CRS output")
+	}
+}
+
+func TestGenerateRawRule(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	rawDirective := "SecRule REQUEST_URI \"@streq /admin\" \"id:10001,phase:1,deny,status:403,t:none,log\""
+	exclusions := []RuleExclusion{
+		{Name: "Custom block admin", Type: "raw", RawRule: rawDirective, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, rawDirective) {
+		t.Error("expected raw rule verbatim in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "# Custom block admin") {
+		t.Error("expected name comment in pre-CRS output")
+	}
+}
+
+// --- Deploy tests ---
+
+func TestEnsureCorazaDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "coraza")
+	if err := ensureCorazaDir(dir); err != nil {
+		t.Fatalf("ensureCorazaDir failed: %v", err)
+	}
+
+	// Check placeholder files exist
+	for _, name := range []string{"custom-pre-crs.conf", "custom-post-crs.conf"} {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("expected %s to exist: %v", name, err)
+		}
+		if !strings.Contains(string(data), "Managed by waf-api") {
+			t.Errorf("%s missing header comment", name)
+		}
+	}
+
+	// Calling again should be idempotent (doesn't overwrite)
+	if err := ensureCorazaDir(dir); err != nil {
+		t.Fatalf("second ensureCorazaDir failed: %v", err)
+	}
+}
+
+func TestWriteConfFiles(t *testing.T) {
+	dir := t.TempDir()
+	pre := "# pre-crs content\nSecRuleRemoveById 920420\n"
+	post := "# post-crs content\n"
+
+	if err := writeConfFiles(dir, pre, post); err != nil {
+		t.Fatalf("writeConfFiles failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "custom-pre-crs.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != pre {
+		t.Errorf("pre-crs content mismatch: got %q", string(data))
+	}
+
+	data, err = os.ReadFile(filepath.Join(dir, "custom-post-crs.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != post {
+		t.Errorf("post-crs content mismatch: got %q", string(data))
+	}
+}
+
+func TestDeployEndpoint(t *testing.T) {
+	corazaDir := t.TempDir()
+	caddyfileDir := t.TempDir()
+	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
+	os.WriteFile(caddyfilePath, []byte("localhost:80 {\n\trespond \"ok\"\n}\n"), 0644)
+
+	// Mock Caddy admin API
+	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/load" && r.Method == "POST" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer adminServer.Close()
+
+	deployCfg := DeployConfig{
+		CorazaDir:     corazaDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: adminServer.URL,
+	}
+
+	excDir := t.TempDir()
+	cfgDir := t.TempDir()
+	es := NewExclusionStore(filepath.Join(excDir, "exclusions.json"))
+	cs := NewConfigStore(filepath.Join(cfgDir, "config.json"))
+
+	// Create an exclusion so the generated config isn't empty
+	es.Create(RuleExclusion{
+		Name:    "test-exclusion",
+		Type:    "remove_by_id",
+		RuleID:  "920420",
+		Enabled: true,
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, deployCfg))
+
+	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp DeployResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Status != "deployed" {
+		t.Errorf("expected status=deployed, got %q", resp.Status)
+	}
+	if !resp.Reloaded {
+		t.Error("expected reloaded=true")
+	}
+
+	// Verify files were written
+	preData, err := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preData) == 0 {
+		t.Error("custom-pre-crs.conf is empty")
+	}
+}
+
+func TestDeployEndpointReloadFail(t *testing.T) {
+	corazaDir := t.TempDir()
+	caddyfilePath := filepath.Join(t.TempDir(), "Caddyfile")
+	os.WriteFile(caddyfilePath, []byte("localhost:80\n"), 0644)
+
+	// Admin server that always fails
+	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("reload failed"))
+	}))
+	defer adminServer.Close()
+
+	deployCfg := DeployConfig{
+		CorazaDir:     corazaDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: adminServer.URL,
+	}
+
+	es := NewExclusionStore(filepath.Join(t.TempDir(), "exclusions.json"))
+	cs := NewConfigStore(filepath.Join(t.TempDir(), "config.json"))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, deployCfg))
+
+	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200 (partial success), got %d", rec.Code)
+	}
+
+	var resp DeployResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if resp.Status != "partial" {
+		t.Errorf("expected status=partial, got %q", resp.Status)
+	}
+	if resp.Reloaded {
+		t.Error("expected reloaded=false")
+	}
+}
+
+// --- Analytics endpoint tests ---
+
+func TestTopBlockedIPs(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	result := store.TopBlockedIPs(0, 10)
+
+	// sampleLines: AAA111 (195.240.81.42) blocked, BBB222 (10.0.0.1) blocked, CCC333 (10.0.0.1) not blocked
+	// So 10.0.0.1 has 1 blocked out of 2 total, 195.240.81.42 has 1 blocked out of 1 total
+	if len(result) != 2 {
+		t.Fatalf("expected 2 IPs with blocks, got %d", len(result))
+	}
+
+	// Both have 1 block, but sort is by blocked count then it's stable-ish
+	found42 := false
+	found001 := false
+	for _, ip := range result {
+		switch ip.ClientIP {
+		case "195.240.81.42":
+			found42 = true
+			if ip.Total != 1 || ip.Blocked != 1 {
+				t.Errorf("195.240.81.42: expected total=1 blocked=1, got total=%d blocked=%d", ip.Total, ip.Blocked)
+			}
+			if ip.BlockRate != 100 {
+				t.Errorf("195.240.81.42: expected block_rate=100, got %f", ip.BlockRate)
+			}
+		case "10.0.0.1":
+			found001 = true
+			if ip.Total != 2 || ip.Blocked != 1 {
+				t.Errorf("10.0.0.1: expected total=2 blocked=1, got total=%d blocked=%d", ip.Total, ip.Blocked)
+			}
+			if ip.BlockRate != 50 {
+				t.Errorf("10.0.0.1: expected block_rate=50, got %f", ip.BlockRate)
+			}
+		}
+	}
+	if !found42 || !found001 {
+		t.Error("missing expected IPs in results")
+	}
+}
+
+func TestTopBlockedIPsLimit(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	result := store.TopBlockedIPs(0, 1)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 IP (limit=1), got %d", len(result))
+	}
+}
+
+func TestTopTargetedURIs(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	result := store.TopTargetedURIs(0, 10)
+
+	// URIs: /socket.io/?EIO=4, /.env, /api/v3/queue — each with 1 event
+	if len(result) != 3 {
+		t.Fatalf("expected 3 URIs, got %d", len(result))
+	}
+
+	uriMap := make(map[string]TopTargetedURI)
+	for _, u := range result {
+		uriMap[u.URI] = u
+	}
+
+	env, ok := uriMap["/.env"]
+	if !ok {
+		t.Fatal("missing /.env in results")
+	}
+	if env.Total != 1 || env.Blocked != 1 {
+		t.Errorf("/.env: expected total=1 blocked=1, got total=%d blocked=%d", env.Total, env.Blocked)
+	}
+	if len(env.Services) != 1 || env.Services[0] != "radarr.erfi.io" {
+		t.Errorf("/.env: expected services=[radarr.erfi.io], got %v", env.Services)
+	}
+
+	queue, ok := uriMap["/api/v3/queue"]
+	if !ok {
+		t.Fatal("missing /api/v3/queue in results")
+	}
+	if queue.Total != 1 || queue.Blocked != 0 {
+		t.Errorf("/api/v3/queue: expected total=1 blocked=0, got total=%d blocked=%d", queue.Total, queue.Blocked)
+	}
+}
+
+func TestTopTargetedURIsLimit(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	result := store.TopTargetedURIs(0, 1)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 URI (limit=1), got %d", len(result))
+	}
+}
+
+func TestAnalyticsEndpoints(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store))
+	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store))
+
+	// Test top-ips endpoint
+	req := httptest.NewRequest("GET", "/api/analytics/top-ips", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("top-ips: expected 200, got %d", rec.Code)
+	}
+
+	var ips []TopBlockedIP
+	if err := json.NewDecoder(rec.Body).Decode(&ips); err != nil {
+		t.Fatalf("top-ips: failed to decode response: %v", err)
+	}
+	if len(ips) != 2 {
+		t.Errorf("top-ips: expected 2 results, got %d", len(ips))
+	}
+
+	// Test top-uris endpoint
+	req = httptest.NewRequest("GET", "/api/analytics/top-uris?hours=24", nil)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("top-uris: expected 200, got %d", rec.Code)
+	}
+
+	var uris []TopTargetedURI
+	if err := json.NewDecoder(rec.Body).Decode(&uris); err != nil {
+		t.Fatalf("top-uris: failed to decode response: %v", err)
+	}
+
+	// Test with limit parameter
+	req = httptest.NewRequest("GET", "/api/analytics/top-ips?limit=1", nil)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("top-ips with limit: expected 200, got %d", rec.Code)
+	}
+
+	var limitedIPs []TopBlockedIP
+	if err := json.NewDecoder(rec.Body).Decode(&limitedIPs); err != nil {
+		t.Fatalf("top-ips with limit: failed to decode response: %v", err)
+	}
+	if len(limitedIPs) != 1 {
+		t.Errorf("top-ips with limit=1: expected 1 result, got %d", len(limitedIPs))
+	}
+}
+
+// --- CRS Catalog endpoint tests ---
+
+func TestCRSRulesEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/crs/rules", handleCRSRules)
+
+	req := httptest.NewRequest("GET", "/api/crs/rules", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var catalog CRSCatalogResponse
+	if err := json.NewDecoder(rec.Body).Decode(&catalog); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if catalog.Total == 0 {
+		t.Error("expected non-zero total rules")
+	}
+	if len(catalog.Categories) == 0 {
+		t.Error("expected non-empty categories")
+	}
+	if len(catalog.Rules) != catalog.Total {
+		t.Errorf("rules length %d != total %d", len(catalog.Rules), catalog.Total)
+	}
+	// Verify a known rule exists.
+	found := false
+	for _, r := range catalog.Rules {
+		if r.ID == "920420" {
+			found = true
+			if r.Category != "protocol-enforcement" {
+				t.Errorf("rule 920420: expected category protocol-enforcement, got %s", r.Category)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected rule 920420 in catalog")
+	}
+}
+
+func TestCRSAutocompleteEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/crs/autocomplete", handleCRSAutocomplete)
+
+	req := httptest.NewRequest("GET", "/api/crs/autocomplete", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var ac CRSAutocompleteResponse
+	if err := json.NewDecoder(rec.Body).Decode(&ac); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(ac.Variables) == 0 {
+		t.Error("expected non-empty variables")
+	}
+	if len(ac.Operators) == 0 {
+		t.Error("expected non-empty operators")
+	}
+	if len(ac.Actions) == 0 {
+		t.Error("expected non-empty actions")
+	}
+	// Verify operators have human-readable labels.
+	for _, op := range ac.Operators {
+		if op.Label == "" {
+			t.Errorf("operator %s has empty label", op.Name)
+		}
+	}
+}
+
+// --- Rule match (messages) parsing tests ---
+
+func TestParseEventWithMessages(t *testing.T) {
+	// Audit log entry with messages array (part H)
+	logLine := `{"transaction":{"timestamp":"2026/02/22 09:00:00","unix_timestamp":1771750800000000000,"id":"MSG111","client_ip":"10.0.0.1","client_port":0,"host_ip":"","host_port":0,"server_id":"radarr.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/.env","http_version":"","headers":{"User-Agent":["curl/7.68"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":403,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":["OWASP_CRS/4.15.0"]},"highest_severity":"","is_interrupted":true},"messages":[{"actionset":"","message":"","data":{"file":"REQUEST-930-APPLICATION-ATTACK-LFI.conf","line":100,"id":930120,"rev":"","msg":"OS File Access Attempt","data":"Matched Data: .env found within REQUEST_FILENAME: /.env","severity":2,"ver":"OWASP_CRS/4.15.0","tags":["attack-lfi","OWASP_CRS"]}},{"actionset":"","message":"","data":{"file":"REQUEST-949-BLOCKING-EVALUATION.conf","line":1,"id":949110,"rev":"","msg":"Inbound Anomaly Score Exceeded","data":"","severity":0,"ver":"","tags":["anomaly-evaluation"]}}]}`
+
+	path := writeTempLog(t, []string{logLine})
+	store := NewStore(path)
+	store.Load()
+
+	events := store.FilteredEvents("", "", "", nil, 50, 0, 0)
+	if events.Total != 1 {
+		t.Fatalf("expected 1 event, got %d", events.Total)
+	}
+
+	ev := events.Events[0]
+	// Should pick rule 930120 (the real detection rule), not 949110 (anomaly scoring)
+	if ev.RuleID != 930120 {
+		t.Errorf("expected rule_id=930120, got %d", ev.RuleID)
+	}
+	if ev.RuleMsg != "OS File Access Attempt" {
+		t.Errorf("expected rule_msg='OS File Access Attempt', got %q", ev.RuleMsg)
+	}
+	if ev.Severity != 2 {
+		t.Errorf("expected severity=2, got %d", ev.Severity)
+	}
+	if !strings.Contains(ev.MatchedData, ".env") {
+		t.Errorf("expected matched_data to contain '.env', got %q", ev.MatchedData)
+	}
+	if len(ev.RuleTags) == 0 {
+		t.Error("expected non-empty rule_tags")
+	}
+}
+
+func TestParseEventWithoutMessages(t *testing.T) {
+	// Original format without messages — should still work with zero values
+	path := writeTempLog(t, sampleLines[:1])
+	store := NewStore(path)
+	store.Load()
+
+	events := store.FilteredEvents("", "", "", nil, 50, 0, 0)
+	if events.Total != 1 {
+		t.Fatalf("expected 1 event, got %d", events.Total)
+	}
+
+	ev := events.Events[0]
+	if ev.RuleID != 0 {
+		t.Errorf("expected rule_id=0 (no messages), got %d", ev.RuleID)
+	}
+	if ev.RuleMsg != "" {
+		t.Errorf("expected empty rule_msg, got %q", ev.RuleMsg)
 	}
 }
