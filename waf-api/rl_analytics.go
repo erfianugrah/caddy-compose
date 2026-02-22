@@ -15,14 +15,15 @@ import (
 
 // AccessLogEntry is the JSON structure Caddy writes for each request.
 type AccessLogEntry struct {
-	Level    string       `json:"level"`
-	Ts       string       `json:"ts"` // wall clock format: "2026/02/22 12:43:20"
-	Logger   string       `json:"logger"`
-	Msg      string       `json:"msg"`
-	Request  AccessLogReq `json:"request"`
-	Status   int          `json:"status"`
-	Size     int          `json:"size"`
-	Duration float64      `json:"duration"`
+	Level       string              `json:"level"`
+	Ts          string              `json:"ts"` // wall clock format: "2026/02/22 12:43:20"
+	Logger      string              `json:"logger"`
+	Msg         string              `json:"msg"`
+	Request     AccessLogReq        `json:"request"`
+	RespHeaders map[string][]string `json:"resp_headers"`
+	Status      int                 `json:"status"`
+	Size        int                 `json:"size"`
+	Duration    float64             `json:"duration"`
 }
 
 type AccessLogReq struct {
@@ -44,6 +45,21 @@ type RateLimitEvent struct {
 	Method    string    `json:"method"`
 	URI       string    `json:"uri"`
 	UserAgent string    `json:"user_agent"`
+	Source    string    `json:"source,omitempty"` // "" = rate_limited, "ipsum" = ipsum_blocked
+}
+
+// isIpsumBlocked checks if the response headers contain X-Blocked-By: ipsum.
+func isIpsumBlocked(headers map[string][]string) bool {
+	vals, ok := headers["X-Blocked-By"]
+	if !ok {
+		return false
+	}
+	for _, v := range vals {
+		if v == "ipsum" {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── API response types ─────────────────────────────────────────────
@@ -162,8 +178,10 @@ func (s *AccessLogStore) Load() {
 			continue // skip malformed lines silently — high volume log
 		}
 
-		// Only collect 429 responses.
-		if entry.Status != 429 {
+		// Collect 429 (rate limited) and ipsum-blocked (403 + X-Blocked-By: ipsum) responses.
+		isRateLimit := entry.Status == 429
+		isIpsum := entry.Status == 403 && isIpsumBlocked(entry.RespHeaders)
+		if !isRateLimit && !isIpsum {
 			continue
 		}
 
@@ -173,14 +191,18 @@ func (s *AccessLogStore) Load() {
 			ua = vals[0]
 		}
 
-		newEvents = append(newEvents, RateLimitEvent{
+		evt := RateLimitEvent{
 			Timestamp: ts,
 			ClientIP:  entry.Request.ClientIP,
 			Service:   entry.Request.Host,
 			Method:    entry.Request.Method,
 			URI:       entry.Request.URI,
 			UserAgent: ua,
-		})
+		}
+		if isIpsum {
+			evt.Source = "ipsum"
+		}
+		newEvents = append(newEvents, evt)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -198,7 +220,15 @@ func (s *AccessLogStore) Load() {
 		s.mu.Lock()
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
-		log.Printf("loaded %d new 429 events (%d total)", len(newEvents), s.EventCount())
+		rlCount, ipsumCount := 0, 0
+		for _, e := range newEvents {
+			if e.Source == "ipsum" {
+				ipsumCount++
+			} else {
+				rlCount++
+			}
+		}
+		log.Printf("loaded %d new events (%d rate-limit, %d ipsum) — %d total", len(newEvents), rlCount, ipsumCount, s.EventCount())
 	}
 
 	// Evict events older than maxAge.
@@ -225,7 +255,7 @@ func (s *AccessLogStore) evict() {
 		remaining := make([]RateLimitEvent, len(s.events)-idx)
 		copy(remaining, s.events[idx:])
 		s.events = remaining
-		log.Printf("evicted %d 429 events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
+		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
 	}
 }
 
@@ -287,6 +317,12 @@ func (s *AccessLogStore) snapshotRange(start, end time.Time) []RateLimitEvent {
 // RateLimitEventToEvent converts a RateLimitEvent into the unified Event type
 // so that 429s can be merged into the shared event stream.
 func RateLimitEventToEvent(rle RateLimitEvent) Event {
+	eventType := "rate_limited"
+	status := 429
+	if rle.Source == "ipsum" {
+		eventType = "ipsum_blocked"
+		status = 403
+	}
 	return Event{
 		ID:             generateUUIDv7(),
 		Timestamp:      rle.Timestamp,
@@ -295,10 +331,10 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		Method:         rle.Method,
 		URI:            rle.URI,
 		Protocol:       "HTTP/2.0", // access log doesn't differentiate per-request; default
-		IsBlocked:      true,       // 429 is effectively a block
-		ResponseStatus: 429,
+		IsBlocked:      true,
+		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,
-		EventType:      "rate_limited",
+		EventType:      eventType,
 	}
 }
 

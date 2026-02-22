@@ -85,7 +85,7 @@ type Event struct {
 	IsBlocked      bool      `json:"is_blocked"`
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
-	EventType      string    `json:"event_type"` // "blocked", "logged", "rate_limited"
+	EventType      string    `json:"event_type"` // "blocked", "logged", "rate_limited", "ipsum_blocked"
 	// Rule match data (from audit log messages/part H)
 	RuleID      int      `json:"rule_id,omitempty"`
 	RuleMsg     string   `json:"rule_msg,omitempty"`
@@ -101,6 +101,7 @@ type SummaryResponse struct {
 	BlockedEvents    int             `json:"blocked_events"`
 	LoggedEvents     int             `json:"logged_events"`
 	RateLimited      int             `json:"rate_limited"`
+	IpsumBlocked     int             `json:"ipsum_blocked"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
 	EventsByHour     []HourCount     `json:"events_by_hour"`
@@ -112,25 +113,45 @@ type SummaryResponse struct {
 }
 
 type HourCount struct {
-	Hour        string `json:"hour"`
-	Count       int    `json:"count"`
-	Blocked     int    `json:"blocked"`
-	Logged      int    `json:"logged"`
-	RateLimited int    `json:"rate_limited"`
+	Hour         string `json:"hour"`
+	Count        int    `json:"count"`
+	Blocked      int    `json:"blocked"`
+	Logged       int    `json:"logged"`
+	RateLimited  int    `json:"rate_limited"`
+	IpsumBlocked int    `json:"ipsum_blocked"`
 }
 
 type ServiceCount struct {
-	Service     string `json:"service"`
-	Count       int    `json:"count"`
-	Blocked     int    `json:"blocked"`
-	Logged      int    `json:"logged"`
-	RateLimited int    `json:"rate_limited"`
+	Service      string `json:"service"`
+	Count        int    `json:"count"`
+	Blocked      int    `json:"blocked"`
+	Logged       int    `json:"logged"`
+	RateLimited  int    `json:"rate_limited"`
+	IpsumBlocked int    `json:"ipsum_blocked"`
 }
 
 type ClientCount struct {
-	Client  string `json:"client"`
-	Count   int    `json:"count"`
-	Blocked int    `json:"blocked"`
+	Client       string `json:"client"`
+	Count        int    `json:"count"`
+	Blocked      int    `json:"blocked"`
+	RateLimited  int    `json:"rate_limited"`
+	IpsumBlocked int    `json:"ipsum_blocked"`
+}
+
+// Blocklist API response types
+
+type BlocklistStatsResponse struct {
+	BlockedIPs  int    `json:"blocked_ips"`
+	LastUpdated string `json:"last_updated"`
+	Source      string `json:"source"`
+	MinScore    int    `json:"min_score"`
+	FilePath    string `json:"file_path"`
+}
+
+type BlocklistCheckResponse struct {
+	IP      string `json:"ip"`
+	Blocked bool   `json:"blocked"`
+	Source  string `json:"source"`
 }
 
 type URICount struct {
@@ -144,11 +165,12 @@ type EventsResponse struct {
 }
 
 type ServiceDetail struct {
-	Service     string `json:"service"`
-	Total       int    `json:"total"`
-	Blocked     int    `json:"blocked"`
-	Logged      int    `json:"logged"`
-	RateLimited int    `json:"rate_limited"`
+	Service      string `json:"service"`
+	Total        int    `json:"total"`
+	Blocked      int    `json:"blocked"`
+	Logged       int    `json:"logged"`
+	RateLimited  int    `json:"rate_limited"`
+	IpsumBlocked int    `json:"ipsum_blocked"`
 }
 
 type ServicesResponse struct {

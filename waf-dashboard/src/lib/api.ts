@@ -7,6 +7,7 @@ export interface SummaryData {
   blocked: number;
   logged: number;
   rate_limited: number;
+  ipsum_blocked: number;
   unique_clients: number;
   unique_services: number;
   timeline: TimelinePoint[];
@@ -22,6 +23,7 @@ export interface TimelinePoint {
   blocked: number;
   logged: number;
   rate_limited: number;
+  ipsum_blocked: number;
 }
 
 export interface ServiceStat {
@@ -36,6 +38,8 @@ export interface ClientStat {
   client_ip: string;
   total: number;
   blocked: number;
+  rate_limited: number;
+  ipsum_blocked: number;
 }
 
 export interface ServiceBreakdown {
@@ -43,11 +47,13 @@ export interface ServiceBreakdown {
   total: number;
   blocked: number;
   logged: number;
+  rate_limited: number;
+  ipsum_blocked: number;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────
 
-export type EventType = "blocked" | "logged" | "rate_limited";
+export type EventType = "blocked" | "logged" | "rate_limited" | "ipsum_blocked";
 
 export interface WAFEvent {
   id: string;
@@ -393,13 +399,14 @@ interface RawSummary {
   blocked_events: number;
   logged_events: number;
   rate_limited: number;
+  ipsum_blocked: number;
   unique_clients: number;
   unique_services: number;
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number }[];
-  top_clients: { client: string; count: number; blocked: number }[];
+  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number }[];
+  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number }[];
+  top_clients: { client: string; count: number; blocked: number; rate_limited: number; ipsum_blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number }[];
+  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number }[];
   recent_events: RawEvent[];
 }
 
@@ -424,6 +431,7 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
     blocked: raw.blocked_events ?? 0,
     logged: raw.logged_events ?? 0,
     rate_limited: raw.rate_limited ?? 0,
+    ipsum_blocked: raw.ipsum_blocked ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     timeline: (raw.events_by_hour ?? []).map((h) => ({
@@ -432,6 +440,7 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
       blocked: h.blocked ?? 0,
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
+      ipsum_blocked: h.ipsum_blocked ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,
@@ -444,6 +453,8 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
       client_ip: c.client,
       total: c.count ?? 0,
       blocked: c.blocked ?? 0,
+      rate_limited: c.rate_limited ?? 0,
+      ipsum_blocked: c.ipsum_blocked ?? 0,
     })),
     recent_events: (raw.recent_events ?? []).map(mapEvent),
     service_breakdown: (raw.service_breakdown ?? []).map((s) => ({
@@ -451,6 +462,8 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
       total: s.total ?? 0,
       blocked: s.blocked ?? 0,
       logged: s.logged ?? 0,
+      rate_limited: s.rate_limited ?? 0,
+      ipsum_blocked: s.ipsum_blocked ?? 0,
     })),
   };
 }
@@ -479,7 +492,7 @@ interface RawEvent {
 function mapEvent(raw: RawEvent): WAFEvent {
   // Derive event_type from the API field, falling back to is_blocked.
   let eventType: EventType = raw.is_blocked ? "blocked" : "logged";
-  if (raw.event_type === "rate_limited" || raw.event_type === "blocked" || raw.event_type === "logged") {
+  if (raw.event_type === "rate_limited" || raw.event_type === "blocked" || raw.event_type === "logged" || raw.event_type === "ipsum_blocked") {
     eventType = raw.event_type as EventType;
   }
 
@@ -827,4 +840,28 @@ export async function getRLEvents(params?: {
   if (params?.hours) q.set("hours", String(params.hours));
   const qs = q.toString();
   return fetchJSON<RLEventsData>(`${API_BASE}/rate-limits/events${qs ? `?${qs}` : ""}`);
+}
+
+// ─── Blocklist (IPsum) ──────────────────────────────────────────────
+
+export interface BlocklistStats {
+  blocked_ips: number;
+  last_updated: string;
+  source: string;
+  min_score: number;
+  file_path: string;
+}
+
+export interface BlocklistCheckResult {
+  ip: string;
+  blocked: boolean;
+  source: string;
+}
+
+export async function getBlocklistStats(): Promise<BlocklistStats> {
+  return fetchJSON<BlocklistStats>(`${API_BASE}/blocklist/stats`);
+}
+
+export async function checkBlocklistIP(ip: string): Promise<BlocklistCheckResult> {
+  return fetchJSON<BlocklistCheckResult>(`${API_BASE}/blocklist/check/${encodeURIComponent(ip)}`);
 }

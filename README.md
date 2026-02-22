@@ -37,6 +37,7 @@ Go stdlib sidecar (zero external dependencies). Provides:
 
 - WAF event log parsing and analytics (summary, timeline, top IPs/URIs, service breakdown)
 - 429 rate limit event parsing from combined access log (merged into unified event stream)
+- IPsum blocklist API: stats endpoint (IP count, last updated, source) and per-IP check endpoint with cached file parsing
 - Custom time range queries (`?start=&end=` ISO 8601 timestamps, or `?hours=` for relative)
 - Policy Engine: CRUD for exclusions, SecRule generation, deploy pipeline (writes conf files + reloads Caddy)
 - CRS rule catalog (141 curated rules, 11 categories) with search/autocomplete
@@ -49,12 +50,12 @@ Go stdlib sidecar (zero external dependencies). Provides:
 
 ```bash
 # Caddy image (includes dashboard build)
-docker build -t erfianugrah/caddy:1.14.0-2.10.2 .
-docker push erfianugrah/caddy:1.14.0-2.10.2
+docker build -t erfianugrah/caddy:1.15.0-2.10.2 .
+docker push erfianugrah/caddy:1.15.0-2.10.2
 
 # WAF API image (uses its own Dockerfile with proper alpine + entrypoint)
-docker build -t erfianugrah/waf-api:0.7.0 ./waf-api
-docker push erfianugrah/waf-api:0.7.0
+docker build -t erfianugrah/waf-api:0.9.0 -f waf-api/Dockerfile ./waf-api
+docker push erfianugrah/waf-api:0.9.0
 ```
 
 > Do **not** use `--target waf-api` from the root Dockerfile — that produces the Go build stage (golang:1.23-alpine base, `/bin/sh` entrypoint) instead of the final alpine image with the compiled binary.
@@ -84,8 +85,9 @@ When only included config files change (not the Caddyfile itself), Caddy's `/loa
 Accessible at `waf.erfi.io` (protected by Authelia `two_factor`).
 
 ### Pages
-- **Overview** — Timeline chart (stacked blocked/logged/rate_limited), service breakdown donut, recent events (all types with badges), top clients/services. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
-- **Events** — Paginated event table with unified WAF + 429 event stream, event type filter (All/Blocked/Logged/Rate Limited), type badges, expandable detail rows (rule match for WAF events, rate limit details for 429s). Same time range picker
+- **Overview** — Timeline chart (stacked blocked/rate_limited/ipsum_blocked/logged), service breakdown donut, recent events (all types with badges), top clients/services with 4-color stacked bar charts (blocked pink, rate limited amber, ipsum violet, logged cyan/green) and legends. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
+- **Blocklist** — IPsum threat intelligence stats (blocked IP count, last updated, source, min score), IP check search (look up any IP against the blocklist)
+- **Events** — Paginated event table with unified WAF + 429 + IPsum event stream, event type filter (All/Blocked/Logged/Rate Limited/IPsum Blocked), type badges, expandable detail rows (rule match for WAF events, rate limit details for 429s, ipsum info for blocklist blocks). Same time range picker
 - **Services** — Per-service stats, top URIs, top triggered rules
 - **Investigate** — Top blocked IPs, top targeted URIs
 - **Policy Engine** — Three-tab rule builder:
@@ -132,7 +134,8 @@ caddy-compose/
     update-ipsum.sh      # Fetches IPsum blocklist, generates Caddy snippet, reloads
   waf-api/
     main.go              # HTTP handlers and routes (summary/events/services with start/end support)
-    models.go            # Data models (Event with EventType, SummaryResponse with RateLimited)
+    models.go            # Data models (Event with EventType, SummaryResponse with RateLimited/IpsumBlocked, BlocklistStats)
+    blocklist.go         # IPsum blocklist file parser, cached stats + IP check handlers
     exclusions.go        # Exclusion store, validation, UUIDv4/v7 generators
     generator.go         # Condition -> SecRule generation (AND=chain, OR=separate rules)
     logparser.go         # Coraza audit log parser (JSON, rule match extraction, SnapshotRange)
@@ -141,7 +144,7 @@ caddy-compose/
     config.go            # WAF config store
     ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
-    main_test.go         # 124 tests
+    main_test.go         # 174 tests
     Dockerfile           # waf-api image (alpine + compiled binary, NOT the root Dockerfile's build stage)
     go.mod
   waf-dashboard/
@@ -150,16 +153,17 @@ caddy-compose/
         TimeRangePicker.tsx    # Grafana-style: quick ranges, custom from/to, auto-refresh
         PolicyEngine.tsx       # Three-tab policy builder (Quick/Advanced/Raw)
         SecRuleEditor.tsx      # CodeMirror 6 with ModSecurity syntax highlighting
-        EventsTable.tsx        # Unified WAF+429 events, type filter/badges, expandable detail
-        OverviewDashboard.tsx  # Timeline, service breakdown, recent events (all types)
+        EventsTable.tsx        # Unified WAF+429+ipsum events, type filter/badges, expandable detail
+        OverviewDashboard.tsx  # Timeline, service breakdown, recent events, 4-color stacked charts
         AnalyticsDashboard.tsx # Top IPs, top URIs charts (renamed to "Investigate")
+        BlocklistPanel.tsx     # IPsum blocklist stats + IP check search
         RateLimitsPanel.tsx    # Rate limit zone config management
         ServicesList.tsx       # Per-service detail
         SettingsPanel.tsx      # WAF config management
         ui/popover.tsx         # Radix popover (used by TimeRangePicker)
       lib/
         api.ts                 # API client, types, Go<->frontend mappers, TimeRangeParams
-        api.test.ts            # 39 tests
+        api.test.ts            # 38 tests
     package.json
     astro.config.mjs
     vitest.config.ts
@@ -282,12 +286,12 @@ Edit `authelia/users_database.yml` and replace the placeholder hash.
 
 ```bash
 # Build images
-docker build -t erfianugrah/caddy:1.14.0-2.10.2 .
-docker build -t erfianugrah/waf-api:0.7.0 ./waf-api
+docker build -t erfianugrah/caddy:1.15.0-2.10.2 .
+docker build -t erfianugrah/waf-api:0.9.0 -f waf-api/Dockerfile ./waf-api
 
 # Push
-docker push erfianugrah/caddy:1.14.0-2.10.2
-docker push erfianugrah/waf-api:0.7.0
+docker push erfianugrah/caddy:1.15.0-2.10.2
+docker push erfianugrah/waf-api:0.9.0
 
 # Copy configs to servarr
 scp Caddyfile servarr:/mnt/user/data/caddy/Caddyfile
@@ -338,7 +342,7 @@ ssh servarr 'tail -50 /mnt/user/data/caddy/log/coraza-audit.log'  # WAF audit lo
 ### Run tests
 
 ```bash
-# Go tests (124 tests)
+# Go tests (174 tests)
 cd waf-api && go test -v -count=1 ./...
 
 # Frontend tests (38 tests)

@@ -325,7 +325,15 @@ function IPLookupPanel() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {evt.blocked ? (
+                          {evt.event_type === "ipsum_blocked" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
+                              IPSUM
+                            </Badge>
+                          ) : evt.event_type === "rate_limited" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                              RATE LIMITED
+                            </Badge>
+                          ) : evt.blocked ? (
                             <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                               BLOCKED
                             </Badge>

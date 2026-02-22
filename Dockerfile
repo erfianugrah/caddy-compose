@@ -17,9 +17,10 @@ RUN apk add --no-cache curl \
 	   | awk -v min="${IPSUM_MIN_SCORE}" '/^#/{next} /^[[:space:]]*$/{next} {if($2+0>=min) printf "%s ",$1}' \
 	   > /tmp/ipsum_ips \
 	&& COUNT=$(wc -w < /tmp/ipsum_ips) \
-	&& printf '# AUTO-GENERATED at build time\n# IPs: %s (min_score=%s)\n@ipsum_blocked client_ip %s\nabort @ipsum_blocked\n' \
-	   "$COUNT" "$IPSUM_MIN_SCORE" "$(cat /tmp/ipsum_ips)" \
-	   > /tmp/ipsum_block.caddy
+	&& { printf '# AUTO-GENERATED at build time\n# IPs: %s (min_score=%s)\n@ipsum_blocked client_ip %s\n' \
+	   "$COUNT" "$IPSUM_MIN_SCORE" "$(cat /tmp/ipsum_ips)"; \
+	   printf 'route @ipsum_blocked {\n\theader X-Blocked-By ipsum\n\trespond 403 {\n\t\tbody "Blocked"\n\t\tclose\n\t}\n}\n'; \
+	   } > /tmp/ipsum_block.caddy
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
@@ -59,6 +60,8 @@ COPY errors/ /etc/caddy/errors/
 COPY coraza/ /etc/caddy/coraza/
 COPY scripts/update-ipsum.sh /usr/local/bin/update-ipsum.sh
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/update-ipsum.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/update-ipsum.sh /usr/local/bin/entrypoint.sh \
+	&& echo '0 2 * * * /usr/local/bin/update-ipsum.sh >> /var/log/ipsum-update.log 2>&1' \
+	   >> /var/spool/cron/crontabs/root
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

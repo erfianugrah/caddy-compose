@@ -8,7 +8,7 @@ set -eu
 
 IPSUM_URL="https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt"
 MIN_SCORE="${IPSUM_MIN_SCORE:-3}"
-OUTPUT_FILE="${IPSUM_OUTPUT:-/etc/caddy/ipsum_block.caddy}"
+OUTPUT_FILE="${IPSUM_OUTPUT:-/data/coraza/ipsum_block.caddy}"
 TMP_FILE="${OUTPUT_FILE}.tmp"
 
 log() { printf '[ipsum] %s %s\n' "$(date -Iseconds)" "$*"; }
@@ -43,18 +43,25 @@ cat > "${TMP_FILE}" <<EOF
 # IPs: ${count} (min_score=${MIN_SCORE})
 # Source: ${IPSUM_URL}
 @ipsum_blocked client_ip ${ip_line}
-abort @ipsum_blocked
+route @ipsum_blocked {
+	header X-Blocked-By ipsum
+	respond 403 {
+		body "Blocked"
+		close
+	}
+}
 EOF
 
 # Atomic replace
 mv "${TMP_FILE}" "${OUTPUT_FILE}"
 log "Wrote ${count} IPs to ${OUTPUT_FILE}"
 
-# Reload Caddy (running in the same container)
-if caddy reload --config /etc/caddy/Caddyfile 2>/dev/null; then
+# Reload Caddy (running in the same container).
+# The reload can take 60-90s due to Coraza WAF + rate limit zone initialization.
+if caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null; then
     log "Caddy reloaded successfully"
 else
-    log "WARNING: Caddy reload failed"
+    log "WARNING: Caddy reload failed (may need manual reload)"
 fi
 
 log "Done"

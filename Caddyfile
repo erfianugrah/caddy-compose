@@ -199,11 +199,12 @@
 	}
 }
 
-# IPsum blocklist — auto-generated file with @ipsum_blocked matcher + abort
+# IPsum blocklist — auto-generated file with @ipsum_blocked matcher + respond 403
+# Returns 403 with X-Blocked-By: ipsum header (logged in access log for analytics)
 # Updated daily by scripts/update-ipsum.sh via cron
-# Usage: import ipsum_blocklist
+# Usage: import ipsum_blocklist (place BEFORE waf to skip WAF processing for blocked IPs)
 (ipsum_blocklist) {
-	import /etc/caddy/ipsum_block.caddy
+	import /data/coraza/ipsum_block.caddy
 }
 
 # Authelia forward auth — applied to protected services
@@ -284,8 +285,8 @@ waf.erfi.io {
 authelia.erfi.io {
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/authelia*.caddy
 	import tls_config
 	encode zstd gzip
@@ -300,8 +301,8 @@ servarr.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/servarr*.caddy
 	import tls_config
 	encode zstd gzip
@@ -326,8 +327,8 @@ sonarr.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/sonarr*.caddy
 	import tls_config
 	encode zstd gzip
@@ -342,8 +343,8 @@ radarr.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/radarr*.caddy
 	import tls_config
 	encode zstd gzip
@@ -358,8 +359,8 @@ bazarr.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/bazarr*.caddy
 	import tls_config
 	encode zstd gzip
@@ -374,8 +375,8 @@ vault.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/vault*.caddy
 	import tls_config
 	encode zstd gzip
@@ -391,8 +392,8 @@ prowlarr.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/prowlarr*.caddy
 	import tls_config
 	encode zstd gzip
@@ -407,8 +408,8 @@ jellyfin.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/jellyfin*.caddy
 	import tls_config
 	encode zstd gzip
@@ -423,8 +424,8 @@ qbit.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/qbit*.caddy
 	import tls_config
 	encode zstd gzip
@@ -439,8 +440,8 @@ change.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import forward_auth
 	import /data/caddy/rl/change*.caddy
 	import tls_config
@@ -456,8 +457,8 @@ seerr.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/seerr*.caddy
 	import tls_config
 	encode zstd gzip
@@ -472,8 +473,8 @@ keycloak.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/keycloak*.caddy
 	import tls_config
 	encode zstd gzip
@@ -488,8 +489,8 @@ joplin.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/joplin*.caddy
 	import tls_config
 	encode zstd gzip
@@ -504,8 +505,8 @@ navidrome.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/navidrome*.caddy
 	import tls_config
 	encode zstd gzip
@@ -520,8 +521,8 @@ sabnzbd.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/sabnzbd*.caddy
 	import tls_config
 	encode zstd gzip
@@ -536,8 +537,8 @@ immich.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/immich*.caddy
 	import tls_config
 	encode zstd gzip
@@ -568,8 +569,8 @@ copyparty.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/copyparty*.caddy
 	import tls_config
 	encode zstd gzip
@@ -584,8 +585,8 @@ dockge.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/dockge*.caddy
 	import tls_config
 	encode zstd gzip
@@ -600,8 +601,8 @@ httpbun.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/httpbun*.caddy
 	import tls_config
 	encode zstd gzip
@@ -616,8 +617,8 @@ httpbin.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/httpbin*.caddy
 	import tls_config
 	encode zstd gzip

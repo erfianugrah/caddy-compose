@@ -3758,3 +3758,435 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 		t.Errorf("dockge rate_limited: want 0, got %d", dockge.RateLimited)
 	}
 }
+
+// ─── IPsum Blocked Tests ────────────────────────────────────────────
+
+// sampleIpsumAccessLogLines contains mixed 429 (rate limited) and 403+X-Blocked-By:ipsum lines.
+var sampleIpsumAccessLogLines = []string{
+	// 200 OK — should be ignored
+	`{"level":"info","ts":"2026/02/22 12:00:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"resp_headers":{},"status":200,"size":1234,"duration":0.05}`,
+	// 429 rate limited
+	`{"level":"info","ts":"2026/02/22 12:01:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`,
+	// 403 ipsum blocked (has X-Blocked-By: ipsum)
+	`{"level":"info","ts":"2026/02/22 12:02:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`,
+	// 403 without ipsum header — should be ignored
+	`{"level":"info","ts":"2026/02/22 12:03:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.4","client_ip":"10.0.0.4","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/1.0"]}},"resp_headers":{},"status":403,"size":0,"duration":0.002}`,
+	// Another ipsum blocked
+	`{"level":"info","ts":"2026/02/22 13:00:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.5","client_ip":"10.0.0.5","proto":"HTTP/2.0","method":"POST","host":"sonarr.erfi.io","uri":"/login","headers":{"User-Agent":["MaliciousBot/2.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`,
+}
+
+func TestIsIpsumBlocked(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string][]string
+		want    bool
+	}{
+		{"ipsum header present", map[string][]string{"X-Blocked-By": {"ipsum"}}, true},
+		{"different value", map[string][]string{"X-Blocked-By": {"other"}}, false},
+		{"no header", map[string][]string{}, false},
+		{"nil headers", nil, false},
+		{"multiple values with ipsum", map[string][]string{"X-Blocked-By": {"other", "ipsum"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isIpsumBlocked(tt.headers); got != tt.want {
+				t.Errorf("isIpsumBlocked(%v) = %v, want %v", tt.headers, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAccessLogStoreLoadsIpsumEvents(t *testing.T) {
+	path := writeTempAccessLog(t, sampleIpsumAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// 1 rate-limited (429) + 2 ipsum-blocked (403+header) = 3 total, ignoring 200 and bare 403.
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3 events (1 RL + 2 ipsum), got %d", got)
+	}
+}
+
+func TestIpsumEventSource(t *testing.T) {
+	path := writeTempAccessLog(t, sampleIpsumAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+
+	var rlCount, ipsumCount int
+	for _, ev := range events {
+		switch ev.EventType {
+		case "rate_limited":
+			rlCount++
+			if ev.ResponseStatus != 429 {
+				t.Errorf("rate_limited event should have status 429, got %d", ev.ResponseStatus)
+			}
+		case "ipsum_blocked":
+			ipsumCount++
+			if ev.ResponseStatus != 403 {
+				t.Errorf("ipsum_blocked event should have status 403, got %d", ev.ResponseStatus)
+			}
+		default:
+			t.Errorf("unexpected event type: %s", ev.EventType)
+		}
+	}
+
+	if rlCount != 1 {
+		t.Errorf("expected 1 rate_limited event, got %d", rlCount)
+	}
+	if ipsumCount != 2 {
+		t.Errorf("expected 2 ipsum_blocked events, got %d", ipsumCount)
+	}
+}
+
+func TestRateLimitEventToEventIpsum(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 2, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.3",
+		Service:   "radarr.erfi.io",
+		Method:    "GET",
+		URI:       "/",
+		UserAgent: "BadBot/1.0",
+		Source:    "ipsum",
+	}
+
+	ev := RateLimitEventToEvent(rle)
+
+	if ev.EventType != "ipsum_blocked" {
+		t.Errorf("event_type: want ipsum_blocked, got %s", ev.EventType)
+	}
+	if !ev.IsBlocked {
+		t.Error("ipsum_blocked events should have is_blocked=true")
+	}
+	if ev.ResponseStatus != 403 {
+		t.Errorf("response_status: want 403, got %d", ev.ResponseStatus)
+	}
+}
+
+func TestSummaryMergesIpsumEvents(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	alsPath := writeTempAccessLog(t, sampleIpsumAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handleSummary(store, als)(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+
+	var resp SummaryResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	// 3 WAF events + 1 RL + 2 ipsum = 6 total.
+	if resp.TotalEvents != 6 {
+		t.Errorf("total_events: want 6 (3 WAF + 1 RL + 2 ipsum), got %d", resp.TotalEvents)
+	}
+	if resp.RateLimited != 1 {
+		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
+	}
+	if resp.IpsumBlocked != 2 {
+		t.Errorf("ipsum_blocked: want 2, got %d", resp.IpsumBlocked)
+	}
+	if resp.BlockedEvents != 2 {
+		t.Errorf("blocked_events: want 2 (WAF only), got %d", resp.BlockedEvents)
+	}
+
+	// Check hourly buckets have ipsum_blocked.
+	var totalIpsum int
+	for _, hc := range resp.EventsByHour {
+		totalIpsum += hc.IpsumBlocked
+	}
+	if totalIpsum != 2 {
+		t.Errorf("hourly ipsum_blocked sum: want 2, got %d", totalIpsum)
+	}
+}
+
+func TestEventsIpsumBlockedFilter(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	alsPath := writeTempAccessLog(t, sampleIpsumAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/events?event_type=ipsum_blocked&limit=100", nil)
+	w := httptest.NewRecorder()
+	handleEvents(store, als)(w, req)
+
+	var resp EventsResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.Total != 2 {
+		t.Errorf("ipsum_blocked filter: want 2, got %d", resp.Total)
+	}
+	for _, ev := range resp.Events {
+		if ev.EventType != "ipsum_blocked" {
+			t.Errorf("event %s has type %s, want ipsum_blocked", ev.ID, ev.EventType)
+		}
+		if ev.ResponseStatus != 403 {
+			t.Errorf("event %s has status %d, want 403", ev.ID, ev.ResponseStatus)
+		}
+	}
+}
+
+func TestServicesMergesIpsumCounts(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	alsPath := writeTempAccessLog(t, sampleIpsumAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/services", nil)
+	w := httptest.NewRecorder()
+	handleServices(store, als)(w, req)
+
+	var resp ServicesResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	svcMap := make(map[string]ServiceDetail)
+	for _, s := range resp.Services {
+		svcMap[s.Service] = s
+	}
+
+	radarr := svcMap["radarr.erfi.io"]
+	if radarr.IpsumBlocked != 1 {
+		t.Errorf("radarr ipsum_blocked: want 1, got %d", radarr.IpsumBlocked)
+	}
+
+	sonarr := svcMap["sonarr.erfi.io"]
+	if sonarr.RateLimited != 1 {
+		t.Errorf("sonarr rate_limited: want 1, got %d", sonarr.RateLimited)
+	}
+	if sonarr.IpsumBlocked != 1 {
+		t.Errorf("sonarr ipsum_blocked: want 1, got %d", sonarr.IpsumBlocked)
+	}
+}
+
+// ─── Blocklist tests ────────────────────────────────────────────────
+
+func writeTempBlocklist(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ipsum_block.caddy")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestBlocklistStatsParseFile(t *testing.T) {
+	content := `# AUTO-GENERATED by update-ipsum.sh — do not edit manually
+# Updated: 2026-02-22T06:00:01Z
+# IPs: 3 (min_score=3)
+# Source: https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt
+@ipsum_blocked client_ip 1.2.3.4 5.6.7.8 9.10.11.12
+route @ipsum_blocked {
+	header X-Blocked-By ipsum
+	respond 403 {
+		body "Blocked"
+		close
+	}
+}
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	stats := bs.Stats()
+	if stats.BlockedIPs != 3 {
+		t.Errorf("BlockedIPs: want 3, got %d", stats.BlockedIPs)
+	}
+	if stats.LastUpdated != "2026-02-22T06:00:01Z" {
+		t.Errorf("LastUpdated: want 2026-02-22T06:00:01Z, got %q", stats.LastUpdated)
+	}
+	if stats.MinScore != 3 {
+		t.Errorf("MinScore: want 3, got %d", stats.MinScore)
+	}
+	if stats.Source != "IPsum" {
+		t.Errorf("Source: want IPsum, got %q", stats.Source)
+	}
+}
+
+func TestBlocklistCheckIP(t *testing.T) {
+	content := `# Updated: 2026-02-22T06:00:01Z
+# IPs: 2 (min_score=3)
+@ipsum_blocked client_ip 1.2.3.4 5.6.7.8
+route @ipsum_blocked {
+	respond 403
+}
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	// Blocked IP
+	result := bs.Check("1.2.3.4")
+	if !result.Blocked {
+		t.Error("1.2.3.4 should be blocked")
+	}
+	if result.Source != "IPsum" {
+		t.Errorf("Source: want IPsum, got %q", result.Source)
+	}
+
+	// Clean IP
+	result = bs.Check("10.0.0.1")
+	if result.Blocked {
+		t.Error("10.0.0.1 should not be blocked")
+	}
+}
+
+func TestBlocklistStatsEndpoint(t *testing.T) {
+	content := `# Updated: 2026-02-22T06:00:01Z
+# IPs: 2 (min_score=5)
+@ipsum_blocked client_ip 1.2.3.4 5.6.7.8
+route @ipsum_blocked { respond 403 }
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	req := httptest.NewRequest("GET", "/api/blocklist/stats", nil)
+	w := httptest.NewRecorder()
+	handleBlocklistStats(bs)(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("status: want 200, got %d", w.Code)
+	}
+	var resp BlocklistStatsResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.BlockedIPs != 2 {
+		t.Errorf("BlockedIPs: want 2, got %d", resp.BlockedIPs)
+	}
+	if resp.MinScore != 5 {
+		t.Errorf("MinScore: want 5, got %d", resp.MinScore)
+	}
+}
+
+func TestBlocklistCheckEndpoint(t *testing.T) {
+	content := `@ipsum_blocked client_ip 1.2.3.4
+route @ipsum_blocked { respond 403 }
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	// Check blocked IP
+	req := httptest.NewRequest("GET", "/api/blocklist/check/1.2.3.4", nil)
+	req.SetPathValue("ip", "1.2.3.4")
+	w := httptest.NewRecorder()
+	handleBlocklistCheck(bs)(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("status: want 200, got %d", w.Code)
+	}
+	var resp BlocklistCheckResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Blocked {
+		t.Error("1.2.3.4 should be blocked")
+	}
+
+	// Check clean IP
+	req = httptest.NewRequest("GET", "/api/blocklist/check/10.0.0.1", nil)
+	req.SetPathValue("ip", "10.0.0.1")
+	w = httptest.NewRecorder()
+	handleBlocklistCheck(bs)(w, req)
+
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Blocked {
+		t.Error("10.0.0.1 should not be blocked")
+	}
+}
+
+func TestBlocklistCheckInvalidIP(t *testing.T) {
+	bs := NewBlocklistStore("/nonexistent")
+
+	req := httptest.NewRequest("GET", "/api/blocklist/check/notanip", nil)
+	req.SetPathValue("ip", "notanip")
+	w := httptest.NewRecorder()
+	handleBlocklistCheck(bs)(w, req)
+
+	if w.Code != 400 {
+		t.Fatalf("status: want 400, got %d", w.Code)
+	}
+}
+
+func TestBlocklistEmptyFile(t *testing.T) {
+	path := writeTempBlocklist(t, "")
+	bs := NewBlocklistStore(path)
+
+	stats := bs.Stats()
+	if stats.BlockedIPs != 0 {
+		t.Errorf("BlockedIPs: want 0, got %d", stats.BlockedIPs)
+	}
+}
+
+// ─── Client count merging tests ─────────────────────────────────────
+
+func TestSummaryMergesClientCounts(t *testing.T) {
+	// WAF store with events from 10.0.0.1
+	logPath := writeTempLog(t, sampleLines)
+	store := NewStore(logPath)
+	store.Load()
+
+	// Access log with RL + ipsum events
+	accessLines := []string{
+		`{"level":"info","ts":"2026/02/22 07:30:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`,
+		`{"level":"info","ts":"2026/02/22 07:31:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/test","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`,
+		`{"level":"info","ts":"2026/02/22 07:32:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"99.99.99.99","client_ip":"99.99.99.99","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`,
+	}
+	accessPath := writeTempAccessLog(t, accessLines)
+	als := NewAccessLogStore(accessPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handleSummary(store, als)(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("status: want 200, got %d", w.Code)
+	}
+
+	var resp SummaryResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build client map
+	clientMap := make(map[string]ClientCount)
+	for _, c := range resp.TopClients {
+		clientMap[c.Client] = c
+	}
+
+	// 10.0.0.1 should have WAF blocked + RL + ipsum counts merged
+	c1 := clientMap["10.0.0.1"]
+	if c1.RateLimited != 1 {
+		t.Errorf("10.0.0.1 rate_limited: want 1, got %d", c1.RateLimited)
+	}
+	if c1.IpsumBlocked != 1 {
+		t.Errorf("10.0.0.1 ipsum_blocked: want 1, got %d", c1.IpsumBlocked)
+	}
+
+	// 99.99.99.99 should have only RL count
+	c2 := clientMap["99.99.99.99"]
+	if c2.RateLimited != 1 {
+		t.Errorf("99.99.99.99 rate_limited: want 1, got %d", c2.RateLimited)
+	}
+	if c2.IpsumBlocked != 0 {
+		t.Errorf("99.99.99.99 ipsum_blocked: want 0, got %d", c2.IpsumBlocked)
+	}
+}

@@ -97,6 +97,7 @@ describe("fetchSummary", () => {
       blocked: 10,
       logged: 30,
       rate_limited: 0,
+      ipsum_blocked: 0,
     });
 
     // Top services mapped (now includes blocked/logged)
@@ -112,6 +113,10 @@ describe("fetchSummary", () => {
     expect(result.top_clients[0].total).toBe(50);
     expect(result.top_clients[0].blocked).toBe(20);
 
+    // Top clients now include rate_limited and ipsum_blocked
+    expect(result.top_clients[0].rate_limited).toBe(0);
+    expect(result.top_clients[0].ipsum_blocked).toBe(0);
+
     // Service breakdown from dedicated field
     expect(result.service_breakdown).toHaveLength(2);
     expect(result.service_breakdown[0]).toEqual({
@@ -119,6 +124,8 @@ describe("fetchSummary", () => {
       total: 60,
       blocked: 15,
       logged: 45,
+      rate_limited: 0,
+      ipsum_blocked: 0,
     });
 
     // recent_events mapped from Go events

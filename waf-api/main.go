@@ -70,6 +70,9 @@ func main() {
 	configStore := NewConfigStore(configFile)
 	rateLimitStore := NewRateLimitStore(rateLimitFile)
 
+	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
+	blocklistStore := NewBlocklistStore(blocklistPath)
+
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
@@ -113,6 +116,10 @@ func main() {
 	// Rate Limit Analytics (429 events from combined access log)
 	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(accessLogStore))
 	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(accessLogStore))
+
+	// Blocklist (IPsum)
+	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
+	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
 
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
@@ -291,87 +298,172 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			summary = store.Summary(hours)
 		}
 
-		// Merge 429 rate-limited events into the summary.
+		// Merge access-log events (429 rate-limited + ipsum-blocked) into the summary.
 		rlEvents := getRLEvents(als, tr, hours)
-		rlCount := len(rlEvents)
-		summary.RateLimited = rlCount
-		summary.TotalEvents += rlCount
 
-		// Merge RL events into hourly buckets.
+		// Split into rate_limited vs ipsum_blocked.
+		var rlOnlyCount, ipsumCount int
 		rlHourMap := make(map[string]int)
+		ipsumHourMap := make(map[string]int)
 		rlSvcMap := make(map[string]int)
-		rlClientMap := make(map[string]int)
-		rlURIMap := make(map[string]int)
+		ipsumSvcMap := make(map[string]int)
 		rlClients := make(map[string]struct{})
 		rlServices := make(map[string]struct{})
 
 		for i := range rlEvents {
 			ev := &rlEvents[i]
 			hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
-			rlHourMap[hourKey]++
-			rlSvcMap[ev.Service]++
-			rlClientMap[ev.ClientIP]++
-			rlURIMap[ev.URI]++
 			rlClients[ev.ClientIP] = struct{}{}
 			rlServices[ev.Service] = struct{}{}
+			if ev.EventType == "ipsum_blocked" {
+				ipsumCount++
+				ipsumHourMap[hourKey]++
+				ipsumSvcMap[ev.Service]++
+			} else {
+				rlOnlyCount++
+				rlHourMap[hourKey]++
+				rlSvcMap[ev.Service]++
+			}
 		}
 
-		// Merge into existing hourly buckets (add RateLimited field + bump Count).
+		summary.RateLimited = rlOnlyCount
+		summary.IpsumBlocked = ipsumCount
+		summary.TotalEvents += rlOnlyCount + ipsumCount
+
+		// Merge into existing hourly buckets.
 		existingHours := make(map[string]int) // index into summary.EventsByHour
 		for i, hc := range summary.EventsByHour {
 			existingHours[hc.Hour] = i
 		}
-		for hour, count := range rlHourMap {
-			if idx, ok := existingHours[hour]; ok {
-				summary.EventsByHour[idx].RateLimited += count
-				summary.EventsByHour[idx].Count += count
-			} else {
-				summary.EventsByHour = append(summary.EventsByHour, HourCount{
-					Hour:        hour,
-					Count:       count,
-					RateLimited: count,
-				})
+		// Helper to merge a per-hour map into EventsByHour.
+		mergeHourMap := func(hourMap map[string]int, isIpsum bool) {
+			for hour, count := range hourMap {
+				if idx, ok := existingHours[hour]; ok {
+					if isIpsum {
+						summary.EventsByHour[idx].IpsumBlocked += count
+					} else {
+						summary.EventsByHour[idx].RateLimited += count
+					}
+					summary.EventsByHour[idx].Count += count
+				} else {
+					hc := HourCount{Hour: hour, Count: count}
+					if isIpsum {
+						hc.IpsumBlocked = count
+					} else {
+						hc.RateLimited = count
+					}
+					existingHours[hour] = len(summary.EventsByHour)
+					summary.EventsByHour = append(summary.EventsByHour, hc)
+				}
 			}
 		}
+		mergeHourMap(rlHourMap, false)
+		mergeHourMap(ipsumHourMap, true)
+
 		// Re-sort hourly buckets.
 		sort.Slice(summary.EventsByHour, func(i, j int) bool {
 			return summary.EventsByHour[i].Hour < summary.EventsByHour[j].Hour
 		})
 
-		// Merge RL counts into service breakdown.
-		existingSvcs := make(map[string]int) // index into summary.ServiceBreakdown
-		for i, sd := range summary.ServiceBreakdown {
-			existingSvcs[sd.Service] = i
+		// Helper to merge a per-service map into ServiceBreakdown.
+		mergeSvcBreakdown := func(svcMap map[string]int, isIpsum bool) {
+			existingSvcs := make(map[string]int)
+			for i, sd := range summary.ServiceBreakdown {
+				existingSvcs[sd.Service] = i
+			}
+			for svc, count := range svcMap {
+				if idx, ok := existingSvcs[svc]; ok {
+					if isIpsum {
+						summary.ServiceBreakdown[idx].IpsumBlocked += count
+					} else {
+						summary.ServiceBreakdown[idx].RateLimited += count
+					}
+					summary.ServiceBreakdown[idx].Total += count
+				} else {
+					sd := ServiceDetail{Service: svc, Total: count}
+					if isIpsum {
+						sd.IpsumBlocked = count
+					} else {
+						sd.RateLimited = count
+					}
+					existingSvcs[svc] = len(summary.ServiceBreakdown)
+					summary.ServiceBreakdown = append(summary.ServiceBreakdown, sd)
+				}
+			}
 		}
-		for svc, count := range rlSvcMap {
-			if idx, ok := existingSvcs[svc]; ok {
-				summary.ServiceBreakdown[idx].RateLimited += count
-				summary.ServiceBreakdown[idx].Total += count
+		mergeSvcBreakdown(rlSvcMap, false)
+		mergeSvcBreakdown(ipsumSvcMap, true)
+
+		// Helper to merge a per-service map into TopServices.
+		mergeTopSvcs := func(svcMap map[string]int, isIpsum bool) {
+			existingTopSvcs := make(map[string]int)
+			for i, sc := range summary.TopServices {
+				existingTopSvcs[sc.Service] = i
+			}
+			for svc, count := range svcMap {
+				if idx, ok := existingTopSvcs[svc]; ok {
+					if isIpsum {
+						summary.TopServices[idx].IpsumBlocked += count
+					} else {
+						summary.TopServices[idx].RateLimited += count
+					}
+					summary.TopServices[idx].Count += count
+				} else {
+					sc := ServiceCount{Service: svc, Count: count}
+					if isIpsum {
+						sc.IpsumBlocked = count
+					} else {
+						sc.RateLimited = count
+					}
+					existingTopSvcs[svc] = len(summary.TopServices)
+					summary.TopServices = append(summary.TopServices, sc)
+				}
+			}
+		}
+		mergeTopSvcs(rlSvcMap, false)
+		mergeTopSvcs(ipsumSvcMap, true)
+
+		// Merge RL/ipsum client counts into TopClients.
+		rlClientMap := make(map[string]int)
+		ipsumClientMap := make(map[string]int)
+		for i := range rlEvents {
+			if rlEvents[i].EventType == "ipsum_blocked" {
+				ipsumClientMap[rlEvents[i].ClientIP]++
 			} else {
-				summary.ServiceBreakdown = append(summary.ServiceBreakdown, ServiceDetail{
-					Service:     svc,
-					Total:       count,
-					RateLimited: count,
-				})
+				rlClientMap[rlEvents[i].ClientIP]++
 			}
 		}
 
-		// Merge RL counts into top_services.
-		existingTopSvcs := make(map[string]int)
-		for i, sc := range summary.TopServices {
-			existingTopSvcs[sc.Service] = i
+		existingTopClients := make(map[string]int) // index into summary.TopClients
+		for i, cc := range summary.TopClients {
+			existingTopClients[cc.Client] = i
 		}
-		for svc, count := range rlSvcMap {
-			if idx, ok := existingTopSvcs[svc]; ok {
-				summary.TopServices[idx].RateLimited += count
-				summary.TopServices[idx].Count += count
+		for client, count := range rlClientMap {
+			if idx, ok := existingTopClients[client]; ok {
+				summary.TopClients[idx].RateLimited += count
+				summary.TopClients[idx].Count += count
 			} else {
-				summary.TopServices = append(summary.TopServices, ServiceCount{
-					Service:     svc,
-					Count:       count,
-					RateLimited: count,
-				})
+				cc := ClientCount{Client: client, Count: count, RateLimited: count}
+				existingTopClients[client] = len(summary.TopClients)
+				summary.TopClients = append(summary.TopClients, cc)
 			}
+		}
+		for client, count := range ipsumClientMap {
+			if idx, ok := existingTopClients[client]; ok {
+				summary.TopClients[idx].IpsumBlocked += count
+				summary.TopClients[idx].Count += count
+			} else {
+				cc := ClientCount{Client: client, Count: count, IpsumBlocked: count}
+				existingTopClients[client] = len(summary.TopClients)
+				summary.TopClients = append(summary.TopClients, cc)
+			}
+		}
+		// Re-sort TopClients by count desc, cap at 10.
+		sort.Slice(summary.TopClients, func(i, j int) bool {
+			return summary.TopClients[i].Count > summary.TopClients[j].Count
+		})
+		if len(summary.TopClients) > 10 {
+			summary.TopClients = summary.TopClients[:10]
 		}
 
 		// Merge unique clients/services (union).
@@ -411,7 +503,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		service := q.Get("service")
 		client := q.Get("client")
 		method := q.Get("method")
-		eventType := q.Get("event_type") // "blocked", "logged", "rate_limited", or ""
+		eventType := q.Get("event_type") // "blocked", "logged", "rate_limited", "ipsum_blocked", or ""
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -431,14 +523,14 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 
-		// Collect WAF events (unless filtering to only rate_limited).
+		// Collect WAF events (unless filtering to only rate_limited or ipsum_blocked).
 		var allEvents []Event
-		if eventType != "rate_limited" {
+		if eventType != "rate_limited" && eventType != "ipsum_blocked" {
 			wafEvents := getWAFEvents(store, tr, hours)
 			allEvents = append(allEvents, wafEvents...)
 		}
 
-		// Collect 429 events (unless filtering to blocked or logged only).
+		// Collect access-log events (429 + ipsum) unless filtering to WAF-only types.
 		if eventType != "blocked" && eventType != "logged" {
 			rlEvents := getRLEvents(als, tr, hours)
 			allEvents = append(allEvents, rlEvents...)
@@ -502,17 +594,24 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 			resp = store.Services(hours)
 		}
 
-		// Merge 429 rate-limited counts into service breakdown.
+		// Merge access-log events (429 rate-limited + ipsum-blocked) into service breakdown.
 		rlEvents := getRLEvents(als, tr, hours)
 		rlSvcMap := make(map[string]int)
+		ipsumSvcMap := make(map[string]int)
 		for i := range rlEvents {
-			rlSvcMap[rlEvents[i].Service]++
+			if rlEvents[i].EventType == "ipsum_blocked" {
+				ipsumSvcMap[rlEvents[i].Service]++
+			} else {
+				rlSvcMap[rlEvents[i].Service]++
+			}
 		}
 
 		existingSvcs := make(map[string]int) // index into resp.Services
 		for i, sd := range resp.Services {
 			existingSvcs[sd.Service] = i
 		}
+
+		// Merge rate-limited.
 		for svc, count := range rlSvcMap {
 			if idx, ok := existingSvcs[svc]; ok {
 				resp.Services[idx].RateLimited += count
@@ -523,6 +622,22 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 					Total:       count,
 					RateLimited: count,
 				})
+				existingSvcs[svc] = len(resp.Services) - 1
+			}
+		}
+
+		// Merge ipsum-blocked.
+		for svc, count := range ipsumSvcMap {
+			if idx, ok := existingSvcs[svc]; ok {
+				resp.Services[idx].IpsumBlocked += count
+				resp.Services[idx].Total += count
+			} else {
+				resp.Services = append(resp.Services, ServiceDetail{
+					Service:      svc,
+					Total:        count,
+					IpsumBlocked: count,
+				})
+				existingSvcs[svc] = len(resp.Services) - 1
 			}
 		}
 

@@ -79,7 +79,7 @@ function formatSeverity(severity: number): { label: string; color: string } {
   return SEVERITY_MAP[severity] ?? { label: severity ? `Level ${severity}` : "N/A", color: "text-muted-foreground" };
 }
 
-function EventDetailPanel({ event }: { event: WAFEvent }) {
+export function EventDetailPanel({ event }: { event: WAFEvent }) {
   return (
     <div className="space-y-3 p-4">
       <div className="grid gap-4 md:grid-cols-2">
@@ -115,10 +115,31 @@ function EventDetailPanel({ event }: { event: WAFEvent }) {
 
         <div className="space-y-2">
           <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {event.event_type === "rate_limited" ? "Rate Limit Details" : "Rule Match"}
+            {event.event_type === "ipsum_blocked" ? "IPsum Blocklist Details" : event.event_type === "rate_limited" ? "Rate Limit Details" : "Rule Match"}
           </h4>
           <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
-            {event.event_type === "rate_limited" ? (
+            {event.event_type === "ipsum_blocked" ? (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Action:</span>
+                  <span className="text-violet-400 font-medium">IPsum Blocklist (403)</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Response:</span>
+                  <span className="text-neon-pink">403 Forbidden</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Source:</span>
+                  <span className="text-violet-400">IPsum threat intelligence blocklist</span>
+                </div>
+                {event.user_agent && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">User-Agent:</span>
+                    <code className="break-all text-foreground">{event.user_agent}</code>
+                  </div>
+                )}
+              </>
+            ) : event.event_type === "rate_limited" ? (
               <>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
@@ -238,7 +259,7 @@ export default function EventsTable() {
             ? true
             : false,
       method: methodFilter === "ALL" ? undefined : methodFilter,
-      event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter,
+      event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter as EventType,
       ...timeParams,
     })
       .then(setResponse)
@@ -353,6 +374,7 @@ export default function EventsTable() {
                 <SelectItem value="blocked">Blocked</SelectItem>
                 <SelectItem value="logged">Logged</SelectItem>
                 <SelectItem value="rate_limited">Rate Limited</SelectItem>
+                <SelectItem value="ipsum_blocked">IPsum Blocked</SelectItem>
               </SelectContent>
             </Select>
 
@@ -441,7 +463,11 @@ export default function EventsTable() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {evt.event_type === "rate_limited" ? (
+                        {evt.event_type === "ipsum_blocked" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
+                            IPSUM
+                          </Badge>
+                        ) : evt.event_type === "rate_limited" ? (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
                             RATE LIMITED
                           </Badge>

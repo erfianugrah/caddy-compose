@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -6,6 +6,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -13,7 +14,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Shield, ShieldAlert, ShieldBan, Users, Server, Clock } from "lucide-react";
+import { Shield, ShieldAlert, ShieldBan, Ban, Users, Server, Clock, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -33,7 +34,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { fetchSummary, type SummaryData } from "@/lib/api";
+import { fetchSummary, type SummaryData, type WAFEvent } from "@/lib/api";
+import { EventDetailPanel } from "@/components/EventsTable";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -151,12 +153,14 @@ function StatCard({
     pink: "text-neon-pink bg-neon-pink/10",
     cyan: "text-neon-cyan bg-neon-cyan/10",
     amber: "text-neon-amber bg-neon-amber/10",
+    violet: "text-violet-400 bg-violet-400/10",
   };
   const textColorMap: Record<string, string> = {
     green: "text-neon-green",
     pink: "text-neon-pink",
     cyan: "text-neon-cyan",
     amber: "text-neon-amber",
+    violet: "text-violet-400",
   };
 
   return (
@@ -197,7 +201,7 @@ const chartTooltipStyle = {
   labelStyle: { color: "#7a8baa" },
 };
 
-const DONUT_COLORS = ["#ff006e", "#00ff41", "#f59e0b"];
+const DONUT_COLORS = ["#ff006e", "#00ff41", "#f59e0b", "#a78bfa"];
 
 // ─── Main Component ─────────────────────────────────────────────────
 
@@ -210,6 +214,16 @@ export default function OverviewDashboard() {
     hours: 24,
     label: "Last 24 hours",
   });
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -254,11 +268,12 @@ export default function OverviewDashboard() {
 
   // Build donut data
   const donutData =
-    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0)
+    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.ipsum_blocked > 0)
       ? [
           { name: "Blocked", value: data.blocked },
           { name: "Logged", value: data.logged },
           ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
+          ...(data.ipsum_blocked > 0 ? [{ name: "IPsum Blocked", value: data.ipsum_blocked }] : []),
         ]
       : [];
 
@@ -283,7 +298,7 @@ export default function OverviewDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           title="Total Events"
           value={data?.total_events ?? 0}
@@ -303,6 +318,13 @@ export default function OverviewDashboard() {
           value={data?.rate_limited ?? 0}
           icon={ShieldBan}
           color="amber"
+          loading={loading}
+        />
+        <StatCard
+          title="IPsum Blocked"
+          value={data?.ipsum_blocked ?? 0}
+          icon={Ban}
+          color="violet"
           loading={loading}
         />
         <StatCard
@@ -353,6 +375,10 @@ export default function OverviewDashboard() {
                       <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                     </linearGradient>
+                    <linearGradient id="gradIpsumBlocked" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                    </linearGradient>
                   </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
@@ -393,6 +419,15 @@ export default function OverviewDashboard() {
                     stroke="#f59e0b"
                     fill="url(#gradRateLimited)"
                     strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="ipsum_blocked"
+                    stackId="1"
+                    stroke="#a78bfa"
+                    fill="url(#gradIpsumBlocked)"
+                    strokeWidth={2}
+                    name="IPsum Blocked"
                   />
                   <Area
                     type="monotone"
@@ -462,6 +497,14 @@ export default function OverviewDashboard() {
                       </span>
                     </div>
                   )}
+                  {(data?.ipsum_blocked ?? 0) > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-violet-400" />
+                      <span className="text-muted-foreground">
+                        IPsum ({data?.ipsum_blocked.toLocaleString()})
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -479,7 +522,7 @@ export default function OverviewDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Events by Service</CardTitle>
-            <CardDescription>Blocked and total events per service</CardDescription>
+            <CardDescription>Event breakdown per service</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -489,7 +532,7 @@ export default function OverviewDashboard() {
                 ))}
               </div>
             ) : serviceBreakdown.length > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.max(serviceBreakdown.length * 36, 140)}>
+              <ResponsiveContainer width="100%" height={Math.max(serviceBreakdown.slice(0, 10).length * 40 + 40, 180)}>
                 <BarChart
                   data={serviceBreakdown.slice(0, 10)}
                   layout="vertical"
@@ -518,8 +561,17 @@ export default function OverviewDashboard() {
                     width={110}
                   />
                   <Tooltip {...chartTooltipStyle} />
-                  <Bar dataKey="blocked" fill="#ff006e" stackId="a" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="logged" fill="#00ff41" stackId="a" radius={[0, 4, 4, 0]} opacity={0.7} />
+                  <Legend
+                    verticalAlign="top"
+                    height={28}
+                    iconType="square"
+                    iconSize={10}
+                    wrapperStyle={{ fontSize: "11px", color: "#7a8baa" }}
+                  />
+                  <Bar dataKey="blocked" name="Blocked" fill="#ff006e" stackId="a" />
+                  <Bar dataKey="rate_limited" name="Rate Limited" fill="#f59e0b" stackId="a" />
+                  <Bar dataKey="ipsum_blocked" name="IPsum" fill="#a78bfa" stackId="a" />
+                  <Bar dataKey="logged" name="Logged" fill="#00ff41" stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -544,9 +596,12 @@ export default function OverviewDashboard() {
                 ))}
               </div>
             ) : (data?.top_clients ?? []).length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={Math.max((data?.top_clients ?? []).slice(0, 10).length * 40 + 40, 180)}>
                 <BarChart
-                  data={(data?.top_clients ?? []).slice(0, 10)}
+                  data={(data?.top_clients ?? []).slice(0, 10).map((c) => ({
+                    ...c,
+                    logged: Math.max(c.total - c.blocked - c.rate_limited - c.ipsum_blocked, 0),
+                  }))}
                   layout="vertical"
                   margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                 >
@@ -573,19 +628,17 @@ export default function OverviewDashboard() {
                     width={110}
                   />
                   <Tooltip {...chartTooltipStyle} />
-                  <Bar
-                    dataKey="blocked"
-                    stackId="a"
-                    fill="#ff006e"
-                    radius={[0, 0, 0, 0]}
+                  <Legend
+                    verticalAlign="top"
+                    height={28}
+                    iconType="square"
+                    iconSize={10}
+                    wrapperStyle={{ fontSize: "11px", color: "#7a8baa" }}
                   />
-                  <Bar
-                    dataKey="total"
-                    stackId="b"
-                    fill="#00d4ff"
-                    radius={[0, 4, 4, 0]}
-                    opacity={0.6}
-                  />
+                  <Bar dataKey="blocked" name="Blocked" fill="#ff006e" stackId="a" />
+                  <Bar dataKey="rate_limited" name="Rate Limited" fill="#f59e0b" stackId="a" />
+                  <Bar dataKey="ipsum_blocked" name="IPsum" fill="#a78bfa" stackId="a" />
+                  <Bar dataKey="logged" name="Logged" fill="#00d4ff" stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -604,7 +657,7 @@ export default function OverviewDashboard() {
             <Clock className="h-4 w-4 text-neon-cyan" />
             <CardTitle className="text-sm">Recent Events</CardTitle>
           </div>
-          <CardDescription>Last 10 WAF and rate limit events</CardDescription>
+          <CardDescription>Last 10 WAF, rate limit, and IPsum events</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -617,6 +670,7 @@ export default function OverviewDashboard() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-8"></TableHead>
                   <TableHead>Time</TableHead>
                   <TableHead>Service</TableHead>
                   <TableHead>Method</TableHead>
@@ -627,37 +681,57 @@ export default function OverviewDashboard() {
               </TableHeader>
               <TableBody>
                 {(data?.recent_events ?? []).slice(0, 10).map((evt, idx) => (
-                  <TableRow key={evt.id || idx}>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      <div className="text-foreground">{formatTime(evt.timestamp)}</div>
-                      <div className="text-muted-foreground">{formatDate(evt.timestamp)}</div>
-                    </TableCell>
-                    <TableCell className="text-xs">{evt.service}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
-                        {evt.method}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[250px] truncate text-xs font-mono">
-                      {evt.uri}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
-                    <TableCell>
-                      {evt.event_type === "rate_limited" ? (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
-                          RATE LIMITED
+                  <Fragment key={evt.id || idx}>
+                    <TableRow className="cursor-pointer" onClick={() => toggleExpand(evt.id || String(idx))}>
+                      <TableCell className="w-8 px-2">
+                        {expanded.has(evt.id || String(idx)) ? (
+                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        <div className="text-foreground">{formatTime(evt.timestamp)}</div>
+                        <div className="text-muted-foreground">{formatDate(evt.timestamp)}</div>
+                      </TableCell>
+                      <TableCell className="text-xs">{evt.service}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                          {evt.method}
                         </Badge>
-                      ) : evt.event_type === "blocked" ? (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                          BLOCKED
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                          LOGGED
-                        </Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell className="max-w-[250px] truncate text-xs font-mono">
+                        {evt.uri}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
+                      <TableCell>
+                        {evt.event_type === "ipsum_blocked" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
+                            IPSUM
+                          </Badge>
+                        ) : evt.event_type === "rate_limited" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                            RATE LIMITED
+                          </Badge>
+                        ) : evt.event_type === "blocked" ? (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                            BLOCKED
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            LOGGED
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {expanded.has(evt.id || String(idx)) && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={7} className="bg-navy-950/50 p-0">
+                          <EventDetailPanel event={evt} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
