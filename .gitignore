@@ -1,5 +1,6 @@
 # Secrets — plaintext .env used by Docker Compose (never committed)
 .env
+.env.mk
 *.pem
 *.key
 *.dec

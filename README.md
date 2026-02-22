@@ -54,6 +54,7 @@ Common operations are available via `make`:
 
 ```bash
 make help              # Show all targets
+make config            # Show current configuration
 make build             # Build both images
 make build-caddy       # Build Caddy image (includes dashboard)
 make build-waf-api     # Build waf-api image
@@ -62,12 +63,39 @@ make test              # Run all tests (Go + frontend)
 make deploy            # Full deploy: build + push + SCP + restart
 make deploy-caddy      # Build, push, SCP, restart Caddy
 make deploy-waf-api    # Build, push, restart waf-api only
-make scp               # SCP Caddyfile + compose.yaml to servarr
-make status            # Show container status on servarr
+make scp               # SCP Caddyfile + compose.yaml to remote
+make status            # Show container status on remote
 make logs              # Tail logs from all containers
 make waf-deploy        # Trigger WAF config deploy (generate + reload)
-make waf-config        # Show current WAF config from servarr
+make waf-config        # Show current WAF config from remote
 ```
+
+### Configuration
+
+All settings can be overridden via a `.env.mk` file or inline variables:
+
+```bash
+# Create a .env.mk file (git-ignored)
+echo 'REMOTE=myhost' > .env.mk
+echo 'DEPLOY_MODE=compose' >> .env.mk
+make deploy
+
+# Or override inline
+make deploy REMOTE=myhost DEPLOY_MODE=compose
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `REMOTE` | `servarr` | SSH host alias or `user@host` |
+| `DEPLOY_MODE` | `dockge` | `dockge` (via dockge container) or `compose` (direct) |
+| `CADDY_IMAGE` | `erfianugrah/caddy:1.15.0-2.10.2` | Caddy image tag |
+| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.10.0` | waf-api image tag |
+| `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Compose file path (inside dockge or on host) |
+| `CADDYFILE_DEST` | `/mnt/user/data/caddy/Caddyfile` | Remote Caddyfile path for SCP |
+| `COMPOSE_DEST` | `/mnt/user/data/dockge/stacks/caddy/compose.yaml` | Remote compose.yaml path for SCP |
+| `DOCKGE_CONTAINER` | `dockge` | Dockge container name (dockge mode only) |
+| `WAF_CONFIG_PATH` | `/mnt/user/data/waf-api/waf-config.json` | Remote waf-config.json path |
+| `WAF_SETTINGS_PATH` | `/mnt/user/data/caddy/coraza/custom-waf-settings.conf` | Remote WAF settings path |
 
 ## WAF configuration
 
