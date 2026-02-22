@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:1.13.0-2.10.2
+    image: erfianugrah/caddy:1.14.0-2.10.2
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -96,7 +96,7 @@ services:
     build:
       context: .
       dockerfile: waf-api/Dockerfile
-    image: erfianugrah/waf-api:0.5.0
+    image: erfianugrah/waf-api:0.6.0
     hostname: waf-api
     container_name: waf-api
     restart: unless-stopped
