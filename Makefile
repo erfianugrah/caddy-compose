@@ -1,27 +1,74 @@
 # caddy-compose Makefile
-# Builds images locally, pushes to Docker Hub, deploys to servarr via dockge.
+# Builds images locally, pushes to Docker Hub, deploys to a remote host.
+#
+# All settings can be overridden via environment variables or a .env.mk file.
+# Example:
+#   echo 'REMOTE=myhost' > .env.mk
+#   echo 'DEPLOY_MODE=compose' >> .env.mk
+#   make deploy
+#
+# Or inline:
+#   make deploy REMOTE=myhost DEPLOY_MODE=compose
+
+# ── Load overrides from .env.mk if it exists ───────────────────────
+-include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   := erfianugrah/caddy:1.15.0-2.10.2
-WAF_API_IMAGE := erfianugrah/waf-api:0.10.0
+CADDY_IMAGE   ?= erfianugrah/caddy:1.15.0-2.10.2
+WAF_API_IMAGE ?= erfianugrah/waf-api:0.10.0
+
+# ── Remote host ─────────────────────────────────────────────────────
+# SSH host alias or user@host for the deployment target.
+REMOTE ?= servarr
+
+# ── Deploy mode ─────────────────────────────────────────────────────
+# "dockge"  — runs docker compose inside a dockge container (default)
+# "compose" — runs docker compose directly on the remote host
+DEPLOY_MODE ?= dockge
 
 # ── Remote paths ────────────────────────────────────────────────────
-REMOTE          := servarr
-DOCKGE_STACK    := /opt/stacks/caddy/compose.yaml
-CADDYFILE_DEST  := /mnt/user/data/caddy/Caddyfile
-COMPOSE_DEST    := /mnt/user/data/dockge/stacks/caddy/compose.yaml
+# Where the compose stack lives on the remote host.
+# Dockge mode: path inside the dockge container (mapped from host).
+# Compose mode: absolute path on the remote host.
+STACK_PATH     ?= /opt/stacks/caddy/compose.yaml
+CADDYFILE_DEST ?= /mnt/user/data/caddy/Caddyfile
+COMPOSE_DEST   ?= /mnt/user/data/dockge/stacks/caddy/compose.yaml
 
-# ── Dockge helper ───────────────────────────────────────────────────
-# All docker compose commands must run inside the dockge container on servarr.
-DOCKGE := ssh $(REMOTE) "docker exec dockge docker compose -f $(DOCKGE_STACK)"
+# For dockge mode only — the container name running dockge.
+DOCKGE_CONTAINER ?= dockge
+
+# ── WAF data paths (on remote host) ────────────────────────────────
+WAF_CONFIG_PATH    ?= /mnt/user/data/waf-api/waf-config.json
+WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/coraza/custom-waf-settings.conf
+
+# ── Computed helpers ────────────────────────────────────────────────
+ifeq ($(DEPLOY_MODE),dockge)
+  COMPOSE_CMD = ssh $(REMOTE) "docker exec $(DOCKGE_CONTAINER) docker compose -f $(STACK_PATH)"
+  EXEC_CMD    = ssh $(REMOTE) "docker exec $(DOCKGE_CONTAINER) docker exec"
+else
+  COMPOSE_CMD = ssh $(REMOTE) "docker compose -f $(STACK_PATH)"
+  EXEC_CMD    = ssh $(REMOTE) "docker exec"
+endif
 
 .PHONY: help build build-caddy build-waf-api push push-caddy push-waf-api \
         deploy deploy-caddy deploy-waf-api deploy-all scp pull restart \
-        test test-go test-frontend status logs waf-deploy waf-config
+        test test-go test-frontend status logs waf-deploy waf-config config
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+config: ## Show current configuration
+	@echo "REMOTE:           $(REMOTE)"
+	@echo "DEPLOY_MODE:      $(DEPLOY_MODE)"
+	@echo "CADDY_IMAGE:      $(CADDY_IMAGE)"
+	@echo "WAF_API_IMAGE:    $(WAF_API_IMAGE)"
+	@echo "STACK_PATH:       $(STACK_PATH)"
+	@echo "CADDYFILE_DEST:   $(CADDYFILE_DEST)"
+	@echo "COMPOSE_DEST:     $(COMPOSE_DEST)"
+ifeq ($(DEPLOY_MODE),dockge)
+	@echo "DOCKGE_CONTAINER: $(DOCKGE_CONTAINER)"
+endif
 
 # ── Build ───────────────────────────────────────────────────────────
 build: build-caddy build-waf-api ## Build both images
@@ -51,28 +98,28 @@ test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
 
 # ── SCP / Deploy ────────────────────────────────────────────────────
-scp: ## SCP Caddyfile + compose.yaml to servarr
+scp: ## SCP Caddyfile + compose.yaml to remote
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
 	scp compose.yaml $(REMOTE):$(COMPOSE_DEST)
 
-pull: ## Pull images on servarr
-	$(DOCKGE) pull
+pull: ## Pull images on remote
+	$(COMPOSE_CMD) pull
 
-restart: ## Restart stack on servarr (pull + up)
-	$(DOCKGE) up -d
+restart: ## Restart stack on remote
+	$(COMPOSE_CMD) up -d
 
-status: ## Show container status on servarr
-	$(DOCKGE) ps
+status: ## Show container status on remote
+	$(COMPOSE_CMD) ps
 
 logs: ## Tail logs from all containers
-	$(DOCKGE) logs --tail 30
+	$(COMPOSE_CMD) logs --tail 30
 
 # ── Composite deploy targets ────────────────────────────────────────
 deploy-caddy: build-caddy push-caddy scp pull restart ## Build, push, SCP, restart Caddy
 	@echo "Caddy deployed."
 
 deploy-waf-api: build-waf-api push-waf-api pull ## Build, push, restart waf-api
-	$(DOCKGE) up -d waf-api
+	$(COMPOSE_CMD) up -d waf-api
 	@echo "waf-api deployed."
 
 deploy-all: build push scp pull restart ## Full deploy: build + push + SCP + restart all
@@ -80,12 +127,12 @@ deploy-all: build push scp pull restart ## Full deploy: build + push + SCP + res
 
 deploy: deploy-all ## Alias for deploy-all
 
-# ── WAF operations (via waf-api on servarr) ─────────────────────────
+# ── WAF operations (via waf-api on remote) ──────────────────────────
 waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)
-	ssh $(REMOTE) 'docker exec dockge docker exec waf-api wget -qO- http://localhost:8080/api/config/deploy --post-data=""'
+	$(EXEC_CMD) waf-api wget -qO- http://localhost:8080/api/config/deploy --post-data=""
 
-waf-config: ## Show current WAF config from servarr
+waf-config: ## Show current WAF config from remote
 	@echo "=== waf-config.json ==="
-	@ssh $(REMOTE) "cat /mnt/user/data/waf-api/waf-config.json"
+	@ssh $(REMOTE) "cat $(WAF_CONFIG_PATH)"
 	@echo "\n=== custom-waf-settings.conf ==="
-	@ssh $(REMOTE) "cat /mnt/user/data/caddy/coraza/custom-waf-settings.conf"
+	@ssh $(REMOTE) "cat $(WAF_SETTINGS_PATH)"
