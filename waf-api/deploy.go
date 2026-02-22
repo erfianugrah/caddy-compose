@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -82,14 +83,29 @@ func writeConfFiles(dir, preCRS, postCRS, wafSettings string) error {
 
 // reloadCaddy sends the Caddyfile to Caddy's admin API to trigger a reload.
 // This reads the Caddyfile from disk and POSTs it to /load with the caddyfile adapter.
-func reloadCaddy(caddyfilePath, adminURL string) error {
+//
+// IMPORTANT: Caddy compares the incoming config to its current config and may
+// skip reprocessing if the Caddyfile text is identical — even when included files
+// (e.g. custom-waf-settings.conf) have changed on disk. To force a full reparse
+// on every deploy, we inject a unique comment with a SHA-256 fingerprint of the
+// Coraza config files and a timestamp. This comment is only in the POST body;
+// the Caddyfile on disk is not modified.
+func reloadCaddy(caddyfilePath, adminURL string, configFiles ...string) error {
 	content, err := os.ReadFile(caddyfilePath)
 	if err != nil {
 		return fmt.Errorf("reading Caddyfile at %s: %w", caddyfilePath, err)
 	}
 
+	// Build a fingerprint from all config file contents to force Caddy to
+	// see a "new" Caddyfile on every deploy. The timestamp alone would suffice,
+	// but including the hash lets us log exactly what changed.
+	fingerprint := deployFingerprint(configFiles)
+	header := fmt.Sprintf("# waf-api deploy %s fingerprint:%s\n",
+		time.Now().UTC().Format(time.RFC3339), fingerprint)
+	payload := append([]byte(header), content...)
+
 	url := adminURL + "/load"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(content))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("creating reload request: %w", err)
 	}
@@ -107,6 +123,23 @@ func reloadCaddy(caddyfilePath, adminURL string) error {
 		return fmt.Errorf("Caddy reload failed (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	log.Printf("Caddy reload successful via %s", url)
+	log.Printf("Caddy reload successful via %s (fingerprint: %s)", url, fingerprint)
 	return nil
+}
+
+// deployFingerprint computes a short SHA-256 hash of the concatenated contents
+// of the given file paths. If a file can't be read, its path is hashed instead
+// (so the fingerprint still changes when files are added/removed).
+func deployFingerprint(paths []string) string {
+	h := sha256.New()
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			// File missing or unreadable — hash the path itself as a marker.
+			h.Write([]byte(p))
+		} else {
+			h.Write(data)
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }

@@ -780,8 +780,15 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) h
 		}
 
 		// Reload Caddy via admin API.
+		// Pass the config file paths so reloadCaddy can fingerprint them and
+		// inject a unique comment, forcing Caddy to reparse all includes.
+		confFiles := []string{
+			filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
+			filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
+			filepath.Join(deployCfg.CorazaDir, "custom-waf-settings.conf"),
+		}
 		reloaded := true
-		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
+		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, confFiles...); err != nil {
 			log.Printf("warning: Caddy reload failed: %v", err)
 			reloaded = false
 			// Don't fail the request — files were written successfully.
@@ -798,9 +805,9 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) h
 		writeJSON(w, http.StatusOK, DeployResponse{
 			Status:      status,
 			Message:     msg,
-			PreCRS:      filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
-			PostCRS:     filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
-			WAFSettings: filepath.Join(deployCfg.CorazaDir, "custom-waf-settings.conf"),
+			PreCRS:      confFiles[0],
+			PostCRS:     confFiles[1],
+			WAFSettings: confFiles[2],
 			Reloaded:    reloaded,
 			Timestamp:   time.Now().UTC().Format(time.RFC3339),
 		})
@@ -850,8 +857,9 @@ func handleDeployRateLimits(rs *RateLimitStore, deployCfg DeployConfig) http.Han
 		}
 
 		// Reload Caddy via admin API.
+		// Pass the written zone files so reloadCaddy can fingerprint them.
 		reloaded := true
-		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
+		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, written...); err != nil {
 			log.Printf("warning: Caddy reload failed after rate limit deploy: %v", err)
 			reloaded = false
 		}
