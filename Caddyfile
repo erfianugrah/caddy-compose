@@ -102,36 +102,75 @@
 	}
 }
 
-# Coraza WAF — OWASP Core Rule Set for inline request security
-# Skips WebSocket upgrades (Coraza mangles the 101 handshake)
-# Includes handle_errors for 400 (malformed body), 403 (WAF deny),
-# and 429 (rate limit) so blocked requests get our custom error page.
-# WAF disabled globally — troubleshooting false positives
+# Coraza WAF — OWASP CRS with three operational tiers.
+# All tiers skip WebSocket upgrades (Coraza mangles the 101 handshake).
+#
+# (waf)        — Tuning mode: PL1, anomaly thresholds at 10000 (logs everything, blocks nothing).
+#                Use while collecting baseline data on false positives.
+# (waf_strict) — Enforcing mode: PL1, anomaly thresholds at 5/4 (CRS defaults, blocks attacks).
+#                For public-facing or hardened services after tuning is complete.
+# (waf_off)    — No WAF processing. For static-respond-only or metrics-only services.
+
 (waf) {
-	# @not_websocket {
-	# 	not header Connection *Upgrade*
-	# }
-	# route @not_websocket {
-	# 	coraza_waf {
-	# 		load_owasp_crs
-	# 		directives `
-	# 		Include /etc/caddy/coraza/pre-crs.conf
-	# 		Include @crs-setup.conf.example
-	# 		Include @owasp_crs/*.conf
-	# 		Include /etc/caddy/coraza/post-crs.conf
-	# 		SecRuleEngine On
-	# 		SecAuditEngine RelevantOnly
-	# 		SecAuditLog /var/log/coraza-audit.log
-	# 		SecAuditLogFormat json
-	# 		`
-	# 	}
-	# }
-	# handle_errors 400 403 429 {
-	# 	root * /etc/caddy/errors
-	# 	templates
-	# 	rewrite * /error.html
-	# 	file_server
-	# }
+	@not_websocket {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket {
+		coraza_waf {
+			load_owasp_crs
+			directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			SecRuleEngine On
+			SecAuditEngine RelevantOnly
+			SecAuditLog /var/log/coraza-audit.log
+			SecAuditLogFormat json
+			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
+			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=10000,setvar:tx.outbound_anomaly_score_threshold=10000"
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(waf_strict) {
+	@not_websocket_strict {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket_strict {
+		coraza_waf {
+			load_owasp_crs
+			directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			SecRuleEngine On
+			SecAuditEngine RelevantOnly
+			SecAuditLog /var/log/coraza-audit.log
+			SecAuditLogFormat json
+			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
+			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=5,setvar:tx.outbound_anomaly_score_threshold=4"
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(waf_off) {
+	# No WAF processing — placeholder snippet for services that don't need it.
 }
 
 # Configurable rate limit — per client IP, excludes WebSocket upgrades
@@ -520,7 +559,7 @@ immich.erfi.io {
 caddy-prometheus.erfi.io {
 	import cors
 	import security_headers
-	import waf
+	import waf_off
 	import ipsum_blocklist
 	import rate_limit caddy-prometheus 100 1m
 	import tls_config
@@ -569,7 +608,7 @@ httpbun.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
+	import waf_strict
 	import ipsum_blocklist
 	import rate_limit httpbun 100 1m
 	import tls_config
@@ -585,7 +624,7 @@ httpbin.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf
+	import waf_strict
 	import ipsum_blocklist
 	import rate_limit httpbin 100 1m
 	import tls_config
