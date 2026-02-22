@@ -211,13 +211,18 @@ func parseEvent(entry AuditLogEntry) Event {
 		ev.MatchedData = best.Data.Data
 		ev.RuleTags = best.Data.Tags
 
-		// Extract anomaly score from rule 949110 (inbound) or 980170 (outbound).
-		// Format: "Inbound Anomaly Score Exceeded (Total Score: 5)"
+		// Extract anomaly score. Prefer the explicit total from rule 949110/980170
+		// ("Inbound Anomaly Score Exceeded (Total Score: N)"). If that rule didn't
+		// fire (e.g. DetectionOnly mode with high thresholds), compute the score
+		// by summing CRS severity-based points from each matched rule.
 		for _, m := range entry.Messages {
 			if m.Data.ID == 949110 || m.Data.ID == 980170 {
 				ev.AnomalyScore = extractAnomalyScore(m.Data.Msg)
 				break
 			}
+		}
+		if ev.AnomalyScore == 0 {
+			ev.AnomalyScore = computeAnomalyScore(entry.Messages)
 		}
 	}
 
@@ -244,6 +249,38 @@ func extractAnomalyScore(msg string) int {
 	score, err := strconv.Atoi(rest[:end])
 	if err != nil {
 		return 0
+	}
+	return score
+}
+
+// computeAnomalyScore sums CRS severity-based anomaly points from matched rules.
+// Used as a fallback when the 949110/980170 evaluation rule didn't fire
+// (e.g. DetectionOnly mode where the score never exceeds the threshold).
+//
+// CRS 4.x scoring: CRITICAL(2)=5, ERROR(3)=4, WARNING(4)=3, NOTICE(5)=2.
+// Rules 949110, 980170, and ID 0 are excluded (scoring/evaluation rules).
+func computeAnomalyScore(messages []AuditMessage) int {
+	score := 0
+	seen := make(map[int]bool) // deduplicate by rule ID (chain rules repeat)
+	for _, m := range messages {
+		id := m.Data.ID
+		if id == 0 || id == 949110 || id == 980170 {
+			continue
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		switch m.Data.Severity {
+		case 2: // CRITICAL
+			score += 5
+		case 3: // ERROR
+			score += 4
+		case 4: // WARNING
+			score += 3
+		case 5: // NOTICE
+			score += 2
+		}
 	}
 	return score
 }

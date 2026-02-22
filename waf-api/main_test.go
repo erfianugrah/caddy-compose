@@ -4394,3 +4394,67 @@ func TestAnomalyScoreInParsedEvent(t *testing.T) {
 		t.Errorf("expected rule ID 942100, got %d", events[0].RuleID)
 	}
 }
+
+func TestComputeAnomalyScore(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []AuditMessage
+		want     int
+	}{
+		{"empty", nil, 0},
+		{"single critical", []AuditMessage{{Data: AuditMessageData{ID: 942100, Severity: 2}}}, 5},
+		{"single notice", []AuditMessage{{Data: AuditMessageData{ID: 920330, Severity: 5}}}, 2},
+		{"critical + notice", []AuditMessage{
+			{Data: AuditMessageData{ID: 942100, Severity: 2}},
+			{Data: AuditMessageData{ID: 920330, Severity: 5}},
+		}, 7},
+		{"dedup chain rules", []AuditMessage{
+			{Data: AuditMessageData{ID: 932240, Severity: 2}},
+			{Data: AuditMessageData{ID: 932240, Severity: 2}}, // chain duplicate
+		}, 5},
+		{"skip scoring rules", []AuditMessage{
+			{Data: AuditMessageData{ID: 942100, Severity: 2}},
+			{Data: AuditMessageData{ID: 949110, Severity: 0}},
+			{Data: AuditMessageData{ID: 980170, Severity: 0}},
+		}, 5},
+		{"skip id 0", []AuditMessage{
+			{Data: AuditMessageData{ID: 0, Severity: 2}},
+			{Data: AuditMessageData{ID: 920330, Severity: 5}},
+		}, 2},
+		{"all severities", []AuditMessage{
+			{Data: AuditMessageData{ID: 1, Severity: 2}}, // CRITICAL = 5
+			{Data: AuditMessageData{ID: 2, Severity: 3}}, // ERROR = 4
+			{Data: AuditMessageData{ID: 3, Severity: 4}}, // WARNING = 3
+			{Data: AuditMessageData{ID: 4, Severity: 5}}, // NOTICE = 2
+		}, 14},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := computeAnomalyScore(tt.messages)
+			if got != tt.want {
+				t.Errorf("computeAnomalyScore() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAnomalyScoreFallbackComputed(t *testing.T) {
+	// DetectionOnly mode: rule 949110 doesn't fire (score below threshold).
+	// Score should be computed from individual rule severities.
+	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test2","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":200},"producer":{"rule_engine":"DetectionOnly"}},"messages":[{"message":"Empty User Agent Header","data":{"id":920330,"msg":"Empty User Agent Header","severity":5,"tags":["attack-protocol"]}}]}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	os.WriteFile(path, []byte(entry+"\n"), 0644)
+
+	store := NewStore(path)
+	store.Load()
+	events := store.Snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	// NOTICE severity = 2 points.
+	if events[0].AnomalyScore != 2 {
+		t.Errorf("expected computed anomaly score 2, got %d", events[0].AnomalyScore)
+	}
+}
