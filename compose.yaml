@@ -96,7 +96,7 @@ services:
     build:
       context: .
       dockerfile: waf-api/Dockerfile
-    image: erfianugrah/waf-api:0.6.0
+    image: erfianugrah/waf-api:0.7.0
     hostname: waf-api
     container_name: waf-api
     restart: unless-stopped
