@@ -37,7 +37,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr joplin keycloak qbit change seerr copyparty dockge-sg httpbun httpbin
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin
 		}
 		versions ipv4
 		check_interval 5m
@@ -571,7 +571,7 @@ copyparty.erfi.io {
 	import site_log copyparty
 }
 
-dockge-sg.erfi.io {
+dockge.erfi.io {
 	import cors
 	import security_headers
 	import static_cache

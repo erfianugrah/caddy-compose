@@ -12,6 +12,7 @@ import {
   Rocket,
   Globe,
   Settings2,
+  Loader2,
 } from "lucide-react";
 import {
   Card,
@@ -422,7 +423,7 @@ export default function SettingsPanel() {
   const [categories, setCategories] = useState<CRSCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deploying, setDeploying] = useState(false);
+  const [deployStep, setDeployStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -486,11 +487,11 @@ export default function SettingsPanel() {
   };
 
   const handleDeploy = async () => {
-    // Save first, then deploy.
-    setDeploying(true);
     setError(null);
     try {
+      setDeployStep("Saving config...");
       await updateConfig(buildConfig());
+      setDeployStep("Writing WAF files & reloading Caddy...");
       const result = await deployConfig();
       setDirty(false);
       if (result.reloaded) {
@@ -501,7 +502,7 @@ export default function SettingsPanel() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setDeploying(false);
+      setDeployStep(null);
     }
   };
 
@@ -622,9 +623,13 @@ export default function SettingsPanel() {
             <Save className="h-3.5 w-3.5" />
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button size="sm" onClick={handleDeploy} disabled={deploying}>
-            <Rocket className="h-3.5 w-3.5" />
-            {deploying ? "Deploying..." : "Save & Deploy"}
+          <Button size="sm" onClick={handleDeploy} disabled={deployStep !== null}>
+            {deployStep ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Rocket className="h-3.5 w-3.5" />
+            )}
+            {deployStep ?? "Save & Deploy"}
           </Button>
         </div>
       </div>

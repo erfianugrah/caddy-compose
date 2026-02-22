@@ -8,7 +8,7 @@ import {
   Trash2,
   Info,
   RefreshCw,
-
+  Loader2,
 } from "lucide-react";
 import {
   Card,
@@ -246,7 +246,7 @@ export default function RateLimitsPanel() {
   const [config, setConfig] = useState<RateLimitConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deploying, setDeploying] = useState(false);
+  const [deployStep, setDeployStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -311,15 +311,15 @@ export default function RateLimitsPanel() {
   };
 
   const handleDeploy = async () => {
-    setDeploying(true);
     setError(null);
     setDeployResult(null);
     try {
-      // Save first if dirty
       if (dirty && config) {
+        setDeployStep("Saving config...");
         await updateRateLimits(config);
         setDirty(false);
       }
+      setDeployStep("Writing zone files & reloading Caddy...");
       const result = await deployRateLimits();
       setDeployResult(result);
       if (result.status === "deployed") {
@@ -330,7 +330,7 @@ export default function RateLimitsPanel() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setDeploying(false);
+      setDeployStep(null);
     }
   };
 
@@ -393,10 +393,14 @@ export default function RateLimitsPanel() {
           <Button
             size="sm"
             onClick={handleDeploy}
-            disabled={deploying}
+            disabled={deployStep !== null}
           >
-            <Rocket className="h-3.5 w-3.5" />
-            {deploying ? "Deploying..." : "Apply Rate Limits"}
+            {deployStep ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Rocket className="h-3.5 w-3.5" />
+            )}
+            {deployStep ?? "Apply Rate Limits"}
           </Button>
         </div>
       </div>

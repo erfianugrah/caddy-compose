@@ -18,6 +18,7 @@ import {
   Download,
   Upload,
   X,
+  Loader2,
   Search,
 } from "lucide-react";
 import {
@@ -1165,7 +1166,7 @@ export default function PolicyEngine() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [generatedConfig, setGeneratedConfig] = useState<GeneratedConfig | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [deploying, setDeploying] = useState(false);
+  const [deployStep, setDeployStep] = useState<string | null>(null);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -1251,9 +1252,9 @@ export default function PolicyEngine() {
   };
 
   const handleDeploy = async () => {
-    setDeploying(true);
     setDeployResult(null);
     try {
+      setDeployStep("Writing WAF files & reloading Caddy...");
       const result = await deployConfig();
       setDeployResult(result);
       if (result.status === "deployed") {
@@ -1264,7 +1265,7 @@ export default function PolicyEngine() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setDeploying(false);
+      setDeployStep(null);
     }
   };
 
@@ -1530,9 +1531,13 @@ export default function PolicyEngine() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Generated Configuration</h3>
-            <Button variant="default" size="sm" onClick={handleDeploy} disabled={deploying}>
-              <Rocket className="h-3.5 w-3.5" />
-              {deploying ? "Deploying..." : "Deploy to Caddy"}
+            <Button variant="default" size="sm" onClick={handleDeploy} disabled={deployStep !== null}>
+              {deployStep ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Rocket className="h-3.5 w-3.5" />
+              )}
+              {deployStep ?? "Deploy to Caddy"}
             </Button>
           </div>
           {deployResult && (

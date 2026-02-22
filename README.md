@@ -41,6 +41,7 @@ Go stdlib sidecar (zero external dependencies). Provides:
 - Policy Engine: CRUD for exclusions, SecRule generation, deploy pipeline (writes conf files + reloads Caddy)
 - CRS rule catalog (141 curated rules, 11 categories) with search/autocomplete
 - Rate limit zone configuration: per-zone `.caddy` file generation and deploy
+- Deploy pipeline with SHA-256 fingerprint injection (ensures Caddy reprovisioning when only included files change)
 - IP lookup, service detail, configuration management
 - UUIDv7 for rate-limit event IDs (time-ordered, globally unique), Coraza tx IDs for WAF events
 
@@ -48,26 +49,35 @@ Go stdlib sidecar (zero external dependencies). Provides:
 
 ```bash
 # Caddy image (includes dashboard build)
-docker build -t erfianugrah/caddy:1.13.0-2.10.2 .
-docker push erfianugrah/caddy:1.13.0-2.10.2
+docker build -t erfianugrah/caddy:1.14.0-2.10.2 .
+docker push erfianugrah/caddy:1.14.0-2.10.2
 
-# WAF API image
-docker build -t erfianugrah/waf-api:0.5.0 ./waf-api
-docker push erfianugrah/waf-api:0.5.0
+# WAF API image (uses its own Dockerfile with proper alpine + entrypoint)
+docker build -t erfianugrah/waf-api:0.7.0 ./waf-api
+docker push erfianugrah/waf-api:0.7.0
 ```
 
-## WAF tiers
+> Do **not** use `--target waf-api` from the root Dockerfile — that produces the Go build stage (golang:1.23-alpine base, `/bin/sh` entrypoint) instead of the final alpine image with the compiled binary.
 
-Four WAF configurations applied per-site via snippets:
+## WAF configuration
 
-| Tier | Snippet | Paranoia | Inbound Threshold | Outbound Threshold | Usage |
-|------|---------|----------|-------------------|-------------------|-------|
-| Tuning | `(waf)` | PL1 | 10000 | - | Most services (high threshold for tuning) |
-| Moderate | `(waf_moderate)` | PL1 | 15 | 15 | qbit, dockge-sg |
-| Strict | `(waf_strict)` | PL1 | 5 | 4 | (reserved for high-security) |
-| Off | `(waf_off)` | - | - | - | caddy.erfi.io |
+A single `(waf)` snippet handles all WAF-enabled services. Per-service settings (paranoia level, anomaly thresholds, rule groups, WAF mode) are fully dynamic — configured via the Settings page and written to `/data/coraza/custom-waf-settings.conf` by waf-api. A `(waf_off)` snippet exists for services that don't need WAF.
 
-All tiers include `SecAuditLogParts ABCFHKZ` (Part K for rule match messages) for full rule match data in audit logs. Dynamic config overrides are loaded from `/data/coraza/custom-{pre,post}-crs.conf` (written by waf-api Policy Engine).
+### Config loading order inside `(waf)`
+
+1. `/etc/caddy/coraza/pre-crs.conf` — Baked-in defaults (body settings, JSON processor, socket.io exclusion, XXE rules, `SecResponseBodyAccess Off`)
+2. `/data/coraza/custom-pre-crs.conf` — Dynamic pre-CRS exclusions (Policy Engine)
+3. `@crs-setup.conf.example` — CRS default setup
+4. `/data/coraza/custom-waf-settings.conf` — Dynamic settings (paranoia, thresholds, rule groups — Settings page)
+5. `@owasp_crs/*.conf` — CRS detection rules
+6. `/etc/caddy/coraza/post-crs.conf` — Baked-in post-CRS rules (RCE, CRLF)
+7. `/data/coraza/custom-post-crs.conf` — Dynamic post-CRS exclusions (Policy Engine)
+
+All configs include `SecAuditLogParts ABCFHKZ` (Part K for rule match messages) for full rule match data in audit logs.
+
+### Reload fingerprint
+
+When only included config files change (not the Caddyfile itself), Caddy's `/load` endpoint may skip reprovisioning because the Caddyfile text is identical. To work around this, `reloadCaddy()` computes a SHA-256 fingerprint of all referenced config file contents and prepends a `# waf-api deploy <timestamp> fingerprint:<hash>` comment to the Caddyfile before POSTing to `/load`. The on-disk Caddyfile is never modified.
 
 ## WAF dashboard
 
@@ -83,7 +93,7 @@ Accessible at `waf.erfi.io` (protected by Authelia `two_factor`).
   - **Advanced** — ModSecurity directive types (SecRuleRemoveById, ctl:ruleRemoveById, etc.) with condition builder for runtime types
   - **Raw Editor** — CodeMirror 6 with ModSecurity syntax highlighting and CRS autocomplete
 - **Rate Limits** — Per-zone rate limit configuration, enable/disable zones, deploy pipeline
-- **Settings** — WAF config (anomaly thresholds, paranoia level, body limits)
+- **Settings** — Per-service WAF config (paranoia level, anomaly thresholds, WAF mode) with global defaults and per-service overrides. Deploy buttons across all panels show step-by-step progress with spinner (e.g. "Saving config..." -> "Writing WAF files & reloading Caddy...")
 
 ### Policy Engine condition builder
 
@@ -99,40 +109,12 @@ Pick a field, operator, and value. Multiple conditions with AND/OR logic:
 | Request Headers | header name + value (equals, contains, regex) |
 | Query String | contains, matches regex |
 
-## Services proxied
-
-| Subdomain | Backend | WAF Tier | Authelia |
-|-----------|---------|----------|----------|
-| `authelia.erfi.io` | `172.19.99.2:9091` | tuning | -- (bypass) |
-| `waf.erfi.io` | static files | tuning | two_factor |
-| `servarr.erfi.io` | `localhost:90` | tuning | two_factor |
-| `change.erfi.io` | `172.19.3.2:5000` | tuning | two_factor |
-| `sonarr.erfi.io` | `172.19.1.3:8989` | tuning | -- |
-| `radarr.erfi.io` | `172.19.1.2:7878` | tuning | -- |
-| `bazarr.erfi.io` | `172.19.1.4:6767` | tuning | -- |
-| `vault.erfi.io` | `172.19.4.2:80` | tuning | -- |
-| `prowlarr.erfi.io` | `172.19.1.10:9696` | tuning | -- |
-| `jellyfin.erfi.io` | `172.19.1.15:8096` | tuning | -- |
-| `qbit.erfi.io` | `172.19.1.22:8080` | moderate | -- |
-| `seerr.erfi.io` | `172.19.1.21:5055` | tuning | -- |
-| `keycloak.erfi.io` | `172.19.12.2:8080` | tuning | -- |
-| `joplin.erfi.io` | `172.19.13.2:22300` | tuning | -- |
-| `navidrome.erfi.io` | `172.19.1.17:4533` | tuning | -- |
-| `sabnzbd.erfi.io` | `172.19.1.19:6666` | tuning | -- |
-| `immich.erfi.io` | `172.19.22.2:2283` | tuning | -- |
-| `caddy-prometheus.erfi.io` | `localhost:2019` | tuning | -- |
-| `copyparty.erfi.io` | `172.19.66.2:3923` | tuning | -- |
-| `dockge-sg.erfi.io` | `172.17.0.2:5001` | moderate | -- |
-| `httpbun.erfi.io` | `172.19.90.2:80` | tuning | -- |
-| `httpbin.erfi.io` | `172.19.90.2:80` | tuning | -- |
-| `caddy.erfi.io` | static response | off | -- |
-
 ## File structure
 
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + 22+ site blocks)
-  Dockerfile             # Multi-stage: xcaddy, ipsum, cloudflare-ips, waf-dashboard, final
+  Dockerfile             # Multi-stage: xcaddy, ipsum, cloudflare-ips, waf-dashboard, waf-api, final
   compose.yaml           # Caddy + Authelia + waf-api services
   .env                   # CF_API_TOKEN + EMAIL only (Authelia secrets in /secrets/)
   .gitignore
@@ -155,12 +137,12 @@ caddy-compose/
     generator.go         # Condition -> SecRule generation (AND=chain, OR=separate rules)
     logparser.go         # Coraza audit log parser (JSON, rule match extraction, SnapshotRange)
     rl_analytics.go      # Combined access log parser for 429 events, UUIDv7 event IDs
-    deploy.go            # Deploy pipeline (write conf files, reload Caddy admin API)
+    deploy.go            # Deploy pipeline (write conf files, SHA-256 fingerprint injection, reload Caddy admin API)
     config.go            # WAF config store
     ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
-    main_test.go         # 97 tests
-    Dockerfile           # Standalone waf-api image
+    main_test.go         # 124 tests
+    Dockerfile           # waf-api image (alpine + compiled binary, NOT the root Dockerfile's build stage)
     go.mod
   waf-dashboard/
     src/
@@ -249,9 +231,7 @@ OWASP CRS loaded via `load_owasp_crs` (embedded in Coraza module), plus custom r
 |---------|---------|
 | `(cors)` | CORS preflight + headers |
 | `(security_headers)` | HSTS, CSP, COOP, CORP, nosniff, referrer-policy, permissions-policy |
-| `(waf)` | Coraza WAF — tuning tier (PL1, threshold 10000) |
-| `(waf_moderate)` | Coraza WAF — moderate tier (PL1, thresholds 15/15) |
-| `(waf_strict)` | Coraza WAF — strict tier (PL1, thresholds 5/4) |
+| `(waf)` | Coraza WAF — unified snippet with dynamic per-service settings |
 | `(waf_off)` | No WAF |
 | `(rate_limit)` | Per-client-IP rate limiting (excludes WebSocket) |
 | `(tls_config)` | ACME DNS challenge via Cloudflare |
@@ -302,12 +282,12 @@ Edit `authelia/users_database.yml` and replace the placeholder hash.
 
 ```bash
 # Build images
-docker build -t erfianugrah/caddy:1.13.0-2.10.2 .
-docker build -t erfianugrah/waf-api:0.5.0 ./waf-api
+docker build -t erfianugrah/caddy:1.14.0-2.10.2 .
+docker build -t erfianugrah/waf-api:0.7.0 ./waf-api
 
 # Push
-docker push erfianugrah/caddy:1.13.0-2.10.2
-docker push erfianugrah/waf-api:0.5.0
+docker push erfianugrah/caddy:1.14.0-2.10.2
+docker push erfianugrah/waf-api:0.7.0
 
 # Copy configs to servarr
 scp Caddyfile servarr:/mnt/user/data/caddy/Caddyfile
@@ -358,10 +338,10 @@ ssh servarr 'tail -50 /mnt/user/data/caddy/log/coraza-audit.log'  # WAF audit lo
 ### Run tests
 
 ```bash
-# Go tests (97 tests)
+# Go tests (124 tests)
 cd waf-api && go test -v -count=1 ./...
 
-# Frontend tests (39 tests)
+# Frontend tests (38 tests)
 cd waf-dashboard && npx vitest run
 
 # TypeScript check
