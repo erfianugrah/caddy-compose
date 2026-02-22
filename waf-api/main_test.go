@@ -228,14 +228,22 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+// emptyAccessLogStore returns an AccessLogStore with no events for tests that
+// don't care about 429 merging.
+func emptyAccessLogStore(t *testing.T) *AccessLogStore {
+	t.Helper()
+	return NewAccessLogStore(filepath.Join(t.TempDir(), "empty-access.log"))
+}
+
 func TestSummaryEndpoint(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
 	store.Load()
+	als := emptyAccessLogStore(t)
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store)(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -249,16 +257,20 @@ func TestSummaryEndpoint(t *testing.T) {
 	if resp.TotalEvents != 3 {
 		t.Errorf("total: want 3, got %d", resp.TotalEvents)
 	}
+	if resp.RateLimited != 0 {
+		t.Errorf("rate_limited: want 0 (no 429s), got %d", resp.RateLimited)
+	}
 }
 
 func TestEventsEndpointWithFilters(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
 	store.Load()
+	als := emptyAccessLogStore(t)
 
 	req := httptest.NewRequest("GET", "/api/events?service=radarr.erfi.io&blocked=true&limit=10", nil)
 	w := httptest.NewRecorder()
-	handleEvents(store)(w, req)
+	handleEvents(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -429,11 +441,12 @@ func TestSummaryEndpointWithHours(t *testing.T) {
 	path := writeTempLog(t, oldLines)
 	store := NewStore(path)
 	store.Load()
+	als := emptyAccessLogStore(t)
 
 	// hours=1 should filter out old events.
 	req := httptest.NewRequest("GET", "/api/summary?hours=1", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store)(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -448,7 +461,7 @@ func TestSummaryEndpointWithHours(t *testing.T) {
 	// Without hours filter, should get all events.
 	req = httptest.NewRequest("GET", "/api/summary", nil)
 	w = httptest.NewRecorder()
-	handleSummary(store)(w, req)
+	handleSummary(store, als)(w, req)
 
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp.TotalEvents != 1 {
@@ -2937,5 +2950,258 @@ func TestAccessLogStoreMalformedLines(t *testing.T) {
 
 	if got := store.EventCount(); got != 1 {
 		t.Errorf("expected 1 valid 429 event, got %d", got)
+	}
+}
+
+// ─── Event Type + Merge tests ───────────────────────────────────────
+
+func TestParseEventSetsEventType(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	events := store.Snapshot()
+	for _, ev := range events {
+		if ev.IsBlocked && ev.EventType != "blocked" {
+			t.Errorf("event %s: is_blocked=true but event_type=%q", ev.ID, ev.EventType)
+		}
+		if !ev.IsBlocked && ev.EventType != "logged" {
+			t.Errorf("event %s: is_blocked=false but event_type=%q", ev.ID, ev.EventType)
+		}
+	}
+
+	// AAA111 and BBB222 are blocked, CCC333 is logged.
+	blocked := 0
+	logged := 0
+	for _, ev := range events {
+		switch ev.EventType {
+		case "blocked":
+			blocked++
+		case "logged":
+			logged++
+		}
+	}
+	if blocked != 2 {
+		t.Errorf("expected 2 blocked, got %d", blocked)
+	}
+	if logged != 1 {
+		t.Errorf("expected 1 logged, got %d", logged)
+	}
+}
+
+func TestRateLimitEventToEvent(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 1, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.5",
+		Service:   "sonarr.erfi.io",
+		Method:    "GET",
+		URI:       "/api/v3/queue",
+		UserAgent: "curl/7.68",
+	}
+
+	ev := RateLimitEventToEvent(rle)
+
+	if ev.EventType != "rate_limited" {
+		t.Errorf("event_type: want rate_limited, got %s", ev.EventType)
+	}
+	if !ev.IsBlocked {
+		t.Error("rate_limited events should have is_blocked=true")
+	}
+	if ev.ResponseStatus != 429 {
+		t.Errorf("response_status: want 429, got %d", ev.ResponseStatus)
+	}
+	if ev.ClientIP != "10.0.0.5" {
+		t.Errorf("client_ip: want 10.0.0.5, got %s", ev.ClientIP)
+	}
+	if ev.Service != "sonarr.erfi.io" {
+		t.Errorf("service: want sonarr.erfi.io, got %s", ev.Service)
+	}
+	if ev.ID == "" {
+		t.Error("ID should not be empty")
+	}
+	// UUIDv7 format: 8-4-4-4-12 hex chars, version nibble = 7
+	parts := strings.Split(ev.ID, "-")
+	if len(parts) != 5 {
+		t.Errorf("ID should be UUIDv7 format (5 parts), got %s", ev.ID)
+	} else if len(parts[2]) >= 1 && parts[2][0] != '7' {
+		t.Errorf("ID should be UUIDv7 (version nibble 7), got %s", ev.ID)
+	}
+}
+
+func TestSnapshotAsEvents(t *testing.T) {
+	path := writeTempAccessLog(t, sampleAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 converted events, got %d", len(events))
+	}
+
+	for _, ev := range events {
+		if ev.EventType != "rate_limited" {
+			t.Errorf("expected event_type=rate_limited, got %s", ev.EventType)
+		}
+		if ev.ResponseStatus != 429 {
+			t.Errorf("expected status=429, got %d", ev.ResponseStatus)
+		}
+	}
+}
+
+func TestSummaryMergesRateLimitedEvents(t *testing.T) {
+	// WAF events.
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	// 429 events.
+	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handleSummary(store, als)(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+
+	var resp SummaryResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	// 3 WAF events + 3 429 events = 6 total.
+	if resp.TotalEvents != 6 {
+		t.Errorf("total_events: want 6 (3 WAF + 3 RL), got %d", resp.TotalEvents)
+	}
+	if resp.RateLimited != 3 {
+		t.Errorf("rate_limited: want 3, got %d", resp.RateLimited)
+	}
+	if resp.BlockedEvents != 2 {
+		t.Errorf("blocked_events: want 2 (WAF only), got %d", resp.BlockedEvents)
+	}
+	if resp.LoggedEvents != 1 {
+		t.Errorf("logged_events: want 1, got %d", resp.LoggedEvents)
+	}
+}
+
+func TestEventsMergesRateLimitedEvents(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	// All events (no filter).
+	req := httptest.NewRequest("GET", "/api/events?limit=100", nil)
+	w := httptest.NewRecorder()
+	handleEvents(store, als)(w, req)
+
+	var resp EventsResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total != 6 {
+		t.Errorf("total: want 6 (3 WAF + 3 RL), got %d", resp.Total)
+	}
+
+	// Verify newest-first ordering.
+	for i := 1; i < len(resp.Events); i++ {
+		prev, _ := time.Parse(time.RFC3339Nano, resp.Events[i-1].Timestamp.Format(time.RFC3339Nano))
+		curr, _ := time.Parse(time.RFC3339Nano, resp.Events[i].Timestamp.Format(time.RFC3339Nano))
+		if prev.Before(curr) {
+			t.Errorf("events not sorted newest-first at index %d", i)
+			break
+		}
+	}
+}
+
+func TestEventsEventTypeFilter(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	tests := []struct {
+		eventType string
+		want      int
+	}{
+		{"blocked", 2},      // 2 WAF blocked events
+		{"logged", 1},       // 1 WAF logged event
+		{"rate_limited", 3}, // 3 429 events
+	}
+
+	for _, tt := range tests {
+		req := httptest.NewRequest("GET", "/api/events?event_type="+tt.eventType+"&limit=100", nil)
+		w := httptest.NewRecorder()
+		handleEvents(store, als)(w, req)
+
+		var resp EventsResponse
+		json.NewDecoder(w.Body).Decode(&resp)
+		if resp.Total != tt.want {
+			t.Errorf("event_type=%s: want %d events, got %d", tt.eventType, tt.want, resp.Total)
+		}
+		// Verify all returned events have the correct type.
+		for _, ev := range resp.Events {
+			if ev.EventType != tt.eventType {
+				t.Errorf("event_type=%s filter: event %s has type %s", tt.eventType, ev.ID, ev.EventType)
+			}
+		}
+	}
+}
+
+func TestServicesMergesRateLimitedCounts(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	store := NewStore(wafPath)
+	store.Load()
+
+	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/services", nil)
+	w := httptest.NewRecorder()
+	handleServices(store, als)(w, req)
+
+	var resp ServicesResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	// WAF has: radarr.erfi.io (2), dockge-sg.erfi.io (1).
+	// 429s have: sonarr.erfi.io (2), radarr.erfi.io (1).
+	// Merged: radarr.erfi.io (3), sonarr.erfi.io (2), dockge-sg.erfi.io (1).
+	if len(resp.Services) != 3 {
+		t.Fatalf("want 3 services, got %d", len(resp.Services))
+	}
+
+	svcMap := make(map[string]ServiceDetail)
+	for _, s := range resp.Services {
+		svcMap[s.Service] = s
+	}
+
+	radarr := svcMap["radarr.erfi.io"]
+	if radarr.Total != 3 {
+		t.Errorf("radarr total: want 3 (2 WAF + 1 RL), got %d", radarr.Total)
+	}
+	if radarr.RateLimited != 1 {
+		t.Errorf("radarr rate_limited: want 1, got %d", radarr.RateLimited)
+	}
+
+	sonarr := svcMap["sonarr.erfi.io"]
+	if sonarr.Total != 2 {
+		t.Errorf("sonarr total: want 2, got %d", sonarr.Total)
+	}
+	if sonarr.RateLimited != 2 {
+		t.Errorf("sonarr rate_limited: want 2, got %d", sonarr.RateLimited)
+	}
+
+	dockge := svcMap["dockge-sg.erfi.io"]
+	if dockge.Total != 1 {
+		t.Errorf("dockge total: want 1, got %d", dockge.Total)
+	}
+	if dockge.RateLimited != 0 {
+		t.Errorf("dockge rate_limited: want 0, got %d", dockge.RateLimited)
 	}
 }

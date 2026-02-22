@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -38,7 +38,9 @@ import {
   type WAFEvent,
   type EventsResponse,
   type ServiceDetail,
+  type EventType,
 } from "@/lib/api";
+import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 
 function formatTime(ts: string): string {
   try {
@@ -113,45 +115,66 @@ function EventDetailPanel({ event }: { event: WAFEvent }) {
 
         <div className="space-y-2">
           <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Rule Match
+            {event.event_type === "rate_limited" ? "Rate Limit Details" : "Rule Match"}
           </h4>
           <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
-            <div className="flex gap-2">
-              <span className="text-muted-foreground">Rule ID:</span>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                {event.rule_id ? event.rule_id : "N/A"}
-              </Badge>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-muted-foreground">Message:</span>
-              <span className="text-foreground">
-                {event.rule_msg || "N/A"}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-muted-foreground">Severity:</span>
-              {(() => {
-                const sev = formatSeverity(event.severity);
-                return <span className={sev.color}>{sev.label}</span>;
-              })()}
-            </div>
-            {event.matched_data && (
-              <div className="flex gap-2">
-                <span className="text-muted-foreground">Matched:</span>
-                <code className="break-all text-neon-amber">
-                  {event.matched_data}
-                </code>
-              </div>
-            )}
-            {event.rule_tags && event.rule_tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 pt-1">
-                <span className="text-muted-foreground">Tags:</span>
-                {event.rule_tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 font-mono text-muted-foreground">
-                    {tag}
+            {event.event_type === "rate_limited" ? (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Action:</span>
+                  <span className="text-amber-400 font-medium">Rate Limited (429)</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Response:</span>
+                  <span className="text-neon-pink">429 Too Many Requests</span>
+                </div>
+                {event.user_agent && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">User-Agent:</span>
+                    <code className="break-all text-foreground">{event.user_agent}</code>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Rule ID:</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                    {event.rule_id ? event.rule_id : "N/A"}
                   </Badge>
-                ))}
-              </div>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Message:</span>
+                  <span className="text-foreground">
+                    {event.rule_msg || "N/A"}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Severity:</span>
+                  {(() => {
+                    const sev = formatSeverity(event.severity);
+                    return <span className={sev.color}>{sev.label}</span>;
+                  })()}
+                </div>
+                {event.matched_data && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Matched:</span>
+                    <code className="break-all text-neon-amber">
+                      {event.matched_data}
+                    </code>
+                  </div>
+                )}
+                {event.rule_tags && event.rule_tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="text-muted-foreground">Tags:</span>
+                    {event.rule_tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 font-mono text-muted-foreground">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -185,16 +208,25 @@ export default function EventsTable() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Time range
+  const [timeRange, setTimeRange] = useState<TimeRange>({
+    type: "relative",
+    hours: 24,
+    label: "Last 24 hours",
+  });
+
   // Filters
   const [page, setPage] = useState(1);
   const [serviceFilter, setServiceFilter] = useState("all");
   const [blockedFilter, setBlockedFilter] = useState<string>("all");
   const [methodFilter, setMethodFilter] = useState("ALL");
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
 
   const perPage = 25;
 
   const loadEvents = useCallback(() => {
     setLoading(true);
+    const timeParams = rangeToParams(timeRange);
     fetchEvents({
       page,
       per_page: perPage,
@@ -206,11 +238,13 @@ export default function EventsTable() {
             ? true
             : false,
       method: methodFilter === "ALL" ? undefined : methodFilter,
+      event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter,
+      ...timeParams,
     })
       .then(setResponse)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [page, serviceFilter, blockedFilter, methodFilter]);
+  }, [page, serviceFilter, blockedFilter, methodFilter, eventTypeFilter, timeRange]);
 
   useEffect(() => {
     fetchServices()
@@ -225,7 +259,7 @@ export default function EventsTable() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [serviceFilter, blockedFilter, methodFilter]);
+  }, [serviceFilter, blockedFilter, methodFilter, eventTypeFilter, timeRange]);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -252,11 +286,18 @@ export default function EventsTable() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Event Log</h2>
-        <p className="text-sm text-muted-foreground">
-          All WAF events with filtering and detail view.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Event Log</h2>
+          <p className="text-sm text-muted-foreground">
+            All WAF and rate limit events with filtering and detail view.
+          </p>
+        </div>
+        <TimeRangePicker
+          value={timeRange}
+          onChange={setTimeRange}
+          onRefresh={loadEvents}
+        />
       </div>
 
       {/* Filters */}
@@ -303,6 +344,18 @@ export default function EventsTable() {
               </SelectContent>
             </Select>
 
+            <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Event Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="blocked">Blocked</SelectItem>
+                <SelectItem value="logged">Logged</SelectItem>
+                <SelectItem value="rate_limited">Rate Limited</SelectItem>
+              </SelectContent>
+            </Select>
+
             {response && (
               <span className="ml-auto text-xs text-muted-foreground">
                 {response.total.toLocaleString()} total events
@@ -325,7 +378,7 @@ export default function EventsTable() {
                 <TableHead className="max-w-[200px]">URI</TableHead>
                 <TableHead>Client IP</TableHead>
                 <TableHead>Rule</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Type</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -343,9 +396,8 @@ export default function EventsTable() {
 
               {!loading &&
                 events.map((evt) => (
-                  <>
+                  <Fragment key={evt.id}>
                     <TableRow
-                      key={evt.id}
                       className="cursor-pointer"
                       onClick={() => toggleExpand(evt.id)}
                     >
@@ -389,7 +441,11 @@ export default function EventsTable() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {evt.blocked ? (
+                        {evt.event_type === "rate_limited" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                            RATE LIMITED
+                          </Badge>
+                        ) : evt.event_type === "blocked" || evt.blocked ? (
                           <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                             BLOCKED
                           </Badge>
@@ -401,16 +457,13 @@ export default function EventsTable() {
                       </TableCell>
                     </TableRow>
                     {expanded.has(evt.id) && (
-                      <TableRow
-                        key={`${evt.id}-detail`}
-                        className="hover:bg-transparent"
-                      >
+                      <TableRow className="hover:bg-transparent">
                         <TableCell colSpan={8} className="bg-navy-950/50 p-0">
                           <EventDetailPanel event={evt} />
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
 
               {!loading && events.length === 0 && (

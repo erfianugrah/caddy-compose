@@ -135,7 +135,7 @@
 			SecAuditEngine RelevantOnly
 			SecAuditLog /var/log/coraza-audit.log
 			SecAuditLogFormat json
-			SecAuditLogParts ABCFHZ
+			SecAuditLogParts ABCFHKZ
 			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
 			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=10000,setvar:tx.outbound_anomaly_score_threshold=10000"
 			`
@@ -167,7 +167,7 @@
 			SecAuditEngine RelevantOnly
 			SecAuditLog /var/log/coraza-audit.log
 			SecAuditLogFormat json
-			SecAuditLogParts ABCFHZ
+			SecAuditLogParts ABCFHKZ
 			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
 			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=15,setvar:tx.outbound_anomaly_score_threshold=15"
 			`
@@ -199,7 +199,7 @@
 			SecAuditEngine RelevantOnly
 			SecAuditLog /var/log/coraza-audit.log
 			SecAuditLogFormat json
-			SecAuditLogParts ABCFHZ
+			SecAuditLogParts ABCFHKZ
 			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
 			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=5,setvar:tx.outbound_anomaly_score_threshold=4"
 			`
@@ -252,6 +252,7 @@
 	log combined {
 		level INFO
 		output file /var/log/combined-access.log {
+			mode 0644
 			roll_size 256mb
 			roll_keep 3
 			roll_keep_for 168h

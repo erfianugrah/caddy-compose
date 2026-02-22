@@ -13,7 +13,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Shield, ShieldAlert, Users, Server, Clock } from "lucide-react";
+import { Shield, ShieldAlert, ShieldBan, Users, Server, Clock } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { fetchSummary, type SummaryData } from "@/lib/api";
+import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -181,43 +182,6 @@ function StatCard({
   );
 }
 
-// ─── Time Range Selector ────────────────────────────────────────────
-
-const TIME_RANGES = [
-  { label: "1h", hours: 1 },
-  { label: "6h", hours: 6 },
-  { label: "24h", hours: 24 },
-  { label: "3d", hours: 72 },
-  { label: "7d", hours: 168 },
-] as const;
-
-function TimeRangeSelector({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (hours: number) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
-      {TIME_RANGES.map((range) => (
-        <Button
-          key={range.hours}
-          variant={value === range.hours ? "default" : "ghost"}
-          size="sm"
-          className={`h-7 px-3 text-xs ${
-            value === range.hours
-              ? "bg-neon-green/20 text-neon-green hover:bg-neon-green/30"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-          onClick={() => onChange(range.hours)}
-        >
-          {range.label}
-        </Button>
-      ))}
-    </div>
-  );
-}
 
 // ─── Chart config ───────────────────────────────────────────────────
 
@@ -233,7 +197,7 @@ const chartTooltipStyle = {
   labelStyle: { color: "#7a8baa" },
 };
 
-const DONUT_COLORS = ["#ff006e", "#00ff41"];
+const DONUT_COLORS = ["#ff006e", "#00ff41", "#f59e0b"];
 
 // ─── Main Component ─────────────────────────────────────────────────
 
@@ -241,24 +205,24 @@ export default function OverviewDashboard() {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hours, setHours] = useState(24);
+  const [timeRange, setTimeRange] = useState<TimeRange>({
+    type: "relative",
+    hours: 24,
+    label: "Last 24 hours",
+  });
 
-  const loadData = useCallback((h: number) => {
+  const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetchSummary(h)
+    fetchSummary(rangeToParams(timeRange))
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
-    loadData(hours);
-  }, [hours, loadData]);
-
-  const handleTimeChange = (h: number) => {
-    setHours(h);
-  };
+    loadData();
+  }, [loadData]);
 
   if (error) {
     return (
@@ -278,7 +242,7 @@ export default function OverviewDashboard() {
               variant="outline"
               size="sm"
               className="mt-3"
-              onClick={() => loadData(hours)}
+              onClick={loadData}
             >
               Retry
             </Button>
@@ -290,10 +254,11 @@ export default function OverviewDashboard() {
 
   // Build donut data
   const donutData =
-    data && (data.blocked > 0 || data.logged > 0)
+    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0)
       ? [
           { name: "Blocked", value: data.blocked },
           { name: "Logged", value: data.logged },
+          ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
         ]
       : [];
 
@@ -307,14 +272,18 @@ export default function OverviewDashboard() {
         <div>
           <h2 className="text-lg font-semibold">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            WAF event summary for the last {TIME_RANGES.find((r) => r.hours === hours)?.label ?? `${hours}h`}
+            WAF event summary
           </p>
         </div>
-        <TimeRangeSelector value={hours} onChange={handleTimeChange} />
+        <TimeRangePicker
+          value={timeRange}
+          onChange={setTimeRange}
+          onRefresh={loadData}
+        />
       </div>
 
       {/* Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Total Events"
           value={data?.total_events ?? 0}
@@ -330,6 +299,13 @@ export default function OverviewDashboard() {
           loading={loading}
         />
         <StatCard
+          title="Rate Limited"
+          value={data?.rate_limited ?? 0}
+          icon={ShieldBan}
+          color="amber"
+          loading={loading}
+        />
+        <StatCard
           title="Unique Clients"
           value={data?.unique_clients ?? 0}
           icon={Users}
@@ -340,7 +316,7 @@ export default function OverviewDashboard() {
           title="Unique Services"
           value={data?.unique_services ?? 0}
           icon={Server}
-          color="amber"
+          color="cyan"
           loading={loading}
         />
       </div>
@@ -352,7 +328,7 @@ export default function OverviewDashboard() {
           <CardHeader>
             <CardTitle className="text-sm">Event Timeline</CardTitle>
             <CardDescription>
-              Blocked vs logged events over time
+              Blocked, rate limited, and logged events over time
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -372,6 +348,10 @@ export default function OverviewDashboard() {
                     <linearGradient id="gradLogged" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#00ff41" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#00ff41" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gradRateLimited" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
@@ -404,6 +384,14 @@ export default function OverviewDashboard() {
                     stackId="1"
                     stroke="#ff006e"
                     fill="url(#gradBlocked)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="rate_limited"
+                    stackId="1"
+                    stroke="#f59e0b"
+                    fill="url(#gradRateLimited)"
                     strokeWidth={2}
                   />
                   <Area
@@ -453,7 +441,7 @@ export default function OverviewDashboard() {
                     <Tooltip {...chartTooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="mt-2 flex items-center gap-4 text-xs">
+                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
                   <div className="flex items-center gap-1.5">
                     <div className="h-2.5 w-2.5 rounded-full bg-neon-pink" />
                     <span className="text-muted-foreground">
@@ -466,6 +454,14 @@ export default function OverviewDashboard() {
                       Logged ({data?.logged.toLocaleString()})
                     </span>
                   </div>
+                  {(data?.rate_limited ?? 0) > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-neon-amber" />
+                      <span className="text-muted-foreground">
+                        Rate Limited ({data?.rate_limited.toLocaleString()})
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -601,14 +597,14 @@ export default function OverviewDashboard() {
         </Card>
       </div>
 
-      {/* Recent Blocks Table */}
+      {/* Recent Events Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-neon-pink" />
-            <CardTitle className="text-sm">Recent Blocks</CardTitle>
+            <Clock className="h-4 w-4 text-neon-cyan" />
+            <CardTitle className="text-sm">Recent Events</CardTitle>
           </div>
-          <CardDescription>Last 10 blocked requests</CardDescription>
+          <CardDescription>Last 10 WAF and rate limit events</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -617,7 +613,7 @@ export default function OverviewDashboard() {
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
             </div>
-          ) : (data?.recent_blocks ?? []).length > 0 ? (
+          ) : (data?.recent_events ?? []).length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -626,10 +622,11 @@ export default function OverviewDashboard() {
                   <TableHead>Method</TableHead>
                   <TableHead className="max-w-[250px]">URI</TableHead>
                   <TableHead>Client IP</TableHead>
+                  <TableHead>Type</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(data?.recent_blocks ?? []).slice(0, 10).map((evt, idx) => (
+                {(data?.recent_events ?? []).slice(0, 10).map((evt, idx) => (
                   <TableRow key={evt.id || idx}>
                     <TableCell className="whitespace-nowrap text-xs">
                       <div className="text-foreground">{formatTime(evt.timestamp)}</div>
@@ -645,13 +642,28 @@ export default function OverviewDashboard() {
                       {evt.uri}
                     </TableCell>
                     <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
+                    <TableCell>
+                      {evt.event_type === "rate_limited" ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                          RATE LIMITED
+                        </Badge>
+                      ) : evt.event_type === "blocked" ? (
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                          BLOCKED
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          LOGGED
+                        </Badge>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           ) : (
             <div className="py-8 text-center text-xs text-muted-foreground">
-              No blocked events in this time range
+              No events in this time range
             </div>
           )}
         </CardContent>

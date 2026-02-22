@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,11 +54,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Existing endpoints (with hours filter support)
+	// Existing endpoints (with hours filter support) — merged WAF + 429 events
 	mux.HandleFunc("GET /api/health", handleHealth)
-	mux.HandleFunc("GET /api/summary", handleSummary(store))
-	mux.HandleFunc("GET /api/events", handleEvents(store))
-	mux.HandleFunc("GET /api/services", handleServices(store))
+	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
+	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
+	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
 
 	// Analytics
 	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store))
@@ -154,26 +155,212 @@ func parseHours(r *http.Request) int {
 	return h
 }
 
+// timeRange holds an optional absolute time range from ?start= and ?end= query params.
+type timeRange struct {
+	Start time.Time
+	End   time.Time
+	Valid bool // true if both start and end were successfully parsed
+}
+
+// parseTimeRange extracts ?start= and ?end= ISO 8601 query parameters.
+// Returns a valid timeRange only if both are present and parseable.
+// When valid, this takes precedence over ?hours=.
+func parseTimeRange(r *http.Request) timeRange {
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	if startStr == "" || endStr == "" {
+		return timeRange{}
+	}
+
+	// Try multiple common formats.
+	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05Z",
+	}
+
+	var start, end time.Time
+	var err error
+	for _, f := range formats {
+		start, err = time.Parse(f, startStr)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return timeRange{}
+	}
+
+	for _, f := range formats {
+		end, err = time.Parse(f, endStr)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return timeRange{}
+	}
+
+	return timeRange{Start: start.UTC(), End: end.UTC(), Valid: true}
+}
+
+// getWAFEvents returns WAF events filtered by either time range or hours.
+func getWAFEvents(store *Store, tr timeRange, hours int) []Event {
+	if tr.Valid {
+		return store.SnapshotRange(tr.Start, tr.End)
+	}
+	return store.SnapshotSince(hours)
+}
+
+// getRLEvents returns rate-limited events filtered by either time range or hours.
+func getRLEvents(als *AccessLogStore, tr timeRange, hours int) []Event {
+	if tr.Valid {
+		return als.SnapshotAsEventsRange(tr.Start, tr.End)
+	}
+	return als.SnapshotAsEvents(hours)
+}
+
 // --- Handlers: Event endpoints ---
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok"})
 }
 
-func handleSummary(store *Store) http.HandlerFunc {
+func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
-		writeJSON(w, http.StatusOK, store.Summary(hours))
+
+		var summary SummaryResponse
+		if tr.Valid {
+			summary = store.SummaryRange(tr.Start, tr.End)
+		} else {
+			summary = store.Summary(hours)
+		}
+
+		// Merge 429 rate-limited events into the summary.
+		rlEvents := getRLEvents(als, tr, hours)
+		rlCount := len(rlEvents)
+		summary.RateLimited = rlCount
+		summary.TotalEvents += rlCount
+
+		// Merge RL events into hourly buckets.
+		rlHourMap := make(map[string]int)
+		rlSvcMap := make(map[string]int)
+		rlClientMap := make(map[string]int)
+		rlURIMap := make(map[string]int)
+		rlClients := make(map[string]struct{})
+		rlServices := make(map[string]struct{})
+
+		for i := range rlEvents {
+			ev := &rlEvents[i]
+			hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
+			rlHourMap[hourKey]++
+			rlSvcMap[ev.Service]++
+			rlClientMap[ev.ClientIP]++
+			rlURIMap[ev.URI]++
+			rlClients[ev.ClientIP] = struct{}{}
+			rlServices[ev.Service] = struct{}{}
+		}
+
+		// Merge into existing hourly buckets (add RateLimited field + bump Count).
+		existingHours := make(map[string]int) // index into summary.EventsByHour
+		for i, hc := range summary.EventsByHour {
+			existingHours[hc.Hour] = i
+		}
+		for hour, count := range rlHourMap {
+			if idx, ok := existingHours[hour]; ok {
+				summary.EventsByHour[idx].RateLimited += count
+				summary.EventsByHour[idx].Count += count
+			} else {
+				summary.EventsByHour = append(summary.EventsByHour, HourCount{
+					Hour:        hour,
+					Count:       count,
+					RateLimited: count,
+				})
+			}
+		}
+		// Re-sort hourly buckets.
+		sort.Slice(summary.EventsByHour, func(i, j int) bool {
+			return summary.EventsByHour[i].Hour < summary.EventsByHour[j].Hour
+		})
+
+		// Merge RL counts into service breakdown.
+		existingSvcs := make(map[string]int) // index into summary.ServiceBreakdown
+		for i, sd := range summary.ServiceBreakdown {
+			existingSvcs[sd.Service] = i
+		}
+		for svc, count := range rlSvcMap {
+			if idx, ok := existingSvcs[svc]; ok {
+				summary.ServiceBreakdown[idx].RateLimited += count
+				summary.ServiceBreakdown[idx].Total += count
+			} else {
+				summary.ServiceBreakdown = append(summary.ServiceBreakdown, ServiceDetail{
+					Service:     svc,
+					Total:       count,
+					RateLimited: count,
+				})
+			}
+		}
+
+		// Merge RL counts into top_services.
+		existingTopSvcs := make(map[string]int)
+		for i, sc := range summary.TopServices {
+			existingTopSvcs[sc.Service] = i
+		}
+		for svc, count := range rlSvcMap {
+			if idx, ok := existingTopSvcs[svc]; ok {
+				summary.TopServices[idx].RateLimited += count
+				summary.TopServices[idx].Count += count
+			} else {
+				summary.TopServices = append(summary.TopServices, ServiceCount{
+					Service:     svc,
+					Count:       count,
+					RateLimited: count,
+				})
+			}
+		}
+
+		// Merge unique clients/services (union).
+		wafSnapshot := getWAFEvents(store, tr, hours)
+		allClients := make(map[string]struct{})
+		allServices := make(map[string]struct{})
+		for i := range wafSnapshot {
+			allClients[wafSnapshot[i].ClientIP] = struct{}{}
+			allServices[wafSnapshot[i].Service] = struct{}{}
+		}
+		for c := range rlClients {
+			allClients[c] = struct{}{}
+		}
+		for s := range rlServices {
+			allServices[s] = struct{}{}
+		}
+		summary.UniqueClients = len(allClients)
+		summary.UniqueServices = len(allServices)
+
+		// Merge RL events into recent_events, re-sort newest-first, cap at 10.
+		summary.RecentEvents = append(summary.RecentEvents, rlEvents...)
+		sort.Slice(summary.RecentEvents, func(i, j int) bool {
+			return summary.RecentEvents[i].Timestamp.After(summary.RecentEvents[j].Timestamp)
+		})
+		if len(summary.RecentEvents) > 10 {
+			summary.RecentEvents = summary.RecentEvents[:10]
+		}
+
+		writeJSON(w, http.StatusOK, summary)
 	}
 }
 
-func handleEvents(store *Store) http.HandlerFunc {
+func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
 		service := q.Get("service")
 		client := q.Get("client")
 		method := q.Get("method")
+		eventType := q.Get("event_type") // "blocked", "logged", "rate_limited", or ""
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -190,16 +377,110 @@ func handleEvents(store *Store) http.HandlerFunc {
 			offset = 0
 		}
 
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
-		result := store.FilteredEvents(service, client, method, blocked, limit, offset, hours)
-		writeJSON(w, http.StatusOK, result)
+
+		// Collect WAF events (unless filtering to only rate_limited).
+		var allEvents []Event
+		if eventType != "rate_limited" {
+			wafEvents := getWAFEvents(store, tr, hours)
+			allEvents = append(allEvents, wafEvents...)
+		}
+
+		// Collect 429 events (unless filtering to blocked or logged only).
+		if eventType != "blocked" && eventType != "logged" {
+			rlEvents := getRLEvents(als, tr, hours)
+			allEvents = append(allEvents, rlEvents...)
+		}
+
+		// Sort newest-first.
+		sort.Slice(allEvents, func(i, j int) bool {
+			return allEvents[i].Timestamp.After(allEvents[j].Timestamp)
+		})
+
+		// Apply filters.
+		var filtered []Event
+		for i := range allEvents {
+			ev := &allEvents[i]
+			if service != "" && !strings.EqualFold(ev.Service, service) {
+				continue
+			}
+			if client != "" && ev.ClientIP != client {
+				continue
+			}
+			if method != "" && !strings.EqualFold(ev.Method, method) {
+				continue
+			}
+			if blocked != nil && ev.IsBlocked != *blocked {
+				continue
+			}
+			if eventType != "" && ev.EventType != eventType {
+				continue
+			}
+			filtered = append(filtered, *ev)
+		}
+
+		total := len(filtered)
+
+		// Apply pagination.
+		if offset > total {
+			offset = total
+		}
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		page := filtered[offset:end]
+
+		writeJSON(w, http.StatusOK, EventsResponse{
+			Total:  total,
+			Events: page,
+		})
 	}
 }
 
-func handleServices(store *Store) http.HandlerFunc {
+func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
-		writeJSON(w, http.StatusOK, store.Services(hours))
+
+		var resp ServicesResponse
+		if tr.Valid {
+			resp = store.ServicesRange(tr.Start, tr.End)
+		} else {
+			resp = store.Services(hours)
+		}
+
+		// Merge 429 rate-limited counts into service breakdown.
+		rlEvents := getRLEvents(als, tr, hours)
+		rlSvcMap := make(map[string]int)
+		for i := range rlEvents {
+			rlSvcMap[rlEvents[i].Service]++
+		}
+
+		existingSvcs := make(map[string]int) // index into resp.Services
+		for i, sd := range resp.Services {
+			existingSvcs[sd.Service] = i
+		}
+		for svc, count := range rlSvcMap {
+			if idx, ok := existingSvcs[svc]; ok {
+				resp.Services[idx].RateLimited += count
+				resp.Services[idx].Total += count
+			} else {
+				resp.Services = append(resp.Services, ServiceDetail{
+					Service:     svc,
+					Total:       count,
+					RateLimited: count,
+				})
+			}
+		}
+
+		// Re-sort by total desc.
+		sort.Slice(resp.Services, func(i, j int) bool {
+			return resp.Services[i].Total > resp.Services[j].Total
+		})
+
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

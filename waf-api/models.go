@@ -85,6 +85,7 @@ type Event struct {
 	IsBlocked      bool      `json:"is_blocked"`
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
+	EventType      string    `json:"event_type"` // "blocked", "logged", "rate_limited"
 	// Rule match data (from audit log messages/part H)
 	RuleID      int      `json:"rule_id,omitempty"`
 	RuleMsg     string   `json:"rule_msg,omitempty"`
@@ -99,6 +100,7 @@ type SummaryResponse struct {
 	TotalEvents      int             `json:"total_events"`
 	BlockedEvents    int             `json:"blocked_events"`
 	LoggedEvents     int             `json:"logged_events"`
+	RateLimited      int             `json:"rate_limited"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
 	EventsByHour     []HourCount     `json:"events_by_hour"`
@@ -106,21 +108,23 @@ type SummaryResponse struct {
 	TopClients       []ClientCount   `json:"top_clients"`
 	TopURIs          []URICount      `json:"top_uris"`
 	ServiceBreakdown []ServiceDetail `json:"service_breakdown"`
-	RecentBlocks     []Event         `json:"recent_blocks"`
+	RecentEvents     []Event         `json:"recent_events"`
 }
 
 type HourCount struct {
-	Hour    string `json:"hour"`
-	Count   int    `json:"count"`
-	Blocked int    `json:"blocked"`
-	Logged  int    `json:"logged"`
+	Hour        string `json:"hour"`
+	Count       int    `json:"count"`
+	Blocked     int    `json:"blocked"`
+	Logged      int    `json:"logged"`
+	RateLimited int    `json:"rate_limited"`
 }
 
 type ServiceCount struct {
-	Service string `json:"service"`
-	Count   int    `json:"count"`
-	Blocked int    `json:"blocked"`
-	Logged  int    `json:"logged"`
+	Service     string `json:"service"`
+	Count       int    `json:"count"`
+	Blocked     int    `json:"blocked"`
+	Logged      int    `json:"logged"`
+	RateLimited int    `json:"rate_limited"`
 }
 
 type ClientCount struct {
@@ -140,10 +144,11 @@ type EventsResponse struct {
 }
 
 type ServiceDetail struct {
-	Service string `json:"service"`
-	Total   int    `json:"total"`
-	Blocked int    `json:"blocked"`
-	Logged  int    `json:"logged"`
+	Service     string `json:"service"`
+	Total       int    `json:"total"`
+	Blocked     int    `json:"blocked"`
+	Logged      int    `json:"logged"`
+	RateLimited int    `json:"rate_limited"`
 }
 
 type ServicesResponse struct {

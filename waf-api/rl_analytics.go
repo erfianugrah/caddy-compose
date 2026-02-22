@@ -229,6 +229,60 @@ func (s *AccessLogStore) snapshotSince(hours int) []RateLimitEvent {
 	return result
 }
 
+// snapshotRange returns a copy of events within [start, end].
+func (s *AccessLogStore) snapshotRange(start, end time.Time) []RateLimitEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []RateLimitEvent
+	for _, e := range s.events {
+		if !e.Timestamp.Before(start) && !e.Timestamp.After(end) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// ─── Converter: RateLimitEvent → Event ──────────────────────────────
+
+// RateLimitEventToEvent converts a RateLimitEvent into the unified Event type
+// so that 429s can be merged into the shared event stream.
+func RateLimitEventToEvent(rle RateLimitEvent) Event {
+	return Event{
+		ID:             generateUUIDv7(),
+		Timestamp:      rle.Timestamp,
+		ClientIP:       rle.ClientIP,
+		Service:        rle.Service,
+		Method:         rle.Method,
+		URI:            rle.URI,
+		Protocol:       "HTTP/2.0", // access log doesn't differentiate per-request; default
+		IsBlocked:      true,       // 429 is effectively a block
+		ResponseStatus: 429,
+		UserAgent:      rle.UserAgent,
+		EventType:      "rate_limited",
+	}
+}
+
+// SnapshotAsEvents returns 429 events converted to the unified Event type.
+func (s *AccessLogStore) SnapshotAsEvents(hours int) []Event {
+	rlEvents := s.snapshotSince(hours)
+	events := make([]Event, len(rlEvents))
+	for i, rle := range rlEvents {
+		events[i] = RateLimitEventToEvent(rle)
+	}
+	return events
+}
+
+// SnapshotAsEventsRange returns 429 events within [start, end] as unified Events.
+func (s *AccessLogStore) SnapshotAsEventsRange(start, end time.Time) []Event {
+	rlEvents := s.snapshotRange(start, end)
+	events := make([]Event, len(rlEvents))
+	for i, rle := range rlEvents {
+		events[i] = RateLimitEventToEvent(rle)
+	}
+	return events
+}
+
 // ─── Analytics methods ──────────────────────────────────────────────
 
 // Summary returns aggregate rate limit analytics.

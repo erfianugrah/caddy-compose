@@ -6,12 +6,13 @@ export interface SummaryData {
   total_events: number;
   blocked: number;
   logged: number;
+  rate_limited: number;
   unique_clients: number;
   unique_services: number;
   timeline: TimelinePoint[];
   top_services: ServiceStat[];
   top_clients: ClientStat[];
-  recent_blocks: WAFEvent[];
+  recent_events: WAFEvent[];
   service_breakdown: ServiceBreakdown[];
 }
 
@@ -20,6 +21,7 @@ export interface TimelinePoint {
   total: number;
   blocked: number;
   logged: number;
+  rate_limited: number;
 }
 
 export interface ServiceStat {
@@ -45,6 +47,8 @@ export interface ServiceBreakdown {
 
 // ─── Events ─────────────────────────────────────────────────────────
 
+export type EventType = "blocked" | "logged" | "rate_limited";
+
 export interface WAFEvent {
   id: string;
   timestamp: string;
@@ -54,12 +58,14 @@ export interface WAFEvent {
   client_ip: string;
   status: number;
   blocked: boolean;
+  event_type: EventType;
   rule_id: number;
   rule_msg: string;
   severity: number;
   request_headers?: Record<string, string>;
   matched_data?: string;
   rule_tags?: string[];
+  user_agent?: string;
 }
 
 export interface EventsResponse {
@@ -76,8 +82,11 @@ export interface EventsParams {
   service?: string;
   blocked?: boolean | null;
   method?: string;
+  event_type?: EventType | null;
   search?: string;
   hours?: number;
+  start?: string; // ISO 8601
+  end?: string;   // ISO 8601
 }
 
 // ─── Services ───────────────────────────────────────────────────────
@@ -364,23 +373,38 @@ interface RawSummary {
   total_events: number;
   blocked_events: number;
   logged_events: number;
+  rate_limited: number;
   unique_clients: number;
   unique_services: number;
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number }[];
+  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number }[];
+  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number }[];
   top_clients: { client: string; count: number; blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number }[];
-  recent_blocks: RawEvent[];
+  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number }[];
+  recent_events: RawEvent[];
 }
 
-export async function fetchSummary(hours?: number): Promise<SummaryData> {
-  const qs = hours ? `?hours=${hours}` : "";
+export interface TimeRangeParams {
+  hours?: number;
+  start?: string; // ISO 8601
+  end?: string;   // ISO 8601
+}
+
+export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryData> {
+  const searchParams = new URLSearchParams();
+  if (params?.start && params?.end) {
+    searchParams.set("start", params.start);
+    searchParams.set("end", params.end);
+  } else if (params?.hours) {
+    searchParams.set("hours", String(params.hours));
+  }
+  const qs = searchParams.toString() ? `?${searchParams}` : "";
   const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`);
   return {
     total_events: raw.total_events ?? 0,
     blocked: raw.blocked_events ?? 0,
     logged: raw.logged_events ?? 0,
+    rate_limited: raw.rate_limited ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     timeline: (raw.events_by_hour ?? []).map((h) => ({
@@ -388,6 +412,7 @@ export async function fetchSummary(hours?: number): Promise<SummaryData> {
       total: h.count ?? 0,
       blocked: h.blocked ?? 0,
       logged: h.logged ?? 0,
+      rate_limited: h.rate_limited ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,
@@ -401,7 +426,7 @@ export async function fetchSummary(hours?: number): Promise<SummaryData> {
       total: c.count ?? 0,
       blocked: c.blocked ?? 0,
     })),
-    recent_blocks: (raw.recent_blocks ?? []).map(mapEvent),
+    recent_events: (raw.recent_events ?? []).map(mapEvent),
     service_breakdown: (raw.service_breakdown ?? []).map((s) => ({
       service: s.service,
       total: s.total ?? 0,
@@ -423,6 +448,7 @@ interface RawEvent {
   client_ip: string;
   is_blocked: boolean;
   response_status: number;
+  event_type?: string;
   user_agent?: string;
   rule_id?: number;
   rule_msg?: string;
@@ -432,6 +458,12 @@ interface RawEvent {
 }
 
 function mapEvent(raw: RawEvent): WAFEvent {
+  // Derive event_type from the API field, falling back to is_blocked.
+  let eventType: EventType = raw.is_blocked ? "blocked" : "logged";
+  if (raw.event_type === "rate_limited" || raw.event_type === "blocked" || raw.event_type === "logged") {
+    eventType = raw.event_type as EventType;
+  }
+
   return {
     id: raw.id,
     timestamp: raw.timestamp,
@@ -441,11 +473,13 @@ function mapEvent(raw: RawEvent): WAFEvent {
     client_ip: raw.client_ip,
     status: raw.response_status ?? 0,
     blocked: raw.is_blocked ?? false,
+    event_type: eventType,
     rule_id: raw.rule_id ?? 0,
     rule_msg: raw.rule_msg ?? "",
     severity: raw.severity ?? 0,
     matched_data: raw.matched_data,
     rule_tags: raw.rule_tags,
+    user_agent: raw.user_agent,
   };
 }
 
@@ -461,7 +495,13 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
   if (params.blocked !== null && params.blocked !== undefined)
     searchParams.set("blocked", String(params.blocked));
   if (params.method) searchParams.set("method", params.method);
-  if (params.hours) searchParams.set("hours", String(params.hours));
+  if (params.event_type) searchParams.set("event_type", params.event_type);
+  if (params.start && params.end) {
+    searchParams.set("start", params.start);
+    searchParams.set("end", params.end);
+  } else if (params.hours) {
+    searchParams.set("hours", String(params.hours));
+  }
 
   const qs = searchParams.toString();
   const raw = await fetchJSON<{ total: number; events: RawEvent[] }>(

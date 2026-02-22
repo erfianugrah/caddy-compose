@@ -31,25 +31,29 @@ Built locally, pushed to Docker Hub. Includes:
 - Cloudflare IP ranges fetched at build time for `trusted_proxies`
 - Entrypoint script that starts `crond` (for IPsum updates) + `caddy run`
 
-### WAF API image: `erfianugrah/waf-api:latest`
+### WAF API image: `erfianugrah/waf-api:<version>`
 
 Go stdlib sidecar (zero external dependencies). Provides:
 
 - WAF event log parsing and analytics (summary, timeline, top IPs/URIs, service breakdown)
+- 429 rate limit event parsing from combined access log (merged into unified event stream)
+- Custom time range queries (`?start=&end=` ISO 8601 timestamps, or `?hours=` for relative)
 - Policy Engine: CRUD for exclusions, SecRule generation, deploy pipeline (writes conf files + reloads Caddy)
 - CRS rule catalog (141 curated rules, 11 categories) with search/autocomplete
+- Rate limit zone configuration: per-zone `.caddy` file generation and deploy
 - IP lookup, service detail, configuration management
+- UUIDv7 for rate-limit event IDs (time-ordered, globally unique), Coraza tx IDs for WAF events
 
 ### Building
 
 ```bash
 # Caddy image (includes dashboard build)
-docker build -t erfianugrah/caddy:1.9.0-2.10.2 .
-docker push erfianugrah/caddy:1.9.0-2.10.2
+docker build -t erfianugrah/caddy:1.13.0-2.10.2 .
+docker push erfianugrah/caddy:1.13.0-2.10.2
 
 # WAF API image
-cd waf-api && docker build -t erfianugrah/waf-api:latest .
-docker push erfianugrah/waf-api:latest
+docker build -t erfianugrah/waf-api:0.5.0 ./waf-api
+docker push erfianugrah/waf-api:0.5.0
 ```
 
 ## WAF tiers
@@ -63,21 +67,22 @@ Four WAF configurations applied per-site via snippets:
 | Strict | `(waf_strict)` | PL1 | 5 | 4 | (reserved for high-security) |
 | Off | `(waf_off)` | - | - | - | caddy.erfi.io |
 
-All tiers include `SecAuditLogParts ABCFHZ` for full rule match data in audit logs. Dynamic config overrides are loaded from `/data/coraza/custom-{pre,post}-crs.conf` (written by waf-api Policy Engine).
+All tiers include `SecAuditLogParts ABCFHKZ` (Part K for rule match messages) for full rule match data in audit logs. Dynamic config overrides are loaded from `/data/coraza/custom-{pre,post}-crs.conf` (written by waf-api Policy Engine).
 
 ## WAF dashboard
 
 Accessible at `waf.erfi.io` (protected by Authelia `two_factor`).
 
 ### Pages
-- **Overview** — Timeline chart, service breakdown, recent blocks, top clients/services
-- **Events** — Paginated event table with rule match data, severity labels (CRITICAL/ERROR/WARNING/NOTICE), expandable detail rows with rule tags
+- **Overview** — Timeline chart (stacked blocked/logged/rate_limited), service breakdown donut, recent events (all types with badges), top clients/services. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
+- **Events** — Paginated event table with unified WAF + 429 event stream, event type filter (All/Blocked/Logged/Rate Limited), type badges, expandable detail rows (rule match for WAF events, rate limit details for 429s). Same time range picker
 - **Services** — Per-service stats, top URIs, top triggered rules
-- **Analytics** — Top IPs, top URIs
+- **Investigate** — Top blocked IPs, top targeted URIs
 - **Policy Engine** — Three-tab rule builder:
   - **Quick Actions** — Dynamic condition builder (field/operator/value with AND/OR logic) for Allow, Block, Skip/Bypass rules
   - **Advanced** — ModSecurity directive types (SecRuleRemoveById, ctl:ruleRemoveById, etc.) with condition builder for runtime types
   - **Raw Editor** — CodeMirror 6 with ModSecurity syntax highlighting and CRS autocomplete
+- **Rate Limits** — Per-zone rate limit configuration, enable/disable zones, deploy pipeline
 - **Settings** — WAF config (anomaly thresholds, paranoia level, body limits)
 
 ### Policy Engine condition builder
@@ -144,29 +149,34 @@ caddy-compose/
     entrypoint.sh        # Container entrypoint (crond + caddy run)
     update-ipsum.sh      # Fetches IPsum blocklist, generates Caddy snippet, reloads
   waf-api/
-    main.go              # HTTP handlers and routes
-    models.go            # Data models (Condition, RuleExclusion, WAFConfig, Event)
-    exclusions.go        # Exclusion validation (field/operator matrix)
+    main.go              # HTTP handlers and routes (summary/events/services with start/end support)
+    models.go            # Data models (Event with EventType, SummaryResponse with RateLimited)
+    exclusions.go        # Exclusion store, validation, UUIDv4/v7 generators
     generator.go         # Condition -> SecRule generation (AND=chain, OR=separate rules)
-    logparser.go         # Coraza audit log parser (JSON, rule match extraction)
+    logparser.go         # Coraza audit log parser (JSON, rule match extraction, SnapshotRange)
+    rl_analytics.go      # Combined access log parser for 429 events, UUIDv7 event IDs
     deploy.go            # Deploy pipeline (write conf files, reload Caddy admin API)
     config.go            # WAF config store
+    ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
-    main_test.go         # 74 tests
+    main_test.go         # 97 tests
     Dockerfile           # Standalone waf-api image
     go.mod
   waf-dashboard/
     src/
       components/
+        TimeRangePicker.tsx    # Grafana-style: quick ranges, custom from/to, auto-refresh
         PolicyEngine.tsx       # Three-tab policy builder (Quick/Advanced/Raw)
         SecRuleEditor.tsx      # CodeMirror 6 with ModSecurity syntax highlighting
-        EventsTable.tsx        # Events with rule match data and severity labels
-        OverviewDashboard.tsx  # Timeline, service breakdown, recent blocks
-        AnalyticsDashboard.tsx # Top IPs, top URIs charts
+        EventsTable.tsx        # Unified WAF+429 events, type filter/badges, expandable detail
+        OverviewDashboard.tsx  # Timeline, service breakdown, recent events (all types)
+        AnalyticsDashboard.tsx # Top IPs, top URIs charts (renamed to "Investigate")
+        RateLimitsPanel.tsx    # Rate limit zone config management
         ServicesList.tsx       # Per-service detail
         SettingsPanel.tsx      # WAF config management
+        ui/popover.tsx         # Radix popover (used by TimeRangePicker)
       lib/
-        api.ts                 # API client, types, Go<->frontend mappers
+        api.ts                 # API client, types, Go<->frontend mappers, TimeRangeParams
         api.test.ts            # 39 tests
     package.json
     astro.config.mjs
@@ -245,7 +255,7 @@ OWASP CRS loaded via `load_owasp_crs` (embedded in Coraza module), plus custom r
 | `(waf_off)` | No WAF |
 | `(rate_limit)` | Per-client-IP rate limiting (excludes WebSocket) |
 | `(tls_config)` | ACME DNS challenge via Cloudflare |
-| `(site_log)` | Per-site JSON access log |
+| `(site_log)` | Per-site JSON access log + combined access log (`mode 0644`) for 429 analytics |
 | `(ipsum_blocklist)` | IPsum threat intelligence IP blocklist |
 | `(forward_auth)` | Authelia forward authentication |
 | `(proxy_headers)` | Trusted proxies + `{client_ip}` XFF + strip upstream CORS |
@@ -292,12 +302,12 @@ Edit `authelia/users_database.yml` and replace the placeholder hash.
 
 ```bash
 # Build images
-docker build -t erfianugrah/caddy:1.9.0-2.10.2 .
-cd waf-api && docker build -t erfianugrah/waf-api:latest . && cd ..
+docker build -t erfianugrah/caddy:1.13.0-2.10.2 .
+docker build -t erfianugrah/waf-api:0.5.0 ./waf-api
 
 # Push
-docker push erfianugrah/caddy:1.9.0-2.10.2
-docker push erfianugrah/waf-api:latest
+docker push erfianugrah/caddy:1.13.0-2.10.2
+docker push erfianugrah/waf-api:0.5.0
 
 # Copy configs to servarr
 scp Caddyfile servarr:/mnt/user/data/caddy/Caddyfile
@@ -348,18 +358,18 @@ ssh servarr 'tail -50 /mnt/user/data/caddy/log/coraza-audit.log'  # WAF audit lo
 ### Run tests
 
 ```bash
-# Go tests (74 tests)
+# Go tests (97 tests)
 cd waf-api && go test -v -count=1 ./...
 
 # Frontend tests (39 tests)
 cd waf-dashboard && npx vitest run
 
 # TypeScript check
-cd waf-dashboard && npx tsc --noEmit
+cd waf-dashboard && npm run build
 ```
 
 ## TODO
 
 - [ ] SMTP notifier for Authelia (replace filesystem notifier)
-- [ ] Rate limiting dynamic config via waf-api (parked)
 - [ ] OpenID Connect provider for native SSO (Grafana, Immich, Jellyfin, Vaultwarden)
+- [ ] Version tagging scheme for waf-api releases

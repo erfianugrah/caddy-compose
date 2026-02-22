@@ -65,7 +65,7 @@ describe("fetchSummary", () => {
         { service: "radarr.erfi.io", total: 60, blocked: 15, logged: 45 },
         { service: "sonarr.erfi.io", total: 40, blocked: 15, logged: 25 },
       ],
-      recent_blocks: [
+      recent_events: [
         {
           id: "tx-001",
           timestamp: "2026-02-22T08:30:00Z",
@@ -81,7 +81,7 @@ describe("fetchSummary", () => {
 
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
-    const result: SummaryData = await fetchSummary(24);
+    const result: SummaryData = await fetchSummary({ hours: 24 });
 
     expect(result.total_events).toBe(100);
     expect(result.blocked).toBe(30);
@@ -96,6 +96,7 @@ describe("fetchSummary", () => {
       total: 40,
       blocked: 10,
       logged: 30,
+      rate_limited: 0,
     });
 
     // Top services mapped (now includes blocked/logged)
@@ -120,10 +121,10 @@ describe("fetchSummary", () => {
       logged: 45,
     });
 
-    // recent_blocks mapped from Go events
-    expect(result.recent_blocks).toHaveLength(1);
-    expect(result.recent_blocks[0].blocked).toBe(true);
-    expect(result.recent_blocks[0].status).toBe(403);
+    // recent_events mapped from Go events
+    expect(result.recent_events).toHaveLength(1);
+    expect(result.recent_events[0].blocked).toBe(true);
+    expect(result.recent_events[0].status).toBe(403);
   });
 
   it("handles null/missing fields gracefully", async () => {
@@ -165,7 +166,7 @@ describe("fetchSummary", () => {
     });
     vi.stubGlobal("fetch", mockFetch);
 
-    await fetchSummary(24);
+    await fetchSummary({ hours: 24 });
 
     expect(mockFetch).toHaveBeenCalledWith("/api/summary?hours=24", undefined);
   });

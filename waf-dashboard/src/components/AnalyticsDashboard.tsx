@@ -552,93 +552,15 @@ function TopTargetedURIsPanel() {
   );
 }
 
-// ─── Geographic Placeholder Panel ───────────────────────────────────
-
-function GeoPlaceholderPanel() {
-  const [data, setData] = useState<TopBlockedIP[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchTopBlockedIPs()
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  // Group IPs by first two octets as a rough "grouping"
-  const grouped = data.reduce<Record<string, { count: number; ips: string[] }>>((acc, ip) => {
-    const parts = ip.client_ip.split(".");
-    const prefix = parts.length >= 2 ? `${parts[0]}.${parts[1]}.x.x` : ip.client_ip;
-    if (!acc[prefix]) acc[prefix] = { count: 0, ips: [] };
-    acc[prefix].count += ip.total;
-    acc[prefix].ips.push(ip.client_ip);
-    return acc;
-  }, {});
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Globe className="h-4 w-4 text-neon-cyan" />
-          <CardTitle className="text-sm">IP Address Groups</CardTitle>
-        </div>
-        <CardDescription>
-          IP addresses grouped by subnet prefix (GeoIP enrichment placeholder)
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-2">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : Object.keys(grouped).length > 0 ? (
-          <div className="space-y-2">
-            {Object.entries(grouped)
-              .sort((a, b) => b[1].count - a[1].count)
-              .map(([prefix, info]) => (
-                <div
-                  key={prefix}
-                  className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-4 py-2.5"
-                >
-                  <div>
-                    <p className="text-sm font-mono font-medium">{prefix}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {info.ips.length} unique IP{info.ips.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold tabular-nums text-neon-cyan">
-                      {info.count.toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">events</p>
-                  </div>
-                </div>
-              ))}
-          </div>
-        ) : (
-          <div className="py-8 text-center">
-            <Globe className="mx-auto mb-3 h-8 w-8 text-muted-foreground/30" />
-            <p className="text-xs text-muted-foreground">
-              No IP data available. GeoIP enrichment will be added in a future update.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 // ─── Main Analytics Dashboard ───────────────────────────────────────
 
 export default function AnalyticsDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Analytics</h2>
+        <h2 className="text-lg font-semibold">Investigate</h2>
         <p className="text-sm text-muted-foreground">
-          Deep-dive into WAF event data with IP lookup, top threats, and targeting analysis.
+          IP lookup, top threats, and attack targeting analysis.
         </p>
       </div>
 
@@ -656,10 +578,7 @@ export default function AnalyticsDashboard() {
             <Target className="h-3.5 w-3.5" />
             Top URIs
           </TabsTrigger>
-          <TabsTrigger value="geo" className="gap-1.5">
-            <Globe className="h-3.5 w-3.5" />
-            Geography
-          </TabsTrigger>
+
         </TabsList>
 
         <TabsContent value="lookup">
@@ -674,9 +593,7 @@ export default function AnalyticsDashboard() {
           <TopTargetedURIsPanel />
         </TabsContent>
 
-        <TabsContent value="geo">
-          <GeoPlaceholderPanel />
-        </TabsContent>
+
       </Tabs>
     </div>
   );

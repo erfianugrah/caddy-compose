@@ -129,6 +129,11 @@ func parseEvent(entry AuditLogEntry) Event {
 
 	ua := headerValue(tx.Request.Headers, "User-Agent")
 
+	eventType := "logged"
+	if tx.IsInterrupted {
+		eventType = "blocked"
+	}
+
 	ev := Event{
 		ID:             tx.ID,
 		Timestamp:      ts,
@@ -140,6 +145,7 @@ func parseEvent(entry AuditLogEntry) Event {
 		IsBlocked:      tx.IsInterrupted,
 		ResponseStatus: tx.Response.Status,
 		UserAgent:      ua,
+		EventType:      eventType,
 	}
 
 	// Extract rule match data from the messages array (audit log part H).
@@ -222,10 +228,31 @@ func (s *Store) SnapshotSince(hours int) []Event {
 	return filtered
 }
 
-// Summary computes aggregate stats from the current events.
-func (s *Store) Summary(hours int) SummaryResponse {
-	events := s.SnapshotSince(hours)
+// SnapshotRange returns a copy of events within [start, end].
+func (s *Store) SnapshotRange(start, end time.Time) []Event {
+	all := s.Snapshot()
+	var filtered []Event
+	for i := range all {
+		ts := all[i].Timestamp
+		if !ts.Before(start) && !ts.After(end) {
+			filtered = append(filtered, all[i])
+		}
+	}
+	return filtered
+}
 
+// Summary computes aggregate stats from events within the last N hours.
+func (s *Store) Summary(hours int) SummaryResponse {
+	return summarizeEvents(s.SnapshotSince(hours))
+}
+
+// SummaryRange computes aggregate stats from events within [start, end].
+func (s *Store) SummaryRange(start, end time.Time) SummaryResponse {
+	return summarizeEvents(s.SnapshotRange(start, end))
+}
+
+// summarizeEvents computes aggregate stats from a slice of events.
+func summarizeEvents(events []Event) SummaryResponse {
 	var totalBlocked, totalLogged int
 
 	// Per-hour breakdown with blocked/logged.
@@ -248,18 +275,18 @@ func (s *Store) Summary(hours int) SummaryResponse {
 
 	uris := make(map[string]int)
 
-	// Collect recent blocks (newest first, up to 10).
-	var recentBlocks []Event
+	// Collect recent events of all types (newest first, up to 10).
+	var recentEvents []Event
 
 	for i := len(events) - 1; i >= 0; i-- {
 		ev := &events[i]
 		if ev.IsBlocked {
 			totalBlocked++
-			if len(recentBlocks) < 10 {
-				recentBlocks = append(recentBlocks, *ev)
-			}
 		} else {
 			totalLogged++
+		}
+		if len(recentEvents) < 10 {
+			recentEvents = append(recentEvents, *ev)
 		}
 
 		// Per-hour.
@@ -371,7 +398,7 @@ func (s *Store) Summary(hours int) SummaryResponse {
 		TopClients:       clientCounts,
 		TopURIs:          topN(uris, 20, func(k string, c int) URICount { return URICount{k, c} }),
 		ServiceBreakdown: svcBreakdown,
-		RecentBlocks:     recentBlocks,
+		RecentEvents:     recentEvents,
 	}
 }
 
@@ -419,8 +446,14 @@ func (s *Store) FilteredEvents(service, client, method string, blocked *bool, li
 
 // Services returns per-service breakdown.
 func (s *Store) Services(hours int) ServicesResponse {
-	events := s.SnapshotSince(hours)
+	return computeServices(s.SnapshotSince(hours))
+}
 
+func (s *Store) ServicesRange(start, end time.Time) ServicesResponse {
+	return computeServices(s.SnapshotRange(start, end))
+}
+
+func computeServices(events []Event) ServicesResponse {
 	type counts struct {
 		total, blocked int
 	}
