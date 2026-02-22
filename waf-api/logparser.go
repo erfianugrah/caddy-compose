@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -209,9 +210,42 @@ func parseEvent(entry AuditLogEntry) Event {
 		ev.Severity = best.Data.Severity
 		ev.MatchedData = best.Data.Data
 		ev.RuleTags = best.Data.Tags
+
+		// Extract anomaly score from rule 949110 (inbound) or 980170 (outbound).
+		// Format: "Inbound Anomaly Score Exceeded (Total Score: 5)"
+		for _, m := range entry.Messages {
+			if m.Data.ID == 949110 || m.Data.ID == 980170 {
+				ev.AnomalyScore = extractAnomalyScore(m.Data.Msg)
+				break
+			}
+		}
 	}
 
 	return ev
+}
+
+// extractAnomalyScore parses "Total Score: N" from CRS anomaly evaluation rule messages.
+// Returns 0 if the pattern is not found.
+func extractAnomalyScore(msg string) int {
+	const prefix = "Total Score: "
+	idx := strings.Index(msg, prefix)
+	if idx < 0 {
+		return 0
+	}
+	rest := msg[idx+len(prefix):]
+	// Read digits until non-digit or end.
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	score, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return score
 }
 
 // parseTimestamp parses Coraza's "2006/01/02 15:04:05" format.

@@ -227,6 +227,16 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 		return
 	}
 
+	// Filter out "all services" wildcard conditions (host == "*").
+	// These mean "apply globally" — no host restriction needed.
+	var conditions []Condition
+	for _, c := range e.Conditions {
+		if c.Field == "host" && c.Value == "*" {
+			continue
+		}
+		conditions = append(conditions, c)
+	}
+
 	groupOp := e.GroupOp
 	if groupOp == "" {
 		groupOp = "and"
@@ -235,12 +245,19 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 	// Determine the action string.
 	action := conditionAction(e)
 
+	if len(conditions) == 0 {
+		// All conditions were wildcards — emit a SecAction (unconditional).
+		ruleID := idGen.next()
+		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,%s\"\n", ruleID, action))
+		return
+	}
+
 	if groupOp == "and" {
 		// AND: chain all conditions into one rule.
-		writeChainedRule(b, e.Conditions, action, idGen)
+		writeChainedRule(b, conditions, action, idGen)
 	} else {
 		// OR: each condition gets its own standalone rule with the same action.
-		for _, c := range e.Conditions {
+		for _, c := range conditions {
 			writeChainedRule(b, []Condition{c}, action, idGen)
 		}
 	}
@@ -315,10 +332,19 @@ func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion, idGen *ruleID
 
 	action := fmt.Sprintf("pass,t:none,nolog,%s", ctlAction)
 
-	if len(e.Conditions) > 0 {
-		writeChainedRule(b, e.Conditions, action, idGen)
+	// Filter out "all services" wildcard conditions.
+	var conditions []Condition
+	for _, c := range e.Conditions {
+		if c.Field == "host" && c.Value == "*" {
+			continue
+		}
+		conditions = append(conditions, c)
+	}
+
+	if len(conditions) > 0 {
+		writeChainedRule(b, conditions, action, idGen)
 	} else {
-		// Fallback: unconditional (shouldn't happen with validation, but be safe).
+		// Unconditional — either no conditions or all were wildcards.
 		ruleID := idGen.next()
 		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,%s\"\n", ruleID, action))
 	}
@@ -407,10 +433,17 @@ func GenerateWAFSettings(cfg WAFConfig) string {
 		"setvar:tx.outbound_anomaly_score_threshold=%d\"\n\n",
 		idGen.next(), inT, outT))
 
-	// Default mode: disabled → ctl:ruleEngine=Off for all.
-	if d.Mode == "disabled" {
-		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleEngine=Off\"\n\n",
-			idGen.next()))
+	// Emit SecRuleEngine directive based on the global mode.
+	// This is a config-time directive (not per-request ctl), making the
+	// generator the single source of truth for the WAF engine state.
+	// The Caddyfile must NOT contain its own SecRuleEngine directive.
+	switch d.Mode {
+	case "disabled":
+		b.WriteString("SecRuleEngine Off\n\n")
+	case "detection_only":
+		b.WriteString("SecRuleEngine DetectionOnly\n\n")
+	default: // "enabled"
+		b.WriteString("SecRuleEngine On\n\n")
 	}
 
 	// Default disabled groups.
@@ -451,9 +484,23 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 		return // No further overrides needed for disabled services.
 	}
 
-	// If default is disabled but this service is enabled/detection_only,
-	// re-enable the rule engine for this service's traffic.
-	needsEngineOn := defaults.Mode == "disabled" && ss.Mode != "disabled"
+	// Determine if we need to change the rule engine mode for this service.
+	// Possible transitions:
+	//   default=disabled      + service=blocking       → ctl:ruleEngine=On
+	//   default=disabled      + service=detection_only → ctl:ruleEngine=DetectionOnly
+	//   default=detection_only + service=blocking      → ctl:ruleEngine=On
+	//   default=blocking      + service=detection_only → ctl:ruleEngine=DetectionOnly
+	var engineOverride string
+	if ss.Mode != defaults.Mode {
+		switch {
+		case ss.Mode == "detection_only":
+			engineOverride = "DetectionOnly"
+		case defaults.Mode == "disabled" || defaults.Mode == "detection_only":
+			// Service is "blocking" (the default/empty mode) but global is
+			// disabled or detection_only — re-enable full blocking.
+			engineOverride = "On"
+		}
+	}
 
 	// For detection_only, override thresholds to 10000.
 	inT, outT := ss.InboundThreshold, ss.OutboundThreshold
@@ -483,16 +530,16 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 	}
 
 	// Skip this service entirely if it produces no output (identical to defaults).
-	if !needsEngineOn && !needsParanoiaOverride && !needsThresholdOverride && len(extraGroups) == 0 {
+	if engineOverride == "" && !needsParanoiaOverride && !needsThresholdOverride && len(extraGroups) == 0 {
 		return
 	}
 
 	b.WriteString(fmt.Sprintf("# %s\n", host))
 
-	// Emit ctl:ruleEngine=On when the global default is disabled.
-	if needsEngineOn {
-		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleEngine=On\"\n",
-			escapedHost, idGen.next()))
+	// Emit engine override when the service mode differs from the global default.
+	if engineOverride != "" {
+		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleEngine=%s\"\n",
+			escapedHost, idGen.next(), engineOverride))
 	}
 
 	if needsParanoiaOverride || needsThresholdOverride {

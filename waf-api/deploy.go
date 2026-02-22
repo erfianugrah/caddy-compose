@@ -49,12 +49,19 @@ func ensureCorazaDir(dir string) error {
 		return fmt.Errorf("creating coraza dir %s: %w", dir, err)
 	}
 
-	files := []string{"custom-pre-crs.conf", "custom-post-crs.conf", "custom-waf-settings.conf"}
-	for _, name := range files {
+	placeholders := map[string]string{
+		"custom-pre-crs.conf":  "",
+		"custom-post-crs.conf": "",
+		// The WAF settings placeholder includes SecRuleEngine On as the safe
+		// default. The Caddyfile intentionally does NOT set SecRuleEngine —
+		// this file is the single source of truth, managed by the generator.
+		"custom-waf-settings.conf": "SecRuleEngine On\n",
+	}
+	for name, extra := range placeholders {
 		path := filepath.Join(dir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			header := fmt.Sprintf("# Managed by waf-api Policy Engine\n# Created: %s\n# This file is empty until exclusions are deployed.\n",
-				time.Now().UTC().Format(time.RFC3339))
+			header := fmt.Sprintf("# Managed by waf-api\n# Created: %s\n# This file is empty until settings are deployed.\n%s",
+				time.Now().UTC().Format(time.RFC3339), extra)
 			if err := atomicWriteFile(path, []byte(header), 0644); err != nil {
 				return fmt.Errorf("creating placeholder %s: %w", path, err)
 			}

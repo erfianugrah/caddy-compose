@@ -1303,6 +1303,12 @@ func TestGenerateWAFSettingsDetectionOnly(t *testing.T) {
 	if !strings.Contains(output, "outbound_anomaly_score_threshold=10000") {
 		t.Error("detection_only should set outbound threshold to 10000")
 	}
+	// Detection-only mode MUST emit SecRuleEngine DetectionOnly as a
+	// config-time directive. High thresholds alone are insufficient — Coraza
+	// can still block on individual rules before anomaly scoring evaluates.
+	if !strings.Contains(output, "SecRuleEngine DetectionOnly") {
+		t.Error("detection_only should contain SecRuleEngine DetectionOnly")
+	}
 }
 
 func TestGenerateWAFSettingsDisabled(t *testing.T) {
@@ -1312,8 +1318,8 @@ func TestGenerateWAFSettingsDisabled(t *testing.T) {
 	}
 	output := GenerateWAFSettings(cfg)
 
-	if !strings.Contains(output, "ctl:ruleEngine=Off") {
-		t.Error("disabled mode should contain ctl:ruleEngine=Off")
+	if !strings.Contains(output, "SecRuleEngine Off") {
+		t.Error("disabled mode should contain SecRuleEngine Off")
 	}
 }
 
@@ -1426,9 +1432,9 @@ func TestGenerateWAFSettingsReEnableEngine(t *testing.T) {
 	}
 	output := GenerateWAFSettings(cfg)
 
-	// Global Off should be present.
-	if !strings.Contains(output, "ctl:ruleEngine=Off") {
-		t.Error("should contain global ctl:ruleEngine=Off")
+	// Global Off should be present as a config-time directive.
+	if !strings.Contains(output, "SecRuleEngine Off") {
+		t.Error("should contain global SecRuleEngine Off")
 	}
 
 	// active.erfi.io should get ctl:ruleEngine=On.
@@ -1441,19 +1447,164 @@ func TestGenerateWAFSettingsReEnableEngine(t *testing.T) {
 		t.Error("active.erfi.io should have ctl:ruleEngine=On")
 	}
 
-	// logonly.erfi.io should get ctl:ruleEngine=On too.
+	// logonly.erfi.io should get ctl:ruleEngine=DetectionOnly (not just On).
+	// detection_only mode must use DetectionOnly so Coraza logs but never blocks.
 	logonlyIdx := strings.Index(output, "logonly.erfi.io")
 	if logonlyIdx < 0 {
 		t.Fatal("should contain logonly.erfi.io")
 	}
 	afterLogonly := output[logonlyIdx:]
-	if !strings.Contains(afterLogonly, "ctl:ruleEngine=On") {
-		t.Error("logonly.erfi.io should have ctl:ruleEngine=On")
+	if !strings.Contains(afterLogonly, "ctl:ruleEngine=DetectionOnly") {
+		t.Error("logonly.erfi.io should have ctl:ruleEngine=DetectionOnly")
 	}
 
 	// alsodead.erfi.io should NOT appear (same as default: disabled).
 	if strings.Contains(output, "alsodead.erfi.io") {
 		t.Error("alsodead.erfi.io should not generate output (same mode as default)")
+	}
+}
+
+// TestGenerateWAFSettingsAllModeTransitions tests every combination of
+// global default mode and per-service override mode to ensure the correct
+// SecRuleEngine / ctl:ruleEngine directives are emitted.
+func TestGenerateWAFSettingsAllModeTransitions(t *testing.T) {
+	modes := []string{"enabled", "detection_only", "disabled"}
+	base := WAFServiceSettings{ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4}
+
+	for _, globalMode := range modes {
+		for _, svcMode := range modes {
+			name := "global_" + globalMode + "_svc_" + svcMode
+			t.Run(name, func(t *testing.T) {
+				defaults := base
+				defaults.Mode = globalMode
+				svc := base
+				svc.Mode = svcMode
+				cfg := WAFConfig{
+					Defaults: defaults,
+					Services: map[string]WAFServiceSettings{
+						"test.erfi.io": svc,
+					},
+				}
+				output := GenerateWAFSettings(cfg)
+
+				// Global SecRuleEngine directive should always be present.
+				switch globalMode {
+				case "enabled":
+					if !strings.Contains(output, "SecRuleEngine On") {
+						t.Error("global enabled should emit SecRuleEngine On")
+					}
+				case "detection_only":
+					if !strings.Contains(output, "SecRuleEngine DetectionOnly") {
+						t.Error("global detection_only should emit SecRuleEngine DetectionOnly")
+					}
+					if !strings.Contains(output, "anomaly_score_threshold=10000") {
+						t.Error("global detection_only should set thresholds to 10000")
+					}
+				case "disabled":
+					if !strings.Contains(output, "SecRuleEngine Off") {
+						t.Error("global disabled should emit SecRuleEngine Off")
+					}
+				}
+
+				// Per-service engine override when modes differ.
+				svcSection := ""
+				idx := strings.Index(output, "test.erfi.io")
+				if idx >= 0 {
+					svcSection = output[idx:]
+				}
+
+				if globalMode == svcMode {
+					// Same mode → no per-service override needed (skip if
+					// paranoia/thresholds also match).
+					if svcSection != "" && strings.Contains(svcSection, "ctl:ruleEngine") {
+						t.Error("same mode should not emit per-service ctl:ruleEngine")
+					}
+				} else {
+					switch {
+					case svcMode == "disabled" && globalMode != "disabled":
+						if !strings.Contains(svcSection, "ctl:ruleEngine=Off") {
+							t.Error("svc disabled (global non-disabled) should emit ctl:ruleEngine=Off")
+						}
+					case svcMode == "detection_only":
+						if !strings.Contains(svcSection, "ctl:ruleEngine=DetectionOnly") {
+							t.Error("svc detection_only should emit ctl:ruleEngine=DetectionOnly")
+						}
+					case svcMode == "enabled" && (globalMode == "disabled" || globalMode == "detection_only"):
+						if !strings.Contains(svcSection, "ctl:ruleEngine=On") {
+							t.Error("svc enabled (global " + globalMode + ") should emit ctl:ruleEngine=On")
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestGenerateWAFSettingsEnabledEmitsSecRuleEngineOn verifies that the default
+// "enabled" mode explicitly emits SecRuleEngine On, since the Caddyfile no
+// longer contains this directive.
+func TestGenerateWAFSettingsEnabledEmitsSecRuleEngineOn(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if !strings.Contains(output, "SecRuleEngine On") {
+		t.Error("enabled mode must emit SecRuleEngine On")
+	}
+	if strings.Contains(output, "SecRuleEngine Off") || strings.Contains(output, "SecRuleEngine DetectionOnly") {
+		t.Error("enabled mode should not emit Off or DetectionOnly")
+	}
+	// Verify paranoia and thresholds are emitted with actual values (not 10000).
+	if !strings.Contains(output, "paranoia_level=2") {
+		t.Error("should set paranoia_level=2")
+	}
+	if !strings.Contains(output, "inbound_anomaly_score_threshold=10") {
+		t.Error("should set inbound threshold to 10")
+	}
+}
+
+// TestGenerateWAFSettingsDetectionOnlyToBlocking tests switching from
+// detection_only global to per-service blocking (enabled) mode.
+func TestGenerateWAFSettingsDetectionOnlyToBlocking(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "detection_only", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{
+			"strict.erfi.io": {Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Global should be DetectionOnly.
+	if !strings.Contains(output, "SecRuleEngine DetectionOnly") {
+		t.Error("global should be SecRuleEngine DetectionOnly")
+	}
+
+	// strict.erfi.io should re-enable blocking.
+	idx := strings.Index(output, "strict.erfi.io")
+	if idx < 0 {
+		t.Fatal("should contain strict.erfi.io")
+	}
+	after := output[idx:]
+	if !strings.Contains(after, "ctl:ruleEngine=On") {
+		t.Error("strict.erfi.io should have ctl:ruleEngine=On to override DetectionOnly")
+	}
+}
+
+// TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine verifies the
+// placeholder file written by ensureCorazaDir includes SecRuleEngine On.
+func TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "coraza")
+	if err := ensureCorazaDir(dir); err != nil {
+		t.Fatalf("ensureCorazaDir failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "custom-waf-settings.conf"))
+	if err != nil {
+		t.Fatalf("reading placeholder: %v", err)
+	}
+	if !strings.Contains(string(data), "SecRuleEngine On") {
+		t.Error("placeholder custom-waf-settings.conf should contain SecRuleEngine On")
 	}
 }
 
@@ -4188,5 +4339,58 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 	}
 	if c2.IpsumBlocked != 0 {
 		t.Errorf("99.99.99.99 ipsum_blocked: want 0, got %d", c2.IpsumBlocked)
+	}
+}
+
+// --- Tests: extractAnomalyScore ---
+
+func TestExtractAnomalyScore(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want int
+	}{
+		{"inbound score 5", "Inbound Anomaly Score Exceeded (Total Score: 5)", 5},
+		{"inbound score 25", "Inbound Anomaly Score Exceeded (Total Score: 25)", 25},
+		{"inbound score 100", "Inbound Anomaly Score Exceeded (Total Score: 100)", 100},
+		{"outbound score 3", "Outbound Anomaly Score Exceeded (Total Score: 3)", 3},
+		{"zero score", "Inbound Anomaly Score Exceeded (Total Score: 0)", 0},
+		{"no match empty", "", 0},
+		{"no match unrelated", "Remote Command Execution detected", 0},
+		{"partial prefix", "Total Score: ", 0},
+		{"no digits after prefix", "Total Score: abc)", 0},
+		{"score in middle of text", "foo Total Score: 42 bar", 42},
+		{"large score", "Inbound Anomaly Score Exceeded (Total Score: 99999)", 99999},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractAnomalyScore(tt.msg)
+			if got != tt.want {
+				t.Errorf("extractAnomalyScore(%q) = %d, want %d", tt.msg, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAnomalyScoreInParsedEvent(t *testing.T) {
+	// Construct a minimal audit log entry with rule 949110 carrying a score.
+	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test1","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":403},"producer":{"rule_engine":"On"}},"messages":[{"message":"SQL Injection","data":{"id":942100,"msg":"SQL Injection","severity":2,"tags":["attack-sqli"]}},{"message":"Inbound Anomaly Score Exceeded (Total Score: 15)","data":{"id":949110,"msg":"Inbound Anomaly Score Exceeded (Total Score: 15)","severity":0,"tags":["anomaly-evaluation"]}}]}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	os.WriteFile(path, []byte(entry+"\n"), 0644)
+
+	store := NewStore(path)
+	store.Load()
+	events := store.Snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].AnomalyScore != 15 {
+		t.Errorf("expected anomaly score 15, got %d", events[0].AnomalyScore)
+	}
+	// Best rule should be 942100 (not the 949110 scoring rule).
+	if events[0].RuleID != 942100 {
+		t.Errorf("expected rule ID 942100, got %d", events[0].RuleID)
 	}
 }

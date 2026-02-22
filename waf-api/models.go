@@ -87,11 +87,12 @@ type Event struct {
 	UserAgent      string    `json:"user_agent"`
 	EventType      string    `json:"event_type"` // "blocked", "logged", "rate_limited", "ipsum_blocked"
 	// Rule match data (from audit log messages/part H)
-	RuleID      int      `json:"rule_id,omitempty"`
-	RuleMsg     string   `json:"rule_msg,omitempty"`
-	Severity    int      `json:"severity,omitempty"`
-	MatchedData string   `json:"matched_data,omitempty"`
-	RuleTags    []string `json:"rule_tags,omitempty"`
+	RuleID       int      `json:"rule_id,omitempty"`
+	RuleMsg      string   `json:"rule_msg,omitempty"`
+	Severity     int      `json:"severity,omitempty"`
+	AnomalyScore int      `json:"anomaly_score,omitempty"`
+	MatchedData  string   `json:"matched_data,omitempty"`
+	RuleTags     []string `json:"rule_tags,omitempty"`
 }
 
 // API response types

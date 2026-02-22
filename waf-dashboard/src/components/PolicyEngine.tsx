@@ -20,6 +20,7 @@ import {
   X,
   Loader2,
   Search,
+  ChevronDown,
 } from "lucide-react";
 import {
   Card,
@@ -399,6 +400,71 @@ function CRSRulePicker({
 
 // ─── Condition Row Component ────────────────────────────────────────
 
+// Host value input: dropdown with service list + "All Services" + "Custom..." with text input fallback.
+function HostValueInput({
+  value,
+  services,
+  onChange,
+}: {
+  value: string;
+  services: ServiceDetail[];
+  onChange: (value: string) => void;
+}) {
+  const serviceHosts = services.map((s) => s.service);
+  const isKnownHost = value === "*" || serviceHosts.includes(value);
+  const [customMode, setCustomMode] = useState(!isKnownHost && value !== "");
+
+  // If the user typed a custom value and then switches back to select mode,
+  // reset to empty so the select shows its placeholder.
+  const handleSelectChange = (v: string) => {
+    if (v === "__custom__") {
+      setCustomMode(true);
+      onChange("");
+    } else {
+      setCustomMode(false);
+      onChange(v);
+    }
+  };
+
+  if (customMode) {
+    return (
+      <div className="flex flex-1 gap-1.5">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g., radarr.erfi.io"
+          className="flex-1"
+          autoFocus
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0 text-muted-foreground"
+          title="Switch to dropdown"
+          onClick={() => { setCustomMode(false); onChange(""); }}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Select value={value || undefined} onValueChange={handleSelectChange}>
+      <SelectTrigger className="flex-1">
+        <SelectValue placeholder="Select host..." />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="*">All Services</SelectItem>
+        {services.map((s) => (
+          <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
+        ))}
+        <SelectItem value="__custom__">Custom...</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 function ConditionRow({
   condition,
   index,
@@ -455,22 +521,13 @@ function ConditionRow({
         </SelectContent>
       </Select>
 
-      {/* Value input — special case for host field (show service dropdown) */}
+      {/* Value input — special case for host field (show service dropdown with custom option) */}
       {condition.field === "host" ? (
-        <Select
-          value={condition.value || "__custom__"}
-          onValueChange={(v) => onChange(index, { ...condition, value: v === "__custom__" ? "" : v })}
-        >
-          <SelectTrigger className="flex-1">
-            <SelectValue placeholder="Select host or type custom" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__custom__">Custom...</SelectItem>
-            {services.map((s) => (
-              <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <HostValueInput
+          value={condition.value}
+          services={services}
+          onChange={(v) => onChange(index, { ...condition, value: v })}
+        />
       ) : (
         <Input
           value={condition.value}
@@ -1325,6 +1382,14 @@ export default function PolicyEngine() {
   // Determine the editing tab — always route to advanced tab for edits (it supports all types now)
   const isEditingRaw = exclusionToEdit?.type === "raw";
 
+  // Controlled tab state — switches automatically when editing starts.
+  const [activeTab, setActiveTab] = useState<string>("quick");
+  useEffect(() => {
+    if (editingId) {
+      setActiveTab(isEditingRaw ? "raw" : "advanced");
+    }
+  }, [editingId, isEditingRaw]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1377,7 +1442,7 @@ export default function PolicyEngine() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue={isEditingRaw ? "raw" : editingId ? "advanced" : "quick"}>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4">
               <TabsTrigger value="quick" className="gap-1.5">
                 <Zap className="h-3.5 w-3.5" />
@@ -1405,6 +1470,7 @@ export default function PolicyEngine() {
             <TabsContent value="advanced">
               {editingId && editFormState && !isEditingRaw ? (
                 <AdvancedBuilderForm
+                  key={editingId}
                   initial={editFormState}
                   services={services}
                   onSubmit={(data) => handleUpdate(editingId, data)}

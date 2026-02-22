@@ -68,6 +68,7 @@ export interface WAFEvent {
   rule_id: number;
   rule_msg: string;
   severity: number;
+  anomaly_score: number;
   request_headers?: Record<string, string>;
   matched_data?: string;
   rule_tags?: string[];
@@ -485,6 +486,7 @@ interface RawEvent {
   rule_id?: number;
   rule_msg?: string;
   severity?: number;
+  anomaly_score?: number;
   matched_data?: string;
   rule_tags?: string[];
 }
@@ -509,6 +511,7 @@ function mapEvent(raw: RawEvent): WAFEvent {
     rule_id: raw.rule_id ?? 0,
     rule_msg: raw.rule_msg ?? "",
     severity: raw.severity ?? 0,
+    anomaly_score: raw.anomaly_score ?? 0,
     matched_data: raw.matched_data,
     rule_tags: raw.rule_tags,
     user_agent: raw.user_agent,

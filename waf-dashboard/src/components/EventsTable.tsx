@@ -177,6 +177,18 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
                     return <span className={sev.color}>{sev.label}</span>;
                   })()}
                 </div>
+                {event.anomaly_score > 0 && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Anomaly Score:</span>
+                    <span className={
+                      event.anomaly_score >= 25 ? "text-neon-pink font-bold" :
+                      event.anomaly_score >= 10 ? "text-neon-amber font-medium" :
+                      "text-neon-cyan"
+                    }>
+                      {event.anomaly_score}
+                    </span>
+                  </div>
+                )}
                 {event.matched_data && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">Matched:</span>
@@ -400,6 +412,7 @@ export default function EventsTable() {
                 <TableHead className="max-w-[200px]">URI</TableHead>
                 <TableHead>Client IP</TableHead>
                 <TableHead>Rule</TableHead>
+                <TableHead>Score</TableHead>
                 <TableHead>Type</TableHead>
               </TableRow>
             </TableHeader>
@@ -462,6 +475,19 @@ export default function EventsTable() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
+                      <TableCell className="text-xs tabular-nums">
+                        {evt.anomaly_score > 0 ? (
+                          <span className={
+                            evt.anomaly_score >= 25 ? "text-neon-pink font-bold" :
+                            evt.anomaly_score >= 10 ? "text-neon-amber font-medium" :
+                            "text-neon-cyan"
+                          }>
+                            {evt.anomaly_score}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {evt.event_type === "ipsum_blocked" ? (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
@@ -484,7 +510,7 @@ export default function EventsTable() {
                     </TableRow>
                     {expanded.has(evt.id) && (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={8} className="bg-navy-950/50 p-0">
+                        <TableCell colSpan={9} className="bg-navy-950/50 p-0">
                           <EventDetailPanel event={evt} />
                         </TableCell>
                       </TableRow>
