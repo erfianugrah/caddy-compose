@@ -16,6 +16,7 @@ type CRSCategory struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	RuleRange   string `json:"rule_range"`
+	Tag         string `json:"tag"` // CRS tag used for ctl:ruleRemoveByTag
 }
 
 // CRSCatalogResponse is the API response for /api/crs/rules.
@@ -27,17 +28,17 @@ type CRSCatalogResponse struct {
 
 // CRS 4.x rule categories
 var crsCategories = []CRSCategory{
-	{ID: "protocol-enforcement", Name: "Protocol Enforcement", Description: "HTTP protocol violations and anomalies", RuleRange: "920000-920999"},
-	{ID: "protocol-attack", Name: "Protocol Attack", Description: "HTTP request smuggling, response splitting", RuleRange: "921000-921999"},
-	{ID: "lfi", Name: "Local File Inclusion", Description: "Path traversal and LFI attacks", RuleRange: "930000-930999"},
-	{ID: "rfi", Name: "Remote File Inclusion", Description: "Remote file inclusion attempts", RuleRange: "931000-931999"},
-	{ID: "rce", Name: "Remote Code Execution", Description: "Command injection and RCE", RuleRange: "932000-932999"},
-	{ID: "php", Name: "PHP Injection", Description: "PHP code injection attacks", RuleRange: "933000-933999"},
-	{ID: "nodejs", Name: "Node.js Injection", Description: "Node.js code injection attacks", RuleRange: "934000-934999"},
-	{ID: "xss", Name: "Cross-Site Scripting", Description: "XSS attack detection", RuleRange: "941000-941999"},
-	{ID: "sqli", Name: "SQL Injection", Description: "SQL injection detection", RuleRange: "942000-942999"},
-	{ID: "session-fixation", Name: "Session Fixation", Description: "Session fixation attacks", RuleRange: "943000-943999"},
-	{ID: "java", Name: "Java Injection", Description: "Java/Spring code injection", RuleRange: "944000-944999"},
+	{ID: "protocol-enforcement", Name: "Protocol Enforcement", Description: "HTTP protocol violations and anomalies", RuleRange: "920000-920999", Tag: "attack-protocol"},
+	{ID: "protocol-attack", Name: "Protocol Attack", Description: "HTTP request smuggling, response splitting", RuleRange: "921000-921999", Tag: "attack-protocol"},
+	{ID: "lfi", Name: "Local File Inclusion", Description: "Path traversal and LFI attacks", RuleRange: "930000-930999", Tag: "attack-lfi"},
+	{ID: "rfi", Name: "Remote File Inclusion", Description: "Remote file inclusion attempts", RuleRange: "931000-931999", Tag: "attack-rfi"},
+	{ID: "rce", Name: "Remote Code Execution", Description: "Command injection and RCE", RuleRange: "932000-932999", Tag: "attack-rce"},
+	{ID: "php", Name: "PHP Injection", Description: "PHP code injection attacks", RuleRange: "933000-933999", Tag: "attack-injection-php"},
+	{ID: "nodejs", Name: "Node.js Injection", Description: "Node.js code injection attacks", RuleRange: "934000-934999", Tag: "attack-injection-nodejs"},
+	{ID: "xss", Name: "Cross-Site Scripting", Description: "XSS attack detection", RuleRange: "941000-941999", Tag: "attack-xss"},
+	{ID: "sqli", Name: "SQL Injection", Description: "SQL injection detection", RuleRange: "942000-942999", Tag: "attack-sqli"},
+	{ID: "session-fixation", Name: "Session Fixation", Description: "Session fixation attacks", RuleRange: "943000-943999", Tag: "attack-fixation"},
+	{ID: "java", Name: "Java Injection", Description: "Java/Spring code injection", RuleRange: "944000-944999", Tag: "attack-injection-java"},
 }
 
 // Commonly encountered CRS rules — the most frequently triggered rules that
@@ -198,14 +199,14 @@ var crsRules = []CRSRule{
 	{ID: "943120", Description: "Possible session fixation attack: SessionID parameter name with no referrer", Category: "session-fixation", Tags: []string{"OWASP_CRS", "attack-fixation"}, Severity: "CRITICAL", ParanoiaLvl: 1},
 
 	// 944xxx — Java Injection
-	{ID: "944100", Description: "Remote command execution: suspicious Java class detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944110", Description: "Remote command execution: Java process spawn (CVE-2017-9805)", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944120", Description: "Remote command execution: Java serialization (CVE-2015-5842)", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944130", Description: "Suspicious Java class detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944200", Description: "Magic bytes detected, probable Java serialization in use", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944210", Description: "Magic bytes detected Base64 encoded, probable Java serialization in use", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944240", Description: "Remote command execution: Java serialization (CVE-2015-5842)", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
-	{ID: "944250", Description: "Remote command execution: suspicious Java method detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944100", Description: "Remote command execution: suspicious Java class detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944110", Description: "Remote command execution: Java process spawn (CVE-2017-9805)", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944120", Description: "Remote command execution: Java serialization (CVE-2015-5842)", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944130", Description: "Suspicious Java class detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944200", Description: "Magic bytes detected, probable Java serialization in use", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944210", Description: "Magic bytes detected Base64 encoded, probable Java serialization in use", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944240", Description: "Remote command execution: Java serialization (CVE-2015-5842)", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "944250", Description: "Remote command execution: suspicious Java method detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
 }
 
 // GetCRSCatalog returns the full CRS rule catalog for the UI.

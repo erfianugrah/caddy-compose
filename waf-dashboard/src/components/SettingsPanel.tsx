@@ -6,8 +6,12 @@ import {
   Save,
   Download,
   Upload,
-  RefreshCw,
   Info,
+  ChevronDown,
+  ChevronRight,
+  Rocket,
+  Globe,
+  Settings2,
 } from "lucide-react";
 import {
   Card,
@@ -15,7 +19,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,14 +30,6 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -44,97 +39,378 @@ import {
 import {
   getConfig,
   updateConfig,
-  exportExclusions,
-  importExclusions,
   fetchServices,
+  fetchCRSRules,
+  deployConfig,
   type WAFConfig,
-  type WAFEngineMode,
-  type ServiceProfileMode,
-  type ServiceProfile,
+  type WAFMode,
+  type WAFServiceSettings,
+  type WAFPreset,
   type ServiceDetail,
+  type CRSCategory,
+  presetToSettings,
+  settingsToPreset,
 } from "@/lib/api";
 
-// ─── Paranoia Level Descriptions ────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────────
 
 const PARANOIA_DESCRIPTIONS: Record<number, { label: string; desc: string }> = {
   1: {
     label: "Low (PL1)",
-    desc: "Minimal false positives. Catches only the most obvious attacks. Recommended for most sites as a starting point.",
+    desc: "Minimal false positives. Catches the most obvious attacks. Recommended starting point.",
   },
   2: {
     label: "Moderate (PL2)",
-    desc: "More rules active, some additional false positives possible. Good for sites that have been tuned.",
+    desc: "More rules active, some false positives possible. Good for tuned sites.",
   },
   3: {
     label: "High (PL3)",
-    desc: "Aggressive rule set. Expect false positives that need tuning. For security-sensitive applications.",
+    desc: "Aggressive rules. Expect false positives. For security-sensitive applications.",
   },
   4: {
     label: "Ultra (PL4)",
-    desc: "Maximum paranoia. Many false positives expected. Only for highly sensitive applications with extensive tuning.",
+    desc: "Maximum paranoia. Many false positives. Requires extensive tuning.",
   },
 };
 
-// ─── Engine Mode Component ──────────────────────────────────────────
+const MODE_META: Record<WAFMode, { label: string; desc: string; color: string; dot: string }> = {
+  enabled: {
+    label: "Enabled",
+    desc: "WAF actively blocks malicious requests",
+    color: "text-neon-green border-neon-green/30 bg-neon-green/5",
+    dot: "bg-neon-green",
+  },
+  detection_only: {
+    label: "Detection Only",
+    desc: "WAF logs but does not block requests",
+    color: "text-neon-amber border-neon-amber/30 bg-neon-amber/5",
+    dot: "bg-neon-amber",
+  },
+  disabled: {
+    label: "Disabled",
+    desc: "WAF engine is completely disabled",
+    color: "text-neon-pink border-neon-pink/30 bg-neon-pink/5",
+    dot: "bg-neon-pink",
+  },
+};
 
-function EngineModeSelector({
+// ─── Mode Selector ──────────────────────────────────────────────────
+
+function ModeSelector({
   value,
   onChange,
 }: {
-  value: WAFEngineMode;
-  onChange: (mode: WAFEngineMode) => void;
+  value: WAFMode;
+  onChange: (mode: WAFMode) => void;
 }) {
-  const modes: { value: WAFEngineMode; label: string; desc: string; color: string }[] = [
-    {
-      value: "on",
-      label: "Enabled",
-      desc: "WAF actively blocks malicious requests",
-      color: "text-neon-green border-neon-green/30 bg-neon-green/5",
-    },
-    {
-      value: "detection_only",
-      label: "Detection Only",
-      desc: "WAF logs but does not block requests",
-      color: "text-neon-amber border-neon-amber/30 bg-neon-amber/5",
-    },
-    {
-      value: "off",
-      label: "Disabled",
-      desc: "WAF engine is completely disabled",
-      color: "text-neon-pink border-neon-pink/30 bg-neon-pink/5",
-    },
-  ];
-
   return (
     <div className="grid gap-3 sm:grid-cols-3">
-      {modes.map((mode) => (
-        <button
-          key={mode.value}
-          onClick={() => onChange(mode.value)}
-          className={`rounded-lg border p-4 text-left transition-all ${
-            value === mode.value
-              ? mode.color
-              : "border-border bg-navy-950 text-muted-foreground hover:border-border/80"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <div
-              className={`h-2.5 w-2.5 rounded-full ${
-                value === mode.value
-                  ? mode.value === "on"
-                    ? "bg-neon-green"
-                    : mode.value === "detection_only"
-                      ? "bg-neon-amber"
-                      : "bg-neon-pink"
-                  : "bg-muted-foreground/30"
-              }`}
-            />
-            <span className="text-sm font-medium">{mode.label}</span>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{mode.desc}</p>
-        </button>
-      ))}
+      {(Object.keys(MODE_META) as WAFMode[]).map((mode) => {
+        const meta = MODE_META[mode];
+        return (
+          <button
+            key={mode}
+            onClick={() => onChange(mode)}
+            className={`rounded-lg border p-4 text-left transition-all ${
+              value === mode
+                ? meta.color
+                : "border-border bg-navy-950 text-muted-foreground hover:border-border/80"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-2.5 w-2.5 rounded-full ${
+                  value === mode ? meta.dot : "bg-muted-foreground/30"
+                }`}
+              />
+              <span className="text-sm font-medium">{meta.label}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{meta.desc}</p>
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+// ─── Sensitivity Settings (Preset + Paranoia + Thresholds) ──────────
+
+function SensitivitySettings({
+  settings,
+  onChange,
+  compact,
+}: {
+  settings: WAFServiceSettings;
+  onChange: (s: WAFServiceSettings) => void;
+  compact?: boolean;
+}) {
+  const preset = settingsToPreset(settings);
+  const isCustom = preset === "custom";
+
+  const handlePresetChange = (p: WAFPreset) => {
+    if (p === "custom") return;
+    const vals = presetToSettings(p);
+    onChange({ ...settings, ...vals });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Preset Selector */}
+      <div className="space-y-2">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Sensitivity Preset
+        </Label>
+        <div className={`grid gap-2 ${compact ? "grid-cols-2" : "grid-cols-4"}`}>
+          {(["strict", "moderate", "tuning", "custom"] as WAFPreset[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => handlePresetChange(p)}
+              disabled={p === "custom"}
+              className={`rounded-md border px-3 py-2 text-xs font-medium transition-all ${
+                preset === p
+                  ? p === "strict"
+                    ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
+                    : p === "moderate"
+                      ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
+                      : p === "tuning"
+                        ? "border-neon-amber/40 bg-neon-amber/10 text-neon-amber"
+                        : "border-neon-purple/40 bg-neon-purple/10 text-neon-purple"
+                  : p === "custom"
+                    ? "border-border bg-navy-950 text-muted-foreground/40 cursor-default"
+                    : "border-border bg-navy-950 text-muted-foreground hover:border-border/80"
+              }`}
+            >
+              {p === "strict" ? "Strict (5/4)" : p === "moderate" ? "Moderate (15/15)" : p === "tuning" ? "Tuning (log only)" : "Custom"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Paranoia Level */}
+      <div className="space-y-2">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Paranoia Level
+        </Label>
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <Slider
+              value={[settings.paranoia_level]}
+              onValueChange={(v) =>
+                onChange({ ...settings, paranoia_level: v[0] })
+              }
+              min={1}
+              max={4}
+              step={1}
+            />
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+              <span>1</span><span>2</span><span>3</span><span>4</span>
+            </div>
+          </div>
+          <span className="w-8 text-center text-lg font-bold text-neon-green">
+            {settings.paranoia_level}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {PARANOIA_DESCRIPTIONS[settings.paranoia_level]?.desc}
+        </p>
+      </div>
+
+      {/* Thresholds */}
+      {settings.mode !== "detection_only" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Inbound Threshold
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              value={settings.inbound_threshold}
+              onChange={(e) =>
+                onChange({ ...settings, inbound_threshold: Number(e.target.value) || 1 })
+              }
+              className="w-24"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Outbound Threshold
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              value={settings.outbound_threshold}
+              onChange={(e) =>
+                onChange({ ...settings, outbound_threshold: Number(e.target.value) || 1 })
+              }
+              className="w-24"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Rule Group Toggles ─────────────────────────────────────────────
+
+function RuleGroupToggles({
+  categories,
+  disabledGroups,
+  onChange,
+}: {
+  categories: CRSCategory[];
+  disabledGroups: string[];
+  onChange: (groups: string[]) => void;
+}) {
+  const disabledSet = new Set(disabledGroups);
+
+  const toggle = (tag: string) => {
+    const next = new Set(disabledSet);
+    if (next.has(tag)) {
+      next.delete(tag);
+    } else {
+      next.add(tag);
+    }
+    onChange([...next]);
+  };
+
+  // Deduplicate categories by tag (protocol-enforcement and protocol-attack share "attack-protocol").
+  const seen = new Set<string>();
+  const unique = categories.filter((c) => {
+    if (seen.has(c.tag)) return false;
+    seen.add(c.tag);
+    return true;
+  });
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        CRS Rule Groups
+      </Label>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {unique.map((cat) => {
+          const isEnabled = !disabledSet.has(cat.tag);
+          return (
+            <div
+              key={cat.tag}
+              className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium truncate">{cat.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{cat.tag}</p>
+              </div>
+              <Switch
+                checked={isEnabled}
+                onCheckedChange={() => toggle(cat.tag)}
+                className="ml-2 shrink-0"
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Per-Service Card ───────────────────────────────────────────────
+
+function ServiceSettingsCard({
+  hostname,
+  settings,
+  categories,
+  serviceDetail,
+  onChange,
+  onRemove,
+}: {
+  hostname: string;
+  settings: WAFServiceSettings;
+  categories: CRSCategory[];
+  serviceDetail?: ServiceDetail;
+  onChange: (s: WAFServiceSettings) => void;
+  onRemove: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const modeMeta = MODE_META[settings.mode];
+
+  return (
+    <Card className="overflow-hidden">
+      <div
+        className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-navy-900/50"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <div className={`h-2 w-2 rounded-full shrink-0 ${modeMeta.dot}`} />
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium truncate block">{hostname}</span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {serviceDetail && (
+            <>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {serviceDetail.total_events.toLocaleString()} events
+              </span>
+              <div className="flex items-center gap-1">
+                <div className="h-1.5 w-10 overflow-hidden rounded-full bg-navy-800">
+                  <div
+                    className={`h-full rounded-full ${
+                      serviceDetail.block_rate > 50
+                        ? "bg-neon-pink"
+                        : serviceDetail.block_rate > 20
+                          ? "bg-neon-amber"
+                          : "bg-neon-green"
+                    }`}
+                    style={{ width: `${Math.min(serviceDetail.block_rate, 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {serviceDetail.block_rate.toFixed(0)}%
+                </span>
+              </div>
+            </>
+          )}
+          <Badge variant="outline" className="text-xs">
+            {modeMeta.label}
+          </Badge>
+        </div>
+      </div>
+
+      {expanded && (
+        <CardContent className="space-y-5 border-t border-border pt-4">
+          {/* Mode */}
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Mode</Label>
+            <ModeSelector
+              value={settings.mode}
+              onChange={(mode) => onChange({ ...settings, mode })}
+            />
+          </div>
+
+          {settings.mode !== "disabled" && (
+            <>
+              <Separator />
+              <SensitivitySettings settings={settings} onChange={onChange} compact />
+              <Separator />
+              <RuleGroupToggles
+                categories={categories}
+                disabledGroups={settings.disabled_groups ?? []}
+                onChange={(groups) => onChange({ ...settings, disabled_groups: groups })}
+              />
+            </>
+          )}
+
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={onRemove} className="text-neon-pink text-xs">
+              Remove Override
+            </Button>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
@@ -143,31 +419,33 @@ function EngineModeSelector({
 export default function SettingsPanel() {
   const [config, setConfig] = useState<WAFConfig | null>(null);
   const [services, setServices] = useState<ServiceDetail[]>([]);
+  const [categories, setCategories] = useState<CRSCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  // Local form state
-  const [engineMode, setEngineMode] = useState<WAFEngineMode>("on");
-  const [paranoiaLevel, setParanoiaLevel] = useState(1);
-  const [inboundThreshold, setInboundThreshold] = useState(5);
-  const [outboundThreshold, setOutboundThreshold] = useState(4);
-  const [serviceProfiles, setServiceProfiles] = useState<ServiceProfile[]>([]);
+  // Working copy of the config.
+  const [defaults, setDefaults] = useState<WAFServiceSettings>({
+    mode: "enabled",
+    paranoia_level: 1,
+    inbound_threshold: 5,
+    outbound_threshold: 4,
+  });
+  const [serviceOverrides, setServiceOverrides] = useState<Record<string, WAFServiceSettings>>({});
 
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getConfig(), fetchServices()])
-      .then(([cfg, svcs]) => {
+    Promise.all([getConfig(), fetchServices(), fetchCRSRules()])
+      .then(([cfg, svcs, crs]) => {
         setConfig(cfg);
+        setDefaults(cfg.defaults);
+        setServiceOverrides(cfg.services);
         setServices(svcs);
-        setEngineMode(cfg.engine_mode);
-        setParanoiaLevel(cfg.paranoia_level);
-        setInboundThreshold(cfg.inbound_anomaly_threshold);
-        setOutboundThreshold(cfg.outbound_anomaly_threshold);
-        setServiceProfiles(cfg.service_profiles);
+        setCategories(crs.categories);
         setDirty(false);
       })
       .catch((err) => setError(err.message))
@@ -180,25 +458,26 @@ export default function SettingsPanel() {
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
+    setTimeout(() => setSuccessMsg(null), 4000);
   };
 
   const markDirty = () => setDirty(true);
+
+  const buildConfig = (): WAFConfig => ({
+    defaults,
+    services: serviceOverrides,
+  });
 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateConfig({
-        engine_mode: engineMode,
-        paranoia_level: paranoiaLevel,
-        inbound_anomaly_threshold: inboundThreshold,
-        outbound_anomaly_threshold: outboundThreshold,
-        service_profiles: serviceProfiles,
-      });
+      const updated = await updateConfig(buildConfig());
       setConfig(updated);
+      setDefaults(updated.defaults);
+      setServiceOverrides(updated.services);
       setDirty(false);
-      showSuccess("Settings saved successfully");
+      showSuccess("Settings saved");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -206,33 +485,58 @@ export default function SettingsPanel() {
     }
   };
 
-  const handleProfileChange = (service: string, profile: ServiceProfileMode) => {
-    setServiceProfiles((prev) => {
-      const existing = prev.find((p) => p.service === service);
-      if (existing) {
-        return prev.map((p) => (p.service === service ? { ...p, profile } : p));
+  const handleDeploy = async () => {
+    // Save first, then deploy.
+    setDeploying(true);
+    setError(null);
+    try {
+      await updateConfig(buildConfig());
+      const result = await deployConfig();
+      setDirty(false);
+      if (result.reloaded) {
+        showSuccess("Settings deployed and Caddy reloaded");
+      } else {
+        showSuccess("Config files written — Caddy reload may be needed");
       }
-      return [...prev, { service, profile }];
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const handleDefaultsChange = (s: WAFServiceSettings) => {
+    setDefaults(s);
+    markDirty();
+  };
+
+  const handleServiceChange = (host: string, s: WAFServiceSettings) => {
+    setServiceOverrides((prev) => ({ ...prev, [host]: s }));
+    markDirty();
+  };
+
+  const handleServiceRemove = (host: string) => {
+    setServiceOverrides((prev) => {
+      const next = { ...prev };
+      delete next[host];
+      return next;
     });
     markDirty();
   };
 
-  const getProfileForService = (service: string): ServiceProfileMode => {
-    return serviceProfiles.find((p) => p.service === service)?.profile ?? "strict";
+  const handleAddServiceOverride = (host: string) => {
+    if (serviceOverrides[host]) return;
+    setServiceOverrides((prev) => ({
+      ...prev,
+      [host]: { ...defaults },
+    }));
+    markDirty();
   };
 
-  const handleExportConfig = async () => {
+  const handleExport = () => {
     try {
-      const configData = {
-        engine_mode: engineMode,
-        paranoia_level: paranoiaLevel,
-        inbound_anomaly_threshold: inboundThreshold,
-        outbound_anomaly_threshold: outboundThreshold,
-        service_profiles: serviceProfiles,
-      };
-      const blob = new Blob([JSON.stringify(configData, null, 2)], {
-        type: "application/json",
-      });
+      const data = buildConfig();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -245,7 +549,7 @@ export default function SettingsPanel() {
     }
   };
 
-  const handleImportConfig = () => {
+  const handleImport = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
@@ -254,35 +558,39 @@ export default function SettingsPanel() {
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text) as Partial<WAFConfig>;
-        if (data.engine_mode) setEngineMode(data.engine_mode);
-        if (data.paranoia_level) setParanoiaLevel(data.paranoia_level);
-        if (data.inbound_anomaly_threshold !== undefined)
-          setInboundThreshold(data.inbound_anomaly_threshold);
-        if (data.outbound_anomaly_threshold !== undefined)
-          setOutboundThreshold(data.outbound_anomaly_threshold);
-        if (data.service_profiles) setServiceProfiles(data.service_profiles);
+        const data = JSON.parse(text) as WAFConfig;
+        if (data.defaults) setDefaults(data.defaults);
+        if (data.services) setServiceOverrides(data.services);
         setDirty(true);
-        showSuccess("Configuration imported — save to apply");
+        showSuccess("Configuration imported — save or deploy to apply");
       } catch (err: any) {
-        setError("Failed to parse config file: " + err.message);
+        setError("Failed to parse config: " + err.message);
       }
     };
     input.click();
   };
+
+  // Services that have overrides + services discovered from traffic.
+  const allHosts = Array.from(
+    new Set([
+      ...Object.keys(serviceOverrides),
+      ...services.map((s) => s.service),
+    ])
+  ).sort();
+  const unconfiguredHosts = allHosts.filter((h) => !serviceOverrides[h]);
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold">Settings</h2>
-          <p className="text-sm text-muted-foreground">WAF engine configuration</p>
+          <p className="text-sm text-muted-foreground">Dynamic WAF configuration</p>
         </div>
         <div className="space-y-4">
-          {[...Array(4)].map((_, i) => (
+          {[...Array(3)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6">
-                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-24 w-full" />
               </CardContent>
             </Card>
           ))}
@@ -298,25 +606,25 @@ export default function SettingsPanel() {
         <div>
           <h2 className="text-lg font-semibold">Settings</h2>
           <p className="text-sm text-muted-foreground">
-            Configure the WAF engine, paranoia level, and anomaly scoring thresholds.
+            Configure WAF behavior per service. Changes take effect after deploy.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportConfig}>
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-3.5 w-3.5" />
             Export
           </Button>
-          <Button variant="outline" size="sm" onClick={handleImportConfig}>
+          <Button variant="outline" size="sm" onClick={handleImport}>
             <Upload className="h-3.5 w-3.5" />
             Import
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!dirty || saving}
-          >
+          <Button size="sm" variant="outline" onClick={handleSave} disabled={!dirty || saving}>
             <Save className="h-3.5 w-3.5" />
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? "Saving..." : "Save"}
+          </Button>
+          <Button size="sm" onClick={handleDeploy} disabled={deploying}>
+            <Rocket className="h-3.5 w-3.5" />
+            {deploying ? "Deploying..." : "Save & Deploy"}
           </Button>
         </div>
       </div>
@@ -328,7 +636,6 @@ export default function SettingsPanel() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-
       {successMsg && (
         <Alert variant="success">
           <Check className="h-4 w-4" />
@@ -336,238 +643,99 @@ export default function SettingsPanel() {
           <AlertDescription>{successMsg}</AlertDescription>
         </Alert>
       )}
-
       {dirty && (
         <Alert>
           <Info className="h-4 w-4" />
           <AlertTitle>Unsaved Changes</AlertTitle>
           <AlertDescription>
-            You have unsaved configuration changes. Click "Save Changes" to apply.
+            Click "Save & Deploy" to write config files and reload Caddy.
           </AlertDescription>
         </Alert>
       )}
 
-      {/* WAF Engine Status */}
+      {/* ── Global Defaults ── */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-neon-green" />
-            <CardTitle className="text-sm">WAF Engine Status</CardTitle>
+            <Globe className="h-4 w-4 text-neon-cyan" />
+            <CardTitle className="text-sm">Global Defaults</CardTitle>
           </div>
           <CardDescription>
-            Control whether the WAF engine is actively blocking, detection-only, or disabled
+            Applied to all services without explicit overrides
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <EngineModeSelector
-            value={engineMode}
-            onChange={(mode) => {
-              setEngineMode(mode);
-              markDirty();
-            }}
+        <CardContent className="space-y-5">
+          {/* Mode */}
+          <ModeSelector
+            value={defaults.mode}
+            onChange={(mode) => handleDefaultsChange({ ...defaults, mode })}
           />
-        </CardContent>
-      </Card>
 
-      {/* Paranoia Level */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Paranoia Level</CardTitle>
-          <CardDescription>
-            Higher levels enable more rules but may cause more false positives
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-6">
-            <div className="flex-1">
-              <Slider
-                value={[paranoiaLevel]}
-                onValueChange={(v) => {
-                  setParanoiaLevel(v[0]);
-                  markDirty();
-                }}
-                min={1}
-                max={4}
-                step={1}
+          {defaults.mode !== "disabled" && (
+            <>
+              <Separator />
+              <SensitivitySettings settings={defaults} onChange={handleDefaultsChange} />
+              <Separator />
+              <RuleGroupToggles
+                categories={categories}
+                disabledGroups={defaults.disabled_groups ?? []}
+                onChange={(groups) => handleDefaultsChange({ ...defaults, disabled_groups: groups })}
               />
-              <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-                <span>1</span>
-                <span>2</span>
-                <span>3</span>
-                <span>4</span>
-              </div>
-            </div>
-            <div className="w-16 text-center">
-              <span className="text-2xl font-bold text-neon-green">
-                {paranoiaLevel}
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-md border border-border bg-navy-950 p-3">
-            <p className="text-xs font-medium text-foreground">
-              {PARANOIA_DESCRIPTIONS[paranoiaLevel]?.label}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {PARANOIA_DESCRIPTIONS[paranoiaLevel]?.desc}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Anomaly Thresholds */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Anomaly Scoring Thresholds</CardTitle>
-          <CardDescription>
-            Requests scoring above these thresholds will be blocked (when engine is enabled)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Inbound Anomaly Threshold
-              </Label>
-              <div className="flex items-center gap-3">
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={inboundThreshold}
-                  onChange={(e) => {
-                    setInboundThreshold(Number(e.target.value));
-                    markDirty();
-                  }}
-                  className="w-24"
-                />
-                <span className="text-xs text-muted-foreground">
-                  Default: 5
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Cumulative anomaly score threshold for incoming requests
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Outbound Anomaly Threshold
-              </Label>
-              <div className="flex items-center gap-3">
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={outboundThreshold}
-                  onChange={(e) => {
-                    setOutboundThreshold(Number(e.target.value));
-                    markDirty();
-                  }}
-                  className="w-24"
-                />
-                <span className="text-xs text-muted-foreground">
-                  Default: 4
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Cumulative anomaly score threshold for outgoing responses
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Per-Service Profiles */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Per-Service Profiles</CardTitle>
-          <CardDescription>
-            Override WAF behavior for individual services
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {services.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Service</TableHead>
-                  <TableHead className="text-right">Events</TableHead>
-                  <TableHead className="text-right">Block Rate</TableHead>
-                  <TableHead>Profile</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {services.map((svc) => (
-                  <TableRow key={svc.service}>
-                    <TableCell className="font-medium text-xs">
-                      {svc.service}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-xs">
-                      {svc.total_events.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="h-2 w-12 overflow-hidden rounded-full bg-navy-800">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              svc.block_rate > 50
-                                ? "bg-neon-pink"
-                                : svc.block_rate > 20
-                                  ? "bg-neon-amber"
-                                  : "bg-neon-green"
-                            }`}
-                            style={{ width: `${Math.min(svc.block_rate, 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {svc.block_rate.toFixed(1)}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={getProfileForService(svc.service)}
-                        onValueChange={(v) =>
-                          handleProfileChange(svc.service, v as ServiceProfileMode)
-                        }
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="strict">
-                            <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-neon-green" />
-                              Strict
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="tuning">
-                            <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-neon-amber" />
-                              Tuning
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="off">
-                            <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-neon-pink" />
-                              Off
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="py-8 text-center text-xs text-muted-foreground">
-              No services discovered yet. Services will appear as traffic flows through the WAF.
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
+
+      {/* ── Per-Service Overrides ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-neon-purple" />
+            <h3 className="text-sm font-semibold">Per-Service Overrides</h3>
+            <Badge variant="outline" className="text-xs">
+              {Object.keys(serviceOverrides).length}
+            </Badge>
+          </div>
+          {unconfiguredHosts.length > 0 && (
+            <Select onValueChange={(v) => handleAddServiceOverride(v)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Add service override..." />
+              </SelectTrigger>
+              <SelectContent>
+                {unconfiguredHosts.map((host) => (
+                  <SelectItem key={host} value={host}>
+                    {host}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        {Object.keys(serviceOverrides).length === 0 && (
+          <Card>
+            <CardContent className="py-8 text-center text-xs text-muted-foreground">
+              No per-service overrides configured. All services use the global defaults above.
+              <br />
+              Select a service from the dropdown to add an override.
+            </CardContent>
+          </Card>
+        )}
+
+        {Object.entries(serviceOverrides)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([host, settings]) => (
+            <ServiceSettingsCard
+              key={host}
+              hostname={host}
+              settings={settings}
+              categories={categories}
+              serviceDetail={services.find((s) => s.service === host)}
+              onChange={(s) => handleServiceChange(host, s)}
+              onRemove={() => handleServiceRemove(host)}
+            />
+          ))}
+      </div>
     </div>
   );
 }

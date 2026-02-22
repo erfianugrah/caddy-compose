@@ -750,7 +750,13 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 		exclusions := es.EnabledExclusions()
 		ResetRuleIDCounter()
 		result := GenerateConfigs(cfg, exclusions)
-		writeJSON(w, http.StatusOK, result)
+		// Include WAF settings in the response.
+		wafSettings := GenerateWAFSettings(cfg)
+		writeJSON(w, http.StatusOK, map[string]string{
+			"pre_crs_conf":  result.PreCRS,
+			"post_crs_conf": result.PostCRS,
+			"waf_settings":  wafSettings,
+		})
 	}
 }
 
@@ -762,9 +768,10 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) h
 		exclusions := es.EnabledExclusions()
 		ResetRuleIDCounter()
 		result := GenerateConfigs(cfg, exclusions)
+		wafSettings := GenerateWAFSettings(cfg)
 
 		// Write config files to the shared volume.
-		if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS); err != nil {
+		if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to write config files",
 				Details: err.Error(),
@@ -789,12 +796,13 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) h
 		}
 
 		writeJSON(w, http.StatusOK, DeployResponse{
-			Status:    status,
-			Message:   msg,
-			PreCRS:    filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
-			PostCRS:   filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
-			Reloaded:  reloaded,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Status:      status,
+			Message:     msg,
+			PreCRS:      filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
+			PostCRS:     filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
+			WAFSettings: filepath.Join(deployCfg.CorazaDir, "custom-waf-settings.conf"),
+			Reloaded:    reloaded,
+			Timestamp:   time.Now().UTC().Format(time.RFC3339),
 		})
 	}
 }

@@ -146,6 +146,7 @@ export interface CRSCategory {
   name: string;
   description: string;
   rule_range: string;
+  tag: string; // CRS tag for ctl:ruleRemoveByTag
 }
 
 export interface CRSCatalogResponse {
@@ -309,27 +310,45 @@ export interface DeployResult {
   message: string;
   pre_crs_file: string;
   post_crs_file: string;
+  waf_settings_file: string;
   reloaded: boolean;
   timestamp: string;
 }
 
 // ─── Settings / Config ──────────────────────────────────────────────
 
-export type WAFEngineMode = "on" | "detection_only" | "off";
+export type WAFMode = "enabled" | "detection_only" | "disabled";
 
-export interface WAFConfig {
-  engine_mode: WAFEngineMode;
+export interface WAFServiceSettings {
+  mode: WAFMode;
   paranoia_level: number;
-  inbound_anomaly_threshold: number;
-  outbound_anomaly_threshold: number;
-  service_profiles: ServiceProfile[];
+  inbound_threshold: number;
+  outbound_threshold: number;
+  disabled_groups?: string[];
 }
 
-export type ServiceProfileMode = "strict" | "tuning" | "off";
+export interface WAFConfig {
+  defaults: WAFServiceSettings;
+  services: Record<string, WAFServiceSettings>;
+}
 
-export interface ServiceProfile {
-  service: string;
-  profile: ServiceProfileMode;
+// Sensitivity presets for the UI
+export type WAFPreset = "strict" | "moderate" | "tuning" | "custom";
+
+export function presetToSettings(preset: WAFPreset): Partial<WAFServiceSettings> {
+  switch (preset) {
+    case "strict": return { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 };
+    case "moderate": return { paranoia_level: 1, inbound_threshold: 15, outbound_threshold: 15 };
+    case "tuning": return { paranoia_level: 1, inbound_threshold: 10000, outbound_threshold: 10000 };
+    case "custom": return {};
+  }
+}
+
+export function settingsToPreset(s: WAFServiceSettings): WAFPreset {
+  if (s.paranoia_level === 1 && s.inbound_threshold === 5 && s.outbound_threshold === 4) return "strict";
+  if (s.paranoia_level === 1 && s.inbound_threshold === 15 && s.outbound_threshold === 15) return "moderate";
+  if (s.inbound_threshold >= 10000 && s.outbound_threshold >= 10000) return "tuning";
+  return "custom";
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -679,86 +698,19 @@ export async function importExclusions(data: Exclusion[]): Promise<{ imported: n
 }
 
 // Config / Settings
-// Go API uses different field names and shapes — transform both directions.
-
-interface RawWAFConfig {
-  paranoia_level: number;
-  inbound_threshold: number;
-  outbound_threshold: number;
-  rule_engine: string; // "On" | "Off" | "DetectionOnly"
-  services: Record<string, { profile: string }>;
-}
-
-// Map Go's rule_engine string to frontend WAFEngineMode
-function mapRuleEngineToMode(engine: string): WAFEngineMode {
-  switch (engine) {
-    case "On": return "on";
-    case "DetectionOnly": return "detection_only";
-    case "Off": return "off";
-    default: return "on";
-  }
-}
-
-// Map frontend WAFEngineMode to Go's rule_engine string
-function mapModeToRuleEngine(mode: WAFEngineMode): string {
-  switch (mode) {
-    case "on": return "On";
-    case "detection_only": return "DetectionOnly";
-    case "off": return "Off";
-    default: return "On";
-  }
-}
-
-// Transform Go's services map to frontend's service_profiles array
-function mapServicesToProfiles(services: Record<string, { profile: string }> | null | undefined): ServiceProfile[] {
-  if (!services) return [];
-  return Object.entries(services).map(([service, cfg]) => ({
-    service,
-    profile: (cfg.profile || "strict") as ServiceProfileMode,
-  }));
-}
-
-// Transform frontend's service_profiles array to Go's services map
-function mapProfilesToServices(profiles: ServiceProfile[] | null | undefined): Record<string, { profile: string }> {
-  const services: Record<string, { profile: string }> = {};
-  if (!profiles) return services;
-  for (const p of profiles) {
-    services[p.service] = { profile: p.profile };
-  }
-  return services;
-}
+// New format: Go API returns WAFConfig directly with defaults + per-service settings.
+// No field name mapping needed — frontend types match Go JSON tags.
 
 export async function getConfig(): Promise<WAFConfig> {
-  const raw = await fetchJSON<RawWAFConfig>(`${API_BASE}/config`);
+  const raw = await fetchJSON<WAFConfig>(`${API_BASE}/config`);
   return {
-    engine_mode: mapRuleEngineToMode(raw.rule_engine),
-    paranoia_level: raw.paranoia_level ?? 1,
-    inbound_anomaly_threshold: raw.inbound_threshold ?? 5,
-    outbound_anomaly_threshold: raw.outbound_threshold ?? 4,
-    service_profiles: mapServicesToProfiles(raw.services),
+    defaults: raw.defaults ?? { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+    services: raw.services ?? {},
   };
 }
 
-export async function updateConfig(data: Partial<WAFConfig>): Promise<WAFConfig> {
-  // We need to send a full WAFConfig to Go — fetch current first if partial
-  const current = await fetchJSON<RawWAFConfig>(`${API_BASE}/config`);
-  const payload: RawWAFConfig = {
-    paranoia_level: data.paranoia_level ?? current.paranoia_level,
-    inbound_threshold: data.inbound_anomaly_threshold ?? current.inbound_threshold,
-    outbound_threshold: data.outbound_anomaly_threshold ?? current.outbound_threshold,
-    rule_engine: data.engine_mode ? mapModeToRuleEngine(data.engine_mode) : current.rule_engine,
-    services: data.service_profiles !== undefined
-      ? mapProfilesToServices(data.service_profiles)
-      : current.services,
-  };
-  const raw = await putJSON<RawWAFConfig>(`${API_BASE}/config`, payload);
-  return {
-    engine_mode: mapRuleEngineToMode(raw.rule_engine),
-    paranoia_level: raw.paranoia_level ?? 1,
-    inbound_anomaly_threshold: raw.inbound_threshold ?? 5,
-    outbound_anomaly_threshold: raw.outbound_threshold ?? 4,
-    service_profiles: mapServicesToProfiles(raw.services),
-  };
+export async function updateConfig(data: WAFConfig): Promise<WAFConfig> {
+  return putJSON<WAFConfig>(`${API_BASE}/config`, data);
 }
 
 // ─── Rate Limits ────────────────────────────────────────────────────

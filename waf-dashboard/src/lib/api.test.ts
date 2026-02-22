@@ -559,6 +559,7 @@ describe("deployConfig", () => {
       message: "Config files written and Caddy reloaded successfully",
       pre_crs_file: "/data/coraza/custom-pre-crs.conf",
       post_crs_file: "/data/coraza/custom-post-crs.conf",
+      waf_settings_file: "/data/coraza/custom-waf-settings.conf",
       reloaded: true,
       timestamp: "2026-02-22T11:00:00Z",
     };
@@ -576,6 +577,7 @@ describe("deployConfig", () => {
       message: "Config files written but Caddy reload failed",
       pre_crs_file: "/data/coraza/custom-pre-crs.conf",
       post_crs_file: "/data/coraza/custom-post-crs.conf",
+      waf_settings_file: "/data/coraza/custom-waf-settings.conf",
       reloaded: false,
       timestamp: "2026-02-22T11:00:00Z",
     };
@@ -590,153 +592,92 @@ describe("deployConfig", () => {
 // ─── getConfig / updateConfig ───────────────────────────────────────
 
 describe("getConfig", () => {
-  it("transforms Go WAFConfig to frontend WAFConfig shape", async () => {
-    const goResponse = {
-      paranoia_level: 2,
-      inbound_threshold: 10,
-      outbound_threshold: 5,
-      rule_engine: "On",
+  it("returns WAFConfig with defaults and per-service settings", async () => {
+    const apiResponse = {
+      defaults: {
+        mode: "enabled",
+        paranoia_level: 2,
+        inbound_threshold: 10,
+        outbound_threshold: 5,
+      },
       services: {
-        "radarr.erfi.io": { profile: "strict" },
-        "sonarr.erfi.io": { profile: "tuning" },
+        "radarr.erfi.io": { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "sonarr.erfi.io": { mode: "detection_only", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
       },
     };
 
-    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+    vi.stubGlobal("fetch", mockFetchResponse(apiResponse));
 
     const { getConfig } = await import("./api");
     const result = await getConfig();
 
-    expect(result.engine_mode).toBe("on");
-    expect(result.paranoia_level).toBe(2);
-    expect(result.inbound_anomaly_threshold).toBe(10);
-    expect(result.outbound_anomaly_threshold).toBe(5);
-    expect(result.service_profiles).toHaveLength(2);
-    expect(result.service_profiles).toEqual(
-      expect.arrayContaining([
-        { service: "radarr.erfi.io", profile: "strict" },
-        { service: "sonarr.erfi.io", profile: "tuning" },
-      ])
-    );
-  });
-
-  it("maps DetectionOnly rule_engine to detection_only", async () => {
-    vi.stubGlobal(
-      "fetch",
-      mockFetchResponse({
-        paranoia_level: 1,
-        inbound_threshold: 5,
-        outbound_threshold: 4,
-        rule_engine: "DetectionOnly",
-        services: {},
-      })
-    );
-
-    const { getConfig } = await import("./api");
-    const result = await getConfig();
-    expect(result.engine_mode).toBe("detection_only");
-  });
-
-  it("maps Off rule_engine to off", async () => {
-    vi.stubGlobal(
-      "fetch",
-      mockFetchResponse({
-        paranoia_level: 1,
-        inbound_threshold: 5,
-        outbound_threshold: 4,
-        rule_engine: "Off",
-        services: {},
-      })
-    );
-
-    const { getConfig } = await import("./api");
-    const result = await getConfig();
-    expect(result.engine_mode).toBe("off");
+    expect(result.defaults.mode).toBe("enabled");
+    expect(result.defaults.paranoia_level).toBe(2);
+    expect(result.defaults.inbound_threshold).toBe(10);
+    expect(result.defaults.outbound_threshold).toBe(5);
+    expect(Object.keys(result.services)).toHaveLength(2);
+    expect(result.services["radarr.erfi.io"].mode).toBe("enabled");
+    expect(result.services["sonarr.erfi.io"].mode).toBe("detection_only");
   });
 
   it("handles null/empty services gracefully", async () => {
     vi.stubGlobal(
       "fetch",
       mockFetchResponse({
-        paranoia_level: 1,
-        inbound_threshold: 5,
-        outbound_threshold: 4,
-        rule_engine: "On",
+        defaults: { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
         services: null,
       })
     );
 
     const { getConfig } = await import("./api");
     const result = await getConfig();
-    expect(result.service_profiles).toEqual([]);
+    expect(result.services).toEqual({});
+  });
+
+  it("uses fallback defaults when defaults are missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchResponse({ services: {} })
+    );
+
+    const { getConfig } = await import("./api");
+    const result = await getConfig();
+    expect(result.defaults.mode).toBe("enabled");
+    expect(result.defaults.paranoia_level).toBe(1);
+    expect(result.defaults.inbound_threshold).toBe(5);
+    expect(result.defaults.outbound_threshold).toBe(4);
   });
 });
 
 describe("updateConfig", () => {
-  it("transforms frontend WAFConfig to Go shape and back", async () => {
-    // updateConfig first fetches current config (GET), then PUTs the transformed payload
-    const goCurrentConfig = {
-      paranoia_level: 1,
-      inbound_threshold: 5,
-      outbound_threshold: 4,
-      rule_engine: "On",
-      services: {},
-    };
-    const goUpdatedConfig = {
-      paranoia_level: 3,
-      inbound_threshold: 10,
-      outbound_threshold: 8,
-      rule_engine: "DetectionOnly",
+  it("sends WAFConfig directly and returns result", async () => {
+    const updatedConfig = {
+      defaults: {
+        mode: "detection_only",
+        paranoia_level: 3,
+        inbound_threshold: 10,
+        outbound_threshold: 8,
+      },
       services: {
-        "radarr.erfi.io": { profile: "tuning" },
+        "radarr.erfi.io": { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
       },
     };
 
-    let callCount = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(() => {
-        callCount++;
-        // First call: GET /api/config (fetch current)
-        // Second call: PUT /api/config (send update)
-        const body = callCount <= 1 ? goCurrentConfig : goUpdatedConfig;
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () => Promise.resolve(body),
-          text: () => Promise.resolve(JSON.stringify(body)),
-        });
-      })
-    );
+    vi.stubGlobal("fetch", mockFetchResponse(updatedConfig));
 
     const { updateConfig } = await import("./api");
-    const result = await updateConfig({
-      engine_mode: "detection_only",
-      paranoia_level: 3,
-      inbound_anomaly_threshold: 10,
-      outbound_anomaly_threshold: 8,
-      service_profiles: [{ service: "radarr.erfi.io", profile: "tuning" }],
-    });
+    const result = await updateConfig(updatedConfig as any);
 
-    expect(result.engine_mode).toBe("detection_only");
-    expect(result.paranoia_level).toBe(3);
-    expect(result.inbound_anomaly_threshold).toBe(10);
-    expect(result.outbound_anomaly_threshold).toBe(8);
-    expect(result.service_profiles).toEqual([
-      { service: "radarr.erfi.io", profile: "tuning" },
-    ]);
+    expect(result.defaults.mode).toBe("detection_only");
+    expect(result.defaults.paranoia_level).toBe(3);
+    expect(Object.keys(result.services)).toHaveLength(1);
 
-    // Verify the PUT payload was in Go's format
-    expect(callCount).toBe(2);
-    const putCall = vi.mocked(fetch).mock.calls[1];
+    // Verify the PUT payload is sent directly (no field mapping)
+    const putCall = vi.mocked(fetch).mock.calls[0];
     const putBody = JSON.parse(putCall[1]?.body as string);
-    expect(putBody.rule_engine).toBe("DetectionOnly");
-    expect(putBody.inbound_threshold).toBe(10);
-    expect(putBody.outbound_threshold).toBe(8);
-    expect(putBody.services).toEqual({
-      "radarr.erfi.io": { profile: "tuning" },
-    });
+    expect(putBody.defaults.mode).toBe("detection_only");
+    expect(putBody.defaults.inbound_threshold).toBe(10);
+    expect(putBody.services["radarr.erfi.io"].mode).toBe("enabled");
   });
 });
 

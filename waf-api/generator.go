@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -29,10 +30,9 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion, idGen *ruleIDGen)
 	b.WriteString("# This file is loaded BEFORE the CRS rules.\n")
 	b.WriteString("# ============================================================\n\n")
 
-	// CRS setup (paranoia level, thresholds, engine mode) is NOT generated here.
-	// Those are defined per-tier in the Caddyfile WAF snippets (waf, waf_moderate,
-	// waf_strict) with different threshold values per tier. Writing them here
-	// would flatten all tiers to the same values and cause duplicate rule ID errors.
+	// CRS setup (paranoia level, thresholds) is generated separately via
+	// GenerateWAFSettings() → custom-waf-settings.conf, positioned between
+	// @crs-setup.conf.example and @owasp_crs/*.conf in the Caddyfile.
 
 	// Pre-CRS exclusions: quick actions, runtime ctl: rules, and raw rules.
 	preCRSExclusions := filterExclusions(exclusions, true)
@@ -362,4 +362,187 @@ func (g *ruleIDGen) next() string {
 // It is now a no-op since rule IDs are generated per-invocation.
 func ResetRuleIDCounter() {
 	// no-op: rule IDs are now per-invocation via ruleIDGen
+}
+
+// ─── WAF Settings Generator ────────────────────────────────────────
+
+// GenerateWAFSettings produces custom-waf-settings.conf content.
+// This file is positioned between @crs-setup.conf.example and @owasp_crs/*.conf
+// in the Caddyfile, so it overrides CRS defaults before CRS rules evaluate them.
+//
+// It generates:
+//   - Default SecAction for paranoia level and anomaly thresholds
+//   - Per-service SecRule SERVER_NAME overrides for custom settings
+//   - Per-service ctl:ruleRemoveByTag for disabled rule groups
+//   - Per-service ctl:ruleEngine=Off for disabled services
+func GenerateWAFSettings(cfg WAFConfig) string {
+	var b strings.Builder
+	idGen := newSettingsIDGen()
+
+	b.WriteString("# ============================================================\n")
+	b.WriteString("# WAF Dynamic Settings\n")
+	b.WriteString(fmt.Sprintf("# Generated: %s\n", time.Now().UTC().Format(time.RFC3339)))
+	b.WriteString("# Loaded AFTER @crs-setup.conf.example, BEFORE @owasp_crs/*.conf\n")
+	b.WriteString("# ============================================================\n\n")
+
+	// --- Defaults ---
+	b.WriteString("# --- Global Defaults ---\n")
+	b.WriteString("# Override CRS setup defaults. Applied to all services.\n")
+	b.WriteString("# Per-service overrides below can further modify these values.\n\n")
+
+	d := cfg.Defaults
+	// For detection_only mode, thresholds are set to 10000 (log everything, block nothing).
+	inT, outT := d.InboundThreshold, d.OutboundThreshold
+	if d.Mode == "detection_only" {
+		inT, outT = 10000, 10000
+	}
+
+	b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,"+
+		"setvar:tx.paranoia_level=%d,"+
+		"setvar:tx.blocking_paranoia_level=%d,"+
+		"setvar:tx.detection_paranoia_level=%d\"\n",
+		idGen.next(), d.ParanoiaLevel, d.ParanoiaLevel, d.ParanoiaLevel))
+	b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,"+
+		"setvar:tx.inbound_anomaly_score_threshold=%d,"+
+		"setvar:tx.outbound_anomaly_score_threshold=%d\"\n\n",
+		idGen.next(), inT, outT))
+
+	// Default mode: disabled → ctl:ruleEngine=Off for all.
+	if d.Mode == "disabled" {
+		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleEngine=Off\"\n\n",
+			idGen.next()))
+	}
+
+	// Default disabled groups.
+	for _, tag := range d.DisabledGroups {
+		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleRemoveByTag=%s\"\n",
+			idGen.next(), tag))
+	}
+	if len(d.DisabledGroups) > 0 {
+		b.WriteString("\n")
+	}
+
+	// --- Per-service overrides ---
+	if len(cfg.Services) > 0 {
+		b.WriteString("# --- Per-Service Overrides ---\n")
+		b.WriteString("# Each rule matches SERVER_NAME for the specific service hostname.\n")
+		b.WriteString("# Only fires within that service's coraza_waf instance.\n\n")
+
+		// Sort for deterministic output.
+		hosts := sortedKeys(cfg.Services)
+		for _, host := range hosts {
+			ss := cfg.Services[host]
+			writeServiceOverride(&b, host, ss, d, idGen)
+		}
+	}
+
+	return b.String()
+}
+
+// writeServiceOverride generates SecRule(s) for a single service override.
+func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServiceSettings, idGen *settingsIDGen) {
+	escapedHost := escapeSecRuleValue(host)
+
+	// If disabled, generate ctl:ruleEngine=Off (only if default is not already disabled).
+	if ss.Mode == "disabled" && defaults.Mode != "disabled" {
+		b.WriteString(fmt.Sprintf("# %s\n", host))
+		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleEngine=Off\"\n\n",
+			escapedHost, idGen.next()))
+		return // No further overrides needed for disabled services.
+	}
+
+	// If default is disabled but this service is enabled/detection_only,
+	// re-enable the rule engine for this service's traffic.
+	needsEngineOn := defaults.Mode == "disabled" && ss.Mode != "disabled"
+
+	// For detection_only, override thresholds to 10000.
+	inT, outT := ss.InboundThreshold, ss.OutboundThreshold
+	if ss.Mode == "detection_only" {
+		inT, outT = 10000, 10000
+	}
+
+	// Check if paranoia or thresholds differ from defaults.
+	defInT, defOutT := defaults.InboundThreshold, defaults.OutboundThreshold
+	if defaults.Mode == "detection_only" {
+		defInT, defOutT = 10000, 10000
+	}
+
+	needsParanoiaOverride := ss.ParanoiaLevel != defaults.ParanoiaLevel
+	needsThresholdOverride := inT != defInT || outT != defOutT
+
+	// Disabled rule groups (unique to this service, not already in defaults).
+	defaultDisabled := make(map[string]bool, len(defaults.DisabledGroups))
+	for _, tag := range defaults.DisabledGroups {
+		defaultDisabled[tag] = true
+	}
+	var extraGroups []string
+	for _, tag := range ss.DisabledGroups {
+		if !defaultDisabled[tag] {
+			extraGroups = append(extraGroups, tag)
+		}
+	}
+
+	// Skip this service entirely if it produces no output (identical to defaults).
+	if !needsEngineOn && !needsParanoiaOverride && !needsThresholdOverride && len(extraGroups) == 0 {
+		return
+	}
+
+	b.WriteString(fmt.Sprintf("# %s\n", host))
+
+	// Emit ctl:ruleEngine=On when the global default is disabled.
+	if needsEngineOn {
+		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleEngine=On\"\n",
+			escapedHost, idGen.next()))
+	}
+
+	if needsParanoiaOverride || needsThresholdOverride {
+		var setvars []string
+		if needsParanoiaOverride {
+			setvars = append(setvars,
+				fmt.Sprintf("setvar:tx.paranoia_level=%d", ss.ParanoiaLevel),
+				fmt.Sprintf("setvar:tx.blocking_paranoia_level=%d", ss.ParanoiaLevel),
+				fmt.Sprintf("setvar:tx.detection_paranoia_level=%d", ss.ParanoiaLevel),
+			)
+		}
+		if needsThresholdOverride {
+			setvars = append(setvars,
+				fmt.Sprintf("setvar:tx.inbound_anomaly_score_threshold=%d", inT),
+				fmt.Sprintf("setvar:tx.outbound_anomaly_score_threshold=%d", outT),
+			)
+		}
+		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,%s\"\n",
+			escapedHost, idGen.next(), strings.Join(setvars, ",")))
+	}
+
+	for _, tag := range extraGroups {
+		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleRemoveByTag=%s\"\n",
+			escapedHost, idGen.next(), tag))
+	}
+
+	b.WriteString("\n")
+}
+
+// sortedKeys returns map keys sorted alphabetically.
+func sortedKeys(m map[string]WAFServiceSettings) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// settingsIDGen generates unique rule IDs in the 97xxxxx range
+// for WAF settings overrides (separate from exclusion IDs in 95xxxxx).
+type settingsIDGen struct {
+	counter int
+}
+
+func newSettingsIDGen() *settingsIDGen {
+	return &settingsIDGen{}
+}
+
+func (g *settingsIDGen) next() string {
+	g.counter++
+	return fmt.Sprintf("97%05d", g.counter)
 }

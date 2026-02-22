@@ -195,18 +195,48 @@ type RuleExclusion struct {
 	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
-// WAF Configuration model
+// WAF Configuration model — per-service dynamic WAF settings.
+// Defaults are applied to any service without an explicit override.
+// Services map hostname → per-service overrides.
 
 type WAFConfig struct {
-	ParanoiaLevel     int                      `json:"paranoia_level"`
-	InboundThreshold  int                      `json:"inbound_threshold"`
-	OutboundThreshold int                      `json:"outbound_threshold"`
-	RuleEngine        string                   `json:"rule_engine"`
-	Services          map[string]ServiceConfig `json:"services"`
+	Defaults WAFServiceSettings            `json:"defaults"`
+	Services map[string]WAFServiceSettings `json:"services"`
 }
 
-type ServiceConfig struct {
-	Profile string `json:"profile"`
+// WAFServiceSettings controls WAF behavior for a service (or as defaults).
+type WAFServiceSettings struct {
+	// Mode: "enabled" (blocking), "detection_only" (log-only), "disabled" (ctl:ruleEngine=Off)
+	Mode string `json:"mode"`
+	// ParanoiaLevel: CRS paranoia level 1-4 (higher = more rules, more false positives)
+	ParanoiaLevel int `json:"paranoia_level"`
+	// InboundThreshold: anomaly score threshold for inbound requests (lower = stricter)
+	InboundThreshold int `json:"inbound_threshold"`
+	// OutboundThreshold: anomaly score threshold for outbound responses
+	OutboundThreshold int `json:"outbound_threshold"`
+	// DisabledGroups: CRS rule group tags to disable (e.g. "attack-sqli", "attack-xss")
+	DisabledGroups []string `json:"disabled_groups,omitempty"`
+}
+
+// Valid WAF modes
+var validWAFModes = map[string]bool{
+	"enabled":        true,
+	"detection_only": true,
+	"disabled":       true,
+}
+
+// Valid CRS rule group tags that can be disabled
+var validRuleGroupTags = map[string]bool{
+	"attack-protocol":         true, // Protocol Enforcement (920xxx) + Protocol Attack (921xxx)
+	"attack-lfi":              true, // Local File Inclusion (930xxx)
+	"attack-rfi":              true, // Remote File Inclusion (931xxx)
+	"attack-rce":              true, // Remote Code Execution (932xxx)
+	"attack-injection-php":    true, // PHP Injection (933xxx)
+	"attack-injection-nodejs": true, // Node.js Injection (934xxx)
+	"attack-xss":              true, // Cross-Site Scripting (941xxx)
+	"attack-sqli":             true, // SQL Injection (942xxx)
+	"attack-fixation":         true, // Session Fixation (943xxx)
+	"attack-injection-java":   true, // Java Injection (944xxx)
 }
 
 // Config generation response

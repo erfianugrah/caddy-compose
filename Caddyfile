@@ -102,21 +102,22 @@
 	}
 }
 
-# Coraza WAF — OWASP CRS with three operational tiers.
-# All tiers skip WebSocket upgrades (Coraza mangles the 101 handshake).
+# Coraza WAF — OWASP CRS with dynamic per-service configuration.
+# WebSocket upgrades are skipped (Coraza mangles the 101 handshake).
 #
-# (waf)          — Tuning mode: PL1, anomaly thresholds at 10000 (logs everything, blocks nothing).
-# (waf_moderate) — Moderate mode: PL1, anomaly thresholds at 15/15 (blocks obvious attacks, tolerates API quirks).
-# (waf_strict)   — Enforcing mode: PL1, anomaly thresholds at 5/4 (CRS defaults, blocks attacks).
-# (waf_off)      — No WAF processing. For static-respond-only or metrics-only services.
+# (waf)     — Unified WAF snippet. Per-service settings (paranoia level,
+#             thresholds, rule groups, mode) are dynamically generated via
+#             custom-waf-settings.conf, managed by the waf-api Settings page.
+# (waf_off) — No WAF processing. For metrics-only or respond-only services.
 #
-# Each tier loads configs in order:
-#   1. /etc/caddy/coraza/pre-crs.conf         — Baked-in defaults (image build)
-#   2. /data/coraza/custom-pre-crs.conf       — Dynamic overrides (Policy Engine UI)
-#   3. CRS setup + CRS rules
-#   4. /etc/caddy/coraza/post-crs.conf        — Baked-in defaults (image build)
-#   5. /data/coraza/custom-post-crs.conf      — Dynamic overrides (Policy Engine UI)
-
+# Config loading order inside (waf):
+#   1. /etc/caddy/coraza/pre-crs.conf           — Baked-in defaults (image build)
+#   2. /data/coraza/custom-pre-crs.conf         — Dynamic exclusions (Policy Engine UI)
+#   3. @crs-setup.conf.example                  — CRS default setup
+#   4. /data/coraza/custom-waf-settings.conf    — Dynamic settings (paranoia, thresholds, rule groups)
+#   5. @owasp_crs/*.conf                        — CRS detection rules
+#   6. /etc/caddy/coraza/post-crs.conf          — Baked-in post-CRS rules (image build)
+#   7. /data/coraza/custom-post-crs.conf        — Dynamic post-CRS exclusions (Policy Engine UI)
 (waf) {
 	@not_websocket {
 		not header Connection *Upgrade*
@@ -128,6 +129,7 @@
 			Include /etc/caddy/coraza/pre-crs.conf
 			Include /data/coraza/custom-pre-crs.conf
 			Include @crs-setup.conf.example
+			Include /data/coraza/custom-waf-settings.conf
 			Include @owasp_crs/*.conf
 			Include /etc/caddy/coraza/post-crs.conf
 			Include /data/coraza/custom-post-crs.conf
@@ -136,72 +138,6 @@
 			SecAuditLog /var/log/coraza-audit.log
 			SecAuditLogFormat json
 			SecAuditLogParts ABCFHKZ
-			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
-			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=10000,setvar:tx.outbound_anomaly_score_threshold=10000"
-			`
-		}
-	}
-	handle_errors 400 403 429 {
-		root * /etc/caddy/errors
-		templates
-		rewrite * /error.html
-		file_server
-	}
-}
-
-(waf_moderate) {
-	@not_websocket_moderate {
-		not header Connection *Upgrade*
-	}
-	route @not_websocket_moderate {
-		coraza_waf {
-			load_owasp_crs
-			directives `
-			Include /etc/caddy/coraza/pre-crs.conf
-			Include /data/coraza/custom-pre-crs.conf
-			Include @crs-setup.conf.example
-			Include @owasp_crs/*.conf
-			Include /etc/caddy/coraza/post-crs.conf
-			Include /data/coraza/custom-post-crs.conf
-			SecRuleEngine On
-			SecAuditEngine RelevantOnly
-			SecAuditLog /var/log/coraza-audit.log
-			SecAuditLogFormat json
-			SecAuditLogParts ABCFHKZ
-			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
-			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=15,setvar:tx.outbound_anomaly_score_threshold=15"
-			`
-		}
-	}
-	handle_errors 400 403 429 {
-		root * /etc/caddy/errors
-		templates
-		rewrite * /error.html
-		file_server
-	}
-}
-
-(waf_strict) {
-	@not_websocket_strict {
-		not header Connection *Upgrade*
-	}
-	route @not_websocket_strict {
-		coraza_waf {
-			load_owasp_crs
-			directives `
-			Include /etc/caddy/coraza/pre-crs.conf
-			Include /data/coraza/custom-pre-crs.conf
-			Include @crs-setup.conf.example
-			Include @owasp_crs/*.conf
-			Include /etc/caddy/coraza/post-crs.conf
-			Include /data/coraza/custom-post-crs.conf
-			SecRuleEngine On
-			SecAuditEngine RelevantOnly
-			SecAuditLog /var/log/coraza-audit.log
-			SecAuditLogFormat json
-			SecAuditLogParts ABCFHKZ
-			SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
-			SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold=5,setvar:tx.outbound_anomaly_score_threshold=4"
 			`
 		}
 	}
@@ -478,7 +414,7 @@ qbit.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf_moderate
+	import waf
 	import ipsum_blocklist
 	import /data/caddy/rl/qbit*.caddy
 	import tls_config
@@ -639,7 +575,7 @@ dockge-sg.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf_moderate
+	import waf
 	import ipsum_blocklist
 	import /data/caddy/rl/dockge*.caddy
 	import tls_config
@@ -655,7 +591,7 @@ httpbun.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf_strict
+	import waf
 	import ipsum_blocklist
 	import /data/caddy/rl/httpbun*.caddy
 	import tls_config
@@ -671,7 +607,7 @@ httpbin.erfi.io {
 	import cors
 	import security_headers
 	import static_cache
-	import waf_strict
+	import waf
 	import ipsum_blocklist
 	import /data/caddy/rl/httpbin*.caddy
 	import tls_config

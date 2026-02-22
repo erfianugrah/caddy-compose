@@ -32,12 +32,13 @@ type DeployConfig struct {
 
 // DeployResponse is returned by the deploy endpoint.
 type DeployResponse struct {
-	Status    string `json:"status"`
-	Message   string `json:"message"`
-	PreCRS    string `json:"pre_crs_file"`
-	PostCRS   string `json:"post_crs_file"`
-	Reloaded  bool   `json:"reloaded"`
-	Timestamp string `json:"timestamp"`
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	PreCRS      string `json:"pre_crs_file"`
+	PostCRS     string `json:"post_crs_file"`
+	WAFSettings string `json:"waf_settings_file"`
+	Reloaded    bool   `json:"reloaded"`
+	Timestamp   string `json:"timestamp"`
 }
 
 // ensureCorazaDir creates the coraza config directory and empty placeholder
@@ -47,7 +48,7 @@ func ensureCorazaDir(dir string) error {
 		return fmt.Errorf("creating coraza dir %s: %w", dir, err)
 	}
 
-	files := []string{"custom-pre-crs.conf", "custom-post-crs.conf"}
+	files := []string{"custom-pre-crs.conf", "custom-post-crs.conf", "custom-waf-settings.conf"}
 	for _, name := range files {
 		path := filepath.Join(dir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -62,21 +63,20 @@ func ensureCorazaDir(dir string) error {
 	return nil
 }
 
-// writeConfFiles writes the generated pre-CRS and post-CRS configs to disk atomically.
-func writeConfFiles(dir, preCRS, postCRS string) error {
-	prePath := filepath.Join(dir, "custom-pre-crs.conf")
-	postPath := filepath.Join(dir, "custom-post-crs.conf")
-
-	if err := atomicWriteFile(prePath, []byte(preCRS), 0644); err != nil {
-		return fmt.Errorf("writing %s: %w", prePath, err)
+// writeConfFiles writes the generated pre-CRS, post-CRS, and WAF settings configs to disk atomically.
+func writeConfFiles(dir, preCRS, postCRS, wafSettings string) error {
+	files := map[string]string{
+		"custom-pre-crs.conf":      preCRS,
+		"custom-post-crs.conf":     postCRS,
+		"custom-waf-settings.conf": wafSettings,
 	}
-	log.Printf("wrote %s (%d bytes)", prePath, len(preCRS))
-
-	if err := atomicWriteFile(postPath, []byte(postCRS), 0644); err != nil {
-		return fmt.Errorf("writing %s: %w", postPath, err)
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := atomicWriteFile(path, []byte(content), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
+		log.Printf("wrote %s (%d bytes)", path, len(content))
 	}
-	log.Printf("wrote %s (%d bytes)", postPath, len(postCRS))
-
 	return nil
 }
 

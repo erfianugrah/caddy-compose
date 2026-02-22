@@ -989,17 +989,17 @@ func TestConfigStoreDefaults(t *testing.T) {
 	cs := newTestConfigStore(t)
 	cfg := cs.Get()
 
-	if cfg.ParanoiaLevel != 1 {
-		t.Errorf("default paranoia: want 1, got %d", cfg.ParanoiaLevel)
+	if cfg.Defaults.ParanoiaLevel != 1 {
+		t.Errorf("default paranoia: want 1, got %d", cfg.Defaults.ParanoiaLevel)
 	}
-	if cfg.InboundThreshold != 5 {
-		t.Errorf("default inbound: want 5, got %d", cfg.InboundThreshold)
+	if cfg.Defaults.InboundThreshold != 5 {
+		t.Errorf("default inbound: want 5, got %d", cfg.Defaults.InboundThreshold)
 	}
-	if cfg.OutboundThreshold != 4 {
-		t.Errorf("default outbound: want 4, got %d", cfg.OutboundThreshold)
+	if cfg.Defaults.OutboundThreshold != 4 {
+		t.Errorf("default outbound: want 4, got %d", cfg.Defaults.OutboundThreshold)
 	}
-	if cfg.RuleEngine != "On" {
-		t.Errorf("default engine: want On, got %s", cfg.RuleEngine)
+	if cfg.Defaults.Mode != "enabled" {
+		t.Errorf("default mode: want enabled, got %s", cfg.Defaults.Mode)
 	}
 }
 
@@ -1007,12 +1007,11 @@ func TestConfigStoreUpdate(t *testing.T) {
 	cs := newTestConfigStore(t)
 
 	cfg := WAFConfig{
-		ParanoiaLevel:     2,
-		InboundThreshold:  10,
-		OutboundThreshold: 8,
-		RuleEngine:        "DetectionOnly",
-		Services: map[string]ServiceConfig{
-			"test.erfi.io": {Profile: "strict"},
+		Defaults: WAFServiceSettings{
+			Mode: "detection_only", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8,
+		},
+		Services: map[string]WAFServiceSettings{
+			"test.erfi.io": {Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
 		},
 	}
 
@@ -1020,8 +1019,8 @@ func TestConfigStoreUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if updated.ParanoiaLevel != 2 {
-		t.Errorf("want paranoia 2, got %d", updated.ParanoiaLevel)
+	if updated.Defaults.ParanoiaLevel != 2 {
+		t.Errorf("want paranoia 2, got %d", updated.Defaults.ParanoiaLevel)
 	}
 }
 
@@ -1031,17 +1030,14 @@ func TestConfigStorePersistence(t *testing.T) {
 
 	cs1 := NewConfigStore(path)
 	cs1.Update(WAFConfig{
-		ParanoiaLevel:     3,
-		InboundThreshold:  7,
-		OutboundThreshold: 6,
-		RuleEngine:        "On",
-		Services:          map[string]ServiceConfig{},
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 3, InboundThreshold: 7, OutboundThreshold: 6},
+		Services: make(map[string]WAFServiceSettings),
 	})
 
 	cs2 := NewConfigStore(path)
 	cfg := cs2.Get()
-	if cfg.ParanoiaLevel != 3 {
-		t.Errorf("persistence: want paranoia 3, got %d", cfg.ParanoiaLevel)
+	if cfg.Defaults.ParanoiaLevel != 3 {
+		t.Errorf("persistence: want paranoia 3, got %d", cfg.Defaults.ParanoiaLevel)
 	}
 }
 
@@ -1054,40 +1050,68 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid",
 			cfg: WAFConfig{
-				ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, RuleEngine: "On",
-				Services: map[string]ServiceConfig{},
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: false,
 		},
 		{
 			name: "paranoia too low",
 			cfg: WAFConfig{
-				ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4, RuleEngine: "On",
-				Services: map[string]ServiceConfig{},
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4},
+				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: true,
 		},
 		{
 			name: "paranoia too high",
 			cfg: WAFConfig{
-				ParanoiaLevel: 5, InboundThreshold: 5, OutboundThreshold: 4, RuleEngine: "On",
-				Services: map[string]ServiceConfig{},
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 5, InboundThreshold: 5, OutboundThreshold: 4},
+				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: true,
 		},
 		{
-			name: "invalid engine",
+			name: "invalid mode",
 			cfg: WAFConfig{
-				ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, RuleEngine: "Maybe",
-				Services: map[string]ServiceConfig{},
+				Defaults: WAFServiceSettings{Mode: "maybe", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: true,
 		},
 		{
-			name: "invalid profile",
+			name: "invalid rule group tag",
 			cfg: WAFConfig{
-				ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, RuleEngine: "On",
-				Services: map[string]ServiceConfig{"test": {Profile: "unknown"}},
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"not-a-real-tag"}},
+				Services: map[string]WAFServiceSettings{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid with disabled groups",
+			cfg: WAFConfig{
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"attack-sqli", "attack-xss"}},
+				Services: map[string]WAFServiceSettings{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid per-service override",
+			cfg: WAFConfig{
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Services: map[string]WAFServiceSettings{
+					"test.erfi.io": {Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid per-service paranoia",
+			cfg: WAFConfig{
+				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Services: map[string]WAFServiceSettings{
+					"test.erfi.io": {Mode: "enabled", ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4},
+				},
 			},
 			wantErr: true,
 		},
@@ -1121,12 +1145,12 @@ func TestConfigEndpoints(t *testing.T) {
 
 	var cfg WAFConfig
 	json.NewDecoder(w.Body).Decode(&cfg)
-	if cfg.ParanoiaLevel != 1 {
-		t.Errorf("default paranoia: want 1, got %d", cfg.ParanoiaLevel)
+	if cfg.Defaults.ParanoiaLevel != 1 {
+		t.Errorf("default paranoia: want 1, got %d", cfg.Defaults.ParanoiaLevel)
 	}
 
 	// PUT update.
-	body := `{"paranoia_level":2,"inbound_threshold":10,"outbound_threshold":8,"rule_engine":"On","services":{}}`
+	body := `{"defaults":{"mode":"enabled","paranoia_level":2,"inbound_threshold":10,"outbound_threshold":8},"services":{}}`
 	req = httptest.NewRequest("PUT", "/api/config", strings.NewReader(body))
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -1139,8 +1163,8 @@ func TestConfigEndpoints(t *testing.T) {
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	json.NewDecoder(w.Body).Decode(&cfg)
-	if cfg.ParanoiaLevel != 2 {
-		t.Errorf("updated paranoia: want 2, got %d", cfg.ParanoiaLevel)
+	if cfg.Defaults.ParanoiaLevel != 2 {
+		t.Errorf("updated paranoia: want 2, got %d", cfg.Defaults.ParanoiaLevel)
 	}
 }
 
@@ -1149,7 +1173,7 @@ func TestConfigEndpointInvalid(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(cs))
 
-	body := `{"paranoia_level":0,"inbound_threshold":5,"outbound_threshold":4,"rule_engine":"On","services":{}}`
+	body := `{"defaults":{"mode":"enabled","paranoia_level":0,"inbound_threshold":5,"outbound_threshold":4},"services":{}}`
 	req := httptest.NewRequest("PUT", "/api/config", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -1164,11 +1188,8 @@ func TestGenerateConfigBasic(t *testing.T) {
 	ResetRuleIDCounter()
 
 	cfg := WAFConfig{
-		ParanoiaLevel:     2,
-		InboundThreshold:  10,
-		OutboundThreshold: 8,
-		RuleEngine:        "On",
-		Services:          map[string]ServiceConfig{},
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8},
+		Services: map[string]WAFServiceSettings{},
 	}
 
 	exclusions := []RuleExclusion{
@@ -1243,6 +1264,233 @@ func TestGenerateConfigEmpty(t *testing.T) {
 	}
 }
 
+// --- WAF Settings Generator tests ---
+
+func TestGenerateWAFSettingsDefaults(t *testing.T) {
+	cfg := defaultConfig()
+	output := GenerateWAFSettings(cfg)
+
+	if !strings.Contains(output, "paranoia_level=1") {
+		t.Error("should contain default paranoia_level=1")
+	}
+	if !strings.Contains(output, "blocking_paranoia_level=1") {
+		t.Error("should contain default blocking_paranoia_level=1")
+	}
+	if !strings.Contains(output, "inbound_anomaly_score_threshold=5") {
+		t.Error("should contain default inbound threshold=5")
+	}
+	if !strings.Contains(output, "outbound_anomaly_score_threshold=4") {
+		t.Error("should contain default outbound threshold=4")
+	}
+	// Should NOT contain ctl:ruleEngine=Off for default enabled mode.
+	if strings.Contains(output, "ctl:ruleEngine=Off") {
+		t.Error("enabled mode should not disable rule engine")
+	}
+}
+
+func TestGenerateWAFSettingsDetectionOnly(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "detection_only", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Detection-only mode should use threshold 10000.
+	if !strings.Contains(output, "inbound_anomaly_score_threshold=10000") {
+		t.Error("detection_only should set inbound threshold to 10000")
+	}
+	if !strings.Contains(output, "outbound_anomaly_score_threshold=10000") {
+		t.Error("detection_only should set outbound threshold to 10000")
+	}
+}
+
+func TestGenerateWAFSettingsDisabled(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if !strings.Contains(output, "ctl:ruleEngine=Off") {
+		t.Error("disabled mode should contain ctl:ruleEngine=Off")
+	}
+}
+
+func TestGenerateWAFSettingsPerService(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{
+			"httpbun.erfi.io": {Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 3, OutboundThreshold: 3},
+			"qbit.erfi.io":    {Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// httpbun override
+	if !strings.Contains(output, `@streq httpbun.erfi.io`) {
+		t.Error("should contain httpbun SERVER_NAME check")
+	}
+	if !strings.Contains(output, "paranoia_level=2") {
+		t.Error("httpbun should have paranoia_level=2")
+	}
+
+	// qbit disabled
+	if !strings.Contains(output, `@streq qbit.erfi.io`) {
+		t.Error("should contain qbit SERVER_NAME check")
+	}
+	if !strings.Contains(output, "ctl:ruleEngine=Off") {
+		t.Error("qbit should have ctl:ruleEngine=Off")
+	}
+}
+
+func TestGenerateWAFSettingsDisabledGroups(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"attack-sqli"}},
+		Services: map[string]WAFServiceSettings{
+			"test.erfi.io": {Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"attack-sqli", "attack-xss"}},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Default group should be disabled globally.
+	if !strings.Contains(output, "ctl:ruleRemoveByTag=attack-sqli") {
+		t.Error("should disable attack-sqli globally")
+	}
+	// Per-service: xss should be disabled for test.erfi.io (sqli is already global).
+	if !strings.Contains(output, "ctl:ruleRemoveByTag=attack-xss") {
+		t.Error("should disable attack-xss for test.erfi.io")
+	}
+}
+
+func TestGenerateWAFSettingsNoUnnecessaryOverrides(t *testing.T) {
+	// Service with same settings as defaults should NOT generate overrides.
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{
+			"same.erfi.io": {Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if strings.Contains(output, "@streq same.erfi.io") {
+		t.Error("service with identical settings should not generate a SERVER_NAME override")
+	}
+}
+
+func TestGenerateWAFSettingsDeterministic(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{
+			"b.erfi.io": {Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 5, OutboundThreshold: 4},
+			"a.erfi.io": {Mode: "enabled", ParanoiaLevel: 3, InboundThreshold: 5, OutboundThreshold: 4},
+		},
+	}
+	// Generate twice, verify same output (sorted by hostname).
+	out1 := GenerateWAFSettings(cfg)
+	out2 := GenerateWAFSettings(cfg)
+
+	// Strip timestamps (they differ).
+	strip := func(s string) string {
+		lines := strings.Split(s, "\n")
+		var filtered []string
+		for _, l := range lines {
+			if !strings.Contains(l, "Generated:") {
+				filtered = append(filtered, l)
+			}
+		}
+		return strings.Join(filtered, "\n")
+	}
+	if strip(out1) != strip(out2) {
+		t.Error("WAF settings should be deterministic")
+	}
+
+	// Verify alphabetical order.
+	aIdx := strings.Index(out1, "a.erfi.io")
+	bIdx := strings.Index(out1, "b.erfi.io")
+	if aIdx > bIdx {
+		t.Error("services should be sorted alphabetically (a before b)")
+	}
+}
+
+func TestGenerateWAFSettingsReEnableEngine(t *testing.T) {
+	// Bug #1: When default mode is "disabled", services with "enabled" or
+	// "detection_only" must get ctl:ruleEngine=On to override the global Off.
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		Services: map[string]WAFServiceSettings{
+			"active.erfi.io":   {Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 5, OutboundThreshold: 4},
+			"logonly.erfi.io":  {Mode: "detection_only", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+			"alsodead.erfi.io": {Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Global Off should be present.
+	if !strings.Contains(output, "ctl:ruleEngine=Off") {
+		t.Error("should contain global ctl:ruleEngine=Off")
+	}
+
+	// active.erfi.io should get ctl:ruleEngine=On.
+	activeIdx := strings.Index(output, "active.erfi.io")
+	if activeIdx < 0 {
+		t.Fatal("should contain active.erfi.io")
+	}
+	afterActive := output[activeIdx:]
+	if !strings.Contains(afterActive, "ctl:ruleEngine=On") {
+		t.Error("active.erfi.io should have ctl:ruleEngine=On")
+	}
+
+	// logonly.erfi.io should get ctl:ruleEngine=On too.
+	logonlyIdx := strings.Index(output, "logonly.erfi.io")
+	if logonlyIdx < 0 {
+		t.Fatal("should contain logonly.erfi.io")
+	}
+	afterLogonly := output[logonlyIdx:]
+	if !strings.Contains(afterLogonly, "ctl:ruleEngine=On") {
+		t.Error("logonly.erfi.io should have ctl:ruleEngine=On")
+	}
+
+	// alsodead.erfi.io should NOT appear (same as default: disabled).
+	if strings.Contains(output, "alsodead.erfi.io") {
+		t.Error("alsodead.erfi.io should not generate output (same mode as default)")
+	}
+}
+
+func TestConfigMigrationFromOldFormat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	// Write old format config.
+	oldConfig := `{"paranoia_level":2,"inbound_threshold":15,"outbound_threshold":15,"rule_engine":"DetectionOnly","services":{"test.erfi.io":{"profile":"strict"},"qbit.erfi.io":{"profile":"off"}}}`
+	os.WriteFile(path, []byte(oldConfig), 0644)
+
+	cs := NewConfigStore(path)
+	cfg := cs.Get()
+
+	// Check migrated defaults.
+	if cfg.Defaults.Mode != "detection_only" {
+		t.Errorf("migrated mode: want detection_only, got %s", cfg.Defaults.Mode)
+	}
+	if cfg.Defaults.ParanoiaLevel != 2 {
+		t.Errorf("migrated paranoia: want 2, got %d", cfg.Defaults.ParanoiaLevel)
+	}
+	if cfg.Defaults.InboundThreshold != 15 {
+		t.Errorf("migrated inbound: want 15, got %d", cfg.Defaults.InboundThreshold)
+	}
+
+	// Check migrated services.
+	if ss, ok := cfg.Services["test.erfi.io"]; !ok {
+		t.Error("migrated service test.erfi.io not found")
+	} else if ss.Mode != "enabled" {
+		t.Errorf("migrated test.erfi.io mode: want enabled, got %s", ss.Mode)
+	}
+	if ss, ok := cfg.Services["qbit.erfi.io"]; !ok {
+		t.Error("migrated service qbit.erfi.io not found")
+	} else if ss.Mode != "disabled" {
+		t.Errorf("migrated qbit.erfi.io mode: want disabled, got %s", ss.Mode)
+	}
+}
+
 // --- Generate config endpoint test ---
 
 func TestGenerateConfigEndpoint(t *testing.T) {
@@ -1250,11 +1498,8 @@ func TestGenerateConfigEndpoint(t *testing.T) {
 	es := newTestExclusionStore(t)
 
 	cs.Update(WAFConfig{
-		ParanoiaLevel:     2,
-		InboundThreshold:  10,
-		OutboundThreshold: 8,
-		RuleEngine:        "On",
-		Services:          map[string]ServiceConfig{},
+		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8},
+		Services: map[string]WAFServiceSettings{},
 	})
 
 	es.Create(RuleExclusion{
@@ -1275,14 +1520,18 @@ func TestGenerateConfigEndpoint(t *testing.T) {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp GenerateResponse
+	var resp map[string]string
 	json.NewDecoder(w.Body).Decode(&resp)
-	// Pre-CRS should NOT contain CRS setup — those are per-tier in the Caddyfile.
-	if strings.Contains(resp.PreCRS, "blocking_paranoia_level") {
-		t.Error("pre-crs should not contain paranoia level (managed by Caddyfile tiers)")
+	// Pre-CRS exclusions should NOT contain CRS setup — those are in waf_settings.
+	if strings.Contains(resp["pre_crs_conf"], "blocking_paranoia_level") {
+		t.Error("pre-crs should not contain paranoia level (managed by waf_settings)")
 	}
-	if !strings.Contains(resp.PostCRS, "SecRuleRemoveById 920420") {
+	if !strings.Contains(resp["post_crs_conf"], "SecRuleRemoveById 920420") {
 		t.Error("should contain exclusion")
+	}
+	// WAF settings should contain paranoia level.
+	if !strings.Contains(resp["waf_settings"], "paranoia_level=2") {
+		t.Error("waf_settings should contain paranoia_level=2")
 	}
 }
 
@@ -1772,8 +2021,9 @@ func TestWriteConfFiles(t *testing.T) {
 	dir := t.TempDir()
 	pre := "# pre-crs content\nSecRuleRemoveById 920420\n"
 	post := "# post-crs content\n"
+	settings := "# waf settings\nSecAction \"id:9700001,phase:1,pass,t:none,nolog\"\n"
 
-	if err := writeConfFiles(dir, pre, post); err != nil {
+	if err := writeConfFiles(dir, pre, post, settings); err != nil {
 		t.Fatalf("writeConfFiles failed: %v", err)
 	}
 
@@ -1791,6 +2041,14 @@ func TestWriteConfFiles(t *testing.T) {
 	}
 	if string(data) != post {
 		t.Errorf("post-crs content mismatch: got %q", string(data))
+	}
+
+	data, err = os.ReadFile(filepath.Join(dir, "custom-waf-settings.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != settings {
+		t.Errorf("waf-settings content mismatch: got %q", string(data))
 	}
 }
 
