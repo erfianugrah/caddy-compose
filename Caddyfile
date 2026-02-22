@@ -37,7 +37,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin
 		}
 		versions ipv4
 		check_interval 5m
@@ -369,6 +369,22 @@ bazarr.erfi.io {
 	}
 	import error_pages
 	import site_log bazarr
+}
+
+tracearr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/tracearr*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.23:3000 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log tracearr 
 }
 
 vault.erfi.io {
