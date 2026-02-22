@@ -175,6 +175,14 @@ func parseEvent(entry AuditLogEntry) Event {
 		eventType = "blocked"
 	}
 
+	// When Coraza blocks a request (is_interrupted), the backend never responds,
+	// so response.status is 0 in the audit log. Show 403 since that's what the
+	// client actually receives.
+	status := tx.Response.Status
+	if tx.IsInterrupted && status == 0 {
+		status = 403
+	}
+
 	ev := Event{
 		ID:             tx.ID,
 		Timestamp:      ts,
@@ -184,7 +192,7 @@ func parseEvent(entry AuditLogEntry) Event {
 		URI:            tx.Request.URI,
 		Protocol:       tx.Request.Protocol,
 		IsBlocked:      tx.IsInterrupted,
-		ResponseStatus: tx.Response.Status,
+		ResponseStatus: status,
 		UserAgent:      ua,
 		EventType:      eventType,
 	}
