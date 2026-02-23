@@ -669,10 +669,10 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 }
 
 // Services
-// Go API returns {"services":[{service, total, blocked, logged, ...}]} — unwrap and compute derived fields.
+// Go API returns {"services":[{service, total, blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
   const qs = hours ? `?hours=${hours}` : "";
-  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[] }>(
+  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
     `${API_BASE}/services${qs}`
   );
   return (raw.services ?? []).map((s) => ({
@@ -686,8 +686,8 @@ export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
     scanner: s.scanner ?? 0,
     policy: s.policy ?? 0,
     block_rate: s.total > 0 ? (s.blocked / s.total) * 100 : 0,
-    top_uris: [],
-    top_rules: [],
+    top_uris: (s.top_uris ?? []).map((u) => ({ uri: u.uri, count: u.count, blocked: u.blocked })),
+    top_rules: (s.top_rules ?? []).map((r) => ({ rule_id: String(r.rule_id), rule_msg: r.rule_msg, count: r.count })),
   }));
 }
 

@@ -210,16 +210,30 @@ type EventsResponse struct {
 	Events []Event `json:"events"`
 }
 
+type ServiceURI struct {
+	URI     string `json:"uri"`
+	Count   int    `json:"count"`
+	Blocked int    `json:"blocked"`
+}
+
+type ServiceRule struct {
+	RuleID  int    `json:"rule_id"`
+	RuleMsg string `json:"rule_msg"`
+	Count   int    `json:"count"`
+}
+
 type ServiceDetail struct {
-	Service      string `json:"service"`
-	Total        int    `json:"total"`
-	Blocked      int    `json:"blocked"`
-	Logged       int    `json:"logged"`
-	RateLimited  int    `json:"rate_limited"`
-	IpsumBlocked int    `json:"ipsum_blocked"`
-	Honeypot     int    `json:"honeypot"`
-	Scanner      int    `json:"scanner"`
-	Policy       int    `json:"policy"`
+	Service      string        `json:"service"`
+	Total        int           `json:"total"`
+	Blocked      int           `json:"blocked"`
+	Logged       int           `json:"logged"`
+	RateLimited  int           `json:"rate_limited"`
+	IpsumBlocked int           `json:"ipsum_blocked"`
+	Honeypot     int           `json:"honeypot"`
+	Scanner      int           `json:"scanner"`
+	Policy       int           `json:"policy"`
+	TopURIs      []ServiceURI  `json:"top_uris,omitempty"`
+	TopRules     []ServiceRule `json:"top_rules,omitempty"`
 }
 
 type ServicesResponse struct {

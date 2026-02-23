@@ -804,43 +804,104 @@ func (s *Store) ServicesRange(start, end time.Time) ServicesResponse {
 }
 
 func computeServices(events []Event) ServicesResponse {
-	type counts struct {
-		total, blocked, honeypot, scanner, policy int
+	type uriStats struct {
+		count, blocked int
 	}
-	m := make(map[string]*counts)
+	type ruleKey struct {
+		id  int
+		msg string
+	}
+	type svcData struct {
+		total, blocked, honeypot, scanner, policy int
+		uris                                      map[string]*uriStats
+		rules                                     map[ruleKey]int
+	}
+	m := make(map[string]*svcData)
 
 	for i := range events {
 		ev := &events[i]
-		c, ok := m[ev.Service]
+		d, ok := m[ev.Service]
 		if !ok {
-			c = &counts{}
-			m[ev.Service] = c
+			d = &svcData{
+				uris:  make(map[string]*uriStats),
+				rules: make(map[ruleKey]int),
+			}
+			m[ev.Service] = d
 		}
-		c.total++
+		d.total++
 		if ev.IsBlocked {
-			c.blocked++
+			d.blocked++
 		}
 		switch ev.EventType {
 		case "honeypot":
-			c.honeypot++
+			d.honeypot++
 		case "scanner":
-			c.scanner++
+			d.scanner++
 		case "policy_skip", "policy_allow", "policy_block":
-			c.policy++
+			d.policy++
+		}
+
+		// Track per-service URI counts.
+		if ev.URI != "" {
+			us, ok := d.uris[ev.URI]
+			if !ok {
+				us = &uriStats{}
+				d.uris[ev.URI] = us
+			}
+			us.count++
+			if ev.IsBlocked {
+				us.blocked++
+			}
+		}
+
+		// Track per-service rule counts from all matched rules.
+		for _, mr := range ev.MatchedRules {
+			if mr.ID > 0 {
+				d.rules[ruleKey{id: mr.ID, msg: mr.Msg}]++
+			}
+		}
+		// Fall back to primary rule if no matched rules.
+		if len(ev.MatchedRules) == 0 && ev.RuleID > 0 {
+			d.rules[ruleKey{id: ev.RuleID, msg: ev.RuleMsg}]++
 		}
 	}
 
+	const topN = 10
 	result := make([]ServiceDetail, 0, len(m))
-	for svc, c := range m {
-		result = append(result, ServiceDetail{
+	for svc, d := range m {
+		sd := ServiceDetail{
 			Service:  svc,
-			Total:    c.total,
-			Blocked:  c.blocked,
-			Logged:   c.total - c.blocked,
-			Honeypot: c.honeypot,
-			Scanner:  c.scanner,
-			Policy:   c.policy,
-		})
+			Total:    d.total,
+			Blocked:  d.blocked,
+			Logged:   d.total - d.blocked,
+			Honeypot: d.honeypot,
+			Scanner:  d.scanner,
+			Policy:   d.policy,
+		}
+
+		// Build top URIs.
+		uriList := make([]ServiceURI, 0, len(d.uris))
+		for uri, us := range d.uris {
+			uriList = append(uriList, ServiceURI{URI: uri, Count: us.count, Blocked: us.blocked})
+		}
+		sort.Slice(uriList, func(i, j int) bool { return uriList[i].Count > uriList[j].Count })
+		if len(uriList) > topN {
+			uriList = uriList[:topN]
+		}
+		sd.TopURIs = uriList
+
+		// Build top rules.
+		ruleList := make([]ServiceRule, 0, len(d.rules))
+		for rk, count := range d.rules {
+			ruleList = append(ruleList, ServiceRule{RuleID: rk.id, RuleMsg: rk.msg, Count: count})
+		}
+		sort.Slice(ruleList, func(i, j int) bool { return ruleList[i].Count > ruleList[j].Count })
+		if len(ruleList) > topN {
+			ruleList = ruleList[:topN]
+		}
+		sd.TopRules = ruleList
+
+		result = append(result, sd)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
