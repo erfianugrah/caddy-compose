@@ -475,7 +475,7 @@ MMDB-based analytics (waf-api side). Non-CF inline geo-blocking is a future item
 | 5 | GeoIP analytics (MMDB reader + dashboard) | 1-2 days | High — visibility | **Done** |
 | 6 | GeoIP blocking (CF header SecRules) | 2-3 hours | Medium — only works behind CF | **Done** |
 | 7 | Honeypot paths (dynamic via Policy Engine) | 3-4 hours | Medium — dashboard management | **Done** |
-| 8 | GeoIP online API fallback | 3-4 hours | Low — edge case for non-CF, non-MMDB | Not started |
+| 8 | GeoIP online API fallback | 3-4 hours | Low — edge case for non-CF, non-MMDB | **Done** |
 
 Total estimated effort: ~3-4 days
 

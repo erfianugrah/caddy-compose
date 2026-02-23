@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -15,13 +18,22 @@ import (
 // Thread-safe country lookup with three-tier resolution:
 //   Priority 1: Cf-Ipcountry header (free, zero latency, present when behind CF)
 //   Priority 2: Local MMDB database lookup (sub-microsecond, offline)
-//   Priority 3: Returns "" (unknown) — online API fallback is a future item
+//   Priority 3: Online API fallback (for deployments without CF or MMDB)
+
+// GeoIPAPIConfig holds configuration for the online GeoIP API fallback.
+type GeoIPAPIConfig struct {
+	URL     string        // API URL template with %s for IP (e.g., "https://ipinfo.io/%s/json")
+	Key     string        // API key (sent as Bearer token, empty = no auth)
+	Timeout time.Duration // HTTP request timeout (default 2s)
+}
 
 // GeoIPStore provides IP-to-country resolution with caching.
 type GeoIPStore struct {
-	mu    sync.RWMutex
-	db    *geoIPDB // nil if no MMDB loaded
-	cache map[string]geoEntry
+	mu     sync.RWMutex
+	db     *geoIPDB // nil if no MMDB loaded
+	cache  map[string]geoEntry
+	api    *GeoIPAPIConfig // nil if no online API configured
+	client *http.Client    // shared HTTP client for API calls
 }
 
 type geoEntry struct {
@@ -33,9 +45,10 @@ const geoCacheTTL = 24 * time.Hour
 const geoCacheMaxSize = 100000
 
 // NewGeoIPStore creates a new GeoIP store. If dbPath is non-empty and the file
-// exists, it loads the MMDB database. Otherwise the store works in header-only
-// mode (Cf-Ipcountry).
-func NewGeoIPStore(dbPath string) *GeoIPStore {
+// exists, it loads the MMDB database. If apiCfg is provided with a non-empty URL,
+// the store will fall back to online API lookups when both CF header and MMDB
+// are unavailable. Otherwise the store works in header-only mode (Cf-Ipcountry).
+func NewGeoIPStore(dbPath string, apiCfg *GeoIPAPIConfig) *GeoIPStore {
 	s := &GeoIPStore{
 		cache: make(map[string]geoEntry),
 	}
@@ -53,6 +66,18 @@ func NewGeoIPStore(dbPath string) *GeoIPStore {
 			log.Printf("geoip: MMDB file not found at %s, running in header-only mode", dbPath)
 		}
 	}
+
+	// Configure online API fallback.
+	if apiCfg != nil && apiCfg.URL != "" {
+		timeout := apiCfg.Timeout
+		if timeout <= 0 {
+			timeout = 2 * time.Second
+		}
+		s.api = apiCfg
+		s.client = &http.Client{Timeout: timeout}
+		log.Printf("geoip: online API fallback enabled (url=%s, timeout=%s)", apiCfg.URL, timeout)
+	}
+
 	return s
 }
 
@@ -98,15 +123,110 @@ func (s *GeoIPStore) LookupIP(ip string) string {
 	return country
 }
 
-// Resolve returns the country for an IP, using the CF header first, then MMDB.
-// cfCountry is the value of the Cf-Ipcountry header (empty if not present).
+// Resolve returns the country for an IP, using the CF header first, then MMDB,
+// then online API. cfCountry is the value of the Cf-Ipcountry header (empty if
+// not present).
 func (s *GeoIPStore) Resolve(ip, cfCountry string) string {
 	// Priority 1: Cloudflare header
 	if cfCountry != "" && cfCountry != "XX" && cfCountry != "T1" {
 		return strings.ToUpper(cfCountry)
 	}
 	// Priority 2: MMDB lookup
-	return s.LookupIP(ip)
+	if country := s.LookupIP(ip); country != "" {
+		return country
+	}
+	// Priority 3: Online API fallback
+	if s.api != nil {
+		return s.lookupOnline(ip)
+	}
+	return ""
+}
+
+// HasAPI returns true if an online GeoIP API fallback is configured.
+func (s *GeoIPStore) HasAPI() bool {
+	return s.api != nil
+}
+
+// lookupOnline queries the configured online GeoIP API for a country code.
+// Results are cached in the shared cache. Returns "" on error.
+func (s *GeoIPStore) lookupOnline(ip string) string {
+	if ip == "" {
+		return ""
+	}
+
+	// Check cache first (may have been populated by a previous online lookup).
+	s.mu.RLock()
+	if entry, ok := s.cache[ip]; ok && time.Since(entry.ts) < geoCacheTTL {
+		s.mu.RUnlock()
+		return entry.country
+	}
+	s.mu.RUnlock()
+
+	// Build URL — support %s placeholder for IP, or append as path segment.
+	url := s.api.URL
+	if strings.Contains(url, "%s") {
+		url = fmt.Sprintf(url, ip)
+	} else {
+		url = strings.TrimRight(url, "/") + "/" + ip
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("geoip: online API request error: %v", err)
+		return ""
+	}
+	if s.api.Key != "" {
+		req.Header.Set("Authorization", "Bearer "+s.api.Key)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log.Printf("geoip: online API request failed for %s: %v", ip, err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("geoip: online API returned status %d for %s", resp.StatusCode, ip)
+		return ""
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		log.Printf("geoip: online API read error for %s: %v", ip, err)
+		return ""
+	}
+
+	// Parse JSON — supports common API response formats:
+	// IPinfo.io: {"country": "US", ...}
+	// ip-api.com: {"countryCode": "US", ...}
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("geoip: online API JSON parse error for %s: %v", ip, err)
+		return ""
+	}
+
+	// Try common field names for country code.
+	country := ""
+	for _, field := range []string{"country", "countryCode", "country_code"} {
+		if val, ok := result[field]; ok {
+			if s, ok := val.(string); ok && len(s) == 2 {
+				country = strings.ToUpper(s)
+				break
+			}
+		}
+	}
+
+	// Cache the result (even empty results to avoid repeated failed lookups).
+	s.mu.Lock()
+	if len(s.cache) >= geoCacheMaxSize {
+		s.evictOldest()
+	}
+	s.cache[ip] = geoEntry{country: country, ts: time.Now()}
+	s.mu.Unlock()
+
+	return country
 }
 
 // evictOldest removes ~25% of the oldest cache entries. Caller must hold s.mu write lock.

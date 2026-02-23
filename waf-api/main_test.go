@@ -5729,7 +5729,7 @@ func TestSummarizeEvents_HoneypotAndScannerCounts(t *testing.T) {
 // ─── GeoIP Tests ─────────────────────────────────────────────────────────────
 
 func TestGeoIPStore_ResolveWithCFHeader(t *testing.T) {
-	store := NewGeoIPStore("") // no MMDB
+	store := NewGeoIPStore("", nil) // no MMDB
 
 	// CF header takes priority
 	if got := store.Resolve("1.2.3.4", "DE"); got != "DE" {
@@ -5754,21 +5754,21 @@ func TestGeoIPStore_ResolveWithCFHeader(t *testing.T) {
 }
 
 func TestGeoIPStore_LookupIPNoDB(t *testing.T) {
-	store := NewGeoIPStore("")
+	store := NewGeoIPStore("", nil)
 	if got := store.LookupIP("8.8.8.8"); got != "" {
 		t.Errorf("LookupIP with no DB = %q, want empty", got)
 	}
 }
 
 func TestGeoIPStore_HasDB(t *testing.T) {
-	store := NewGeoIPStore("")
+	store := NewGeoIPStore("", nil)
 	if store.HasDB() {
 		t.Error("HasDB() should be false with no MMDB")
 	}
 }
 
 func TestGeoIPStore_CacheBehavior(t *testing.T) {
-	store := NewGeoIPStore("") // no MMDB, but we can test cache directly
+	store := NewGeoIPStore("", nil) // no MMDB, but we can test cache directly
 	// Manually inject a cache entry
 	store.mu.Lock()
 	store.cache["1.2.3.4"] = geoEntry{country: "US", ts: time.Now()}
@@ -5781,7 +5781,7 @@ func TestGeoIPStore_CacheBehavior(t *testing.T) {
 }
 
 func TestGeoIPStore_CacheEviction(t *testing.T) {
-	store := NewGeoIPStore("")
+	store := NewGeoIPStore("", nil)
 	store.mu.Lock()
 	// Fill cache to max
 	for i := 0; i < geoCacheMaxSize; i++ {
@@ -6179,5 +6179,165 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	}
 	if api.Policy != 1 { // policy_block
 		t.Errorf("api.Policy = %d, want 1", api.Policy)
+	}
+}
+
+// --- GeoIP Online API Fallback Tests ---
+
+func TestGeoIPStore_OnlineAPIFallback(t *testing.T) {
+	// Mock API server that returns IPinfo-style JSON.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract IP from path (e.g., /1.2.3.4)
+		ip := strings.TrimPrefix(r.URL.Path, "/")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"ip":"%s","country":"DE"}`, ip)
+	}))
+	defer srv.Close()
+
+	store := NewGeoIPStore("", &GeoIPAPIConfig{URL: srv.URL + "/%s"})
+
+	// No CF header, no MMDB — should use online API.
+	country := store.Resolve("1.2.3.4", "")
+	if country != "DE" {
+		t.Errorf("Resolve() = %q, want DE", country)
+	}
+
+	// CF header should still take priority.
+	country = store.Resolve("1.2.3.4", "US")
+	if country != "US" {
+		t.Errorf("Resolve() with CF header = %q, want US", country)
+	}
+}
+
+func TestGeoIPStore_OnlineAPICaching(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"country":"FR"}`)
+	}))
+	defer srv.Close()
+
+	store := NewGeoIPStore("", &GeoIPAPIConfig{URL: srv.URL + "/%s"})
+
+	// First call hits the API.
+	c1 := store.Resolve("5.6.7.8", "")
+	if c1 != "FR" {
+		t.Errorf("first Resolve() = %q, want FR", c1)
+	}
+	if callCount != 1 {
+		t.Errorf("expected 1 API call, got %d", callCount)
+	}
+
+	// Second call should be served from cache.
+	c2 := store.Resolve("5.6.7.8", "")
+	if c2 != "FR" {
+		t.Errorf("second Resolve() = %q, want FR", c2)
+	}
+	if callCount != 1 {
+		t.Errorf("expected cache hit (still 1 API call), got %d", callCount)
+	}
+}
+
+func TestGeoIPStore_OnlineAPIError(t *testing.T) {
+	// Server that returns 500.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+
+	store := NewGeoIPStore("", &GeoIPAPIConfig{URL: srv.URL + "/%s"})
+
+	// Should gracefully return "" on API error.
+	country := store.Resolve("9.8.7.6", "")
+	if country != "" {
+		t.Errorf("Resolve() on API error = %q, want empty", country)
+	}
+}
+
+func TestGeoIPStore_OnlineAPIBearerAuth(t *testing.T) {
+	var receivedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"country":"JP"}`)
+	}))
+	defer srv.Close()
+
+	store := NewGeoIPStore("", &GeoIPAPIConfig{URL: srv.URL + "/%s", Key: "test-key-123"})
+	store.Resolve("1.1.1.1", "")
+
+	if receivedAuth != "Bearer test-key-123" {
+		t.Errorf("Authorization header = %q, want 'Bearer test-key-123'", receivedAuth)
+	}
+}
+
+func TestGeoIPStore_OnlineAPICountryCodeFormats(t *testing.T) {
+	// Test different JSON field names for country code.
+	tests := []struct {
+		name     string
+		jsonBody string
+		want     string
+	}{
+		{"ipinfo style", `{"country":"US"}`, "US"},
+		{"ip-api style", `{"countryCode":"GB"}`, "GB"},
+		{"underscore style", `{"country_code":"BR"}`, "BR"},
+		{"lowercase country", `{"country":"de"}`, "DE"},
+		{"no country field", `{"ip":"1.2.3.4"}`, ""},
+		{"invalid JSON", `not json`, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, tc.jsonBody)
+			}))
+			defer srv.Close()
+
+			store := NewGeoIPStore("", &GeoIPAPIConfig{URL: srv.URL + "/%s"})
+			country := store.Resolve("1.2.3.4", "")
+			if country != tc.want {
+				t.Errorf("got %q, want %q", country, tc.want)
+			}
+		})
+	}
+}
+
+func TestGeoIPStore_OnlineAPIURLFormat(t *testing.T) {
+	var receivedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"country":"AU"}`)
+	}))
+	defer srv.Close()
+
+	// Test URL without %s placeholder — should append IP as path segment.
+	store := NewGeoIPStore("", &GeoIPAPIConfig{URL: srv.URL})
+	store.Resolve("10.20.30.40", "")
+
+	if receivedPath != "/10.20.30.40" {
+		t.Errorf("URL path = %q, want /10.20.30.40", receivedPath)
+	}
+}
+
+func TestGeoIPStore_HasAPI(t *testing.T) {
+	// No API configured.
+	s1 := NewGeoIPStore("", nil)
+	if s1.HasAPI() {
+		t.Error("HasAPI() should be false with nil config")
+	}
+
+	// API configured.
+	s2 := NewGeoIPStore("", &GeoIPAPIConfig{URL: "https://example.com"})
+	if !s2.HasAPI() {
+		t.Error("HasAPI() should be true with URL configured")
+	}
+
+	// Empty URL — should not enable API.
+	s3 := NewGeoIPStore("", &GeoIPAPIConfig{URL: ""})
+	if s3.HasAPI() {
+		t.Error("HasAPI() should be false with empty URL")
 	}
 }

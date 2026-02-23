@@ -254,6 +254,8 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_CADDY_ADMIN_URL` (default `http://caddy:2020`) — Caddy admin API endpoint
 - `WAF_EVENT_MAX_AGE` (default `168h`), `WAF_TAIL_INTERVAL` (default `5s`)
 - `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
+- `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
+- `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
 
 ### Relationship to k3s Sentinel
 

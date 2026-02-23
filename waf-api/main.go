@@ -56,11 +56,17 @@ func main() {
 	}
 
 	geoDBPath := envOr("WAF_GEOIP_DB", "/data/geoip/country.mmdb")
+	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
+	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath)
+	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL)
 
-	geoStore := NewGeoIPStore(geoDBPath)
+	var geoAPICfg *GeoIPAPIConfig
+	if geoAPIURL != "" {
+		geoAPICfg = &GeoIPAPIConfig{URL: geoAPIURL, Key: geoAPIKey}
+	}
+	geoStore := NewGeoIPStore(geoDBPath, geoAPICfg)
 
 	store := NewStore(logPath)
 	store.SetMaxAge(maxAge)
