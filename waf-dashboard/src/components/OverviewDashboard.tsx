@@ -404,26 +404,17 @@ export default function OverviewDashboard() {
                     {...chartTooltipStyle}
                     labelFormatter={formatTooltipLabel}
                   />
+                  {/* Independent (non-stacked) areas — each plotted from 0 so smaller series remain visible at any scale. */}
                   <Area
                     type="monotone"
-                    dataKey="blocked"
-                    stackId="1"
-                    stroke="#ff006e"
-                    fill="url(#gradBlocked)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="rate_limited"
-                    stackId="1"
-                    stroke="#f59e0b"
-                    fill="url(#gradRateLimited)"
+                    dataKey="logged"
+                    stroke="#00ff41"
+                    fill="url(#gradLogged)"
                     strokeWidth={2}
                   />
                   <Area
                     type="monotone"
                     dataKey="ipsum_blocked"
-                    stackId="1"
                     stroke="#a78bfa"
                     fill="url(#gradIpsumBlocked)"
                     strokeWidth={2}
@@ -431,10 +422,16 @@ export default function OverviewDashboard() {
                   />
                   <Area
                     type="monotone"
-                    dataKey="logged"
-                    stackId="1"
-                    stroke="#00ff41"
-                    fill="url(#gradLogged)"
+                    dataKey="rate_limited"
+                    stroke="#f59e0b"
+                    fill="url(#gradRateLimited)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="blocked"
+                    stroke="#ff006e"
+                    fill="url(#gradBlocked)"
                     strokeWidth={2}
                   />
                 </AreaChart>
