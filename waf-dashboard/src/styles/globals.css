@@ -122,6 +122,14 @@
     animation: fadeInUp 0.4s ease-out forwards;
   }
 
+  /* Clickable table row press effect */
+  tr.cursor-pointer {
+    transition: background-color 150ms ease-out;
+  }
+  tr.cursor-pointer:active {
+    background-color: rgba(30, 39, 92, 0.5);
+  }
+
   /* Hide native number input spinners — they clash with the dark theme */
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button {

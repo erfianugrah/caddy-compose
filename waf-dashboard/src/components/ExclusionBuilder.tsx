@@ -301,8 +301,8 @@ export default function ExclusionBuilder() {
                     </div>
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-neon-pink"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-neon-pink"
                       onClick={() => removeExclusion(exc.id)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />

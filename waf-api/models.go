@@ -86,13 +86,32 @@ type Event struct {
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
 	EventType      string    `json:"event_type"` // "blocked", "logged", "rate_limited", "ipsum_blocked"
+	// How the request was blocked: "anomaly_inbound", "anomaly_outbound", "direct", or ""
+	BlockedBy string `json:"blocked_by,omitempty"`
 	// Rule match data (from audit log messages/part H)
-	RuleID       int      `json:"rule_id,omitempty"`
-	RuleMsg      string   `json:"rule_msg,omitempty"`
-	Severity     int      `json:"severity,omitempty"`
-	AnomalyScore int      `json:"anomaly_score,omitempty"`
-	MatchedData  string   `json:"matched_data,omitempty"`
-	RuleTags     []string `json:"rule_tags,omitempty"`
+	RuleID               int      `json:"rule_id,omitempty"`
+	RuleMsg              string   `json:"rule_msg,omitempty"`
+	Severity             int      `json:"severity,omitempty"`
+	AnomalyScore         int      `json:"anomaly_score,omitempty"`
+	OutboundAnomalyScore int      `json:"outbound_anomaly_score,omitempty"`
+	MatchedData          string   `json:"matched_data,omitempty"`
+	RuleTags             []string `json:"rule_tags,omitempty"`
+	// All matched rules (not just the primary/best one)
+	MatchedRules []MatchedRule `json:"matched_rules,omitempty"`
+	// Request context for full payload inspection
+	RequestHeaders map[string][]string `json:"request_headers,omitempty"`
+	RequestBody    string              `json:"request_body,omitempty"`
+	RequestArgs    map[string]string   `json:"request_args,omitempty"`
+}
+
+// MatchedRule represents a single CRS rule match from the audit log.
+type MatchedRule struct {
+	ID          int      `json:"id"`
+	Msg         string   `json:"msg"`
+	Severity    int      `json:"severity"`
+	MatchedData string   `json:"matched_data,omitempty"`
+	File        string   `json:"file,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 // API response types

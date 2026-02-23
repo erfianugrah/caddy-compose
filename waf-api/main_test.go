@@ -4395,46 +4395,159 @@ func TestAnomalyScoreInParsedEvent(t *testing.T) {
 	}
 }
 
-func TestComputeAnomalyScore(t *testing.T) {
+func TestComputeAnomalyScoreByPhase(t *testing.T) {
 	tests := []struct {
 		name     string
 		messages []AuditMessage
+		outbound bool
 		want     int
 	}{
-		{"empty", nil, 0},
-		{"single critical", []AuditMessage{{Data: AuditMessageData{ID: 942100, Severity: 2}}}, 5},
-		{"single notice", []AuditMessage{{Data: AuditMessageData{ID: 920330, Severity: 5}}}, 2},
-		{"critical + notice", []AuditMessage{
+		{"empty inbound", nil, false, 0},
+		{"empty outbound", nil, true, 0},
+		{"single inbound critical", []AuditMessage{{Data: AuditMessageData{ID: 942100, Severity: 2}}}, false, 5},
+		{"single inbound notice", []AuditMessage{{Data: AuditMessageData{ID: 920330, Severity: 5}}}, false, 2},
+		{"inbound critical + notice", []AuditMessage{
 			{Data: AuditMessageData{ID: 942100, Severity: 2}},
 			{Data: AuditMessageData{ID: 920330, Severity: 5}},
-		}, 7},
+		}, false, 7},
 		{"dedup chain rules", []AuditMessage{
 			{Data: AuditMessageData{ID: 932240, Severity: 2}},
 			{Data: AuditMessageData{ID: 932240, Severity: 2}}, // chain duplicate
-		}, 5},
+		}, false, 5},
 		{"skip scoring rules", []AuditMessage{
 			{Data: AuditMessageData{ID: 942100, Severity: 2}},
 			{Data: AuditMessageData{ID: 949110, Severity: 0}},
+			{Data: AuditMessageData{ID: 959100, Severity: 0}},
 			{Data: AuditMessageData{ID: 980170, Severity: 0}},
-		}, 5},
+		}, false, 5},
 		{"skip id 0", []AuditMessage{
 			{Data: AuditMessageData{ID: 0, Severity: 2}},
 			{Data: AuditMessageData{ID: 920330, Severity: 5}},
-		}, 2},
-		{"all severities", []AuditMessage{
-			{Data: AuditMessageData{ID: 1, Severity: 2}}, // CRITICAL = 5
-			{Data: AuditMessageData{ID: 2, Severity: 3}}, // ERROR = 4
-			{Data: AuditMessageData{ID: 3, Severity: 4}}, // WARNING = 3
-			{Data: AuditMessageData{ID: 4, Severity: 5}}, // NOTICE = 2
-		}, 14},
+		}, false, 2},
+		{"all inbound severities", []AuditMessage{
+			{Data: AuditMessageData{ID: 910100, Severity: 2}}, // CRITICAL = 5
+			{Data: AuditMessageData{ID: 920100, Severity: 3}}, // ERROR = 4
+			{Data: AuditMessageData{ID: 930100, Severity: 4}}, // WARNING = 3
+			{Data: AuditMessageData{ID: 941100, Severity: 5}}, // NOTICE = 2
+		}, false, 14},
+		// Outbound tests
+		{"single outbound critical", []AuditMessage{{Data: AuditMessageData{ID: 950100, Severity: 2}}}, true, 5},
+		{"outbound SQL leak", []AuditMessage{{Data: AuditMessageData{ID: 951100, Severity: 2}}}, true, 5},
+		{"outbound multiple", []AuditMessage{
+			{Data: AuditMessageData{ID: 950100, Severity: 4}}, // WARNING = 3
+			{Data: AuditMessageData{ID: 951100, Severity: 2}}, // CRITICAL = 5
+		}, true, 8},
+		// Phase separation
+		{"inbound ignores outbound rules", []AuditMessage{
+			{Data: AuditMessageData{ID: 942100, Severity: 2}}, // inbound
+			{Data: AuditMessageData{ID: 950100, Severity: 2}}, // outbound - should be ignored
+		}, false, 5},
+		{"outbound ignores inbound rules", []AuditMessage{
+			{Data: AuditMessageData{ID: 942100, Severity: 2}}, // inbound - should be ignored
+			{Data: AuditMessageData{ID: 950100, Severity: 2}}, // outbound
+		}, true, 5},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := computeAnomalyScore(tt.messages)
+			got := computeAnomalyScoreByPhase(tt.messages, tt.outbound)
 			if got != tt.want {
-				t.Errorf("computeAnomalyScore() = %d, want %d", got, tt.want)
+				t.Errorf("computeAnomalyScoreByPhase(outbound=%v) = %d, want %d", tt.outbound, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestComputeAnomalyScoreCombined(t *testing.T) {
+	// computeAnomalyScore should sum both inbound and outbound.
+	messages := []AuditMessage{
+		{Data: AuditMessageData{ID: 942100, Severity: 2}}, // inbound CRITICAL = 5
+		{Data: AuditMessageData{ID: 950100, Severity: 4}}, // outbound WARNING = 3
+	}
+	got := computeAnomalyScore(messages)
+	if got != 8 {
+		t.Errorf("computeAnomalyScore() = %d, want 8", got)
+	}
+}
+
+func TestExtractScoresFrom980170(t *testing.T) {
+	tests := []struct {
+		name         string
+		msg          string
+		wantInbound  int
+		wantOutbound int
+	}{
+		{
+			"full CRS 4.x message",
+			"Anomaly Scores: (Inbound Scores: blocking=15, detection=15, per_pl=15-0-0-0, threshold=5) - (Outbound Scores: blocking=3, detection=3, per_pl=3-0-0-0, threshold=4)",
+			15, 3,
+		},
+		{
+			"zero outbound",
+			"Anomaly Scores: (Inbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=5) - (Outbound Scores: blocking=0, detection=0, per_pl=0-0-0-0, threshold=4)",
+			5, 0,
+		},
+		{
+			"zero inbound",
+			"Anomaly Scores: (Inbound Scores: blocking=0, detection=0, per_pl=0-0-0-0, threshold=5) - (Outbound Scores: blocking=8, detection=8, per_pl=8-0-0-0, threshold=4)",
+			0, 8,
+		},
+		{"empty", "", 0, 0},
+		{"unrelated", "Remote Command Execution detected", 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotIn, gotOut := extractScoresFrom980170(tt.msg)
+			if gotIn != tt.wantInbound {
+				t.Errorf("inbound = %d, want %d", gotIn, tt.wantInbound)
+			}
+			if gotOut != tt.wantOutbound {
+				t.Errorf("outbound = %d, want %d", gotOut, tt.wantOutbound)
+			}
+		})
+	}
+}
+
+func TestOutboundAnomalyScoreInParsedEvent(t *testing.T) {
+	// Audit log with both inbound (949110) and outbound (959100) scoring rules.
+	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test-outbound","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":403},"producer":{"rule_engine":"On"}},"messages":[{"message":"SQL Injection","data":{"id":942100,"msg":"SQL Injection","severity":2,"tags":["attack-sqli"]}},{"message":"SQL Information Leakage","data":{"id":951100,"msg":"SQL Information Leakage","severity":2,"tags":["leakage-sql"]}},{"message":"Inbound Anomaly Score Exceeded (Total Score: 5)","data":{"id":949110,"msg":"Inbound Anomaly Score Exceeded (Total Score: 5)","severity":0,"tags":["anomaly-evaluation"]}},{"message":"Outbound Anomaly Score Exceeded (Total Score: 5)","data":{"id":959100,"msg":"Outbound Anomaly Score Exceeded (Total Score: 5)","severity":0,"tags":["anomaly-evaluation"]}}]}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	os.WriteFile(path, []byte(entry+"\n"), 0644)
+
+	store := NewStore(path)
+	store.Load()
+	events := store.Snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].AnomalyScore != 5 {
+		t.Errorf("expected inbound anomaly score 5, got %d", events[0].AnomalyScore)
+	}
+	if events[0].OutboundAnomalyScore != 5 {
+		t.Errorf("expected outbound anomaly score 5, got %d", events[0].OutboundAnomalyScore)
+	}
+}
+
+func TestOutboundScoreFrom980170Fallback(t *testing.T) {
+	// When 949110/959100 don't fire but 980170 provides the full breakdown.
+	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test-980170","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":200},"producer":{"rule_engine":"DetectionOnly"}},"messages":[{"message":"SQL Injection","data":{"id":942100,"msg":"SQL Injection","severity":2,"tags":["attack-sqli"]}},{"message":"SQL Information Leakage","data":{"id":951100,"msg":"SQL Information Leakage","severity":2,"tags":["leakage-sql"]}},{"message":"Anomaly Scores: (Inbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000) - (Outbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000)","data":{"id":980170,"msg":"Anomaly Scores: (Inbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000) - (Outbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000)","severity":0,"tags":["reporting"]}}]}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	os.WriteFile(path, []byte(entry+"\n"), 0644)
+
+	store := NewStore(path)
+	store.Load()
+	events := store.Snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].AnomalyScore != 5 {
+		t.Errorf("expected inbound anomaly score 5, got %d", events[0].AnomalyScore)
+	}
+	if events[0].OutboundAnomalyScore != 5 {
+		t.Errorf("expected outbound anomaly score 5, got %d", events[0].OutboundAnomalyScore)
 	}
 }
 

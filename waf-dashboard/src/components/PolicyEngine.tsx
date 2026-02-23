@@ -439,7 +439,7 @@ function HostValueInput({
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0 text-muted-foreground"
+          className="shrink-0 text-muted-foreground"
           title="Switch to dropdown"
           onClick={() => { setCustomMode(false); onChange(""); }}
         >
@@ -541,7 +541,7 @@ function ConditionRow({
       <Button
         variant="ghost"
         size="icon"
-        className="h-9 w-9 shrink-0 text-muted-foreground hover:text-neon-pink"
+        className="shrink-0 text-muted-foreground hover:text-neon-pink"
         onClick={() => onRemove(index)}
       >
         <X className="h-4 w-4" />
@@ -1562,16 +1562,15 @@ export default function PolicyEngine() {
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
+                          size="icon-sm"
                           onClick={() => setEditingId(excl.id)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-neon-pink"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-neon-pink"
                           onClick={() => setDeleteConfirmId(excl.id)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />

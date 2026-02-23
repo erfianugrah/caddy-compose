@@ -69,10 +69,26 @@ export interface WAFEvent {
   rule_msg: string;
   severity: number;
   anomaly_score: number;
-  request_headers?: Record<string, string>;
+  outbound_anomaly_score: number;
+  blocked_by?: "anomaly_inbound" | "anomaly_outbound" | "direct";
   matched_data?: string;
   rule_tags?: string[];
   user_agent?: string;
+  // All matched rules (not just primary)
+  matched_rules?: MatchedRuleInfo[];
+  // Request context for full payload inspection
+  request_headers?: Record<string, string[]>;
+  request_body?: string;
+  request_args?: Record<string, string>;
+}
+
+export interface MatchedRuleInfo {
+  id: number;
+  msg: string;
+  severity: number;
+  matched_data?: string;
+  file?: string;
+  tags?: string[];
 }
 
 export interface EventsResponse {
@@ -487,8 +503,14 @@ interface RawEvent {
   rule_msg?: string;
   severity?: number;
   anomaly_score?: number;
+  outbound_anomaly_score?: number;
+  blocked_by?: string;
   matched_data?: string;
   rule_tags?: string[];
+  matched_rules?: MatchedRuleInfo[];
+  request_headers?: Record<string, string[]>;
+  request_body?: string;
+  request_args?: Record<string, string>;
 }
 
 function mapEvent(raw: RawEvent): WAFEvent {
@@ -512,9 +534,15 @@ function mapEvent(raw: RawEvent): WAFEvent {
     rule_msg: raw.rule_msg ?? "",
     severity: raw.severity ?? 0,
     anomaly_score: raw.anomaly_score ?? 0,
+    outbound_anomaly_score: raw.outbound_anomaly_score ?? 0,
+    blocked_by: raw.blocked_by as WAFEvent["blocked_by"],
     matched_data: raw.matched_data,
     rule_tags: raw.rule_tags,
     user_agent: raw.user_agent,
+    matched_rules: raw.matched_rules,
+    request_headers: raw.request_headers,
+    request_body: raw.request_body,
+    request_args: raw.request_args,
   };
 }
 
@@ -553,6 +581,29 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
     per_page: perPage,
     total_pages: totalPages,
   };
+}
+
+/** Fetch all events matching the current filters (export mode, no pagination limit). */
+export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEvent[]> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("export", "true");
+  if (params.service) searchParams.set("service", params.service);
+  if (params.blocked !== null && params.blocked !== undefined)
+    searchParams.set("blocked", String(params.blocked));
+  if (params.method) searchParams.set("method", params.method);
+  if (params.event_type) searchParams.set("event_type", params.event_type);
+  if (params.start && params.end) {
+    searchParams.set("start", params.start);
+    searchParams.set("end", params.end);
+  } else if (params.hours) {
+    searchParams.set("hours", String(params.hours));
+  }
+
+  const qs = searchParams.toString();
+  const raw = await fetchJSON<{ total: number; events: RawEvent[] }>(
+    `${API_BASE}/events${qs ? `?${qs}` : ""}`
+  );
+  return (raw.events ?? []).map(mapEvent);
 }
 
 // Services

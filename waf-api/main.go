@@ -511,8 +511,11 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			blocked = &val
 		}
 
+		exportAll := strings.EqualFold(q.Get("export"), "true")
 		limit := queryInt(q.Get("limit"), 50)
-		if limit <= 0 || limit > 1000 {
+		if exportAll {
+			limit = 100000 // export mode: return all matching events
+		} else if limit <= 0 || limit > 1000 {
 			limit = 50
 		}
 		offset := queryInt(q.Get("offset"), 0)

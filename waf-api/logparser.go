@@ -219,19 +219,87 @@ func parseEvent(entry AuditLogEntry) Event {
 		ev.MatchedData = best.Data.Data
 		ev.RuleTags = best.Data.Tags
 
-		// Extract anomaly score. Prefer the explicit total from rule 949110/980170
-		// ("Inbound Anomaly Score Exceeded (Total Score: N)"). If that rule didn't
-		// fire (e.g. DetectionOnly mode with high thresholds), compute the score
-		// by summing CRS severity-based points from each matched rule.
+		// Extract inbound and outbound anomaly scores separately.
+		//
+		// Priority order for each score:
+		//   1. Rule 949110 (inbound) / 959100 (outbound) — blocking evaluation rules
+		//      that fire when the score exceeds the threshold. Message: "Total Score: N"
+		//   2. Rule 980170 — phase 5 correlation/reporting rule that logs a full breakdown
+		//      of all scores. Message: "Anomaly Scores: (Inbound Scores: blocking=N, ...)
+		//      - (Outbound Scores: blocking=N, ...)"
+		//   3. Fallback: sum CRS severity-based points from matched rules, filtered by
+		//      ID range (inbound: 910000-949999, outbound: 950000-979999).
+		var saw949110, saw959100 bool
 		for _, m := range entry.Messages {
-			if m.Data.ID == 949110 || m.Data.ID == 980170 {
+			switch m.Data.ID {
+			case 949110:
 				ev.AnomalyScore = extractAnomalyScore(m.Data.Msg)
-				break
+				saw949110 = true
+			case 959100:
+				ev.OutboundAnomalyScore = extractAnomalyScore(m.Data.Msg)
+				saw959100 = true
+			case 980170:
+				// 980170 contains both scores — use as fallback for whichever
+				// wasn't already set by 949110/959100.
+				inbound, outbound := extractScoresFrom980170(m.Data.Msg)
+				if ev.AnomalyScore == 0 {
+					ev.AnomalyScore = inbound
+				}
+				if ev.OutboundAnomalyScore == 0 {
+					ev.OutboundAnomalyScore = outbound
+				}
 			}
 		}
+		// Last resort: compute from individual rule severities.
 		if ev.AnomalyScore == 0 {
-			ev.AnomalyScore = computeAnomalyScore(entry.Messages)
+			ev.AnomalyScore = computeAnomalyScoreByPhase(entry.Messages, false)
 		}
+		if ev.OutboundAnomalyScore == 0 {
+			ev.OutboundAnomalyScore = computeAnomalyScoreByPhase(entry.Messages, true)
+		}
+
+		// Determine how the request was blocked.
+		if ev.IsBlocked {
+			if saw949110 {
+				ev.BlockedBy = "anomaly_inbound"
+			} else if saw959100 {
+				ev.BlockedBy = "anomaly_outbound"
+			} else {
+				ev.BlockedBy = "direct"
+			}
+		}
+
+		// Collect all matched rules (skip scoring/evaluation rules).
+		seen := make(map[int]bool)
+		for _, m := range entry.Messages {
+			id := m.Data.ID
+			if id == 0 || id == 949110 || id == 959100 || id == 980170 {
+				continue
+			}
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			ev.MatchedRules = append(ev.MatchedRules, MatchedRule{
+				ID:          id,
+				Msg:         m.Data.Msg,
+				Severity:    m.Data.Severity,
+				MatchedData: m.Data.Data,
+				File:        m.Data.File,
+				Tags:        m.Data.Tags,
+			})
+		}
+	}
+
+	// Attach request context for full payload inspection.
+	if len(tx.Request.Headers) > 0 {
+		ev.RequestHeaders = tx.Request.Headers
+	}
+	if tx.Request.Body != "" {
+		ev.RequestBody = tx.Request.Body
+	}
+	if len(tx.Request.Args) > 0 {
+		ev.RequestArgs = tx.Request.Args
 	}
 
 	return ev
@@ -261,21 +329,64 @@ func extractAnomalyScore(msg string) int {
 	return score
 }
 
-// computeAnomalyScore sums CRS severity-based anomaly points from matched rules.
-// Used as a fallback when the 949110/980170 evaluation rule didn't fire
-// (e.g. DetectionOnly mode where the score never exceeds the threshold).
+// extractScoresFrom980170 parses both inbound and outbound blocking scores from
+// rule 980170's correlation message. Format:
+//
+//	"Anomaly Scores: (Inbound Scores: blocking=N, ...) - (Outbound Scores: blocking=N, ...)"
+//
+// Returns (inbound, outbound). Returns 0 for either if not found.
+func extractScoresFrom980170(msg string) (int, int) {
+	inbound := extractNamedScore(msg, "Inbound Scores: blocking=")
+	outbound := extractNamedScore(msg, "Outbound Scores: blocking=")
+	return inbound, outbound
+}
+
+// extractNamedScore extracts an integer after the given prefix in a message.
+// E.g. extractNamedScore("...blocking=15,...", "blocking=") returns 15.
+func extractNamedScore(msg, prefix string) int {
+	idx := strings.Index(msg, prefix)
+	if idx < 0 {
+		return 0
+	}
+	rest := msg[idx+len(prefix):]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	score, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return score
+}
+
+// computeAnomalyScoreByPhase sums CRS severity-based anomaly points from
+// matched rules, filtered by CRS rule ID range (inbound vs outbound).
+//
+// CRS 4.x ID ranges:
+//
+//	Inbound  (request phases 1-2):  910000-949999
+//	Outbound (response phases 3-4): 950000-979999
 //
 // CRS 4.x scoring: CRITICAL(2)=5, ERROR(3)=4, WARNING(4)=3, NOTICE(5)=2.
-// Rules 949110, 980170, and ID 0 are excluded (scoring/evaluation rules).
-func computeAnomalyScore(messages []AuditMessage) int {
+// Evaluation rules (949110, 959100, 980170) and ID 0 are excluded.
+func computeAnomalyScoreByPhase(messages []AuditMessage, outbound bool) int {
 	score := 0
 	seen := make(map[int]bool) // deduplicate by rule ID (chain rules repeat)
 	for _, m := range messages {
 		id := m.Data.ID
-		if id == 0 || id == 949110 || id == 980170 {
+		if id == 0 || id == 949110 || id == 959100 || id == 980170 {
 			continue
 		}
 		if seen[id] {
+			continue
+		}
+		// Filter by CRS rule ID range.
+		isOutbound := id >= 950000 && id <= 979999
+		if outbound != isOutbound {
 			continue
 		}
 		seen[id] = true
@@ -291,6 +402,13 @@ func computeAnomalyScore(messages []AuditMessage) int {
 		}
 	}
 	return score
+}
+
+// computeAnomalyScore sums CRS severity-based anomaly points from all matched
+// rules (both inbound and outbound). This is the combined total score.
+// Kept for backward compatibility with tests; prefer computeAnomalyScoreByPhase.
+func computeAnomalyScore(messages []AuditMessage) int {
+	return computeAnomalyScoreByPhase(messages, false) + computeAnomalyScoreByPhase(messages, true)
 }
 
 // parseTimestamp parses Coraza's "2006/01/02 15:04:05" format.
