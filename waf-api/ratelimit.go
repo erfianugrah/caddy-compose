@@ -20,44 +20,27 @@ type RateLimitStore struct {
 }
 
 // NewRateLimitStore creates a new rate limit store and loads existing data from disk.
+// Starts with an empty config — zones are discovered from the Caddyfile at boot
+// via MergeCaddyfileZones(), not hardcoded.
 func NewRateLimitStore(filePath string) *RateLimitStore {
 	s := &RateLimitStore{
 		filePath: filePath,
-		config:   defaultRateLimitConfig(),
+		config:   RateLimitConfig{Zones: []RateLimitZone{}},
 	}
 	s.load()
 	return s
 }
 
-// defaultRateLimitConfig returns the current production rate limits as defaults.
-// These match the hardcoded values in the Caddyfile.
-func defaultRateLimitConfig() RateLimitConfig {
-	return RateLimitConfig{
-		Zones: []RateLimitZone{
-			{Name: "caddy", Events: 100, Window: "1m", Enabled: true},
-			{Name: "waf", Events: 200, Window: "1m", Enabled: true},
-			{Name: "authelia", Events: 200, Window: "1m", Enabled: true},
-			{Name: "servarr", Events: 1000, Window: "1m", Enabled: true},
-			{Name: "sonarr", Events: 300, Window: "1m", Enabled: true},
-			{Name: "radarr", Events: 300, Window: "1m", Enabled: true},
-			{Name: "bazarr", Events: 300, Window: "1m", Enabled: true},
-			{Name: "vault", Events: 300, Window: "1m", Enabled: true},
-			{Name: "prowlarr", Events: 300, Window: "1m", Enabled: true},
-			{Name: "jellyfin", Events: 1000, Window: "1m", Enabled: true},
-			{Name: "qbit", Events: 300, Window: "1m", Enabled: true},
-			{Name: "change", Events: 300, Window: "1m", Enabled: true},
-			{Name: "seerr", Events: 300, Window: "1m", Enabled: true},
-			{Name: "keycloak", Events: 100, Window: "1m", Enabled: true},
-			{Name: "joplin", Events: 300, Window: "1m", Enabled: true},
-			{Name: "navidrome", Events: 1000, Window: "1m", Enabled: true},
-			{Name: "sabnzbd", Events: 300, Window: "1m", Enabled: true},
-			{Name: "immich", Events: 1000, Window: "1m", Enabled: true},
-			{Name: "caddy-prometheus", Events: 100, Window: "1m", Enabled: true},
-			{Name: "copyparty", Events: 300, Window: "1m", Enabled: true},
-			{Name: "dockge", Events: 100, Window: "1m", Enabled: true},
-			{Name: "httpbun", Events: 100, Window: "1m", Enabled: true},
-			{Name: "httpbin", Events: 100, Window: "1m", Enabled: true},
-		},
+// defaultZone returns a sensible default zone config for a newly discovered zone.
+const defaultZoneEvents = 300
+const defaultZoneWindow = "1m"
+
+func defaultZone(name string) RateLimitZone {
+	return RateLimitZone{
+		Name:    name,
+		Events:  defaultZoneEvents,
+		Window:  defaultZoneWindow,
+		Enabled: true,
 	}
 }
 
@@ -65,7 +48,7 @@ func (s *RateLimitStore) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("rate limit config not found at %s, using defaults", s.filePath)
+			log.Printf("rate limit config not found at %s, starting empty", s.filePath)
 			return
 		}
 		log.Printf("error reading rate limit config: %v", err)
@@ -252,13 +235,13 @@ func ensureRateLimitDir(dir string) error {
 //	import /data/caddy/rl/sonarr_rl*.caddy
 //
 // It captures the zone prefix (e.g. "sonarr_rl") so we can derive the
-// placeholder filename. The Caddy-side path (/data/caddy/rl/) differs from
+// zone name. The Caddy-side path (/data/caddy/rl/) differs from
 // waf-api's mount (/data/rl/) — callers must use their own RateLimitDir.
 var rlImportPattern = regexp.MustCompile(`import\s+\S*/rl/([a-zA-Z0-9_-]+_rl)\*\.caddy`)
 
 // scanCaddyfileZones reads the Caddyfile and returns the set of rate limit
 // zone file prefixes referenced by import globs (e.g. "sonarr_rl").
-// Returns nil on read error (non-fatal — zones just won't get placeholders).
+// Returns nil on read error (non-fatal — zones just won't be auto-discovered).
 func scanCaddyfileZones(caddyfilePath string) []string {
 	data, err := os.ReadFile(caddyfilePath)
 	if err != nil {
@@ -278,25 +261,49 @@ func scanCaddyfileZones(caddyfilePath string) []string {
 	return prefixes
 }
 
-// ensureZonePlaceholders creates empty placeholder .caddy files for any
-// zone referenced in the Caddyfile that doesn't already have a file on disk.
-// This prevents Caddy's "No files matching import glob pattern" warnings
-// when a site block is added before a rate limit zone is configured.
-func ensureZonePlaceholders(dir string, prefixes []string) int {
-	created := 0
+// MergeCaddyfileZones scans the Caddyfile for rate limit import globs and
+// adds any missing zones to the store with sensible defaults. This makes
+// the Caddyfile the source of truth for which zones exist — no hardcoded
+// defaults needed. Returns the number of zones added. Persists to disk if
+// any zones were added.
+func (s *RateLimitStore) MergeCaddyfileZones(caddyfilePath string) int {
+	if caddyfilePath == "" {
+		return 0
+	}
+
+	prefixes := scanCaddyfileZones(caddyfilePath)
+	if len(prefixes) == 0 {
+		return 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing := make(map[string]bool, len(s.config.Zones))
+	for _, z := range s.config.Zones {
+		existing[z.Name] = true
+	}
+
+	added := 0
 	for _, prefix := range prefixes {
-		path := filepath.Join(dir, prefix+".caddy")
-		if _, err := os.Stat(path); err == nil {
-			continue // file already exists
-		}
-		placeholder := fmt.Sprintf("# Managed by waf-api Rate Limit Engine\n# Placeholder created: %s\n# No rate limit configured for this zone yet.\n",
-			time.Now().UTC().Format(time.RFC3339))
-		if err := atomicWriteFile(path, []byte(placeholder), 0644); err != nil {
-			log.Printf("warning: failed to create placeholder %s: %v", path, err)
+		// Strip the _rl suffix to get the zone name.
+		name := strings.TrimSuffix(prefix, "_rl")
+		if existing[name] {
 			continue
 		}
-		log.Printf("created rate limit placeholder: %s", path)
-		created++
+		s.config.Zones = append(s.config.Zones, defaultZone(name))
+		existing[name] = true
+		added++
+		log.Printf("discovered new zone %q from Caddyfile", name)
 	}
-	return created
+
+	if added > 0 {
+		if err := s.save(); err != nil {
+			log.Printf("warning: failed to persist %d new zones: %v", added, err)
+		} else {
+			log.Printf("merged %d zone(s) from Caddyfile into rate limit config (%d total)", added, len(s.config.Zones))
+		}
+	}
+
+	return added
 }

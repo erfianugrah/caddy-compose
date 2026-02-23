@@ -3046,22 +3046,12 @@ func TestParseEventWithoutMessages(t *testing.T) {
 
 // --- Rate Limit Store tests ---
 
-func TestRateLimitStoreDefaults(t *testing.T) {
+func TestRateLimitStoreStartsEmpty(t *testing.T) {
 	s := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
 	cfg := s.Get()
 
-	expectedZones := len(defaultRateLimitConfig().Zones)
-	if len(cfg.Zones) != expectedZones {
-		t.Fatalf("expected %d default zones, got %d", expectedZones, len(cfg.Zones))
-	}
-
-	// Check a known zone
-	z := s.GetZone("sonarr")
-	if z == nil {
-		t.Fatal("expected sonarr zone")
-	}
-	if z.Events != 300 || z.Window != "1m" || !z.Enabled {
-		t.Errorf("sonarr: events=%d window=%s enabled=%v", z.Events, z.Window, z.Enabled)
+	if len(cfg.Zones) != 0 {
+		t.Fatalf("expected 0 zones for fresh store, got %d", len(cfg.Zones))
 	}
 
 	// Non-existent zone
@@ -3294,43 +3284,103 @@ site2.com { import /data/caddy/rl/test_rl*.caddy }
 	})
 }
 
-func TestEnsureZonePlaceholders(t *testing.T) {
-	t.Run("creates missing placeholder files", func(t *testing.T) {
-		dir := t.TempDir()
-		prefixes := []string{"sonarr_rl", "radarr_rl", "tracearr_rl"}
+func TestMergeCaddyfileZones(t *testing.T) {
+	t.Run("discovers zones from Caddyfile", func(t *testing.T) {
+		caddyfile := filepath.Join(t.TempDir(), "Caddyfile")
+		content := `
+sonarr.example.com {
+	import /data/caddy/rl/sonarr_rl*.caddy
+}
+tracearr.example.com {
+	import /data/caddy/rl/tracearr_rl*.caddy
+}
+radarr.example.com {
+	import /data/caddy/rl/radarr_rl*.caddy
+}
+`
+		os.WriteFile(caddyfile, []byte(content), 0644)
 
-		created := ensureZonePlaceholders(dir, prefixes)
-		if created != 3 {
-			t.Fatalf("expected 3 created, got %d", created)
+		s := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+		added := s.MergeCaddyfileZones(caddyfile)
+		if added != 3 {
+			t.Fatalf("expected 3 added, got %d", added)
 		}
 
-		for _, p := range prefixes {
-			path := filepath.Join(dir, p+".caddy")
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("placeholder %s not created: %v", p, err)
+		cfg := s.Get()
+		if len(cfg.Zones) != 3 {
+			t.Fatalf("expected 3 zones, got %d", len(cfg.Zones))
+		}
+
+		for _, name := range []string{"sonarr", "tracearr", "radarr"} {
+			z := s.GetZone(name)
+			if z == nil {
+				t.Fatalf("zone %q not found", name)
 			}
-			if !strings.Contains(string(data), "Placeholder created") {
-				t.Errorf("placeholder %s missing header", p)
+			if z.Events != defaultZoneEvents || z.Window != defaultZoneWindow || !z.Enabled {
+				t.Errorf("zone %q: unexpected defaults events=%d window=%s enabled=%v", name, z.Events, z.Window, z.Enabled)
 			}
 		}
 	})
 
-	t.Run("skips existing files", func(t *testing.T) {
-		dir := t.TempDir()
-		// Pre-create one file
-		existing := filepath.Join(dir, "sonarr_rl.caddy")
-		os.WriteFile(existing, []byte("rate_limit { }"), 0644)
+	t.Run("skips zones already in store", func(t *testing.T) {
+		caddyfile := filepath.Join(t.TempDir(), "Caddyfile")
+		content := `
+sonarr.example.com { import /data/caddy/rl/sonarr_rl*.caddy }
+tracearr.example.com { import /data/caddy/rl/tracearr_rl*.caddy }
+`
+		os.WriteFile(caddyfile, []byte(content), 0644)
 
-		created := ensureZonePlaceholders(dir, []string{"sonarr_rl", "tracearr_rl"})
-		if created != 1 {
-			t.Fatalf("expected 1 created (sonarr_rl already exists), got %d", created)
+		path := filepath.Join(t.TempDir(), "rl.json")
+		s := NewRateLimitStore(path)
+		// Pre-configure sonarr with custom settings.
+		s.Update(RateLimitConfig{
+			Zones: []RateLimitZone{
+				{Name: "sonarr", Events: 1000, Window: "5m", Enabled: false},
+			},
+		})
+
+		added := s.MergeCaddyfileZones(caddyfile)
+		if added != 1 {
+			t.Fatalf("expected 1 added (tracearr only), got %d", added)
 		}
 
-		// Verify existing file was NOT overwritten
-		data, _ := os.ReadFile(existing)
-		if !strings.Contains(string(data), "rate_limit") {
-			t.Error("existing file was overwritten")
+		// sonarr should retain its custom settings.
+		z := s.GetZone("sonarr")
+		if z.Events != 1000 || z.Window != "5m" || z.Enabled {
+			t.Errorf("sonarr was overwritten: events=%d window=%s enabled=%v", z.Events, z.Window, z.Enabled)
+		}
+
+		// tracearr should have defaults.
+		z = s.GetZone("tracearr")
+		if z == nil {
+			t.Fatal("tracearr not added")
+		}
+		if z.Events != defaultZoneEvents {
+			t.Errorf("tracearr events: got %d, want %d", z.Events, defaultZoneEvents)
+		}
+	})
+
+	t.Run("persists merged zones to disk", func(t *testing.T) {
+		caddyfile := filepath.Join(t.TempDir(), "Caddyfile")
+		os.WriteFile(caddyfile, []byte(`site.com { import /data/caddy/rl/newzone_rl*.caddy }`), 0644)
+
+		rlPath := filepath.Join(t.TempDir(), "rl.json")
+		s := NewRateLimitStore(rlPath)
+		s.MergeCaddyfileZones(caddyfile)
+
+		// Reload from disk and verify.
+		s2 := NewRateLimitStore(rlPath)
+		z := s2.GetZone("newzone")
+		if z == nil {
+			t.Fatal("merged zone not persisted to disk")
+		}
+	})
+
+	t.Run("no-op for empty caddyfile path", func(t *testing.T) {
+		s := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+		added := s.MergeCaddyfileZones("")
+		if added != 0 {
+			t.Errorf("expected 0 added for empty path, got %d", added)
 		}
 	})
 }
@@ -3352,16 +3402,17 @@ func TestZoneFileName(t *testing.T) {
 	}
 }
 
-func TestGenerateOnBootCreatesPlaceholders(t *testing.T) {
+func TestGenerateOnBootMergesCaddyfileZones(t *testing.T) {
 	// Set up directories and a Caddyfile with zone imports that aren't in the
-	// rate limit config. generateOnBoot should create placeholder files for them.
+	// rate limit config. generateOnBoot should discover them via MergeCaddyfileZones
+	// and write proper zone files for all of them.
 	corazaDir := t.TempDir()
 	rlDir := filepath.Join(t.TempDir(), "rl")
 	caddyfileDir := t.TempDir()
 	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
 
-	// Caddyfile references 3 zones: "sonarr" and "tracearr" and "newzone".
-	// The rate limit store will only have "sonarr" configured.
+	// Caddyfile references 3 zones: "sonarr", "tracearr", and "newzone".
+	// The rate limit store will only have "sonarr" pre-configured.
 	caddyfileContent := `
 sonarr.example.com {
 	import /data/caddy/rl/sonarr_rl*.caddy
@@ -3386,36 +3437,40 @@ newzone.example.com {
 	es := newTestExclusionStore(t)
 	cs := newTestConfigStore(t)
 	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
-	// Only "sonarr" zone configured.
+	// Only "sonarr" zone configured with custom settings.
 	rs.Update(RateLimitConfig{
 		Zones: []RateLimitZone{
-			{Name: "sonarr", Events: 300, Window: "1m", Enabled: true},
+			{Name: "sonarr", Events: 500, Window: "1m", Enabled: true},
 		},
 	})
 
 	generateOnBoot(cs, es, rs, deployCfg)
 
-	// sonarr_rl.caddy should exist with real rate_limit content (written by writeZoneFiles).
-	sonarrData, err := os.ReadFile(filepath.Join(rlDir, "sonarr_rl.caddy"))
-	if err != nil {
-		t.Fatalf("sonarr_rl.caddy not created: %v", err)
-	}
-	if !strings.Contains(string(sonarrData), "rate_limit") {
-		t.Error("sonarr_rl.caddy should contain rate_limit directive")
+	// All 3 zones should now have proper rate_limit zone files.
+	for _, zone := range []string{"sonarr", "tracearr", "newzone"} {
+		data, err := os.ReadFile(filepath.Join(rlDir, zone+"_rl.caddy"))
+		if err != nil {
+			t.Fatalf("%s_rl.caddy not created: %v", zone, err)
+		}
+		if !strings.Contains(string(data), "rate_limit") {
+			t.Errorf("%s_rl.caddy should contain rate_limit directive", zone)
+		}
 	}
 
-	// tracearr_rl.caddy and newzone_rl.caddy should exist as placeholders
-	// (created by ensureZonePlaceholders via Caddyfile scan).
-	for _, zone := range []string{"tracearr_rl", "newzone_rl"} {
-		data, err := os.ReadFile(filepath.Join(rlDir, zone+".caddy"))
-		if err != nil {
-			t.Fatalf("%s.caddy not created: %v", zone, err)
+	// sonarr should retain its custom events value, not be overwritten.
+	z := rs.GetZone("sonarr")
+	if z == nil || z.Events != 500 {
+		t.Errorf("sonarr should retain custom events=500, got %v", z)
+	}
+
+	// tracearr and newzone should have default values.
+	for _, name := range []string{"tracearr", "newzone"} {
+		z := rs.GetZone(name)
+		if z == nil {
+			t.Fatalf("zone %q not in store after boot", name)
 		}
-		if !strings.Contains(string(data), "Placeholder created") {
-			t.Errorf("%s.caddy should be a placeholder", zone)
-		}
-		if strings.Contains(string(data), "rate_limit") {
-			t.Errorf("%s.caddy should NOT contain rate_limit directive", zone)
+		if z.Events != defaultZoneEvents {
+			t.Errorf("zone %q: expected default events=%d, got %d", name, defaultZoneEvents, z.Events)
 		}
 	}
 }
@@ -3438,9 +3493,8 @@ func TestRateLimitAPIEndpoints(t *testing.T) {
 
 	var cfg RateLimitConfig
 	json.NewDecoder(rec.Body).Decode(&cfg)
-	expectedZones := len(defaultRateLimitConfig().Zones)
-	if len(cfg.Zones) != expectedZones {
-		t.Fatalf("expected %d default zones, got %d", expectedZones, len(cfg.Zones))
+	if len(cfg.Zones) != 0 {
+		t.Fatalf("expected 0 zones for fresh store, got %d", len(cfg.Zones))
 	}
 
 	// PUT — update to single zone

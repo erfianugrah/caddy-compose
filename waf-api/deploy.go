@@ -90,7 +90,12 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, dep
 			len(exclusions), cfg.Defaults.Mode, cfg.Defaults.ParanoiaLevel)
 	}
 
-	// Rate limit zones.
+	// Rate limit zones: merge any new zones discovered from the Caddyfile,
+	// then write zone files for all configured zones.
+	if added := rs.MergeCaddyfileZones(deployCfg.CaddyfilePath); added > 0 {
+		log.Printf("[boot] discovered %d new zone(s) from Caddyfile", added)
+	}
+
 	rlCfg := rs.Get()
 	if len(rlCfg.Zones) > 0 {
 		written, err := writeZoneFiles(deployCfg.RateLimitDir, rlCfg.Zones)
@@ -98,19 +103,6 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, dep
 			log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
 		} else {
 			log.Printf("[boot] regenerated %d rate limit zone files", len(written))
-		}
-	}
-
-	// Scan the Caddyfile for rate limit import globs and create placeholder
-	// files for any zone that doesn't already have a .caddy file. This
-	// prevents "No files matching import glob pattern" warnings when new
-	// site blocks are added before configuring rate limits via the API.
-	if deployCfg.CaddyfilePath != "" {
-		if prefixes := scanCaddyfileZones(deployCfg.CaddyfilePath); len(prefixes) > 0 {
-			created := ensureZonePlaceholders(deployCfg.RateLimitDir, prefixes)
-			if created > 0 {
-				log.Printf("[boot] created %d rate limit placeholder(s) from Caddyfile scan", created)
-			}
 		}
 	}
 }
