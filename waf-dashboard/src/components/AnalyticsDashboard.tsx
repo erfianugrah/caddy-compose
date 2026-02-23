@@ -46,6 +46,7 @@ import {
   type TopTargetedURI,
   type CountryCount,
 } from "@/lib/api";
+import { ACTION_COLORS, ACTION_BADGE_CLASSES, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -91,17 +92,7 @@ function CountryLabel({ code }: { code: string }) {
   );
 }
 
-const chartTooltipStyle = {
-  contentStyle: {
-    backgroundColor: "#0f1538",
-    border: "1px solid #1e275c",
-    borderRadius: "8px",
-    fontSize: "12px",
-    color: "#e0e6f0",
-  },
-  itemStyle: { color: "#e0e6f0" },
-  labelStyle: { color: "#7a8baa" },
-};
+const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
 // ─── IP Lookup Panel ────────────────────────────────────────────────
 
@@ -279,20 +270,20 @@ function IPLookupPanel() {
                     >
                       <defs>
                         <linearGradient id="ipGradBlocked" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ff006e" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#ff006e" stopOpacity={0} />
+                          <stop offset="5%" stopColor={ACTION_COLORS.blocked} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={ACTION_COLORS.blocked} stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="ipGradLogged" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#00d4ff" stopOpacity={0} />
+                          <stop offset="5%" stopColor={ACTION_COLORS.logged} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={ACTION_COLORS.logged} stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
                       <XAxis dataKey="hour" stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
                       <YAxis stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
                       <Tooltip {...chartTooltipStyle} />
-                      <Area type="monotone" dataKey="blocked" stroke="#ff006e" fill="url(#ipGradBlocked)" strokeWidth={2} />
-                      <Area type="monotone" dataKey="logged" stroke="#00d4ff" fill="url(#ipGradLogged)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#ipGradBlocked)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
@@ -349,39 +340,39 @@ function IPLookupPanel() {
                         </TableCell>
                         <TableCell>
                           {evt.event_type === "honeypot" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-500/50 text-orange-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.honeypot}`}>
                               HONEYPOT
                             </Badge>
                           ) : evt.event_type === "scanner" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/50 text-red-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.scanner}`}>
                               SCANNER
                             </Badge>
                           ) : evt.event_type === "ipsum_blocked" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.ipsum_blocked}`}>
                               IPSUM
                             </Badge>
                           ) : evt.event_type === "rate_limited" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.rate_limited}`}>
                               RATE LIMITED
                             </Badge>
                           ) : evt.event_type === "policy_skip" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_skip}`}>
                               SKIPPED
                             </Badge>
                           ) : evt.event_type === "policy_allow" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_allow}`}>
                               ALLOWED
                             </Badge>
                           ) : evt.event_type === "policy_block" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/50 text-rose-400">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_block}`}>
                               POLICY BLOCK
                             </Badge>
                           ) : evt.event_type === "blocked" ? (
-                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.blocked}`}>
                               BLOCKED
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.logged}`}>
                               LOGGED
                             </Badge>
                           )}

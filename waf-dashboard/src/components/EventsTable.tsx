@@ -46,6 +46,7 @@ import {
   type EventType,
 } from "@/lib/api";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
+import { ACTION_BADGE_CLASSES } from "@/lib/utils";
 
 /** Convert ISO 3166-1 alpha-2 code to regional indicator flag emoji. */
 function countryFlagEmoji(code: string): string {
@@ -284,7 +285,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
               <>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className="text-violet-400 font-medium">IPsum Blocklist (403)</span>
+                  <span className="text-purple-400 font-medium">IPsum Blocklist (403)</span>
                 </div>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Response:</span>
@@ -292,7 +293,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
                 </div>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Source:</span>
-                  <span className="text-violet-400">IPsum threat intelligence blocklist</span>
+                  <span className="text-purple-400">IPsum threat intelligence blocklist</span>
                 </div>
                 {event.user_agent && (
                   <div className="flex gap-2">
@@ -305,7 +306,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
               <>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className="text-amber-400 font-medium">Rate Limited (429)</span>
+                  <span className="text-yellow-400 font-medium">Rate Limited (429)</span>
                 </div>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Response:</span>
@@ -925,39 +926,39 @@ export default function EventsTable() {
                       </TableCell>
                       <TableCell>
                         {evt.event_type === "honeypot" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-500/50 text-orange-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.honeypot}`}>
                             HONEYPOT
                           </Badge>
                         ) : evt.event_type === "scanner" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/50 text-red-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.scanner}`}>
                             SCANNER
                           </Badge>
                         ) : evt.event_type === "ipsum_blocked" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.ipsum_blocked}`}>
                             IPSUM
                           </Badge>
                         ) : evt.event_type === "rate_limited" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.rate_limited}`}>
                             RATE LIMITED
                           </Badge>
                         ) : evt.event_type === "policy_skip" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_skip}`}>
                             SKIPPED
                           </Badge>
                         ) : evt.event_type === "policy_allow" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_allow}`}>
                             ALLOWED
                           </Badge>
                         ) : evt.event_type === "policy_block" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/50 text-rose-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_block}`}>
                             POLICY BLOCK
                           </Badge>
                         ) : evt.event_type === "blocked" || evt.blocked ? (
-                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.blocked}`}>
                             BLOCKED
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.logged}`}>
                             LOGGED
                           </Badge>
                         )}

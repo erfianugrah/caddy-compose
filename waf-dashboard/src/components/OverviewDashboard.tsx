@@ -37,6 +37,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { fetchSummary, type SummaryData, type WAFEvent } from "@/lib/api";
 import { EventDetailPanel } from "@/components/EventsTable";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
+import { ACTION_COLORS, ACTION_LABELS, ACTION_BADGE_CLASSES, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -152,9 +153,8 @@ function StatCard({
     green: "text-neon-green bg-neon-green/10",
     pink: "text-neon-pink bg-neon-pink/10",
     cyan: "text-neon-cyan bg-neon-cyan/10",
-    amber: "text-neon-amber bg-neon-amber/10",
-    violet: "text-violet-400 bg-violet-400/10",
-    emerald: "text-emerald-400 bg-emerald-400/10",
+    yellow: "text-yellow-400 bg-yellow-400/10",
+    purple: "text-purple-400 bg-purple-400/10",
     orange: "text-orange-400 bg-orange-400/10",
     red: "text-red-400 bg-red-400/10",
   };
@@ -162,9 +162,8 @@ function StatCard({
     green: "text-neon-green",
     pink: "text-neon-pink",
     cyan: "text-neon-cyan",
-    amber: "text-neon-amber",
-    violet: "text-violet-400",
-    emerald: "text-emerald-400",
+    yellow: "text-yellow-400",
+    purple: "text-purple-400",
     orange: "text-orange-400",
     red: "text-red-400",
   };
@@ -195,28 +194,17 @@ function StatCard({
 
 // ─── Chart config ───────────────────────────────────────────────────
 
-const chartTooltipStyle = {
-  contentStyle: {
-    backgroundColor: "#0f1538",
-    border: "1px solid #1e275c",
-    borderRadius: "8px",
-    fontSize: "12px",
-    color: "#e0e6f0",
-  },
-  itemStyle: { color: "#e0e6f0" },
-  labelStyle: { color: "#7a8baa" },
-};
+const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
-// Fixed color map for donut slices — keyed by name so colors are consistent
-// regardless of which slices are present.
+// Donut color map — keyed by human-readable label, backed by ACTION_COLORS
 const DONUT_COLOR_MAP: Record<string, string> = {
-  "WAF Blocked": "#ff006e",
-  "Logged": "#00ff41",
-  "Rate Limited": "#f59e0b",
-  "IPsum": "#a78bfa",
-  "Honeypot": "#f97316",
-  "Scanner": "#ef4444",
-  "Policy": "#10b981",
+  [ACTION_LABELS.blocked]:      ACTION_COLORS.blocked,
+  [ACTION_LABELS.logged]:       ACTION_COLORS.logged,
+  [ACTION_LABELS.rate_limited]: ACTION_COLORS.rate_limited,
+  [ACTION_LABELS.ipsum]:        ACTION_COLORS.ipsum,
+  [ACTION_LABELS.honeypot]:     ACTION_COLORS.honeypot,
+  [ACTION_LABELS.scanner]:      ACTION_COLORS.scanner,
+  [ACTION_LABELS.policy]:       ACTION_COLORS.policy,
 };
 
 // ─── Main Component ─────────────────────────────────────────────────
@@ -338,14 +326,14 @@ export default function OverviewDashboard() {
           title="Rate Limited"
           value={data?.rate_limited ?? 0}
           icon={ShieldBan}
-          color="amber"
+          color="yellow"
           loading={loading}
         />
         <StatCard
           title="IPsum Blocked"
           value={data?.ipsum_blocked ?? 0}
           icon={Ban}
-          color="violet"
+          color="purple"
           loading={loading}
         />
         <StatCard
@@ -366,7 +354,7 @@ export default function OverviewDashboard() {
           title="Policy Matched"
           value={data?.policy_events ?? 0}
           icon={ShieldCheck}
-          color="emerald"
+          color="green"
           loading={loading}
         />
         <StatCard
@@ -406,32 +394,32 @@ export default function OverviewDashboard() {
                 >
                   <defs>
                     <linearGradient id="gradBlocked" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ff006e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#ff006e" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.blocked} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.blocked} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradLogged" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00ff41" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#00ff41" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.logged} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.logged} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradRateLimited" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.rate_limited} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.rate_limited} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradIpsumBlocked" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.ipsum} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.ipsum} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradHoneypot" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.honeypot} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.honeypot} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradScanner" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.scanner} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.scanner} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradPolicy" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      <stop offset="5%" stopColor={ACTION_COLORS.policy} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={ACTION_COLORS.policy} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
@@ -462,14 +450,14 @@ export default function OverviewDashboard() {
                   <Area
                     type="monotone"
                     dataKey="logged"
-                    stroke="#00ff41"
+                    stroke={ACTION_COLORS.logged}
                     fill="url(#gradLogged)"
                     strokeWidth={2}
                   />
                   <Area
                     type="monotone"
                     dataKey="ipsum_blocked"
-                    stroke="#a78bfa"
+                    stroke={ACTION_COLORS.ipsum}
                     fill="url(#gradIpsumBlocked)"
                     strokeWidth={2}
                     name="IPsum Blocked"
@@ -477,21 +465,21 @@ export default function OverviewDashboard() {
                   <Area
                     type="monotone"
                     dataKey="rate_limited"
-                    stroke="#f59e0b"
+                    stroke={ACTION_COLORS.rate_limited}
                     fill="url(#gradRateLimited)"
                     strokeWidth={2}
                   />
                   <Area
                     type="monotone"
                     dataKey="blocked"
-                    stroke="#ff006e"
+                    stroke={ACTION_COLORS.blocked}
                     fill="url(#gradBlocked)"
                     strokeWidth={2}
                   />
                   <Area
                     type="monotone"
                     dataKey="honeypot"
-                    stroke="#f97316"
+                    stroke={ACTION_COLORS.honeypot}
                     fill="url(#gradHoneypot)"
                     strokeWidth={2}
                     name="Honeypot"
@@ -499,7 +487,7 @@ export default function OverviewDashboard() {
                   <Area
                     type="monotone"
                     dataKey="scanner"
-                    stroke="#ef4444"
+                    stroke={ACTION_COLORS.scanner}
                     fill="url(#gradScanner)"
                     strokeWidth={2}
                     name="Scanner"
@@ -507,7 +495,7 @@ export default function OverviewDashboard() {
                   <Area
                     type="monotone"
                     dataKey="policy"
-                    stroke="#10b981"
+                    stroke={ACTION_COLORS.policy}
                     fill="url(#gradPolicy)"
                     strokeWidth={2}
                     name="Policy"
@@ -626,13 +614,13 @@ export default function OverviewDashboard() {
                     iconSize={10}
                     wrapperStyle={{ fontSize: "11px", color: "#7a8baa" }}
                   />
-                  <Bar dataKey="blocked" name="Blocked" fill="#ff006e" stackId="a" />
-                  <Bar dataKey="rate_limited" name="Rate Limited" fill="#f59e0b" stackId="a" />
-                  <Bar dataKey="ipsum_blocked" name="IPsum" fill="#a78bfa" stackId="a" />
-                  <Bar dataKey="honeypot" name="Honeypot" fill="#f97316" stackId="a" />
-                  <Bar dataKey="scanner" name="Scanner" fill="#ef4444" stackId="a" />
-                  <Bar dataKey="policy" name="Policy" fill="#10b981" stackId="a" />
-                  <Bar dataKey="logged" name="Logged" fill="#00ff41" stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
+                  <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
+                  <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
+                  <Bar dataKey="honeypot" name="Honeypot" fill={ACTION_COLORS.honeypot} stackId="a" />
+                  <Bar dataKey="scanner" name="Scanner" fill={ACTION_COLORS.scanner} stackId="a" />
+                  <Bar dataKey="policy" name="Policy" fill={ACTION_COLORS.policy} stackId="a" />
+                  <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -705,13 +693,13 @@ export default function OverviewDashboard() {
                     iconSize={10}
                     wrapperStyle={{ fontSize: "11px", color: "#7a8baa" }}
                   />
-                  <Bar dataKey="blocked" name="Blocked" fill="#ff006e" stackId="a" />
-                  <Bar dataKey="rate_limited" name="Rate Limited" fill="#f59e0b" stackId="a" />
-                  <Bar dataKey="ipsum_blocked" name="IPsum" fill="#a78bfa" stackId="a" />
-                  <Bar dataKey="honeypot" name="Honeypot" fill="#f97316" stackId="a" />
-                  <Bar dataKey="scanner" name="Scanner" fill="#ef4444" stackId="a" />
-                  <Bar dataKey="policy" name="Policy" fill="#10b981" stackId="a" />
-                  <Bar dataKey="logged" name="Logged" fill="#00d4ff" stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
+                  <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
+                  <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
+                  <Bar dataKey="honeypot" name="Honeypot" fill={ACTION_COLORS.honeypot} stackId="a" />
+                  <Bar dataKey="scanner" name="Scanner" fill={ACTION_COLORS.scanner} stackId="a" />
+                  <Bar dataKey="policy" name="Policy" fill={ACTION_COLORS.policy} stackId="a" />
+                  <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -779,39 +767,39 @@ export default function OverviewDashboard() {
                       <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
                       <TableCell>
                         {evt.event_type === "honeypot" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-500/50 text-orange-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.honeypot}`}>
                             HONEYPOT
                           </Badge>
                         ) : evt.event_type === "scanner" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/50 text-red-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.scanner}`}>
                             SCANNER
                           </Badge>
                         ) : evt.event_type === "ipsum_blocked" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.ipsum_blocked}`}>
                             IPSUM
                           </Badge>
                         ) : evt.event_type === "rate_limited" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.rate_limited}`}>
                             RATE LIMITED
                           </Badge>
                         ) : evt.event_type === "policy_skip" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_skip}`}>
                             SKIPPED
                           </Badge>
                         ) : evt.event_type === "policy_allow" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_allow}`}>
                             ALLOWED
                           </Badge>
                         ) : evt.event_type === "policy_block" ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/50 text-rose-400">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_block}`}>
                             POLICY BLOCK
                           </Badge>
                         ) : evt.event_type === "blocked" ? (
-                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.blocked}`}>
                             BLOCKED
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.logged}`}>
                             LOGGED
                           </Badge>
                         )}
