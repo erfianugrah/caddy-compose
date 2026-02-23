@@ -315,16 +315,20 @@ servarr.erfi.io {
 	encode zstd gzip
 
 	# Unraid GraphQL API — bypass Authelia, rely on Unraid's own x-api-key auth
-	@unraid_api path /graphql
-	route @unraid_api {
+	route {
+		@unraid_api path /graphql
+		reverse_proxy @unraid_api localhost:90 {
+			import proxy_headers
+		}
+
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+
 		reverse_proxy localhost:90 {
 			import proxy_headers
 		}
-	}
-
-	import forward_auth
-	reverse_proxy localhost:90 {
-		import proxy_headers
 	}
 	import error_pages
 	import site_log servarr
