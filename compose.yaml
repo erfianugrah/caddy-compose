@@ -16,13 +16,21 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 1024M
+          cpus: "8"
+          memory: 2048M
         reservations:
-          cpus: '0.5'
-          memory: 256M
+          cpus: "1.0"
+          memory: 512M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2019/config/"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:2019/config/",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -55,7 +63,7 @@ services:
     hostname: authelia
     container_name: authelia
     restart: unless-stopped
-    user: '1000:1000'
+    user: "1000:1000"
     read_only: true
     cap_drop:
       - ALL
@@ -64,13 +72,22 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: "1"
           memory: 256M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 64M
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--no-check-certificate", "--tries=1", "--spider", "http://localhost:9091/api/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--no-check-certificate",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9091/api/health",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -86,11 +103,11 @@ services:
     tmpfs:
       - /tmp:size=32M
     environment:
-      TZ: 'Asia/Singapore'
+      TZ: "Asia/Singapore"
       # Secrets — loaded from files for security (not visible in docker inspect/proc)
-      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: '/secrets/jwt_secret'
-      AUTHELIA_SESSION_SECRET_FILE: '/secrets/session_secret'
-      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: '/secrets/storage_encryption_key'
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: "/secrets/jwt_secret"
+      AUTHELIA_SESSION_SECRET_FILE: "/secrets/session_secret"
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: "/secrets/storage_encryption_key"
 
   waf-api:
     build:
@@ -108,13 +125,21 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 128M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 32M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/api/health",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
