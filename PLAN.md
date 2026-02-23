@@ -318,7 +318,7 @@ This would be a thin wrapper around the exclusion store with `type: "allow"`.
 
 ## 5. GeoIP Analytics and Blocking
 
-**Status:** Done (Phase 5A — analytics with MMDB reader + CF header + dashboard)
+**Status:** Done (Phase 5A — analytics with MMDB reader + CF header + dashboard; Phase 6 — country condition in Policy Engine via Cf-Ipcountry)
 **Difficulty:** Medium-High
 **Files:** `waf-api/` (new `geoip.go`), `waf-api/logparser.go`, `waf-api/models.go`,
 `waf-api/main.go`, `waf-dashboard/src/lib/api.ts`,
@@ -473,7 +473,7 @@ MMDB-based analytics (waf-api side). Non-CF inline geo-blocking is a future item
 | 3 | Heuristic bot signals (static rules) | 2-3 hours | High — catches what CRS misses | **Done** |
 | 4 | Tarpitting via `drop` action | 30 min | Low — quick win for scanners | **Done** |
 | 5 | GeoIP analytics (MMDB reader + dashboard) | 1-2 days | High — visibility | **Done** |
-| 6 | GeoIP blocking (CF header SecRules) | 2-3 hours | Medium — only works behind CF | Not started |
+| 6 | GeoIP blocking (CF header SecRules) | 2-3 hours | Medium — only works behind CF | **Done** |
 | 7 | Honeypot paths (dynamic via Policy Engine) | 3-4 hours | Medium — dashboard management | Not started |
 | 8 | GeoIP online API fallback | 3-4 hours | Low — edge case for non-CF, non-MMDB | Not started |
 

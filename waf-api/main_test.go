@@ -1880,6 +1880,9 @@ func TestValidateConditionFields(t *testing.T) {
 		{Field: "user_agent", Operator: "regex", Value: "BadBot.*"},
 		{Field: "header", Operator: "eq", Value: "X-Custom:value"},
 		{Field: "query", Operator: "contains", Value: "debug=true"},
+		{Field: "country", Operator: "eq", Value: "US"},
+		{Field: "country", Operator: "neq", Value: "CN"},
+		{Field: "country", Operator: "in", Value: "US GB DE"},
 	}
 
 	for _, c := range validCases {
@@ -2183,6 +2186,140 @@ func TestGenerateRawRule(t *testing.T) {
 	}
 	if !strings.Contains(result.PreCRS, "# Custom block admin") {
 		t.Error("expected name comment in pre-CRS output")
+	}
+}
+
+// --- GeoIP country condition tests ---
+
+func TestValidateCountryCondition(t *testing.T) {
+	// Valid: country with eq, neq, in operators
+	validCases := []Condition{
+		{Field: "country", Operator: "eq", Value: "CN"},
+		{Field: "country", Operator: "neq", Value: "US"},
+		{Field: "country", Operator: "in", Value: "CN RU KP"},
+	}
+	for _, c := range validCases {
+		e := RuleExclusion{
+			Name:       "test country",
+			Type:       "block",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("country condition %s/%s should be valid, got: %v", c.Field, c.Operator, err)
+		}
+	}
+
+	// Invalid operator for country field
+	e := RuleExclusion{
+		Name:       "test country",
+		Type:       "block",
+		Conditions: []Condition{{Field: "country", Operator: "regex", Value: "CN"}},
+	}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for invalid operator on country field")
+	}
+
+	// Invalid: begins_with not valid for country
+	e.Conditions = []Condition{{Field: "country", Operator: "begins_with", Value: "C"}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("expected error for begins_with on country field")
+	}
+}
+
+func TestGenerateBlockByCountry(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block CN", Type: "block", Conditions: []Condition{
+			{Field: "country", Operator: "eq", Value: "CN"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
+		t.Error("expected REQUEST_HEADERS:Cf-Ipcountry variable in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "@streq CN") {
+		t.Error("expected @streq CN for country eq condition")
+	}
+	if !strings.Contains(result.PreCRS, "deny,status:403") {
+		t.Error("expected deny action for country block")
+	}
+}
+
+func TestGenerateBlockByCountryList(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block sanctioned countries", Type: "block", Conditions: []Condition{
+			{Field: "country", Operator: "in", Value: "CN RU KP IR"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
+		t.Error("expected Cf-Ipcountry header variable")
+	}
+	if !strings.Contains(result.PreCRS, "@pm CN RU KP IR") {
+		t.Error("expected @pm operator for country in condition")
+	}
+}
+
+func TestGenerateAllowByCountry(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Allow US traffic", Type: "allow", Conditions: []Condition{
+			{Field: "country", Operator: "eq", Value: "US"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
+		t.Error("expected Cf-Ipcountry variable for country allow")
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleEngine=Off") {
+		t.Error("expected ctl:ruleEngine=Off for allow action")
+	}
+}
+
+func TestGenerateBlockByCountryAndPath(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block CN on API", Type: "block", Conditions: []Condition{
+			{Field: "country", Operator: "eq", Value: "CN"},
+			{Field: "path", Operator: "begins_with", Value: "/api/"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
+		t.Error("expected Cf-Ipcountry variable")
+	}
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("expected chain for country+path AND condition")
+	}
+	if !strings.Contains(result.PreCRS, "@beginsWith /api/") {
+		t.Error("expected path condition in chained rule")
+	}
+}
+
+func TestGenerateSkipRuleByCountry(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip 920420 for DE", Type: "skip_rule", RuleID: "920420", Conditions: []Condition{
+			{Field: "country", Operator: "eq", Value: "DE"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
+		t.Error("expected Cf-Ipcountry variable for skip_rule")
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=920420") {
+		t.Error("expected ctl:ruleRemoveById for skip_rule action")
 	}
 }
 

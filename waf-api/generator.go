@@ -166,6 +166,8 @@ func conditionVariable(c Condition) string {
 		return "REQUEST_HEADERS"
 	case "query":
 		return "QUERY_STRING"
+	case "country":
+		return "REQUEST_HEADERS:Cf-Ipcountry"
 	default:
 		return "REQUEST_URI"
 	}

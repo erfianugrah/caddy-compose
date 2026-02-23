@@ -150,6 +150,11 @@ function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     conditions.push({ field: "user_agent", operator: "contains", value: event.user_agent });
   }
 
+  // Country condition (GeoIP via Cf-Ipcountry header)
+  if (event.country) {
+    conditions.push({ field: "country", operator: "eq", value: event.country });
+  }
+
   // Auto-generate name
   const ruleSnippet = ruleIds.length > 0
     ? ruleIds.slice(0, 3).join(", ") + (ruleIds.length > 3 ? "..." : "")
@@ -306,6 +311,15 @@ const CONDITION_FIELDS: FieldDef[] = [
       { value: "regex", label: "matches regex" },
     ],
     placeholder: "e.g., debug=true",
+  },
+  {
+    value: "country", label: "Country (GeoIP)",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "in", label: "is in" },
+    ],
+    placeholder: "e.g., CN or CN RU KP (ISO 3166-1 alpha-2)",
   },
 ];
 

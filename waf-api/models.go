@@ -399,6 +399,7 @@ var validConditionFields = map[string]bool{
 	"user_agent": true,
 	"header":     true,
 	"query":      true,
+	"country":    true,
 }
 
 // Valid operators per field type
@@ -424,6 +425,9 @@ var validOperatorsForField = map[string]map[string]bool{
 	},
 	"query": {
 		"contains": true, "regex": true,
+	},
+	"country": {
+		"eq": true, "neq": true, "in": true,
 	},
 }
 

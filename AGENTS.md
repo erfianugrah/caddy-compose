@@ -131,7 +131,7 @@ When adding custom SecRules, use the correct ID range:
 - `9100010–9100019` — post-CRS custom detection rules (baked in `coraza/post-crs.conf`)
 - `9100020–9100029` — honeypot path rules (baked in `coraza/post-crs.conf`, paths in `coraza/honeypot-paths.txt`)
 - `9100030–9100039` — heuristic bot signal rules (baked in `coraza/pre-crs.conf`, scanner UAs in `coraza/scanner-useragents.txt`)
-- `9100050–9100059` — GeoIP blocking rules (see PLAN.md, not yet implemented)
+- `9100050–9100059` — GeoIP blocking rules (reserved; country blocking uses Policy Engine `95xxxxx` IDs via `REQUEST_HEADERS:Cf-Ipcountry`)
 - `95xxxxx` — generated exclusion rules (from Policy Engine, `generator.go`)
 - `97xxxxx` — generated WAF settings overrides (`generator.go`)
 - CRS inbound: `910000–949999`, outbound: `950000–979999`
