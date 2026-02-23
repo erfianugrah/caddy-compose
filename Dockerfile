@@ -17,8 +17,8 @@ RUN apk add --no-cache curl \
 	   | awk -v min="${IPSUM_MIN_SCORE}" '/^#/{next} /^[[:space:]]*$/{next} {if($2+0>=min) printf "%s ",$1}' \
 	   > /tmp/ipsum_ips \
 	&& COUNT=$(wc -w < /tmp/ipsum_ips) \
-	&& { printf '# AUTO-GENERATED at build time\n# IPs: %s (min_score=%s)\n@ipsum_blocked client_ip %s\n' \
-	   "$COUNT" "$IPSUM_MIN_SCORE" "$(cat /tmp/ipsum_ips)"; \
+	&& { printf '# AUTO-GENERATED at build time\n# Updated: %s\n# IPs: %s (min_score=%s)\n@ipsum_blocked client_ip %s\n' \
+	   "$(date -Iseconds)" "$COUNT" "$IPSUM_MIN_SCORE" "$(cat /tmp/ipsum_ips)"; \
 	   printf 'route @ipsum_blocked {\n\theader X-Blocked-By ipsum\n\trespond 403 {\n\t\tbody "Blocked"\n\t\tclose\n\t}\n}\n'; \
 	   } > /tmp/ipsum_block.caddy
 

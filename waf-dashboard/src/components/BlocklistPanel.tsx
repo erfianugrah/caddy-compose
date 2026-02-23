@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Ban, RefreshCw, Search, ExternalLink, Clock, Database, Shield } from "lucide-react";
+import { Ban, RefreshCw, Search, ExternalLink, Clock, Database, Shield, Download } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -14,8 +14,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   getBlocklistStats,
   checkBlocklistIP,
+  refreshBlocklist,
   type BlocklistStats,
   type BlocklistCheckResult,
+  type BlocklistRefreshResult,
 } from "@/lib/api";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -95,6 +97,11 @@ export default function BlocklistPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Refresh (update from upstream) state
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<BlocklistRefreshResult | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   // IP check state
   const [checkIP, setCheckIP] = useState("");
   const [checkResult, setCheckResult] = useState<BlocklistCheckResult | null>(null);
@@ -109,6 +116,32 @@ export default function BlocklistPanel() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setRefreshResult(null);
+    setRefreshError(null);
+    try {
+      const result = await refreshBlocklist();
+      setRefreshResult(result);
+      // Reload stats to reflect the new data.
+      loadStats();
+    } catch (err: unknown) {
+      setRefreshError(err instanceof Error ? err.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadStats]);
+
+  // Auto-dismiss refresh result after 10 seconds.
+  useEffect(() => {
+    if (!refreshResult && !refreshError) return;
+    const timer = setTimeout(() => {
+      setRefreshResult(null);
+      setRefreshError(null);
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [refreshResult, refreshError]);
 
   useEffect(() => {
     loadStats();
@@ -184,15 +217,26 @@ export default function BlocklistPanel() {
             IPsum threat intelligence blocklist
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={loadStats}
-          disabled={loading}
-        >
-          <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+          >
+            <Download className={`mr-2 h-3.5 w-3.5 ${refreshing ? "animate-bounce" : ""}`} />
+            {refreshing ? "Updating\u2026" : "Update Now"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadStats}
+            disabled={loading}
+          >
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -219,6 +263,35 @@ export default function BlocklistPanel() {
           loading={loading}
         />
       </div>
+
+      {/* Refresh result/error */}
+      {refreshResult && (
+        <Alert
+          variant={refreshResult.status === "error" ? "destructive" : "default"}
+          className={
+            refreshResult.status === "error"
+              ? ""
+              : "border-neon-green/30 bg-neon-green/5"
+          }
+        >
+          <AlertTitle className="text-xs font-medium">
+            {refreshResult.status === "updated"
+              ? "Blocklist Updated"
+              : refreshResult.status === "partial"
+                ? "Blocklist Updated (Caddy reload failed)"
+                : "Update Failed"}
+          </AlertTitle>
+          <AlertDescription className="text-xs">
+            {refreshResult.message}
+          </AlertDescription>
+        </Alert>
+      )}
+      {refreshError && (
+        <Alert variant="destructive">
+          <AlertTitle className="text-xs font-medium">Update Failed</AlertTitle>
+          <AlertDescription className="text-xs">{refreshError}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Check IP */}
       <Card className="border-l-2 border-l-neon-green">

@@ -6,9 +6,13 @@ import {
   lookupIP,
   fetchTopBlockedIPs,
   fetchTopTargetedURIs,
+  fetchTopCountries,
   generateConfig,
   fetchCRSRules,
   fetchCRSAutocomplete,
+  getBlocklistStats,
+  checkBlocklistIP,
+  refreshBlocklist,
   type SummaryData,
   type EventsResponse,
   type ServiceDetail,
@@ -16,6 +20,9 @@ import {
   type GeneratedConfig,
   type CRSCatalogResponse,
   type CRSAutocompleteResponse,
+  type CountryCount,
+  type BlocklistStats,
+  type BlocklistRefreshResult,
 } from "./api";
 
 // ─── Mock fetch ─────────────────────────────────────────────────────
@@ -98,6 +105,9 @@ describe("fetchSummary", () => {
       logged: 30,
       rate_limited: 0,
       ipsum_blocked: 0,
+      honeypot: 0,
+      scanner: 0,
+      policy: 0,
     });
 
     // Top services mapped (now includes blocked/logged)
@@ -113,9 +123,12 @@ describe("fetchSummary", () => {
     expect(result.top_clients[0].total).toBe(50);
     expect(result.top_clients[0].blocked).toBe(20);
 
-    // Top clients now include rate_limited and ipsum_blocked
+    // Top clients now include rate_limited, ipsum_blocked, honeypot, scanner, policy
     expect(result.top_clients[0].rate_limited).toBe(0);
     expect(result.top_clients[0].ipsum_blocked).toBe(0);
+    expect(result.top_clients[0].honeypot).toBe(0);
+    expect(result.top_clients[0].scanner).toBe(0);
+    expect(result.top_clients[0].policy).toBe(0);
 
     // Service breakdown from dedicated field
     expect(result.service_breakdown).toHaveLength(2);
@@ -126,6 +139,9 @@ describe("fetchSummary", () => {
       logged: 45,
       rate_limited: 0,
       ipsum_blocked: 0,
+      honeypot: 0,
+      scanner: 0,
+      policy: 0,
     });
 
     // recent_events mapped from Go events
@@ -882,5 +898,395 @@ describe("fetchCRSAutocomplete", () => {
 
     await fetchCRSAutocomplete();
     expect(mockFetch).toHaveBeenCalledWith("/api/crs/autocomplete", undefined);
+  });
+});
+
+// ─── GeoIP / Country fields ─────────────────────────────────────────
+
+describe("country field mapping", () => {
+  it("maps country in summary top_clients", async () => {
+    const goResponse = {
+      total_events: 1,
+      blocked_events: 0,
+      logged_events: 1,
+      unique_clients: 1,
+      unique_services: 1,
+      events_by_hour: [],
+      top_services: [],
+      top_clients: [
+        { client: "1.2.3.4", country: "US", count: 5, blocked: 2, rate_limited: 0, ipsum_blocked: 0 },
+      ],
+      top_countries: [
+        { country: "US", count: 5, blocked: 2 },
+        { country: "DE", count: 3, blocked: 1 },
+      ],
+      top_uris: [],
+      service_breakdown: [],
+      recent_events: [],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchSummary();
+    expect(result.top_clients[0].country).toBe("US");
+    expect(result.top_countries).toHaveLength(2);
+    expect(result.top_countries[0].country).toBe("US");
+    expect(result.top_countries[0].count).toBe(5);
+    expect(result.top_countries[0].blocked).toBe(2);
+  });
+
+  it("handles missing top_countries gracefully", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({
+      total_events: 0,
+      blocked_events: 0,
+      logged_events: 0,
+      unique_clients: 0,
+      unique_services: 0,
+      events_by_hour: [],
+      top_services: [],
+      top_clients: [],
+      top_uris: [],
+      service_breakdown: [],
+      recent_events: [],
+    }));
+
+    const result = await fetchSummary();
+    expect(result.top_countries).toEqual([]);
+  });
+
+  it("maps country in event response", async () => {
+    const goResponse = {
+      total: 1,
+      events: [{
+        id: "tx-geo",
+        timestamp: "2026-02-23T10:00:00Z",
+        service: "test.erfi.io",
+        method: "GET",
+        uri: "/test",
+        client_ip: "8.8.8.8",
+        country: "US",
+        is_blocked: false,
+        response_status: 200,
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchEvents();
+    expect(result.events[0].country).toBe("US");
+  });
+
+  it("handles missing country in event gracefully", async () => {
+    const goResponse = {
+      total: 1,
+      events: [{
+        id: "tx-nocountry",
+        timestamp: "2026-02-23T10:00:00Z",
+        service: "test.erfi.io",
+        method: "GET",
+        uri: "/test",
+        client_ip: "10.0.0.1",
+        is_blocked: false,
+        response_status: 200,
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchEvents();
+    expect(result.events[0].country).toBeUndefined();
+  });
+});
+
+describe("fetchTopCountries", () => {
+  it("returns country data from API", async () => {
+    const data: CountryCount[] = [
+      { country: "US", count: 100, blocked: 30 },
+      { country: "DE", count: 50, blocked: 10 },
+    ];
+    vi.stubGlobal("fetch", mockFetchResponse(data));
+
+    const result = await fetchTopCountries(24);
+    expect(result).toHaveLength(2);
+    expect(result[0].country).toBe("US");
+    expect(result[0].count).toBe(100);
+  });
+
+  it("calls correct endpoint with hours", async () => {
+    const mockFetch = mockFetchResponse([]);
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchTopCountries(168);
+    expect(mockFetch).toHaveBeenCalledWith("/api/analytics/top-countries?hours=168", undefined);
+  });
+
+  it("returns empty array on error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fail")));
+    const result = await fetchTopCountries();
+    expect(result).toEqual([]);
+  });
+});
+
+// ─── Event Type Mapping Tests ─────────────────────────────────────────
+
+describe("event_type mapping in fetchEvents", () => {
+  const eventTypes = [
+    "blocked", "logged", "rate_limited", "ipsum_blocked",
+    "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner",
+  ] as const;
+
+  for (const eventType of eventTypes) {
+    it(`maps event_type="${eventType}" correctly`, async () => {
+      const goResponse = {
+        total: 1,
+        events: [{
+          id: `tx-${eventType}`,
+          timestamp: "2026-02-23T10:00:00Z",
+          service: "test.erfi.io",
+          method: "GET",
+          uri: "/test",
+          client_ip: "10.0.0.1",
+          is_blocked: eventType !== "logged" && eventType !== "policy_skip" && eventType !== "policy_allow",
+          response_status: 200,
+          event_type: eventType,
+        }],
+      };
+      vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+      const result = await fetchEvents();
+      expect(result.events[0].event_type).toBe(eventType);
+    });
+  }
+
+  it("falls back to 'blocked' when event_type is missing and is_blocked=true", async () => {
+    const goResponse = {
+      total: 1,
+      events: [{
+        id: "tx-fallback",
+        timestamp: "2026-02-23T10:00:00Z",
+        service: "test.erfi.io",
+        method: "GET",
+        uri: "/test",
+        client_ip: "10.0.0.1",
+        is_blocked: true,
+        response_status: 403,
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchEvents();
+    expect(result.events[0].event_type).toBe("blocked");
+  });
+
+  it("falls back to 'logged' when event_type is missing and is_blocked=false", async () => {
+    const goResponse = {
+      total: 1,
+      events: [{
+        id: "tx-fallback",
+        timestamp: "2026-02-23T10:00:00Z",
+        service: "test.erfi.io",
+        method: "GET",
+        uri: "/test",
+        client_ip: "10.0.0.1",
+        is_blocked: false,
+        response_status: 200,
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchEvents();
+    expect(result.events[0].event_type).toBe("logged");
+  });
+
+  it("ignores invalid event_type and falls back to is_blocked", async () => {
+    const goResponse = {
+      total: 1,
+      events: [{
+        id: "tx-invalid",
+        timestamp: "2026-02-23T10:00:00Z",
+        service: "test.erfi.io",
+        method: "GET",
+        uri: "/test",
+        client_ip: "10.0.0.1",
+        is_blocked: true,
+        response_status: 403,
+        event_type: "nonexistent_type",
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchEvents();
+    expect(result.events[0].event_type).toBe("blocked");
+  });
+});
+
+// ─── Blocklist API Tests ────────────────────────────────────────────
+
+describe("getBlocklistStats", () => {
+  it("returns blocklist stats", async () => {
+    const mockStats = {
+      blocked_ips: 19823,
+      last_updated: "2026-02-22T06:00:01Z",
+      source: "IPsum",
+      min_score: 3,
+      file_path: "/data/coraza/ipsum_block.caddy",
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(mockStats));
+
+    const result = await getBlocklistStats();
+    expect(result.blocked_ips).toBe(19823);
+    expect(result.last_updated).toBe("2026-02-22T06:00:01Z");
+    expect(result.source).toBe("IPsum");
+    expect(result.min_score).toBe(3);
+  });
+});
+
+describe("checkBlocklistIP", () => {
+  it("returns check result for blocked IP", async () => {
+    const mockResult = { ip: "1.2.3.4", blocked: true, source: "ipsum" };
+    vi.stubGlobal("fetch", mockFetchResponse(mockResult));
+
+    const result = await checkBlocklistIP("1.2.3.4");
+    expect(result.ip).toBe("1.2.3.4");
+    expect(result.blocked).toBe(true);
+  });
+
+  it("returns check result for clean IP", async () => {
+    const mockResult = { ip: "8.8.8.8", blocked: false, source: "" };
+    vi.stubGlobal("fetch", mockFetchResponse(mockResult));
+
+    const result = await checkBlocklistIP("8.8.8.8");
+    expect(result.blocked).toBe(false);
+  });
+});
+
+// ─── fetchServices breakdown fields ─────────────────────────────────
+
+describe("fetchServices breakdown fields", () => {
+  it("maps honeypot/scanner/policy fields from Go API", async () => {
+    const goResponse = {
+      services: [{
+        service: "web.erfi.io",
+        total: 100,
+        blocked: 40,
+        logged: 60,
+        rate_limited: 5,
+        ipsum_blocked: 3,
+        honeypot: 2,
+        scanner: 1,
+        policy: 4,
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchServices(24);
+    expect(result).toHaveLength(1);
+    expect(result[0].honeypot).toBe(2);
+    expect(result[0].scanner).toBe(1);
+    expect(result[0].policy).toBe(4);
+    expect(result[0].rate_limited).toBe(5);
+    expect(result[0].ipsum_blocked).toBe(3);
+  });
+
+  it("defaults new fields to 0 when missing", async () => {
+    const goResponse = {
+      services: [{
+        service: "old.erfi.io",
+        total: 50,
+        blocked: 10,
+        logged: 40,
+      }],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await fetchServices(24);
+    expect(result[0].honeypot).toBe(0);
+    expect(result[0].scanner).toBe(0);
+    expect(result[0].policy).toBe(0);
+    expect(result[0].rate_limited).toBe(0);
+    expect(result[0].ipsum_blocked).toBe(0);
+  });
+});
+
+// ─── lookupIP breakdown fields ──────────────────────────────────────
+
+describe("lookupIP service breakdown fields", () => {
+  it("maps all breakdown fields in services array", async () => {
+    const goResponse = {
+      ip: "10.0.0.1",
+      total: 10,
+      blocked: 5,
+      first_seen: "2026-02-22T10:00:00Z",
+      last_seen: "2026-02-22T12:00:00Z",
+      services: [{
+        service: "web.io",
+        total: 8,
+        blocked: 4,
+        logged: 4,
+        rate_limited: 1,
+        ipsum_blocked: 0,
+        honeypot: 1,
+        scanner: 1,
+        policy: 2,
+      }],
+      events: [],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await lookupIP("10.0.0.1");
+    expect(result.services[0].honeypot).toBe(1);
+    expect(result.services[0].scanner).toBe(1);
+    expect(result.services[0].policy).toBe(2);
+    expect(result.services[0].rate_limited).toBe(1);
+  });
+});
+
+// ─── Blocklist refresh tests ────────────────────────────────────────
+
+describe("refreshBlocklist", () => {
+  it("returns refresh result on success", async () => {
+    const mockResponse: BlocklistRefreshResult = {
+      status: "updated",
+      message: "Downloaded 19823 IPs and updated blocklist",
+      blocked_ips: 19823,
+      min_score: 3,
+      last_updated: "2026-02-23T12:00:00Z",
+      reloaded: true,
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(mockResponse));
+
+    const result = await refreshBlocklist();
+    expect(result.status).toBe("updated");
+    expect(result.blocked_ips).toBe(19823);
+    expect(result.min_score).toBe(3);
+    expect(result.last_updated).toBe("2026-02-23T12:00:00Z");
+    expect(result.reloaded).toBe(true);
+  });
+
+  it("throws on HTTP error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        json: () => Promise.resolve({ message: "download failed: connection refused" }),
+      })
+    );
+
+    await expect(refreshBlocklist()).rejects.toThrow("download failed: connection refused");
+  });
+
+  it("handles partial status (Caddy reload failed)", async () => {
+    const mockResponse: BlocklistRefreshResult = {
+      status: "partial",
+      message: "Downloaded 19823 IPs and updated blocklist (Caddy reload failed)",
+      blocked_ips: 19823,
+      min_score: 3,
+      last_updated: "2026-02-23T12:00:00Z",
+      reloaded: false,
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(mockResponse));
+
+    const result = await refreshBlocklist();
+    expect(result.status).toBe("partial");
+    expect(result.reloaded).toBe(false);
   });
 });

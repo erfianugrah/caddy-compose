@@ -71,6 +71,37 @@ func ensureCorazaDir(dir string) error {
 	return nil
 }
 
+// generateOnBoot regenerates all config files from stored state at startup.
+// This ensures a stack restart always picks up the latest generator output
+// without requiring a manual POST /api/config/deploy.
+// No Caddy reload is performed — Caddy reads the files fresh on its own start.
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, deployCfg DeployConfig) {
+	// WAF config: generate exclusion rules + WAF settings.
+	cfg := cs.Get()
+	exclusions := es.EnabledExclusions()
+	ResetRuleIDCounter()
+	result := GenerateConfigs(cfg, exclusions)
+	wafSettings := GenerateWAFSettings(cfg)
+
+	if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
+		log.Printf("[boot] warning: failed to generate WAF configs: %v", err)
+	} else {
+		log.Printf("[boot] regenerated WAF configs (%d exclusions, mode=%s, paranoia=%d)",
+			len(exclusions), cfg.Defaults.Mode, cfg.Defaults.ParanoiaLevel)
+	}
+
+	// Rate limit zones.
+	rlCfg := rs.Get()
+	if len(rlCfg.Zones) > 0 {
+		written, err := writeZoneFiles(deployCfg.RateLimitDir, rlCfg.Zones)
+		if err != nil {
+			log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
+		} else {
+			log.Printf("[boot] regenerated %d rate limit zone files", len(written))
+		}
+	}
+}
+
 // writeConfFiles writes the generated pre-CRS, post-CRS, and WAF settings configs to disk atomically.
 func writeConfFiles(dir, preCRS, postCRS, wafSettings string) error {
 	files := map[string]string{

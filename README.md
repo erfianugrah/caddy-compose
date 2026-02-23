@@ -19,7 +19,7 @@ Internet -> Cloudflare -> Caddy (host network, :443) -> backend containers (Dock
 
 ## Docker images
 
-### Caddy image: `erfianugrah/caddy:1.15.0-2.10.2`
+### Caddy image: `erfianugrah/caddy:1.22.0-2.10.2`
 
 Built locally, pushed to Docker Hub. Includes:
 
@@ -31,7 +31,7 @@ Built locally, pushed to Docker Hub. Includes:
 - Cloudflare IP ranges fetched at build time for `trusted_proxies`
 - Entrypoint script that starts `crond` (for IPsum updates) + `caddy run`
 
-### WAF API image: `erfianugrah/waf-api:0.10.0`
+### WAF API image: `erfianugrah/waf-api:0.16.0`
 
 Go stdlib sidecar (zero external dependencies). Provides:
 
@@ -40,13 +40,16 @@ Go stdlib sidecar (zero external dependencies). Provides:
 - Matched rules collection from audit log Part K (rule ID, message, severity, file, tags)
 - Request context extraction: headers, body, query args from audit log Parts B/C/I
 - 429 rate limit event parsing from combined access log (merged into unified event stream)
-- IPsum blocklist API: stats endpoint (IP count, last updated, source) and per-IP check endpoint with cached file parsing
+- IPsum blocklist API: stats endpoint (IP count, last updated, source), per-IP check endpoint with cached file parsing, and on-demand refresh (`POST /api/blocklist/refresh` — downloads fresh IPsum list, writes Caddy snippet, reloads Caddy)
 - Custom time range queries (`?start=&end=` ISO 8601 timestamps, or `?hours=` for relative)
 - Policy Engine: CRUD for exclusions, SecRule generation, deploy pipeline (writes conf files + reloads Caddy)
 - CRS rule catalog (141 curated rules, 11 categories) with search/autocomplete
 - WAF settings generator: emits `SecRuleEngine On/DetectionOnly/Off` + per-service `ctl:ruleEngine` overrides (single source of truth for engine mode)
 - Rate limit zone configuration: per-zone `.caddy` file generation and deploy
 - Deploy pipeline with SHA-256 fingerprint injection (ensures Caddy reprovisioning when only included files change)
+- Generate-on-boot: regenerates all WAF config and rate limit files from stored JSON state at startup, so a stack restart always picks up the latest generator output without manual intervention
+- GeoIP resolution: three-tier (Cf-Ipcountry header > local MMDB lookup > empty), pure-Go MMDB reader (ported from k3s Sentinel), in-memory cache
+- 9 event types: `blocked`, `logged`, `rate_limited`, `ipsum_blocked`, `policy_skip`, `policy_allow`, `policy_block`, `honeypot`, `scanner`
 - IP lookup, service detail, configuration management
 - UUIDv7 for rate-limit event IDs (time-ordered, globally unique), Coraza tx IDs for WAF events
 
@@ -90,8 +93,8 @@ make deploy REMOTE=myhost DEPLOY_MODE=compose
 |---|---|---|
 | `REMOTE` | `servarr` | SSH host alias or `user@host` |
 | `DEPLOY_MODE` | `dockge` | `dockge` (via dockge container) or `compose` (direct) |
-| `CADDY_IMAGE` | `erfianugrah/caddy:1.15.0-2.10.2` | Caddy image tag |
-| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.10.0` | waf-api image tag |
+| `CADDY_IMAGE` | `erfianugrah/caddy:1.22.0-2.10.2` | Caddy image tag |
+| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.16.0` | waf-api image tag |
 | `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Compose file path (inside dockge or on host) |
 | `CADDYFILE_DEST` | `/mnt/user/data/caddy/Caddyfile` | Remote Caddyfile path for SCP |
 | `COMPOSE_DEST` | `/mnt/user/data/dockge/stacks/caddy/compose.yaml` | Remote compose.yaml path for SCP |
@@ -137,7 +140,9 @@ All dynamic config survives container restarts:
 - `custom-waf-settings.conf` at `/data/coraza/` (volume: `/mnt/user/data/caddy/coraza/`) — Generated SecRule directives
 - `exclusions.json`, `rate-limits.json` at `/data/` — Policy Engine exclusions and rate limit zones
 
-On startup, `ensureCorazaDir()` only creates placeholder files if they don't exist — existing deployed configs are never overwritten.
+On startup, waf-api calls `generateOnBoot()` which regenerates all config files from stored JSON state (WAF config, exclusions, rate limit zones). This ensures a stack restart always picks up the latest generator output without requiring a manual `POST /api/config/deploy`. `ensureCorazaDir()` creates placeholder files only if they don't exist as a fallback.
+
+The entrypoint (`scripts/entrypoint.sh`) re-seeds the ipsum blocklist from the build-time snapshot if the runtime file is missing or lacks the `# Updated:` header. The Go blocklist parser uses the file's mtime as a fallback when the comment is missing.
 
 ### Reload fingerprint
 
@@ -148,8 +153,8 @@ When only included config files change (not the Caddyfile itself), Caddy's `/loa
 Accessible at `waf.erfi.io` (protected by Authelia `two_factor`).
 
 ### Pages
-- **Overview** — Timeline chart (independent overlapping areas for blocked/rate_limited/ipsum_blocked/logged — unstacked so smaller series remain visible at any scale), service breakdown donut, recent events (all types with badges), top clients/services with 4-color stacked bar charts (blocked pink, rate limited amber, ipsum violet, logged cyan/green) and legends. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
-- **Blocklist** — IPsum threat intelligence stats (blocked IP count, last updated, source, min score), IP check search (look up any IP against the blocklist)
+- **Overview** — Timeline chart (7 independent overlapping areas: blocked, rate limited, ipsum, logged, honeypot, scanner, policy — unstacked so smaller series remain visible at any scale), service breakdown donut (up to 7 slices with name-keyed color map), recent events (all 9 types with color-coded badges), top clients/services with 7-color stacked bar charts and legends. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
+- **Blocklist** — IPsum threat intelligence stats (blocked IP count, last updated, source, min score), IP check search (look up any IP against the blocklist), "Update Now" button to refresh the blocklist on-demand from GitHub (downloads, filters, writes, reloads Caddy)
 - **Events** — Paginated event table with unified WAF + 429 + IPsum event stream, event type filter (All/Blocked/Logged/Rate Limited/IPsum Blocked), type badges, inbound/outbound anomaly score columns (color-coded: cyan <10, amber 10-24, pink >=25), expandable detail rows with collapsible sections (matched rules table with ID/message/severity/file, request headers, request body, query args), JSON export (single event, current page, or all events). "Create Exception" button pre-populates the Policy Engine with the event's rule IDs, URI, host, and client IP via sessionStorage. Same time range picker
 - **Services** — Per-service stats, top URIs, top triggered rules
 - **Investigate** — Top blocked IPs, top targeted URIs
@@ -201,16 +206,17 @@ caddy-compose/
   waf-api/
     main.go              # HTTP handlers and routes (summary/events/services with start/end support, ?export=true for bulk JSON)
     models.go            # Data models (Event with InboundScore/OutboundScore/BlockedBy/MatchedRules/RequestHeaders/RequestBody/RequestArgs, SummaryResponse, BlocklistStats)
-    blocklist.go         # IPsum blocklist file parser, cached stats + IP check handlers
+    blocklist.go         # IPsum blocklist: file parser with mtime fallback, cached stats, IP check, on-demand refresh (download + filter + write + Caddy reload)
     config.go            # WAF config store (file-backed persistence, old format migration)
     exclusions.go        # Exclusion store, validation, UUIDv4/v7 generators
     generator.go         # SecRuleEngine emission, condition -> SecRule generation (AND=chain, OR=separate), All Services wildcard
+    geoip.go             # Pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser
     logparser.go         # Coraza audit log parser (JSON, Part K matched rules, Part B/C/I request context, inbound/outbound anomaly score, BlockedBy classification, SnapshotRange)
     rl_analytics.go      # Combined access log parser for 429/ipsum events, UUIDv7 event IDs
-    deploy.go            # Deploy pipeline (write conf files, SecRuleEngine placeholder, SHA-256 fingerprint, reload Caddy)
+    deploy.go            # Deploy pipeline (write conf files, generate-on-boot, SecRuleEngine placeholder, SHA-256 fingerprint, reload Caddy)
     ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
-    main_test.go         # 150+ tests (WAF mode transitions, anomaly score, blocklist, exclusions, deploy, etc.)
+    main_test.go         # 73 Go tests (WAF mode transitions, anomaly score, blocklist, exclusions, deploy, generate-on-boot, etc.)
     Dockerfile           # waf-api image (alpine + compiled binary, NOT the root Dockerfile's build stage)
     go.mod
   waf-dashboard/
@@ -229,7 +235,7 @@ caddy-compose/
         ui/popover.tsx         # Radix popover (used by TimeRangePicker)
       lib/
         api.ts                 # API client, types, Go<->frontend mappers, TimeRangeParams
-        api.test.ts            # 38 tests
+        api.test.ts            # 66 tests (event types, blocklist, services, lookups, refresh)
     package.json
     astro.config.mjs
     vitest.config.ts
@@ -289,7 +295,7 @@ OWASP CRS loaded via `load_owasp_crs` (embedded in Coraza module), plus custom r
 
 - **Per-service rate limiting** via `import rate_limit <zone> <events> <window>` (WebSocket upgrades excluded)
 - **Authelia forward auth** for protected services (`import forward_auth`)
-- **IPsum blocklist** (~20k IPs baked in at build, updated daily by cron)
+- **IPsum blocklist** (~20k IPs baked in at build, updated daily by cron at 02:00 UTC, or on-demand via dashboard "Update Now" button)
 - **Admin API** locked to `localhost:2019`
 - **Strict SNI** host checking enabled
 - **Cloudflare trusted proxies** (build-time fetched IP ranges)
