@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+// detectionOnlyThreshold is the anomaly score threshold used in detection_only
+// mode. Set high enough that no request will be blocked, so everything is
+// logged but nothing is denied.
+const detectionOnlyThreshold = 10000
+
 // GenerateConfigs produces pre-crs.conf and post-crs.conf text from the
 // current WAF config and enabled exclusions.
 // Each call uses its own rule ID counter, making it safe for concurrent use.
@@ -521,10 +526,10 @@ func GenerateWAFSettings(cfg WAFConfig) string {
 	b.WriteString("# Per-service overrides below can further modify these values.\n\n")
 
 	d := cfg.Defaults
-	// For detection_only mode, thresholds are set to 10000 (log everything, block nothing).
+	// For detection_only mode, thresholds are set high (log everything, block nothing).
 	inT, outT := d.InboundThreshold, d.OutboundThreshold
 	if d.Mode == "detection_only" {
-		inT, outT = 10000, 10000
+		inT, outT = detectionOnlyThreshold, detectionOnlyThreshold
 	}
 
 	b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,"+
@@ -606,16 +611,16 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 		}
 	}
 
-	// For detection_only, override thresholds to 10000.
+	// For detection_only, override thresholds to log everything.
 	inT, outT := ss.InboundThreshold, ss.OutboundThreshold
 	if ss.Mode == "detection_only" {
-		inT, outT = 10000, 10000
+		inT, outT = detectionOnlyThreshold, detectionOnlyThreshold
 	}
 
 	// Check if paranoia or thresholds differ from defaults.
 	defInT, defOutT := defaults.InboundThreshold, defaults.OutboundThreshold
 	if defaults.Mode == "detection_only" {
-		defInT, defOutT = 10000, 10000
+		defInT, defOutT = detectionOnlyThreshold, detectionOnlyThreshold
 	}
 
 	needsParanoiaOverride := ss.ParanoiaLevel != defaults.ParanoiaLevel

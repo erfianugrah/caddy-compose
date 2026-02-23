@@ -100,6 +100,19 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, dep
 			log.Printf("[boot] regenerated %d rate limit zone files", len(written))
 		}
 	}
+
+	// Scan the Caddyfile for rate limit import globs and create placeholder
+	// files for any zone that doesn't already have a .caddy file. This
+	// prevents "No files matching import glob pattern" warnings when new
+	// site blocks are added before configuring rate limits via the API.
+	if deployCfg.CaddyfilePath != "" {
+		if prefixes := scanCaddyfileZones(deployCfg.CaddyfilePath); len(prefixes) > 0 {
+			created := ensureZonePlaceholders(deployCfg.RateLimitDir, prefixes)
+			if created > 0 {
+				log.Printf("[boot] created %d rate limit placeholder(s) from Caddyfile scan", created)
+			}
+		}
+	}
 }
 
 // writeConfFiles writes the generated pre-CRS, post-CRS, and WAF settings configs to disk atomically.

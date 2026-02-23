@@ -40,12 +40,7 @@ func defaultConfig() WAFConfig {
 
 // defaultServiceSettings returns the default WAF service settings.
 func defaultServiceSettings() WAFServiceSettings {
-	return WAFServiceSettings{
-		Mode:              "enabled",
-		ParanoiaLevel:     1,
-		InboundThreshold:  5,
-		OutboundThreshold: 4,
-	}
+	return defaultConfig().Defaults
 }
 
 // load reads the config from the JSON file on disk.
@@ -120,17 +115,18 @@ func migrateOldConfig(data []byte) WAFConfig {
 		mode = "detection_only"
 	}
 
+	defaults := defaultConfig().Defaults
 	pl := old.ParanoiaLevel
 	if pl < 1 || pl > 4 {
-		pl = 1
+		pl = defaults.ParanoiaLevel
 	}
 	inbound := old.InboundThreshold
 	if inbound < 1 {
-		inbound = 5
+		inbound = defaults.InboundThreshold
 	}
 	outbound := old.OutboundThreshold
 	if outbound < 1 {
-		outbound = 4
+		outbound = defaults.OutboundThreshold
 	}
 
 	cfg := WAFConfig{

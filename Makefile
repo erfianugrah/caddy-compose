@@ -52,7 +52,7 @@ endif
 
 .PHONY: help build build-caddy build-waf-api push push-caddy push-waf-api \
         deploy deploy-caddy deploy-waf-api deploy-all scp pull restart \
-        test test-go test-frontend status logs waf-deploy waf-config config
+        test test-go test-frontend status logs caddy-reload waf-deploy waf-config config
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -126,6 +126,10 @@ deploy-all: build push scp pull restart ## Full deploy: build + push + SCP + res
 	@echo "Full deploy complete."
 
 deploy: deploy-all ## Alias for deploy-all
+
+# ── Caddy operations ────────────────────────────────────────────────
+caddy-reload: ## Reload Caddy config on remote
+	$(EXEC_CMD) caddy caddy reload --config /etc/caddy/Caddyfile
 
 # ── WAF operations (via waf-api on remote) ──────────────────────────
 waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)

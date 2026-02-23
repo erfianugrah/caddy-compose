@@ -2,6 +2,61 @@ package main
 
 import "time"
 
+// ─── CRS Scoring & Evaluation Rule IDs ──────────────────────────────────────
+// These rules perform anomaly score evaluation and are excluded from
+// per-rule analysis (they summarize, not detect).
+
+var scoringRuleIDs = map[int]bool{
+	949110: true, // Inbound Anomaly Score Exceeded
+	959100: true, // Outbound Anomaly Score Exceeded
+	980170: true, // Anomaly Scores (correlation/logging)
+}
+
+// isScoringRule returns true for CRS evaluation/scoring rule IDs that should
+// be skipped when analysing individual rule matches.
+func isScoringRule(id int) bool {
+	return id == 0 || scoringRuleIDs[id]
+}
+
+// ─── CRS Rule ID Ranges ─────────────────────────────────────────────────────
+
+const (
+	// Policy engine generated rules.
+	policyRuleIDMin = 9500000
+	policyRuleIDMax = 9599999
+
+	// Honeypot path rules.
+	honeypotRuleIDMin = 9100020
+	honeypotRuleIDMax = 9100029
+
+	// Scanner UA drop rule.
+	scannerDropRuleID = 9100032
+
+	// CRS outbound rule range.
+	crsOutboundMin = 950000
+	crsOutboundMax = 979999
+)
+
+// ─── Top-N Result Limits ────────────────────────────────────────────────────
+
+const (
+	// topNSummary is the number of top items returned in summary endpoints.
+	topNSummary = 10
+
+	// topNAnalytics is the number of top items returned in analytics/detail endpoints.
+	topNAnalytics = 20
+)
+
+// ─── CRS Severity-to-Score Mapping ──────────────────────────────────────────
+// Maps CRS severity levels to anomaly score points per the CRS spec.
+
+var severityScoreMap = map[int]int{
+	2: 5, // CRITICAL
+	3: 4, // ERROR
+	4: 3, // WARNING
+	5: 2, // NOTICE
+}
+
 // Raw JSON structure from Coraza audit log
 
 type AuditLogEntry struct {

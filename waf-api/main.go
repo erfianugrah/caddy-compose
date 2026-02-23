@@ -481,8 +481,8 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		sort.Slice(summary.TopClients, func(i, j int) bool {
 			return summary.TopClients[i].Count > summary.TopClients[j].Count
 		})
-		if len(summary.TopClients) > 10 {
-			summary.TopClients = summary.TopClients[:10]
+		if len(summary.TopClients) > topNSummary {
+			summary.TopClients = summary.TopClients[:topNSummary]
 		}
 
 		// Merge unique clients/services (union).
@@ -502,13 +502,13 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		summary.UniqueClients = len(allClients)
 		summary.UniqueServices = len(allServices)
 
-		// Merge RL events into recent_events, re-sort newest-first, cap at 10.
+		// Merge RL events into recent_events, re-sort newest-first.
 		summary.RecentEvents = append(summary.RecentEvents, rlEvents...)
 		sort.Slice(summary.RecentEvents, func(i, j int) bool {
 			return summary.RecentEvents[i].Timestamp.After(summary.RecentEvents[j].Timestamp)
 		})
-		if len(summary.RecentEvents) > 10 {
-			summary.RecentEvents = summary.RecentEvents[:10]
+		if len(summary.RecentEvents) > topNSummary {
+			summary.RecentEvents = summary.RecentEvents[:topNSummary]
 		}
 
 		writeJSON(w, http.StatusOK, summary)

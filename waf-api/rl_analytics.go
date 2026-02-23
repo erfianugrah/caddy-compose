@@ -434,8 +434,8 @@ func (s *AccessLogStore) Summary(hours int) RLSummaryResponse {
 		topClients = append(topClients, *cc)
 	}
 	sort.Slice(topClients, func(i, j int) bool { return topClients[i].Count > topClients[j].Count })
-	if len(topClients) > 20 {
-		topClients = topClients[:20]
+	if len(topClients) > topNAnalytics {
+		topClients = topClients[:topNAnalytics]
 	}
 
 	var topServices []RLServiceCount
@@ -443,8 +443,8 @@ func (s *AccessLogStore) Summary(hours int) RLSummaryResponse {
 		topServices = append(topServices, RLServiceCount{Service: svc, Count: cnt})
 	}
 	sort.Slice(topServices, func(i, j int) bool { return topServices[i].Count > topServices[j].Count })
-	if len(topServices) > 20 {
-		topServices = topServices[:20]
+	if len(topServices) > topNAnalytics {
+		topServices = topServices[:topNAnalytics]
 	}
 
 	var topURIs []RLURICount
@@ -457,8 +457,8 @@ func (s *AccessLogStore) Summary(hours int) RLSummaryResponse {
 		topURIs = append(topURIs, RLURICount{URI: uri, Count: ui.count, Services: svcs})
 	}
 	sort.Slice(topURIs, func(i, j int) bool { return topURIs[i].Count > topURIs[j].Count })
-	if len(topURIs) > 20 {
-		topURIs = topURIs[:20]
+	if len(topURIs) > topNAnalytics {
+		topURIs = topURIs[:topNAnalytics]
 	}
 
 	var hourCounts []HourCount
@@ -467,12 +467,12 @@ func (s *AccessLogStore) Summary(hours int) RLSummaryResponse {
 	}
 	sort.Slice(hourCounts, func(i, j int) bool { return hourCounts[i].Hour < hourCounts[j].Hour })
 
-	// Recent events (newest first, up to 20).
+	// Recent events (newest first).
 	recent := make([]RateLimitEvent, len(events))
 	copy(recent, events)
 	sort.Slice(recent, func(i, j int) bool { return recent[i].Timestamp.After(recent[j].Timestamp) })
-	if len(recent) > 20 {
-		recent = recent[:20]
+	if len(recent) > topNAnalytics {
+		recent = recent[:topNAnalytics]
 	}
 
 	return RLSummaryResponse{

@@ -990,18 +990,37 @@ func newTestConfigStore(t *testing.T) *ConfigStore {
 func TestConfigStoreDefaults(t *testing.T) {
 	cs := newTestConfigStore(t)
 	cfg := cs.Get()
+	expected := defaultConfig()
 
-	if cfg.Defaults.ParanoiaLevel != 1 {
-		t.Errorf("default paranoia: want 1, got %d", cfg.Defaults.ParanoiaLevel)
+	if cfg.Defaults.ParanoiaLevel != expected.Defaults.ParanoiaLevel {
+		t.Errorf("default paranoia: want %d, got %d", expected.Defaults.ParanoiaLevel, cfg.Defaults.ParanoiaLevel)
 	}
-	if cfg.Defaults.InboundThreshold != 5 {
-		t.Errorf("default inbound: want 5, got %d", cfg.Defaults.InboundThreshold)
+	if cfg.Defaults.InboundThreshold != expected.Defaults.InboundThreshold {
+		t.Errorf("default inbound: want %d, got %d", expected.Defaults.InboundThreshold, cfg.Defaults.InboundThreshold)
 	}
-	if cfg.Defaults.OutboundThreshold != 4 {
-		t.Errorf("default outbound: want 4, got %d", cfg.Defaults.OutboundThreshold)
+	if cfg.Defaults.OutboundThreshold != expected.Defaults.OutboundThreshold {
+		t.Errorf("default outbound: want %d, got %d", expected.Defaults.OutboundThreshold, cfg.Defaults.OutboundThreshold)
 	}
-	if cfg.Defaults.Mode != "enabled" {
-		t.Errorf("default mode: want enabled, got %s", cfg.Defaults.Mode)
+	if cfg.Defaults.Mode != expected.Defaults.Mode {
+		t.Errorf("default mode: want %s, got %s", expected.Defaults.Mode, cfg.Defaults.Mode)
+	}
+}
+
+func TestDefaultServiceSettingsMatchesDefaultConfig(t *testing.T) {
+	ss := defaultServiceSettings()
+	dc := defaultConfig().Defaults
+
+	if ss.Mode != dc.Mode {
+		t.Errorf("Mode: defaultServiceSettings()=%s, defaultConfig().Defaults=%s", ss.Mode, dc.Mode)
+	}
+	if ss.ParanoiaLevel != dc.ParanoiaLevel {
+		t.Errorf("ParanoiaLevel: defaultServiceSettings()=%d, defaultConfig().Defaults=%d", ss.ParanoiaLevel, dc.ParanoiaLevel)
+	}
+	if ss.InboundThreshold != dc.InboundThreshold {
+		t.Errorf("InboundThreshold: defaultServiceSettings()=%d, defaultConfig().Defaults=%d", ss.InboundThreshold, dc.InboundThreshold)
+	}
+	if ss.OutboundThreshold != dc.OutboundThreshold {
+		t.Errorf("OutboundThreshold: defaultServiceSettings()=%d, defaultConfig().Defaults=%d", ss.OutboundThreshold, dc.OutboundThreshold)
 	}
 }
 
@@ -1641,6 +1660,70 @@ func TestConfigMigrationFromOldFormat(t *testing.T) {
 		t.Error("migrated service qbit.erfi.io not found")
 	} else if ss.Mode != "disabled" {
 		t.Errorf("migrated qbit.erfi.io mode: want disabled, got %s", ss.Mode)
+	}
+}
+
+func TestConfigMigrationFallbacksForInvalidValues(t *testing.T) {
+	// Old format is detected by presence of "rule_engine" field in JSON.
+	// migrateOldConfig falls back to defaultConfig().Defaults for invalid values.
+	defaults := defaultConfig().Defaults
+
+	tests := []struct {
+		name    string
+		oldJSON string
+		wantPL  int
+		wantIn  int
+		wantOut int
+	}{
+		{
+			name:    "zero paranoia falls back to default",
+			oldJSON: `{"paranoia_level":0,"inbound_threshold":10,"outbound_threshold":8,"rule_engine":"On"}`,
+			wantPL:  defaults.ParanoiaLevel,
+			wantIn:  10,
+			wantOut: 8,
+		},
+		{
+			name:    "paranoia too high falls back to default",
+			oldJSON: `{"paranoia_level":5,"inbound_threshold":10,"outbound_threshold":8,"rule_engine":"On"}`,
+			wantPL:  defaults.ParanoiaLevel,
+			wantIn:  10,
+			wantOut: 8,
+		},
+		{
+			name:    "zero thresholds fall back to defaults",
+			oldJSON: `{"paranoia_level":2,"inbound_threshold":0,"outbound_threshold":0,"rule_engine":"On"}`,
+			wantPL:  2,
+			wantIn:  defaults.InboundThreshold,
+			wantOut: defaults.OutboundThreshold,
+		},
+		{
+			name:    "all invalid falls back to all defaults",
+			oldJSON: `{"paranoia_level":0,"inbound_threshold":0,"outbound_threshold":0,"rule_engine":"On"}`,
+			wantPL:  defaults.ParanoiaLevel,
+			wantIn:  defaults.InboundThreshold,
+			wantOut: defaults.OutboundThreshold,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.json")
+			os.WriteFile(path, []byte(tt.oldJSON), 0644)
+
+			cs := NewConfigStore(path)
+			cfg := cs.Get()
+
+			if cfg.Defaults.ParanoiaLevel != tt.wantPL {
+				t.Errorf("paranoia: want %d, got %d", tt.wantPL, cfg.Defaults.ParanoiaLevel)
+			}
+			if cfg.Defaults.InboundThreshold != tt.wantIn {
+				t.Errorf("inbound: want %d, got %d", tt.wantIn, cfg.Defaults.InboundThreshold)
+			}
+			if cfg.Defaults.OutboundThreshold != tt.wantOut {
+				t.Errorf("outbound: want %d, got %d", tt.wantOut, cfg.Defaults.OutboundThreshold)
+			}
+		})
 	}
 }
 
@@ -2967,8 +3050,9 @@ func TestRateLimitStoreDefaults(t *testing.T) {
 	s := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
 	cfg := s.Get()
 
-	if len(cfg.Zones) != 23 {
-		t.Fatalf("expected 23 default zones, got %d", len(cfg.Zones))
+	expectedZones := len(defaultRateLimitConfig().Zones)
+	if len(cfg.Zones) != expectedZones {
+		t.Fatalf("expected %d default zones, got %d", expectedZones, len(cfg.Zones))
 	}
 
 	// Check a known zone
@@ -3133,22 +3217,206 @@ func TestWriteZoneFiles(t *testing.T) {
 		t.Fatalf("expected 2 files written, got %d", len(written))
 	}
 
-	// Check file 1 exists and has content
-	data1, err := os.ReadFile(filepath.Join(dir, "test1.caddy"))
+	// Check file 1 exists and has content (uses _rl suffix)
+	data1, err := os.ReadFile(filepath.Join(dir, "test1_rl.caddy"))
 	if err != nil {
-		t.Fatalf("reading test1.caddy: %v", err)
+		t.Fatalf("reading test1_rl.caddy: %v", err)
 	}
 	if !strings.Contains(string(data1), "events 100") {
-		t.Error("test1.caddy missing events")
+		t.Error("test1_rl.caddy missing events")
 	}
 
 	// Check file 2 is disabled
-	data2, err := os.ReadFile(filepath.Join(dir, "test2.caddy"))
+	data2, err := os.ReadFile(filepath.Join(dir, "test2_rl.caddy"))
 	if err != nil {
-		t.Fatalf("reading test2.caddy: %v", err)
+		t.Fatalf("reading test2_rl.caddy: %v", err)
 	}
 	if strings.Contains(string(data2), "rate_limit") {
-		t.Error("test2.caddy should be disabled (no rate_limit)")
+		t.Error("test2_rl.caddy should be disabled (no rate_limit)")
+	}
+}
+
+func TestScanCaddyfileZones(t *testing.T) {
+	t.Run("extracts zone prefixes from import globs", func(t *testing.T) {
+		caddyfile := filepath.Join(t.TempDir(), "Caddyfile")
+		content := `
+example.com {
+	import /data/caddy/rl/sonarr_rl*.caddy
+	import /data/caddy/rl/caddy_rl*.caddy
+	import /data/caddy/rl/caddy-prometheus_rl*.caddy
+	reverse_proxy localhost:8080
+}
+`
+		os.WriteFile(caddyfile, []byte(content), 0644)
+
+		prefixes := scanCaddyfileZones(caddyfile)
+		if len(prefixes) != 3 {
+			t.Fatalf("expected 3 prefixes, got %d: %v", len(prefixes), prefixes)
+		}
+
+		expected := map[string]bool{"sonarr_rl": true, "caddy_rl": true, "caddy-prometheus_rl": true}
+		for _, p := range prefixes {
+			if !expected[p] {
+				t.Errorf("unexpected prefix: %q", p)
+			}
+		}
+	})
+
+	t.Run("deduplicates repeated zones", func(t *testing.T) {
+		caddyfile := filepath.Join(t.TempDir(), "Caddyfile")
+		content := `
+site1.com { import /data/caddy/rl/test_rl*.caddy }
+site2.com { import /data/caddy/rl/test_rl*.caddy }
+`
+		os.WriteFile(caddyfile, []byte(content), 0644)
+
+		prefixes := scanCaddyfileZones(caddyfile)
+		if len(prefixes) != 1 {
+			t.Fatalf("expected 1 prefix after dedup, got %d: %v", len(prefixes), prefixes)
+		}
+	})
+
+	t.Run("returns nil for missing caddyfile", func(t *testing.T) {
+		prefixes := scanCaddyfileZones("/nonexistent/Caddyfile")
+		if prefixes != nil {
+			t.Errorf("expected nil for missing file, got %v", prefixes)
+		}
+	})
+
+	t.Run("returns empty for caddyfile without rl imports", func(t *testing.T) {
+		caddyfile := filepath.Join(t.TempDir(), "Caddyfile")
+		os.WriteFile(caddyfile, []byte("localhost:80 { respond ok }"), 0644)
+
+		prefixes := scanCaddyfileZones(caddyfile)
+		if len(prefixes) != 0 {
+			t.Errorf("expected 0 prefixes, got %d: %v", len(prefixes), prefixes)
+		}
+	})
+}
+
+func TestEnsureZonePlaceholders(t *testing.T) {
+	t.Run("creates missing placeholder files", func(t *testing.T) {
+		dir := t.TempDir()
+		prefixes := []string{"sonarr_rl", "radarr_rl", "tracearr_rl"}
+
+		created := ensureZonePlaceholders(dir, prefixes)
+		if created != 3 {
+			t.Fatalf("expected 3 created, got %d", created)
+		}
+
+		for _, p := range prefixes {
+			path := filepath.Join(dir, p+".caddy")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("placeholder %s not created: %v", p, err)
+			}
+			if !strings.Contains(string(data), "Placeholder created") {
+				t.Errorf("placeholder %s missing header", p)
+			}
+		}
+	})
+
+	t.Run("skips existing files", func(t *testing.T) {
+		dir := t.TempDir()
+		// Pre-create one file
+		existing := filepath.Join(dir, "sonarr_rl.caddy")
+		os.WriteFile(existing, []byte("rate_limit { }"), 0644)
+
+		created := ensureZonePlaceholders(dir, []string{"sonarr_rl", "tracearr_rl"})
+		if created != 1 {
+			t.Fatalf("expected 1 created (sonarr_rl already exists), got %d", created)
+		}
+
+		// Verify existing file was NOT overwritten
+		data, _ := os.ReadFile(existing)
+		if !strings.Contains(string(data), "rate_limit") {
+			t.Error("existing file was overwritten")
+		}
+	})
+}
+
+func TestZoneFileName(t *testing.T) {
+	tests := []struct {
+		zone string
+		want string
+	}{
+		{"sonarr", "sonarr_rl.caddy"},
+		{"caddy", "caddy_rl.caddy"},
+		{"caddy-prometheus", "caddy-prometheus_rl.caddy"},
+	}
+	for _, tt := range tests {
+		got := zoneFileName(tt.zone)
+		if got != tt.want {
+			t.Errorf("zoneFileName(%q) = %q, want %q", tt.zone, got, tt.want)
+		}
+	}
+}
+
+func TestGenerateOnBootCreatesPlaceholders(t *testing.T) {
+	// Set up directories and a Caddyfile with zone imports that aren't in the
+	// rate limit config. generateOnBoot should create placeholder files for them.
+	corazaDir := t.TempDir()
+	rlDir := filepath.Join(t.TempDir(), "rl")
+	caddyfileDir := t.TempDir()
+	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
+
+	// Caddyfile references 3 zones: "sonarr" and "tracearr" and "newzone".
+	// The rate limit store will only have "sonarr" configured.
+	caddyfileContent := `
+sonarr.example.com {
+	import /data/caddy/rl/sonarr_rl*.caddy
+}
+tracearr.example.com {
+	import /data/caddy/rl/tracearr_rl*.caddy
+}
+newzone.example.com {
+	import /data/caddy/rl/newzone_rl*.caddy
+}
+`
+	os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644)
+	ensureCorazaDir(corazaDir)
+
+	deployCfg := DeployConfig{
+		CorazaDir:     corazaDir,
+		RateLimitDir:  rlDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: "http://localhost:1", // not used (no reload on boot)
+	}
+
+	es := newTestExclusionStore(t)
+	cs := newTestConfigStore(t)
+	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	// Only "sonarr" zone configured.
+	rs.Update(RateLimitConfig{
+		Zones: []RateLimitZone{
+			{Name: "sonarr", Events: 300, Window: "1m", Enabled: true},
+		},
+	})
+
+	generateOnBoot(cs, es, rs, deployCfg)
+
+	// sonarr_rl.caddy should exist with real rate_limit content (written by writeZoneFiles).
+	sonarrData, err := os.ReadFile(filepath.Join(rlDir, "sonarr_rl.caddy"))
+	if err != nil {
+		t.Fatalf("sonarr_rl.caddy not created: %v", err)
+	}
+	if !strings.Contains(string(sonarrData), "rate_limit") {
+		t.Error("sonarr_rl.caddy should contain rate_limit directive")
+	}
+
+	// tracearr_rl.caddy and newzone_rl.caddy should exist as placeholders
+	// (created by ensureZonePlaceholders via Caddyfile scan).
+	for _, zone := range []string{"tracearr_rl", "newzone_rl"} {
+		data, err := os.ReadFile(filepath.Join(rlDir, zone+".caddy"))
+		if err != nil {
+			t.Fatalf("%s.caddy not created: %v", zone, err)
+		}
+		if !strings.Contains(string(data), "Placeholder created") {
+			t.Errorf("%s.caddy should be a placeholder", zone)
+		}
+		if strings.Contains(string(data), "rate_limit") {
+			t.Errorf("%s.caddy should NOT contain rate_limit directive", zone)
+		}
 	}
 }
 
@@ -3170,8 +3438,9 @@ func TestRateLimitAPIEndpoints(t *testing.T) {
 
 	var cfg RateLimitConfig
 	json.NewDecoder(rec.Body).Decode(&cfg)
-	if len(cfg.Zones) != 23 {
-		t.Fatalf("expected 23 default zones, got %d", len(cfg.Zones))
+	expectedZones := len(defaultRateLimitConfig().Zones)
+	if len(cfg.Zones) != expectedZones {
+		t.Fatalf("expected %d default zones, got %d", expectedZones, len(cfg.Zones))
 	}
 
 	// PUT — update to single zone
@@ -3262,21 +3531,21 @@ func TestRateLimitDeployEndpoint(t *testing.T) {
 		t.Errorf("expected 2 files, got %d", len(resp.Files))
 	}
 
-	// Verify files exist on disk
-	data, err := os.ReadFile(filepath.Join(rlDir, "test.caddy"))
+	// Verify files exist on disk (uses _rl suffix)
+	data, err := os.ReadFile(filepath.Join(rlDir, "test_rl.caddy"))
 	if err != nil {
-		t.Fatalf("reading test.caddy: %v", err)
+		t.Fatalf("reading test_rl.caddy: %v", err)
 	}
 	if !strings.Contains(string(data), "events 100") {
-		t.Error("test.caddy missing events")
+		t.Error("test_rl.caddy missing events")
 	}
 
-	data, err = os.ReadFile(filepath.Join(rlDir, "disabled.caddy"))
+	data, err = os.ReadFile(filepath.Join(rlDir, "disabled_rl.caddy"))
 	if err != nil {
-		t.Fatalf("reading disabled.caddy: %v", err)
+		t.Fatalf("reading disabled_rl.caddy: %v", err)
 	}
 	if strings.Contains(string(data), "rate_limit") {
-		t.Error("disabled.caddy should not have rate_limit directive")
+		t.Error("disabled_rl.caddy should not have rate_limit directive")
 	}
 }
 
@@ -4553,6 +4822,21 @@ route @ipsum_blocked {
 	}
 }
 
+func TestBlocklistDefaultMinScore(t *testing.T) {
+	// File without a min_score comment should use defaultBlocklistMinScore.
+	content := `# Updated: 2026-02-22T06:00:01Z
+@ipsum_blocked client_ip 1.2.3.4 5.6.7.8
+route @ipsum_blocked { respond 403 }
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	stats := bs.Stats()
+	if stats.MinScore != defaultBlocklistMinScore {
+		t.Errorf("MinScore: want %d (defaultBlocklistMinScore), got %d", defaultBlocklistMinScore, stats.MinScore)
+	}
+}
+
 func TestBlocklistStatsEndpoint(t *testing.T) {
 	content := `# Updated: 2026-02-22T06:00:01Z
 # IPs: 2 (min_score=5)
@@ -4952,6 +5236,24 @@ func TestComputeAnomalyScoreByPhase(t *testing.T) {
 				t.Errorf("computeAnomalyScoreByPhase(outbound=%v) = %d, want %d", tt.outbound, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsScoringRule(t *testing.T) {
+	// These should all be treated as scoring/evaluation rules.
+	scoringIDs := []int{0, 949110, 959100, 980170}
+	for _, id := range scoringIDs {
+		if !isScoringRule(id) {
+			t.Errorf("isScoringRule(%d) = false, want true", id)
+		}
+	}
+
+	// These should NOT be scoring rules.
+	normalIDs := []int{942100, 930120, 920420, 950100, 9500001, 9100021}
+	for _, id := range normalIDs {
+		if isScoringRule(id) {
+			t.Errorf("isScoringRule(%d) = true, want false", id)
+		}
 	}
 }
 

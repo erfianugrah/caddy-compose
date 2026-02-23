@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+// defaultBlocklistMinScore is the minimum IPsum score to include in the blocklist.
+// IPs with fewer independent blocklist appearances are excluded.
+const defaultBlocklistMinScore = 3
+
 // BlocklistStore caches the parsed ipsum blocklist file.
 // The file is re-read at most every cacheTTL to avoid hammering disk.
 type BlocklistStore struct {
@@ -63,7 +67,7 @@ func (bs *BlocklistStore) parseFile() {
 
 	ips := make(map[string]struct{})
 	var lastUpdated string
-	minScore := 3 // default
+	minScore := defaultBlocklistMinScore
 
 	scanner := bufio.NewScanner(f)
 	// The @ipsum_blocked line can be very long (20k+ IPs).
@@ -170,7 +174,7 @@ func (bs *BlocklistStore) Refresh(deployCfg DeployConfig) BlocklistRefreshRespon
 	minScore := bs.minScore
 	bs.mu.RUnlock()
 	if minScore < 1 {
-		minScore = 3
+		minScore = defaultBlocklistMinScore
 	}
 
 	log.Printf("[blocklist] refreshing from %s (min_score=%d)", ipsumURL, minScore)
