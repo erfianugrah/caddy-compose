@@ -88,6 +88,94 @@ import {
   type CRSAutocompleteResponse,
 } from "@/lib/api";
 import SecRuleEditor from "./SecRuleEditor";
+import type { WAFEvent } from "@/lib/api";
+
+// ─── Event Prefill ──────────────────────────────────────────────────
+
+interface EventPrefill {
+  action: "allow" | "block" | "skip_rule";
+  name: string;
+  description: string;
+  ruleIds: string;        // Space-separated rule IDs
+  conditions: Condition[];
+  sourceEvent: WAFEvent;
+}
+
+/** Extract prefill data from a WAF event for the Quick Actions form. */
+function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
+  // Collect rule IDs from matched_rules, or fall back to primary rule_id
+  const ruleIds: string[] = [];
+  if (event.matched_rules && event.matched_rules.length > 0) {
+    for (const r of event.matched_rules) {
+      if (r.id && !ruleIds.includes(String(r.id))) {
+        ruleIds.push(String(r.id));
+      }
+    }
+  } else if (event.rule_id) {
+    ruleIds.push(String(event.rule_id));
+  }
+
+  // Build conditions from event context
+  const conditions: Condition[] = [];
+
+  // Path condition — use the path without query string
+  if (event.uri) {
+    const path = event.uri.split("?")[0];
+    // Use begins_with for paths that look like prefixes (e.g., /socket.io/)
+    // Use eq for exact paths
+    const op: ConditionOperator = path.endsWith("/") ? "begins_with" : "eq";
+    conditions.push({ field: "path", operator: op, value: path });
+  }
+
+  // IP condition if present
+  if (event.client_ip) {
+    conditions.push({ field: "ip", operator: "eq", value: event.client_ip });
+  }
+
+  // Auto-generate name
+  const ruleSnippet = ruleIds.length > 0
+    ? ruleIds.slice(0, 3).join(", ") + (ruleIds.length > 3 ? "..." : "")
+    : "";
+  const pathSnippet = event.uri ? event.uri.split("?")[0] : "";
+  const name = ["Skip", ruleSnippet, "for", pathSnippet].filter(Boolean).join(" ");
+
+  // Description from the primary rule message
+  const description = event.rule_msg
+    ? `Auto-created from event: ${event.rule_msg}`
+    : `Auto-created from event ${event.id}`;
+
+  return {
+    action: "skip_rule",
+    name,
+    description,
+    ruleIds: ruleIds.join(" "),
+    conditions,
+    sourceEvent: event,
+  };
+}
+
+/** Read and consume a prefill event from sessionStorage (if present). */
+function consumePrefillEvent(): EventPrefill | null {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("from_event")) return null;
+
+  const raw = sessionStorage.getItem("waf:prefill-event");
+  if (!raw) return null;
+
+  try {
+    const event = JSON.parse(raw) as WAFEvent;
+    sessionStorage.removeItem("waf:prefill-event");
+    // Clean up URL param without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete("from_event");
+    window.history.replaceState({}, "", url.pathname + url.search);
+    return extractPrefillFromEvent(event);
+  } catch {
+    return null;
+  }
+}
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -281,22 +369,113 @@ function ConditionChip({
 
 // ─── CRS Rule Picker (searchable dropdown) ──────────────────────────
 
+/** Parse a space-separated rule ID string into an array of individual IDs. */
+function parseRuleIds(value: string): string[] {
+  return value.split(/[\s,]+/).filter(Boolean);
+}
+
+/** Join rule ID array back into a space-separated string. */
+function joinRuleIds(ids: string[]): string {
+  return ids.join(" ");
+}
+
+/**
+ * Tag-style input for multiple rule IDs.
+ * Stores value as a space-separated string (e.g. "942200 942370 920420").
+ * Supports typing + Enter/comma/space to add, backspace to remove last, click X to remove individual.
+ */
+function RuleIdTagInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const ids = parseRuleIds(value);
+
+  const addId = (raw: string) => {
+    const cleaned = raw.trim().replace(/,/g, "");
+    if (!cleaned) return;
+    // Don't add duplicates
+    if (ids.includes(cleaned)) {
+      setInputValue("");
+      return;
+    }
+    onChange(joinRuleIds([...ids, cleaned]));
+    setInputValue("");
+  };
+
+  const removeId = (id: string) => {
+    onChange(joinRuleIds(ids.filter((i) => i !== id)));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "," || e.key === " ") {
+      e.preventDefault();
+      addId(inputValue);
+    } else if (e.key === "Backspace" && inputValue === "" && ids.length > 0) {
+      removeId(ids[ids.length - 1]);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text");
+    const newIds = pasted.split(/[\s,]+/).filter(Boolean);
+    const unique = [...new Set([...ids, ...newIds])];
+    onChange(joinRuleIds(unique));
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-within:ring-1 focus-within:ring-ring min-h-[36px]">
+      {ids.map((id) => (
+        <span
+          key={id}
+          className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
+        >
+          {id}
+          <button
+            onClick={() => removeId(id)}
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onBlur={() => { if (inputValue.trim()) addId(inputValue); }}
+        placeholder={ids.length === 0 ? (placeholder ?? "Type rule ID and press Enter") : ""}
+        className="flex-1 min-w-[120px] bg-transparent text-xs font-mono outline-none placeholder:text-muted-foreground"
+      />
+    </div>
+  );
+}
+
 function CRSRulePicker({
   rules,
   categories,
-  selectedRuleId,
+  selectedRuleIds,
   onSelect,
 }: {
   rules: CRSRule[];
   categories: { id: string; name: string }[];
-  selectedRuleId: string;
-  onSelect: (ruleId: string) => void;
+  selectedRuleIds: string;
+  onSelect: (ruleIds: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const ids = parseRuleIds(selectedRuleIds);
 
   const filteredRules = useMemo(() => {
-    if (!search) return rules.slice(0, 50); // Show first 50 by default
+    if (!search) return rules.slice(0, 50);
     const q = search.toLowerCase();
     return rules.filter(
       (r) =>
@@ -312,31 +491,36 @@ function CRSRulePicker({
     return m;
   }, [categories]);
 
-  const selectedRule = rules.find((r) => r.id === selectedRuleId);
+  const toggleRule = (ruleId: string) => {
+    if (ids.includes(ruleId)) {
+      onSelect(joinRuleIds(ids.filter((id) => id !== ruleId)));
+    } else {
+      onSelect(joinRuleIds([...ids, ruleId]));
+    }
+  };
 
   return (
     <div className="space-y-1.5">
       <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-        CRS Rule
+        Rule ID / Range
       </Label>
+      <RuleIdTagInput
+        value={selectedRuleIds}
+        onChange={onSelect}
+        placeholder="Type rule IDs (Enter to add) or browse below"
+      />
       <div className="relative">
-        <div
-          className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:border-ring"
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           onClick={() => setOpen(!open)}
         >
-          {selectedRule ? (
-            <span>
-              <span className="font-mono text-neon-cyan">{selectedRule.id}</span>
-              <span className="ml-2 text-muted-foreground">{selectedRule.description}</span>
-            </span>
-          ) : (
-            <span className="text-muted-foreground">Select a CRS rule to skip...</span>
-          )}
-          <Search className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
-        </div>
+          <Search className="h-3 w-3" />
+          {open ? "Hide" : "Browse"} CRS rule catalog
+        </button>
 
         {open && (
-          <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+          <div className="mt-1.5 rounded-md border border-border bg-popover shadow-lg">
             <div className="p-2 border-b border-border">
               <Input
                 value={search}
@@ -348,33 +532,32 @@ function CRSRulePicker({
             </div>
             <div className="max-h-[300px] overflow-y-auto p-1">
               {filteredRules.length > 0 ? (
-                filteredRules.map((rule) => (
-                  <button
-                    key={rule.id}
-                    className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent"
-                    onClick={() => {
-                      onSelect(rule.id);
-                      setOpen(false);
-                      setSearch("");
-                    }}
-                  >
-                    <span className="shrink-0 font-mono text-neon-cyan">{rule.id}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate">{rule.description}</p>
-                      <p className="text-muted-foreground">
-                        {categoryMap[rule.category] ?? rule.category}
-                        {rule.severity && (
-                          <Badge variant="outline" className="ml-1.5 text-[9px] px-1 py-0">
-                            {rule.severity}
-                          </Badge>
-                        )}
-                      </p>
-                    </div>
-                    {rule.id === selectedRuleId && (
-                      <Check className="h-3.5 w-3.5 shrink-0 text-neon-green" />
-                    )}
-                  </button>
-                ))
+                filteredRules.map((rule) => {
+                  const isSelected = ids.includes(rule.id);
+                  return (
+                    <button
+                      key={rule.id}
+                      className={`flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent ${isSelected ? "bg-accent/50" : ""}`}
+                      onClick={() => toggleRule(rule.id)}
+                    >
+                      <span className="shrink-0 font-mono text-neon-cyan">{rule.id}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate">{rule.description}</p>
+                        <p className="text-muted-foreground">
+                          {categoryMap[rule.category] ?? rule.category}
+                          {rule.severity && (
+                            <Badge variant="outline" className="ml-1.5 text-[9px] px-1 py-0">
+                              {rule.severity}
+                            </Badge>
+                          )}
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <Check className="h-3.5 w-3.5 shrink-0 text-neon-green" />
+                      )}
+                    </button>
+                  );
+                })
               ) : (
                 <p className="px-2 py-3 text-center text-xs text-muted-foreground">
                   No rules found
@@ -383,16 +566,6 @@ function CRSRulePicker({
             </div>
           </div>
         )}
-      </div>
-      {/* Allow manual entry too */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">or enter manually:</span>
-        <Input
-          value={selectedRuleId}
-          onChange={(e) => onSelect(e.target.value)}
-          placeholder="e.g., 920420 or 942000-942999"
-          className="h-7 text-xs font-mono flex-1"
-        />
       </div>
     </div>
   );
@@ -557,23 +730,30 @@ function QuickActionsForm({
   crsRules,
   crsCategories,
   onSubmit,
+  prefill,
+  onPrefillConsumed,
 }: {
   services: ServiceDetail[];
   crsRules: CRSRule[];
   crsCategories: { id: string; name: string }[];
   onSubmit: (data: ExclusionCreateData) => void;
+  prefill?: EventPrefill | null;
+  onPrefillConsumed?: () => void;
 }) {
-  const [actionType, setActionType] = useState<QuickActionType>("allow");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [conditions, setConditions] = useState<Condition[]>([
-    { field: "ip", operator: "ip_match", value: "" },
-  ]);
+  const [actionType, setActionType] = useState<QuickActionType>(prefill?.action ?? "allow");
+  const [name, setName] = useState(prefill?.name ?? "");
+  const [description, setDescription] = useState(prefill?.description ?? "");
+  const [conditions, setConditions] = useState<Condition[]>(
+    prefill?.conditions && prefill.conditions.length > 0
+      ? prefill.conditions
+      : [{ field: "ip", operator: "ip_match", value: "" }]
+  );
   const [groupOp, setGroupOp] = useState<GroupOperator>("and");
-  const [ruleId, setRuleId] = useState("");
+  const [ruleId, setRuleId] = useState(prefill?.ruleIds ?? "");
   const [ruleTag, setRuleTag] = useState("");
-  const [skipMode, setSkipMode] = useState<"id" | "tag">("id");
+  const [skipMode, setSkipMode] = useState<"id" | "tag">(prefill?.ruleIds ? "id" : "id");
   const [enabled, setEnabled] = useState(true);
+  const [showPrefillBanner, setShowPrefillBanner] = useState(!!prefill);
 
   const resetForm = () => {
     setName("");
@@ -584,6 +764,8 @@ function QuickActionsForm({
     setRuleTag("");
     setSkipMode("id");
     setEnabled(true);
+    setShowPrefillBanner(false);
+    onPrefillConsumed?.();
   };
 
   const updateCondition = (index: number, condition: Condition) => {
@@ -632,6 +814,30 @@ function QuickActionsForm({
 
   return (
     <div className="space-y-4">
+      {/* Prefill banner when created from an event */}
+      {showPrefillBanner && prefill && (
+        <Alert>
+          <ShieldCheck className="h-4 w-4" />
+          <AlertTitle>Pre-filled from event</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-xs">
+              {prefill.sourceEvent.rule_msg
+                ? `${prefill.sourceEvent.method} ${prefill.sourceEvent.uri?.split("?")[0]} — ${prefill.sourceEvent.rule_msg}`
+                : `${prefill.sourceEvent.method} ${prefill.sourceEvent.uri}`}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground hover:text-foreground shrink-0 ml-2"
+              onClick={resetForm}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Clear
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Action Type Selector */}
       <div className="grid gap-3 sm:grid-cols-3">
         {QUICK_ACTIONS.map((action) => {
@@ -763,7 +969,7 @@ function QuickActionsForm({
             <CRSRulePicker
               rules={crsRules}
               categories={crsCategories}
-              selectedRuleId={ruleId}
+              selectedRuleIds={ruleId}
               onSelect={setRuleId}
             />
           ) : (
@@ -942,9 +1148,9 @@ function AdvancedBuilderForm({
           </SelectTrigger>
           <SelectContent>
             {ALL_EXCLUSION_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>
-                <div className="flex flex-col">
-                  <span>{t.label}</span>
+              <SelectItem key={t.value} value={t.value} textValue={t.label}>
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">{t.label}</span>
                   <span className="text-xs text-muted-foreground">{t.description}</span>
                 </div>
               </SelectItem>
@@ -958,7 +1164,11 @@ function AdvancedBuilderForm({
         {needsRuleId && (
           <div className="space-y-1.5">
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">Rule ID / Range</Label>
-            <Input value={form.rule_id} onChange={(e) => update("rule_id", e.target.value)} placeholder="e.g., 941100 or 941000-941999" />
+            <RuleIdTagInput
+              value={form.rule_id}
+              onChange={(v) => update("rule_id", v)}
+              placeholder="e.g., 941100, 942000-942999 (Enter to add)"
+            />
           </div>
         )}
         {needsRuleTag && (
@@ -1227,6 +1437,9 @@ export default function PolicyEngine() {
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Event prefill — consumed once on mount from sessionStorage
+  const [eventPrefill, setEventPrefill] = useState<EventPrefill | null>(() => consumePrefillEvent());
+
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -1463,7 +1676,12 @@ export default function PolicyEngine() {
                 services={services}
                 crsRules={crsData?.rules ?? []}
                 crsCategories={crsData?.categories ?? []}
-                onSubmit={handleCreate}
+                onSubmit={(data) => {
+                  handleCreate(data);
+                  setEventPrefill(null);
+                }}
+                prefill={eventPrefill}
+                onPrefillConsumed={() => setEventPrefill(null)}
               />
             </TabsContent>
 

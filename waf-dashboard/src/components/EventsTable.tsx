@@ -8,6 +8,7 @@ import {
   ChevronsDownUp,
   Download,
   Filter,
+  ShieldPlus,
 } from "lucide-react";
 import {
   Card,
@@ -110,9 +111,32 @@ function HighlightedText({ text, highlight }: { text: string; highlight: string 
 }
 
 export function EventDetailPanel({ event }: { event: WAFEvent }) {
+  // Only show "Create Exception" for WAF events (not ipsum/rate-limited)
+  const isWafEvent = event.event_type !== "ipsum_blocked" && event.event_type !== "rate_limited";
+
   return (
     <div className="space-y-3 p-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-1.5">
+        {isWafEvent && (
+          <a
+            href="/policy?from_event=1"
+            onClick={(e) => {
+              e.stopPropagation();
+              sessionStorage.setItem("waf:prefill-event", JSON.stringify(event));
+            }}
+            className="inline-flex"
+          >
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-neon-cyan hover:text-neon-green"
+              tabIndex={-1}
+            >
+              <ShieldPlus className="h-3 w-3 mr-1" />
+              Create Exception
+            </Button>
+          </a>
+        )}
         <Button
           variant="ghost"
           size="xs"
