@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:1.22.0-2.10.2
+    image: erfianugrah/caddy:1.23.0-2.10.2
     container_name: caddy-test
     ports:
       - "8080:8080"
