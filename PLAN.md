@@ -10,7 +10,7 @@ Branch: `feature/sentinel-inspired-security`
 
 ## 1. Honeypot Paths
 
-**Status:** Done (Phase A — static rules)
+**Status:** Done (Phase A — static rules; Phase B — dynamic honeypot paths via Policy Engine)
 **Difficulty:** Low
 **Files:** `coraza/post-crs.conf`, optionally `waf-api/generator.go` + `models.go`
 
@@ -474,7 +474,7 @@ MMDB-based analytics (waf-api side). Non-CF inline geo-blocking is a future item
 | 4 | Tarpitting via `drop` action | 30 min | Low — quick win for scanners | **Done** |
 | 5 | GeoIP analytics (MMDB reader + dashboard) | 1-2 days | High — visibility | **Done** |
 | 6 | GeoIP blocking (CF header SecRules) | 2-3 hours | Medium — only works behind CF | **Done** |
-| 7 | Honeypot paths (dynamic via Policy Engine) | 3-4 hours | Medium — dashboard management | Not started |
+| 7 | Honeypot paths (dynamic via Policy Engine) | 3-4 hours | Medium — dashboard management | **Done** |
 | 8 | GeoIP online API fallback | 3-4 hours | Low — edge case for non-CF, non-MMDB | Not started |
 
 Total estimated effort: ~3-4 days

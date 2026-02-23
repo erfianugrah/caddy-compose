@@ -314,6 +314,15 @@ func validateExclusion(e RuleExclusion) error {
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("%s requires at least one condition", e.Type)
 		}
+	case "honeypot":
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("honeypot requires at least one path condition")
+		}
+		for i, c := range e.Conditions {
+			if c.Field != "path" {
+				return fmt.Errorf("honeypot condition[%d]: only 'path' field is allowed, got %q", i, c.Field)
+			}
+		}
 	case "skip_rule":
 		if e.RuleID == "" && e.RuleTag == "" {
 			return fmt.Errorf("skip_rule requires rule_id or rule_tag")

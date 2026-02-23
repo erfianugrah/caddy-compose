@@ -2323,6 +2323,182 @@ func TestGenerateSkipRuleByCountry(t *testing.T) {
 	}
 }
 
+// --- Honeypot exclusion tests ---
+
+func TestValidateHoneypotExclusion(t *testing.T) {
+	// Valid: honeypot with path conditions
+	e := RuleExclusion{
+		Name: "WordPress honeypot",
+		Type: "honeypot",
+		Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/wp-admin/ /wp-login.php /xmlrpc.php"},
+		},
+	}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("valid honeypot should pass, got: %v", err)
+	}
+
+	// Valid: honeypot with eq operator
+	e.Conditions = []Condition{{Field: "path", Operator: "eq", Value: "/phpmyadmin"}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("honeypot with eq path should be valid, got: %v", err)
+	}
+
+	// Invalid: honeypot with no conditions
+	e.Conditions = nil
+	if err := validateExclusion(e); err == nil {
+		t.Error("honeypot without conditions should fail")
+	}
+
+	// Invalid: honeypot with non-path condition
+	e.Conditions = []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("honeypot with ip condition should fail")
+	}
+
+	// Invalid: honeypot with country condition
+	e.Conditions = []Condition{{Field: "country", Operator: "eq", Value: "CN"}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("honeypot with country condition should fail")
+	}
+}
+
+func TestGenerateHoneypotSingle(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "WP paths", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/wp-admin/ /wp-login.php /xmlrpc.php"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "id:9100021") {
+		t.Error("expected rule ID 9100021 for dynamic honeypot")
+	}
+	if !strings.Contains(result.PreCRS, "@pm /wp-admin/ /wp-login.php /xmlrpc.php") {
+		t.Error("expected @pm with all honeypot paths")
+	}
+	if !strings.Contains(result.PreCRS, "tag:'honeypot'") {
+		t.Error("expected honeypot tag")
+	}
+	if !strings.Contains(result.PreCRS, "deny") {
+		t.Error("expected deny action for honeypot")
+	}
+	if !strings.Contains(result.PreCRS, "Dynamic Honeypot Paths") {
+		t.Error("expected section header comment")
+	}
+}
+
+func TestGenerateHoneypotMultipleGroups(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "WP paths", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/wp-admin/ /wp-login.php"},
+		}, Enabled: true},
+		{Name: "PHP panels", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/phpmyadmin /adminer"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	// Should consolidate into ONE SecRule
+	if strings.Count(result.PreCRS, "id:9100021") != 1 {
+		t.Error("expected exactly one honeypot rule (consolidated)")
+	}
+	// All paths merged
+	if !strings.Contains(result.PreCRS, "/wp-admin/") {
+		t.Error("expected /wp-admin/ in consolidated rule")
+	}
+	if !strings.Contains(result.PreCRS, "/phpmyadmin") {
+		t.Error("expected /phpmyadmin in consolidated rule")
+	}
+	// Group names in comments
+	if !strings.Contains(result.PreCRS, "WP paths") {
+		t.Error("expected group name in comments")
+	}
+	if !strings.Contains(result.PreCRS, "PHP panels") {
+		t.Error("expected group name in comments")
+	}
+}
+
+func TestGenerateHoneypotDedup(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Group A", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/wp-admin/ /.env"},
+		}, Enabled: true},
+		{Name: "Group B", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/.env /phpmyadmin"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	// /.env should appear only once in the @pm pattern
+	count := strings.Count(result.PreCRS, "/.env")
+	if count != 1 {
+		t.Errorf("expected /.env once in @pm rule, found %d times", count)
+	}
+}
+
+func TestGenerateHoneypotDisabledSkipped(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	// In production, EnabledExclusions() filters before calling GenerateConfigs.
+	// Simulate: pass no enabled honeypots.
+	exclusions := []RuleExclusion{}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if strings.Contains(result.PreCRS, "9100021") {
+		t.Error("no honeypot exclusions should not generate a rule")
+	}
+}
+
+func TestGenerateHoneypotWithEqOperator(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Single path", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "eq", Value: "/phpmyadmin"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "@pm /phpmyadmin") {
+		t.Error("expected @pm with single path from eq condition")
+	}
+}
+
+func TestGenerateHoneypotMixedWithQuickActions(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Allow trusted IP", Type: "allow", Conditions: []Condition{
+			{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"},
+		}, Enabled: true},
+		{Name: "WP traps", Type: "honeypot", Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/wp-admin/ /wp-login.php"},
+		}, Enabled: true},
+		{Name: "Block bad UA", Type: "block", Conditions: []Condition{
+			{Field: "user_agent", Operator: "contains", Value: "BadBot"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	// All three should appear in pre-CRS
+	if !strings.Contains(result.PreCRS, "ctl:ruleEngine=Off") {
+		t.Error("expected allow rule in pre-CRS")
+	}
+	if !strings.Contains(result.PreCRS, "id:9100021") {
+		t.Error("expected honeypot rule in pre-CRS")
+	}
+	if !strings.Contains(result.PreCRS, "BadBot") {
+		t.Error("expected block rule in pre-CRS")
+	}
+}
+
 // --- Deploy tests ---
 
 func TestEnsureCorazaDir(t *testing.T) {

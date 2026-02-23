@@ -238,6 +238,8 @@ export type ExclusionType =
   | "allow"
   | "block"
   | "skip_rule"
+  // Honeypot
+  | "honeypot"
   // Raw editor
   | "raw";
 
@@ -294,10 +296,11 @@ const typeToGo: Record<ExclusionType, string> = {
   "ctl:ruleRemoveById": "runtime_remove_by_id",
   "ctl:ruleRemoveByTag": "runtime_remove_by_tag",
   "ctl:ruleRemoveTargetById": "runtime_remove_target_by_id",
-  // Quick Actions + Raw (same names in Go)
+  // Quick Actions + Honeypot + Raw (same names in Go)
   "allow": "allow",
   "block": "block",
   "skip_rule": "skip_rule",
+  "honeypot": "honeypot",
   "raw": "raw",
 };
 

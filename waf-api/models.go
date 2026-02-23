@@ -386,6 +386,8 @@ var validExclusionTypes = map[string]bool{
 	"allow":     true, // Whitelist — bypass WAF checks
 	"block":     true, // Deny requests
 	"skip_rule": true, // Skip specific CRS rules
+	// Honeypot (dynamic path groups)
+	"honeypot": true, // Known-bad path traps — instant deny
 	// Raw editor
 	"raw": true, // Raw SecRule directive
 }
@@ -409,7 +411,7 @@ var validOperatorsForField = map[string]map[string]bool{
 	},
 	"path": {
 		"eq": true, "neq": true, "contains": true, "begins_with": true,
-		"ends_with": true, "regex": true,
+		"ends_with": true, "regex": true, "in": true,
 	},
 	"host": {
 		"eq": true, "neq": true, "contains": true,

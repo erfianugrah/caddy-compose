@@ -37,11 +37,13 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion, idGen *ruleIDGen)
 	// Pre-CRS exclusions: quick actions, runtime ctl: rules, and raw rules.
 	preCRSExclusions := filterExclusions(exclusions, true)
 	if len(preCRSExclusions) > 0 {
-		var quickActions, runtimeExcl, rawRules []RuleExclusion
+		var quickActions, runtimeExcl, rawRules, honeypotRules []RuleExclusion
 		for _, e := range preCRSExclusions {
 			switch e.Type {
 			case "allow", "block", "skip_rule":
 				quickActions = append(quickActions, e)
+			case "honeypot":
+				honeypotRules = append(honeypotRules, e)
 			case "raw":
 				rawRules = append(rawRules, e)
 			default:
@@ -80,6 +82,10 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion, idGen *ruleIDGen)
 				}
 				b.WriteString("\n")
 			}
+		}
+
+		if len(honeypotRules) > 0 {
+			writeHoneypotRule(&b, honeypotRules)
 		}
 	}
 
@@ -129,6 +135,7 @@ var preCRSTypes = map[string]bool{
 	"allow":                       true,
 	"block":                       true,
 	"skip_rule":                   true,
+	"honeypot":                    true,
 	"raw":                         true,
 }
 
@@ -384,6 +391,67 @@ func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion, idGen *ruleID
 		ruleID := idGen.next()
 		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,%s\"\n", ruleID, action))
 	}
+}
+
+// writeHoneypotRule consolidates all honeypot exclusions into a single SecRule
+// using @pm (Aho-Corasick substring match) on REQUEST_URI. Uses rule ID 9100021
+// (within the 9100020-9100029 honeypot range) so the logparser classifies
+// matches as honeypot events.
+func writeHoneypotRule(b *strings.Builder, honeypots []RuleExclusion) {
+	// Collect all paths from all honeypot exclusions.
+	var allPaths []string
+	var names []string
+	for _, e := range honeypots {
+		names = append(names, e.Name)
+		for _, c := range e.Conditions {
+			if c.Field != "path" {
+				continue
+			}
+			// For "in" operator, value is space-separated paths.
+			// For "eq", "contains", "begins_with", it's a single path.
+			if c.Operator == "in" {
+				for _, p := range strings.Fields(c.Value) {
+					if p != "" {
+						allPaths = append(allPaths, p)
+					}
+				}
+			} else if c.Value != "" {
+				allPaths = append(allPaths, c.Value)
+			}
+		}
+	}
+
+	if len(allPaths) == 0 {
+		return
+	}
+
+	// Deduplicate paths while preserving order.
+	seen := make(map[string]bool, len(allPaths))
+	deduped := make([]string, 0, len(allPaths))
+	for _, p := range allPaths {
+		if !seen[p] {
+			seen[p] = true
+			deduped = append(deduped, p)
+		}
+	}
+
+	b.WriteString("# --- Dynamic Honeypot Paths ---\n")
+	b.WriteString("# Consolidated from Policy Engine honeypot groups:\n")
+	for _, n := range names {
+		b.WriteString(fmt.Sprintf("#   - %s\n", n))
+	}
+	b.WriteString(fmt.Sprintf("# Total paths: %d\n", len(deduped)))
+	b.WriteString(fmt.Sprintf("SecRule REQUEST_URI \"@pm %s\" \\\n", strings.Join(deduped, " ")))
+	b.WriteString("    \"id:9100021,\\\n")
+	b.WriteString("    phase:1,\\\n")
+	b.WriteString("    deny,\\\n")
+	b.WriteString("    status:403,\\\n")
+	b.WriteString("    log,\\\n")
+	b.WriteString("    msg:'Honeypot: dynamic path probe',\\\n")
+	b.WriteString("    logdata:'%{REQUEST_URI}',\\\n")
+	b.WriteString("    tag:'honeypot',\\\n")
+	b.WriteString("    tag:'custom-rules',\\\n")
+	b.WriteString("    severity:'CRITICAL'\"\n\n")
 }
 
 // writeExclusionComment writes the standard comment block for an exclusion.

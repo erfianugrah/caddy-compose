@@ -21,6 +21,7 @@ import {
   Loader2,
   Search,
   ChevronDown,
+  Crosshair,
 } from "lucide-react";
 import {
   Card,
@@ -265,6 +266,7 @@ const CONDITION_FIELDS: FieldDef[] = [
       { value: "begins_with", label: "begins with" },
       { value: "ends_with", label: "ends with" },
       { value: "regex", label: "matches regex" },
+      { value: "in", label: "is in (substring match)" },
     ],
     placeholder: "e.g., /api/v3/, /socket.io/",
   },
@@ -1379,6 +1381,115 @@ function RawEditorForm({
   );
 }
 
+// ─── Honeypot Form ──────────────────────────────────────────────────
+
+function HoneypotForm({ onSubmit }: { onSubmit: (data: ExclusionCreateData) => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [pathsText, setPathsText] = useState("");
+  const [enabled, setEnabled] = useState(true);
+
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setPathsText("");
+    setEnabled(true);
+  };
+
+  const handleSubmit = () => {
+    // Parse paths: one per line, trim whitespace, remove empty lines and comments
+    const paths = pathsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+
+    if (paths.length === 0) return;
+
+    const data: ExclusionCreateData = {
+      name: name || "Honeypot paths",
+      description,
+      type: "honeypot",
+      conditions: [{ field: "path", operator: "in", value: paths.join(" ") }],
+      enabled,
+    };
+
+    onSubmit(data);
+    resetForm();
+  };
+
+  const pathCount = pathsText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#")).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Dynamic Honeypot Paths</p>
+        <p className="mt-1">
+          Add path fragments that should never appear in legitimate traffic (e.g., WordPress,
+          PHP admin panels, dotfiles). Requests matching these paths are instantly blocked
+          with 403 and tagged as honeypot events. Matched via substring (Aho-Corasick).
+        </p>
+        <p className="mt-1">
+          Static honeypot paths are baked into the image. Dynamic paths added here are
+          merged and deployed alongside them.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Group Name</label>
+          <Input
+            placeholder="e.g., Custom WordPress paths"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Description (optional)</label>
+          <Input
+            placeholder="e.g., Additional WP paths not in the default list"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">
+          Paths (one per line, # for comments)
+          {pathCount > 0 && (
+            <span className="ml-2 text-muted-foreground">({pathCount} paths)</span>
+          )}
+        </label>
+        <textarea
+          className="flex min-h-[200px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder={"# WordPress\n/wp-login.php\n/wp-admin/\n/xmlrpc.php\n\n# PHP admin panels\n/phpmyadmin\n/adminer\n\n# Dotfiles\n/.env\n/.git/\n/.aws/"}
+          value={pathsText}
+          onChange={(e) => setPathsText(e.target.value)}
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="honeypot-enabled"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300"
+        />
+        <label htmlFor="honeypot-enabled" className="text-xs">Enabled</label>
+      </div>
+
+      <Button onClick={handleSubmit} disabled={pathCount === 0}>
+        <Plus className="h-4 w-4" />
+        Add Honeypot Group
+      </Button>
+    </div>
+  );
+}
+
 // ─── Config Viewer ──────────────────────────────────────────────────
 
 function ConfigViewer({ config }: { config: GeneratedConfig }) {
@@ -1425,6 +1536,12 @@ function ConfigViewer({ config }: { config: GeneratedConfig }) {
 // ─── Exclusion type label helper ────────────────────────────────────
 
 function conditionsSummary(excl: Exclusion): string {
+  // For honeypot rules, show path count
+  if (excl.type === "honeypot" && excl.conditions && excl.conditions.length > 0) {
+    const paths = excl.conditions.flatMap((c) => c.value.split(/\s+/).filter(Boolean));
+    const preview = paths.slice(0, 3).join(", ");
+    return paths.length > 3 ? `${preview} (+${paths.length - 3} more)` : preview;
+  }
   // For raw rules, show raw_rule snippet
   if (excl.type === "raw" && excl.raw_rule) {
     return excl.raw_rule.length > 50 ? excl.raw_rule.slice(0, 50) + "..." : excl.raw_rule;
@@ -1453,6 +1570,7 @@ function exclusionTypeLabel(type: ExclusionType): string {
     case "allow": return "Allow";
     case "block": return "Block";
     case "skip_rule": return "Skip";
+    case "honeypot": return "Honeypot";
     case "raw": return "Raw";
     default: return type;
   }
@@ -1462,6 +1580,7 @@ function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "outline" |
   switch (type) {
     case "allow": return "default";
     case "block": return "destructive";
+    case "honeypot": return "destructive";
     case "skip_rule": return "secondary";
     default: return "outline";
   }
@@ -1761,6 +1880,10 @@ export default function PolicyEngine() {
                 <Code2 className="h-3.5 w-3.5" />
                 Advanced
               </TabsTrigger>
+              <TabsTrigger value="honeypot" className="gap-1.5">
+                <Crosshair className="h-3.5 w-3.5" />
+                Honeypot
+              </TabsTrigger>
               <TabsTrigger value="raw" className="gap-1.5">
                 <FileCode className="h-3.5 w-3.5" />
                 Raw Editor
@@ -1798,6 +1921,10 @@ export default function PolicyEngine() {
                   submitLabel="Add Exclusion"
                 />
               )}
+            </TabsContent>
+
+            <TabsContent value="honeypot">
+              <HoneypotForm onSubmit={handleCreate} />
             </TabsContent>
 
             <TabsContent value="raw">
