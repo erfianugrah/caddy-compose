@@ -41,6 +41,7 @@ type AccessLogReq struct {
 type RateLimitEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 	ClientIP  string    `json:"client_ip"`
+	Country   string    `json:"country,omitempty"`
 	Service   string    `json:"service"`
 	Method    string    `json:"method"`
 	URI       string    `json:"uri"`
@@ -110,10 +111,20 @@ type AccessLogStore struct {
 	// maxAge is the maximum age of events to retain. Events older than this
 	// are evicted during each Load() call. Zero means no eviction.
 	maxAge time.Duration
+
+	// geoIP is an optional GeoIP store for country enrichment.
+	geoIP *GeoIPStore
 }
 
 func NewAccessLogStore(path string) *AccessLogStore {
 	return &AccessLogStore{path: path}
+}
+
+// SetGeoIP configures the GeoIP store for country enrichment of events.
+func (s *AccessLogStore) SetGeoIP(g *GeoIPStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.geoIP = g
 }
 
 // SetMaxAge configures the TTL for in-memory event retention.
@@ -201,6 +212,11 @@ func (s *AccessLogStore) Load() {
 		}
 		if isIpsum {
 			evt.Source = "ipsum"
+		}
+		// Enrich with country from Cf-Ipcountry header or MMDB lookup.
+		if s.geoIP != nil {
+			cfCountry := headerValue(entry.Request.Headers, "Cf-Ipcountry")
+			evt.Country = s.geoIP.Resolve(entry.Request.ClientIP, cfCountry)
 		}
 		newEvents = append(newEvents, evt)
 	}
@@ -327,6 +343,7 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		ID:             generateUUIDv7(),
 		Timestamp:      rle.Timestamp,
 		ClientIP:       rle.ClientIP,
+		Country:        rle.Country,
 		Service:        rle.Service,
 		Method:         rle.Method,
 		URI:            rle.URI,

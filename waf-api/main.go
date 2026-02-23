@@ -55,20 +55,31 @@ func main() {
 		tailInterval = 5 * time.Second
 	}
 
-	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval)
+	geoDBPath := envOr("WAF_GEOIP_DB", "/data/geoip/country.mmdb")
+
+	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath)
+
+	geoStore := NewGeoIPStore(geoDBPath)
 
 	store := NewStore(logPath)
 	store.SetMaxAge(maxAge)
+	store.SetGeoIP(geoStore)
 	store.StartTailing(tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
 	accessLogStore.SetMaxAge(maxAge)
+	accessLogStore.SetGeoIP(geoStore)
 	accessLogStore.StartTailing(tailInterval)
 
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	configStore := NewConfigStore(configFile)
 	rateLimitStore := NewRateLimitStore(rateLimitFile)
+
+	// Generate-on-boot: regenerate WAF and rate limit config files from stored
+	// state so a stack restart always picks up the latest generator output.
+	// No Caddy reload is needed because Caddy reads fresh on its own startup.
+	generateOnBoot(configStore, exclusionStore, rateLimitStore, deployCfg)
 
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
@@ -84,6 +95,7 @@ func main() {
 	// Analytics
 	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store))
 	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store))
+	mux.HandleFunc("GET /api/analytics/top-countries", handleTopCountries(store, accessLogStore))
 
 	// IP Lookup
 	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
@@ -120,6 +132,7 @@ func main() {
 	// Blocklist (IPsum)
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
+	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, deployCfg))
 
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
@@ -503,7 +516,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		service := q.Get("service")
 		client := q.Get("client")
 		method := q.Get("method")
-		eventType := q.Get("event_type") // "blocked", "logged", "rate_limited", "ipsum_blocked", or ""
+		eventType := q.Get("event_type") // "blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner", or ""
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -674,6 +687,23 @@ func handleTopTargetedURIs(store *Store) http.HandlerFunc {
 			limit = 50
 		}
 		writeJSON(w, http.StatusOK, store.TopTargetedURIs(hours, limit))
+	}
+}
+
+func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hours := parseHours(r)
+		limit := queryInt(r.URL.Query().Get("limit"), 50)
+		if limit <= 0 || limit > 500 {
+			limit = 50
+		}
+		// Merge WAF events + rate-limit/ipsum events
+		wafEvents := store.SnapshotSince(hours)
+		rlEvents := als.SnapshotAsEvents(hours)
+		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
+		all = append(all, wafEvents...)
+		all = append(all, rlEvents...)
+		writeJSON(w, http.StatusOK, TopCountries(all, limit))
 	}
 }
 

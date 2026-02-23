@@ -10,7 +10,7 @@ Branch: `feature/sentinel-inspired-security`
 
 ## 1. Honeypot Paths
 
-**Status:** Not started
+**Status:** Done (Phase A — static rules)
 **Difficulty:** Low
 **Files:** `coraza/post-crs.conf`, optionally `waf-api/generator.go` + `models.go`
 
@@ -92,7 +92,7 @@ add/remove honeypot paths through the dashboard without rebuilding the image.
 
 ## 2. Heuristic Bot Signals
 
-**Status:** Not started
+**Status:** Done (static rules in pre-crs.conf)
 **Difficulty:** Medium
 **Files:** `coraza/pre-crs.conf` or generated via `generator.go`
 
@@ -184,7 +184,7 @@ since any client identifying as a scanner is not a false positive.
 
 ## 3. Tarpitting
 
-**Status:** Not started
+**Status:** Done (Option D — `drop` for scanners via rule 9100032)
 **Difficulty:** Medium-High
 **Files:** Caddyfile (new handler), possibly a small Caddy plugin or `respond` delay
 
@@ -257,7 +257,7 @@ SecRule REQUEST_HEADERS:User-Agent "@pm sqlmap nikto ..." \
 
 ## 4. IP Allowlist
 
-**Status:** Not started
+**Status:** Done (generator already emits `ctl:ruleEngine=Off` for allow-type exclusions)
 **Difficulty:** Low
 **Files:** `waf-api/generator.go`, `waf-api/models.go`, `waf-api/exclusions.go`,
 `waf-dashboard/src/components/PolicyEngine.tsx`, `waf-dashboard/src/lib/api.ts`
@@ -318,7 +318,7 @@ This would be a thin wrapper around the exclusion store with `type: "allow"`.
 
 ## 5. GeoIP Analytics and Blocking
 
-**Status:** Not started
+**Status:** Done (Phase 5A — analytics with MMDB reader + CF header + dashboard)
 **Difficulty:** Medium-High
 **Files:** `waf-api/` (new `geoip.go`), `waf-api/logparser.go`, `waf-api/models.go`,
 `waf-api/main.go`, `waf-dashboard/src/lib/api.ts`,
@@ -466,16 +466,16 @@ MMDB-based analytics (waf-api side). Non-CF inline geo-blocking is a future item
 
 ## Implementation Order
 
-| Phase | Feature | Effort | Impact |
-|-------|---------|--------|--------|
-| 1 | Honeypot paths (static rules) | 1-2 hours | High — immediate scanner protection |
-| 2 | IP allowlist fix (`ctl:ruleEngine=Off`) | 1 hour | Medium — correctness fix |
-| 3 | Heuristic bot signals (static rules) | 2-3 hours | High — catches what CRS misses |
-| 4 | Tarpitting via `drop` action | 30 min | Low — quick win for scanners |
-| 5 | GeoIP analytics (MMDB reader + dashboard) | 1-2 days | High — visibility |
-| 6 | GeoIP blocking (CF header SecRules) | 2-3 hours | Medium — only works behind CF |
-| 7 | Honeypot paths (dynamic via Policy Engine) | 3-4 hours | Medium — dashboard management |
-| 8 | GeoIP online API fallback | 3-4 hours | Low — edge case for non-CF, non-MMDB |
+| Phase | Feature | Effort | Impact | Status |
+|-------|---------|--------|--------|--------|
+| 1 | Honeypot paths (static rules) | 1-2 hours | High — immediate scanner protection | **Done** |
+| 2 | IP allowlist fix (`ctl:ruleEngine=Off`) | 1 hour | Medium — correctness fix | **Done** |
+| 3 | Heuristic bot signals (static rules) | 2-3 hours | High — catches what CRS misses | **Done** |
+| 4 | Tarpitting via `drop` action | 30 min | Low — quick win for scanners | **Done** |
+| 5 | GeoIP analytics (MMDB reader + dashboard) | 1-2 days | High — visibility | **Done** |
+| 6 | GeoIP blocking (CF header SecRules) | 2-3 hours | Medium — only works behind CF | Not started |
+| 7 | Honeypot paths (dynamic via Policy Engine) | 3-4 hours | Medium — dashboard management | Not started |
+| 8 | GeoIP online API fallback | 3-4 hours | Low — edge case for non-CF, non-MMDB | Not started |
 
 Total estimated effort: ~3-4 days
 

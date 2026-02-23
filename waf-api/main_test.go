@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -2009,6 +2010,48 @@ func TestValidateSkipRuleAction(t *testing.T) {
 	if err := validateExclusion(e); err == nil {
 		t.Error("skip_rule without conditions should fail")
 	}
+
+	// Valid: multiple space-separated rule IDs
+	e = RuleExclusion{Name: "Skip multi", Type: "skip_rule", RuleID: "932235 932300 942430",
+		Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/graphql"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("multiple space-separated rule IDs should be valid: %v", err)
+	}
+
+	// Valid: comma-separated rule IDs
+	e = RuleExclusion{Name: "Skip multi comma", Type: "skip_rule", RuleID: "932235,932300",
+		Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/graphql"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("comma-separated rule IDs should be valid: %v", err)
+	}
+
+	// Valid: range
+	e = RuleExclusion{Name: "Skip range", Type: "skip_rule", RuleID: "932000-932999",
+		Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("range rule ID should be valid: %v", err)
+	}
+
+	// Valid: mixed IDs and range
+	e = RuleExclusion{Name: "Skip mixed", Type: "skip_rule", RuleID: "932235 941100-941199 942430",
+		Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/graphql"}}}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("mixed IDs and ranges should be valid: %v", err)
+	}
+
+	// Invalid: non-numeric rule ID
+	e = RuleExclusion{Name: "Skip bad", Type: "skip_rule", RuleID: "abc",
+		Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api"}}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("non-numeric rule_id should fail validation")
+	}
+
+	// Invalid: partial bad token in multi-ID
+	e = RuleExclusion{Name: "Skip partial bad", Type: "skip_rule", RuleID: "932235 bad 942430",
+		Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api"}}}
+	if err := validateExclusion(e); err == nil {
+		t.Error("multi-ID with non-numeric token should fail validation")
+	}
 }
 
 func TestValidateRawAction(t *testing.T) {
@@ -2038,8 +2081,8 @@ func TestGenerateAllowByIP(t *testing.T) {
 	if !strings.Contains(result.PreCRS, "@ipMatch 195.240.81.42") {
 		t.Error("expected @ipMatch in pre-CRS output")
 	}
-	if !strings.Contains(result.PreCRS, "allow") {
-		t.Error("expected allow action in pre-CRS output")
+	if !strings.Contains(result.PreCRS, "ctl:ruleEngine=Off") {
+		t.Error("expected ctl:ruleEngine=Off in pre-CRS output for allow action")
 	}
 }
 
@@ -4286,6 +4329,148 @@ func TestBlocklistEmptyFile(t *testing.T) {
 	}
 }
 
+func TestBlocklistMtimeFallback(t *testing.T) {
+	// File with IPs but no "# Updated:" comment — simulates pre-fix builds.
+	content := `@ipsum_blocked client_ip 1.2.3.4 5.6.7.8
+route @ipsum_blocked { respond 403 }
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	stats := bs.Stats()
+	if stats.BlockedIPs != 2 {
+		t.Errorf("BlockedIPs: want 2, got %d", stats.BlockedIPs)
+	}
+	// Should fall back to file mtime instead of returning empty string.
+	if stats.LastUpdated == "" {
+		t.Error("LastUpdated should not be empty — mtime fallback should have been used")
+	}
+	// Verify it's a valid RFC3339 timestamp.
+	if _, err := time.Parse(time.RFC3339, stats.LastUpdated); err != nil {
+		t.Errorf("LastUpdated %q is not valid RFC3339: %v", stats.LastUpdated, err)
+	}
+}
+
+func TestBlocklistUpdatedHeaderPreferred(t *testing.T) {
+	// File WITH "# Updated:" comment — the comment value should be used, not mtime.
+	content := `# Updated: 2026-01-15T12:00:00Z
+@ipsum_blocked client_ip 1.2.3.4
+route @ipsum_blocked { respond 403 }
+`
+	path := writeTempBlocklist(t, content)
+	bs := NewBlocklistStore(path)
+
+	stats := bs.Stats()
+	if stats.LastUpdated != "2026-01-15T12:00:00Z" {
+		t.Errorf("LastUpdated: want 2026-01-15T12:00:00Z, got %q", stats.LastUpdated)
+	}
+}
+
+func TestBlocklistNonexistentFile(t *testing.T) {
+	bs := NewBlocklistStore("/nonexistent/ipsum_block.caddy")
+
+	stats := bs.Stats()
+	if stats.BlockedIPs != 0 {
+		t.Errorf("BlockedIPs: want 0, got %d", stats.BlockedIPs)
+	}
+	if stats.LastUpdated != "" {
+		t.Errorf("LastUpdated: want empty, got %q", stats.LastUpdated)
+	}
+}
+
+func TestBlocklistForceReload(t *testing.T) {
+	// Write file, load, then overwrite with different content and force-reload.
+	content1 := `# Updated: 2026-01-01T00:00:00Z
+@ipsum_blocked client_ip 1.2.3.4
+route @ipsum_blocked { respond 403 }
+`
+	path := writeTempBlocklist(t, content1)
+	bs := NewBlocklistStore(path)
+
+	stats := bs.Stats()
+	if stats.BlockedIPs != 1 {
+		t.Fatalf("initial BlockedIPs: want 1, got %d", stats.BlockedIPs)
+	}
+
+	// Overwrite with more IPs.
+	content2 := `# Updated: 2026-02-01T00:00:00Z
+@ipsum_blocked client_ip 1.2.3.4 5.6.7.8 9.10.11.12
+route @ipsum_blocked { respond 403 }
+`
+	if err := os.WriteFile(path, []byte(content2), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without ForceReload, Stats would still show 1 IP (cache TTL not expired).
+	bs.ForceReload()
+	stats = bs.Stats()
+	if stats.BlockedIPs != 3 {
+		t.Errorf("after ForceReload BlockedIPs: want 3, got %d", stats.BlockedIPs)
+	}
+	if stats.LastUpdated != "2026-02-01T00:00:00Z" {
+		t.Errorf("LastUpdated: want 2026-02-01T00:00:00Z, got %q", stats.LastUpdated)
+	}
+}
+
+func TestBlocklistRefreshEndpoint(t *testing.T) {
+	// Mock IPsum server returning a small list.
+	ipsumData := `# IPsum test data
+# comment line
+1.2.3.4	5
+5.6.7.8	3
+9.10.11.12	1
+10.0.0.1	4
+`
+	ipsumServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(ipsumData))
+	}))
+	defer ipsumServer.Close()
+
+	// The Refresh method uses a hardcoded URL, so we test the handler through
+	// the handler endpoint instead. But for a unit test of the handler itself,
+	// we can test the response shape with a mock Caddy admin.
+	caddyAdmin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer caddyAdmin.Close()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ipsum_block.caddy")
+	// Write an initial file so the store has something.
+	os.WriteFile(path, []byte("@ipsum_blocked client_ip 1.1.1.1\nroute @ipsum_blocked { respond 403 }\n"), 0644)
+
+	bs := NewBlocklistStore(path)
+	deployCfg := DeployConfig{
+		CorazaDir:     dir,
+		CaddyfilePath: filepath.Join(dir, "Caddyfile"),
+		CaddyAdminURL: caddyAdmin.URL,
+	}
+
+	// Write a minimal Caddyfile for the reload to read.
+	os.WriteFile(deployCfg.CaddyfilePath, []byte("localhost\n"), 0644)
+
+	req := httptest.NewRequest("POST", "/api/blocklist/refresh", nil)
+	w := httptest.NewRecorder()
+	handleBlocklistRefresh(bs, deployCfg)(w, req)
+
+	// The handler calls the real IPsum URL, so in CI this might fail.
+	// We just verify the handler doesn't panic and returns valid JSON.
+	if w.Code != 200 && w.Code != 500 {
+		t.Fatalf("unexpected status: %d", w.Code)
+	}
+
+	var resp BlocklistRefreshResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Status == "" {
+		t.Error("response Status should not be empty")
+	}
+	if resp.Message == "" {
+		t.Error("response Message should not be empty")
+	}
+}
+
 // ─── Client count merging tests ─────────────────────────────────────
 
 func TestSummaryMergesClientCounts(t *testing.T) {
@@ -4569,5 +4754,1117 @@ func TestAnomalyScoreFallbackComputed(t *testing.T) {
 	// NOTICE severity = 2 points.
 	if events[0].AnomalyScore != 2 {
 		t.Errorf("expected computed anomaly score 2, got %d", events[0].AnomalyScore)
+	}
+}
+
+// ─── End-to-End Deploy Pipeline Tests ───────────────────────────────
+
+// TestDeployEndToEnd_ExclusionAndSettings simulates the full user flow:
+// 1. Create an exclusion via POST /api/exclusions
+// 2. Update WAF settings via PUT /api/config
+// 3. Deploy via POST /api/config/deploy
+// 4. Verify all three generated files contain correct content
+// 5. Verify exclusions are NOT lost when settings deploy, and vice versa
+func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
+	// Set up temp dirs and files.
+	corazaDir := t.TempDir()
+	rlDir := t.TempDir()
+	caddyfileDir := t.TempDir()
+	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
+	os.WriteFile(caddyfilePath, []byte("localhost:80 { respond ok }"), 0644)
+
+	// Ensure placeholder files exist (like startup does).
+	if err := ensureCorazaDir(corazaDir); err != nil {
+		t.Fatalf("ensureCorazaDir: %v", err)
+	}
+
+	// Mock Caddy admin API.
+	var reloadCount int
+	var lastPostedBody string
+	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/load" && r.Method == "POST" {
+			body, _ := io.ReadAll(r.Body)
+			lastPostedBody = string(body)
+			reloadCount++
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer adminServer.Close()
+
+	deployCfg := DeployConfig{
+		CorazaDir:     corazaDir,
+		RateLimitDir:  rlDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: adminServer.URL,
+	}
+
+	// Create stores.
+	exclusionStore := newTestExclusionStore(t)
+	configStore := newTestConfigStore(t)
+
+	// Register all handlers on a mux (same as main()).
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/exclusions", handleCreateExclusion(exclusionStore))
+	mux.HandleFunc("GET /api/exclusions", handleListExclusions(exclusionStore))
+	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
+	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
+
+	// Step 1: Create a "block bad IP" exclusion.
+	exclusionJSON := `{
+		"name": "Block bad actor",
+		"type": "block",
+		"conditions": [{"field": "ip", "operator": "ip_match", "value": "192.168.1.100"}],
+		"enabled": true
+	}`
+	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(exclusionJSON))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create exclusion: want 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Step 2: Update WAF settings (paranoia=2, thresholds=10).
+	configJSON := `{
+		"defaults": {
+			"mode": "enabled",
+			"paranoia_level": 2,
+			"inbound_threshold": 10,
+			"outbound_threshold": 10
+		},
+		"services": {}
+	}`
+	req = httptest.NewRequest("PUT", "/api/config", strings.NewReader(configJSON))
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update config: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Step 3: Deploy.
+	req = httptest.NewRequest("POST", "/api/config/deploy", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("deploy: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var deployResp DeployResponse
+	json.NewDecoder(w.Body).Decode(&deployResp)
+	if deployResp.Status != "deployed" {
+		t.Errorf("deploy status: want 'deployed', got %q", deployResp.Status)
+	}
+	if !deployResp.Reloaded {
+		t.Error("deploy should report reloaded=true")
+	}
+	if reloadCount != 1 {
+		t.Errorf("Caddy should be reloaded once, got %d", reloadCount)
+	}
+
+	// Step 4: Verify generated files on disk.
+
+	// 4a: custom-pre-crs.conf should contain the block exclusion.
+	preCRS, err := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	if err != nil {
+		t.Fatalf("reading pre-crs: %v", err)
+	}
+	preCRSStr := string(preCRS)
+	if !strings.Contains(preCRSStr, "192.168.1.100") {
+		t.Error("pre-crs.conf should contain the blocked IP 192.168.1.100")
+	}
+	if !strings.Contains(preCRSStr, "deny") {
+		t.Error("pre-crs.conf should contain deny action for block exclusion")
+	}
+	if !strings.Contains(preCRSStr, "@ipMatch") {
+		t.Error("pre-crs.conf should contain @ipMatch operator")
+	}
+
+	// 4b: custom-waf-settings.conf should contain paranoia=2, thresholds=10.
+	wafSettings, err := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	if err != nil {
+		t.Fatalf("reading waf-settings: %v", err)
+	}
+	wafStr := string(wafSettings)
+	if !strings.Contains(wafStr, "paranoia_level=2") {
+		t.Errorf("waf-settings should contain paranoia_level=2, got:\n%s", wafStr)
+	}
+	if !strings.Contains(wafStr, "inbound_anomaly_score_threshold=10") {
+		t.Errorf("waf-settings should contain inbound threshold=10, got:\n%s", wafStr)
+	}
+	if !strings.Contains(wafStr, "SecRuleEngine On") {
+		t.Errorf("waf-settings should contain SecRuleEngine On, got:\n%s", wafStr)
+	}
+
+	// 4c: custom-post-crs.conf should exist (even if empty of exclusions).
+	postCRS, err := os.ReadFile(filepath.Join(corazaDir, "custom-post-crs.conf"))
+	if err != nil {
+		t.Fatalf("reading post-crs: %v", err)
+	}
+	if len(postCRS) == 0 {
+		t.Error("post-crs.conf should not be empty (at least a header)")
+	}
+
+	// Step 5: Deploy again — verify exclusions are still present.
+	// (This catches the bug where deploying from Settings would overwrite exclusions.)
+	req = httptest.NewRequest("POST", "/api/config/deploy", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second deploy: want 200, got %d", w.Code)
+	}
+
+	preCRS2, _ := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	if !strings.Contains(string(preCRS2), "192.168.1.100") {
+		t.Error("second deploy: exclusion should still be in pre-crs.conf")
+	}
+	wafSettings2, _ := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	if !strings.Contains(string(wafSettings2), "paranoia_level=2") {
+		t.Error("second deploy: settings should still be in waf-settings.conf")
+	}
+
+	// Step 6: Verify the Caddy reload received the Caddyfile with fingerprint.
+	if !strings.Contains(lastPostedBody, "# waf-api deploy") {
+		t.Error("Caddy reload POST should contain fingerprint comment")
+	}
+	if !strings.Contains(lastPostedBody, "localhost:80") {
+		t.Error("Caddy reload POST should contain original Caddyfile content")
+	}
+}
+
+// TestDeployEndToEnd_SettingsOnlyNoExclusions verifies that deploying
+// with settings but zero exclusions still produces valid files.
+func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
+	corazaDir := t.TempDir()
+	rlDir := t.TempDir()
+	caddyfileDir := t.TempDir()
+	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
+	os.WriteFile(caddyfilePath, []byte("localhost:80 { respond ok }"), 0644)
+	ensureCorazaDir(corazaDir)
+
+	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer adminServer.Close()
+
+	deployCfg := DeployConfig{
+		CorazaDir:     corazaDir,
+		RateLimitDir:  rlDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: adminServer.URL,
+	}
+
+	exclusionStore := newTestExclusionStore(t)
+	configStore := newTestConfigStore(t)
+
+	// Change settings to detection_only with paranoia 3.
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
+
+	configJSON := `{
+		"defaults": {
+			"mode": "detection_only",
+			"paranoia_level": 3,
+			"inbound_threshold": 5,
+			"outbound_threshold": 4
+		},
+		"services": {}
+	}`
+	req := httptest.NewRequest("PUT", "/api/config", strings.NewReader(configJSON))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("update config: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/config/deploy", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("deploy: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify settings.
+	wafSettings, _ := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	wafStr := string(wafSettings)
+	if !strings.Contains(wafStr, "paranoia_level=3") {
+		t.Errorf("want paranoia_level=3, got:\n%s", wafStr)
+	}
+	if !strings.Contains(wafStr, "SecRuleEngine DetectionOnly") {
+		t.Errorf("want SecRuleEngine DetectionOnly, got:\n%s", wafStr)
+	}
+	// Detection only should set thresholds to 10000.
+	if !strings.Contains(wafStr, "inbound_anomaly_score_threshold=10000") {
+		t.Errorf("detection_only should set inbound threshold to 10000, got:\n%s", wafStr)
+	}
+
+	// Pre-CRS should just have the header (no exclusions).
+	preCRS, _ := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	if !strings.Contains(string(preCRS), "Pre-CRS Configuration") {
+		t.Error("pre-crs should have a header")
+	}
+	// Should NOT contain any SecRule (no exclusions).
+	if strings.Contains(string(preCRS), "SecRule") {
+		t.Error("pre-crs should not contain SecRule when no exclusions exist")
+	}
+}
+
+// TestDeployEndToEnd_CaddyReloadFails verifies partial deploy when Caddy is unreachable.
+func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
+	corazaDir := t.TempDir()
+	rlDir := t.TempDir()
+	caddyfileDir := t.TempDir()
+	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
+	os.WriteFile(caddyfilePath, []byte("localhost:80 { respond ok }"), 0644)
+	ensureCorazaDir(corazaDir)
+
+	// Admin server that rejects reloads.
+	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Caddy error: invalid config"))
+	}))
+	defer adminServer.Close()
+
+	deployCfg := DeployConfig{
+		CorazaDir:     corazaDir,
+		RateLimitDir:  rlDir,
+		CaddyfilePath: caddyfilePath,
+		CaddyAdminURL: adminServer.URL,
+	}
+
+	exclusionStore := newTestExclusionStore(t)
+	configStore := newTestConfigStore(t)
+
+	req := httptest.NewRequest("POST", "/api/config/deploy",
+		nil)
+	w := httptest.NewRecorder()
+	handleDeploy(configStore, exclusionStore, deployCfg)(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("deploy should return 200 even when reload fails, got %d", w.Code)
+	}
+
+	var resp DeployResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Status != "partial" {
+		t.Errorf("want status 'partial', got %q", resp.Status)
+	}
+	if resp.Reloaded {
+		t.Error("reloaded should be false when Caddy reload fails")
+	}
+
+	// Files should still be written to disk.
+	wafSettings, err := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	if err != nil {
+		t.Fatalf("waf-settings should exist even when reload fails: %v", err)
+	}
+	if !strings.Contains(string(wafSettings), "SecRuleEngine On") {
+		t.Error("waf-settings should contain default SecRuleEngine On")
+	}
+}
+
+// ─── Multi-rule-ID skip_rule bug tests ──────────────────────────────
+
+func TestConditionAction_MultipleRuleIDs(t *testing.T) {
+	// Bug: when RuleID contains space-separated IDs like "932235 932300 942430",
+	// conditionAction produces "ctl:ruleRemoveById=932235 932300 942430" which
+	// is invalid — Coraza only accepts a single ID or a range per ctl action.
+	// The fix should emit multiple ctl: actions, one per rule ID.
+
+	tests := []struct {
+		name      string
+		exclusion RuleExclusion
+		wantParts []string // each must appear in the output
+		wantNot   []string // each must NOT appear in the output
+	}{
+		{
+			name: "single rule ID unchanged",
+			exclusion: RuleExclusion{
+				Type:   "skip_rule",
+				RuleID: "932235",
+			},
+			wantParts: []string{"ctl:ruleRemoveById=932235"},
+		},
+		{
+			name: "multiple space-separated rule IDs get separate ctl actions",
+			exclusion: RuleExclusion{
+				Type:   "skip_rule",
+				RuleID: "932235 932300 942430",
+			},
+			wantParts: []string{
+				"ctl:ruleRemoveById=932235",
+				"ctl:ruleRemoveById=932300",
+				"ctl:ruleRemoveById=942430",
+			},
+			wantNot: []string{
+				"ctl:ruleRemoveById=932235 932300",
+				"ctl:ruleRemoveById=932235 932300 942430",
+			},
+		},
+		{
+			name: "comma-separated rule IDs also handled",
+			exclusion: RuleExclusion{
+				Type:   "skip_rule",
+				RuleID: "932235,932300",
+			},
+			wantParts: []string{
+				"ctl:ruleRemoveById=932235",
+				"ctl:ruleRemoveById=932300",
+			},
+		},
+		{
+			name: "range preserved as-is",
+			exclusion: RuleExclusion{
+				Type:   "skip_rule",
+				RuleID: "932000-932999",
+			},
+			wantParts: []string{"ctl:ruleRemoveById=932000-932999"},
+		},
+		{
+			name: "mixed IDs and range",
+			exclusion: RuleExclusion{
+				Type:   "skip_rule",
+				RuleID: "932235 941100-941199 942430",
+			},
+			wantParts: []string{
+				"ctl:ruleRemoveById=932235",
+				"ctl:ruleRemoveById=941100-941199",
+				"ctl:ruleRemoveById=942430",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := conditionAction(tt.exclusion)
+			for _, want := range tt.wantParts {
+				if !strings.Contains(got, want) {
+					t.Errorf("conditionAction() = %q, want it to contain %q", got, want)
+				}
+			}
+			for _, bad := range tt.wantNot {
+				if strings.Contains(got, bad) {
+					t.Errorf("conditionAction() = %q, should NOT contain %q", got, bad)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateConfigs_MultiRuleIDSkipRule(t *testing.T) {
+	// End-to-end: a skip_rule exclusion with multiple rule IDs should generate
+	// valid SecRules with separate ctl:ruleRemoveById actions.
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode:              "enabled",
+			ParanoiaLevel:     1,
+			InboundThreshold:  5,
+			OutboundThreshold: 4,
+		},
+	}
+
+	exclusions := []RuleExclusion{
+		{
+			ID:      "test-multi-id",
+			Name:    "Skip multiple rules for graphql",
+			Type:    "skip_rule",
+			RuleID:  "932235 932300 932236 942430",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "uri", Operator: "beginsWith", Value: "/graphql"},
+			},
+		},
+	}
+
+	result := GenerateConfigs(cfg, exclusions)
+
+	// The pre-CRS output should have separate ctl actions for each rule ID.
+	for _, id := range []string{"932235", "932300", "932236", "942430"} {
+		want := "ctl:ruleRemoveById=" + id
+		if !strings.Contains(result.PreCRS, want) {
+			t.Errorf("pre-CRS should contain %q but doesn't.\nFull output:\n%s", want, result.PreCRS)
+		}
+	}
+
+	// It should NOT have the broken space-separated form.
+	if strings.Contains(result.PreCRS, "ctl:ruleRemoveById=932235 932300") {
+		t.Errorf("pre-CRS should NOT contain space-separated rule IDs in a single ctl action.\nFull output:\n%s", result.PreCRS)
+	}
+}
+
+// ─── Policy event logging tests ─────────────────────────────────────
+
+func TestConditionAction_LogWithMsg(t *testing.T) {
+	// All policy actions should use log (not nolog) with a msg: tag
+	// so that Coraza writes audit entries for policy-matched requests.
+	// They also include logdata:'%{MATCHED_VAR}' to capture what matched.
+
+	tests := []struct {
+		name      string
+		exclusion RuleExclusion
+		wantParts []string
+		wantNot   []string
+	}{
+		{
+			name:      "skip_rule logs with msg and logdata",
+			exclusion: RuleExclusion{Name: "Skip 920420", Type: "skip_rule", RuleID: "920420"},
+			wantParts: []string{"log", "msg:'Policy Skip: Skip 920420'", "logdata:'%{MATCHED_VAR}'", "ctl:ruleRemoveById=920420"},
+			wantNot:   []string{"nolog"},
+		},
+		{
+			name:      "allow logs with msg and logdata",
+			exclusion: RuleExclusion{Name: "Allow my IP", Type: "allow"},
+			wantParts: []string{"log", "msg:'Policy Allow: Allow my IP'", "logdata:'%{MATCHED_VAR}'", "ctl:ruleEngine=Off"},
+			wantNot:   []string{"nolog"},
+		},
+		{
+			name:      "block logs with msg and logdata",
+			exclusion: RuleExclusion{Name: "Block bad actor", Type: "block"},
+			wantParts: []string{"log", "msg:'Policy Block: Block bad actor'", "logdata:'%{MATCHED_VAR}'", "deny,status:403"},
+			wantNot:   []string{"nolog"},
+		},
+		{
+			name:      "skip_rule by tag logs with msg and logdata",
+			exclusion: RuleExclusion{Name: "Skip RCE", Type: "skip_rule", RuleTag: "attack-rce"},
+			wantParts: []string{"log", "msg:'Policy Skip: Skip RCE'", "logdata:'%{MATCHED_VAR}'", "ctl:ruleRemoveByTag=attack-rce"},
+			wantNot:   []string{"nolog"},
+		},
+		{
+			name:      "multi-ID skip logs with msg and logdata",
+			exclusion: RuleExclusion{Name: "Skip multi", Type: "skip_rule", RuleID: "932235 932300"},
+			wantParts: []string{"log", "msg:'Policy Skip: Skip multi'", "logdata:'%{MATCHED_VAR}'", "ctl:ruleRemoveById=932235", "ctl:ruleRemoveById=932300"},
+			wantNot:   []string{"nolog"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := conditionAction(tt.exclusion)
+			for _, want := range tt.wantParts {
+				if !strings.Contains(got, want) {
+					t.Errorf("conditionAction() = %q, want it to contain %q", got, want)
+				}
+			}
+			for _, bad := range tt.wantNot {
+				if strings.Contains(got, bad) {
+					t.Errorf("conditionAction() = %q, should NOT contain %q", got, bad)
+				}
+			}
+		})
+	}
+}
+
+func TestParseEvent_PolicyEventType(t *testing.T) {
+	// When the audit log contains a rule in the 9500000-9599999 range
+	// with a "Policy ..." msg, parseEvent should set the correct event_type.
+
+	tests := []struct {
+		name     string
+		ruleID   int
+		msg      string
+		wantType string
+	}{
+		{"policy skip", 9500001, "Policy Skip: Skip 920420", "policy_skip"},
+		{"policy allow", 9500002, "Policy Allow: Allow my IP", "policy_allow"},
+		{"policy block", 9500003, "Policy Block: Block bad actor", "policy_block"},
+		{"normal CRS rule", 932235, "Remote Command Execution", "logged"},
+		{"blocked CRS rule (needs IsInterrupted)", 932235, "Remote Command Execution", "logged"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := AuditLogEntry{
+				Transaction: Transaction{
+					Timestamp: "2026-01-01T00:00:00Z",
+					ID:        "test-" + tt.name,
+				},
+				Messages: []AuditMessage{
+					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},
+				},
+			}
+			ev := parseEvent(entry)
+			if ev.EventType != tt.wantType {
+				t.Errorf("parseEvent() event_type = %q, want %q", ev.EventType, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseEvent_HoneypotEventType(t *testing.T) {
+	// Honeypot rule IDs are 9100020–9100029. When the audit log contains
+	// a match from this range, parseEvent should classify it as "honeypot".
+	tests := []struct {
+		name          string
+		ruleID        int
+		msg           string
+		isInterrupted bool
+		wantType      string
+	}{
+		{"honeypot path probe", 9100020, "Honeypot: known-bad path probe", true, "honeypot"},
+		{"honeypot high ID", 9100029, "Honeypot: some other path", true, "honeypot"},
+		{"not honeypot - below range", 9100019, "Post-CRS rule", true, "blocked"},
+		{"not honeypot - above range", 9100030, "Heuristic: missing Accept header", false, "logged"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := AuditLogEntry{
+				Transaction: Transaction{
+					Timestamp:     "2026-01-15T12:00:00Z",
+					ID:            "honeypot-" + tt.name,
+					IsInterrupted: tt.isInterrupted,
+				},
+				Messages: []AuditMessage{
+					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},
+				},
+			}
+			ev := parseEvent(entry)
+			if ev.EventType != tt.wantType {
+				t.Errorf("parseEvent() event_type = %q, want %q", ev.EventType, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseEvent_ScannerEventType(t *testing.T) {
+	// Scanner UA rule ID is 9100032. When the audit log contains a match
+	// from this specific rule, parseEvent should classify it as "scanner".
+	tests := []struct {
+		name          string
+		ruleID        int
+		msg           string
+		isInterrupted bool
+		wantType      string
+	}{
+		{"scanner UA drop", 9100032, "Heuristic: known scanner User-Agent", true, "scanner"},
+		{"heuristic missing Accept (not scanner)", 9100030, "Heuristic: missing Accept header", false, "logged"},
+		{"heuristic HTTP/1.0 (not scanner)", 9100031, "Heuristic: HTTP/1.0 protocol", false, "logged"},
+		{"heuristic empty UA (not scanner)", 9100033, "Heuristic: empty or missing User-Agent", false, "logged"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := AuditLogEntry{
+				Transaction: Transaction{
+					Timestamp:     "2026-01-15T12:00:00Z",
+					ID:            "scanner-" + tt.name,
+					IsInterrupted: tt.isInterrupted,
+				},
+				Messages: []AuditMessage{
+					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},
+				},
+			}
+			ev := parseEvent(entry)
+			if ev.EventType != tt.wantType {
+				t.Errorf("parseEvent() event_type = %q, want %q", ev.EventType, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseEvent_PolicyTakesPriorityOverHoneypot(t *testing.T) {
+	// If both a policy rule and a honeypot rule match (unlikely but possible
+	// in a chained scenario), policy classification should win.
+	entry := AuditLogEntry{
+		Transaction: Transaction{
+			Timestamp:     "2026-01-15T12:00:00Z",
+			ID:            "priority-test",
+			IsInterrupted: true,
+		},
+		Messages: []AuditMessage{
+			{Data: AuditMessageData{ID: 9100020, Msg: "Honeypot: known-bad path probe"}},
+			{Data: AuditMessageData{ID: 9500001, Msg: "Policy Block: Block bad paths"}},
+		},
+	}
+	ev := parseEvent(entry)
+	if ev.EventType != "policy_block" {
+		t.Errorf("parseEvent() event_type = %q, want %q (policy should take priority)", ev.EventType, "policy_block")
+	}
+}
+
+func TestSummarizeEvents_HoneypotAndScannerCounts(t *testing.T) {
+	events := []Event{
+		{ID: "1", EventType: "blocked", IsBlocked: true},
+		{ID: "2", EventType: "honeypot", IsBlocked: true},
+		{ID: "3", EventType: "honeypot", IsBlocked: true},
+		{ID: "4", EventType: "scanner", IsBlocked: true},
+		{ID: "5", EventType: "logged", IsBlocked: false},
+		{ID: "6", EventType: "policy_skip", IsBlocked: false},
+	}
+	summary := summarizeEvents(events)
+
+	if summary.HoneypotEvents != 2 {
+		t.Errorf("HoneypotEvents = %d, want 2", summary.HoneypotEvents)
+	}
+	if summary.ScannerEvents != 1 {
+		t.Errorf("ScannerEvents = %d, want 1", summary.ScannerEvents)
+	}
+	// Honeypot (2) + scanner (1) + regular blocked (1) = 4 total blocked
+	if summary.BlockedEvents != 4 {
+		t.Errorf("BlockedEvents = %d, want 4", summary.BlockedEvents)
+	}
+	if summary.LoggedEvents != 1 {
+		t.Errorf("LoggedEvents = %d, want 1", summary.LoggedEvents)
+	}
+	if summary.PolicyEvents != 1 {
+		t.Errorf("PolicyEvents = %d, want 1", summary.PolicyEvents)
+	}
+}
+
+// ─── GeoIP Tests ─────────────────────────────────────────────────────────────
+
+func TestGeoIPStore_ResolveWithCFHeader(t *testing.T) {
+	store := NewGeoIPStore("") // no MMDB
+
+	// CF header takes priority
+	if got := store.Resolve("1.2.3.4", "DE"); got != "DE" {
+		t.Errorf("Resolve with CF header = %q, want DE", got)
+	}
+	// Lowercase CF header is uppercased
+	if got := store.Resolve("1.2.3.4", "de"); got != "DE" {
+		t.Errorf("Resolve with lowercase CF header = %q, want DE", got)
+	}
+	// XX (unknown) is ignored
+	if got := store.Resolve("1.2.3.4", "XX"); got != "" {
+		t.Errorf("Resolve with XX = %q, want empty", got)
+	}
+	// T1 (Tor) is ignored
+	if got := store.Resolve("1.2.3.4", "T1"); got != "" {
+		t.Errorf("Resolve with T1 = %q, want empty", got)
+	}
+	// Empty header, no MMDB → empty
+	if got := store.Resolve("1.2.3.4", ""); got != "" {
+		t.Errorf("Resolve with no header = %q, want empty", got)
+	}
+}
+
+func TestGeoIPStore_LookupIPNoDB(t *testing.T) {
+	store := NewGeoIPStore("")
+	if got := store.LookupIP("8.8.8.8"); got != "" {
+		t.Errorf("LookupIP with no DB = %q, want empty", got)
+	}
+}
+
+func TestGeoIPStore_HasDB(t *testing.T) {
+	store := NewGeoIPStore("")
+	if store.HasDB() {
+		t.Error("HasDB() should be false with no MMDB")
+	}
+}
+
+func TestGeoIPStore_CacheBehavior(t *testing.T) {
+	store := NewGeoIPStore("") // no MMDB, but we can test cache directly
+	// Manually inject a cache entry
+	store.mu.Lock()
+	store.cache["1.2.3.4"] = geoEntry{country: "US", ts: time.Now()}
+	store.mu.Unlock()
+
+	// LookupIP should return cached value even without MMDB
+	if got := store.LookupIP("1.2.3.4"); got != "US" {
+		t.Errorf("LookupIP cached = %q, want US", got)
+	}
+}
+
+func TestGeoIPStore_CacheEviction(t *testing.T) {
+	store := NewGeoIPStore("")
+	store.mu.Lock()
+	// Fill cache to max
+	for i := 0; i < geoCacheMaxSize; i++ {
+		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
+		store.cache[ip] = geoEntry{country: "XX", ts: time.Now()}
+	}
+	// Manually trigger eviction
+	store.evictOldest()
+	size := len(store.cache)
+	store.mu.Unlock()
+
+	expected := geoCacheMaxSize - geoCacheMaxSize/4
+	if size != expected {
+		t.Errorf("cache size after eviction = %d, want %d", size, expected)
+	}
+}
+
+func TestTopCountries(t *testing.T) {
+	events := []Event{
+		{ID: "1", Country: "US", IsBlocked: true},
+		{ID: "2", Country: "US", IsBlocked: false},
+		{ID: "3", Country: "DE", IsBlocked: true},
+		{ID: "4", Country: "DE", IsBlocked: true},
+		{ID: "5", Country: "DE", IsBlocked: false},
+		{ID: "6", Country: "", IsBlocked: false},
+		{ID: "7", Country: "JP", IsBlocked: false},
+	}
+
+	result := TopCountries(events, 10)
+	if len(result) != 4 {
+		t.Fatalf("TopCountries returned %d entries, want 4", len(result))
+	}
+
+	// DE should be first (3 events)
+	if result[0].Country != "DE" {
+		t.Errorf("result[0].Country = %q, want DE", result[0].Country)
+	}
+	if result[0].Count != 3 {
+		t.Errorf("result[0].Count = %d, want 3", result[0].Count)
+	}
+	if result[0].Blocked != 2 {
+		t.Errorf("result[0].Blocked = %d, want 2", result[0].Blocked)
+	}
+
+	// US should be second (2 events)
+	if result[1].Country != "US" {
+		t.Errorf("result[1].Country = %q, want US", result[1].Country)
+	}
+	if result[1].Count != 2 {
+		t.Errorf("result[1].Count = %d, want 2", result[1].Count)
+	}
+}
+
+func TestTopCountries_Limit(t *testing.T) {
+	events := []Event{
+		{ID: "1", Country: "US"},
+		{ID: "2", Country: "DE"},
+		{ID: "3", Country: "JP"},
+		{ID: "4", Country: "FR"},
+	}
+	result := TopCountries(events, 2)
+	if len(result) != 2 {
+		t.Errorf("TopCountries with limit=2 returned %d, want 2", len(result))
+	}
+}
+
+func TestTopCountries_EmptyCountryBecomesXX(t *testing.T) {
+	events := []Event{
+		{ID: "1", Country: ""},
+		{ID: "2", Country: ""},
+	}
+	result := TopCountries(events, 10)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+	if result[0].Country != "XX" {
+		t.Errorf("empty country mapped to %q, want XX", result[0].Country)
+	}
+}
+
+func TestSummarizeEvents_IncludesTopCountries(t *testing.T) {
+	events := []Event{
+		{ID: "1", Country: "US", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "2", Country: "DE", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
+		{ID: "3", Country: "US", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
+	}
+	summary := summarizeEvents(events)
+	if len(summary.TopCountries) == 0 {
+		t.Fatal("TopCountries is empty in summary")
+	}
+	if summary.TopCountries[0].Country != "US" {
+		t.Errorf("TopCountries[0] = %q, want US", summary.TopCountries[0].Country)
+	}
+	if summary.TopCountries[0].Count != 2 {
+		t.Errorf("TopCountries[0].Count = %d, want 2", summary.TopCountries[0].Count)
+	}
+}
+
+func TestTopBlockedIPs_IncludesCountry(t *testing.T) {
+	s := NewStore("")
+	s.mu.Lock()
+	s.events = []Event{
+		{ID: "1", ClientIP: "1.2.3.4", Country: "US", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "2", ClientIP: "1.2.3.4", Country: "US", IsBlocked: false, Timestamp: time.Now()},
+		{ID: "3", ClientIP: "5.6.7.8", Country: "DE", IsBlocked: true, Timestamp: time.Now()},
+	}
+	s.mu.Unlock()
+
+	result := s.TopBlockedIPs(168, 10)
+	if len(result) != 2 {
+		t.Fatalf("TopBlockedIPs returned %d, want 2", len(result))
+	}
+	for _, r := range result {
+		if r.ClientIP == "1.2.3.4" && r.Country != "US" {
+			t.Errorf("1.2.3.4 country = %q, want US", r.Country)
+		}
+		if r.ClientIP == "5.6.7.8" && r.Country != "DE" {
+			t.Errorf("5.6.7.8 country = %q, want DE", r.Country)
+		}
+	}
+}
+
+func TestSummaryClientCountsIncludeCountry(t *testing.T) {
+	events := []Event{
+		{ID: "1", ClientIP: "1.2.3.4", Country: "JP", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "2", ClientIP: "1.2.3.4", Country: "JP", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
+	}
+	summary := summarizeEvents(events)
+	if len(summary.TopClients) == 0 {
+		t.Fatal("TopClients is empty")
+	}
+	if summary.TopClients[0].Country != "JP" {
+		t.Errorf("TopClients[0].Country = %q, want JP", summary.TopClients[0].Country)
+	}
+}
+
+func TestRateLimitEventToEvent_PropagatesCountry(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Now(),
+		ClientIP:  "10.0.0.1",
+		Country:   "FR",
+		Service:   "example.com",
+		Method:    "GET",
+		URI:       "/test",
+		UserAgent: "curl/8.0",
+	}
+	ev := RateLimitEventToEvent(rle)
+	if ev.Country != "FR" {
+		t.Errorf("Event.Country = %q, want FR", ev.Country)
+	}
+}
+
+func TestHandleTopCountries(t *testing.T) {
+	s := NewStore("")
+	s.mu.Lock()
+	s.events = []Event{
+		{ID: "1", Country: "US", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "2", Country: "US", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
+		{ID: "3", Country: "DE", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+	}
+	s.mu.Unlock()
+
+	als := NewAccessLogStore("")
+
+	handler := handleTopCountries(s, als)
+	req := httptest.NewRequest("GET", "/api/analytics/top-countries?hours=168&limit=10", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var result []CountryCount
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("got %d countries, want 2", len(result))
+	}
+	// US has 2 events, DE has 1
+	if result[0].Country != "US" || result[0].Count != 2 {
+		t.Errorf("result[0] = %+v, want US:2", result[0])
+	}
+}
+
+// ─── Per-Hour/Service/Client Breakdown Tests ─────────────────────────────────
+
+func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
+	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
+	events := []Event{
+		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "blocked", IsBlocked: true},
+		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "honeypot", IsBlocked: true},
+		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "scanner", IsBlocked: true},
+		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "policy_skip", IsBlocked: false},
+		{ID: "5", Timestamp: ts, Service: "a.io", ClientIP: "3.3.3.3", EventType: "policy_block", IsBlocked: true},
+		{ID: "6", Timestamp: ts, Service: "a.io", ClientIP: "3.3.3.3", EventType: "logged", IsBlocked: false},
+	}
+	summary := summarizeEvents(events)
+
+	if len(summary.EventsByHour) != 1 {
+		t.Fatalf("EventsByHour length = %d, want 1", len(summary.EventsByHour))
+	}
+	h := summary.EventsByHour[0]
+	if h.Count != 6 {
+		t.Errorf("hour.Count = %d, want 6", h.Count)
+	}
+	if h.Blocked != 4 { // blocked + honeypot + scanner + policy_block
+		t.Errorf("hour.Blocked = %d, want 4", h.Blocked)
+	}
+	if h.Logged != 2 { // total - blocked
+		t.Errorf("hour.Logged = %d, want 2", h.Logged)
+	}
+	if h.Honeypot != 1 {
+		t.Errorf("hour.Honeypot = %d, want 1", h.Honeypot)
+	}
+	if h.Scanner != 1 {
+		t.Errorf("hour.Scanner = %d, want 1", h.Scanner)
+	}
+	if h.Policy != 2 { // policy_skip + policy_block
+		t.Errorf("hour.Policy = %d, want 2", h.Policy)
+	}
+}
+
+func TestSummarizeEvents_PerServiceBreakdown(t *testing.T) {
+	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
+	events := []Event{
+		{ID: "1", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "honeypot", IsBlocked: true},
+		{ID: "2", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "scanner", IsBlocked: true},
+		{ID: "3", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "policy_allow", IsBlocked: false},
+		{ID: "4", Timestamp: ts, Service: "svc2.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true},
+		{ID: "5", Timestamp: ts, Service: "svc2.io", ClientIP: "2.2.2.2", EventType: "logged", IsBlocked: false},
+	}
+	summary := summarizeEvents(events)
+
+	// Find svc1 in ServiceBreakdown
+	var svc1, svc2 *ServiceDetail
+	for i := range summary.ServiceBreakdown {
+		switch summary.ServiceBreakdown[i].Service {
+		case "svc1.io":
+			svc1 = &summary.ServiceBreakdown[i]
+		case "svc2.io":
+			svc2 = &summary.ServiceBreakdown[i]
+		}
+	}
+	if svc1 == nil || svc2 == nil {
+		t.Fatalf("missing services in breakdown: svc1=%v svc2=%v", svc1, svc2)
+	}
+	if svc1.Honeypot != 1 {
+		t.Errorf("svc1.Honeypot = %d, want 1", svc1.Honeypot)
+	}
+	if svc1.Scanner != 1 {
+		t.Errorf("svc1.Scanner = %d, want 1", svc1.Scanner)
+	}
+	if svc1.Policy != 1 { // policy_allow
+		t.Errorf("svc1.Policy = %d, want 1", svc1.Policy)
+	}
+	if svc2.Policy != 1 { // policy_block
+		t.Errorf("svc2.Policy = %d, want 1", svc2.Policy)
+	}
+	if svc2.Honeypot != 0 {
+		t.Errorf("svc2.Honeypot = %d, want 0", svc2.Honeypot)
+	}
+}
+
+func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
+	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
+	events := []Event{
+		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "honeypot", IsBlocked: true},
+		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "scanner", IsBlocked: true},
+		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_skip", IsBlocked: false},
+		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.2", EventType: "blocked", IsBlocked: true},
+	}
+	summary := summarizeEvents(events)
+
+	// Find client 10.0.0.1
+	var c1 *ClientCount
+	for i := range summary.TopClients {
+		if summary.TopClients[i].Client == "10.0.0.1" {
+			c1 = &summary.TopClients[i]
+		}
+	}
+	if c1 == nil {
+		t.Fatal("client 10.0.0.1 not found in TopClients")
+	}
+	if c1.Honeypot != 1 {
+		t.Errorf("client.Honeypot = %d, want 1", c1.Honeypot)
+	}
+	if c1.Scanner != 1 {
+		t.Errorf("client.Scanner = %d, want 1", c1.Scanner)
+	}
+	if c1.Policy != 1 {
+		t.Errorf("client.Policy = %d, want 1", c1.Policy)
+	}
+	if c1.Count != 3 {
+		t.Errorf("client.Count = %d, want 3", c1.Count)
+	}
+	if c1.Blocked != 2 { // honeypot + scanner
+		t.Errorf("client.Blocked = %d, want 2", c1.Blocked)
+	}
+}
+
+func TestComputeServices_TracksAllEventTypes(t *testing.T) {
+	events := []Event{
+		{Service: "web.io", EventType: "blocked", IsBlocked: true},
+		{Service: "web.io", EventType: "honeypot", IsBlocked: true},
+		{Service: "web.io", EventType: "scanner", IsBlocked: true},
+		{Service: "web.io", EventType: "policy_skip", IsBlocked: false},
+		{Service: "web.io", EventType: "policy_block", IsBlocked: true},
+		{Service: "web.io", EventType: "logged", IsBlocked: false},
+		{Service: "api.io", EventType: "honeypot", IsBlocked: true},
+	}
+	resp := computeServices(events)
+
+	var web, api *ServiceDetail
+	for i := range resp.Services {
+		switch resp.Services[i].Service {
+		case "web.io":
+			web = &resp.Services[i]
+		case "api.io":
+			api = &resp.Services[i]
+		}
+	}
+	if web == nil || api == nil {
+		t.Fatalf("missing service: web=%v api=%v", web, api)
+	}
+
+	if web.Total != 6 {
+		t.Errorf("web.Total = %d, want 6", web.Total)
+	}
+	if web.Blocked != 4 { // blocked + honeypot + scanner + policy_block
+		t.Errorf("web.Blocked = %d, want 4", web.Blocked)
+	}
+	if web.Logged != 2 {
+		t.Errorf("web.Logged = %d, want 2", web.Logged)
+	}
+	if web.Honeypot != 1 {
+		t.Errorf("web.Honeypot = %d, want 1", web.Honeypot)
+	}
+	if web.Scanner != 1 {
+		t.Errorf("web.Scanner = %d, want 1", web.Scanner)
+	}
+	if web.Policy != 2 { // policy_skip + policy_block
+		t.Errorf("web.Policy = %d, want 2", web.Policy)
+	}
+	if api.Honeypot != 1 {
+		t.Errorf("api.Honeypot = %d, want 1", api.Honeypot)
+	}
+	if api.Scanner != 0 {
+		t.Errorf("api.Scanner = %d, want 0", api.Scanner)
+	}
+}
+
+func TestIPLookup_TracksAllEventTypes(t *testing.T) {
+	s := NewStore("")
+	s.mu.Lock()
+	s.events = []Event{
+		{ID: "1", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "honeypot", IsBlocked: true},
+		{ID: "2", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "scanner", IsBlocked: true},
+		{ID: "3", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_allow", IsBlocked: false},
+		{ID: "4", Timestamp: time.Now(), Service: "api.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true},
+		{ID: "5", Timestamp: time.Now(), Service: "web.io", ClientIP: "99.99.99.99", EventType: "blocked", IsBlocked: true},
+	}
+	s.mu.Unlock()
+
+	resp := s.IPLookup("10.0.0.1", 168)
+
+	if resp.Total != 4 {
+		t.Errorf("Total = %d, want 4", resp.Total)
+	}
+	if resp.Blocked != 3 { // honeypot + scanner + policy_block
+		t.Errorf("Blocked = %d, want 3", resp.Blocked)
+	}
+
+	var web, api *ServiceDetail
+	for i := range resp.Services {
+		switch resp.Services[i].Service {
+		case "web.io":
+			web = &resp.Services[i]
+		case "api.io":
+			api = &resp.Services[i]
+		}
+	}
+	if web == nil || api == nil {
+		t.Fatalf("missing service: web=%v api=%v", web, api)
+	}
+	if web.Honeypot != 1 {
+		t.Errorf("web.Honeypot = %d, want 1", web.Honeypot)
+	}
+	if web.Scanner != 1 {
+		t.Errorf("web.Scanner = %d, want 1", web.Scanner)
+	}
+	if web.Policy != 1 { // policy_allow
+		t.Errorf("web.Policy = %d, want 1", web.Policy)
+	}
+	if api.Policy != 1 { // policy_block
+		t.Errorf("api.Policy = %d, want 1", api.Policy)
 	}
 }

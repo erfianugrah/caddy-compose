@@ -40,9 +40,11 @@ import {
   lookupIP,
   fetchTopBlockedIPs,
   fetchTopTargetedURIs,
+  fetchTopCountries,
   type IPLookupData,
   type TopBlockedIP,
   type TopTargetedURI,
+  type CountryCount,
 } from "@/lib/api";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -66,6 +68,27 @@ function formatDateTime(ts: string): string {
   } catch {
     return ts;
   }
+}
+
+/** Convert ISO 3166-1 alpha-2 code to regional indicator flag emoji. */
+function countryFlag(code: string): string {
+  if (!code || code.length !== 2) return "";
+  const upper = code.toUpperCase();
+  return String.fromCodePoint(
+    0x1f1e6 + upper.charCodeAt(0) - 65,
+    0x1f1e6 + upper.charCodeAt(1) - 65,
+  );
+}
+
+/** Country code + optional flag. */
+function CountryLabel({ code }: { code: string }) {
+  if (!code || code === "XX") return <span className="text-muted-foreground">Unknown</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{countryFlag(code)}</span>
+      <span className="font-mono text-xs">{code}</span>
+    </span>
+  );
 }
 
 const chartTooltipStyle = {
@@ -325,7 +348,15 @@ function IPLookupPanel() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {evt.event_type === "ipsum_blocked" ? (
+                          {evt.event_type === "honeypot" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-500/50 text-orange-400">
+                              HONEYPOT
+                            </Badge>
+                          ) : evt.event_type === "scanner" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/50 text-red-400">
+                              SCANNER
+                            </Badge>
+                          ) : evt.event_type === "ipsum_blocked" ? (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
                               IPSUM
                             </Badge>
@@ -333,7 +364,19 @@ function IPLookupPanel() {
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
                               RATE LIMITED
                             </Badge>
-                          ) : evt.blocked ? (
+                          ) : evt.event_type === "policy_skip" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                              SKIPPED
+                            </Badge>
+                          ) : evt.event_type === "policy_allow" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                              ALLOWED
+                            </Badge>
+                          ) : evt.event_type === "policy_block" ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/50 text-rose-400">
+                              POLICY BLOCK
+                            </Badge>
+                          ) : evt.event_type === "blocked" ? (
                             <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                               BLOCKED
                             </Badge>
@@ -412,6 +455,7 @@ function TopBlockedIPsPanel() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>IP Address</TableHead>
+                <TableHead>Country</TableHead>
                 <TableHead className="text-right">Events</TableHead>
                 <TableHead className="text-right">Blocked</TableHead>
                 <TableHead>Block Rate</TableHead>
@@ -424,6 +468,9 @@ function TopBlockedIPsPanel() {
                 <TableRow key={ip.client_ip}>
                   <TableCell className="font-mono text-xs">
                     {ip.client_ip}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <CountryLabel code={ip.country ?? ""} />
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
                     {ip.total.toLocaleString()}
@@ -560,6 +607,105 @@ function TopTargetedURIsPanel() {
   );
 }
 
+// ─── Top Countries Panel ────────────────────────────────────────────
+
+function TopCountriesPanel() {
+  const [data, setData] = useState<CountryCount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchTopCountries()
+      .then(setData)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  const maxCount = data.length > 0 ? data[0].count : 1;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Globe className="h-4 w-4 text-neon-cyan" />
+          <CardTitle className="text-sm">Top Countries</CardTitle>
+        </div>
+        <CardDescription>Request origins by country code</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <div className="space-y-2 p-6">
+            {[...Array(8)].map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : data.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Country</TableHead>
+                <TableHead>Requests</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Blocked</TableHead>
+                <TableHead className="text-right">Block Rate</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.map((c) => {
+                const blockRate = c.count > 0 ? (c.blocked / c.count) * 100 : 0;
+                return (
+                  <TableRow key={c.country}>
+                    <TableCell className="text-xs">
+                      <CountryLabel code={c.country} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-24 overflow-hidden rounded-full bg-navy-800">
+                          <div
+                            className="h-full rounded-full bg-neon-cyan/70 transition-all"
+                            style={{ width: `${(c.count / maxCount) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-xs">
+                      {formatNumber(c.count)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-xs text-neon-pink">
+                      {c.blocked > 0 ? formatNumber(c.blocked) : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={`text-xs tabular-nums ${
+                        blockRate > 50 ? "text-neon-pink" : blockRate > 20 ? "text-neon-amber" : "text-muted-foreground"
+                      }`}>
+                        {blockRate > 0 ? `${blockRate.toFixed(1)}%` : "-"}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            No country data available. GeoIP data requires Cf-Ipcountry headers or an MMDB database.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Analytics Dashboard ───────────────────────────────────────
 
 export default function AnalyticsDashboard() {
@@ -586,7 +732,10 @@ export default function AnalyticsDashboard() {
             <Target className="h-3.5 w-3.5" />
             Top URIs
           </TabsTrigger>
-
+          <TabsTrigger value="top-countries" className="gap-1.5">
+            <Globe className="h-3.5 w-3.5" />
+            Countries
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="lookup">
@@ -601,7 +750,9 @@ export default function AnalyticsDashboard() {
           <TopTargetedURIsPanel />
         </TabsContent>
 
-
+        <TabsContent value="top-countries">
+          <TopCountriesPanel />
+        </TabsContent>
       </Tabs>
     </div>
   );

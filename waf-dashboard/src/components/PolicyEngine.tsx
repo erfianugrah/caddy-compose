@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Shield,
   ShieldCheck,
@@ -101,7 +101,9 @@ interface EventPrefill {
   sourceEvent: WAFEvent;
 }
 
-/** Extract prefill data from a WAF event for the Quick Actions form. */
+/** Extract prefill data from a WAF event for the Quick Actions form.
+ *  Populates ALL available conditions from the event JSON so the user
+ *  can remove the ones they don't need via the "X" buttons. */
 function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
   // Collect rule IDs from matched_rules, or fall back to primary rule_id
   const ruleIds: string[] = [];
@@ -115,7 +117,8 @@ function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     ruleIds.push(String(event.rule_id));
   }
 
-  // Build conditions from event context
+  // Build conditions from ALL available event context.
+  // The user can remove unwanted conditions via the "X" button.
   const conditions: Condition[] = [];
 
   // Path condition — use the path without query string
@@ -127,9 +130,24 @@ function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     conditions.push({ field: "path", operator: op, value: path });
   }
 
-  // IP condition if present
+  // Host / service condition — this is the hostname the request was sent to
+  if (event.service) {
+    conditions.push({ field: "host", operator: "eq", value: event.service });
+  }
+
+  // Method condition
+  if (event.method) {
+    conditions.push({ field: "method", operator: "eq", value: event.method });
+  }
+
+  // IP condition
   if (event.client_ip) {
     conditions.push({ field: "ip", operator: "eq", value: event.client_ip });
+  }
+
+  // User agent condition
+  if (event.user_agent) {
+    conditions.push({ field: "user_agent", operator: "contains", value: event.user_agent });
   }
 
   // Auto-generate name
@@ -137,7 +155,8 @@ function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     ? ruleIds.slice(0, 3).join(", ") + (ruleIds.length > 3 ? "..." : "")
     : "";
   const pathSnippet = event.uri ? event.uri.split("?")[0] : "";
-  const name = ["Skip", ruleSnippet, "for", pathSnippet].filter(Boolean).join(" ");
+  const serviceSnippet = event.service ? `on ${event.service}` : "";
+  const name = ["Skip", ruleSnippet, "for", pathSnippet, serviceSnippet].filter(Boolean).join(" ");
 
   // Description from the primary rule message
   const description = event.rule_msg
@@ -1459,6 +1478,24 @@ export default function PolicyEngine() {
     if (prefill) setEventPrefill(prefill);
   }, []);
 
+  // Highlight a specific exclusion when navigating from an event (e.g. /policy?rule=<name>).
+  // The name is extracted from the Policy Engine rule's msg field.
+  const [highlightedRule, setHighlightedRule] = useState<string | null>(null);
+  const highlightedRef = useRef<HTMLTableRowElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const ruleName = params.get("rule");
+    if (ruleName) {
+      setHighlightedRule(ruleName);
+      // Clean up URL param without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete("rule");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
+  }, []);
+
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -1482,6 +1519,16 @@ export default function PolicyEngine() {
     loadData();
   }, [loadData]);
 
+  // Scroll to the highlighted rule once exclusions have loaded.
+  useEffect(() => {
+    if (highlightedRule && !loading && highlightedRef.current) {
+      highlightedRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Auto-clear the highlight after 4 seconds.
+      const timer = setTimeout(() => setHighlightedRule(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightedRule, loading, exclusions]);
+
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
@@ -1491,7 +1538,23 @@ export default function PolicyEngine() {
     try {
       const created = await createExclusion(data);
       setExclusions((prev) => [...prev, created]);
-      showSuccess("Exclusion created");
+      showSuccess("Exclusion created — deploying...");
+
+      // Auto-deploy after creating a rule so it takes effect immediately.
+      try {
+        setDeployStep("Writing WAF files & reloading Caddy...");
+        const result = await deployConfig();
+        setDeployResult(result);
+        if (result.status === "deployed") {
+          showSuccess("Rule created and deployed successfully");
+        } else {
+          showSuccess("Rule created — config files written, Caddy reload needs manual intervention");
+        }
+      } catch (deployErr: any) {
+        setError(`Rule saved but deploy failed: ${deployErr.message}`);
+      } finally {
+        setDeployStep(null);
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -1768,8 +1831,14 @@ export default function PolicyEngine() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {exclusions.map((excl) => (
-                  <TableRow key={excl.id}>
+                {exclusions.map((excl) => {
+                  const isHighlighted = highlightedRule !== null && excl.name === highlightedRule;
+                  return (
+                  <TableRow
+                    key={excl.id}
+                    ref={isHighlighted ? highlightedRef : undefined}
+                    className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-emerald-500/5 transition-all duration-700" : undefined}
+                  >
                     <TableCell className="w-8">
                       <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground/50" />
                     </TableCell>
@@ -1815,7 +1884,8 @@ export default function PolicyEngine() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (

@@ -58,10 +58,11 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 
 ## Version Management
 
-Image tags live in **three places** that must stay in sync:
+Image tags live in **four places** that must stay in sync:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAF_API_IMAGE`)
 - `compose.yaml` (lines 3 and 117: image fields)
 - `README.md` (badge/reference)
+- `test/docker-compose.test.yml` (line 3: caddy image field)
 
 Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.15.0-2.10.2`).
 waf-api tag format: simple semver (e.g. `0.10.0`).
@@ -118,17 +119,19 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 - Atomic writes via `atomicWriteFile()` — write to temp, fsync, rename
 - Incremental file reading with offset tracking and rotation detection
 - Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
-- One cohesive module per `.go` file (logparser, generator, deploy, config, exclusions, etc.)
-- All data models in `models.go`, all HTTP handlers in `main.go`
+- One cohesive module per `.go` file (logparser, generator, deploy, config, exclusions, geoip, blocklist, etc.)
+- All data models in `models.go`; most HTTP handlers in `main.go`, domain-specific handlers co-located with their store (e.g. `blocklist.go` has `handleBlocklistStats`, `handleBlocklistRefresh`)
+- `geoip.go` — pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser
+- `blocklist.go` — IPsum blocklist file parser with `# Updated:` comment extraction and mtime fallback, cached stats/check, on-demand refresh (download + filter + atomic write + Caddy reload)
 
 ## Coraza Rule ID Namespaces
 
 When adding custom SecRules, use the correct ID range:
 - `9100001–9100006` — pre-CRS rules (baked in `coraza/pre-crs.conf`)
-- `9100010–9100019` — post-CRS rules (baked in `coraza/post-crs.conf`)
-- `9100020–9100029` — honeypot path rules (see PLAN.md)
-- `9100030–9100049` — heuristic bot signal rules (see PLAN.md)
-- `9100050–9100059` — GeoIP blocking rules (see PLAN.md)
+- `9100010–9100019` — post-CRS custom detection rules (baked in `coraza/post-crs.conf`)
+- `9100020–9100029` — honeypot path rules (baked in `coraza/post-crs.conf`, paths in `coraza/honeypot-paths.txt`)
+- `9100030–9100039` — heuristic bot signal rules (baked in `coraza/pre-crs.conf`, scanner UAs in `coraza/scanner-useragents.txt`)
+- `9100050–9100059` — GeoIP blocking rules (see PLAN.md, not yet implemented)
 - `95xxxxx` — generated exclusion rules (from Policy Engine, `generator.go`)
 - `97xxxxx` — generated WAF settings overrides (`generator.go`)
 - CRS inbound: `910000–949999`, outbound: `950000–979999`
@@ -175,7 +178,7 @@ When adding custom SecRules, use the correct ID range:
 | Group | Routes |
 |-------|--------|
 | Core | `GET /api/health`, `GET /api/summary`, `GET /api/events`, `GET /api/services` |
-| Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris` |
+| Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris`, `GET /api/analytics/top-countries` |
 | IP Lookup | `GET /api/lookup/{ip}` |
 | Exclusions | `GET\|POST /api/exclusions`, `GET\|PUT\|DELETE /api/exclusions/{id}` |
 | Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate` |
@@ -183,7 +186,7 @@ When adding custom SecRules, use the correct ID range:
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/deploy` |
 | Rate Limits | `GET\|PUT /api/rate-limits`, `POST /api/rate-limits/deploy` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
-| Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}` |
+| Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ## Test Patterns
 
@@ -212,15 +215,34 @@ When adding custom SecRules, use the correct ID range:
 
 Files baked into the image at build time (in `/etc/caddy/`):
 - `coraza/pre-crs.conf`, `coraza/post-crs.conf` — static WAF rules
-- `ipsum_block.caddy` — IPsum blocklist snapshot (seeded to runtime volume on first boot)
+- `ipsum_block.caddy` — IPsum blocklist snapshot (seeded to runtime volume on first boot or when `# Updated:` header is missing)
 - `cf_trusted_proxies.caddy` — Cloudflare IP ranges
 - `waf-ui/` — dashboard static files, `errors/error.html`
 
 Files written at runtime by waf-api (in `/data/coraza/` and `/data/rl/` volumes):
 - `custom-waf-settings.conf` — SecRuleEngine mode, paranoia levels, thresholds
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
-- `ipsum_block.caddy` — updated daily by cron at 02:00
+- `ipsum_block.caddy` — updated daily by cron at 02:00, or on-demand via `POST /api/blocklist/refresh`
 - `<service>_rate_limit.caddy` — rate limit zone configs
+
+### Startup Behavior (generate-on-boot)
+
+On startup, waf-api calls `generateOnBoot()` which regenerates all config files
+from stored JSON state (WAF config, exclusions, rate limit zones). This ensures a
+stack restart always picks up the latest generator output without requiring a
+manual `POST /api/config/deploy`. No Caddy reload is performed — Caddy reads
+the files fresh on its own startup.
+
+The entrypoint (`scripts/entrypoint.sh`) also re-seeds the ipsum blocklist from
+the build-time snapshot if the runtime file is missing OR lacks the `# Updated:`
+header (which older builds didn't include).
+
+### Blocklist Refresh
+
+`POST /api/blocklist/refresh` downloads a fresh IPsum list from GitHub, filters
+by min_score, generates the Caddy snippet, atomically writes it, reloads the
+in-memory cache, and reloads Caddy. The Go `BlocklistStore.parseFile()` uses
+the file's mtime as a fallback when the `# Updated:` comment is missing.
 
 ### waf-api Environment Variables
 
@@ -231,6 +253,7 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_CORAZA_DIR`, `WAF_RATELIMIT_DIR` — output directories for generated configs
 - `WAF_CADDY_ADMIN_URL` (default `http://caddy:2020`) — Caddy admin API endpoint
 - `WAF_EVENT_MAX_AGE` (default `168h`), `WAF_TAIL_INTERVAL` (default `5s`)
+- `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
 
 ### Relationship to k3s Sentinel
 

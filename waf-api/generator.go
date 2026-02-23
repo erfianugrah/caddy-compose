@@ -264,23 +264,57 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 }
 
 // conditionAction returns the SecRule action string for an exclusion type.
+// All policy actions include logdata:'%{MATCHED_VAR}' so the audit log
+// captures what the condition actually matched (IP, path, hostname, etc.),
+// giving events the same level of detail as CRS blocked/logged events.
 func conditionAction(e RuleExclusion) string {
 	switch e.Type {
 	case "allow":
-		return "allow,t:none,nolog"
+		// ctl:ruleEngine=Off disables the WAF for the entire transaction.
+		// Bare "allow" only stops evaluation for the current phase, which
+		// can let later-phase rules still fire. This is the canonical
+		// ModSecurity/Coraza pattern for a full WAF bypass.
+		return fmt.Sprintf("pass,t:none,log,msg:'Policy Allow: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleEngine=Off", escapeSecRuleValue(e.Name))
 	case "block":
-		return fmt.Sprintf("deny,status:403,t:none,log,msg:'Blocked by policy: %s'", escapeSecRuleValue(e.Name))
+		return fmt.Sprintf("deny,status:403,t:none,log,msg:'Policy Block: %s',logdata:'%%{MATCHED_VAR}'", escapeSecRuleValue(e.Name))
 	case "skip_rule":
+		escapedName := escapeSecRuleValue(e.Name)
 		if e.RuleID != "" {
-			return fmt.Sprintf("pass,t:none,nolog,ctl:ruleRemoveById=%s", e.RuleID)
+			return buildSkipRuleAction(e.RuleID, escapedName)
 		}
 		if e.RuleTag != "" {
-			return fmt.Sprintf("pass,t:none,nolog,ctl:ruleRemoveByTag=%s", e.RuleTag)
+			return fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleRemoveByTag=%s", escapedName, e.RuleTag)
 		}
-		return "pass,t:none,nolog"
+		return fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}'", escapedName)
 	default:
-		return "pass,t:none,nolog"
+		return "pass,t:none,log"
 	}
+}
+
+// buildSkipRuleAction builds a SecRule action string that removes one or more
+// rule IDs. Coraza's ctl:ruleRemoveById only accepts a single ID or a
+// hyphenated range per action, so when the user specifies multiple IDs
+// (space- or comma-separated) we emit a separate ctl action for each.
+func buildSkipRuleAction(ruleIDField string, escapedName string) string {
+	// Normalize: replace commas with spaces, then split on whitespace.
+	normalized := strings.ReplaceAll(ruleIDField, ",", " ")
+	tokens := strings.Fields(normalized)
+
+	msgPart := fmt.Sprintf("msg:'Policy Skip: %s'", escapedName)
+	logdataPart := "logdata:'%{MATCHED_VAR}'"
+
+	if len(tokens) <= 1 {
+		// Single ID or range.
+		return fmt.Sprintf("pass,t:none,log,%s,%s,ctl:ruleRemoveById=%s", msgPart, logdataPart, strings.TrimSpace(ruleIDField))
+	}
+
+	// Multiple IDs/ranges — emit one ctl:ruleRemoveById per token.
+	var parts []string
+	parts = append(parts, "pass", "t:none", "log", msgPart, logdataPart)
+	for _, tok := range tokens {
+		parts = append(parts, fmt.Sprintf("ctl:ruleRemoveById=%s", tok))
+	}
+	return strings.Join(parts, ",")
 }
 
 // writeChainedRule writes a single SecRule (possibly chained) for a set of conditions.

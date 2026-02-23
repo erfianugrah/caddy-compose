@@ -1,0 +1,53 @@
+# Honeypot paths — known-bad probes that should never appear in this stack.
+# One path fragment per line. Matched via @pmFromFile (substring match).
+# Rule ID: 9100020 in post-crs.conf
+#
+# WordPress
+/wp-login.php
+/wp-admin/
+/xmlrpc.php
+/wp-content/
+/wp-includes/
+/wp-config
+/wp-cron.php
+# PHP admin panels
+/phpmyadmin
+/pma/
+/adminer
+/phpinfo
+# Dotfile / secret probes
+/.env
+/.git/
+/.aws/
+/.ssh/
+/.htaccess
+/.htpasswd
+/.DS_Store
+/.svn/
+/.hg/
+# Microsoft / Exchange / OWA
+/autodiscover/autodiscover.xml
+/ecp/
+/owa/
+/aspnet_client/
+/remote/fgt_lang
+# Java / Spring / debug endpoints
+/actuator
+/debug/vars
+/telescope/requests
+/console/
+/jolokia
+/druid/
+# Server status / info
+/server-status
+/server-info
+/cgi-bin/
+# Common exploit paths
+/vendor/phpunit/
+/solr/admin/
+/jenkins/
+/manager/html
+/invoker/
+/jmx-console/
+/_ignition/
+/.well-known/security.txt

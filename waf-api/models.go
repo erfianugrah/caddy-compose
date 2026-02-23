@@ -85,7 +85,8 @@ type Event struct {
 	IsBlocked      bool      `json:"is_blocked"`
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
-	EventType      string    `json:"event_type"` // "blocked", "logged", "rate_limited", "ipsum_blocked"
+	Country        string    `json:"country,omitempty"` // ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
+	EventType      string    `json:"event_type"`        // "blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner"
 	// How the request was blocked: "anomaly_inbound", "anomaly_outbound", "direct", or ""
 	BlockedBy string `json:"blocked_by,omitempty"`
 	// Rule match data (from audit log messages/part H)
@@ -122,11 +123,15 @@ type SummaryResponse struct {
 	LoggedEvents     int             `json:"logged_events"`
 	RateLimited      int             `json:"rate_limited"`
 	IpsumBlocked     int             `json:"ipsum_blocked"`
+	PolicyEvents     int             `json:"policy_events"`
+	HoneypotEvents   int             `json:"honeypot_events"`
+	ScannerEvents    int             `json:"scanner_events"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
 	EventsByHour     []HourCount     `json:"events_by_hour"`
 	TopServices      []ServiceCount  `json:"top_services"`
 	TopClients       []ClientCount   `json:"top_clients"`
+	TopCountries     []CountryCount  `json:"top_countries"`
 	TopURIs          []URICount      `json:"top_uris"`
 	ServiceBreakdown []ServiceDetail `json:"service_breakdown"`
 	RecentEvents     []Event         `json:"recent_events"`
@@ -139,6 +144,9 @@ type HourCount struct {
 	Logged       int    `json:"logged"`
 	RateLimited  int    `json:"rate_limited"`
 	IpsumBlocked int    `json:"ipsum_blocked"`
+	Honeypot     int    `json:"honeypot"`
+	Scanner      int    `json:"scanner"`
+	Policy       int    `json:"policy"`
 }
 
 type ServiceCount struct {
@@ -148,14 +156,21 @@ type ServiceCount struct {
 	Logged       int    `json:"logged"`
 	RateLimited  int    `json:"rate_limited"`
 	IpsumBlocked int    `json:"ipsum_blocked"`
+	Honeypot     int    `json:"honeypot"`
+	Scanner      int    `json:"scanner"`
+	Policy       int    `json:"policy"`
 }
 
 type ClientCount struct {
 	Client       string `json:"client"`
+	Country      string `json:"country,omitempty"`
 	Count        int    `json:"count"`
 	Blocked      int    `json:"blocked"`
 	RateLimited  int    `json:"rate_limited"`
 	IpsumBlocked int    `json:"ipsum_blocked"`
+	Honeypot     int    `json:"honeypot"`
+	Scanner      int    `json:"scanner"`
+	Policy       int    `json:"policy"`
 }
 
 // Blocklist API response types
@@ -172,6 +187,17 @@ type BlocklistCheckResponse struct {
 	IP      string `json:"ip"`
 	Blocked bool   `json:"blocked"`
 	Source  string `json:"source"`
+}
+
+// BlocklistRefreshResponse is returned by the refresh endpoint after
+// downloading and applying a fresh IPsum blocklist.
+type BlocklistRefreshResponse struct {
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	BlockedIPs  int    `json:"blocked_ips"`
+	MinScore    int    `json:"min_score"`
+	LastUpdated string `json:"last_updated"`
+	Reloaded    bool   `json:"reloaded"`
 }
 
 type URICount struct {
@@ -191,6 +217,9 @@ type ServiceDetail struct {
 	Logged       int    `json:"logged"`
 	RateLimited  int    `json:"rate_limited"`
 	IpsumBlocked int    `json:"ipsum_blocked"`
+	Honeypot     int    `json:"honeypot"`
+	Scanner      int    `json:"scanner"`
+	Policy       int    `json:"policy"`
 }
 
 type ServicesResponse struct {
@@ -307,11 +336,19 @@ type ExclusionExport struct {
 
 type TopBlockedIP struct {
 	ClientIP  string  `json:"client_ip"`
+	Country   string  `json:"country,omitempty"`
 	Total     int     `json:"total"`
 	Blocked   int     `json:"blocked"`
 	BlockRate float64 `json:"block_rate"`
 	FirstSeen string  `json:"first_seen"`
 	LastSeen  string  `json:"last_seen"`
+}
+
+// CountryCount represents request counts grouped by country code.
+type CountryCount struct {
+	Country string `json:"country"`
+	Count   int    `json:"count"`
+	Blocked int    `json:"blocked"`
 }
 
 type TopTargetedURI struct {

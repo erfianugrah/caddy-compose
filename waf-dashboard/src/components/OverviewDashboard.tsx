@@ -14,7 +14,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Shield, ShieldAlert, ShieldBan, Ban, Users, Server, Clock, ChevronDown, ChevronRight } from "lucide-react";
+import { Shield, ShieldAlert, ShieldBan, ShieldCheck, Ban, Users, Server, Clock, ChevronDown, ChevronRight, Bug, Radar } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -154,6 +154,9 @@ function StatCard({
     cyan: "text-neon-cyan bg-neon-cyan/10",
     amber: "text-neon-amber bg-neon-amber/10",
     violet: "text-violet-400 bg-violet-400/10",
+    emerald: "text-emerald-400 bg-emerald-400/10",
+    orange: "text-orange-400 bg-orange-400/10",
+    red: "text-red-400 bg-red-400/10",
   };
   const textColorMap: Record<string, string> = {
     green: "text-neon-green",
@@ -161,6 +164,9 @@ function StatCard({
     cyan: "text-neon-cyan",
     amber: "text-neon-amber",
     violet: "text-violet-400",
+    emerald: "text-emerald-400",
+    orange: "text-orange-400",
+    red: "text-red-400",
   };
 
   return (
@@ -201,7 +207,17 @@ const chartTooltipStyle = {
   labelStyle: { color: "#7a8baa" },
 };
 
-const DONUT_COLORS = ["#ff006e", "#00ff41", "#f59e0b", "#a78bfa"];
+// Fixed color map for donut slices — keyed by name so colors are consistent
+// regardless of which slices are present.
+const DONUT_COLOR_MAP: Record<string, string> = {
+  "WAF Blocked": "#ff006e",
+  "Logged": "#00ff41",
+  "Rate Limited": "#f59e0b",
+  "IPsum": "#a78bfa",
+  "Honeypot": "#f97316",
+  "Scanner": "#ef4444",
+  "Policy": "#10b981",
+};
 
 // ─── Main Component ─────────────────────────────────────────────────
 
@@ -266,14 +282,19 @@ export default function OverviewDashboard() {
     );
   }
 
-  // Build donut data
+  // Build donut data — split "Blocked" into sub-categories so each action type
+  // gets its own slice. WAF Blocked = blocked - honeypot - scanner (pure CRS/direct blocks).
+  const wafBlocked = Math.max((data?.blocked ?? 0) - (data?.honeypot_events ?? 0) - (data?.scanner_events ?? 0), 0);
   const donutData =
-    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.ipsum_blocked > 0)
+    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.ipsum_blocked > 0 || data.policy_events > 0)
       ? [
-          { name: "Blocked", value: data.blocked },
-          { name: "Logged", value: data.logged },
+          ...(wafBlocked > 0 ? [{ name: "WAF Blocked", value: wafBlocked }] : []),
+          ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
           ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
-          ...(data.ipsum_blocked > 0 ? [{ name: "IPsum Blocked", value: data.ipsum_blocked }] : []),
+          ...(data.ipsum_blocked > 0 ? [{ name: "IPsum", value: data.ipsum_blocked }] : []),
+          ...(data.honeypot_events > 0 ? [{ name: "Honeypot", value: data.honeypot_events }] : []),
+          ...(data.scanner_events > 0 ? [{ name: "Scanner", value: data.scanner_events }] : []),
+          ...(data.policy_events > 0 ? [{ name: "Policy", value: data.policy_events }] : []),
         ]
       : [];
 
@@ -298,7 +319,7 @@ export default function OverviewDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
         <StatCard
           title="Total Events"
           value={data?.total_events ?? 0}
@@ -325,6 +346,27 @@ export default function OverviewDashboard() {
           value={data?.ipsum_blocked ?? 0}
           icon={Ban}
           color="violet"
+          loading={loading}
+        />
+        <StatCard
+          title="Honeypot"
+          value={data?.honeypot_events ?? 0}
+          icon={Bug}
+          color="orange"
+          loading={loading}
+        />
+        <StatCard
+          title="Scanner"
+          value={data?.scanner_events ?? 0}
+          icon={Radar}
+          color="red"
+          loading={loading}
+        />
+        <StatCard
+          title="Policy Matched"
+          value={data?.policy_events ?? 0}
+          icon={ShieldCheck}
+          color="emerald"
           loading={loading}
         />
         <StatCard
@@ -378,6 +420,18 @@ export default function OverviewDashboard() {
                     <linearGradient id="gradIpsumBlocked" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gradHoneypot" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gradScanner" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gradPolicy" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
@@ -434,6 +488,30 @@ export default function OverviewDashboard() {
                     fill="url(#gradBlocked)"
                     strokeWidth={2}
                   />
+                  <Area
+                    type="monotone"
+                    dataKey="honeypot"
+                    stroke="#f97316"
+                    fill="url(#gradHoneypot)"
+                    strokeWidth={2}
+                    name="Honeypot"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="scanner"
+                    stroke="#ef4444"
+                    fill="url(#gradScanner)"
+                    strokeWidth={2}
+                    name="Scanner"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="policy"
+                    stroke="#10b981"
+                    fill="url(#gradPolicy)"
+                    strokeWidth={2}
+                    name="Policy"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -443,8 +521,8 @@ export default function OverviewDashboard() {
         {/* Blocked vs Logged Donut — 1/3 */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Blocked vs Logged</CardTitle>
-            <CardDescription>Event action breakdown</CardDescription>
+            <CardTitle className="text-sm">Action Breakdown</CardTitle>
+            <CardDescription>Events by action type</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center">
             {loading ? (
@@ -463,45 +541,28 @@ export default function OverviewDashboard() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {donutData.map((_, idx) => (
+                      {donutData.map((entry, idx) => (
                         <Cell
                           key={`cell-${idx}`}
-                          fill={DONUT_COLORS[idx % DONUT_COLORS.length]}
+                          fill={DONUT_COLOR_MAP[entry.name] ?? "#7a8baa"}
                         />
                       ))}
                     </Pie>
                     <Tooltip {...chartTooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-2.5 rounded-full bg-neon-pink" />
-                    <span className="text-muted-foreground">
-                      Blocked ({data?.blocked.toLocaleString()})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-2.5 rounded-full bg-neon-green" />
-                    <span className="text-muted-foreground">
-                      Logged ({data?.logged.toLocaleString()})
-                    </span>
-                  </div>
-                  {(data?.rate_limited ?? 0) > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-2.5 w-2.5 rounded-full bg-neon-amber" />
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                  {donutData.map((entry) => (
+                    <div key={entry.name} className="flex items-center gap-1.5">
+                      <div
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: DONUT_COLOR_MAP[entry.name] ?? "#7a8baa" }}
+                      />
                       <span className="text-muted-foreground">
-                        Rate Limited ({data?.rate_limited.toLocaleString()})
+                        {entry.name} ({entry.value.toLocaleString()})
                       </span>
                     </div>
-                  )}
-                  {(data?.ipsum_blocked ?? 0) > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-2.5 w-2.5 rounded-full bg-violet-400" />
-                      <span className="text-muted-foreground">
-                        IPsum ({data?.ipsum_blocked.toLocaleString()})
-                      </span>
-                    </div>
-                  )}
+                  ))}
                 </div>
               </>
             ) : (
@@ -568,6 +629,9 @@ export default function OverviewDashboard() {
                   <Bar dataKey="blocked" name="Blocked" fill="#ff006e" stackId="a" />
                   <Bar dataKey="rate_limited" name="Rate Limited" fill="#f59e0b" stackId="a" />
                   <Bar dataKey="ipsum_blocked" name="IPsum" fill="#a78bfa" stackId="a" />
+                  <Bar dataKey="honeypot" name="Honeypot" fill="#f97316" stackId="a" />
+                  <Bar dataKey="scanner" name="Scanner" fill="#ef4444" stackId="a" />
+                  <Bar dataKey="policy" name="Policy" fill="#10b981" stackId="a" />
                   <Bar dataKey="logged" name="Logged" fill="#00ff41" stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -597,7 +661,8 @@ export default function OverviewDashboard() {
                 <BarChart
                   data={(data?.top_clients ?? []).slice(0, 10).map((c) => ({
                     ...c,
-                    logged: Math.max(c.total - c.blocked - c.rate_limited - c.ipsum_blocked, 0),
+                    label: c.client_ip,
+                    logged: Math.max(c.total - c.blocked - c.rate_limited - c.ipsum_blocked - c.honeypot - c.scanner - c.policy, 0),
                   }))}
                   layout="vertical"
                   margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
@@ -617,14 +682,22 @@ export default function OverviewDashboard() {
                   />
                   <YAxis
                     type="category"
-                    dataKey="client_ip"
+                    dataKey="label"
                     stroke="#7a8baa"
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
                     width={110}
                   />
-                  <Tooltip {...chartTooltipStyle} />
+                  <Tooltip
+                    {...chartTooltipStyle}
+                    labelFormatter={(label: string) => {
+                      const client = (data?.top_clients ?? []).find((c) => c.client_ip === label);
+                      return client?.country && client.country !== "XX"
+                        ? `${label} (${client.country})`
+                        : label;
+                    }}
+                  />
                   <Legend
                     verticalAlign="top"
                     height={28}
@@ -635,6 +708,9 @@ export default function OverviewDashboard() {
                   <Bar dataKey="blocked" name="Blocked" fill="#ff006e" stackId="a" />
                   <Bar dataKey="rate_limited" name="Rate Limited" fill="#f59e0b" stackId="a" />
                   <Bar dataKey="ipsum_blocked" name="IPsum" fill="#a78bfa" stackId="a" />
+                  <Bar dataKey="honeypot" name="Honeypot" fill="#f97316" stackId="a" />
+                  <Bar dataKey="scanner" name="Scanner" fill="#ef4444" stackId="a" />
+                  <Bar dataKey="policy" name="Policy" fill="#10b981" stackId="a" />
                   <Bar dataKey="logged" name="Logged" fill="#00d4ff" stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -702,13 +778,33 @@ export default function OverviewDashboard() {
                       </TableCell>
                       <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
                       <TableCell>
-                        {evt.event_type === "ipsum_blocked" ? (
+                        {evt.event_type === "honeypot" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-500/50 text-orange-400">
+                            HONEYPOT
+                          </Badge>
+                        ) : evt.event_type === "scanner" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/50 text-red-400">
+                            SCANNER
+                          </Badge>
+                        ) : evt.event_type === "ipsum_blocked" ? (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/50 text-violet-400">
                             IPSUM
                           </Badge>
                         ) : evt.event_type === "rate_limited" ? (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-400">
                             RATE LIMITED
+                          </Badge>
+                        ) : evt.event_type === "policy_skip" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                            SKIPPED
+                          </Badge>
+                        ) : evt.event_type === "policy_allow" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/50 text-emerald-400">
+                            ALLOWED
+                          </Badge>
+                        ) : evt.event_type === "policy_block" ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/50 text-rose-400">
+                            POLICY BLOCK
                           </Badge>
                         ) : evt.event_type === "blocked" ? (
                           <Badge variant="destructive" className="text-[10px] px-1.5 py-0">

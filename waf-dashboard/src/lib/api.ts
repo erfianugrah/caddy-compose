@@ -8,11 +8,15 @@ export interface SummaryData {
   logged: number;
   rate_limited: number;
   ipsum_blocked: number;
+  policy_events: number;
+  honeypot_events: number;
+  scanner_events: number;
   unique_clients: number;
   unique_services: number;
   timeline: TimelinePoint[];
   top_services: ServiceStat[];
   top_clients: ClientStat[];
+  top_countries: CountryCount[];
   recent_events: WAFEvent[];
   service_breakdown: ServiceBreakdown[];
 }
@@ -24,6 +28,9 @@ export interface TimelinePoint {
   logged: number;
   rate_limited: number;
   ipsum_blocked: number;
+  honeypot: number;
+  scanner: number;
+  policy: number;
 }
 
 export interface ServiceStat {
@@ -31,15 +38,24 @@ export interface ServiceStat {
   total: number;
   blocked: number;
   logged: number;
+  rate_limited: number;
+  ipsum_blocked: number;
+  honeypot: number;
+  scanner: number;
+  policy: number;
   block_rate: number;
 }
 
 export interface ClientStat {
   client_ip: string;
+  country?: string;
   total: number;
   blocked: number;
   rate_limited: number;
   ipsum_blocked: number;
+  honeypot: number;
+  scanner: number;
+  policy: number;
 }
 
 export interface ServiceBreakdown {
@@ -49,11 +65,14 @@ export interface ServiceBreakdown {
   logged: number;
   rate_limited: number;
   ipsum_blocked: number;
+  honeypot: number;
+  scanner: number;
+  policy: number;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────
 
-export type EventType = "blocked" | "logged" | "rate_limited" | "ipsum_blocked";
+export type EventType = "blocked" | "logged" | "rate_limited" | "ipsum_blocked" | "policy_skip" | "policy_allow" | "policy_block" | "honeypot" | "scanner";
 
 export interface WAFEvent {
   id: string;
@@ -62,6 +81,7 @@ export interface WAFEvent {
   method: string;
   uri: string;
   client_ip: string;
+  country?: string;
   status: number;
   blocked: boolean;
   event_type: EventType;
@@ -119,6 +139,11 @@ export interface ServiceDetail {
   total_events: number;
   blocked: number;
   logged: number;
+  rate_limited: number;
+  ipsum_blocked: number;
+  honeypot: number;
+  scanner: number;
+  policy: number;
   block_rate: number;
   top_uris: { uri: string; count: number; blocked: number }[];
   top_rules: { rule_id: string; rule_msg: string; count: number }[];
@@ -132,18 +157,25 @@ export interface IPLookupData {
   last_seen: string;
   total_events: number;
   blocked_count: number;
-  services: { service: string; total: number; blocked: number }[];
+  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   timeline: TimelinePoint[];
   recent_events: WAFEvent[];
 }
 
 export interface TopBlockedIP {
   client_ip: string;
+  country?: string;
   total: number;
   blocked: number;
   block_rate: number;
   first_seen: string;
   last_seen: string;
+}
+
+export interface CountryCount {
+  country: string;
+  count: number;
+  blocked: number;
 }
 
 export interface TopTargetedURI {
@@ -417,13 +449,17 @@ interface RawSummary {
   logged_events: number;
   rate_limited: number;
   ipsum_blocked: number;
+  policy_events: number;
+  honeypot_events: number;
+  scanner_events: number;
   unique_clients: number;
   unique_services: number;
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number }[];
-  top_clients: { client: string; count: number; blocked: number; rate_limited: number; ipsum_blocked: number }[];
+  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
+  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
+  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
+  top_countries: { country: string; count: number; blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number }[];
+  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   recent_events: RawEvent[];
 }
 
@@ -449,6 +485,9 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
     logged: raw.logged_events ?? 0,
     rate_limited: raw.rate_limited ?? 0,
     ipsum_blocked: raw.ipsum_blocked ?? 0,
+    policy_events: raw.policy_events ?? 0,
+    honeypot_events: raw.honeypot_events ?? 0,
+    scanner_events: raw.scanner_events ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     timeline: (raw.events_by_hour ?? []).map((h) => ({
@@ -458,20 +497,37 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
       ipsum_blocked: h.ipsum_blocked ?? 0,
+      honeypot: h.honeypot ?? 0,
+      scanner: h.scanner ?? 0,
+      policy: h.policy ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,
       total: s.count ?? 0,
       blocked: s.blocked ?? 0,
       logged: s.logged ?? 0,
+      rate_limited: s.rate_limited ?? 0,
+      ipsum_blocked: s.ipsum_blocked ?? 0,
+      honeypot: s.honeypot ?? 0,
+      scanner: s.scanner ?? 0,
+      policy: s.policy ?? 0,
       block_rate: s.count > 0 ? (s.blocked / s.count) * 100 : 0,
     })),
     top_clients: (raw.top_clients ?? []).map((c) => ({
       client_ip: c.client,
+      country: c.country,
       total: c.count ?? 0,
       blocked: c.blocked ?? 0,
       rate_limited: c.rate_limited ?? 0,
       ipsum_blocked: c.ipsum_blocked ?? 0,
+      honeypot: c.honeypot ?? 0,
+      scanner: c.scanner ?? 0,
+      policy: c.policy ?? 0,
+    })),
+    top_countries: (raw.top_countries ?? []).map((c) => ({
+      country: c.country,
+      count: c.count ?? 0,
+      blocked: c.blocked ?? 0,
     })),
     recent_events: (raw.recent_events ?? []).map(mapEvent),
     service_breakdown: (raw.service_breakdown ?? []).map((s) => ({
@@ -481,6 +537,9 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       ipsum_blocked: s.ipsum_blocked ?? 0,
+      honeypot: s.honeypot ?? 0,
+      scanner: s.scanner ?? 0,
+      policy: s.policy ?? 0,
     })),
   };
 }
@@ -495,6 +554,7 @@ interface RawEvent {
   method: string;
   uri: string;
   client_ip: string;
+  country?: string;
   is_blocked: boolean;
   response_status: number;
   event_type?: string;
@@ -516,7 +576,8 @@ interface RawEvent {
 function mapEvent(raw: RawEvent): WAFEvent {
   // Derive event_type from the API field, falling back to is_blocked.
   let eventType: EventType = raw.is_blocked ? "blocked" : "logged";
-  if (raw.event_type === "rate_limited" || raw.event_type === "blocked" || raw.event_type === "logged" || raw.event_type === "ipsum_blocked") {
+  const validEventTypes: string[] = ["blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner"];
+  if (raw.event_type && validEventTypes.includes(raw.event_type)) {
     eventType = raw.event_type as EventType;
   }
 
@@ -527,6 +588,7 @@ function mapEvent(raw: RawEvent): WAFEvent {
     method: raw.method,
     uri: raw.uri,
     client_ip: raw.client_ip,
+    country: raw.country,
     status: raw.response_status ?? 0,
     blocked: raw.is_blocked ?? false,
     event_type: eventType,
@@ -607,10 +669,10 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 }
 
 // Services
-// Go API returns {"services":[{service, total, blocked, logged}]} — unwrap and compute derived fields.
+// Go API returns {"services":[{service, total, blocked, logged, ...}]} — unwrap and compute derived fields.
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
   const qs = hours ? `?hours=${hours}` : "";
-  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number }[] }>(
+  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[] }>(
     `${API_BASE}/services${qs}`
   );
   return (raw.services ?? []).map((s) => ({
@@ -618,6 +680,11 @@ export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
     total_events: s.total,
     blocked: s.blocked,
     logged: s.logged,
+    rate_limited: s.rate_limited ?? 0,
+    ipsum_blocked: s.ipsum_blocked ?? 0,
+    honeypot: s.honeypot ?? 0,
+    scanner: s.scanner ?? 0,
+    policy: s.policy ?? 0,
     block_rate: s.total > 0 ? (s.blocked / s.total) * 100 : 0,
     top_uris: [],
     top_rules: [],
@@ -631,14 +698,14 @@ export async function fetchServiceDetail(service: string): Promise<ServiceDetail
 }
 
 // IP Lookup
-// Go API returns {ip, total, blocked, first_seen, last_seen, services:[{service,total,blocked,logged}], events:[RawEvent]}
+// Go API returns {ip, total, blocked, first_seen, last_seen, services:[ServiceDetail], events:[RawEvent]}
 interface RawIPLookup {
   ip: string;
   total: number;
   blocked: number;
   first_seen: string | null;
   last_seen: string | null;
-  services: { service: string; total: number; blocked: number; logged: number }[];
+  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   events: RawEvent[];
 }
 
@@ -656,6 +723,12 @@ export async function lookupIP(ip: string): Promise<IPLookupData> {
       service: s.service,
       total: s.total,
       blocked: s.blocked,
+      logged: s.logged ?? 0,
+      rate_limited: s.rate_limited ?? 0,
+      ipsum_blocked: s.ipsum_blocked ?? 0,
+      honeypot: s.honeypot ?? 0,
+      scanner: s.scanner ?? 0,
+      policy: s.policy ?? 0,
     })),
     timeline: [],
     recent_events: (raw.events ?? []).slice(0, 20).map(mapEvent),
@@ -681,6 +754,15 @@ export async function fetchTopTargetedURIs(hours?: number): Promise<TopTargetedU
     return await fetchJSON<TopTargetedURI[]>(`${API_BASE}/analytics/top-uris${qs}`);
   } catch {
     // Endpoint not implemented yet — return empty
+    return [];
+  }
+}
+
+export async function fetchTopCountries(hours?: number): Promise<CountryCount[]> {
+  try {
+    const qs = hours ? `?hours=${hours}` : "";
+    return await fetchJSON<CountryCount[]>(`${API_BASE}/analytics/top-countries${qs}`);
+  } catch {
     return [];
   }
 }
@@ -918,4 +1000,22 @@ export async function getBlocklistStats(): Promise<BlocklistStats> {
 
 export async function checkBlocklistIP(ip: string): Promise<BlocklistCheckResult> {
   return fetchJSON<BlocklistCheckResult>(`${API_BASE}/blocklist/check/${encodeURIComponent(ip)}`);
+}
+
+export interface BlocklistRefreshResult {
+  status: string;
+  message: string;
+  blocked_ips: number;
+  min_score: number;
+  last_updated: string;
+  reloaded: boolean;
+}
+
+export async function refreshBlocklist(): Promise<BlocklistRefreshResult> {
+  const res = await fetch(`${API_BASE}/blocklist/refresh`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(body.message || body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
 }

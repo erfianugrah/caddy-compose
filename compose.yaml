@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:1.15.0-2.10.2
+    image: erfianugrah/caddy:1.22.0-2.10.2
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -113,7 +113,7 @@ services:
     build:
       context: .
       dockerfile: waf-api/Dockerfile
-    image: erfianugrah/waf-api:0.10.0
+    image: erfianugrah/waf-api:0.16.0
     hostname: waf-api
     container_name: waf-api
     restart: unless-stopped
@@ -158,6 +158,8 @@ services:
       - /mnt/user/data/caddy/rl:/data/rl
       # Caddyfile — read-only, needed for reload via admin API
       - /mnt/user/data/caddy/Caddyfile:/data/Caddyfile:ro
+      # GeoIP MMDB database (DB-IP Lite or MaxMind GeoLite2)
+      - /mnt/user/data/waf-api/geoip:/data/geoip:ro
     environment:
       - TZ=Asia/Singapore
       - WAF_AUDIT_LOG=/var/log/coraza-audit.log
@@ -169,6 +171,7 @@ services:
       - WAF_RATELIMIT_DIR=/data/rl
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
+      - WAF_GEOIP_DB=/data/geoip/country.mmdb
 
 networks:
   authelia:
