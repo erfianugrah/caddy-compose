@@ -36,7 +36,9 @@ Built locally, pushed to Docker Hub. Includes:
 Go stdlib sidecar (zero external dependencies). Provides:
 
 - WAF event log parsing and analytics (summary, timeline, top IPs/URIs, service breakdown)
-- Anomaly score extraction from rule 949110/980170 messages, with computed fallback from individual rule severities for DetectionOnly mode
+- Anomaly score extraction: inbound from rule 949110, outbound from rule 959100, correlation from 980170, with computed fallback from individual rule severities for DetectionOnly mode
+- Matched rules collection from audit log Part K (rule ID, message, severity, file, tags)
+- Request context extraction: headers, body, query args from audit log Parts B/C/I
 - 429 rate limit event parsing from combined access log (merged into unified event stream)
 - IPsum blocklist API: stats endpoint (IP count, last updated, source) and per-IP check endpoint with cached file parsing
 - Custom time range queries (`?start=&end=` ISO 8601 timestamps, or `?hours=` for relative)
@@ -146,13 +148,13 @@ When only included config files change (not the Caddyfile itself), Caddy's `/loa
 Accessible at `waf.erfi.io` (protected by Authelia `two_factor`).
 
 ### Pages
-- **Overview** — Timeline chart (stacked blocked/rate_limited/ipsum_blocked/logged), service breakdown donut, recent events (all types with badges), top clients/services with 4-color stacked bar charts (blocked pink, rate limited amber, ipsum violet, logged cyan/green) and legends. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
+- **Overview** — Timeline chart (independent overlapping areas for blocked/rate_limited/ipsum_blocked/logged — unstacked so smaller series remain visible at any scale), service breakdown donut, recent events (all types with badges), top clients/services with 4-color stacked bar charts (blocked pink, rate limited amber, ipsum violet, logged cyan/green) and legends. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
 - **Blocklist** — IPsum threat intelligence stats (blocked IP count, last updated, source, min score), IP check search (look up any IP against the blocklist)
-- **Events** — Paginated event table with unified WAF + 429 + IPsum event stream, event type filter (All/Blocked/Logged/Rate Limited/IPsum Blocked), type badges, anomaly score column (color-coded: cyan <10, amber 10-24, pink >=25), expandable detail rows (rule match for WAF events, rate limit details for 429s, ipsum info for blocklist blocks). Same time range picker
+- **Events** — Paginated event table with unified WAF + 429 + IPsum event stream, event type filter (All/Blocked/Logged/Rate Limited/IPsum Blocked), type badges, inbound/outbound anomaly score columns (color-coded: cyan <10, amber 10-24, pink >=25), expandable detail rows with collapsible sections (matched rules table with ID/message/severity/file, request headers, request body, query args), JSON export (single event, current page, or all events). "Create Exception" button pre-populates the Policy Engine with the event's rule IDs, URI, host, and client IP via sessionStorage. Same time range picker
 - **Services** — Per-service stats, top URIs, top triggered rules
 - **Investigate** — Top blocked IPs, top targeted URIs
 - **Policy Engine** — Three-tab rule builder:
-  - **Quick Actions** — Dynamic condition builder (field/operator/value with AND/OR logic) for Allow, Block, Skip/Bypass rules. Host field has service dropdown with "All Services" option + custom text input
+  - **Quick Actions** — Dynamic condition builder (field/operator/value with AND/OR logic) for Allow, Block, Skip/Bypass rules. Host field has service dropdown with "All Services" option + custom text input. Multi-tag rule ID input (RuleIdTagInput) with Enter/comma/space to add, Backspace to remove, paste multiple IDs, deduplication. CRS rule picker supports multi-select (toggle rules on/off in catalog). Supports event prefill from the Events page "Create Exception" button
   - **Advanced** — ModSecurity directive types (SecRuleRemoveById, ctl:ruleRemoveById, etc.) with condition builder for runtime types
   - **Raw Editor** — CodeMirror 6 with ModSecurity syntax highlighting and CRS autocomplete
 - **Rate Limits** — Per-zone rate limit configuration, enable/disable zones, deploy pipeline
@@ -197,13 +199,13 @@ caddy-compose/
     entrypoint.sh        # Container entrypoint (crond + caddy run)
     update-ipsum.sh      # Fetches IPsum blocklist, generates Caddy snippet, reloads
   waf-api/
-    main.go              # HTTP handlers and routes (summary/events/services with start/end support)
-    models.go            # Data models (Event with AnomalyScore, SummaryResponse with RateLimited/IpsumBlocked, BlocklistStats)
+    main.go              # HTTP handlers and routes (summary/events/services with start/end support, ?export=true for bulk JSON)
+    models.go            # Data models (Event with InboundScore/OutboundScore/BlockedBy/MatchedRules/RequestHeaders/RequestBody/RequestArgs, SummaryResponse, BlocklistStats)
     blocklist.go         # IPsum blocklist file parser, cached stats + IP check handlers
     config.go            # WAF config store (file-backed persistence, old format migration)
     exclusions.go        # Exclusion store, validation, UUIDv4/v7 generators
     generator.go         # SecRuleEngine emission, condition -> SecRule generation (AND=chain, OR=separate), All Services wildcard
-    logparser.go         # Coraza audit log parser (JSON, rule match extraction, anomaly score computation, SnapshotRange)
+    logparser.go         # Coraza audit log parser (JSON, Part K matched rules, Part B/C/I request context, inbound/outbound anomaly score, BlockedBy classification, SnapshotRange)
     rl_analytics.go      # Combined access log parser for 429/ipsum events, UUIDv7 event IDs
     deploy.go            # Deploy pipeline (write conf files, SecRuleEngine placeholder, SHA-256 fingerprint, reload Caddy)
     ratelimit.go         # Rate limit zone config store + .caddy file generation
@@ -215,10 +217,10 @@ caddy-compose/
     src/
       components/
         TimeRangePicker.tsx    # Grafana-style: quick ranges, custom from/to, auto-refresh
-        PolicyEngine.tsx       # Three-tab policy builder (Quick/Advanced/Raw), controlled tabs, HostValueInput
+        PolicyEngine.tsx       # Three-tab policy builder (Quick/Advanced/Raw), RuleIdTagInput, CRSRulePicker multi-select, event prefill from sessionStorage
         SecRuleEditor.tsx      # CodeMirror 6 with ModSecurity syntax highlighting
-        EventsTable.tsx        # Unified WAF+429+ipsum events, type filter/badges, anomaly score column, expandable detail
-        OverviewDashboard.tsx  # Timeline, service breakdown, recent events, 4-color stacked charts
+        EventsTable.tsx        # Unified WAF+429+ipsum events, type filter/badges, inbound/outbound scores, matched rules, request context, JSON export, "Create Exception" prefill
+        OverviewDashboard.tsx  # Timeline (unstacked areas), service breakdown, recent events, 4-color bar charts
         AnalyticsDashboard.tsx # Top IPs, top URIs charts (renamed to "Investigate")
         BlocklistPanel.tsx     # IPsum blocklist stats + IP check search
         RateLimitsPanel.tsx    # Rate limit zone config management
