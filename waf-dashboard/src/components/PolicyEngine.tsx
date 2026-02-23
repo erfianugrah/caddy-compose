@@ -740,20 +740,34 @@ function QuickActionsForm({
   prefill?: EventPrefill | null;
   onPrefillConsumed?: () => void;
 }) {
-  const [actionType, setActionType] = useState<QuickActionType>(prefill?.action ?? "allow");
-  const [name, setName] = useState(prefill?.name ?? "");
-  const [description, setDescription] = useState(prefill?.description ?? "");
-  const [conditions, setConditions] = useState<Condition[]>(
-    prefill?.conditions && prefill.conditions.length > 0
-      ? prefill.conditions
-      : [{ field: "ip", operator: "ip_match", value: "" }]
-  );
+  const [actionType, setActionType] = useState<QuickActionType>("allow");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [conditions, setConditions] = useState<Condition[]>([
+    { field: "ip", operator: "ip_match", value: "" },
+  ]);
   const [groupOp, setGroupOp] = useState<GroupOperator>("and");
-  const [ruleId, setRuleId] = useState(prefill?.ruleIds ?? "");
+  const [ruleId, setRuleId] = useState("");
   const [ruleTag, setRuleTag] = useState("");
-  const [skipMode, setSkipMode] = useState<"id" | "tag">(prefill?.ruleIds ? "id" : "id");
+  const [skipMode, setSkipMode] = useState<"id" | "tag">("id");
   const [enabled, setEnabled] = useState(true);
-  const [showPrefillBanner, setShowPrefillBanner] = useState(!!prefill);
+  const [showPrefillBanner, setShowPrefillBanner] = useState(false);
+
+  // Apply prefill when it arrives (async from useEffect in parent)
+  useEffect(() => {
+    if (!prefill) return;
+    setActionType(prefill.action);
+    setName(prefill.name);
+    setDescription(prefill.description);
+    if (prefill.conditions && prefill.conditions.length > 0) {
+      setConditions(prefill.conditions);
+    }
+    if (prefill.ruleIds) {
+      setRuleId(prefill.ruleIds);
+      setSkipMode("id");
+    }
+    setShowPrefillBanner(true);
+  }, [prefill]);
 
   const resetForm = () => {
     setName("");
@@ -1437,8 +1451,13 @@ export default function PolicyEngine() {
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Event prefill — consumed once on mount from sessionStorage
-  const [eventPrefill, setEventPrefill] = useState<EventPrefill | null>(() => consumePrefillEvent());
+  // Event prefill — consumed once on mount from sessionStorage.
+  // Must use useEffect (not useState initializer) to avoid SSR hydration mismatch.
+  const [eventPrefill, setEventPrefill] = useState<EventPrefill | null>(null);
+  useEffect(() => {
+    const prefill = consumePrefillEvent();
+    if (prefill) setEventPrefill(prefill);
+  }, []);
 
   const loadData = useCallback(() => {
     setLoading(true);
