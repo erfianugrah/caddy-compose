@@ -121,7 +121,7 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 - Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
 - One cohesive module per `.go` file (logparser, generator, deploy, config, exclusions, geoip, blocklist, etc.)
 - All data models in `models.go`; most HTTP handlers in `main.go`, domain-specific handlers co-located with their store (e.g. `blocklist.go` has `handleBlocklistStats`, `handleBlocklistRefresh`)
-- `geoip.go` — pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser
+- `geoip.go` — pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser, online API fallback (configurable via `WAF_GEOIP_API_URL`)
 - `blocklist.go` — IPsum blocklist file parser with `# Updated:` comment extraction and mtime fallback, cached stats/check, on-demand refresh (download + filter + atomic write + Caddy reload)
 
 ## Coraza Rule ID Namespaces
@@ -129,7 +129,7 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 When adding custom SecRules, use the correct ID range:
 - `9100001–9100006` — pre-CRS rules (baked in `coraza/pre-crs.conf`)
 - `9100010–9100019` — post-CRS custom detection rules (baked in `coraza/post-crs.conf`)
-- `9100020–9100029` — honeypot path rules (baked in `coraza/post-crs.conf`, paths in `coraza/honeypot-paths.txt`)
+- `9100020–9100029` — honeypot path rules (`9100020` static in `coraza/post-crs.conf`; `9100021` dynamic via Policy Engine honeypot type)
 - `9100030–9100039` — heuristic bot signal rules (baked in `coraza/pre-crs.conf`, scanner UAs in `coraza/scanner-useragents.txt`)
 - `9100050–9100059` — GeoIP blocking rules (reserved; country blocking uses Policy Engine `95xxxxx` IDs via `REQUEST_HEADERS:Cf-Ipcountry`)
 - `95xxxxx` — generated exclusion rules (from Policy Engine, `generator.go`)
@@ -142,6 +142,44 @@ When adding custom SecRules, use the correct ID range:
 - Mode: `enabled` (blocking), Paranoia level: `1`
 - Inbound anomaly threshold: `5`, Outbound: `4`
 - Per-service overrides stored in `WAFConfig.Services` map
+
+## Policy Engine Exclusion Types
+
+| Type | Action | Notes |
+|------|--------|-------|
+| `allow` | `ctl:ruleEngine=Off` | Full WAF bypass for matching requests |
+| `block` | `deny,status:403` | Deny matching requests |
+| `skip_rule` | `ctl:ruleRemoveById` / `ByTag` | Skip specific CRS rules |
+| `honeypot` | `deny,status:403` (consolidated `@pm`) | Dynamic honeypot path groups; all paths merged into one rule ID `9100021` |
+| `raw` | Verbatim SecRule | Free-form SecRule directive |
+| `remove_by_id`, `remove_by_tag` | Post-CRS removal | Configure-time exclusions |
+| `update_target_by_id`, `update_target_by_tag` | Post-CRS target update | Exclude specific variables |
+| `runtime_remove_*` | Pre-CRS `ctl:` actions | Conditional runtime exclusions |
+
+### Condition Fields
+
+| Field | SecRule Variable | Operators |
+|-------|-----------------|-----------|
+| `ip` | `REMOTE_ADDR` | `eq`, `neq`, `ip_match`, `not_ip_match` |
+| `path` | `REQUEST_URI` | `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex`, `in` |
+| `host` | `SERVER_NAME` | `eq`, `neq`, `contains` |
+| `method` | `REQUEST_METHOD` | `eq`, `neq`, `in` |
+| `user_agent` | `REQUEST_HEADERS:User-Agent` | `eq`, `contains`, `regex` |
+| `header` | `REQUEST_HEADERS:<Name>` | `eq`, `contains`, `regex` |
+| `query` | `QUERY_STRING` | `contains`, `regex` |
+| `country` | `REQUEST_HEADERS:Cf-Ipcountry` | `eq`, `neq`, `in` |
+
+### GeoIP Three-tier Resolution
+
+```
+Priority 1: Cf-Ipcountry header (free, zero latency, present when behind CF)
+Priority 2: Local MMDB database lookup (sub-microsecond, offline)
+Priority 3: Online API fallback (configurable via WAF_GEOIP_API_URL)
+```
+
+The online API supports IPinfo.io, ip-api.com, and similar services. Results are
+cached in the shared 24h/100k in-memory cache. Supports `%s` URL placeholder for
+IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
 ## Code Style — TypeScript/React (waf-dashboard/)
 
