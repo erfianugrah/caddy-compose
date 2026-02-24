@@ -667,9 +667,9 @@ cdn.erfi.io {
 	encode zstd gzip
 
 	# S3 API / bucket proxy — bypass Authelia, bucket policies control access
-	# Console — protected behind Authelia
+	# Console — protected behind Authelia, strip /console prefix for port 9001
 	route {
-		@s3_api not path /console/*
+		@s3_api not path /console /console/*
 		reverse_proxy @s3_api 172.70.0.2:9000 {
 			import proxy_headers
 		}
@@ -679,6 +679,7 @@ cdn.erfi.io {
 			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 		}
 
+		uri strip_prefix /console
 		reverse_proxy 172.70.0.2:9001 {
 			import proxy_headers
 		}
