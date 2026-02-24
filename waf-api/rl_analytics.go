@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -204,54 +205,55 @@ func (s *AccessLogStore) Load() {
 	}
 
 	var newEvents []RateLimitEvent
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	reader := bufio.NewReaderSize(f, 64*1024)
+	// Use ReadBytes instead of Scanner — no line length limit, consistent
+	// with the audit log reader. Access log lines are typically small but
+	// this avoids a latent stall risk if a line ever exceeds 1MB.
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			line = bytes.TrimSpace(line)
+		}
+		if len(line) > 0 {
+			var entry AccessLogEntry
+			if jsonErr := json.Unmarshal(line, &entry); jsonErr == nil {
+				// Collect 429 (rate limited) and ipsum-blocked (403 + X-Blocked-By: ipsum) responses.
+				isRateLimit := entry.Status == 429
+				isIpsum := entry.Status == 403 && isIpsumBlocked(entry.RespHeaders)
+				if isRateLimit || isIpsum {
+					ts := parseTimestamp(entry.Ts)
+					ua := ""
+					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
+						ua = vals[0]
+					}
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+					evt := RateLimitEvent{
+						Timestamp: ts,
+						ClientIP:  entry.Request.ClientIP,
+						Service:   entry.Request.Host,
+						Method:    entry.Request.Method,
+						URI:       entry.Request.URI,
+						UserAgent: ua,
+					}
+					if isIpsum {
+						evt.Source = "ipsum"
+					}
+					// Enrich with country from Cf-Ipcountry header or MMDB lookup.
+					if s.geoIP != nil {
+						cfCountry := headerValue(entry.Request.Headers, "Cf-Ipcountry")
+						evt.Country = s.geoIP.Resolve(entry.Request.ClientIP, cfCountry)
+					}
+					newEvents = append(newEvents, evt)
+				}
+			}
+			// skip malformed lines silently — high volume log
 		}
-
-		var entry AccessLogEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			continue // skip malformed lines silently — high volume log
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("error reading combined access log: %v", err)
+			}
+			break
 		}
-
-		// Collect 429 (rate limited) and ipsum-blocked (403 + X-Blocked-By: ipsum) responses.
-		isRateLimit := entry.Status == 429
-		isIpsum := entry.Status == 403 && isIpsumBlocked(entry.RespHeaders)
-		if !isRateLimit && !isIpsum {
-			continue
-		}
-
-		ts := parseTimestamp(entry.Ts)
-		ua := ""
-		if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
-			ua = vals[0]
-		}
-
-		evt := RateLimitEvent{
-			Timestamp: ts,
-			ClientIP:  entry.Request.ClientIP,
-			Service:   entry.Request.Host,
-			Method:    entry.Request.Method,
-			URI:       entry.Request.URI,
-			UserAgent: ua,
-		}
-		if isIpsum {
-			evt.Source = "ipsum"
-		}
-		// Enrich with country from Cf-Ipcountry header or MMDB lookup.
-		if s.geoIP != nil {
-			cfCountry := headerValue(entry.Request.Headers, "Cf-Ipcountry")
-			evt.Country = s.geoIP.Resolve(entry.Request.ClientIP, cfCountry)
-		}
-		newEvents = append(newEvents, evt)
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Printf("error scanning combined access log: %v", err)
 	}
 
 	newOffset, err := f.Seek(0, io.SeekCurrent)
