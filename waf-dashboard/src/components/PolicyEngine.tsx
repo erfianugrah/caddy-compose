@@ -1432,8 +1432,8 @@ function HoneypotForm({ onSubmit }: { onSubmit: (data: ExclusionCreateData) => v
           with 403 and tagged as honeypot events. Matched via substring (Aho-Corasick).
         </p>
         <p className="mt-1">
-          Static honeypot paths are baked into the image. Dynamic paths added here are
-          merged and deployed alongside them.
+          All honeypot paths are managed here. Paths are consolidated into a single
+          high-performance rule and deployed to the WAF.
         </p>
       </div>
 
