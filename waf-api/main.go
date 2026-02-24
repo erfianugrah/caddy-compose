@@ -69,6 +69,7 @@ func main() {
 	geoStore := NewGeoIPStore(geoDBPath, geoAPICfg)
 
 	store := NewStore(logPath)
+	store.SetOffsetFile(envOr("WAF_AUDIT_OFFSET_FILE", "/data/.audit-log-offset"))
 	store.SetMaxAge(maxAge)
 	store.SetGeoIP(geoStore)
 	store.StartTailing(tailInterval)
@@ -149,7 +150,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 150 * time.Second, // Must exceed Caddy reload client timeout (120s)
 		IdleTimeout:  60 * time.Second,
 	}
 

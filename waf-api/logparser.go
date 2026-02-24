@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -19,8 +20,9 @@ type Store struct {
 	events []Event
 
 	// file tailing state
-	path   string
-	offset int64
+	path       string
+	offset     int64
+	offsetFile string // persistent offset file (empty = don't persist)
 
 	// maxAge is the maximum age of events to retain. Events older than this
 	// are evicted during each Load() call. Zero means no eviction.
@@ -32,6 +34,32 @@ type Store struct {
 
 func NewStore(path string) *Store {
 	return &Store{path: path}
+}
+
+// SetOffsetFile configures a file path to persist the audit log read offset
+// across restarts. Without this, the entire log is re-parsed on each startup.
+func (s *Store) SetOffsetFile(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.offsetFile = path
+	// Restore offset from disk.
+	if data, err := os.ReadFile(path); err == nil {
+		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
+			s.offset = v
+			log.Printf("restored audit log offset %d from %s", v, path)
+		}
+	}
+}
+
+// saveOffset writes the current offset to the persistent offset file (if configured).
+func (s *Store) saveOffset() {
+	if s.offsetFile == "" {
+		return
+	}
+	data := []byte(strconv.FormatInt(s.offset, 10) + "\n")
+	if err := os.WriteFile(s.offsetFile, data, 0644); err != nil {
+		log.Printf("error saving audit log offset to %s: %v", s.offsetFile, err)
+	}
 }
 
 // SetGeoIP configures the GeoIP store for country enrichment of events.
@@ -71,6 +99,7 @@ func (s *Store) Load() {
 	if info.Size() < s.offset {
 		log.Printf("audit log appears rotated (size %d < offset %d), re-reading from start", info.Size(), s.offset)
 		s.offset = 0
+		s.saveOffset()
 		s.mu.Lock()
 		s.events = nil
 		s.mu.Unlock()
@@ -89,32 +118,37 @@ func (s *Store) Load() {
 	}
 
 	var newEvents []Event
-	scanner := bufio.NewScanner(f)
-	// Allow large lines (up to 1MB).
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+	reader := bufio.NewReaderSize(f, 64*1024)
+	// Use ReadBytes instead of Scanner — no line length limit.
+	// Coraza audit log entries can be arbitrarily large: request bodies up to
+	// SecRequestBodyLimit (13MB), headers, and CRS rules with full regex in
+	// the "raw" field. Scanner's fixed buffer would permanently stall on
+	// oversized lines; ReadBytes just grows the buffer as needed.
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			line = bytes.TrimSpace(line)
 		}
-
-		var entry AuditLogEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			log.Printf("skipping malformed log line: %v", err)
-			continue
+		if len(line) > 0 {
+			var entry AuditLogEntry
+			if jsonErr := json.Unmarshal(line, &entry); jsonErr != nil {
+				log.Printf("skipping malformed log line: %v", jsonErr)
+			} else {
+				ev := parseEvent(entry)
+				// Enrich with country from Cf-Ipcountry header or MMDB lookup.
+				if s.geoIP != nil {
+					cfCountry := headerValue(entry.Transaction.Request.Headers, "Cf-Ipcountry")
+					ev.Country = s.geoIP.Resolve(ev.ClientIP, cfCountry)
+				}
+				newEvents = append(newEvents, ev)
+			}
 		}
-
-		ev := parseEvent(entry)
-		// Enrich with country from Cf-Ipcountry header or MMDB lookup.
-		if s.geoIP != nil {
-			cfCountry := headerValue(entry.Transaction.Request.Headers, "Cf-Ipcountry")
-			ev.Country = s.geoIP.Resolve(ev.ClientIP, cfCountry)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("error reading audit log: %v", err)
+			}
+			break
 		}
-		newEvents = append(newEvents, ev)
-	}
-	if err := scanner.Err(); err != nil {
-		log.Printf("error scanning audit log: %v", err)
 	}
 
 	// Update offset to current position.
@@ -123,6 +157,7 @@ func (s *Store) Load() {
 		log.Printf("error getting file offset: %v", err)
 	} else {
 		s.offset = newOffset
+		s.saveOffset()
 	}
 
 	if len(newEvents) > 0 {

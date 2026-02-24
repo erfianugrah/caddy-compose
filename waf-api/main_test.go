@@ -103,6 +103,96 @@ func TestStoreFileRotation(t *testing.T) {
 	}
 }
 
+func TestStoreOffsetPersistence(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	offsetPath := filepath.Join(dir, "offset")
+
+	// Write 3 lines.
+	f, _ := os.Create(logPath)
+	for _, l := range sampleLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	// First store: read all events, offset is persisted.
+	store1 := NewStore(logPath)
+	store1.SetOffsetFile(offsetPath)
+	store1.Load()
+	if got := store1.EventCount(); got != 3 {
+		t.Fatalf("store1: expected 3 events, got %d", got)
+	}
+
+	// Verify offset file was written.
+	data, err := os.ReadFile(offsetPath)
+	if err != nil {
+		t.Fatalf("offset file not created: %v", err)
+	}
+	savedOffset := strings.TrimSpace(string(data))
+	if savedOffset == "" || savedOffset == "0" {
+		t.Fatalf("offset file should contain non-zero offset, got %q", savedOffset)
+	}
+
+	// Second store: restores offset from disk, reads nothing new.
+	store2 := NewStore(logPath)
+	store2.SetOffsetFile(offsetPath)
+	store2.Load()
+	if got := store2.EventCount(); got != 0 {
+		t.Fatalf("store2: expected 0 events (offset restored), got %d", got)
+	}
+
+	// Append one more line.
+	f, _ = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
+	f.WriteString(sampleLines[0] + "\n")
+	f.Close()
+
+	// Second store picks up only the new line.
+	store2.Load()
+	if got := store2.EventCount(); got != 1 {
+		t.Fatalf("store2: expected 1 new event after append, got %d", got)
+	}
+}
+
+func TestStoreOffsetPersistenceRotation(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	offsetPath := filepath.Join(dir, "offset")
+
+	// Write 3 lines.
+	f, _ := os.Create(logPath)
+	for _, l := range sampleLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewStore(logPath)
+	store.SetOffsetFile(offsetPath)
+	store.Load()
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3, got %d", got)
+	}
+
+	// Simulate rotation: truncate and write 1 line.
+	f, _ = os.Create(logPath)
+	f.WriteString(sampleLines[0] + "\n")
+	f.Close()
+
+	store.Load()
+	if got := store.EventCount(); got != 1 {
+		t.Fatalf("expected 1 after rotation, got %d", got)
+	}
+
+	// Offset file should be updated (non-zero, but smaller than before).
+	data, err := os.ReadFile(offsetPath)
+	if err != nil {
+		t.Fatalf("offset file missing after rotation: %v", err)
+	}
+	savedOffset := strings.TrimSpace(string(data))
+	if savedOffset == "" {
+		t.Fatalf("offset file should not be empty after rotation")
+	}
+}
+
 func TestSummary(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
