@@ -572,48 +572,55 @@ function MethodMultiSelect({
     const next = selected.includes(method)
       ? selected.filter((m) => m !== method)
       : [...selected, method];
-    // Preserve canonical order
     const ordered = HTTP_METHODS.filter((m) => next.includes(m));
     onChange(ordered.join("|"));
   };
 
-  const label =
-    selected.length === 0
-      ? "Select methods..."
-      : selected.length <= 3
-        ? selected.join(", ")
-        : `${selected.length} methods`;
+  const remove = (method: string) => {
+    const next = selected.filter((m) => m !== method);
+    onChange(next.join("|"));
+  };
+
+  const unselected = HTTP_METHODS.filter((m) => !selected.includes(m));
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="flex-1 justify-between font-normal"
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-within:ring-1 focus-within:ring-ring min-h-[36px] flex-1">
+      {selected.map((method) => (
+        <span
+          key={method}
+          className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
         >
-          <span className="truncate text-sm">{label}</span>
-          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-2" align="start">
-        {HTTP_METHODS.map((method) => (
-          <label
-            key={method}
-            className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent"
+          {method}
+          <button
+            onClick={() => remove(method)}
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
           >
-            <input
-              type="checkbox"
-              checked={selected.includes(method)}
-              onChange={() => toggle(method)}
-              className="h-4 w-4 rounded border-border accent-neon-cyan"
-            />
-            <span className="font-mono text-xs">{method}</span>
-          </label>
-        ))}
-      </PopoverContent>
-    </Popover>
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </span>
+      ))}
+      {unselected.length > 0 && (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent">
+              <Plus className="h-3 w-3" />
+              {selected.length === 0 ? "Select methods" : "Add"}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[160px] p-1" align="start">
+            {unselected.map((method) => (
+              <button
+                key={method}
+                onClick={() => { toggle(method); if (unselected.length <= 1) setOpen(false); }}
+                className="flex w-full items-center rounded px-2 py-1.5 text-xs font-mono cursor-pointer hover:bg-accent"
+              >
+                {method}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
+    </div>
   );
 }
 
