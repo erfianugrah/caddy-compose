@@ -243,14 +243,19 @@ func conditionOperator(c Condition) (string, bool) {
 
 // conditionValue extracts the value to match.
 // For named fields (header, cookie, args, response_header), strips the "name:" prefix.
+// For "in" operator, converts pipe-separated values to space-separated for @pm.
 func conditionValue(c Condition) string {
+	v := c.Value
 	switch c.Field {
 	case "header", "cookie", "args", "response_header":
-		if idx := strings.Index(c.Value, ":"); idx > 0 {
-			return strings.TrimSpace(c.Value[idx+1:])
+		if idx := strings.Index(v, ":"); idx > 0 {
+			v = strings.TrimSpace(v[idx+1:])
 		}
 	}
-	return c.Value
+	if c.Operator == "in" {
+		v = strings.ReplaceAll(v, "|", " ")
+	}
+	return v
 }
 
 // formatSecRuleOperator builds the full operator string like "@streq /path" or "!@ipMatch 1.2.3.4".

@@ -436,6 +436,27 @@ func (s *AccessLogStore) EventCount() int {
 	return len(s.events)
 }
 
+// Stats returns health-check information about the access log store.
+func (s *AccessLogStore) Stats() map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	stats := map[string]any{
+		"events":     len(s.events),
+		"log_file":   s.path,
+		"offset":     s.offset,
+		"max_age":    s.maxAge.String(),
+		"event_file": s.eventFile,
+	}
+	if fi, err := os.Stat(s.path); err == nil {
+		stats["log_size"] = fi.Size()
+	}
+	if len(s.events) > 0 {
+		stats["oldest_event"] = s.events[0].Timestamp
+		stats["newest_event"] = s.events[len(s.events)-1].Timestamp
+	}
+	return stats
+}
+
 // snapshotSince returns a copy of events within the given hours window (0 = all).
 func (s *AccessLogStore) snapshotSince(hours int) []RateLimitEvent {
 	s.mu.RLock()

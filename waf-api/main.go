@@ -14,6 +14,12 @@ import (
 	"time"
 )
 
+// Version is the waf-api release version, shown in /api/health.
+const Version = "0.19.0"
+
+// startTime records when the process started, used for uptime calculation.
+var startTime = time.Now()
+
 func main() {
 	logPath := envOr("WAF_AUDIT_LOG", "/var/log/coraza-audit.log")
 	port := envOr("WAF_API_PORT", "8080")
@@ -97,7 +103,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, geoStore, exclusionStore, blocklistStore))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
@@ -305,8 +311,30 @@ func getRLEvents(als *AccessLogStore, tr timeRange, hours int) []Event {
 
 // --- Handlers: Event endpoints ---
 
-func handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok"})
+func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		uptime := time.Since(startTime).Truncate(time.Second)
+
+		stores := map[string]any{
+			"waf_events":    store.Stats(),
+			"access_events": als.Stats(),
+			"geoip": map[string]any{
+				"mmdb_loaded": geoStore.HasDB(),
+				"api_enabled": geoStore.HasAPI(),
+			},
+			"exclusions": map[string]any{
+				"count": len(exclusionStore.List()),
+			},
+			"blocklist": blocklistStore.Stats(),
+		}
+
+		writeJSON(w, http.StatusOK, HealthResponse{
+			Status:  "ok",
+			Version: Version,
+			Uptime:  uptime.String(),
+			Stores:  stores,
+		})
+	}
 }
 
 func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {

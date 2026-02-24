@@ -296,7 +296,10 @@ type ServicesResponse struct {
 }
 
 type HealthResponse struct {
-	Status string `json:"status"`
+	Status  string         `json:"status"`
+	Version string         `json:"version"`
+	Uptime  string         `json:"uptime"`
+	Stores  map[string]any `json:"stores"`
 }
 
 // IP Lookup response

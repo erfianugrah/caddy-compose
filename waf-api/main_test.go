@@ -608,10 +608,22 @@ func TestHeaderValueExtraction(t *testing.T) {
 
 // --- HTTP handler tests ---
 
+// testHealthHandler returns a handleHealth closure with minimal test stores.
+func testHealthHandler(t *testing.T) http.HandlerFunc {
+	t.Helper()
+	store := NewStore(filepath.Join(t.TempDir(), "audit.log"))
+	als := NewAccessLogStore(filepath.Join(t.TempDir(), "access.log"))
+	geoStore := NewGeoIPStore(filepath.Join(t.TempDir(), "nonexistent.mmdb"), nil)
+	exclStore := NewExclusionStore(filepath.Join(t.TempDir(), "excl.json"))
+	blStore := NewBlocklistStore(filepath.Join(t.TempDir(), "ipsum.caddy"))
+	return handleHealth(store, als, geoStore, exclStore, blStore)
+}
+
 func TestHealthEndpoint(t *testing.T) {
+	handler := testHealthHandler(t)
 	req := httptest.NewRequest("GET", "/api/health", nil)
 	w := httptest.NewRecorder()
-	handleHealth(w, req)
+	handler(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -620,7 +632,22 @@ func TestHealthEndpoint(t *testing.T) {
 	var resp HealthResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp.Status != "ok" {
-		t.Errorf("want ok, got %s", resp.Status)
+		t.Errorf("status: want ok, got %s", resp.Status)
+	}
+	if resp.Version != Version {
+		t.Errorf("version: want %s, got %s", Version, resp.Version)
+	}
+	if resp.Uptime == "" {
+		t.Error("uptime should not be empty")
+	}
+	if resp.Stores == nil {
+		t.Fatal("stores should not be nil")
+	}
+	// Verify subsystem keys exist.
+	for _, key := range []string{"waf_events", "access_events", "geoip", "exclusions", "blocklist"} {
+		if _, ok := resp.Stores[key]; !ok {
+			t.Errorf("stores missing key %q", key)
+		}
 	}
 }
 
@@ -681,7 +708,7 @@ func TestEventsEndpointWithFilters(t *testing.T) {
 
 func TestCORSHeadersWildcard(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/health", testHealthHandler(t))
 	handler := newCORSMiddleware([]string{"*"})(mux)
 
 	req := httptest.NewRequest("GET", "/api/health", nil)
@@ -702,7 +729,7 @@ func TestCORSHeadersWildcard(t *testing.T) {
 
 func TestCORSHeadersAllowedOrigin(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/health", testHealthHandler(t))
 	handler := newCORSMiddleware([]string{"https://waf.erfi.io", "https://dash.erfi.io"})(mux)
 
 	// Allowed origin.
@@ -731,7 +758,7 @@ func TestCORSHeadersAllowedOrigin(t *testing.T) {
 
 func TestCORSPreflightAllowed(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/health", testHealthHandler(t))
 	handler := newCORSMiddleware([]string{"https://waf.erfi.io"})(mux)
 
 	req := httptest.NewRequest("OPTIONS", "/api/health", nil)
@@ -746,7 +773,7 @@ func TestCORSPreflightAllowed(t *testing.T) {
 
 func TestCORSPreflightRejected(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/health", testHealthHandler(t))
 	handler := newCORSMiddleware([]string{"https://waf.erfi.io"})(mux)
 
 	req := httptest.NewRequest("OPTIONS", "/api/health", nil)
@@ -761,7 +788,7 @@ func TestCORSPreflightRejected(t *testing.T) {
 
 func TestCORSPreflightWildcard(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/health", testHealthHandler(t))
 	handler := newCORSMiddleware([]string{"*"})(mux)
 
 	req := httptest.NewRequest("OPTIONS", "/api/health", nil)
@@ -2269,9 +2296,9 @@ func TestGenerateWithMultiMethodFilter(t *testing.T) {
 
 	result := GenerateConfigs(cfg, exclusions)
 
-	// Multiple methods should use @pm
-	if !strings.Contains(result.PreCRS, `@pm POST|PUT`) {
-		t.Error("pre-crs should use @pm for multiple methods")
+	// Multiple methods should use @pm with space-separated values (not pipe-separated)
+	if !strings.Contains(result.PreCRS, `@pm POST PUT`) {
+		t.Errorf("pre-crs should use @pm with space-separated methods, got:\n%s", result.PreCRS)
 	}
 	if !strings.Contains(result.PreCRS, "chain") {
 		t.Error("pre-crs should contain chain action")
@@ -6995,24 +7022,29 @@ func TestParseEvent_PolicyEventType(t *testing.T) {
 	// with a "Policy ..." msg, parseEvent should set the correct event_type.
 
 	tests := []struct {
-		name     string
-		ruleID   int
-		msg      string
-		wantType string
+		name          string
+		ruleID        int
+		msg           string
+		isInterrupted bool
+		wantType      string
 	}{
-		{"policy skip", 9500001, "Policy Skip: Skip 920420", "policy_skip"},
-		{"policy allow", 9500002, "Policy Allow: Allow my IP", "policy_allow"},
-		{"policy block", 9500003, "Policy Block: Block bad actor", "policy_block"},
-		{"normal CRS rule", 932235, "Remote Command Execution", "logged"},
-		{"blocked CRS rule (needs IsInterrupted)", 932235, "Remote Command Execution", "logged"},
+		{"policy skip", 9500001, "Policy Skip: Skip 920420", false, "policy_skip"},
+		{"policy allow", 9500002, "Policy Allow: Allow my IP", false, "policy_allow"},
+		{"policy block", 9500003, "Policy Block: Block bad actor", true, "policy_block"},
+		{"normal CRS rule", 932235, "Remote Command Execution", false, "logged"},
+		{"blocked CRS rule (needs IsInterrupted)", 932235, "Remote Command Execution", false, "logged"},
+		// Skip rule fired but request was still blocked by other CRS rules.
+		// Should classify as "blocked", not "policy_skip".
+		{"policy skip still blocked", 9500001, "Policy Skip: Skip 920420", true, "blocked"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			entry := AuditLogEntry{
 				Transaction: Transaction{
-					Timestamp: "2026-01-01T00:00:00Z",
-					ID:        "test-" + tt.name,
+					Timestamp:     "2026-01-01T00:00:00Z",
+					ID:            "test-" + tt.name,
+					IsInterrupted: tt.isInterrupted,
 				},
 				Messages: []AuditMessage{
 					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},

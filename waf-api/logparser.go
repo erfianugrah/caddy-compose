@@ -392,7 +392,14 @@ func parseEvent(entry AuditLogEntry) Event {
 			if strings.HasPrefix(msg, "Policy Allow:") {
 				candidateType = "policy_allow"
 			} else if strings.HasPrefix(msg, "Policy Skip:") {
-				candidateType = "policy_skip"
+				// A skip_rule exclusion fired, but the request may still be
+				// blocked by other CRS rules the skip didn't cover. Only
+				// classify as "policy_skip" if the request was NOT interrupted.
+				if !tx.IsInterrupted {
+					candidateType = "policy_skip"
+				}
+				// If still interrupted, leave candidateType empty so the
+				// default "blocked" classification from line 378 is preserved.
 			} else if strings.HasPrefix(msg, "Policy Block:") {
 				candidateType = "policy_block"
 			}
@@ -658,6 +665,29 @@ func (s *Store) EventCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.events)
+}
+
+// Stats returns health-check information about the audit log store.
+func (s *Store) Stats() map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	stats := map[string]any{
+		"events":     len(s.events),
+		"log_file":   s.path,
+		"offset":     s.offset,
+		"max_age":    s.maxAge.String(),
+		"event_file": s.eventFile,
+	}
+	// Log file size for comparison with offset.
+	if fi, err := os.Stat(s.path); err == nil {
+		stats["log_size"] = fi.Size()
+	}
+	// Oldest / newest event timestamps.
+	if len(s.events) > 0 {
+		stats["oldest_event"] = s.events[0].Timestamp
+		stats["newest_event"] = s.events[len(s.events)-1].Timestamp
+	}
+	return stats
 }
 
 // StartTailing loads once immediately, then reloads every interval.
