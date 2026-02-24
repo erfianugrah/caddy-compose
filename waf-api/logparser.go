@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -105,9 +106,13 @@ func (s *Store) Load() {
 		s.mu.Unlock()
 	}
 
-	if info.Size() == s.offset {
+	bytesToRead := info.Size() - s.offset
+	if bytesToRead == 0 {
 		return // nothing new
 	}
+
+	log.Printf("audit log: parsing %s from offset %d (%s to read)",
+		s.path, s.offset, formatBytes(bytesToRead))
 
 	// Seek to where we left off.
 	if s.offset > 0 {
@@ -118,6 +123,10 @@ func (s *Store) Load() {
 	}
 
 	var newEvents []Event
+	var linesRead, linesSkipped int
+	var bytesRead int64
+	startTime := time.Now()
+	lastProgress := startTime
 	reader := bufio.NewReaderSize(f, 64*1024)
 	// Use ReadBytes instead of Scanner — no line length limit.
 	// Coraza audit log entries can be arbitrarily large: request bodies up to
@@ -126,13 +135,18 @@ func (s *Store) Load() {
 	// oversized lines; ReadBytes just grows the buffer as needed.
 	for {
 		line, err := reader.ReadBytes('\n')
+		bytesRead += int64(len(line))
 		if len(line) > 0 {
 			line = bytes.TrimSpace(line)
 		}
 		if len(line) > 0 {
+			linesRead++
 			var entry AuditLogEntry
 			if jsonErr := json.Unmarshal(line, &entry); jsonErr != nil {
-				log.Printf("skipping malformed log line: %v", jsonErr)
+				linesSkipped++
+				if linesSkipped <= 5 {
+					log.Printf("skipping malformed log line: %v", jsonErr)
+				}
 			} else {
 				ev := parseEvent(entry)
 				// Enrich with country from Cf-Ipcountry header or MMDB lookup.
@@ -149,7 +163,18 @@ func (s *Store) Load() {
 			}
 			break
 		}
+
+		// Progress logging every 10s for large parses.
+		if now := time.Now(); now.Sub(lastProgress) >= 10*time.Second {
+			pct := float64(bytesRead) / float64(bytesToRead) * 100
+			log.Printf("audit log: %.1f%% (%s / %s) — %d events parsed, %s elapsed",
+				pct, formatBytes(bytesRead), formatBytes(bytesToRead),
+				len(newEvents), now.Sub(startTime).Truncate(time.Second))
+			lastProgress = now
+		}
 	}
+
+	elapsed := time.Since(startTime).Truncate(time.Millisecond)
 
 	// Update offset to current position.
 	newOffset, err := f.Seek(0, io.SeekCurrent)
@@ -164,7 +189,11 @@ func (s *Store) Load() {
 		s.mu.Lock()
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
-		log.Printf("loaded %d new events (%d total)", len(newEvents), s.EventCount())
+		log.Printf("audit log: loaded %d new events (%d total) from %d lines (%d skipped) in %s",
+			len(newEvents), s.EventCount(), linesRead, linesSkipped, elapsed)
+	} else if linesRead > 0 {
+		log.Printf("audit log: parsed %d lines (0 new events, %d skipped) in %s",
+			linesRead, linesSkipped, elapsed)
 	}
 
 	// Evict events older than maxAge.
@@ -1125,6 +1154,25 @@ func (s *Store) TopTargetedURIs(hours, n int) []TopTargetedURI {
 }
 
 // --- helpers ---
+
+// formatBytes formats a byte count as a human-readable string (e.g. "2.7 GB").
+func formatBytes(b int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+	switch {
+	case b >= GB:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(GB))
+	case b >= MB:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(MB))
+	case b >= KB:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
 
 // topN is a generic helper that converts a map into a sorted top-N slice.
 func topN[T any](m map[string]int, n int, conv func(string, int) T) []T {
