@@ -399,6 +399,168 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/p
   --data '{"purge_everything":true}'
 ```
 
+## Adding a new site block
+
+Since Caddy runs with `network_mode: host`, it can reach any container by its static bridge IP. All backends must be on a Docker bridge network with a known IP.
+
+### 1. Add the subdomain to dynamic DNS
+
+In the Caddyfile global block, add the subdomain name to the `domains` list:
+
+```
+dynamic_dns {
+    domains {
+        erfi.io ... myservice
+    }
+}
+```
+
+### 2. Choose a site block pattern
+
+There are three patterns depending on whether the service needs authentication and whether some paths should be excluded.
+
+#### Pattern A: Simple proxy (no Authelia)
+
+For public services or services with their own auth. Example: `authelia.erfi.io`
+
+```
+myservice.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/myservice_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy <IP>:<PORT> {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log myservice
+}
+```
+
+#### Pattern B: Full Authelia protection
+
+For services where every request must pass through Authelia. Example: `change.erfi.io`
+
+```
+myservice.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import forward_auth
+	import /data/caddy/rl/myservice_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy <IP>:<PORT> {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log myservice
+}
+```
+
+#### Pattern C: Mixed auth (some paths excluded)
+
+For services where certain paths bypass Authelia (e.g. APIs with their own auth, public endpoints). Uses `route` to control evaluation order. Example: `servarr.erfi.io`, `cdn.erfi.io`
+
+```
+myservice.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/myservice_rl*.caddy
+	import tls_config
+	encode zstd gzip
+
+	route {
+		# Public/self-authed paths — bypass Authelia
+		@public path /api/* /webhooks/*
+		reverse_proxy @public <IP>:<PORT> {
+			import proxy_headers
+		}
+
+		# Everything else — Authelia forward auth
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+
+		reverse_proxy <IP>:<PORT> {
+			import proxy_headers
+		}
+	}
+	import error_pages
+	import site_log myservice
+}
+```
+
+The `route` directive ensures directives run in written order (top to bottom). Matching requests hit the first `reverse_proxy` and stop — they never reach `forward_auth`. Non-matching requests fall through to auth, then to the second `reverse_proxy`.
+
+To exclude by negation instead (auth on specific paths only), use `not`:
+
+```
+@public not path /admin/* /console/*
+reverse_proxy @public <IP>:<PORT> { ... }
+```
+
+### 3. Snippet reference
+
+Every site block should include these snippets in order:
+
+| Snippet | Required | Purpose |
+|---------|----------|---------|
+| `import cors` | recommended | CORS preflight handling |
+| `import security_headers` | **yes** | HSTS, CSP, nosniff, etc. |
+| `import static_cache` | recommended | Cache-Control for fonts, images, CSS, JS, media |
+| `import ipsum_blocklist` | **yes** | Block known-malicious IPs |
+| `import waf` | **yes** (or `waf_off`) | Coraza WAF with OWASP CRS |
+| `import forward_auth` | if authed | Authelia forward authentication |
+| `import /data/caddy/rl/<name>_rl*.caddy` | **yes** | Rate limiting (no-op if no file exists) |
+| `import tls_config` | **yes** | ACME DNS challenge via Cloudflare |
+| `encode zstd gzip` | recommended | Response compression |
+| `import error_pages` | **yes** | Custom error page templates |
+| `import site_log <name>` | **yes** | Per-site JSON access log + combined log |
+
+### 4. Rate limiting
+
+Rate limit zone files are managed by waf-api. On boot, waf-api scans the Caddyfile and creates placeholder `.caddy` files for any new zone names it finds. No manual rate limit config is needed to add a new site — the glob `import /data/caddy/rl/<name>_rl*.caddy` is a no-op until a rate limit is configured via the waf dashboard.
+
+### 5. Example: cdn.erfi.io (MinIO)
+
+Uses Pattern C — S3 API is public (bucket policies control access), console is behind Authelia:
+
+```
+cdn.erfi.io {
+	...
+	route {
+		@s3_api not path /console/*
+		reverse_proxy @s3_api 172.70.0.2:9000 {
+			import proxy_headers
+		}
+
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+
+		reverse_proxy 172.70.0.2:9001 {
+			import proxy_headers
+		}
+	}
+	...
+}
+```
+
+- `https://cdn.erfi.io/<bucket>/<key>` — public object access (no auth)
+- `https://cdn.erfi.io/console/` — MinIO web console (Authelia protected)
+
 ## TODO
 
 - [ ] SMTP notifier for Authelia (replace filesystem notifier)

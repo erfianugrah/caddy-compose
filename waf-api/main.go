@@ -124,7 +124,7 @@ func main() {
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, deployCfg))
 
 	// Rate Limits
 	mux.HandleFunc("GET /api/rate-limits", handleGetRateLimits(rateLimitStore))
@@ -138,7 +138,7 @@ func main() {
 	// Blocklist (IPsum)
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
-	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, deployCfg))
+	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rateLimitStore, deployCfg))
 
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
@@ -916,7 +916,7 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		exclusions := es.EnabledExclusions()
@@ -932,6 +932,9 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) h
 			})
 			return
 		}
+
+		// Ensure any new Caddyfile zones have rate limit files before reload.
+		syncCaddyfileZones(rs, deployCfg)
 
 		// Reload Caddy via admin API.
 		// Pass the config file paths so reloadCaddy can fingerprint them and
@@ -998,6 +1001,11 @@ func handleUpdateRateLimits(rs *RateLimitStore) http.HandlerFunc {
 
 func handleDeployRateLimits(rs *RateLimitStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		// Discover any new zones from the Caddyfile before writing files.
+		// Use MergeCaddyfileZones directly (not syncCaddyfileZones) because
+		// writeZoneFiles below already writes all zones in one pass.
+		rs.MergeCaddyfileZones(deployCfg.CaddyfilePath)
+
 		cfg := rs.Get()
 
 		// Write zone files to the shared volume.

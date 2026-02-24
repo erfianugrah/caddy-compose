@@ -128,8 +128,9 @@ deploy-all: build push scp pull restart ## Full deploy: build + push + SCP + res
 deploy: deploy-all ## Alias for deploy-all
 
 # ── Caddy operations ────────────────────────────────────────────────
-caddy-reload: ## Reload Caddy config on remote
-	$(EXEC_CMD) caddy caddy reload --config /etc/caddy/Caddyfile
+caddy-reload: ## SCP Caddyfile, sync rate limit zones, reload Caddy
+	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
+	$(EXEC_CMD) waf-api wget -qO- http://localhost:8080/api/rate-limits/deploy --post-data=""
 
 # ── WAF operations (via waf-api on remote) ──────────────────────────
 waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)

@@ -666,19 +666,21 @@ cdn.erfi.io {
 	import tls_config
 	encode zstd gzip
 
-	# MinIO Console — protected behind Authelia
-	handle_path /console/* {
-		import forward_auth
-		reverse_proxy 172.70.0.2:9001 {
+	# S3 API / bucket proxy — bypass Authelia, bucket policies control access
+	# Console — protected behind Authelia
+	route {
+		@s3_api not path /console/*
+		reverse_proxy @s3_api 172.70.0.2:9000 {
 			import proxy_headers
 		}
-	}
 
-	# S3 API / bucket proxy — public read access (bucket policy controls auth)
-	handle {
-		reverse_proxy 172.70.0.2:9000 {
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+
+		reverse_proxy 172.70.0.2:9001 {
 			import proxy_headers
-			header_up Host {upstream_hostport}
 		}
 	}
 	import error_pages

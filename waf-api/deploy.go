@@ -90,11 +90,9 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, dep
 			len(exclusions), cfg.Defaults.Mode, cfg.Defaults.ParanoiaLevel)
 	}
 
-	// Rate limit zones: merge any new zones discovered from the Caddyfile,
-	// then write zone files for all configured zones.
-	if added := rs.MergeCaddyfileZones(deployCfg.CaddyfilePath); added > 0 {
-		log.Printf("[boot] discovered %d new zone(s) from Caddyfile", added)
-	}
+	// Rate limit zones: discover new zones from the Caddyfile (merge only),
+	// then write zone files for all configured zones in one pass.
+	rs.MergeCaddyfileZones(deployCfg.CaddyfilePath)
 
 	rlCfg := rs.Get()
 	if len(rlCfg.Zones) > 0 {

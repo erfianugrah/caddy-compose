@@ -261,6 +261,24 @@ func scanCaddyfileZones(caddyfilePath string) []string {
 	return prefixes
 }
 
+// syncCaddyfileZones discovers new zones from the Caddyfile and writes zone
+// files for any that were added. This should be called before every Caddy
+// reload to ensure zone files exist for all Caddyfile-referenced imports.
+// Returns the number of new zones discovered.
+func syncCaddyfileZones(rs *RateLimitStore, deployCfg DeployConfig) int {
+	added := rs.MergeCaddyfileZones(deployCfg.CaddyfilePath)
+	if added > 0 {
+		// Write zone files only for the newly added zones — existing zones
+		// already have files from boot or prior deploys. But it's simpler
+		// and safe to write all zones (idempotent).
+		cfg := rs.Get()
+		if _, err := writeZoneFiles(deployCfg.RateLimitDir, cfg.Zones); err != nil {
+			log.Printf("warning: failed to write zone files after Caddyfile sync: %v", err)
+		}
+	}
+	return added
+}
+
 // MergeCaddyfileZones scans the Caddyfile for rate limit import globs and
 // adds any missing zones to the store with sensible defaults. This makes
 // the Caddyfile the source of truth for which zones exist — no hardcoded

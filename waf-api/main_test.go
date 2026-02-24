@@ -2678,8 +2678,10 @@ func TestDeployEndpoint(t *testing.T) {
 		Enabled: true,
 	})
 
+	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, deployCfg))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
 	rec := httptest.NewRecorder()
@@ -2731,9 +2733,10 @@ func TestDeployEndpointReloadFail(t *testing.T) {
 
 	es := NewExclusionStore(filepath.Join(t.TempDir(), "exclusions.json"))
 	cs := NewConfigStore(filepath.Join(t.TempDir(), "config.json"))
+	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, deployCfg))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
 	rec := httptest.NewRecorder()
@@ -5102,7 +5105,8 @@ func TestBlocklistRefreshEndpoint(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/blocklist/refresh", nil)
 	w := httptest.NewRecorder()
-	handleBlocklistRefresh(bs, deployCfg)(w, req)
+	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	handleBlocklistRefresh(bs, rs, deployCfg)(w, req)
 
 	// The handler calls the real IPsum URL, so in CI this might fail.
 	// We just verify the handler doesn't panic and returns valid JSON.
@@ -5472,6 +5476,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	// Create stores.
 	exclusionStore := newTestExclusionStore(t)
 	configStore := newTestConfigStore(t)
+	rateLimitStore := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	// Register all handlers on a mux (same as main()).
 	mux := http.NewServeMux()
@@ -5479,7 +5484,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	mux.HandleFunc("GET /api/exclusions", handleListExclusions(exclusionStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, deployCfg))
 
 	// Step 1: Create a "block bad IP" exclusion.
 	exclusionJSON := `{
@@ -5626,11 +5631,12 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 
 	exclusionStore := newTestExclusionStore(t)
 	configStore := newTestConfigStore(t)
+	rateLimitStore := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	// Change settings to detection_only with paranoia 3.
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, deployCfg))
 
 	configJSON := `{
 		"defaults": {
@@ -5705,11 +5711,12 @@ func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
 
 	exclusionStore := newTestExclusionStore(t)
 	configStore := newTestConfigStore(t)
+	rateLimitStore := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy",
 		nil)
 	w := httptest.NewRecorder()
-	handleDeploy(configStore, exclusionStore, deployCfg)(w, req)
+	handleDeploy(configStore, exclusionStore, rateLimitStore, deployCfg)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("deploy should return 200 even when reload fails, got %d", w.Code)
