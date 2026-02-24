@@ -497,6 +497,60 @@ func TestStoreEventFileEmpty(t *testing.T) {
 	}
 }
 
+func TestStoreEventFileMigratesMisclassifiedPolicySkip(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+	os.Create(logPath)
+
+	// Write JSONL with a misclassified event: policy_skip but is_blocked=true.
+	ef, _ := os.Create(eventPath)
+	ef.WriteString(`{"id":"MIS1","timestamp":"2026-02-22T10:00:00Z","client_ip":"1.1.1.1","service":"test.erfi.io","method":"POST","uri":"/upload","is_blocked":true,"response_status":403,"event_type":"policy_skip"}` + "\n")
+	// Correctly classified: policy_skip and NOT blocked.
+	ef.WriteString(`{"id":"OK1","timestamp":"2026-02-22T10:01:00Z","client_ip":"2.2.2.2","service":"test.erfi.io","method":"GET","uri":"/page","is_blocked":false,"response_status":200,"event_type":"policy_skip"}` + "\n")
+	// Normal blocked event — should not be touched.
+	ef.WriteString(`{"id":"OK2","timestamp":"2026-02-22T10:02:00Z","client_ip":"3.3.3.3","service":"test.erfi.io","method":"GET","uri":"/.env","is_blocked":true,"response_status":403,"event_type":"blocked"}` + "\n")
+	ef.Close()
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3 events, got %d", got)
+	}
+
+	events := store.Snapshot()
+	for _, ev := range events {
+		switch ev.ID {
+		case "MIS1":
+			if ev.EventType != "blocked" {
+				t.Errorf("MIS1: want event_type=blocked after migration, got %s", ev.EventType)
+			}
+		case "OK1":
+			if ev.EventType != "policy_skip" {
+				t.Errorf("OK1: should remain policy_skip, got %s", ev.EventType)
+			}
+		case "OK2":
+			if ev.EventType != "blocked" {
+				t.Errorf("OK2: should remain blocked, got %s", ev.EventType)
+			}
+		}
+	}
+
+	// Verify the compacted JSONL file also has the fix.
+	// Give the goroutine a moment to compact.
+	time.Sleep(100 * time.Millisecond)
+	restored, err := loadEventsFromJSONL(eventPath)
+	if err != nil {
+		t.Fatalf("error reading compacted JSONL: %v", err)
+	}
+	for _, ev := range restored {
+		if ev.ID == "MIS1" && ev.EventType != "blocked" {
+			t.Errorf("MIS1 in compacted JSONL: want blocked, got %s", ev.EventType)
+		}
+	}
+}
+
 func TestSummary(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)

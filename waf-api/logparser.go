@@ -83,8 +83,23 @@ func (s *Store) SetEventFile(path string) {
 		}
 		return
 	}
+	// Migrate: fix misclassified events where a skip_rule fired but the
+	// request was still blocked by other CRS rules. Before the fix, these
+	// were labelled "policy_skip" despite being interrupted (is_blocked=true).
+	migrated := 0
+	for i := range events {
+		if events[i].EventType == "policy_skip" && events[i].IsBlocked {
+			events[i].EventType = "blocked"
+			migrated++
+		}
+	}
+
 	s.events = events
 	log.Printf("restored %d events from %s", len(events), path)
+	if migrated > 0 {
+		log.Printf("migrated %d misclassified policy_skip→blocked events", migrated)
+		go s.compactEventFile()
+	}
 }
 
 // appendEventsToJSONL appends events to the JSONL file, stripping large fields.
