@@ -456,31 +456,6 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   );
 }
 
-function ConditionChip({
-  label,
-  value,
-  onRemove,
-}: {
-  label: string;
-  value: string;
-  onRemove?: () => void;
-}) {
-  return (
-    <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-navy-950 px-2.5 py-1 text-xs">
-      <span className="text-muted-foreground">{label}:</span>
-      <span className="font-medium text-neon-cyan">{value}</span>
-      {onRemove && (
-        <button
-          onClick={onRemove}
-          className="ml-0.5 rounded-full p-0.5 hover:bg-accent"
-        >
-          <X className="h-3 w-3 text-muted-foreground hover:text-neon-pink" />
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ─── CRS Rule Picker (searchable dropdown) ──────────────────────────
 
 /** Parse a space-separated rule ID string into an array of individual IDs. */
@@ -1207,13 +1182,20 @@ function AdvancedBuilderForm({
   const handleTypeChange = (v: string) => {
     const newType = v as ExclusionType;
     const willNeedConditions = isRuntimeType(newType) || ["allow", "block", "skip_rule"].includes(newType);
+    const willNeedRuleId = isById(newType) || newType === "skip_rule";
+    const willNeedRuleTag = isByTag(newType) || newType === "skip_rule";
+    const willNeedVariable = isTargetType(newType);
     const hadConditions = form.conditions.length > 0;
     setForm((prev) => ({
       ...prev,
       type: newType,
-      conditions: willNeedConditions && !hadConditions
-        ? [{ field: "path", operator: "eq", value: "" }]
-        : prev.conditions,
+      // Clear fields that the new type doesn't use
+      rule_id: willNeedRuleId ? prev.rule_id : "",
+      rule_tag: willNeedRuleTag ? prev.rule_tag : "",
+      variable: willNeedVariable ? prev.variable : "",
+      conditions: willNeedConditions
+        ? (hadConditions ? prev.conditions : [{ field: "path", operator: "eq", value: "" }])
+        : [],
     }));
   };
 
@@ -1636,10 +1618,14 @@ function conditionsSummary(excl: Exclusion): string {
   if (excl.type === "raw" && excl.raw_rule) {
     return excl.raw_rule.length > 50 ? excl.raw_rule.slice(0, 50) + "..." : excl.raw_rule;
   }
-  // For configure-time types without conditions, show rule_id or rule_tag
-  if (excl.rule_id) return `Rule ${excl.rule_id}`;
-  if (excl.rule_tag) return `Tag: ${excl.rule_tag}`;
-  // Show conditions summary
+
+  // Build composite summary: rule scope + variable + conditions
+  const segments: string[] = [];
+
+  if (excl.rule_id) segments.push(`Rule ${excl.rule_id}`);
+  if (excl.rule_tag) segments.push(`Tag: ${excl.rule_tag}`);
+  if (excl.variable) segments.push(`Var: ${excl.variable}`);
+
   if (excl.conditions && excl.conditions.length > 0) {
     const parts = excl.conditions.map((c) => {
       const fieldLabel = CONDITION_FIELDS.find((f) => f.value === c.field)?.label ?? c.field;
@@ -1649,10 +1635,12 @@ function conditionsSummary(excl: Exclusion): string {
       return `${fieldLabel} ${opLabel} ${val}`;
     });
     const joiner = excl.group_operator === "or" ? " OR " : " AND ";
-    const joined = parts.join(joiner);
-    return joined.length > 80 ? joined.slice(0, 80) + "..." : joined;
+    segments.push(parts.join(joiner));
   }
-  return "-";
+
+  if (segments.length === 0) return "-";
+  const joined = segments.join(" · ");
+  return joined.length > 100 ? joined.slice(0, 100) + "..." : joined;
 }
 
 function exclusionTypeLabel(type: ExclusionType): string {
@@ -1662,6 +1650,16 @@ function exclusionTypeLabel(type: ExclusionType): string {
     case "skip_rule": return "Skip";
     case "honeypot": return "Honeypot";
     case "raw": return "Raw";
+    // Configure-time
+    case "SecRuleRemoveById": return "Remove Rule";
+    case "SecRuleRemoveByTag": return "Remove Tag";
+    case "SecRuleUpdateTargetById": return "Excl. Var (Rule)";
+    case "SecRuleUpdateTargetByTag": return "Excl. Var (Tag)";
+    // Runtime
+    case "ctl:ruleRemoveById": return "RT Remove Rule";
+    case "ctl:ruleRemoveByTag": return "RT Remove Tag";
+    case "ctl:ruleRemoveTargetById": return "RT Excl. Var (Rule)";
+    case "ctl:ruleRemoveTargetByTag": return "RT Excl. Var (Tag)";
     default: return type;
   }
 }
@@ -1672,6 +1670,18 @@ function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "outline" |
     case "block": return "destructive";
     case "honeypot": return "destructive";
     case "skip_rule": return "secondary";
+    // Configure-time types
+    case "SecRuleRemoveById":
+    case "SecRuleRemoveByTag":
+    case "SecRuleUpdateTargetById":
+    case "SecRuleUpdateTargetByTag":
+      return "outline";
+    // Runtime types
+    case "ctl:ruleRemoveById":
+    case "ctl:ruleRemoveByTag":
+    case "ctl:ruleRemoveTargetById":
+    case "ctl:ruleRemoveTargetByTag":
+      return "secondary";
     default: return "outline";
   }
 }
