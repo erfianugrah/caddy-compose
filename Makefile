@@ -33,6 +33,7 @@ DEPLOY_MODE ?= dockge
 STACK_PATH     ?= /opt/stacks/caddy/compose.yaml
 CADDYFILE_DEST ?= /mnt/user/data/caddy/Caddyfile
 COMPOSE_DEST   ?= /mnt/user/data/dockge/stacks/caddy/compose.yaml
+AUTHELIA_DEST  ?= /mnt/user/data/authelia/config
 
 # For dockge mode only — the container name running dockge.
 DOCKGE_CONTAINER ?= dockge
@@ -51,7 +52,7 @@ else
 endif
 
 .PHONY: help build build-caddy build-waf-api push push-caddy push-waf-api \
-        deploy deploy-caddy deploy-waf-api deploy-all scp pull restart \
+        deploy deploy-caddy deploy-waf-api deploy-all scp scp-authelia authelia-notification pull restart restart-force \
         test test-go test-frontend status logs caddy-reload waf-deploy waf-config config
 
 help: ## Show this help
@@ -102,11 +103,21 @@ scp: ## SCP Caddyfile + compose.yaml to remote
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
 	scp compose.yaml $(REMOTE):$(COMPOSE_DEST)
 
+scp-authelia: ## SCP Authelia config + users database to remote
+	scp authelia/configuration.yml $(REMOTE):$(AUTHELIA_DEST)/configuration.yml
+	scp authelia/users_database.yml $(REMOTE):$(AUTHELIA_DEST)/users_database.yml
+
+authelia-notification: ## Fetch and display Authelia 2FA notification.txt from remote
+	@ssh $(REMOTE) "cat $(AUTHELIA_DEST)/notification.txt"
+
 pull: ## Pull images on remote
 	$(COMPOSE_CMD) pull
 
-restart: ## Restart stack on remote
+restart: ## Recreate containers on remote (picks up new images)
 	$(COMPOSE_CMD) up -d
+
+restart-force: ## Force restart all containers (re-reads bind-mounted configs)
+	$(COMPOSE_CMD) restart
 
 status: ## Show container status on remote
 	$(COMPOSE_CMD) ps
