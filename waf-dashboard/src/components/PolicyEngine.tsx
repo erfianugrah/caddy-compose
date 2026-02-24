@@ -66,6 +66,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   getExclusions,
   createExclusion,
   updateExclusion,
@@ -549,6 +554,145 @@ function RuleIdTagInput({
   );
 }
 
+// ─── HTTP Method Multi-Select (for method + in operator) ────────────
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+
+function MethodMultiSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? value.split("|").filter(Boolean) : [];
+
+  const toggle = (method: string) => {
+    const next = selected.includes(method)
+      ? selected.filter((m) => m !== method)
+      : [...selected, method];
+    // Preserve canonical order
+    const ordered = HTTP_METHODS.filter((m) => next.includes(m));
+    onChange(ordered.join("|"));
+  };
+
+  const label =
+    selected.length === 0
+      ? "Select methods..."
+      : selected.length <= 3
+        ? selected.join(", ")
+        : `${selected.length} methods`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="flex-1 justify-between font-normal"
+        >
+          <span className="truncate text-sm">{label}</span>
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-2" align="start">
+        {HTTP_METHODS.map((method) => (
+          <label
+            key={method}
+            className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent"
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(method)}
+              onChange={() => toggle(method)}
+              className="h-4 w-4 rounded border-border accent-neon-cyan"
+            />
+            <span className="font-mono text-xs">{method}</span>
+          </label>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Pipe-separated Tag Input (for in operator on other fields) ─────
+
+function PipeTagInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const tags = value ? value.split("|").filter(Boolean) : [];
+
+  const addTag = (raw: string) => {
+    const cleaned = raw.trim().replace(/[,|]/g, "");
+    if (!cleaned) return;
+    if (tags.includes(cleaned)) {
+      setInputValue("");
+      return;
+    }
+    onChange([...tags, cleaned].join("|"));
+    setInputValue("");
+  };
+
+  const removeTag = (tag: string) => {
+    onChange(tags.filter((t) => t !== tag).join("|"));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "," || e.key === "|") {
+      e.preventDefault();
+      addTag(inputValue);
+    } else if (e.key === "Backspace" && inputValue === "" && tags.length > 0) {
+      removeTag(tags[tags.length - 1]);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text");
+    const newTags = pasted.split(/[|,\s]+/).filter(Boolean);
+    const unique = [...new Set([...tags, ...newTags])];
+    onChange(unique.join("|"));
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-within:ring-1 focus-within:ring-ring min-h-[36px] flex-1">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
+        >
+          {tag}
+          <button
+            onClick={() => removeTag(tag)}
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onBlur={() => { if (inputValue.trim()) addTag(inputValue); }}
+        placeholder={tags.length === 0 ? (placeholder ?? "Type value and press Enter") : ""}
+        className="flex-1 min-w-[120px] bg-transparent text-xs font-mono outline-none placeholder:text-muted-foreground"
+      />
+    </div>
+  );
+}
+
 function CRSRulePicker({
   rules,
   categories,
@@ -784,12 +928,23 @@ function ConditionRow({
         </SelectContent>
       </Select>
 
-      {/* Value input — special case for host field (show service dropdown with custom option) */}
+      {/* Value input — specialized inputs for specific field/operator combos */}
       {condition.field === "host" ? (
         <HostValueInput
           value={condition.value}
           services={services}
           onChange={(v) => onChange(index, { ...condition, value: v })}
+        />
+      ) : condition.field === "method" && condition.operator === "in" ? (
+        <MethodMultiSelect
+          value={condition.value}
+          onChange={(v) => onChange(index, { ...condition, value: v })}
+        />
+      ) : condition.operator === "in" ? (
+        <PipeTagInput
+          value={condition.value}
+          onChange={(v) => onChange(index, { ...condition, value: v })}
+          placeholder={fieldDef.placeholder}
         />
       ) : (
         <Input
