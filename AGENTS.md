@@ -170,6 +170,18 @@ When adding custom SecRules, use the correct ID range:
 | `header` | `REQUEST_HEADERS:<Name>` | `eq`, `contains`, `regex` |
 | `query` | `QUERY_STRING` | `contains`, `regex` |
 | `country` | `REQUEST_HEADERS:Cf-Ipcountry` | `eq`, `neq`, `in` |
+| `cookie` | `REQUEST_COOKIES:<Name>` | `eq`, `neq`, `contains`, `regex` |
+| `body` | `REQUEST_BODY` | `contains`, `regex` |
+| `args` | `ARGS:<Name>` | `eq`, `neq`, `contains`, `regex` |
+| `uri_path` | `REQUEST_FILENAME` | `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex` |
+| `referer` | `REQUEST_HEADERS:Referer` | `eq`, `neq`, `contains`, `regex` |
+| `response_header` | `RESPONSE_HEADERS:<Name>` | `eq`, `contains`, `regex` |
+| `response_status` | `RESPONSE_STATUS` | `eq`, `neq`, `in` |
+| `http_version` | `REQUEST_PROTOCOL` | `eq`, `neq` |
+
+Named fields (`header`, `cookie`, `args`, `response_header`) use `Name:value` format
+in the value field — the name before `:` becomes the SecRule variable suffix, the
+value after `:` is the match target. Without `:`, the entire collection is matched.
 
 ### GeoIP Three-tier Resolution
 

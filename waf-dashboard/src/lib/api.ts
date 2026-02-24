@@ -244,7 +244,7 @@ export type ExclusionType =
   | "raw";
 
 // Condition fields and operators for the dynamic rule builder
-export type ConditionField = "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query" | "country";
+export type ConditionField = "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query" | "country" | "cookie" | "body" | "args" | "uri_path" | "referer" | "response_header" | "response_status" | "http_version";
 export type ConditionOperator = "eq" | "neq" | "contains" | "begins_with" | "ends_with" | "regex" | "ip_match" | "not_ip_match" | "in";
 export type GroupOperator = "and" | "or";
 

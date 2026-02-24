@@ -2360,6 +2360,19 @@ func TestValidateConditionFields(t *testing.T) {
 		{Field: "country", Operator: "eq", Value: "US"},
 		{Field: "country", Operator: "neq", Value: "CN"},
 		{Field: "country", Operator: "in", Value: "US GB DE"},
+		{Field: "cookie", Operator: "eq", Value: "session:abc"},
+		{Field: "cookie", Operator: "contains", Value: "token:xyz"},
+		{Field: "body", Operator: "contains", Value: "test"},
+		{Field: "body", Operator: "regex", Value: "password=.*"},
+		{Field: "args", Operator: "eq", Value: "action:test"},
+		{Field: "uri_path", Operator: "begins_with", Value: "/api/"},
+		{Field: "uri_path", Operator: "ends_with", Value: ".php"},
+		{Field: "referer", Operator: "contains", Value: "example.com"},
+		{Field: "response_header", Operator: "eq", Value: "X-Test:val"},
+		{Field: "response_status", Operator: "eq", Value: "200"},
+		{Field: "response_status", Operator: "in", Value: "200 301 404"},
+		{Field: "http_version", Operator: "eq", Value: "HTTP/1.1"},
+		{Field: "http_version", Operator: "neq", Value: "HTTP/1.0"},
 	}
 
 	for _, c := range validCases {
@@ -2797,6 +2810,285 @@ func TestGenerateSkipRuleByCountry(t *testing.T) {
 	}
 	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=920420") {
 		t.Error("expected ctl:ruleRemoveById for skip_rule action")
+	}
+}
+
+// --- New condition field tests (cookie, body, args, uri_path, referer, response_header, response_status, http_version) ---
+
+func TestValidateNewConditionFields(t *testing.T) {
+	validCases := []Condition{
+		{Field: "cookie", Operator: "eq", Value: "session:abc123"},
+		{Field: "cookie", Operator: "contains", Value: "authelia_session:random"},
+		{Field: "cookie", Operator: "regex", Value: "token:^[a-f0-9]+$"},
+		{Field: "cookie", Operator: "neq", Value: "debug:true"},
+		{Field: "body", Operator: "contains", Value: "<script>"},
+		{Field: "body", Operator: "regex", Value: "password=.*"},
+		{Field: "args", Operator: "eq", Value: "action:delete"},
+		{Field: "args", Operator: "contains", Value: "q:SELECT"},
+		{Field: "args", Operator: "regex", Value: "cmd:^ls\\s"},
+		{Field: "args", Operator: "neq", Value: "format:json"},
+		{Field: "uri_path", Operator: "eq", Value: "/api/v1/upload"},
+		{Field: "uri_path", Operator: "begins_with", Value: "/api/"},
+		{Field: "uri_path", Operator: "ends_with", Value: ".php"},
+		{Field: "uri_path", Operator: "contains", Value: "/admin/"},
+		{Field: "uri_path", Operator: "regex", Value: "^/api/v[0-9]+/"},
+		{Field: "uri_path", Operator: "neq", Value: "/health"},
+		{Field: "referer", Operator: "eq", Value: "https://example.com"},
+		{Field: "referer", Operator: "contains", Value: "example.com"},
+		{Field: "referer", Operator: "regex", Value: "^https://.*\\.erfi\\.io"},
+		{Field: "referer", Operator: "neq", Value: "https://bad.com"},
+		{Field: "response_header", Operator: "eq", Value: "Content-Type:application/json"},
+		{Field: "response_header", Operator: "contains", Value: "X-Custom:value"},
+		{Field: "response_header", Operator: "regex", Value: "Server:nginx.*"},
+		{Field: "response_status", Operator: "eq", Value: "403"},
+		{Field: "response_status", Operator: "neq", Value: "200"},
+		{Field: "response_status", Operator: "in", Value: "401 403 500"},
+		{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
+		{Field: "http_version", Operator: "neq", Value: "HTTP/2.0"},
+	}
+
+	for _, c := range validCases {
+		e := RuleExclusion{
+			Name:       "test",
+			Type:       "allow",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("condition %s/%s/%s should be valid, got: %v", c.Field, c.Operator, c.Value, err)
+		}
+	}
+
+	// Invalid: operator not supported for field
+	invalidCases := []Condition{
+		{Field: "cookie", Operator: "begins_with", Value: "name:val"},
+		{Field: "body", Operator: "eq", Value: "test"},
+		{Field: "args", Operator: "ip_match", Value: "name:val"},
+		{Field: "uri_path", Operator: "ip_match", Value: "/test"},
+		{Field: "referer", Operator: "in", Value: "a b c"},
+		{Field: "response_header", Operator: "neq", Value: "H:v"},
+		{Field: "response_status", Operator: "contains", Value: "40"},
+		{Field: "http_version", Operator: "contains", Value: "HTTP"},
+	}
+
+	for _, c := range invalidCases {
+		e := RuleExclusion{
+			Name:       "test",
+			Type:       "allow",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Errorf("condition %s/%s should be invalid, but passed", c.Field, c.Operator)
+		}
+	}
+}
+
+func TestGenerateBlockByCookie(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad cookie", Type: "block", Conditions: []Condition{
+			{Field: "cookie", Operator: "contains", Value: "tracking:malicious"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES:tracking") {
+		t.Error("expected REQUEST_COOKIES:tracking variable")
+	}
+	if !strings.Contains(result.PreCRS, "@contains malicious") {
+		t.Error("expected @contains operator for cookie value")
+	}
+	if !strings.Contains(result.PreCRS, "deny,status:403") {
+		t.Error("expected deny action")
+	}
+}
+
+func TestGenerateSkipRuleByCookie(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip RCE for authelia cookie", Type: "skip_rule", RuleID: "932240 942290", Conditions: []Condition{
+			{Field: "cookie", Operator: "regex", Value: "authelia_session:.*"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES:authelia_session") {
+		t.Error("expected REQUEST_COOKIES:authelia_session variable")
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=932240") {
+		t.Error("expected ctl:ruleRemoveById=932240")
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=942290") {
+		t.Error("expected ctl:ruleRemoveById=942290")
+	}
+}
+
+func TestGenerateBlockByBody(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block script in body", Type: "block", Conditions: []Condition{
+			{Field: "body", Operator: "contains", Value: "<script>alert"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_BODY") {
+		t.Error("expected REQUEST_BODY variable")
+	}
+	if !strings.Contains(result.PreCRS, "@contains <script>alert") {
+		t.Error("expected @contains for body content")
+	}
+}
+
+func TestGenerateBlockByArgs(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block delete action", Type: "block", Conditions: []Condition{
+			{Field: "args", Operator: "eq", Value: "action:delete"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "ARGS:action") {
+		t.Error("expected ARGS:action variable")
+	}
+	if !strings.Contains(result.PreCRS, "@streq delete") {
+		t.Error("expected @streq for args value")
+	}
+}
+
+func TestGenerateAllowByURIPath(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Allow uploads", Type: "allow", Conditions: []Condition{
+			{Field: "uri_path", Operator: "begins_with", Value: "/uploads/"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_FILENAME") {
+		t.Error("expected REQUEST_FILENAME variable for uri_path")
+	}
+	if !strings.Contains(result.PreCRS, "@beginsWith /uploads/") {
+		t.Error("expected @beginsWith operator")
+	}
+}
+
+func TestGenerateBlockByReferer(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block spam referer", Type: "block", Conditions: []Condition{
+			{Field: "referer", Operator: "contains", Value: "spam-site.com"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Referer") {
+		t.Error("expected REQUEST_HEADERS:Referer variable")
+	}
+	if !strings.Contains(result.PreCRS, "@contains spam-site.com") {
+		t.Error("expected @contains for referer value")
+	}
+}
+
+func TestGenerateBlockByResponseStatus(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block on 500", Type: "block", Conditions: []Condition{
+			{Field: "response_status", Operator: "eq", Value: "500"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "RESPONSE_STATUS") {
+		t.Error("expected RESPONSE_STATUS variable")
+	}
+	if !strings.Contains(result.PreCRS, "@streq 500") {
+		t.Error("expected @streq for response status")
+	}
+}
+
+func TestGenerateBlockByHTTPVersion(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block HTTP/1.0", Type: "block", Conditions: []Condition{
+			{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_PROTOCOL") {
+		t.Error("expected REQUEST_PROTOCOL variable")
+	}
+	if !strings.Contains(result.PreCRS, "@streq HTTP/1.0") {
+		t.Error("expected @streq for HTTP version")
+	}
+}
+
+func TestGenerateBlockByResponseHeader(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block by server header", Type: "block", Conditions: []Condition{
+			{Field: "response_header", Operator: "contains", Value: "Server:nginx"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "RESPONSE_HEADERS:Server") {
+		t.Error("expected RESPONSE_HEADERS:Server variable")
+	}
+	if !strings.Contains(result.PreCRS, "@contains nginx") {
+		t.Error("expected @contains for response header value")
+	}
+}
+
+func TestGenerateCookieWithoutColon(t *testing.T) {
+	// Cookie without colon should match all cookies
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block by any cookie", Type: "block", Conditions: []Condition{
+			{Field: "cookie", Operator: "contains", Value: "malicious_value"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES") {
+		t.Error("expected REQUEST_COOKIES variable (no specific cookie name)")
+	}
+	if !strings.Contains(result.PreCRS, "@contains malicious_value") {
+		t.Error("expected @contains for cookie value")
+	}
+}
+
+func TestGenerateMultiConditionWithNewFields(t *testing.T) {
+	// Combine new fields with existing fields
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip rule for specific cookie on specific host", Type: "skip_rule", RuleID: "932240", Conditions: []Condition{
+			{Field: "host", Operator: "eq", Value: "dockge.erfi.io"},
+			{Field: "cookie", Operator: "regex", Value: "authelia_session:.*"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "SERVER_NAME") {
+		t.Error("expected SERVER_NAME for host condition")
+	}
+	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES:authelia_session") {
+		t.Error("expected REQUEST_COOKIES:authelia_session for cookie condition")
+	}
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("expected chain for multi-condition rule")
 	}
 }
 

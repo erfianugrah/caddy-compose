@@ -323,6 +323,82 @@ const CONDITION_FIELDS: FieldDef[] = [
     ],
     placeholder: "e.g., CN or CN RU KP (ISO 3166-1 alpha-2)",
   },
+  {
+    value: "cookie", label: "Cookie",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., session_id:abc123 or cookie_name:value",
+  },
+  {
+    value: "body", label: "Request Body",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., <script> or password=.*",
+  },
+  {
+    value: "args", label: "Parameter (Args)",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., action:delete or param_name:value",
+  },
+  {
+    value: "uri_path", label: "URI Path (no query)",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "begins_with", label: "begins with" },
+      { value: "ends_with", label: "ends with" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., /api/v1/upload",
+  },
+  {
+    value: "referer", label: "Referer",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., https://example.com/page",
+  },
+  {
+    value: "response_header", label: "Response Header",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., Content-Type:application/json",
+  },
+  {
+    value: "response_status", label: "Response Status",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "in", label: "is in" },
+    ],
+    placeholder: "e.g., 403 or 401 403 500",
+  },
+  {
+    value: "http_version", label: "HTTP Version",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+    ],
+    placeholder: "e.g., HTTP/1.0 or HTTP/2.0",
+  },
 ];
 
 function getFieldDef(field: ConditionField): FieldDef {

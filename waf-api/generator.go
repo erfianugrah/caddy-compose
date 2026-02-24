@@ -180,6 +180,34 @@ func conditionVariable(c Condition) string {
 		return "QUERY_STRING"
 	case "country":
 		return "REQUEST_HEADERS:Cf-Ipcountry"
+	case "cookie":
+		// Cookie field value format: "CookieName:value" — extract the cookie name.
+		if idx := strings.Index(c.Value, ":"); idx > 0 {
+			return fmt.Sprintf("REQUEST_COOKIES:%s", c.Value[:idx])
+		}
+		return "REQUEST_COOKIES"
+	case "body":
+		return "REQUEST_BODY"
+	case "args":
+		// Args field value format: "ParamName:value" — extract the parameter name.
+		if idx := strings.Index(c.Value, ":"); idx > 0 {
+			return fmt.Sprintf("ARGS:%s", c.Value[:idx])
+		}
+		return "ARGS"
+	case "uri_path":
+		return "REQUEST_FILENAME"
+	case "referer":
+		return "REQUEST_HEADERS:Referer"
+	case "response_header":
+		// Response header value format: "Header-Name:value" — extract the header name.
+		if idx := strings.Index(c.Value, ":"); idx > 0 {
+			return fmt.Sprintf("RESPONSE_HEADERS:%s", c.Value[:idx])
+		}
+		return "RESPONSE_HEADERS"
+	case "response_status":
+		return "RESPONSE_STATUS"
+	case "http_version":
+		return "REQUEST_PROTOCOL"
 	default:
 		return "REQUEST_URI"
 	}
@@ -212,9 +240,11 @@ func conditionOperator(c Condition) (string, bool) {
 	}
 }
 
-// conditionValue extracts the value to match. For headers, strips the "name:" prefix.
+// conditionValue extracts the value to match.
+// For named fields (header, cookie, args, response_header), strips the "name:" prefix.
 func conditionValue(c Condition) string {
-	if c.Field == "header" {
+	switch c.Field {
+	case "header", "cookie", "args", "response_header":
 		if idx := strings.Index(c.Value, ":"); idx > 0 {
 			return strings.TrimSpace(c.Value[idx+1:])
 		}

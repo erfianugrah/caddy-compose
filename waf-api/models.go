@@ -314,7 +314,7 @@ type IPLookupResponse struct {
 // Rule Exclusion model
 
 type Condition struct {
-	Field    string `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query"
+	Field    string `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query", "country", "cookie", "body", "args", "uri_path", "referer", "response_header", "response_status", "http_version"
 	Operator string `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in"
 	Value    string `json:"value"`
 }
@@ -449,14 +449,22 @@ var validExclusionTypes = map[string]bool{
 
 // Valid condition fields
 var validConditionFields = map[string]bool{
-	"ip":         true,
-	"path":       true,
-	"host":       true,
-	"method":     true,
-	"user_agent": true,
-	"header":     true,
-	"query":      true,
-	"country":    true,
+	"ip":              true,
+	"path":            true,
+	"host":            true,
+	"method":          true,
+	"user_agent":      true,
+	"header":          true,
+	"query":           true,
+	"country":         true,
+	"cookie":          true,
+	"body":            true,
+	"args":            true,
+	"uri_path":        true,
+	"referer":         true,
+	"response_header": true,
+	"response_status": true,
+	"http_version":    true,
 }
 
 // Valid operators per field type
@@ -485,6 +493,31 @@ var validOperatorsForField = map[string]map[string]bool{
 	},
 	"country": {
 		"eq": true, "neq": true, "in": true,
+	},
+	"cookie": {
+		"eq": true, "neq": true, "contains": true, "regex": true,
+	},
+	"body": {
+		"contains": true, "regex": true,
+	},
+	"args": {
+		"eq": true, "neq": true, "contains": true, "regex": true,
+	},
+	"uri_path": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true,
+	},
+	"referer": {
+		"eq": true, "neq": true, "contains": true, "regex": true,
+	},
+	"response_header": {
+		"eq": true, "contains": true, "regex": true,
+	},
+	"response_status": {
+		"eq": true, "neq": true, "in": true,
+	},
+	"http_version": {
+		"eq": true, "neq": true,
 	},
 }
 
