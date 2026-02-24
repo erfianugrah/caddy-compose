@@ -129,7 +129,7 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 When adding custom SecRules, use the correct ID range:
 - `9100001–9100006` — pre-CRS rules (baked in `coraza/pre-crs.conf`)
 - `9100010–9100019` — post-CRS custom detection rules (baked in `coraza/post-crs.conf`)
-- `9100020–9100029` — honeypot path rules (`9100020` static in `coraza/post-crs.conf`; `9100021` dynamic via Policy Engine honeypot type)
+- `9100020–9100029` — honeypot path rules (fully dynamic via Policy Engine; `9100021` generated in `custom-pre-crs.conf`)
 - `9100030–9100039` — heuristic bot signal rules (baked in `coraza/pre-crs.conf`, scanner UAs in `coraza/scanner-useragents.txt`)
 - `9100050–9100059` — GeoIP blocking rules (reserved; country blocking uses Policy Engine `95xxxxx` IDs via `REQUEST_HEADERS:Cf-Ipcountry`)
 - `95xxxxx` — generated exclusion rules (from Policy Engine, `generator.go`)
@@ -139,8 +139,9 @@ When adding custom SecRules, use the correct ID range:
 
 ## WAF Config Defaults
 
-- Mode: `enabled` (blocking), Paranoia level: `1`
-- Inbound anomaly threshold: `5`, Outbound: `4`
+- Mode: `enabled` (blocking), Paranoia level: `2`
+- Inbound anomaly threshold: `10`, Outbound: `10`
+- Request body limit: `13 MB`, action: `ProcessPartial` (inspect first 13 MB, pass the rest — allows large uploads like S3/MinIO)
 - Per-service overrides stored in `WAFConfig.Services` map
 
 ## Policy Engine Exclusion Types
