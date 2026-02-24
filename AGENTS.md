@@ -223,6 +223,11 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 - shadcn/ui components in `src/components/ui/` (button, card, badge, dialog, etc.)
 - Tailwind CSS 4.0 for styling
 - `cn()` utility (clsx + tailwind-merge) for className composition
+- **Tag/chip pill pattern** — used for multi-value inputs (neon-cyan bg, font-mono, `x` to remove):
+  - `RuleIdTagInput` — space-separated rule IDs (Enter/comma/space to add)
+  - `PipeTagInput` — pipe-separated values for `in` operator (Enter/comma/pipe to add)
+  - `MethodMultiSelect` — pill chips + popover picker for HTTP methods with `in` operator
+- `ConditionRow` value input branching: `host` → `HostValueInput` (service dropdown), `method` + `in` → `MethodMultiSelect`, other + `in` → `PipeTagInput`, default → plain `<Input>`
 
 ### Dashboard Pages (file-based routing)
 
