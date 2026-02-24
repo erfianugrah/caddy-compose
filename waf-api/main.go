@@ -75,6 +75,7 @@ func main() {
 	store.StartTailing(tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
+	accessLogStore.SetOffsetFile(envOr("WAF_ACCESS_OFFSET_FILE", "/data/.access-log-offset"))
 	accessLogStore.SetMaxAge(maxAge)
 	accessLogStore.SetGeoIP(geoStore)
 	accessLogStore.StartTailing(tailInterval)

@@ -3804,6 +3804,56 @@ func TestAccessLogStoreFileRotation(t *testing.T) {
 	}
 }
 
+func TestAccessLogStoreOffsetPersistence(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	offsetPath := filepath.Join(dir, "offset")
+
+	// Write all 5 lines (3 are 429).
+	f, _ := os.Create(logPath)
+	for _, l := range sampleAccessLogLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	// First store: read all events, offset is persisted.
+	store1 := NewAccessLogStore(logPath)
+	store1.SetOffsetFile(offsetPath)
+	store1.Load()
+	if got := store1.EventCount(); got != 3 {
+		t.Fatalf("store1: expected 3 events, got %d", got)
+	}
+
+	// Verify offset file was written.
+	data, err := os.ReadFile(offsetPath)
+	if err != nil {
+		t.Fatalf("offset file not created: %v", err)
+	}
+	savedOffset := strings.TrimSpace(string(data))
+	if savedOffset == "" || savedOffset == "0" {
+		t.Fatalf("offset file should contain non-zero offset, got %q", savedOffset)
+	}
+
+	// Second store: restores offset from disk, reads nothing new.
+	store2 := NewAccessLogStore(logPath)
+	store2.SetOffsetFile(offsetPath)
+	store2.Load()
+	if got := store2.EventCount(); got != 0 {
+		t.Fatalf("store2: expected 0 events (offset restored), got %d", got)
+	}
+
+	// Append one more 429 line.
+	f, _ = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
+	f.WriteString(sampleAccessLogLines[1] + "\n")
+	f.Close()
+
+	// Second store picks up only the new line.
+	store2.Load()
+	if got := store2.EventCount(); got != 1 {
+		t.Fatalf("store2: expected 1 new event after append, got %d", got)
+	}
+}
+
 func TestAccessLogStoreMissingFile(t *testing.T) {
 	store := NewAccessLogStore("/nonexistent/combined-access.log")
 	store.Load() // should not panic

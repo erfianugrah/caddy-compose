@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -105,8 +107,9 @@ type AccessLogStore struct {
 	mu     sync.RWMutex
 	events []RateLimitEvent
 
-	path   string
-	offset int64
+	path       string
+	offset     int64
+	offsetFile string // persistent offset file (empty = don't persist)
 
 	// maxAge is the maximum age of events to retain. Events older than this
 	// are evicted during each Load() call. Zero means no eviction.
@@ -118,6 +121,31 @@ type AccessLogStore struct {
 
 func NewAccessLogStore(path string) *AccessLogStore {
 	return &AccessLogStore{path: path}
+}
+
+// SetOffsetFile configures a file path to persist the access log read offset
+// across restarts. Without this, the entire log is re-parsed on each startup.
+func (s *AccessLogStore) SetOffsetFile(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.offsetFile = path
+	if data, err := os.ReadFile(path); err == nil {
+		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
+			s.offset = v
+			log.Printf("restored access log offset %d from %s", v, path)
+		}
+	}
+}
+
+// saveOffset writes the current offset to the persistent offset file (if configured).
+func (s *AccessLogStore) saveOffset() {
+	if s.offsetFile == "" {
+		return
+	}
+	data := []byte(strconv.FormatInt(s.offset, 10) + "\n")
+	if err := os.WriteFile(s.offsetFile, data, 0644); err != nil {
+		log.Printf("error saving access log offset to %s: %v", s.offsetFile, err)
+	}
 }
 
 // SetGeoIP configures the GeoIP store for country enrichment of events.
@@ -158,6 +186,7 @@ func (s *AccessLogStore) Load() {
 	if info.Size() < s.offset {
 		log.Printf("combined access log rotated (size %d < offset %d), re-reading", info.Size(), s.offset)
 		s.offset = 0
+		s.saveOffset()
 		s.mu.Lock()
 		s.events = nil
 		s.mu.Unlock()
@@ -230,6 +259,7 @@ func (s *AccessLogStore) Load() {
 		log.Printf("error getting combined access log offset: %v", err)
 	} else {
 		s.offset = newOffset
+		s.saveOffset()
 	}
 
 	if len(newEvents) > 0 {

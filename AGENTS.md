@@ -106,8 +106,9 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 - Go 1.22+ route patterns: `mux.HandleFunc("GET /api/health", handleHealth)`
 - Closure pattern for dependency injection: `handleSummary(store, als) http.HandlerFunc`
 - All JSON responses via `writeJSON()` helper (sets Content-Type, disables HTML escaping)
-- Server timeouts: `ReadTimeout: 10s`, `WriteTimeout: 30s`, `IdleTimeout: 60s`
-- Caddy reload client timeout: `90s` (accounts for WAF rule initialization)
+- Server timeouts: `ReadTimeout: 10s`, `WriteTimeout: 150s`, `IdleTimeout: 60s`
+- Caddy reload client timeout: `120s` (accounts for WAF rule initialization)
+- Makefile deploy wget timeout: `120s` (`-T 120`)
 
 ### Concurrency
 
@@ -290,7 +291,9 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_AUDIT_LOG`, `WAF_COMBINED_ACCESS_LOG` — log file paths
 - `WAF_EXCLUSIONS_FILE`, `WAF_CONFIG_FILE`, `WAF_RATELIMIT_FILE` — JSON store paths
 - `WAF_CORAZA_DIR`, `WAF_RATELIMIT_DIR` — output directories for generated configs
-- `WAF_CADDY_ADMIN_URL` (default `http://caddy:2020`) — Caddy admin API endpoint
+- `WAF_CADDY_ADMIN_URL` (default `http://caddy:2019`) — Caddy admin API endpoint
+- `WAF_AUDIT_OFFSET_FILE` (default `/data/.audit-log-offset`) — persists audit log read offset across restarts
+- `WAF_ACCESS_OFFSET_FILE` (default `/data/.access-log-offset`) — persists access log read offset across restarts
 - `WAF_EVENT_MAX_AGE` (default `168h`), `WAF_TAIL_INTERVAL` (default `5s`)
 - `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
