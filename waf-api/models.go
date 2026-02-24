@@ -430,13 +430,14 @@ type TopTargetedURI struct {
 // Valid exclusion types
 var validExclusionTypes = map[string]bool{
 	// Advanced (ModSecurity directive types)
-	"remove_by_id":                true,
-	"remove_by_tag":               true,
-	"update_target_by_id":         true,
-	"update_target_by_tag":        true,
-	"runtime_remove_by_id":        true,
-	"runtime_remove_by_tag":       true,
-	"runtime_remove_target_by_id": true,
+	"remove_by_id":                 true,
+	"remove_by_tag":                true,
+	"update_target_by_id":          true,
+	"update_target_by_tag":         true,
+	"runtime_remove_by_id":         true,
+	"runtime_remove_by_tag":        true,
+	"runtime_remove_target_by_id":  true,
+	"runtime_remove_target_by_tag": true,
 	// Quick Actions (condition-based)
 	"allow":     true, // Whitelist — bypass WAF checks
 	"block":     true, // Deny requests

@@ -234,6 +234,7 @@ export type ExclusionType =
   | "ctl:ruleRemoveById"
   | "ctl:ruleRemoveByTag"
   | "ctl:ruleRemoveTargetById"
+  | "ctl:ruleRemoveTargetByTag"
   // Quick Actions
   | "allow"
   | "block"
@@ -296,6 +297,7 @@ const typeToGo: Record<ExclusionType, string> = {
   "ctl:ruleRemoveById": "runtime_remove_by_id",
   "ctl:ruleRemoveByTag": "runtime_remove_by_tag",
   "ctl:ruleRemoveTargetById": "runtime_remove_target_by_id",
+  "ctl:ruleRemoveTargetByTag": "runtime_remove_target_by_tag",
   // Quick Actions + Honeypot + Raw (same names in Go)
   "allow": "allow",
   "block": "block",

@@ -348,7 +348,7 @@ func validateExclusion(e RuleExclusion) error {
 		if err := validateRuleIDField(e.RuleID); err != nil {
 			return fmt.Errorf("invalid rule_id: %w", err)
 		}
-	case "remove_by_tag", "update_target_by_tag", "runtime_remove_by_tag":
+	case "remove_by_tag", "update_target_by_tag", "runtime_remove_by_tag", "runtime_remove_target_by_tag":
 		if e.RuleTag == "" {
 			return fmt.Errorf("rule_tag is required for type %q", e.Type)
 		}
@@ -356,7 +356,7 @@ func validateExclusion(e RuleExclusion) error {
 
 	// Variable required for update_target types.
 	switch e.Type {
-	case "update_target_by_id", "update_target_by_tag", "runtime_remove_target_by_id":
+	case "update_target_by_id", "update_target_by_tag", "runtime_remove_target_by_id", "runtime_remove_target_by_tag":
 		if e.Variable == "" {
 			return fmt.Errorf("variable is required for type %q", e.Type)
 		}
@@ -364,7 +364,7 @@ func validateExclusion(e RuleExclusion) error {
 
 	// Runtime advanced types need at least a path condition.
 	switch e.Type {
-	case "runtime_remove_by_id", "runtime_remove_by_tag", "runtime_remove_target_by_id":
+	case "runtime_remove_by_id", "runtime_remove_by_tag", "runtime_remove_target_by_id", "runtime_remove_target_by_tag":
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("conditions required for runtime type %q (need at least a path condition)", e.Type)
 		}

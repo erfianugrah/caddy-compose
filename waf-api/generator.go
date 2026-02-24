@@ -134,14 +134,15 @@ func generatePostCRS(_ WAFConfig, exclusions []RuleExclusion) string {
 
 // Pre-CRS types: runtime exclusions + quick actions + raw rules go before CRS.
 var preCRSTypes = map[string]bool{
-	"runtime_remove_by_id":        true,
-	"runtime_remove_by_tag":       true,
-	"runtime_remove_target_by_id": true,
-	"allow":                       true,
-	"block":                       true,
-	"skip_rule":                   true,
-	"honeypot":                    true,
-	"raw":                         true,
+	"runtime_remove_by_id":         true,
+	"runtime_remove_by_tag":        true,
+	"runtime_remove_target_by_id":  true,
+	"runtime_remove_target_by_tag": true,
+	"allow":                        true,
+	"block":                        true,
+	"skip_rule":                    true,
+	"honeypot":                     true,
+	"raw":                          true,
 }
 
 // filterExclusions splits exclusions into pre-CRS and post-CRS (configure-time).
@@ -404,6 +405,8 @@ func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion, idGen *ruleID
 		ctlAction = fmt.Sprintf("ctl:ruleRemoveByTag=%s", e.RuleTag)
 	case "runtime_remove_target_by_id":
 		ctlAction = fmt.Sprintf("ctl:ruleRemoveTargetById=%s;%s", e.RuleID, e.Variable)
+	case "runtime_remove_target_by_tag":
+		ctlAction = fmt.Sprintf("ctl:ruleRemoveTargetByTag=%s;%s", e.RuleTag, e.Variable)
 	default:
 		return
 	}

@@ -3092,6 +3092,92 @@ func TestGenerateMultiConditionWithNewFields(t *testing.T) {
 	}
 }
 
+// --- Runtime surgical exclusion (ctl:ruleRemoveTargetByTag) ---
+
+func TestGenerateRuntimeRemoveTargetByTag(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{
+			Name:     "Exclude authelia cookie from CRS for all requests",
+			Type:     "runtime_remove_target_by_tag",
+			RuleTag:  "OWASP_CRS",
+			Variable: "REQUEST_COOKIES:authelia_session",
+			Conditions: []Condition{
+				{Field: "path", Operator: "regex", Value: ".*"},
+			},
+			Enabled: true,
+		},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveTargetByTag=OWASP_CRS;REQUEST_COOKIES:authelia_session") {
+		t.Errorf("expected ctl:ruleRemoveTargetByTag action, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateRuntimeRemoveTargetByTagConditional(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{
+			Name:     "Exclude authelia cookie from RCE rules on dockge",
+			Type:     "runtime_remove_target_by_tag",
+			RuleTag:  "attack-rce",
+			Variable: "REQUEST_COOKIES:authelia_session",
+			Conditions: []Condition{
+				{Field: "host", Operator: "eq", Value: "dockge.erfi.io"},
+			},
+			Enabled: true,
+		},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveTargetByTag=attack-rce;REQUEST_COOKIES:authelia_session") {
+		t.Errorf("expected ctl:ruleRemoveTargetByTag with attack-rce tag, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "SERVER_NAME") {
+		t.Error("expected SERVER_NAME condition for host")
+	}
+}
+
+func TestValidateRuntimeRemoveTargetByTag(t *testing.T) {
+	// Valid
+	e := RuleExclusion{
+		Name:     "test",
+		Type:     "runtime_remove_target_by_tag",
+		RuleTag:  "OWASP_CRS",
+		Variable: "REQUEST_COOKIES:authelia_session",
+		Conditions: []Condition{
+			{Field: "path", Operator: "regex", Value: ".*"},
+		},
+	}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("valid runtime_remove_target_by_tag should pass: %v", err)
+	}
+
+	// Missing rule_tag
+	e2 := e
+	e2.RuleTag = ""
+	if err := validateExclusion(e2); err == nil {
+		t.Error("expected error for missing rule_tag")
+	}
+
+	// Missing variable
+	e3 := e
+	e3.Variable = ""
+	if err := validateExclusion(e3); err == nil {
+		t.Error("expected error for missing variable")
+	}
+
+	// Missing conditions
+	e4 := e
+	e4.Conditions = nil
+	if err := validateExclusion(e4); err == nil {
+		t.Error("expected error for missing conditions on runtime type")
+	}
+}
+
 // --- Honeypot exclusion tests ---
 
 func TestValidateHoneypotExclusion(t *testing.T) {

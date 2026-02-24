@@ -51,6 +51,8 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -228,6 +230,7 @@ const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; description: s
   { value: "ctl:ruleRemoveById", label: "Remove rule for URI", description: "Runtime ctl:ruleRemoveById — removes a rule only for matching requests", group: "runtime" },
   { value: "ctl:ruleRemoveByTag", label: "Remove category for URI", description: "Runtime ctl:ruleRemoveByTag — removes a tag category for matching requests", group: "runtime" },
   { value: "ctl:ruleRemoveTargetById", label: "Exclude variable for URI", description: "Runtime ctl:ruleRemoveTargetById — excludes a variable for matching requests", group: "runtime" },
+  { value: "ctl:ruleRemoveTargetByTag", label: "Exclude variable from category for URI", description: "Runtime ctl:ruleRemoveTargetByTag — surgical variable exclusion from a tag category for matching requests", group: "runtime" },
 ];
 
 const RULE_TAGS = [
@@ -1272,14 +1275,25 @@ function AdvancedBuilderForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ALL_EXCLUSION_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value} textValue={t.label}>
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-medium">{t.label}</span>
-                  <span className="text-xs text-muted-foreground">{t.description}</span>
-                </div>
-              </SelectItem>
-            ))}
+            {(["quick", "advanced", "runtime"] as const).map((group, gi) => {
+              const items = ALL_EXCLUSION_TYPES.filter((t) => t.group === group);
+              if (items.length === 0) return null;
+              const groupLabel = group === "quick" ? "Quick Actions" : group === "advanced" ? "Configure-time" : "Runtime (per-request)";
+              return [
+                gi > 0 ? <SelectSeparator key={`sep-${group}`} /> : null,
+                <SelectLabel key={`label-${group}`} className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
+                  {groupLabel}
+                </SelectLabel>,
+                ...items.map((t) => (
+                  <SelectItem key={t.value} value={t.value} textValue={t.label} className="py-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-sm">{t.label}</span>
+                      <span className="text-[11px] leading-tight text-muted-foreground">{t.description}</span>
+                    </div>
+                  </SelectItem>
+                )),
+              ];
+            })}
           </SelectContent>
         </Select>
       </div>

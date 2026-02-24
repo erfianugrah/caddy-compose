@@ -156,7 +156,10 @@ When adding custom SecRules, use the correct ID range:
 | `raw` | Verbatim SecRule | Free-form SecRule directive |
 | `remove_by_id`, `remove_by_tag` | Post-CRS removal | Configure-time exclusions |
 | `update_target_by_id`, `update_target_by_tag` | Post-CRS target update | Exclude specific variables |
-| `runtime_remove_*` | Pre-CRS `ctl:` actions | Conditional runtime exclusions |
+| `runtime_remove_by_id` | `ctl:ruleRemoveById` | Remove entire rule for matching requests |
+| `runtime_remove_by_tag` | `ctl:ruleRemoveByTag` | Remove rule category for matching requests |
+| `runtime_remove_target_by_id` | `ctl:ruleRemoveTargetById` | Exclude variable from specific rule for matching requests |
+| `runtime_remove_target_by_tag` | `ctl:ruleRemoveTargetByTag` | Surgical: exclude variable from tag category for matching requests |
 
 ### Condition Fields
 
