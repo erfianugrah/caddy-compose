@@ -37,7 +37,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin cdn
 		}
 		versions ipv4
 		check_interval 5m
@@ -654,6 +654,35 @@ httpbin.erfi.io {
 	}
 	import error_pages
 	import site_log httpbin
+}
+
+cdn.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/cdn_rl*.caddy
+	import tls_config
+	encode zstd gzip
+
+	# MinIO Console — protected behind Authelia
+	handle_path /console/* {
+		import forward_auth
+		reverse_proxy 172.70.0.2:9001 {
+			import proxy_headers
+		}
+	}
+
+	# S3 API / bucket proxy — public read access (bucket policy controls auth)
+	handle {
+		reverse_proxy 172.70.0.2:9000 {
+			import proxy_headers
+			header_up Host {upstream_hostport}
+		}
+	}
+	import error_pages
+	import site_log cdn
 }
 
 # Internal admin API proxy — allows waf-api to trigger Caddy reloads.
