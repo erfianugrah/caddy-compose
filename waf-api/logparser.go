@@ -25,6 +25,9 @@ type Store struct {
 	offset     int64
 	offsetFile string // persistent offset file (empty = don't persist)
 
+	// JSONL event persistence (empty = don't persist events)
+	eventFile string
+
 	// maxAge is the maximum age of events to retain. Events older than this
 	// are evicted during each Load() call. Zero means no eviction.
 	maxAge time.Duration
@@ -61,6 +64,121 @@ func (s *Store) saveOffset() {
 	if err := os.WriteFile(s.offsetFile, data, 0644); err != nil {
 		log.Printf("error saving audit log offset to %s: %v", s.offsetFile, err)
 	}
+}
+
+// SetEventFile configures a JSONL file for persistent event storage.
+// On startup, existing events are loaded from this file so that parsed
+// events survive restarts without re-parsing the raw audit log.
+// Large payload fields (RequestHeaders, RequestBody, RequestArgs) are
+// stripped when persisting to keep the file compact.
+func (s *Store) SetEventFile(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eventFile = path
+	// Restore events from JSONL file.
+	events, err := loadEventsFromJSONL(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("error loading events from %s: %v", path, err)
+		}
+		return
+	}
+	s.events = events
+	log.Printf("restored %d events from %s", len(events), path)
+}
+
+// appendEventsToJSONL appends events to the JSONL file, stripping large fields.
+func (s *Store) appendEventsToJSONL(events []Event) {
+	if s.eventFile == "" || len(events) == 0 {
+		return
+	}
+	f, err := os.OpenFile(s.eventFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("error opening event file for append: %v", err)
+		return
+	}
+	defer f.Close()
+
+	for i := range events {
+		stripped := events[i]
+		stripped.RequestHeaders = nil
+		stripped.RequestBody = ""
+		stripped.RequestArgs = nil
+		data, err := json.Marshal(stripped)
+		if err != nil {
+			log.Printf("error marshaling event for persistence: %v", err)
+			continue
+		}
+		f.Write(data)
+		f.Write([]byte{'\n'})
+	}
+}
+
+// compactEventFile rewrites the JSONL file with only the current in-memory events.
+// Called after eviction to remove old entries from disk.
+func (s *Store) compactEventFile() {
+	if s.eventFile == "" {
+		return
+	}
+	// Write to temp file, then atomic rename.
+	tmp := s.eventFile + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		log.Printf("error creating temp event file for compaction: %v", err)
+		return
+	}
+
+	s.mu.RLock()
+	count := len(s.events)
+	for i := range s.events {
+		stripped := s.events[i]
+		stripped.RequestHeaders = nil
+		stripped.RequestBody = ""
+		stripped.RequestArgs = nil
+		data, err := json.Marshal(stripped)
+		if err != nil {
+			continue
+		}
+		f.Write(data)
+		f.Write([]byte{'\n'})
+	}
+	s.mu.RUnlock()
+
+	f.Sync()
+	f.Close()
+	if err := os.Rename(tmp, s.eventFile); err != nil {
+		log.Printf("error renaming compacted event file: %v", err)
+		return
+	}
+	log.Printf("compacted event file: %d events", count)
+}
+
+// loadEventsFromJSONL reads events from a JSONL file.
+func loadEventsFromJSONL(path string) ([]Event, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var events []Event
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			line = bytes.TrimSpace(line)
+		}
+		if len(line) > 0 {
+			var ev Event
+			if jsonErr := json.Unmarshal(line, &ev); jsonErr == nil {
+				events = append(events, ev)
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	return events, nil
 }
 
 // SetGeoIP configures the GeoIP store for country enrichment of events.
@@ -101,14 +219,16 @@ func (s *Store) Load() {
 		log.Printf("audit log appears rotated (size %d < offset %d), re-reading from start", info.Size(), s.offset)
 		s.offset = 0
 		s.saveOffset()
-		s.mu.Lock()
-		s.events = nil
-		s.mu.Unlock()
+		// Don't clear in-memory events — with copytruncate rotation the
+		// already-parsed events are still valid. The eviction loop will
+		// age them out naturally based on maxAge.
 	}
 
 	bytesToRead := info.Size() - s.offset
 	if bytesToRead == 0 {
-		return // nothing new
+		// No new data, but still run eviction for time-based cleanup.
+		s.evict()
+		return
 	}
 
 	log.Printf("audit log: parsing %s from offset %d (%s to read)",
@@ -189,6 +309,8 @@ func (s *Store) Load() {
 		s.mu.Lock()
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
+		// Persist new events to JSONL (stripped of large payload fields).
+		s.appendEventsToJSONL(newEvents)
 		log.Printf("audit log: loaded %d new events (%d total) from %d lines (%d skipped) in %s",
 			len(newEvents), s.EventCount(), linesRead, linesSkipped, elapsed)
 	} else if linesRead > 0 {
@@ -222,6 +344,8 @@ func (s *Store) evict() {
 		copy(remaining, s.events[idx:])
 		s.events = remaining
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
+		// Compact the JSONL file to match in-memory state.
+		go s.compactEventFile()
 	}
 }
 

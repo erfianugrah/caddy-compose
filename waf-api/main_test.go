@@ -98,8 +98,9 @@ func TestStoreFileRotation(t *testing.T) {
 	f.Close()
 
 	store.Load()
-	if got := store.EventCount(); got != 1 {
-		t.Fatalf("expected 1 after rotation, got %d", got)
+	// Copytruncate rotation: existing 3 events kept + 1 new = 4.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 after rotation (3 kept + 1 new), got %d", got)
 	}
 }
 
@@ -178,8 +179,9 @@ func TestStoreOffsetPersistenceRotation(t *testing.T) {
 	f.Close()
 
 	store.Load()
-	if got := store.EventCount(); got != 1 {
-		t.Fatalf("expected 1 after rotation, got %d", got)
+	// Copytruncate rotation: existing 3 events kept + 1 new = 4.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 after rotation (3 kept + 1 new), got %d", got)
 	}
 
 	// Offset file should be updated (non-zero, but smaller than before).
@@ -190,6 +192,308 @@ func TestStoreOffsetPersistenceRotation(t *testing.T) {
 	savedOffset := strings.TrimSpace(string(data))
 	if savedOffset == "" {
 		t.Fatalf("offset file should not be empty after rotation")
+	}
+}
+
+// --- JSONL event persistence tests ---
+
+func TestStoreEventFilePersistence(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Write 3 lines.
+	f, _ := os.Create(logPath)
+	for _, l := range sampleLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	// First store: parse and persist events.
+	store1 := NewStore(logPath)
+	store1.SetEventFile(eventPath)
+	store1.Load()
+	if got := store1.EventCount(); got != 3 {
+		t.Fatalf("store1: expected 3 events, got %d", got)
+	}
+
+	// Verify JSONL file was created.
+	if _, err := os.Stat(eventPath); err != nil {
+		t.Fatalf("event file not created: %v", err)
+	}
+
+	// Second store: should restore events from JSONL (not from audit log).
+	store2 := NewStore(logPath)
+	store2.SetEventFile(eventPath)
+	// Before Load(), events should already be restored from JSONL.
+	if got := store2.EventCount(); got != 3 {
+		t.Fatalf("store2: expected 3 events restored from JSONL, got %d", got)
+	}
+}
+
+func TestStoreEventFileStripsLargeFields(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Write a log line that would produce an event with request headers.
+	f, _ := os.Create(logPath)
+	f.WriteString(sampleLines[0] + "\n")
+	f.Close()
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+
+	// Read the JSONL file and verify large fields are stripped.
+	data, err := os.ReadFile(eventPath)
+	if err != nil {
+		t.Fatalf("read event file: %v", err)
+	}
+
+	// The JSONL should NOT contain request_headers (they're stripped).
+	if strings.Contains(string(data), "request_headers") {
+		t.Error("JSONL should not contain request_headers (stripped)")
+	}
+	if strings.Contains(string(data), "request_body") {
+		t.Error("JSONL should not contain request_body (stripped)")
+	}
+	if strings.Contains(string(data), "request_args") {
+		t.Error("JSONL should not contain request_args (stripped)")
+	}
+}
+
+func TestStoreEventFileIncremental(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Write first 2 lines.
+	f, _ := os.Create(logPath)
+	for _, l := range sampleLines[:2] {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2, got %d", got)
+	}
+
+	// Append third line.
+	f, _ = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
+	f.WriteString(sampleLines[2] + "\n")
+	f.Close()
+
+	store.Load()
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3 after append, got %d", got)
+	}
+
+	// New store should restore all 3 from JSONL.
+	store2 := NewStore(logPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 3 {
+		t.Fatalf("store2: expected 3 from JSONL, got %d", got)
+	}
+}
+
+func TestStoreEventFileRotation(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+	offsetPath := filepath.Join(dir, "offset")
+
+	// Write 3 lines.
+	f, _ := os.Create(logPath)
+	for _, l := range sampleLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewStore(logPath)
+	store.SetOffsetFile(offsetPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3, got %d", got)
+	}
+
+	// Simulate rotation: truncate and write 1 line.
+	f, _ = os.Create(logPath)
+	f.WriteString(sampleLines[0] + "\n")
+	f.Close()
+
+	store.Load()
+	// Copytruncate: 3 kept + 1 new = 4.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 after rotation, got %d", got)
+	}
+
+	// New store should restore all 4 from JSONL.
+	store2 := NewStore(logPath)
+	store2.SetOffsetFile(offsetPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 4 {
+		t.Fatalf("store2: expected 4 from JSONL, got %d", got)
+	}
+}
+
+func TestStoreEventFileEvictionCompaction(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Write one old event (2020) and one recent event.
+	oldLine := `{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`
+	f, _ := os.Create(logPath)
+	f.WriteString(oldLine + "\n")
+	f.WriteString(sampleLines[0] + "\n")
+	f.Close()
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2 events before eviction, got %d", got)
+	}
+
+	// JSONL should have 2 events.
+	events, _ := loadEventsFromJSONL(eventPath)
+	if len(events) != 2 {
+		t.Fatalf("JSONL should have 2 events before eviction, got %d", len(events))
+	}
+
+	// Now set maxAge to 168h and trigger eviction via a second Load.
+	store.SetMaxAge(168 * time.Hour)
+	store.Load() // triggers evict() which compacts
+
+	// In-memory: old event evicted, only recent remains.
+	if got := store.EventCount(); got != 1 {
+		t.Fatalf("expected 1 event after eviction, got %d", got)
+	}
+
+	// Wait briefly for async compaction goroutine.
+	time.Sleep(50 * time.Millisecond)
+
+	// JSONL should also be compacted to 1 event.
+	events, _ = loadEventsFromJSONL(eventPath)
+	if len(events) != 1 {
+		t.Fatalf("JSONL should have 1 event after compaction, got %d", len(events))
+	}
+	if events[0].ID != "AAA111" {
+		t.Errorf("expected recent event AAA111 to survive, got %s", events[0].ID)
+	}
+}
+
+func TestStoreEventFileDataIntegrity(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	f, _ := os.Create(logPath)
+	f.WriteString(sampleLines[1] + "\n") // BBB222: 10.0.0.1, radarr, /.env, blocked
+	f.Close()
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+
+	// Restore into a new store and verify field values, not just count.
+	store2 := NewStore(logPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 1 {
+		t.Fatalf("expected 1 event, got %d", got)
+	}
+
+	events := store2.Snapshot()
+	ev := events[0]
+	if ev.ID != "BBB222" {
+		t.Errorf("ID: want BBB222, got %s", ev.ID)
+	}
+	if ev.ClientIP != "10.0.0.1" {
+		t.Errorf("ClientIP: want 10.0.0.1, got %s", ev.ClientIP)
+	}
+	if ev.Service != "radarr.erfi.io" {
+		t.Errorf("Service: want radarr.erfi.io, got %s", ev.Service)
+	}
+	if ev.URI != "/.env" {
+		t.Errorf("URI: want /.env, got %s", ev.URI)
+	}
+	if !ev.IsBlocked {
+		t.Error("expected IsBlocked=true")
+	}
+	if ev.Method != "GET" {
+		t.Errorf("Method: want GET, got %s", ev.Method)
+	}
+	if ev.UserAgent != "curl/7.68" {
+		t.Errorf("UserAgent: want curl/7.68, got %s", ev.UserAgent)
+	}
+	if ev.ResponseStatus != 403 {
+		t.Errorf("ResponseStatus: want 403, got %d", ev.ResponseStatus)
+	}
+	// Large fields should be nil/empty after restore from JSONL.
+	if ev.RequestHeaders != nil {
+		t.Error("RequestHeaders should be nil after JSONL restore")
+	}
+	if ev.RequestBody != "" {
+		t.Error("RequestBody should be empty after JSONL restore")
+	}
+	if ev.RequestArgs != nil {
+		t.Error("RequestArgs should be nil after JSONL restore")
+	}
+}
+
+func TestStoreEventFileMalformedLines(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Pre-seed a JSONL file with some valid events and some garbage.
+	ef, _ := os.Create(eventPath)
+	// Valid event line (manually construct minimal JSON).
+	ef.WriteString(`{"id":"GOOD1","timestamp":"2026-02-22T07:19:01Z","client_ip":"1.1.1.1","service":"test.erfi.io","method":"GET","uri":"/ok","is_blocked":false,"response_status":200,"event_type":"logged"}` + "\n")
+	ef.WriteString("THIS IS NOT JSON\n")
+	ef.WriteString("{broken json\n")
+	ef.WriteString(`{"id":"GOOD2","timestamp":"2026-02-22T07:20:00Z","client_ip":"2.2.2.2","service":"test.erfi.io","method":"POST","uri":"/api","is_blocked":true,"response_status":403,"event_type":"blocked"}` + "\n")
+	ef.Close()
+
+	// Create empty audit log so Load() has nothing to add.
+	os.Create(logPath)
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+
+	// Should gracefully skip malformed lines and load 2 valid events.
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2 events (skipping malformed), got %d", got)
+	}
+
+	events := store.Snapshot()
+	if events[0].ID != "GOOD1" {
+		t.Errorf("first event: want GOOD1, got %s", events[0].ID)
+	}
+	if events[1].ID != "GOOD2" {
+		t.Errorf("second event: want GOOD2, got %s", events[1].ID)
+	}
+}
+
+func TestStoreEventFileEmpty(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "audit.log")
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Create an empty JSONL file.
+	os.Create(eventPath)
+	os.Create(logPath)
+
+	store := NewStore(logPath)
+	store.SetEventFile(eventPath)
+
+	if got := store.EventCount(); got != 0 {
+		t.Fatalf("expected 0 events from empty JSONL, got %d", got)
 	}
 }
 
@@ -3799,8 +4103,9 @@ func TestAccessLogStoreFileRotation(t *testing.T) {
 	f.Close()
 
 	store.Load()
-	if got := store.EventCount(); got != 1 {
-		t.Fatalf("expected 1 after rotation, got %d", got)
+	// Copytruncate rotation: existing 3 events kept + 1 new = 4.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 after rotation (3 kept + 1 new), got %d", got)
 	}
 }
 
@@ -3851,6 +4156,241 @@ func TestAccessLogStoreOffsetPersistence(t *testing.T) {
 	store2.Load()
 	if got := store2.EventCount(); got != 1 {
 		t.Fatalf("store2: expected 1 new event after append, got %d", got)
+	}
+}
+
+// --- Access Log JSONL event persistence tests ---
+
+func TestAccessLogStoreEventFilePersistence(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+
+	// Write all 5 lines (3 are 429).
+	f, _ := os.Create(logPath)
+	for _, l := range sampleAccessLogLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	// First store: parse and persist events.
+	store1 := NewAccessLogStore(logPath)
+	store1.SetEventFile(eventPath)
+	store1.Load()
+	if got := store1.EventCount(); got != 3 {
+		t.Fatalf("store1: expected 3 events, got %d", got)
+	}
+
+	// Verify JSONL file was created.
+	if _, err := os.Stat(eventPath); err != nil {
+		t.Fatalf("event file not created: %v", err)
+	}
+
+	// Second store: should restore events from JSONL.
+	store2 := NewAccessLogStore(logPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 3 {
+		t.Fatalf("store2: expected 3 events restored from JSONL, got %d", got)
+	}
+}
+
+func TestAccessLogStoreEventFileIncremental(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+
+	// Write first 3 lines (2 are 429).
+	f, _ := os.Create(logPath)
+	for _, l := range sampleAccessLogLines[:3] {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewAccessLogStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2, got %d", got)
+	}
+
+	// Append remaining lines (1 more 429).
+	f, _ = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
+	for _, l := range sampleAccessLogLines[3:] {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store.Load()
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3 after append, got %d", got)
+	}
+
+	// New store should restore all 3 from JSONL.
+	store2 := NewAccessLogStore(logPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 3 {
+		t.Fatalf("store2: expected 3 from JSONL, got %d", got)
+	}
+}
+
+func TestAccessLogStoreEventFileRotation(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+	offsetPath := filepath.Join(dir, "offset")
+
+	// Write all 5 lines (3 are 429).
+	f, _ := os.Create(logPath)
+	for _, l := range sampleAccessLogLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	store := NewAccessLogStore(logPath)
+	store.SetOffsetFile(offsetPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+	if got := store.EventCount(); got != 3 {
+		t.Fatalf("expected 3, got %d", got)
+	}
+
+	// Simulate rotation: truncate and write 1 line (a 429).
+	f, _ = os.Create(logPath)
+	f.WriteString(sampleAccessLogLines[1] + "\n")
+	f.Close()
+
+	store.Load()
+	// Copytruncate: 3 kept + 1 new = 4.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 after rotation, got %d", got)
+	}
+
+	// New store should restore all 4 from JSONL.
+	store2 := NewAccessLogStore(logPath)
+	store2.SetOffsetFile(offsetPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 4 {
+		t.Fatalf("store2: expected 4 from JSONL, got %d", got)
+	}
+}
+
+func TestAccessLogStoreEventFileEvictionCompaction(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+
+	// Write one old 429 event (2020) and one recent 429 event.
+	oldLine := `{"level":"info","ts":"2020/01/01 00:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/old","headers":{}},"status":429,"size":0,"duration":0.001}`
+	f, _ := os.Create(logPath)
+	f.WriteString(oldLine + "\n")
+	f.WriteString(sampleAccessLogLines[1] + "\n") // recent 429
+	f.Close()
+
+	store := NewAccessLogStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2 events before eviction, got %d", got)
+	}
+
+	// JSONL should have 2 events.
+	events, _ := loadRLEventsFromJSONL(eventPath)
+	if len(events) != 2 {
+		t.Fatalf("JSONL should have 2 events before eviction, got %d", len(events))
+	}
+
+	// Set maxAge and trigger eviction.
+	store.SetMaxAge(168 * time.Hour)
+	store.Load()
+
+	if got := store.EventCount(); got != 1 {
+		t.Fatalf("expected 1 event after eviction, got %d", got)
+	}
+
+	// Wait for async compaction.
+	time.Sleep(50 * time.Millisecond)
+
+	events, _ = loadRLEventsFromJSONL(eventPath)
+	if len(events) != 1 {
+		t.Fatalf("JSONL should have 1 event after compaction, got %d", len(events))
+	}
+}
+
+func TestAccessLogStoreEventFileDataIntegrity(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+
+	// Write a single 429 line (sampleAccessLogLines[1]: sonarr, GET, /api/v3/queue).
+	f, _ := os.Create(logPath)
+	f.WriteString(sampleAccessLogLines[1] + "\n")
+	f.Close()
+
+	store := NewAccessLogStore(logPath)
+	store.SetEventFile(eventPath)
+	store.Load()
+
+	// Restore into a new store and verify field values.
+	store2 := NewAccessLogStore(logPath)
+	store2.SetEventFile(eventPath)
+	if got := store2.EventCount(); got != 1 {
+		t.Fatalf("expected 1 event, got %d", got)
+	}
+
+	events := store2.snapshotSince(0)
+	ev := events[0]
+	if ev.ClientIP != "10.0.0.2" {
+		t.Errorf("ClientIP: want 10.0.0.2, got %s", ev.ClientIP)
+	}
+	if ev.Service != "sonarr.erfi.io" {
+		t.Errorf("Service: want sonarr.erfi.io, got %s", ev.Service)
+	}
+	if ev.Method != "GET" {
+		t.Errorf("Method: want GET, got %s", ev.Method)
+	}
+	if ev.URI != "/api/v3/queue" {
+		t.Errorf("URI: want /api/v3/queue, got %s", ev.URI)
+	}
+	if ev.Timestamp.IsZero() {
+		t.Error("Timestamp should not be zero")
+	}
+}
+
+func TestAccessLogStoreEventFileMalformedLines(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+
+	// Pre-seed JSONL with valid + garbage lines.
+	ef, _ := os.Create(eventPath)
+	ef.WriteString(`{"timestamp":"2026-02-22T12:01:00Z","client_ip":"1.1.1.1","service":"test.erfi.io","method":"GET","uri":"/ok","user_agent":"curl"}` + "\n")
+	ef.WriteString("GARBAGE LINE\n")
+	ef.WriteString(`{"timestamp":"2026-02-22T12:02:00Z","client_ip":"2.2.2.2","service":"test.erfi.io","method":"POST","uri":"/api","user_agent":"wget"}` + "\n")
+	ef.Close()
+
+	os.Create(logPath)
+
+	store := NewAccessLogStore(logPath)
+	store.SetEventFile(eventPath)
+
+	if got := store.EventCount(); got != 2 {
+		t.Fatalf("expected 2 events (skipping malformed), got %d", got)
+	}
+}
+
+func TestAccessLogStoreEventFileEmpty(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "combined-access.log")
+	eventPath := filepath.Join(dir, "access-events.jsonl")
+
+	os.Create(eventPath)
+	os.Create(logPath)
+
+	store := NewAccessLogStore(logPath)
+	store.SetEventFile(eventPath)
+
+	if got := store.EventCount(); got != 0 {
+		t.Fatalf("expected 0 events from empty JSONL, got %d", got)
 	}
 }
 

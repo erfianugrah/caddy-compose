@@ -281,9 +281,22 @@ header (which older builds didn't include).
 
 Coraza writes directly to `/var/log/coraza-audit.log` with no built-in rotation.
 A cron job (`rotate-audit-log.sh`) runs hourly and uses copytruncate to rotate
-when the file exceeds 256MB. Settings match Caddy's access log rotation:
-`roll_size=256MB`, `roll_keep=5`, `roll_keep_for=168h` (7 days). waf-api's offset
-tracking detects the size shrink and resets automatically.
+when the file exceeds 256MB. Settings: `roll_size=256MB`, `roll_keep=5`,
+`roll_keep_for=2160h` (90 days). waf-api's offset tracking detects the size
+shrink and resets automatically. On copytruncate, in-memory events are preserved
+(not cleared) — they age out naturally via maxAge eviction.
+
+### JSONL Event Persistence
+
+Parsed events are persisted to JSONL files so they survive waf-api restarts
+without re-parsing the raw audit/access logs. On startup, `SetEventFile()`
+restores events from JSONL before tailing begins.
+
+- WAF events: `/data/events.jsonl` — large payload fields (`RequestHeaders`,
+  `RequestBody`, `RequestArgs`) are stripped when persisting to keep the file compact
+- Access log events: `/data/access-events.jsonl` — rate limit and ipsum events
+- Compaction runs automatically after eviction (removes events older than maxAge)
+- At ~400 WAF events/day and 90-day retention: ~36,000 events, ~36MB on disk
 
 ### Blocklist Refresh
 
@@ -302,7 +315,9 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_CADDY_ADMIN_URL` (default `http://caddy:2019`) — Caddy admin API endpoint
 - `WAF_AUDIT_OFFSET_FILE` (default `/data/.audit-log-offset`) — persists audit log read offset across restarts
 - `WAF_ACCESS_OFFSET_FILE` (default `/data/.access-log-offset`) — persists access log read offset across restarts
-- `WAF_EVENT_MAX_AGE` (default `168h`), `WAF_TAIL_INTERVAL` (default `5s`)
+- `WAF_EVENT_FILE` (default `/data/events.jsonl`) — JSONL persistence for WAF events
+- `WAF_ACCESS_EVENT_FILE` (default `/data/access-events.jsonl`) — JSONL persistence for access log events
+- `WAF_EVENT_MAX_AGE` (default `2160h`), `WAF_TAIL_INTERVAL` (default `5s`)
 - `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups

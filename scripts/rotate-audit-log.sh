@@ -8,13 +8,13 @@
 # Settings match Caddy's log rotation:
 #   roll_size:     256 MB  (rotate when file exceeds this)
 #   roll_keep:     5       (keep at most 5 rotated files)
-#   roll_keep_for: 168h    (delete rotated files older than 7 days)
+#   roll_keep_for: 2160h   (delete rotated files older than 90 days)
 set -eu
 
 LOG="/var/log/coraza-audit.log"
 MAX_SIZE=$((256 * 1024 * 1024))  # 256 MB in bytes
 KEEP=5
-KEEP_DAYS=7
+KEEP_DAYS=90
 
 # Only rotate if the file exists and exceeds MAX_SIZE.
 if [ ! -f "$LOG" ]; then

@@ -15,7 +15,7 @@
 
 # ── Image tags ──────────────────────────────────────────────────────
 CADDY_IMAGE   ?= erfianugrah/caddy:1.24.0-2.10.2
-WAF_API_IMAGE ?= erfianugrah/waf-api:0.18.0
+WAF_API_IMAGE ?= erfianugrah/waf-api:0.19.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.

@@ -112,6 +112,9 @@ type AccessLogStore struct {
 	offset     int64
 	offsetFile string // persistent offset file (empty = don't persist)
 
+	// JSONL event persistence (empty = don't persist events)
+	eventFile string
+
 	// maxAge is the maximum age of events to retain. Events older than this
 	// are evicted during each Load() call. Zero means no eviction.
 	maxAge time.Duration
@@ -156,6 +159,108 @@ func (s *AccessLogStore) SetGeoIP(g *GeoIPStore) {
 	s.geoIP = g
 }
 
+// SetEventFile configures a JSONL file for persistent rate limit event storage.
+// On startup, existing events are loaded from this file so that parsed
+// events survive restarts without re-parsing the raw access log.
+func (s *AccessLogStore) SetEventFile(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eventFile = path
+	// Restore events from JSONL file.
+	events, err := loadRLEventsFromJSONL(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("error loading RL events from %s: %v", path, err)
+		}
+		return
+	}
+	s.events = events
+	log.Printf("restored %d RL events from %s", len(events), path)
+}
+
+// appendEventsToJSONL appends rate limit events to the JSONL file.
+func (s *AccessLogStore) appendEventsToJSONL(events []RateLimitEvent) {
+	if s.eventFile == "" || len(events) == 0 {
+		return
+	}
+	f, err := os.OpenFile(s.eventFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("error opening RL event file for append: %v", err)
+		return
+	}
+	defer f.Close()
+
+	for i := range events {
+		data, err := json.Marshal(events[i])
+		if err != nil {
+			continue
+		}
+		f.Write(data)
+		f.Write([]byte{'\n'})
+	}
+}
+
+// compactEventFile rewrites the JSONL file with only the current in-memory events.
+func (s *AccessLogStore) compactEventFile() {
+	if s.eventFile == "" {
+		return
+	}
+	tmp := s.eventFile + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		log.Printf("error creating temp RL event file for compaction: %v", err)
+		return
+	}
+
+	s.mu.RLock()
+	count := len(s.events)
+	for i := range s.events {
+		data, err := json.Marshal(s.events[i])
+		if err != nil {
+			continue
+		}
+		f.Write(data)
+		f.Write([]byte{'\n'})
+	}
+	s.mu.RUnlock()
+
+	f.Sync()
+	f.Close()
+	if err := os.Rename(tmp, s.eventFile); err != nil {
+		log.Printf("error renaming compacted RL event file: %v", err)
+		return
+	}
+	log.Printf("compacted RL event file: %d events", count)
+}
+
+// loadRLEventsFromJSONL reads rate limit events from a JSONL file.
+func loadRLEventsFromJSONL(path string) ([]RateLimitEvent, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var events []RateLimitEvent
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			line = bytes.TrimSpace(line)
+		}
+		if len(line) > 0 {
+			var ev RateLimitEvent
+			if jsonErr := json.Unmarshal(line, &ev); jsonErr == nil {
+				events = append(events, ev)
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	return events, nil
+}
+
 // SetMaxAge configures the TTL for in-memory event retention.
 // Events older than maxAge are evicted during each Load() cycle.
 func (s *AccessLogStore) SetMaxAge(d time.Duration) {
@@ -188,12 +293,14 @@ func (s *AccessLogStore) Load() {
 		log.Printf("combined access log rotated (size %d < offset %d), re-reading", info.Size(), s.offset)
 		s.offset = 0
 		s.saveOffset()
-		s.mu.Lock()
-		s.events = nil
-		s.mu.Unlock()
+		// Don't clear in-memory events — with copytruncate rotation the
+		// already-parsed events are still valid. The eviction loop will
+		// age them out naturally based on maxAge.
 	}
 
 	if info.Size() == s.offset {
+		// No new data, but still run eviction for time-based cleanup.
+		s.evict()
 		return
 	}
 
@@ -268,6 +375,8 @@ func (s *AccessLogStore) Load() {
 		s.mu.Lock()
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
+		// Persist new events to JSONL.
+		s.appendEventsToJSONL(newEvents)
 		rlCount, ipsumCount := 0, 0
 		for _, e := range newEvents {
 			if e.Source == "ipsum" {
@@ -304,6 +413,8 @@ func (s *AccessLogStore) evict() {
 		copy(remaining, s.events[idx:])
 		s.events = remaining
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
+		// Compact the JSONL file to match in-memory state.
+		go s.compactEventFile()
 	}
 }
 

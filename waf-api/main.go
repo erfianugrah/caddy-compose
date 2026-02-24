@@ -39,12 +39,12 @@ func main() {
 		log.Printf("warning: could not initialize rate limit dir: %v", err)
 	}
 
-	// Event retention: maximum age for in-memory events (default 168h = 7 days).
-	maxAgeStr := envOr("WAF_EVENT_MAX_AGE", "168h")
+	// Event retention: maximum age for in-memory events (default 2160h = 90 days).
+	maxAgeStr := envOr("WAF_EVENT_MAX_AGE", "2160h")
 	maxAge, err := time.ParseDuration(maxAgeStr)
 	if err != nil {
-		log.Printf("warning: invalid WAF_EVENT_MAX_AGE %q, using 168h", maxAgeStr)
-		maxAge = 168 * time.Hour
+		log.Printf("warning: invalid WAF_EVENT_MAX_AGE %q, using 2160h", maxAgeStr)
+		maxAge = 2160 * time.Hour
 	}
 
 	// Tailing interval (default 5s).
@@ -70,12 +70,14 @@ func main() {
 
 	store := NewStore(logPath)
 	store.SetOffsetFile(envOr("WAF_AUDIT_OFFSET_FILE", "/data/.audit-log-offset"))
+	store.SetEventFile(envOr("WAF_EVENT_FILE", "/data/events.jsonl"))
 	store.SetMaxAge(maxAge)
 	store.SetGeoIP(geoStore)
 	store.StartTailing(tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
 	accessLogStore.SetOffsetFile(envOr("WAF_ACCESS_OFFSET_FILE", "/data/.access-log-offset"))
+	accessLogStore.SetEventFile(envOr("WAF_ACCESS_EVENT_FILE", "/data/access-events.jsonl"))
 	accessLogStore.SetMaxAge(maxAge)
 	accessLogStore.SetGeoIP(geoStore)
 	accessLogStore.StartTailing(tailInterval)
