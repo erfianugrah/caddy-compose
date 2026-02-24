@@ -121,9 +121,9 @@ func generatePostCRS(_ WAFConfig, exclusions []RuleExclusion) string {
 			case "remove_by_tag":
 				b.WriteString(fmt.Sprintf("SecRuleRemoveByTag \"%s\"\n", e.RuleTag))
 			case "update_target_by_id":
-				b.WriteString(fmt.Sprintf("SecRuleUpdateTargetById %s \"!%s\"\n", e.RuleID, e.Variable))
+				b.WriteString(fmt.Sprintf("SecRuleUpdateTargetById %s \"!%s\"\n", e.RuleID, strings.TrimPrefix(e.Variable, "!")))
 			case "update_target_by_tag":
-				b.WriteString(fmt.Sprintf("SecRuleUpdateTargetByTag \"%s\" \"!%s\"\n", e.RuleTag, e.Variable))
+				b.WriteString(fmt.Sprintf("SecRuleUpdateTargetByTag \"%s\" \"!%s\"\n", e.RuleTag, strings.TrimPrefix(e.Variable, "!")))
 			}
 			b.WriteString("\n")
 		}
@@ -404,9 +404,9 @@ func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion, idGen *ruleID
 	case "runtime_remove_by_tag":
 		ctlAction = fmt.Sprintf("ctl:ruleRemoveByTag=%s", e.RuleTag)
 	case "runtime_remove_target_by_id":
-		ctlAction = fmt.Sprintf("ctl:ruleRemoveTargetById=%s;%s", e.RuleID, e.Variable)
+		ctlAction = fmt.Sprintf("ctl:ruleRemoveTargetById=%s;%s", e.RuleID, strings.TrimPrefix(e.Variable, "!"))
 	case "runtime_remove_target_by_tag":
-		ctlAction = fmt.Sprintf("ctl:ruleRemoveTargetByTag=%s;%s", e.RuleTag, e.Variable)
+		ctlAction = fmt.Sprintf("ctl:ruleRemoveTargetByTag=%s;%s", e.RuleTag, strings.TrimPrefix(e.Variable, "!"))
 	default:
 		return
 	}
