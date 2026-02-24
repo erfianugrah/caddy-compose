@@ -59,9 +59,12 @@ COPY --from=waf-dashboard /build/dist/ /etc/caddy/waf-ui/
 COPY errors/ /etc/caddy/errors/
 COPY coraza/ /etc/caddy/coraza/
 COPY scripts/update-ipsum.sh /usr/local/bin/update-ipsum.sh
+COPY scripts/rotate-audit-log.sh /usr/local/bin/rotate-audit-log.sh
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/update-ipsum.sh /usr/local/bin/entrypoint.sh \
+RUN chmod +x /usr/local/bin/update-ipsum.sh /usr/local/bin/rotate-audit-log.sh /usr/local/bin/entrypoint.sh \
 	&& echo '0 2 * * * /usr/local/bin/update-ipsum.sh >> /var/log/ipsum-update.log 2>&1' \
+	   >> /var/spool/cron/crontabs/root \
+	&& echo '0 * * * * /usr/local/bin/rotate-audit-log.sh >> /var/log/audit-rotate.log 2>&1' \
 	   >> /var/spool/cron/crontabs/root
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

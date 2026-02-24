@@ -277,6 +277,14 @@ The entrypoint (`scripts/entrypoint.sh`) also re-seeds the ipsum blocklist from
 the build-time snapshot if the runtime file is missing OR lacks the `# Updated:`
 header (which older builds didn't include).
 
+### Audit Log Rotation
+
+Coraza writes directly to `/var/log/coraza-audit.log` with no built-in rotation.
+A cron job (`rotate-audit-log.sh`) runs hourly and uses copytruncate to rotate
+when the file exceeds 256MB. Settings match Caddy's access log rotation:
+`roll_size=256MB`, `roll_keep=5`, `roll_keep_for=168h` (7 days). waf-api's offset
+tracking detects the size shrink and resets automatically.
+
 ### Blocklist Refresh
 
 `POST /api/blocklist/refresh` downloads a fresh IPsum list from GitHub, filters
