@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   Card,
@@ -187,9 +187,8 @@ export default function ServicesList() {
 
               {!loading &&
                 services.map((svc) => (
-                  <>
+                  <Fragment key={svc.service}>
                     <TableRow
-                      key={svc.service}
                       className="cursor-pointer"
                       onClick={() => toggleExpand(svc.service)}
                     >
@@ -226,7 +225,7 @@ export default function ServicesList() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
 
               {!loading && services.length === 0 && (

@@ -50,6 +50,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectLabel,
   SelectSeparator,
@@ -1263,17 +1264,19 @@ function AdvancedBuilderForm({
               const groupLabel = group === "quick" ? "Quick Actions" : group === "advanced" ? "Configure-time" : "Runtime (per-request)";
               return [
                 gi > 0 ? <SelectSeparator key={`sep-${group}`} /> : null,
-                <SelectLabel key={`label-${group}`} className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
-                  {groupLabel}
-                </SelectLabel>,
-                ...items.map((t) => (
-                  <SelectItem key={t.value} value={t.value} textValue={t.label} className="py-2">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium text-sm">{t.label}</span>
-                      <span className="text-[11px] leading-tight text-muted-foreground">{t.description}</span>
-                    </div>
-                  </SelectItem>
-                )),
+                <SelectGroup key={`group-${group}`}>
+                  <SelectLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
+                    {groupLabel}
+                  </SelectLabel>
+                  {items.map((t) => (
+                    <SelectItem key={t.value} value={t.value} textValue={t.label} className="py-2">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium text-sm">{t.label}</span>
+                        <span className="text-[11px] leading-tight text-muted-foreground">{t.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>,
               ];
             })}
           </SelectContent>
