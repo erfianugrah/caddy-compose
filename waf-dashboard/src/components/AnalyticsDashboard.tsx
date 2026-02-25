@@ -49,7 +49,9 @@ import {
 import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 import { formatNumber, formatDateTime, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
+import { EventDetailModal } from "./EventDetailModal";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
+import type { WAFEvent } from "@/lib/api";
 
 /** Map URL ?tab= values to internal Tabs values. */
 const TAB_ALIASES: Record<string, string> = {
@@ -82,6 +84,10 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
   const [data, setData] = useState<IPLookupData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const autoSearched = useRef(false);
+
+  // Event detail modal
+  const [selectedEvent, setSelectedEvent] = useState<WAFEvent | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const handleSearch = useCallback(() => {
     const ip = query.trim();
@@ -289,7 +295,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Recent Events</CardTitle>
-                <CardDescription>Latest events from {data.ip}</CardDescription>
+                <CardDescription>Latest events from {data.ip} — click a row to inspect</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
@@ -305,7 +311,14 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                   </TableHeader>
                   <TableBody>
                     {data.recent_events.slice(0, 20).map((evt, idx) => (
-                      <TableRow key={evt.id || idx}>
+                      <TableRow
+                        key={evt.id || idx}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedEvent(evt);
+                          setModalOpen(true);
+                        }}
+                      >
                         <TableCell className="whitespace-nowrap text-xs">
                           {formatDateTime(evt.timestamp)}
                         </TableCell>
@@ -337,6 +350,9 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
               </CardContent>
             </Card>
           )}
+
+          {/* Event Detail Modal */}
+          <EventDetailModal event={selectedEvent} open={modalOpen} onOpenChange={setModalOpen} />
         </div>
       )}
 
