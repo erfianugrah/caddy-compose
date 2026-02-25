@@ -111,8 +111,8 @@ services:
 
   waf-api:
     build:
-      context: .
-      dockerfile: waf-api/Dockerfile
+      context: waf-api
+      dockerfile: Dockerfile
     image: erfianugrah/waf-api:0.19.0
     hostname: waf-api
     container_name: waf-api

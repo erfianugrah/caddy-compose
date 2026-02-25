@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,6 +32,8 @@ type BlocklistStore struct {
 	lastUpdated string // from file comment "# Updated: ..."
 	minScore    int    // from file comment "# IPs: ... (min_score=N)"
 	lastLoad    time.Time
+
+	refreshing atomic.Bool // guard against concurrent Refresh calls
 }
 
 // NewBlocklistStore creates a store that reads from the given ipsum_block.caddy file.
@@ -168,6 +171,16 @@ func (bs *BlocklistStore) ForceReload() {
 // reloads the in-memory cache. Returns a response suitable for the API.
 // The deployCfg is used to reload Caddy after writing the file.
 func (bs *BlocklistStore) Refresh(deployCfg DeployConfig) BlocklistRefreshResponse {
+	// Prevent concurrent refreshes — the operation is expensive (HTTP download,
+	// file write, Caddy reload) and concurrent runs would race on file writes.
+	if !bs.refreshing.CompareAndSwap(false, true) {
+		return BlocklistRefreshResponse{
+			Status:  "error",
+			Message: "refresh already in progress",
+		}
+	}
+	defer bs.refreshing.Store(false)
+
 	const ipsumURL = "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt"
 
 	bs.mu.RLock()
