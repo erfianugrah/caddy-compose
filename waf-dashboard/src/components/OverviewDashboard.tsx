@@ -70,6 +70,7 @@ import DashboardFilterBar, {
 } from "./DashboardFilterBar";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import { ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { TopBlockedIPsPanel, TopTargetedURIsPanel, TopCountriesPanel } from "./AnalyticsDashboard";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -297,6 +298,8 @@ export default function OverviewDashboard() {
 
   // ── Collapsible analytics section ──
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
+  const analyticsHours = rangeToParams(timeRange).hours;
+  const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0);
 
   // ── Data loading ──
   const loadData = useCallback(() => {
@@ -314,6 +317,7 @@ export default function OverviewDashboard() {
 
   useEffect(() => {
     loadData();
+    setAnalyticsRefreshKey((k) => k + 1);
   }, [loadData]);
 
   // Reset zoom and events page when time range or filters change
@@ -664,7 +668,7 @@ export default function OverviewDashboard() {
 
               {/* Unique Clients + Services compact cards */}
               <div className="flex flex-col gap-4">
-                <StatCard title="Unique Clients" value={data?.unique_clients ?? 0} icon={Users} color="cyan" loading={loading} href="/analytics?tab=top-ips" />
+                <StatCard title="Unique Clients" value={data?.unique_clients ?? 0} icon={Users} color="cyan" loading={loading} />
                 <StatCard title="Unique Services" value={data?.unique_services ?? 0} icon={Server} color="cyan" loading={loading} href="/services" />
               </div>
 
@@ -705,7 +709,7 @@ export default function OverviewDashboard() {
                               x={props.x as number}
                               y={props.y as number}
                               payload={props.payload as { value: string }}
-                              buildHref={(ip) => `/analytics?tab=ip&q=${encodeURIComponent(ip)}`}
+                              buildHref={(ip) => `/analytics?q=${encodeURIComponent(ip)}`}
                             />
                           )}
                         />
@@ -785,6 +789,13 @@ export default function OverviewDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Top Blocked IPs / Top URIs / Top Countries */}
+            <TopBlockedIPsPanel hours={analyticsHours} refreshKey={analyticsRefreshKey} />
+            <div className="grid gap-4 lg:grid-cols-2">
+              <TopTargetedURIsPanel hours={analyticsHours} refreshKey={analyticsRefreshKey} />
+              <TopCountriesPanel hours={analyticsHours} refreshKey={analyticsRefreshKey} />
+            </div>
           </>
         )}
       </div>

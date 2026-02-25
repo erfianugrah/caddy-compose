@@ -76,7 +76,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
               </Button>
             </a>
             <a
-              href={`/analytics?tab=ip&q=${encodeURIComponent(event.client_ip)}`}
+              href={`/analytics?q=${encodeURIComponent(event.client_ip)}`}
               className="inline-flex"
             >
               <Button variant="outline" size="xs" className="text-xs">

@@ -34,7 +34,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   lookupIP,
@@ -50,21 +49,10 @@ import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 import { formatNumber, formatDateTime, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
 import { EventDetailModal } from "./EventDetailModal";
-import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import type { WAFEvent } from "@/lib/api";
 
-/** Map URL ?tab= values to internal Tabs values. */
-const TAB_ALIASES: Record<string, string> = {
-  ip: "lookup",
-  lookup: "lookup",
-  "top-ips": "top-ips",
-  "top-uris": "top-uris",
-  countries: "top-countries",
-  "top-countries": "top-countries",
-};
-
 /** Country code + optional flag. */
-function CountryLabel({ code }: { code: string }) {
+export function CountryLabel({ code }: { code: string }) {
   if (!code || code === "XX") return <span className="text-muted-foreground">Unknown</span>;
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -372,7 +360,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
 
 // ─── Top Blocked IPs Panel ──────────────────────────────────────────
 
-function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
+export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<TopBlockedIP[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -480,7 +468,7 @@ function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refreshKey:
 
 // ─── Top Targeted URIs Panel ────────────────────────────────────────
 
-function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
+export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<TopTargetedURI[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -571,7 +559,7 @@ function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; refreshKe
 
 // ─── Top Countries Panel ────────────────────────────────────────────
 
-function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
+export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<CountryCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -669,93 +657,31 @@ function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refreshKey: 
   );
 }
 
-// ─── Main Analytics Dashboard ───────────────────────────────────────
+// ─── IP Lookup Page ─────────────────────────────────────────────────
 
 export default function AnalyticsDashboard() {
-  // ── Read URL query params on mount ──────────────────────────────────
-  const [activeTab, setActiveTab] = useState("lookup");
   const [initialIP, setInitialIP] = useState<string | undefined>();
-  const [timeRange, setTimeRange] = useState<TimeRange>({ type: "relative", hours: 24, label: "Last 24 hours" });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get("tab");
     const qParam = params.get("q");
-
-    if (tabParam && TAB_ALIASES[tabParam]) {
-      setActiveTab(TAB_ALIASES[tabParam]);
-    } else if (qParam) {
-      // If only ?q= is provided, switch to the lookup tab
-      setActiveTab("lookup");
-    }
 
     if (qParam) {
       setInitialIP(qParam);
-    }
-
-    // Clear URL params so refresh doesn't re-apply stale filters
-    if (tabParam || qParam) {
       history.replaceState(null, "", window.location.pathname);
     }
   }, []);
 
-  const hours = rangeToParams(timeRange).hours;
-  const [refreshKey, setRefreshKey] = useState(0);
-  const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-
   return (
     <div className="space-y-6">
-      {/* Header with time range */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Investigate</h2>
-          <p className="text-sm text-muted-foreground">
-            IP lookup, top threats, and attack targeting analysis.
-          </p>
-        </div>
-        <TimeRangePicker
-          value={timeRange}
-          onChange={setTimeRange}
-          onRefresh={handleRefresh}
-        />
+      <div>
+        <h2 className="text-lg font-semibold">IP Lookup</h2>
+        <p className="text-sm text-muted-foreground">
+          Look up any IP address to see its WAF event history, timeline, and service breakdown.
+        </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="lookup" className="gap-1.5">
-            <Search className="h-3.5 w-3.5" />
-            IP Lookup
-          </TabsTrigger>
-          <TabsTrigger value="top-ips" className="gap-1.5">
-            <Shield className="h-3.5 w-3.5" />
-            Top Blocked IPs
-          </TabsTrigger>
-          <TabsTrigger value="top-uris" className="gap-1.5">
-            <Target className="h-3.5 w-3.5" />
-            Top URIs
-          </TabsTrigger>
-          <TabsTrigger value="top-countries" className="gap-1.5">
-            <Globe className="h-3.5 w-3.5" />
-            Countries
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="lookup">
-          <IPLookupPanel initialIP={initialIP} />
-        </TabsContent>
-
-        <TabsContent value="top-ips">
-          <TopBlockedIPsPanel hours={hours} refreshKey={refreshKey} />
-        </TabsContent>
-
-        <TabsContent value="top-uris">
-          <TopTargetedURIsPanel hours={hours} refreshKey={refreshKey} />
-        </TabsContent>
-
-        <TabsContent value="top-countries">
-          <TopCountriesPanel hours={hours} refreshKey={refreshKey} />
-        </TabsContent>
-      </Tabs>
+      <IPLookupPanel initialIP={initialIP} />
     </div>
   );
 }
