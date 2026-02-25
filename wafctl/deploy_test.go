@@ -27,7 +27,7 @@ func TestEnsureCorazaDir(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected %s to exist: %v", name, err)
 		}
-		if !strings.Contains(string(data), "Managed by waf-api") {
+		if !strings.Contains(string(data), "Managed by wafctl") {
 			t.Errorf("%s missing header comment", name)
 		}
 	}
@@ -330,7 +330,7 @@ func TestReloadCaddyInjectsFingerprint(t *testing.T) {
 	bodyStr := string(receivedBody)
 
 	// Should start with a fingerprint comment.
-	if !strings.HasPrefix(bodyStr, "# waf-api deploy ") {
+	if !strings.HasPrefix(bodyStr, "# wafctl deploy ") {
 		t.Error("POST body should start with fingerprint comment")
 	}
 	if !strings.Contains(bodyStr, "fingerprint:") {
@@ -557,7 +557,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	}
 
 	// Step 6: Verify the Caddy reload received the Caddyfile with fingerprint.
-	if !strings.Contains(lastPostedBody, "# waf-api deploy") {
+	if !strings.Contains(lastPostedBody, "# wafctl deploy") {
 		t.Error("Caddy reload POST should contain fingerprint comment")
 	}
 	if !strings.Contains(lastPostedBody, "localhost:80") {

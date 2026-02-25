@@ -7,13 +7,13 @@ Caddy reverse proxy for the **servarr** host, with Coraza WAF (OWASP CRS), a WAF
 ```
 Internet -> Cloudflare -> Caddy (host network, :443) -> backend containers (Docker bridge IPs)
                                                     \-> Authelia (172.19.99.2:9091) for forward auth
-                                                    \-> waf-api  (172.19.98.2:8080) WAF management sidecar
+                                                    \-> wafctl  (172.19.98.2:8080) WAF management sidecar
 ```
 
 - **Caddy** runs with `network_mode: host` (binds :80, :443, :2019 admin)
 - **Authelia** runs on an isolated bridge network (`172.19.99.0/24`, static IP `172.19.99.2`)
-- **waf-api** runs on a separate bridge network (`172.19.98.0/24`, static IP `172.19.98.2`)
-- Caddy reaches Authelia directly at `172.19.99.2:9091`; waf-api reaches Caddy's admin API via an internal `:2020` reverse proxy site restricted to `172.19.98.0/24`
+- **wafctl** runs on a separate bridge network (`172.19.98.0/24`, static IP `172.19.98.2`)
+- Caddy reaches Authelia directly at `172.19.99.2:9091`; wafctl reaches Caddy's admin API via an internal `:2020` reverse proxy site restricted to `172.19.98.0/24`
 - Metrics served via admin API at `localhost:2019/metrics`, proxied through `caddy-prometheus.erfi.io`
 - WAF dashboard (Astro + React + shadcn/ui) served as static files by Caddy at `waf.erfi.io`
 
@@ -31,7 +31,7 @@ Built locally, pushed to Docker Hub. Includes:
 - Cloudflare IP ranges fetched at build time for `trusted_proxies`
 - Entrypoint script that starts `crond` (for IPsum updates) + `caddy run`
 
-### WAF API image: `erfianugrah/waf-api:0.21.0`
+### wafctl image: `erfianugrah/wafctl:0.21.0`
 
 Go stdlib sidecar (zero external dependencies). Provides:
 
@@ -62,12 +62,12 @@ make help              # Show all targets
 make config            # Show current configuration
 make build             # Build both images
 make build-caddy       # Build Caddy image (includes dashboard)
-make build-waf-api     # Build waf-api image
+make build-wafctl     # Build wafctl image
 make push              # Push both images to Docker Hub
 make test              # Run all tests (Go + frontend)
 make deploy            # Full deploy: build + push + SCP + restart
 make deploy-caddy      # Build, push, SCP, restart Caddy
-make deploy-waf-api    # Build, push, restart waf-api only
+make deploy-wafctl    # Build, push, restart wafctl only
 make scp               # SCP Caddyfile + compose.yaml to remote
 make status            # Show container status on remote
 make logs              # Tail logs from all containers
@@ -94,17 +94,17 @@ make deploy REMOTE=myhost DEPLOY_MODE=compose
 | `REMOTE` | `servarr` | SSH host alias or `user@host` |
 | `DEPLOY_MODE` | `dockge` | `dockge` (via dockge container) or `compose` (direct) |
 | `CADDY_IMAGE` | `erfianugrah/caddy:1.28.0-2.10.2` | Caddy image tag |
-| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.21.0` | waf-api image tag |
+| `WAFCTL_IMAGE` | `erfianugrah/wafctl:0.21.0` | wafctl image tag |
 | `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Compose file path (inside dockge or on host) |
 | `CADDYFILE_DEST` | `/mnt/user/data/caddy/Caddyfile` | Remote Caddyfile path for SCP |
 | `COMPOSE_DEST` | `/mnt/user/data/dockge/stacks/caddy/compose.yaml` | Remote compose.yaml path for SCP |
 | `DOCKGE_CONTAINER` | `dockge` | Dockge container name (dockge mode only) |
-| `WAF_CONFIG_PATH` | `/mnt/user/data/waf-api/waf-config.json` | Remote waf-config.json path |
+| `WAF_CONFIG_PATH` | `/mnt/user/data/wafctl/waf-config.json` | Remote waf-config.json path |
 | `WAF_SETTINGS_PATH` | `/mnt/user/data/caddy/coraza/custom-waf-settings.conf` | Remote WAF settings path |
 
 ## WAF configuration
 
-A single `(waf)` snippet handles all WAF-enabled services. Per-service settings (paranoia level, anomaly thresholds, rule groups, WAF mode) are fully dynamic — configured via the Settings page and written to `/data/coraza/custom-waf-settings.conf` by waf-api.
+A single `(waf)` snippet handles all WAF-enabled services. Per-service settings (paranoia level, anomaly thresholds, rule groups, WAF mode) are fully dynamic — configured via the Settings page and written to `/data/coraza/custom-waf-settings.conf` by wafctl.
 
 **The Caddyfile does NOT contain a `SecRuleEngine` directive.** The generated `custom-waf-settings.conf` is the single source of truth for the WAF engine mode. On first boot (before any deploy), the placeholder file includes `SecRuleEngine On` as a safe default.
 
@@ -136,17 +136,17 @@ All configs include `SecAuditLogParts ABCFHKZ` (Part K for rule match messages) 
 
 All dynamic config survives container restarts:
 
-- `waf-config.json` at `/data/waf-config.json` (volume: `/mnt/user/data/waf-api/`) — WAF settings (mode, paranoia, thresholds, per-service overrides)
+- `waf-config.json` at `/data/waf-config.json` (volume: `/mnt/user/data/wafctl/`) — WAF settings (mode, paranoia, thresholds, per-service overrides)
 - `custom-waf-settings.conf` at `/data/coraza/` (volume: `/mnt/user/data/caddy/coraza/`) — Generated SecRule directives
 - `exclusions.json`, `rate-limits.json` at `/data/` — Policy Engine exclusions and rate limit zones
 
-On startup, waf-api calls `generateOnBoot()` which regenerates all config files from stored JSON state (WAF config, exclusions, rate limit zones). This ensures a stack restart always picks up the latest generator output without requiring a manual `POST /api/config/deploy`. `ensureCorazaDir()` creates placeholder files only if they don't exist as a fallback.
+On startup, wafctl calls `generateOnBoot()` which regenerates all config files from stored JSON state (WAF config, exclusions, rate limit zones). This ensures a stack restart always picks up the latest generator output without requiring a manual `POST /api/config/deploy`. `ensureCorazaDir()` creates placeholder files only if they don't exist as a fallback.
 
 The entrypoint (`scripts/entrypoint.sh`) re-seeds the ipsum blocklist from the build-time snapshot if the runtime file is missing or lacks the `# Updated:` header. The Go blocklist parser uses the file's mtime as a fallback when the comment is missing.
 
 ### Reload fingerprint
 
-When only included config files change (not the Caddyfile itself), Caddy's `/load` endpoint may skip reprovisioning because the Caddyfile text is identical. To work around this, `reloadCaddy()` computes a SHA-256 fingerprint of all referenced config file contents and prepends a `# waf-api deploy <timestamp> fingerprint:<hash>` comment to the Caddyfile before POSTing to `/load`. The on-disk Caddyfile is never modified.
+When only included config files change (not the Caddyfile itself), Caddy's `/load` endpoint may skip reprovisioning because the Caddyfile text is identical. To work around this, `reloadCaddy()` computes a SHA-256 fingerprint of all referenced config file contents and prepends a `# wafctl deploy <timestamp> fingerprint:<hash>` comment to the Caddyfile before POSTing to `/load`. The on-disk Caddyfile is never modified.
 
 ## WAF dashboard
 
@@ -197,9 +197,9 @@ The dashboard supports Cloudflare-style click-to-investigate navigation:
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + 22+ site blocks)
-  Dockerfile             # Multi-stage: xcaddy, ipsum, cloudflare-ips, waf-dashboard, waf-api, final
+  Dockerfile             # Multi-stage: xcaddy, ipsum, cloudflare-ips, waf-dashboard, wafctl, final
   Makefile               # Build, push, deploy, test, WAF operations
-  compose.yaml           # Caddy + Authelia + waf-api services
+  compose.yaml           # Caddy + Authelia + wafctl services
   .env                   # CF_API_TOKEN + EMAIL only (Authelia secrets in /secrets/)
   .gitignore
   README.md
@@ -214,7 +214,7 @@ caddy-compose/
   scripts/
     entrypoint.sh        # Container entrypoint (crond + caddy run)
     update-ipsum.sh      # Fetches IPsum blocklist, generates Caddy snippet, reloads
-  waf-api/                     # 12 source files, 12 test files, 441 Go tests
+  wafctl/                     # 12 source files, 12 test files, 441 Go tests
     main.go              # HTTP handlers, routes, fieldFilter operator system (eq/neq/contains/in/regex)
     models.go            # Data models (Event, SummaryResponse, BlocklistStats, etc.)
     blocklist.go         # IPsum blocklist: file parser with mtime fallback, cached stats, IP check, on-demand refresh
@@ -228,7 +228,7 @@ caddy-compose/
     ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
     *_test.go            # 12 domain-specific test files (split from monolithic main_test.go)
-    Dockerfile           # waf-api image (alpine + compiled binary, VERSION ARG for ldflags)
+    Dockerfile           # wafctl image (alpine + compiled binary, VERSION ARG for ldflags)
     go.mod
   waf-dashboard/               # 6 test files, 229 frontend tests
     src/
@@ -272,7 +272,7 @@ caddy-compose/
 
 ### Container security
 
-| Feature | Caddy | Authelia | waf-api |
+| Feature | Caddy | Authelia | wafctl |
 |---------|-------|----------|---------|
 | `read_only: true` | yes | yes | yes |
 | `cap_drop: ALL` | yes | yes | yes |
@@ -311,8 +311,8 @@ OWASP CRS loaded via `load_owasp_crs` (embedded in Coraza module), plus custom r
 |-----------|-------|--------|
 | `pre-crs.conf` | Before CRS | Body settings, JSON processor, socket.io exclusion (rule 920420), XXE rules, `SecResponseBodyAccess Off` |
 | `post-crs.conf` | After CRS | RCE pipe-to-command, backtick substitution, CRLF injection |
-| Dynamic `custom-pre-crs.conf` | Before CRS | Written by waf-api Policy Engine (allow/block/skip rules) |
-| Dynamic `custom-post-crs.conf` | After CRS | Written by waf-api Policy Engine (advanced exclusions) |
+| Dynamic `custom-pre-crs.conf` | Before CRS | Written by wafctl Policy Engine (allow/block/skip rules) |
+| Dynamic `custom-post-crs.conf` | After CRS | Written by wafctl Policy Engine (advanced exclusions) |
 | Dynamic `custom-waf-settings.conf` | Between CRS setup and rules | SecRuleEngine, paranoia, thresholds, rule groups, per-service overrides |
 
 ### Other security layers
@@ -392,8 +392,8 @@ make scp               # SCP Caddyfile + compose.yaml to servarr
 make pull              # Pull images on servarr
 make restart           # Restart stack
 
-# Deploy just waf-api (faster — no Caddy rebuild)
-make deploy-waf-api
+# Deploy just wafctl (faster — no Caddy rebuild)
+make deploy-wafctl
 ```
 
 ## Operations
@@ -554,7 +554,7 @@ Every site block should include these snippets in order:
 
 ### 4. Rate limiting
 
-Rate limit zone files are managed by waf-api. On boot, waf-api scans the Caddyfile and creates placeholder `.caddy` files for any new zone names it finds. No manual rate limit config is needed to add a new site — the glob `import /data/caddy/rl/<name>_rl*.caddy` is a no-op until a rate limit is configured via the waf dashboard.
+Rate limit zone files are managed by wafctl. On boot, wafctl scans the Caddyfile and creates placeholder `.caddy` files for any new zone names it finds. No manual rate limit config is needed to add a new site — the glob `import /data/caddy/rl/<name>_rl*.caddy` is a no-op until a rate limit is configured via the waf dashboard.
 
 ### 5. Example: cdn.erfi.io (MinIO)
 

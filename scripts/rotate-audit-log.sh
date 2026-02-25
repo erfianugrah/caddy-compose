@@ -2,7 +2,7 @@
 # rotate-audit-log.sh — Rotate the Coraza WAF audit log.
 #
 # Coraza doesn't support log reopening (no SIGHUP), so we use copytruncate:
-# copy the log, truncate the original. waf-api's offset tracking detects the
+# copy the log, truncate the original. wafctl's offset tracking detects the
 # size shrink and resets automatically.
 #
 # Settings match Caddy's log rotation:

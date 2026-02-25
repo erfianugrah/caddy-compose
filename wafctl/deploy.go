@@ -60,7 +60,7 @@ func ensureCorazaDir(dir string) error {
 	for name, extra := range placeholders {
 		path := filepath.Join(dir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			header := fmt.Sprintf("# Managed by waf-api\n# Created: %s\n# This file is empty until settings are deployed.\n%s",
+			header := fmt.Sprintf("# Managed by wafctl\n# Created: %s\n# This file is empty until settings are deployed.\n%s",
 				time.Now().UTC().Format(time.RFC3339), extra)
 			if err := atomicWriteFile(path, []byte(header), 0644); err != nil {
 				return fmt.Errorf("creating placeholder %s: %w", path, err)
@@ -141,7 +141,7 @@ func reloadCaddy(caddyfilePath, adminURL string, configFiles ...string) error {
 	// see a "new" Caddyfile on every deploy. The timestamp alone would suffice,
 	// but including the hash lets us log exactly what changed.
 	fingerprint := deployFingerprint(configFiles)
-	header := fmt.Sprintf("# waf-api deploy %s fingerprint:%s\n",
+	header := fmt.Sprintf("# wafctl deploy %s fingerprint:%s\n",
 		time.Now().UTC().Format(time.RFC3339), fingerprint)
 	payload := append([]byte(header), content...)
 

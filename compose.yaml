@@ -46,9 +46,9 @@ services:
       - /mnt/user/data/caddy/data:/data
       - /mnt/user/data/caddy/config:/config
       - /mnt/user/data/caddy/log:/var/log
-      # Dynamic WAF overrides — written by waf-api Policy Engine
+      # Dynamic WAF overrides — written by wafctl Policy Engine
       - /mnt/user/data/caddy/coraza:/data/coraza
-      # Dynamic rate limit zone files — written by waf-api Rate Limit Engine
+      # Dynamic rate limit zone files — written by wafctl Rate Limit Engine
       - /mnt/user/data/caddy/rl:/data/caddy/rl
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
@@ -109,13 +109,13 @@ services:
       AUTHELIA_SESSION_SECRET_FILE: "/secrets/session_secret"
       AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: "/secrets/storage_encryption_key"
 
-  waf-api:
+  wafctl:
     build:
-      context: waf-api
+      context: wafctl
       dockerfile: Dockerfile
-    image: erfianugrah/waf-api:0.21.0
-    hostname: waf-api
-    container_name: waf-api
+    image: erfianugrah/wafctl:0.21.0
+    hostname: wafctl
+    container_name: wafctl
     restart: unless-stopped
     read_only: true
     cap_drop:
@@ -151,7 +151,7 @@ services:
       - "caddy:host-gateway"
     volumes:
       - /mnt/user/data/caddy/log:/var/log:ro
-      - /mnt/user/data/waf-api:/data
+      - /mnt/user/data/wafctl:/data
       # Dynamic WAF overrides — shared with Caddy
       - /mnt/user/data/caddy/coraza:/data/coraza
       # Dynamic rate limit zone files — shared with Caddy
@@ -159,7 +159,7 @@ services:
       # Caddyfile — read-only, needed for reload via admin API
       - /mnt/user/data/caddy/Caddyfile:/data/Caddyfile:ro
       # GeoIP MMDB database (DB-IP Lite or MaxMind GeoLite2)
-      - /mnt/user/data/waf-api/geoip:/data/geoip:ro
+      - /mnt/user/data/wafctl/geoip:/data/geoip:ro
     environment:
       - TZ=Asia/Singapore
       - WAF_AUDIT_LOG=/var/log/coraza-audit.log

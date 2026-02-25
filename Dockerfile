@@ -43,12 +43,12 @@ RUN npm ci
 COPY waf-dashboard/ ./
 RUN npm run build
 
-# Build WAF API sidecar
-FROM golang:1.23-alpine AS waf-api
+# Build wafctl sidecar
+FROM golang:1.23-alpine AS wafctl
 WORKDIR /build
-COPY waf-api/go.mod ./
-COPY waf-api/*.go ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o waf-api .
+COPY wafctl/go.mod ./
+COPY wafctl/*.go ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o wafctl .
 
 FROM caddy:${VERSION}-alpine
 RUN apk add --no-cache curl

@@ -167,7 +167,7 @@ func validateRateLimitConfig(cfg RateLimitConfig) error {
 func generateZoneFile(zone RateLimitZone) string {
 	var b strings.Builder
 
-	b.WriteString("# Managed by waf-api Rate Limit Engine\n")
+	b.WriteString("# Managed by wafctl Rate Limit Engine\n")
 	b.WriteString(fmt.Sprintf("# Zone: %s | Updated: %s\n", zone.Name, time.Now().UTC().Format(time.RFC3339)))
 
 	if !zone.Enabled {
@@ -236,7 +236,7 @@ func ensureRateLimitDir(dir string) error {
 //
 // It captures the zone prefix (e.g. "sonarr_rl") so we can derive the
 // zone name. The Caddy-side path (/data/caddy/rl/) differs from
-// waf-api's mount (/data/rl/) — callers must use their own RateLimitDir.
+// wafctl's mount (/data/rl/) — callers must use their own RateLimitDir.
 var rlImportPattern = regexp.MustCompile(`import\s+\S*/rl/([a-zA-Z0-9_-]+_rl)\*\.caddy`)
 
 // scanCaddyfileZones reads the Caddyfile and returns the set of rate limit

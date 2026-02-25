@@ -7,7 +7,7 @@ Guidance for AI coding agents working in this repository.
 Docker Compose infrastructure for a Caddy reverse proxy with Coraza WAF (OWASP CRS),
 Authelia 2FA forward auth, and a custom WAF management sidecar. Two codebases live here:
 
-- **waf-api/** — Go HTTP service (stdlib only, zero external deps, Go 1.23+)
+- **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.23+)
 - **waf-dashboard/** — Astro 5 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
 - Root level: Caddyfile, Dockerfile (6-stage multi-stage), compose.yaml, Makefile
 
@@ -16,15 +16,15 @@ Authelia 2FA forward auth, and a custom WAF management sidecar. Two codebases li
 ```bash
 make build              # Build all Docker images
 make build-caddy        # Build the main Caddy image only
-make build-waf-api      # Build the standalone waf-api image only
+make build-wafctl      # Build the standalone wafctl image only
 make push               # Push images to Docker Hub
 make deploy             # Full pipeline: build + push + SCP + restart
 ```
 
-### Go (waf-api)
+### Go (wafctl)
 
 ```bash
-cd waf-api && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.21.0" -o waf-api .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.21.0" -o wafctl .
 ```
 
 Version is injected at build time via `-ldflags "-X main.version=..."`. The
@@ -50,7 +50,7 @@ make test-frontend      # Frontend (Vitest) tests only
 
 ```bash
 # Go:
-cd waf-api && go test -run TestFunctionName -count=1 -timeout 60s ./...
+cd wafctl && go test -run TestFunctionName -count=1 -timeout 60s ./...
 # Frontend:
 cd waf-dashboard && npx vitest run -t "test description substring"
 ```
@@ -63,13 +63,13 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 ## Version Management
 
 Image tags live in **four places** that must stay in sync:
-- `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAF_API_IMAGE`)
+- `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
 - `compose.yaml` (lines 3 and 116: image fields)
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 
 Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.28.0-2.10.2`).
-waf-api tag format: simple semver (e.g. `0.21.0`).
+wafctl tag format: simple semver (e.g. `0.21.0`).
 
 ## Secrets and Encryption
 
@@ -81,7 +81,7 @@ waf-api tag format: simple semver (e.g. `0.21.0`).
   markers are present. Supports `.allow-unencrypted` (skip all) and
   `.allow-unencrypted-paths` (per-file glob exemptions).
 
-## Code Style — Go (waf-api/)
+## Code Style — Go (wafctl/)
 
 ### Imports
 
@@ -275,7 +275,7 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
 `/` · `/analytics` · `/blocklist` · `/events` · `/policy` · `/rate-limits` · `/services` · `/settings`
 
-## API Endpoints (waf-api)
+## API Endpoints (wafctl)
 
 | Group | Routes |
 |-------|--------|
@@ -292,8 +292,8 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
 ## Test Patterns
 
-### Go (466 tests across 12 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `ratelimit_test.go`, `crs_rules_test.go`, `handlers_test.go`, `testhelpers_test.go`
+### Go (493 tests across 13 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `ratelimit_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -309,7 +309,7 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
 ## Key Architecture Notes
 
-- The waf-api sidecar reads Coraza audit logs and Caddy access logs incrementally
+- The wafctl sidecar reads Coraza audit logs and Caddy access logs incrementally
 - SecRule `.conf` files are generated and deployed to Caddy via its admin API
 - Deploy pipeline: generate config → SHA-256 fingerprint → POST to Caddy admin → reload
 - `.env` contains secrets (`CF_API_TOKEN`, `EMAIL`) — never commit this file unencrypted
@@ -324,7 +324,7 @@ Files baked into the image at build time (in `/etc/caddy/`):
 - `cf_trusted_proxies.caddy` — Cloudflare IP ranges
 - `waf-ui/` — dashboard static files, `errors/error.html`
 
-Files written at runtime by waf-api (in `/data/coraza/` and `/data/rl/` volumes):
+Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `custom-waf-settings.conf` — SecRuleEngine mode, paranoia levels, thresholds
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
 - `ipsum_block.caddy` — updated daily by cron at 02:00, or on-demand via `POST /api/blocklist/refresh`
@@ -332,7 +332,7 @@ Files written at runtime by waf-api (in `/data/coraza/` and `/data/rl/` volumes)
 
 ### Startup Behavior (generate-on-boot)
 
-On startup, waf-api calls `generateOnBoot()` which regenerates all config files
+On startup, wafctl calls `generateOnBoot()` which regenerates all config files
 from stored JSON state (WAF config, exclusions, rate limit zones). This ensures a
 stack restart always picks up the latest generator output without requiring a
 manual `POST /api/config/deploy`. No Caddy reload is performed — Caddy reads
@@ -347,13 +347,13 @@ header (which older builds didn't include).
 Coraza writes directly to `/var/log/coraza-audit.log` with no built-in rotation.
 A cron job (`rotate-audit-log.sh`) runs hourly and uses copytruncate to rotate
 when the file exceeds 256MB. Settings: `roll_size=256MB`, `roll_keep=5`,
-`roll_keep_for=2160h` (90 days). waf-api's offset tracking detects the size
+`roll_keep_for=2160h` (90 days). wafctl's offset tracking detects the size
 shrink and resets automatically. On copytruncate, in-memory events are preserved
 (not cleared) — they age out naturally via maxAge eviction.
 
 ### JSONL Event Persistence
 
-Parsed events are persisted to JSONL files so they survive waf-api restarts
+Parsed events are persisted to JSONL files so they survive wafctl restarts
 without re-parsing the raw audit/access logs. On startup, `SetEventFile()`
 restores events from JSONL before tailing begins.
 
@@ -370,10 +370,10 @@ by min_score, generates the Caddy snippet, atomically writes it, reloads the
 in-memory cache, and reloads Caddy. The Go `BlocklistStore.parseFile()` uses
 the file's mtime as a fallback when the `# Updated:` comment is missing.
 
-### waf-api Environment Variables
+### wafctl Environment Variables
 
 All configurable via `envOr()` with sensible defaults:
-- `WAF_API_PORT` (default `8080`), `WAF_CORS_ORIGINS` (default `*`)
+- `WAFCTL_PORT` (default `8080`), `WAF_CORS_ORIGINS` (default `*`)
 - `WAF_AUDIT_LOG`, `WAF_COMBINED_ACCESS_LOG` — log file paths
 - `WAF_EXCLUSIONS_FILE`, `WAF_CONFIG_FILE`, `WAF_RATELIMIT_FILE` — JSON store paths
 - `WAF_CORAZA_DIR`, `WAF_RATELIMIT_DIR` — output directories for generated configs
@@ -386,6 +386,32 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
+
+### CLI Subcommands
+
+wafctl is both an HTTP server and a CLI tool. When run without arguments (or
+with `serve`), it starts the API server. All other commands are CLI clients
+that talk to a running wafctl instance via HTTP.
+
+```
+wafctl              # Start HTTP server (default)
+wafctl serve        # Same as above
+wafctl version      # Print version
+wafctl health       # Check server health
+wafctl config get   # Show WAF configuration
+wafctl config set   # Update config (JSON on stdin or --file)
+wafctl rules list   # List policy exclusion rules
+wafctl rules get ID # Get rule by ID
+wafctl rules create # Create rule (JSON on stdin or --file)
+wafctl rules delete ID
+wafctl deploy       # Deploy WAF config to Caddy
+wafctl events       # List events (--hours, --limit, --service, --type, --client, --method, --rule)
+wafctl blocklist stats
+wafctl blocklist check IP
+wafctl blocklist refresh
+```
+
+Global flags: `--addr` (API address, default from `WAFCTL_ADDR` or `http://localhost:$WAFCTL_PORT`), `--json` (raw JSON output), `--file`/`-f` (read input from file instead of stdin).
 
 ### Relationship to k3s Sentinel
 

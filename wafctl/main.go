@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// version is the waf-api release version, shown in /api/health.
+// version is the wafctl release version, shown in /api/health.
 // Set at build time via: -ldflags="-X main.version=0.21.0"
 var version = "dev"
 
@@ -23,8 +23,13 @@ var version = "dev"
 var startTime = time.Now()
 
 func main() {
+	os.Exit(runCLI(os.Args[1:]))
+}
+
+// runServe starts the HTTP API server. This is the default command.
+func runServe() int {
 	logPath := envOr("WAF_AUDIT_LOG", "/var/log/coraza-audit.log")
-	port := envOr("WAF_API_PORT", "8080")
+	port := envOr("WAFCTL_PORT", "8080")
 	exclusionsFile := envOr("WAF_EXCLUSIONS_FILE", "/data/exclusions.json")
 	configFile := envOr("WAF_CONFIG_FILE", "/data/waf-config.json")
 	rateLimitFile := envOr("WAF_RATELIMIT_FILE", "/data/rate-limits.json")
@@ -67,7 +72,7 @@ func main() {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("waf-api starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s",
+	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s",
 		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL)
 
 	var geoAPICfg *GeoIPAPIConfig
@@ -168,8 +173,10 @@ func main() {
 
 	log.Printf("listening on :%s", port)
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server error: %v", err)
+		log.Printf("server error: %v", err)
+		return 1
 	}
+	return 0
 }
 
 func envOr(key, fallback string) string {

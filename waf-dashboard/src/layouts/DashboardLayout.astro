@@ -6,7 +6,7 @@ interface Props {
   active?: string;
 }
 
-const { title = "WAF Dashboard", active = "overview" } = Astro.props;
+const { title = "wafctl", active = "overview" } = Astro.props;
 
 const navItems = [
   { id: "overview", label: "Overview", href: "/", icon: "grid" },
@@ -52,7 +52,7 @@ const navItems = [
             <span
               class="text-sm font-bold tracking-wider text-neon-green glow-green"
             >
-              WAF CTRL
+               WAFCTL
             </span>
           </div>
 
@@ -205,7 +205,7 @@ const navItems = [
               .then((r) => r.json())
               .then((d) => {
                 const el = document.getElementById("sidebar-version");
-                if (el && d.version) el.textContent = `WAF CTRL v${d.version}`;
+                if (el && d.version) el.textContent = `wafctl v${d.version}`;
               })
               .catch(() => {});
           </script>

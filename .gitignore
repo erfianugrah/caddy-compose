@@ -9,7 +9,7 @@
 config.json
 
 # Go binaries
-waf-api/waf-api
+wafctl/wafctl
 
 # Caddy runtime data
 /data/

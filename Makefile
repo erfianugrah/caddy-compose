@@ -15,7 +15,7 @@
 
 # ── Image tags ──────────────────────────────────────────────────────
 CADDY_IMAGE   ?= erfianugrah/caddy:1.28.0-2.10.2
-WAF_API_IMAGE ?= erfianugrah/waf-api:0.21.0
+WAFCTL_IMAGE ?= erfianugrah/wafctl:0.21.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -39,7 +39,7 @@ AUTHELIA_DEST  ?= /mnt/user/data/authelia/config
 DOCKGE_CONTAINER ?= dockge
 
 # ── WAF data paths (on remote host) ────────────────────────────────
-WAF_CONFIG_PATH    ?= /mnt/user/data/waf-api/waf-config.json
+WAF_CONFIG_PATH    ?= /mnt/user/data/wafctl/waf-config.json
 WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/coraza/custom-waf-settings.conf
 
 # ── Computed helpers ────────────────────────────────────────────────
@@ -51,8 +51,8 @@ else
   EXEC_CMD    = ssh $(REMOTE) "docker exec"
 endif
 
-.PHONY: help build build-caddy build-waf-api push push-caddy push-waf-api \
-        deploy deploy-caddy deploy-waf-api deploy-all scp scp-authelia authelia-notification pull restart restart-force \
+.PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
+        deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
         test test-go test-frontend status logs caddy-reload waf-deploy waf-config config
 
 help: ## Show this help
@@ -63,7 +63,7 @@ config: ## Show current configuration
 	@echo "REMOTE:           $(REMOTE)"
 	@echo "DEPLOY_MODE:      $(DEPLOY_MODE)"
 	@echo "CADDY_IMAGE:      $(CADDY_IMAGE)"
-	@echo "WAF_API_IMAGE:    $(WAF_API_IMAGE)"
+	@echo "WAFCTL_IMAGE:    $(WAFCTL_IMAGE)"
 	@echo "STACK_PATH:       $(STACK_PATH)"
 	@echo "CADDYFILE_DEST:   $(CADDYFILE_DEST)"
 	@echo "COMPOSE_DEST:     $(COMPOSE_DEST)"
@@ -72,30 +72,30 @@ ifeq ($(DEPLOY_MODE),dockge)
 endif
 
 # ── Build ───────────────────────────────────────────────────────────
-build: build-caddy build-waf-api ## Build both images
+build: build-caddy build-wafctl ## Build both images
 
 build-caddy: ## Build Caddy image (includes waf-dashboard)
 	docker build -t $(CADDY_IMAGE) .
 
-WAF_API_VERSION := $(lastword $(subst :, ,$(WAF_API_IMAGE)))
+WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
 
-build-waf-api: ## Build waf-api image
-	docker build -t $(WAF_API_IMAGE) --build-arg VERSION=$(WAF_API_VERSION) -f waf-api/Dockerfile ./waf-api
+build-wafctl: ## Build wafctl image
+	docker build -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile ./wafctl
 
 # ── Push ────────────────────────────────────────────────────────────
-push: push-caddy push-waf-api ## Push both images to Docker Hub
+push: push-caddy push-wafctl ## Push both images to Docker Hub
 
 push-caddy: ## Push Caddy image
 	docker push $(CADDY_IMAGE)
 
-push-waf-api: ## Push waf-api image
-	docker push $(WAF_API_IMAGE)
+push-wafctl: ## Push wafctl image
+	docker push $(WAFCTL_IMAGE)
 
 # ── Test ────────────────────────────────────────────────────────────
 test: test-go test-frontend ## Run all tests
 
 test-go: ## Run Go tests
-	cd waf-api && go test -count=1 -timeout 60s ./...
+	cd wafctl && go test -count=1 -timeout 60s ./...
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
@@ -133,9 +133,9 @@ logs: ## Tail logs from all containers
 deploy-caddy: build-caddy push-caddy scp pull restart ## Build, push, SCP, restart Caddy
 	@echo "Caddy deployed."
 
-deploy-waf-api: build-waf-api push-waf-api pull ## Build, push, restart waf-api
-	$(COMPOSE_CMD) up -d waf-api
-	@echo "waf-api deployed."
+deploy-wafctl: build-wafctl push-wafctl pull ## Build, push, restart wafctl
+	$(COMPOSE_CMD) up -d wafctl
+	@echo "wafctl deployed."
 
 deploy-all: build push scp pull restart ## Full deploy: build + push + SCP + restart all
 	@echo "Full deploy complete."
@@ -145,11 +145,11 @@ deploy: deploy-all ## Alias for deploy-all
 # ── Caddy operations ────────────────────────────────────────────────
 caddy-reload: ## SCP Caddyfile, sync rate limit zones, reload Caddy
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
-	$(EXEC_CMD) waf-api wget -qO- -T 120 http://localhost:8080/api/rate-limits/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/rate-limits/deploy --post-data=""
 
-# ── WAF operations (via waf-api on remote) ──────────────────────────
+# ── WAF operations (via wafctl on remote) ──────────────────────────
 waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)
-	$(EXEC_CMD) waf-api wget -qO- -T 120 http://localhost:8080/api/config/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/config/deploy --post-data=""
 
 waf-config: ## Show current WAF config from remote
 	@echo "=== waf-config.json ==="
