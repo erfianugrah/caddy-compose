@@ -8,7 +8,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Brush,
+  ReferenceArea,
   BarChart,
   Bar,
   PieChart,
@@ -56,10 +56,17 @@ import {
   type WAFEvent,
   type EventsResponse,
   type TimeRangeParams,
+  type SummaryParams,
 } from "@/lib/api";
 import { formatNumber, formatTime, formatDate, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
 import { EventDetailModal } from "./EventDetailModal";
+import DashboardFilterBar, {
+  parseFiltersFromURL,
+  filtersToSummaryParams,
+  filtersToEventsParams,
+  type DashboardFilter,
+} from "./DashboardFilterBar";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import { ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 
@@ -246,6 +253,21 @@ export default function OverviewDashboard() {
     label: "Last 24 hours",
   });
 
+  // ── Dashboard filters (read from URL after hydration) ──
+  const [filters, setFilters] = useState<DashboardFilter[]>([]);
+  const filtersInitRef = useRef(false);
+
+  // Read URL params in useEffect (client-only) to avoid SSR/hydration mismatch.
+  useEffect(() => {
+    if (filtersInitRef.current) return;
+    filtersInitRef.current = true;
+    const parsed = parseFiltersFromURL(window.location.search);
+    if (parsed.length > 0) {
+      setFilters(parsed);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   // ── Events table state ──
   const [events, setEvents] = useState<WAFEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -257,10 +279,12 @@ export default function OverviewDashboard() {
   const [selectedEvent, setSelectedEvent] = useState<WAFEvent | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // ── Brush (chart zoom) state ──
-  // When the user drags the brush handles, we store the start/end indices
-  // into the timeline array so we can filter events to that time window.
-  const [brushRange, setBrushRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
+  // ── Click-drag zoom state ──
+  // User clicks and drags on the chart to select a time window.
+  const [refAreaLeft, setRefAreaLeft] = useState<string | null>(null);
+  const [refAreaRight, setRefAreaRight] = useState<string | null>(null);
+  const [zoomLeft, setZoomLeft] = useState<string | null>(null);
+  const [zoomRight, setZoomRight] = useState<string | null>(null);
 
   // ── Collapsible analytics section ──
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
@@ -269,52 +293,53 @@ export default function OverviewDashboard() {
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetchSummary(rangeToParams(timeRange))
+    const summaryParams: SummaryParams = {
+      ...rangeToParams(timeRange),
+      ...filtersToSummaryParams(filters),
+    };
+    fetchSummary(summaryParams)
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [timeRange]);
+  }, [timeRange, filters]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Reset brush and events page when time range or data changes
+  // Reset zoom and events page when time range or filters change
   useEffect(() => {
-    setBrushRange(null);
+    setZoomLeft(null);
+    setZoomRight(null);
     setEventsPage(1);
-  }, [timeRange]);
+  }, [timeRange, filters]);
 
-  // ── Compute the brush time window for event fetching ──
-  const brushTimeParams = useMemo<TimeRangeParams | null>(() => {
-    if (!brushRange || !data?.timeline?.length) return null;
-    const timeline = data.timeline;
-    const startHour = timeline[brushRange.startIndex]?.hour;
-    const endHour = timeline[brushRange.endIndex]?.hour;
-    if (!startHour || !endHour) return null;
-
-    // Only apply brush filter if the user hasn't selected the full range
-    if (brushRange.startIndex === 0 && brushRange.endIndex === timeline.length - 1) {
-      return null;
-    }
-
-    // The end hour is the start of the bucket — add 1 hour to capture the full bucket
-    const endDate = new Date(endHour);
+  // ── Compute the zoom time window for event fetching ──
+  const zoomTimeParams = useMemo<TimeRangeParams | null>(() => {
+    if (!zoomLeft || !zoomRight) return null;
+    const endDate = new Date(zoomRight);
     endDate.setHours(endDate.getHours() + 1);
-
     return {
-      start: new Date(startHour).toISOString(),
+      start: new Date(zoomLeft).toISOString(),
       end: endDate.toISOString(),
     };
-  }, [brushRange, data?.timeline]);
+  }, [zoomLeft, zoomRight]);
 
-  // ── Fetch events (responds to page, timeRange, brushTimeParams changes) ──
+  // ── Zoomed timeline data (only show selected window) ──
+  const displayTimeline = useMemo(() => {
+    const timeline = data?.timeline ?? [];
+    if (!zoomLeft || !zoomRight) return timeline;
+    return timeline.filter((d) => d.hour >= zoomLeft && d.hour <= zoomRight);
+  }, [data?.timeline, zoomLeft, zoomRight]);
+
+  // ── Fetch events (responds to page, timeRange, zoomTimeParams, filters changes) ──
   const loadEvents = useCallback(() => {
     setEventsLoading(true);
-    const baseParams = brushTimeParams ?? rangeToParams(timeRange);
+    const baseParams = zoomTimeParams ?? rangeToParams(timeRange);
     fetchEvents({
       page: eventsPage,
       per_page: eventsPerPage,
+      ...filtersToEventsParams(filters),
       ...baseParams,
     })
       .then((resp) => {
@@ -326,28 +351,56 @@ export default function OverviewDashboard() {
         setEventsTotal(0);
       })
       .finally(() => setEventsLoading(false));
-  }, [eventsPage, timeRange, brushTimeParams]);
+  }, [eventsPage, timeRange, zoomTimeParams, filters]);
 
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
 
-  // Reset page when brush changes
+  // Reset page when zoom changes
   useEffect(() => {
     setEventsPage(1);
-  }, [brushTimeParams]);
+  }, [zoomTimeParams]);
 
   const totalEventsPages = Math.max(1, Math.ceil(eventsTotal / eventsPerPage));
 
-  // ── Brush change handler ──
-  const handleBrushChange = useCallback(
-    (newRange: { startIndex?: number; endIndex?: number }) => {
-      if (newRange.startIndex !== undefined && newRange.endIndex !== undefined) {
-        setBrushRange({ startIndex: newRange.startIndex, endIndex: newRange.endIndex });
+  // ── Click-drag zoom handlers ──
+  const handleMouseDown = useCallback(
+    (e: { activeLabel?: string }) => {
+      if (e?.activeLabel) {
+        setRefAreaLeft(e.activeLabel);
+        setRefAreaRight(null);
       }
     },
     [],
   );
+
+  const handleMouseMove = useCallback(
+    (e: { activeLabel?: string }) => {
+      if (refAreaLeft && e?.activeLabel) {
+        setRefAreaRight(e.activeLabel);
+      }
+    },
+    [refAreaLeft],
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (refAreaLeft && refAreaRight) {
+      // Ensure left < right
+      const [left, right] = refAreaLeft < refAreaRight
+        ? [refAreaLeft, refAreaRight]
+        : [refAreaRight, refAreaLeft];
+      setZoomLeft(left);
+      setZoomRight(right);
+    }
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+  }, [refAreaLeft, refAreaRight]);
+
+  const resetZoom = useCallback(() => {
+    setZoomLeft(null);
+    setZoomRight(null);
+  }, []);
 
   // ── Donut data ──
   const wafBlocked = Math.max(
@@ -368,6 +421,10 @@ export default function OverviewDashboard() {
       : [];
 
   const serviceBreakdown = data?.service_breakdown ?? data?.top_services ?? [];
+  const serviceNames = useMemo(
+    () => serviceBreakdown.map((s) => s.service),
+    [serviceBreakdown],
+  );
 
   if (error) {
     return (
@@ -405,6 +462,9 @@ export default function OverviewDashboard() {
         <TimeRangePicker value={timeRange} onChange={setTimeRange} onRefresh={loadData} />
       </div>
 
+      {/* ── Dashboard Filter Bar ── */}
+      <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} />
+
       {/* ── Stat Cards ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
         <StatCard title="Total Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
@@ -416,24 +476,24 @@ export default function OverviewDashboard() {
         <StatCard title="Policy" value={data?.policy_events ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=policy_skip" />
       </div>
 
-      {/* ── Timeline Chart with Brush Zoom ── */}
+      {/* ── Timeline Chart with Click-Drag Zoom ── */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-sm">Event Timeline</CardTitle>
               <CardDescription>
-                {brushTimeParams
-                  ? "Showing events for selected time window — drag handles to adjust"
-                  : "Drag the brush handles below the chart to zoom into a time window"}
+                {zoomTimeParams
+                  ? "Zoomed in — events table below is filtered to this window"
+                  : "Click and drag on the chart to zoom into a time window"}
               </CardDescription>
             </div>
-            {brushTimeParams && (
+            {zoomTimeParams && (
               <Button
                 variant="ghost"
                 size="xs"
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setBrushRange(null)}
+                onClick={resetZoom}
               >
                 Reset zoom
               </Button>
@@ -442,12 +502,15 @@ export default function OverviewDashboard() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <Skeleton className="h-[340px] w-full" />
+            <Skeleton className="h-[300px] w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={340}>
+            <ResponsiveContainer width="100%" height={300}>
               <AreaChart
-                data={data?.timeline ?? []}
+                data={displayTimeline}
                 margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
               >
                 <defs>
                   <linearGradient id="gradBlocked" x1="0" y1="0" x2="0" y2="1">
@@ -510,154 +573,23 @@ export default function OverviewDashboard() {
                 <Area type="monotone" dataKey="honeypot" stroke={ACTION_COLORS.honeypot} fill="url(#gradHoneypot)" strokeWidth={2} name="Honeypot" />
                 <Area type="monotone" dataKey="scanner" stroke={ACTION_COLORS.scanner} fill="url(#gradScanner)" strokeWidth={2} name="Scanner" />
                 <Area type="monotone" dataKey="policy" stroke={ACTION_COLORS.policy} fill="url(#gradPolicy)" strokeWidth={2} name="Policy" />
-                {/* Brush — zoom handle at the bottom of the chart */}
-                <Brush
-                  dataKey="hour"
-                  height={30}
-                  stroke="#1e275c"
-                  fill="#0a0f2e"
-                  tickFormatter={formatHourTick}
-                  onChange={handleBrushChange}
-                  startIndex={brushRange?.startIndex}
-                  endIndex={brushRange?.endIndex}
-                >
-                  <AreaChart data={data?.timeline ?? []}>
-                    <Area
-                      type="monotone"
-                      dataKey="blocked"
-                      stroke={ACTION_COLORS.blocked}
-                      fill={ACTION_COLORS.blocked}
-                      fillOpacity={0.15}
-                      strokeWidth={1}
-                    />
-                  </AreaChart>
-                </Brush>
+                {/* Selection overlay while dragging */}
+                {refAreaLeft && refAreaRight && (
+                  <ReferenceArea
+                    x1={refAreaLeft}
+                    x2={refAreaRight}
+                    strokeOpacity={0.3}
+                    fill="#7a8baa"
+                    fillOpacity={0.15}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
-      {/* ── Events Feed (filtered by brush zoom) ── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-sm">Events</CardTitle>
-              <CardDescription>
-                {brushTimeParams
-                  ? `Showing ${eventsTotal.toLocaleString()} events in selected time window`
-                  : `${eventsTotal.toLocaleString()} events — click a row to inspect`}
-              </CardDescription>
-            </div>
-            <a href="/events">
-              <Button variant="ghost" size="xs" className="text-xs text-muted-foreground hover:text-foreground">
-                Open Event Log
-              </Button>
-            </a>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Time</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead className="max-w-[250px]">URI</TableHead>
-                <TableHead>Client IP</TableHead>
-                <TableHead>Country</TableHead>
-                <TableHead>Type</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(loading || eventsLoading) &&
-                [...Array(8)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(7)].map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-
-              {!loading && !eventsLoading && events.length > 0 &&
-                events.map((evt) => (
-                  <TableRow
-                    key={evt.id}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setSelectedEvent(evt);
-                      setModalOpen(true);
-                    }}
-                  >
-                    <TableCell className="whitespace-nowrap text-xs">
-                      <div className="text-foreground">{formatTime(evt.timestamp)}</div>
-                      <div className="text-muted-foreground">{formatDate(evt.timestamp)}</div>
-                    </TableCell>
-                    <TableCell className="text-xs">{evt.service}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
-                        {evt.method}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[250px] truncate text-xs font-mono">
-                      {evt.uri}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
-                    <TableCell className="text-xs">
-                      {evt.country && evt.country !== "XX" ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span>{countryFlag(evt.country)}</span>
-                          <span className="font-mono">{evt.country}</span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-              {!loading && !eventsLoading && events.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                    No events in this time range
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-
-        {/* Pagination */}
-        {totalEventsPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-navy-800">
-            <span className="text-xs text-muted-foreground">
-              Page {eventsPage} of {totalEventsPages}
-            </span>
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage(1)} disabled={eventsPage <= 1}>
-                <ChevronsLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage((p) => Math.max(1, p - 1))} disabled={eventsPage <= 1}>
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage((p) => Math.min(totalEventsPages, p + 1))} disabled={eventsPage >= totalEventsPages}>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage(totalEventsPages)} disabled={eventsPage >= totalEventsPages}>
-                <ChevronsRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* ── Analytics Section (collapsible) ── */}
+      {/* ── Analytics Section (collapsible) — above events ── */}
       <div className="space-y-4">
         <button
           onClick={() => setAnalyticsOpen(!analyticsOpen)}
@@ -847,6 +779,125 @@ export default function OverviewDashboard() {
           </>
         )}
       </div>
+
+      {/* ── Events Feed (filtered by zoom) ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm">Events</CardTitle>
+              <CardDescription>
+                {zoomTimeParams
+                  ? `Showing ${eventsTotal.toLocaleString()} events in selected time window`
+                  : `${eventsTotal.toLocaleString()} events — click a row to inspect`}
+              </CardDescription>
+            </div>
+            <a href="/events">
+              <Button variant="ghost" size="xs" className="text-xs text-muted-foreground hover:text-foreground">
+                Open Event Log
+              </Button>
+            </a>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Time</TableHead>
+                <TableHead>Service</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead className="max-w-[250px]">URI</TableHead>
+                <TableHead>Client IP</TableHead>
+                <TableHead>Country</TableHead>
+                <TableHead>Type</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(loading || eventsLoading) &&
+                [...Array(8)].map((_, i) => (
+                  <TableRow key={i}>
+                    {[...Array(7)].map((_, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-4 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+
+              {!loading && !eventsLoading && events.length > 0 &&
+                events.map((evt) => (
+                  <TableRow
+                    key={evt.id}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setSelectedEvent(evt);
+                      setModalOpen(true);
+                    }}
+                  >
+                    <TableCell className="whitespace-nowrap text-xs">
+                      <div className="text-foreground">{formatTime(evt.timestamp)}</div>
+                      <div className="text-muted-foreground">{formatDate(evt.timestamp)}</div>
+                    </TableCell>
+                    <TableCell className="text-xs">{evt.service}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                        {evt.method}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[250px] truncate text-xs font-mono">
+                      {evt.uri}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
+                    <TableCell className="text-xs">
+                      {evt.country && evt.country !== "XX" ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{countryFlag(evt.country)}</span>
+                          <span className="font-mono">{evt.country}</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+              {!loading && !eventsLoading && events.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                    No events in this time range
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+
+        {/* Pagination */}
+        {totalEventsPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-navy-800">
+            <span className="text-xs text-muted-foreground">
+              Page {eventsPage} of {totalEventsPages}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage(1)} disabled={eventsPage <= 1}>
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage((p) => Math.max(1, p - 1))} disabled={eventsPage <= 1}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage((p) => Math.min(totalEventsPages, p + 1))} disabled={eventsPage >= totalEventsPages}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage(totalEventsPages)} disabled={eventsPage >= totalEventsPages}>
+                <ChevronsRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* ── Event Detail Modal ── */}
       <EventDetailModal event={selectedEvent} open={modalOpen} onOpenChange={setModalOpen} />

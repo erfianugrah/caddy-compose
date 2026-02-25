@@ -251,6 +251,7 @@ export default function RateLimitsPanel() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [deployResult, setDeployResult] = useState<RateLimitDeployResult | null>(null);
+  const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -286,7 +287,11 @@ export default function RateLimitsPanel() {
     const zones = config.zones.filter((_, i) => i !== index);
     setConfig({ zones });
     setDirty(true);
+    setDeleteConfirmIdx(null);
   };
+
+  // Busy flag to disable UI during async operations
+  const isBusy = saving || deployStep !== null;
 
   const addZone = (zone: RateLimitZone) => {
     if (!config) return;
@@ -376,7 +381,7 @@ export default function RateLimitsPanel() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={loadData} disabled={isBusy}>
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
@@ -385,15 +390,19 @@ export default function RateLimitsPanel() {
             variant="outline"
             size="sm"
             onClick={handleSave}
-            disabled={!dirty || saving}
+            disabled={!dirty || isBusy}
           >
-            <Save className="h-3.5 w-3.5" />
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button
             size="sm"
             onClick={handleDeploy}
-            disabled={deployStep !== null}
+            disabled={isBusy}
           >
             {deployStep ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -557,7 +566,7 @@ export default function RateLimitsPanel() {
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeZone(idx)}
+                          onClick={() => setDeleteConfirmIdx(idx)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -608,6 +617,25 @@ export default function RateLimitsPanel() {
         </CardContent>
       </Card>
 
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmIdx !== null} onOpenChange={(open) => !open && setDeleteConfirmIdx(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Zone</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the zone{" "}
+              <code className="text-xs bg-navy-900 px-1 py-0.5 rounded font-mono">
+                {deleteConfirmIdx !== null ? zones[deleteConfirmIdx]?.name : ""}
+              </code>
+              ? This action cannot be undone. You will need to save and deploy for the change to take effect.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmIdx(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmIdx !== null && removeZone(deleteConfirmIdx)}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

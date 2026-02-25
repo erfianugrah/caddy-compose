@@ -504,12 +504,20 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
             {event.request_headers && Object.keys(event.request_headers).length > 0 && (
               <div className="space-y-1">
                 <h5 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">Headers</h5>
-                <div className="rounded border border-navy-800 bg-navy-950/50 p-2">
-                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-all">
-                    {Object.entries(event.request_headers)
-                      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
-                      .join("\n")}
-                  </pre>
+                <div className="rounded border border-navy-800 bg-navy-950/50 p-2 font-mono text-xs">
+                  {Object.entries(event.request_headers).map(([k, v]) => {
+                    const value = Array.isArray(v) ? v.join(", ") : v;
+                    const trigger = event.matched_data ? parseMatchedData(event.matched_data)?.trigger : undefined;
+                    return (
+                      <div key={k} className="flex gap-0 leading-relaxed">
+                        <span className="text-neon-cyan shrink-0">{k}</span>
+                        <span className="text-muted-foreground/50">:&nbsp;</span>
+                        <span className="text-foreground/80 break-all">
+                          {trigger ? <HighlightedText text={value} highlight={trigger} /> : value}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -575,6 +583,7 @@ export default function EventsTable() {
       status: params.get("status"),
       method: params.get("method"),
       ip: params.get("ip"),
+      rule_name: params.get("rule_name"),
     };
     // Clear URL params so refresh doesn't re-apply stale filters
     if (Object.values(parsed).some(Boolean)) {
@@ -589,6 +598,7 @@ export default function EventsTable() {
   const [methodFilter, setMethodFilter] = useState(initialParams?.method?.toUpperCase() || "ALL");
   const [eventTypeFilter, setEventTypeFilter] = useState<string>(initialParams?.type || "all");
   const [clientFilter, setClientFilter] = useState(initialParams?.ip || "");
+  const [ruleNameFilter, setRuleNameFilter] = useState(initialParams?.rule_name || "");
 
   const perPage = 25;
 
@@ -608,12 +618,13 @@ export default function EventsTable() {
       method: methodFilter === "ALL" ? undefined : methodFilter,
       event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter as EventType,
       client: clientFilter || undefined,
+      rule_name: ruleNameFilter || undefined,
       ...timeParams,
     })
       .then(setResponse)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [page, serviceFilter, blockedFilter, methodFilter, eventTypeFilter, clientFilter, timeRange]);
+  }, [page, serviceFilter, blockedFilter, methodFilter, eventTypeFilter, clientFilter, ruleNameFilter, timeRange]);
 
   useEffect(() => {
     fetchServices()

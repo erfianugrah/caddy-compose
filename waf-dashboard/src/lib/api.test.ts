@@ -193,6 +193,109 @@ describe("fetchSummary", () => {
 
     expect(mockFetch).toHaveBeenCalledWith("/api/summary?hours=24", undefined);
   });
+
+  it("passes filter query parameters (service, client, method, event_type, rule_name)", async () => {
+    const mockFetch = mockFetchResponse({
+      total_events: 0,
+      blocked_events: 0,
+      logged_events: 0,
+      unique_clients: 0,
+      unique_services: 0,
+      events_by_hour: [],
+      top_services: [],
+      top_clients: [],
+      top_uris: [],
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchSummary({
+      hours: 12,
+      service: "cdn.erfi.io",
+      client: "1.2.3.4",
+      method: "GET",
+      event_type: "blocked",
+      rule_name: "My Rule",
+    });
+
+    const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const params = new URLSearchParams(calledUrl.split("?")[1]);
+    expect(params.get("hours")).toBe("12");
+    expect(params.get("service")).toBe("cdn.erfi.io");
+    expect(params.get("client")).toBe("1.2.3.4");
+    expect(params.get("method")).toBe("GET");
+    expect(params.get("event_type")).toBe("blocked");
+    expect(params.get("rule_name")).toBe("My Rule");
+  });
+
+  it("omits undefined filter params from URL", async () => {
+    const mockFetch = mockFetchResponse({
+      total_events: 0,
+      blocked_events: 0,
+      logged_events: 0,
+      unique_clients: 0,
+      unique_services: 0,
+      events_by_hour: [],
+      top_services: [],
+      top_clients: [],
+      top_uris: [],
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchSummary({ hours: 24, service: "cdn.erfi.io" });
+
+    const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const params = new URLSearchParams(calledUrl.split("?")[1]);
+    expect(params.get("hours")).toBe("24");
+    expect(params.get("service")).toBe("cdn.erfi.io");
+    expect(params.has("client")).toBe(false);
+    expect(params.has("method")).toBe(false);
+    expect(params.has("event_type")).toBe(false);
+    expect(params.has("rule_name")).toBe(false);
+  });
+
+  it("sends _op params when operator is not eq", async () => {
+    const mockFetch = mockFetchResponse({
+      total_events: 0, blocked_events: 0, logged_events: 0,
+      rate_limited: 0, ipsum_blocked: 0, policy_events: 0,
+      honeypot_events: 0, scanner_events: 0,
+      unique_clients: 0, unique_services: 0,
+      events_by_hour: [], top_services: [], top_clients: [], top_uris: [],
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchSummary({
+      hours: 24,
+      service: "erfi",
+      service_op: "contains",
+      method: "GET,POST",
+      method_op: "in",
+    });
+
+    const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const params = new URLSearchParams(calledUrl.split("?")[1]);
+    expect(params.get("service")).toBe("erfi");
+    expect(params.get("service_op")).toBe("contains");
+    expect(params.get("method")).toBe("GET,POST");
+    expect(params.get("method_op")).toBe("in");
+  });
+
+  it("omits _op params when operator is eq (default)", async () => {
+    const mockFetch = mockFetchResponse({
+      total_events: 0, blocked_events: 0, logged_events: 0,
+      rate_limited: 0, ipsum_blocked: 0, policy_events: 0,
+      honeypot_events: 0, scanner_events: 0,
+      unique_clients: 0, unique_services: 0,
+      events_by_hour: [], top_services: [], top_clients: [], top_uris: [],
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchSummary({ hours: 24, service: "cdn.erfi.io", service_op: "eq" });
+
+    const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const params = new URLSearchParams(calledUrl.split("?")[1]);
+    expect(params.get("service")).toBe("cdn.erfi.io");
+    expect(params.has("service_op")).toBe(false);
+  });
 });
 
 // ─── fetchEvents ────────────────────────────────────────────────────

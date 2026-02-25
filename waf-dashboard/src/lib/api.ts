@@ -119,15 +119,23 @@ export interface EventsResponse {
   total_pages: number;
 }
 
+export type FilterOp = "eq" | "neq" | "contains" | "in" | "regex";
+
 export interface EventsParams {
   page?: number;
   per_page?: number;
   service?: string;
+  service_op?: FilterOp;
   blocked?: boolean | null;
   method?: string;
+  method_op?: FilterOp;
   event_type?: EventType | null;
+  event_type_op?: FilterOp;
   search?: string;
-  client?: string;  // Filter by client IP (exact match)
+  client?: string;     // Filter by client IP
+  client_op?: FilterOp;
+  rule_name?: string;  // Filter by policy exclusion name (matched_rules msg)
+  rule_name_op?: FilterOp;
   hours?: number;
   start?: string; // ISO 8601
   end?: string;   // ISO 8601
@@ -475,7 +483,20 @@ export interface TimeRangeParams {
   end?: string;   // ISO 8601
 }
 
-export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryData> {
+export interface SummaryParams extends TimeRangeParams {
+  service?: string;     // Filter to events for a specific service
+  service_op?: FilterOp;
+  client?: string;      // Filter by client IP
+  client_op?: FilterOp;
+  method?: string;      // Filter by HTTP method
+  method_op?: FilterOp;
+  event_type?: string;  // Filter by event type
+  event_type_op?: FilterOp;
+  rule_name?: string;   // Filter to events matching a specific policy exclusion name
+  rule_name_op?: FilterOp;
+}
+
+export async function fetchSummary(params?: SummaryParams): Promise<SummaryData> {
   const searchParams = new URLSearchParams();
   if (params?.start && params?.end) {
     searchParams.set("start", params.start);
@@ -483,6 +504,16 @@ export async function fetchSummary(params?: TimeRangeParams): Promise<SummaryDat
   } else if (params?.hours) {
     searchParams.set("hours", String(params.hours));
   }
+  if (params?.service) searchParams.set("service", params.service);
+  if (params?.service_op && params.service_op !== "eq") searchParams.set("service_op", params.service_op);
+  if (params?.client) searchParams.set("client", params.client);
+  if (params?.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
+  if (params?.method) searchParams.set("method", params.method);
+  if (params?.method_op && params.method_op !== "eq") searchParams.set("method_op", params.method_op);
+  if (params?.event_type) searchParams.set("event_type", params.event_type);
+  if (params?.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
+  if (params?.rule_name) searchParams.set("rule_name", params.rule_name);
+  if (params?.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
   const qs = searchParams.toString() ? `?${searchParams}` : "";
   const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`);
   return {
@@ -623,11 +654,17 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
   searchParams.set("limit", String(perPage));
   searchParams.set("offset", String(offset));
   if (params.service) searchParams.set("service", params.service);
+  if (params.service_op && params.service_op !== "eq") searchParams.set("service_op", params.service_op);
   if (params.blocked !== null && params.blocked !== undefined)
     searchParams.set("blocked", String(params.blocked));
   if (params.method) searchParams.set("method", params.method);
+  if (params.method_op && params.method_op !== "eq") searchParams.set("method_op", params.method_op);
   if (params.event_type) searchParams.set("event_type", params.event_type);
+  if (params.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
   if (params.client) searchParams.set("client", params.client);
+  if (params.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
+  if (params.rule_name) searchParams.set("rule_name", params.rule_name);
+  if (params.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
   if (params.start && params.end) {
     searchParams.set("start", params.start);
     searchParams.set("end", params.end);
@@ -657,11 +694,17 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
   const searchParams = new URLSearchParams();
   searchParams.set("export", "true");
   if (params.service) searchParams.set("service", params.service);
+  if (params.service_op && params.service_op !== "eq") searchParams.set("service_op", params.service_op);
   if (params.blocked !== null && params.blocked !== undefined)
     searchParams.set("blocked", String(params.blocked));
   if (params.method) searchParams.set("method", params.method);
+  if (params.method_op && params.method_op !== "eq") searchParams.set("method_op", params.method_op);
   if (params.event_type) searchParams.set("event_type", params.event_type);
+  if (params.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
   if (params.client) searchParams.set("client", params.client);
+  if (params.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
+  if (params.rule_name) searchParams.set("rule_name", params.rule_name);
+  if (params.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
   if (params.start && params.end) {
     searchParams.set("start", params.start);
     searchParams.set("end", params.end);
@@ -852,6 +895,21 @@ export async function importExclusions(data: Exclusion[]): Promise<{ imported: n
     version: 1,
     exclusions: goExclusions,
   });
+}
+
+// Exclusion hit stats — per-rule trigger counts with sparkline data.
+
+export interface ExclusionHitData {
+  total: number;
+  sparkline: number[];
+}
+
+export interface ExclusionHitsResponse {
+  hits: Record<string, ExclusionHitData>;
+}
+
+export async function fetchExclusionHits(hours = 24): Promise<ExclusionHitsResponse> {
+  return fetchJSON<ExclusionHitsResponse>(`${API_BASE}/exclusions/hits?hours=${hours}`);
 }
 
 // Config / Settings
