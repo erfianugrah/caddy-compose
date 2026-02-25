@@ -2184,7 +2184,7 @@ export default function PolicyEngine() {
 
       {/* Create / Edit Rule Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[90vw] max-w-[1800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-neon-green" />
