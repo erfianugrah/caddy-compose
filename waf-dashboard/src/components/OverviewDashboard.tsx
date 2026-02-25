@@ -52,6 +52,7 @@ import {
 import {
   fetchSummary,
   fetchEvents,
+  getExclusions,
   type SummaryData,
   type WAFEvent,
   type EventsResponse,
@@ -268,6 +269,14 @@ export default function OverviewDashboard() {
     }
   }, []);
 
+  // ── Rule names for filter bar autocomplete ──
+  const [ruleNames, setRuleNames] = useState<string[]>([]);
+  useEffect(() => {
+    getExclusions()
+      .then((excl) => setRuleNames(excl.map((e) => e.name).filter(Boolean)))
+      .catch(() => {}); // Non-critical
+  }, []);
+
   // ── Events table state ──
   const [events, setEvents] = useState<WAFEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -463,7 +472,7 @@ export default function OverviewDashboard() {
       </div>
 
       {/* ── Dashboard Filter Bar ── */}
-      <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} />
+      <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} ruleNames={ruleNames} />
 
       {/* ── Stat Cards ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">

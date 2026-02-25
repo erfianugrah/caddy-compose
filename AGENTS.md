@@ -258,7 +258,7 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 - `EventTypeBadge` — shared color-coded event type badge
 - `EventDetailModal` — reusable Dialog wrapping EventDetailPanel with actions
 - `TimeRangePicker` — Grafana-style time range picker with quick ranges, custom from/to, auto-refresh
-- `DashboardFilterBar` — CF-style filter bar with 3-step popover (Field→Operator→Value), service `in` multi-select with checkbox list + search + custom text entry, filter chips with operator symbols. Exports: `parseFiltersFromURL`, `filtersToSummaryParams`, `filtersToEventsParams`, `filterDisplayValue`, `operatorChip`, `FILTER_FIELDS`
+- `DashboardFilterBar` — CF-style filter bar with wide 3-step popover (Field→Operator→Value, `w-96`), service and rule_name `in` multi-select with checkbox list + search + custom text entry, filter chips with operator symbols, `in` operator renders individual pills per value with `×` buttons. Dynamic searchable dropdowns for `service` (from API) and `rule_name` (from exclusions). Exports: `parseFiltersFromURL`, `filtersToSummaryParams`, `filtersToEventsParams`, `filterDisplayValue`, `operatorChip`, `FILTER_FIELDS`, `DashboardFilter`, `FilterField`
 
 ### Cross-Page Navigation
 
@@ -292,7 +292,7 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
 ## Test Patterns
 
-### Go (441 tests across 12 files)
+### Go (466 tests across 12 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `ratelimit_test.go`, `crs_rules_test.go`, `handlers_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests

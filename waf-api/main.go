@@ -386,7 +386,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 				if !eventTypeF.matchField(ev.EventType) {
 					continue
 				}
-				if ruleNameF != nil && !matchesPolicyRuleName(ev, ruleNameF.value) {
+				if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
 					continue
 				}
 				filtered = append(filtered, *ev)
@@ -683,7 +683,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			if !eventTypeF.matchField(ev.EventType) {
 				continue
 			}
-			if ruleNameF != nil && !matchesPolicyRuleName(ev, ruleNameF.value) {
+			if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
 				continue
 			}
 			filtered = append(filtered, *ev)
@@ -921,6 +921,18 @@ func matchesPolicyRuleName(ev *Event, name string) bool {
 	}
 	for _, mr := range ev.MatchedRules {
 		if extractPolicyName(mr.Msg) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesPolicyRuleNameFilter checks whether an event's policy rule name
+// matches the given fieldFilter (supporting eq, neq, contains, regex, in).
+func matchesPolicyRuleNameFilter(ev *Event, f *fieldFilter) bool {
+	for _, mr := range ev.MatchedRules {
+		name := extractPolicyName(mr.Msg)
+		if name != "" && f.matchField(name) {
 			return true
 		}
 	}

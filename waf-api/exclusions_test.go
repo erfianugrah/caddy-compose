@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 func TestExclusionStoreCRUD(t *testing.T) {
 	es := newTestExclusionStore(t)
 
@@ -83,8 +82,6 @@ func TestExclusionStoreCRUD(t *testing.T) {
 	}
 }
 
-
-
 func TestExclusionStoreDeleteNotFound(t *testing.T) {
 	es := newTestExclusionStore(t)
 	found, err := es.Delete("nonexistent")
@@ -95,8 +92,6 @@ func TestExclusionStoreDeleteNotFound(t *testing.T) {
 		t.Error("should not find nonexistent exclusion")
 	}
 }
-
-
 
 func TestExclusionStorePersistence(t *testing.T) {
 	dir := t.TempDir()
@@ -123,8 +118,6 @@ func TestExclusionStorePersistence(t *testing.T) {
 		t.Errorf("persistence: want Persistent, got %s", list[0].Name)
 	}
 }
-
-
 
 func TestExclusionStoreImportExport(t *testing.T) {
 	es := newTestExclusionStore(t)
@@ -154,8 +147,6 @@ func TestExclusionStoreImportExport(t *testing.T) {
 	}
 }
 
-
-
 func TestExclusionStoreEnabledFilter(t *testing.T) {
 	es := newTestExclusionStore(t)
 	es.Create(RuleExclusion{Name: "Enabled", Type: "remove_by_id", RuleID: "1", Enabled: true})
@@ -171,8 +162,6 @@ func TestExclusionStoreEnabledFilter(t *testing.T) {
 }
 
 // --- Exclusion validation tests ---
-
-
 
 // --- Exclusion validation tests ---
 
@@ -251,8 +240,6 @@ func TestValidateExclusion(t *testing.T) {
 
 // --- Exclusion HTTP endpoint tests ---
 
-
-
 func TestExclusionEndpointCreate(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
@@ -275,8 +262,6 @@ func TestExclusionEndpointCreate(t *testing.T) {
 	}
 }
 
-
-
 func TestExclusionEndpointCreateInvalid(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
@@ -290,8 +275,6 @@ func TestExclusionEndpointCreateInvalid(t *testing.T) {
 	}
 }
 
-
-
 func TestExclusionEndpointGetNotFound(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
@@ -303,8 +286,6 @@ func TestExclusionEndpointGetNotFound(t *testing.T) {
 		t.Fatalf("want 404, got %d", w.Code)
 	}
 }
-
-
 
 func TestExclusionEndpointCRUDFlow(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
@@ -377,8 +358,6 @@ func TestExclusionEndpointCRUDFlow(t *testing.T) {
 	}
 }
 
-
-
 func TestExclusionEndpointExportImport(t *testing.T) {
 	mux, es := setupExclusionMux(t)
 
@@ -410,8 +389,6 @@ func TestExclusionEndpointExportImport(t *testing.T) {
 	}
 }
 
-
-
 func TestExclusionEndpointImportInvalid(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
@@ -424,8 +401,6 @@ func TestExclusionEndpointImportInvalid(t *testing.T) {
 		t.Fatalf("import empty: want 400, got %d", w.Code)
 	}
 }
-
-
 
 func TestExclusionEndpointGenerate(t *testing.T) {
 	mux, es := setupExclusionMux(t)
@@ -463,8 +438,6 @@ func TestExclusionEndpointGenerate(t *testing.T) {
 
 // --- Config Store tests ---
 
-
-
 func TestEscapeSecRuleValue(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -490,8 +463,6 @@ func TestEscapeSecRuleValue(t *testing.T) {
 	}
 }
 
-
-
 func TestSanitizeComment(t *testing.T) {
 	tests := []struct {
 		input, want string
@@ -510,8 +481,6 @@ func TestSanitizeComment(t *testing.T) {
 		})
 	}
 }
-
-
 
 func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 	tests := []struct {
@@ -611,8 +580,6 @@ func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateConfigs_EscapesInjection(t *testing.T) {
 	// Generate configs with a malicious exclusion name containing quotes.
 	exclusions := []RuleExclusion{
@@ -660,8 +627,6 @@ func TestGenerateConfigs_EscapesInjection(t *testing.T) {
 
 // --- extractPolicyName tests ---
 
-
-
 // --- extractPolicyName tests ---
 
 func TestExtractPolicyName(t *testing.T) {
@@ -688,8 +653,6 @@ func TestExtractPolicyName(t *testing.T) {
 }
 
 // --- handleExclusionHits tests ---
-
-
 
 // --- handleExclusionHits tests ---
 
@@ -810,8 +773,6 @@ func TestHandleExclusionHits(t *testing.T) {
 
 // --- matchesPolicyRuleName tests ---
 
-
-
 // --- matchesPolicyRuleName tests ---
 
 func TestMatchesPolicyRuleName(t *testing.T) {
@@ -838,4 +799,79 @@ func TestMatchesPolicyRuleName(t *testing.T) {
 	}
 }
 
-// --- rule_name filter on handleEvents ---
+// --- matchesPolicyRuleNameFilter tests ---
+
+func TestMatchesPolicyRuleNameFilter(t *testing.T) {
+	ev := Event{
+		EventType: "policy_skip",
+		MatchedRules: []MatchedRule{
+			{ID: 9500001, Msg: "Policy Skip: Skip CRS 942200"},
+			{ID: 942100, Msg: "OWASP CRS 942100"},
+		},
+	}
+
+	tests := []struct {
+		name   string
+		value  string
+		op     string
+		expect bool
+	}{
+		{"eq match", "Skip CRS 942200", "eq", true},
+		{"eq no match", "Allow uploads", "eq", false},
+		{"contains match", "942200", "contains", true},
+		{"contains no match", "zzz", "contains", false},
+		{"neq match (name differs)", "Allow uploads", "neq", true},
+		{"neq no match (name matches)", "Skip CRS 942200", "neq", false},
+		{"in match single", "Skip CRS 942200", "in", true},
+		{"in match multi", "Allow uploads,Skip CRS 942200,Block bots", "in", true},
+		{"in no match", "Allow uploads,Block bots", "in", false},
+		{"regex match", "^Skip CRS.*", "regex", true},
+		{"regex no match", "^Allow.*", "regex", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := parseFieldFilter(tt.value, tt.op)
+			got := matchesPolicyRuleNameFilter(&ev, f)
+			if got != tt.expect {
+				t.Errorf("matchesPolicyRuleNameFilter(value=%q op=%q) = %v, want %v",
+					tt.value, tt.op, got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestMatchesPolicyRuleNameFilter_NoPolicyRules(t *testing.T) {
+	// Event with only CRS rules (no policy rules) should never match
+	ev := Event{
+		EventType: "blocked",
+		MatchedRules: []MatchedRule{
+			{ID: 942100, Msg: "OWASP CRS 942100"},
+		},
+	}
+	f := parseFieldFilter("OWASP CRS 942100", "eq")
+	if matchesPolicyRuleNameFilter(&ev, f) {
+		t.Error("expected no match for non-policy rule msg")
+	}
+}
+
+func TestMatchesPolicyRuleNameFilter_MultiplePolicy(t *testing.T) {
+	// Event with multiple policy rules — match any
+	ev := Event{
+		EventType: "policy_allow",
+		MatchedRules: []MatchedRule{
+			{ID: 9500001, Msg: "Policy Allow: Allow API calls"},
+			{ID: 9500002, Msg: "Policy Block: Block bad bots"},
+		},
+	}
+	// contains should find "API" in the first rule name
+	f := parseFieldFilter("API", "contains")
+	if !matchesPolicyRuleNameFilter(&ev, f) {
+		t.Error("expected contains match for 'API' in 'Allow API calls'")
+	}
+	// in should match the second rule name
+	f2 := parseFieldFilter("Block bad bots,Other rule", "in")
+	if !matchesPolicyRuleNameFilter(&ev, f2) {
+		t.Error("expected in match for 'Block bad bots'")
+	}
+}

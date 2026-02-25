@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-
 func TestHealthEndpoint(t *testing.T) {
 	handler := testHealthHandler(t)
 	req := httptest.NewRequest("GET", "/api/health", nil)
@@ -45,7 +44,6 @@ func TestHealthEndpoint(t *testing.T) {
 // emptyAccessLogStore returns an AccessLogStore with no events for tests that
 // don't care about 429 merging.
 
-
 func TestSummaryEndpoint(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
@@ -73,8 +71,6 @@ func TestSummaryEndpoint(t *testing.T) {
 	}
 }
 
-
-
 func TestEventsEndpointWithFilters(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
@@ -96,8 +92,6 @@ func TestEventsEndpointWithFilters(t *testing.T) {
 	}
 }
 
-
-
 func TestCORSHeadersWildcard(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", testHealthHandler(t))
@@ -118,8 +112,6 @@ func TestCORSHeadersWildcard(t *testing.T) {
 		}
 	}
 }
-
-
 
 func TestCORSHeadersAllowedOrigin(t *testing.T) {
 	mux := http.NewServeMux()
@@ -150,8 +142,6 @@ func TestCORSHeadersAllowedOrigin(t *testing.T) {
 	}
 }
 
-
-
 func TestCORSPreflightAllowed(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", testHealthHandler(t))
@@ -166,8 +156,6 @@ func TestCORSPreflightAllowed(t *testing.T) {
 		t.Errorf("preflight allowed: want 204, got %d", w.Code)
 	}
 }
-
-
 
 func TestCORSPreflightRejected(t *testing.T) {
 	mux := http.NewServeMux()
@@ -184,8 +172,6 @@ func TestCORSPreflightRejected(t *testing.T) {
 	}
 }
 
-
-
 func TestCORSPreflightWildcard(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", testHealthHandler(t))
@@ -200,8 +186,6 @@ func TestCORSPreflightWildcard(t *testing.T) {
 	}
 }
 
-
-
 func TestMissingLogFile(t *testing.T) {
 	store := NewStore("/nonexistent/path/audit.log")
 	store.Load() // should not panic
@@ -211,8 +195,6 @@ func TestMissingLogFile(t *testing.T) {
 }
 
 // --- IP Lookup tests ---
-
-
 
 // --- IP Lookup tests ---
 
@@ -235,8 +217,6 @@ func TestIPLookup(t *testing.T) {
 		t.Errorf("want 1 service for 10.0.0.1, got %d", len(result.Services))
 	}
 }
-
-
 
 func TestIPLookupEndpoint(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
@@ -261,8 +241,6 @@ func TestIPLookupEndpoint(t *testing.T) {
 	}
 }
 
-
-
 func TestIPLookupEndpointInvalidIP(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
@@ -280,8 +258,6 @@ func TestIPLookupEndpointInvalidIP(t *testing.T) {
 	}
 }
 
-
-
 func TestIPLookupNoResults(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
@@ -297,8 +273,6 @@ func TestIPLookupNoResults(t *testing.T) {
 }
 
 // --- Hours filter tests ---
-
-
 
 // --- Hours filter tests ---
 
@@ -330,8 +304,6 @@ func TestParseHours(t *testing.T) {
 		}
 	}
 }
-
-
 
 func TestSummaryEndpointWithHours(t *testing.T) {
 	// Create events with timestamps that are definitely old (>168h ago).
@@ -370,8 +342,6 @@ func TestSummaryEndpointWithHours(t *testing.T) {
 }
 
 // --- Exclusion Store tests ---
-
-
 
 // --- Analytics endpoint tests ---
 
@@ -416,8 +386,6 @@ func TestTopBlockedIPs(t *testing.T) {
 	}
 }
 
-
-
 func TestTopBlockedIPsLimit(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
@@ -428,8 +396,6 @@ func TestTopBlockedIPsLimit(t *testing.T) {
 		t.Fatalf("expected 1 IP (limit=1), got %d", len(result))
 	}
 }
-
-
 
 func TestTopTargetedURIs(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
@@ -468,8 +434,6 @@ func TestTopTargetedURIs(t *testing.T) {
 	}
 }
 
-
-
 func TestTopTargetedURIsLimit(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
@@ -480,8 +444,6 @@ func TestTopTargetedURIsLimit(t *testing.T) {
 		t.Fatalf("expected 1 URI (limit=1), got %d", len(result))
 	}
 }
-
-
 
 func TestAnalyticsEndpoints(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
@@ -543,8 +505,6 @@ func TestAnalyticsEndpoints(t *testing.T) {
 
 // --- CRS Catalog endpoint tests ---
 
-
-
 // ─── Tests for audit fix changes ──────────────────────────────────
 
 func TestDecodeJSON_ValidBody(t *testing.T) {
@@ -557,8 +517,6 @@ func TestDecodeJSON_ValidBody(t *testing.T) {
 		t.Fatalf("want 201, got %d: %s", w.Code, w.Body.String())
 	}
 }
-
-
 
 func TestDecodeJSON_InvalidJSON(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
@@ -574,8 +532,6 @@ func TestDecodeJSON_InvalidJSON(t *testing.T) {
 		t.Errorf("want 'invalid JSON body', got %q", resp.Error)
 	}
 }
-
-
 
 func TestDecodeJSON_BodyTooLarge(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
@@ -596,8 +552,6 @@ func TestDecodeJSON_BodyTooLarge(t *testing.T) {
 		t.Errorf("want 'too large' in error, got %q", resp.Error)
 	}
 }
-
-
 
 // --- rule_name filter on handleEvents ---
 
@@ -679,9 +633,133 @@ func TestHandleEventsRuleNameFilter(t *testing.T) {
 	}
 }
 
-// --- rule_name filter on handleSummary ---
+func TestHandleEventsRuleNameFilterOperators(t *testing.T) {
+	store := &Store{}
+	now := time.Now().UTC()
+	store.mu.Lock()
+	store.events = []Event{
+		{
+			ID: "ev1", Timestamp: now.Add(-1 * time.Hour), EventType: "policy_skip",
+			Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET",
+			MatchedRules: []MatchedRule{{ID: 9500001, Msg: "Policy Skip: Allow uploads"}},
+		},
+		{
+			ID: "ev2", Timestamp: now.Add(-2 * time.Hour), EventType: "policy_skip",
+			Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET",
+			MatchedRules: []MatchedRule{{ID: 9500002, Msg: "Policy Block: Block bots"}},
+		},
+		{
+			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "blocked",
+			Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST",
+			RuleID: 942100,
+		},
+	}
+	store.mu.Unlock()
 
+	als := NewAccessLogStore("")
+	handler := handleEvents(store, als)
 
+	tests := []struct {
+		name      string
+		query     string
+		wantTotal int
+		wantIDs   []string
+	}{
+		{"contains uploads", "rule_name=uploads&rule_name_op=contains", 1, []string{"ev1"}},
+		{"contains Block", "rule_name=Block&rule_name_op=contains", 1, []string{"ev2"}},
+		{"neq Allow uploads", "rule_name=Allow+uploads&rule_name_op=neq", 1, []string{"ev2"}},
+		{"in two rules", "rule_name=Allow+uploads,Block+bots&rule_name_op=in", 2, []string{"ev1", "ev2"}},
+		{"regex ^Allow", "rule_name=^Allow.*&rule_name_op=regex", 1, []string{"ev1"}},
+		{"regex none", "rule_name=^Nonexistent.*&rule_name_op=regex", 0, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/api/events?hours=24&"+tt.query, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			var resp struct {
+				Total  int     `json:"total"`
+				Events []Event `json:"events"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode error: %v", err)
+			}
+			if resp.Total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", resp.Total, tt.wantTotal)
+			}
+			if tt.wantIDs != nil {
+				gotIDs := make(map[string]bool)
+				for _, e := range resp.Events {
+					gotIDs[e.ID] = true
+				}
+				for _, id := range tt.wantIDs {
+					if !gotIDs[id] {
+						t.Errorf("expected event %s in results", id)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestHandleSummaryRuleNameFilterOperators(t *testing.T) {
+	store := &Store{}
+	now := time.Now().UTC()
+	store.mu.Lock()
+	store.events = []Event{
+		{
+			ID: "ev1", Timestamp: now.Add(-1 * time.Hour), EventType: "policy_skip",
+			Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET",
+			MatchedRules: []MatchedRule{{ID: 9500001, Msg: "Policy Skip: Allow uploads"}},
+		},
+		{
+			ID: "ev2", Timestamp: now.Add(-2 * time.Hour), EventType: "policy_skip",
+			Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET",
+			MatchedRules: []MatchedRule{{ID: 9500002, Msg: "Policy Block: Block bots"}},
+		},
+		{
+			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "blocked",
+			Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST",
+			RuleID: 942100,
+		},
+	}
+	store.mu.Unlock()
+
+	als := NewAccessLogStore("")
+	handler := handleSummary(store, als)
+
+	tests := []struct {
+		name      string
+		query     string
+		wantTotal int
+	}{
+		{"contains uploads", "rule_name=uploads&rule_name_op=contains", 1},
+		{"in two rules", "rule_name=Allow+uploads,Block+bots&rule_name_op=in", 2},
+		{"regex ^Block", "rule_name=^Block.*&rule_name_op=regex", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/api/summary?hours=24&"+tt.query, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != 200 {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			var resp SummaryResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode error: %v", err)
+			}
+			if resp.TotalEvents != tt.wantTotal {
+				t.Errorf("total_events = %d, want %d", resp.TotalEvents, tt.wantTotal)
+			}
+		})
+	}
+}
 
 // --- rule_name filter on handleSummary ---
 
@@ -755,8 +833,6 @@ func TestHandleSummaryRuleNameFilter(t *testing.T) {
 
 // --- Generalized filter params on handleSummary ---
 
-
-
 // --- Generalized filter params on handleSummary ---
 
 func TestHandleSummaryServiceFilter(t *testing.T) {
@@ -799,8 +875,6 @@ func TestHandleSummaryServiceFilter(t *testing.T) {
 	}
 }
 
-
-
 func TestHandleSummaryClientFilter(t *testing.T) {
 	store := &Store{}
 	now := time.Now().UTC()
@@ -838,8 +912,6 @@ func TestHandleSummaryClientFilter(t *testing.T) {
 	}
 }
 
-
-
 func TestHandleSummaryMethodFilter(t *testing.T) {
 	store := &Store{}
 	now := time.Now().UTC()
@@ -870,8 +942,6 @@ func TestHandleSummaryMethodFilter(t *testing.T) {
 		t.Errorf("method filter: total_events = %d, want 2", resp.TotalEvents)
 	}
 }
-
-
 
 func TestHandleSummaryEventTypeFilter(t *testing.T) {
 	store := &Store{}
@@ -906,8 +976,6 @@ func TestHandleSummaryEventTypeFilter(t *testing.T) {
 		t.Errorf("event_type filter: blocked = %d, want 2", resp.BlockedEvents)
 	}
 }
-
-
 
 func TestHandleSummaryMultipleFilters(t *testing.T) {
 	store := &Store{}
@@ -946,8 +1014,6 @@ func TestHandleSummaryMultipleFilters(t *testing.T) {
 		t.Errorf("multiple filters: unique_services = %d, want 1", resp.UniqueServices)
 	}
 }
-
-
 
 func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	// Test that event_type=rate_limited correctly fetches RL events
@@ -990,8 +1056,6 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	}
 }
 
-
-
 func TestHandleSummaryNoFilterFallsThrough(t *testing.T) {
 	// When no filters are set, the summary should go through the optimized
 	// pre-aggregated path (not the filtered path). We verify by checking
@@ -1031,8 +1095,6 @@ func TestHandleSummaryNoFilterFallsThrough(t *testing.T) {
 }
 
 // --- fieldFilter / matchField unit tests ---
-
-
 
 // --- fieldFilter / matchField unit tests ---
 
@@ -1081,8 +1143,6 @@ func TestParseFieldFilter(t *testing.T) {
 	})
 }
 
-
-
 func TestMatchField(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -1121,8 +1181,6 @@ func TestMatchField(t *testing.T) {
 
 // --- Operator-aware handler tests ---
 
-
-
 // --- Operator-aware handler tests ---
 
 func TestHandleSummaryContainsOperator(t *testing.T) {
@@ -1156,8 +1214,6 @@ func TestHandleSummaryContainsOperator(t *testing.T) {
 	}
 }
 
-
-
 func TestHandleSummaryInOperator(t *testing.T) {
 	store := &Store{}
 	now := time.Now().UTC()
@@ -1188,8 +1244,6 @@ func TestHandleSummaryInOperator(t *testing.T) {
 		t.Errorf("in filter: total_events = %d, want 2", resp.TotalEvents)
 	}
 }
-
-
 
 func TestHandleSummaryNeqOperator(t *testing.T) {
 	store := &Store{}
@@ -1222,8 +1276,6 @@ func TestHandleSummaryNeqOperator(t *testing.T) {
 	}
 }
 
-
-
 func TestHandleSummaryRegexOperator(t *testing.T) {
 	store := &Store{}
 	now := time.Now().UTC()
@@ -1254,8 +1306,6 @@ func TestHandleSummaryRegexOperator(t *testing.T) {
 		t.Errorf("regex filter: total_events = %d, want 1", resp.TotalEvents)
 	}
 }
-
-
 
 func TestHandleEventsInOperator(t *testing.T) {
 	store := &Store{}
@@ -1289,8 +1339,6 @@ func TestHandleEventsInOperator(t *testing.T) {
 		t.Errorf("events in filter: total = %d, want 3", resp.Total)
 	}
 }
-
-
 
 func TestHandleEventsNoOpDefaultsToEq(t *testing.T) {
 	// Without _op param, should behave exactly as before (eq).

@@ -83,7 +83,7 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   client: { label: "Client IP", placeholder: "e.g. 192.168.1.100" },
   event_type: { label: "Event Type", placeholder: "Select type", options: EVENT_TYPE_OPTIONS },
   method: { label: "Method", placeholder: "Select method", options: METHOD_OPTIONS },
-  rule_name: { label: "Policy Rule", placeholder: "e.g. Allow Static Assets" },
+  rule_name: { label: "Policy Rule", placeholder: "Search rules...", dynamic: true },
 };
 
 const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "method", "rule_name"];
@@ -182,9 +182,11 @@ interface DashboardFilterBarProps {
   onChange: (filters: DashboardFilter[]) => void;
   /** Known service names for autocomplete (from fetchServices or summary data). */
   services?: string[];
+  /** Known policy rule names for autocomplete (from getExclusions). */
+  ruleNames?: string[];
 }
 
-export default function DashboardFilterBar({ filters, onChange, services }: DashboardFilterBarProps) {
+export default function DashboardFilterBar({ filters, onChange, services, ruleNames }: DashboardFilterBarProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [selectedField, setSelectedField] = useState<FilterField | null>(null);
   const [selectedOp, setSelectedOp] = useState<FilterOp | null>(null);
@@ -205,11 +207,16 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
     }
   }, [selectedField, selectedOp]);
 
-  // Build dynamic service options from prop
+  // Build dynamic options from props
   const serviceOptions = useMemo(() => {
     if (!services || services.length === 0) return [];
     return services.map((s) => ({ value: s, label: s }));
   }, [services]);
+
+  const ruleNameOptions = useMemo(() => {
+    if (!ruleNames || ruleNames.length === 0) return [];
+    return ruleNames.map((n) => ({ value: n, label: n }));
+  }, [ruleNames]);
 
   // Fields already in use (only allow one filter per field)
   const usedFields = new Set(filters.map((f) => f.field));
@@ -321,9 +328,10 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
     // Step 3: Enter value
 
     // For "in" operator with options (fixed or dynamic) — multi-select checkboxes + custom text
-    const inOptions = meta.options
-      ? meta.options
-      : (meta.dynamic && selectedField === "service" ? serviceOptions : []);
+    const dynamicOptions = selectedField === "service" ? serviceOptions
+      : selectedField === "rule_name" ? ruleNameOptions
+      : [];
+    const inOptions = meta.options ? meta.options : (meta.dynamic ? dynamicOptions : []);
 
     if (selectedOp === "in" && inOptions.length > 0) {
       const filteredInOptions = inputValue
@@ -385,7 +393,7 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
               ))}
             </div>
           )}
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             {filteredInOptions.map((opt) => {
               const checked = inValues.includes(opt.value);
               return (
@@ -457,9 +465,9 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
       );
     }
 
-    // Dynamic field (searchable list + free text, e.g. service) — for eq/neq
+    // Dynamic field (searchable list + free text, e.g. service, rule_name) — for eq/neq
     if (meta.dynamic && (selectedOp === "eq" || selectedOp === "neq")) {
-      const options = selectedField === "service" ? serviceOptions : [];
+      const options = dynamicOptions;
       const filtered = inputValue
         ? options.filter((o) => o.label.toLowerCase().includes(inputValue.toLowerCase()))
         : options;
@@ -483,7 +491,7 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
               className="h-8 text-sm pl-7"
             />
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             {filtered.length > 0 ? (
               filtered.map((opt) => (
                 <button
@@ -568,7 +576,7 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
               Add filter
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-64 p-2" align="start">
+          <PopoverContent className="w-96 p-3" align="start">
             {renderPopoverContent()}
           </PopoverContent>
         </Popover>
@@ -580,24 +588,85 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
     <div className="flex items-center gap-2 rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2">
       <Filter className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
       <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
-        {filters.map((f) => (
-          <Badge
-            key={f.field}
-            variant="secondary"
-            className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
-          >
-            <span className="text-muted-foreground font-medium">{FILTER_FIELDS[f.field].label}</span>
-            <span className="text-neon-cyan/70 font-mono text-[10px]">{operatorChip(f.operator)}</span>
-            <span className="font-mono">{filterDisplayValue(f.field, f.value)}</span>
-            <button
-              className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
-              onClick={() => removeFilter(f.field)}
-              title={`Remove ${FILTER_FIELDS[f.field].label} filter`}
+        {filters.map((f) => {
+          // For "in" operator with multiple values, render each as a separate pill
+          if (f.operator === "in" && f.value.includes(",")) {
+            const values = f.value.split(",").map((v) => v.trim()).filter(Boolean);
+            const meta = FILTER_FIELDS[f.field];
+            return (
+              <div key={f.field} className="flex items-center gap-1">
+                <Badge
+                  variant="secondary"
+                  className="gap-1 pl-2 pr-2 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20"
+                >
+                  <span className="text-muted-foreground font-medium">{meta.label}</span>
+                  <span className="text-neon-cyan/70 font-mono text-[10px]">{operatorChip(f.operator)}</span>
+                </Badge>
+                {values.map((v) => {
+                  const label = meta.options?.find((o) => o.value === v)?.label ?? v;
+                  return (
+                    <Badge
+                      key={v}
+                      variant="secondary"
+                      className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/15 border-neon-cyan/30 hover:bg-neon-cyan/25 transition-colors"
+                    >
+                      <span className="font-mono">{label}</span>
+                      <button
+                        className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
+                        onClick={() => {
+                          const remaining = values.filter((x) => x !== v);
+                          if (remaining.length === 0) {
+                            removeFilter(f.field);
+                          } else if (remaining.length === 1) {
+                            // Switch to "eq" when only one value left
+                            const updated = filters.map((ff) =>
+                              ff.field === f.field ? { ...ff, operator: "eq" as FilterOp, value: remaining[0] } : ff
+                            );
+                            onChange(updated);
+                          } else {
+                            const updated = filters.map((ff) =>
+                              ff.field === f.field ? { ...ff, value: remaining.join(",") } : ff
+                            );
+                            onChange(updated);
+                          }
+                        }}
+                        title={`Remove ${label}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+                <button
+                  className="rounded-sm p-0.5 hover:bg-destructive/20 transition-colors cursor-pointer"
+                  onClick={() => removeFilter(f.field)}
+                  title={`Remove all ${meta.label} filters`}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <Badge
+              key={f.field}
+              variant="secondary"
+              className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
             >
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
-        ))}
+              <span className="text-muted-foreground font-medium">{FILTER_FIELDS[f.field].label}</span>
+              <span className="text-neon-cyan/70 font-mono text-[10px]">{operatorChip(f.operator)}</span>
+              <span className="font-mono">{filterDisplayValue(f.field, f.value)}</span>
+              <button
+                className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
+                onClick={() => removeFilter(f.field)}
+                title={`Remove ${FILTER_FIELDS[f.field].label} filter`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          );
+        })}
 
         {availableFields.length > 0 && (
           <Popover open={popoverOpen} onOpenChange={(open) => {
@@ -610,7 +679,7 @@ export default function DashboardFilterBar({ filters, onChange, services }: Dash
                 Add
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="start">
+            <PopoverContent className="w-96 p-3" align="start">
               {renderPopoverContent()}
             </PopoverContent>
           </Popover>

@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -7,7 +7,6 @@ import {
   ChevronsRight,
   ChevronsDownUp,
   Download,
-  Filter,
   ShieldPlus,
   ExternalLink,
 } from "lucide-react";
@@ -30,24 +29,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   fetchEvents,
   fetchAllEvents,
   fetchServices,
+  getExclusions,
   type WAFEvent,
   type EventsResponse,
   type ServiceDetail,
-  type EventType,
 } from "@/lib/api";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import { countryFlag, formatTime, formatDate } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
+import DashboardFilterBar, {
+  parseFiltersFromURL,
+  filtersToEventsParams,
+  type DashboardFilter,
+} from "./DashboardFilterBar";
 
 const SEVERITY_MAP: Record<number, { label: string; color: string }> = {
   2: { label: "CRITICAL", color: "text-neon-pink" },
@@ -556,8 +553,6 @@ function ExpandableSection({ title, children }: { title: string; children: React
   );
 }
 
-const METHODS = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"];
-
 export default function EventsTable() {
   const [response, setResponse] = useState<EventsResponse | null>(null);
   const [services, setServices] = useState<ServiceDetail[]>([]);
@@ -572,56 +567,57 @@ export default function EventsTable() {
     label: "Last 24 hours",
   });
 
-  // Filters — read URL query params for initial values
-  const [initialParams] = useState(() => {
-    if (typeof window === "undefined") return null;
-    const params = new URLSearchParams(window.location.search);
-    if (params.toString() === "") return null;
-    const parsed = {
-      type: params.get("type"),
-      service: params.get("service"),
-      status: params.get("status"),
-      method: params.get("method"),
-      ip: params.get("ip"),
-      rule_name: params.get("rule_name"),
-    };
-    // Clear URL params so refresh doesn't re-apply stale filters
-    if (Object.values(parsed).some(Boolean)) {
+  // Filters — shared DashboardFilterBar state
+  const [filters, setFilters] = useState<DashboardFilter[]>([]);
+  const filtersInitRef = useRef(false);
+
+  // Read URL params on mount (client-only to avoid hydration mismatch)
+  useEffect(() => {
+    if (filtersInitRef.current) return;
+    filtersInitRef.current = true;
+    if (typeof window === "undefined") return;
+    const search = window.location.search;
+    if (!search) return;
+    const parsed = parseFiltersFromURL(search);
+    if (parsed.length > 0) {
+      setFilters(parsed);
       window.history.replaceState({}, "", window.location.pathname);
     }
-    return parsed;
-  });
+  }, []);
 
   const [page, setPage] = useState(1);
-  const [serviceFilter, setServiceFilter] = useState(initialParams?.service || "all");
-  const [methodFilter, setMethodFilter] = useState(initialParams?.method?.toUpperCase() || "ALL");
-  const [eventTypeFilter, setEventTypeFilter] = useState<string>(initialParams?.type || "all");
-  const [clientFilter, setClientFilter] = useState(initialParams?.ip || "");
-  const [ruleNameFilter, setRuleNameFilter] = useState(initialParams?.rule_name || "");
-
   const perPage = 25;
+
+  // Service names for filter bar autocomplete
+  const serviceNames = useMemo(
+    () => services.map((s) => s.service),
+    [services],
+  );
+
+  // Rule names for filter bar autocomplete
+  const [ruleNames, setRuleNames] = useState<string[]>([]);
 
   const loadEvents = useCallback(() => {
     setLoading(true);
     const timeParams = rangeToParams(timeRange);
+    const filterParams = filtersToEventsParams(filters);
     fetchEvents({
       page,
       per_page: perPage,
-      service: serviceFilter === "all" ? undefined : serviceFilter,
-      method: methodFilter === "ALL" ? undefined : methodFilter,
-      event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter as EventType,
-      client: clientFilter || undefined,
-      rule_name: ruleNameFilter || undefined,
+      ...filterParams,
       ...timeParams,
     })
       .then(setResponse)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [page, serviceFilter, methodFilter, eventTypeFilter, clientFilter, ruleNameFilter, timeRange]);
+  }, [page, filters, timeRange]);
 
   useEffect(() => {
     fetchServices()
       .then(setServices)
+      .catch(() => {}); // Non-critical
+    getExclusions()
+      .then((excl) => setRuleNames(excl.map((e) => e.name).filter(Boolean)))
       .catch(() => {}); // Non-critical
   }, []);
 
@@ -632,7 +628,7 @@ export default function EventsTable() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [serviceFilter, methodFilter, eventTypeFilter, clientFilter, timeRange]);
+  }, [filters, timeRange]);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -674,121 +670,66 @@ export default function EventsTable() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Filter className="h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <DashboardFilterBar
+            filters={filters}
+            onChange={setFilters}
+            services={serviceNames}
+            ruleNames={ruleNames}
+          />
+        </div>
 
-            <Select value={serviceFilter} onValueChange={setServiceFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Service" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Services</SelectItem>
-                {services.map((s) => (
-                  <SelectItem key={s.service} value={s.service}>
-                    {s.service}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={methodFilter} onValueChange={setMethodFilter}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="Method" />
-              </SelectTrigger>
-              <SelectContent>
-                {METHODS.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Event Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="blocked">CRS Blocked</SelectItem>
-                <SelectItem value="logged">Logged</SelectItem>
-                <SelectItem value="rate_limited">Rate Limited</SelectItem>
-                <SelectItem value="ipsum_blocked">IPsum Blocked</SelectItem>
-                <SelectItem value="honeypot">Honeypot</SelectItem>
-                <SelectItem value="scanner">Scanner</SelectItem>
-                <SelectItem value="policy_skip">Policy Skip</SelectItem>
-                <SelectItem value="policy_allow">Policy Allow</SelectItem>
-                <SelectItem value="policy_block">Policy Block</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {clientFilter && (
-              <Badge
-                variant="outline"
-                className="text-xs font-mono px-2 py-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/50 transition-colors"
-                onClick={() => setClientFilter("")}
-                title="Click to clear IP filter"
+        {response && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-muted-foreground">
+              {response.total.toLocaleString()} events
+            </span>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => downloadJSON(events, `events-page-${page}.json`)}
+                title="Export current page as JSON"
               >
-                IP: {clientFilter} &times;
-              </Badge>
-            )}
-
-            {response && (
-              <div className="ml-auto flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {response.total.toLocaleString()} total events
-                </span>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => downloadJSON(events, `events-page-${page}.json`)}
-                    title="Export current page as JSON"
-                  >
-                    <Download className="h-3 w-3 mr-1" />
-                    Page
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={async () => {
-                      const timeParams = rangeToParams(timeRange);
-                      const all = await fetchAllEvents({
-                        service: serviceFilter === "all" ? undefined : serviceFilter,
-                        method: methodFilter === "ALL" ? undefined : methodFilter,
-                        event_type: eventTypeFilter === "all" ? undefined : (eventTypeFilter as EventType),
-                        client: clientFilter || undefined,
-                        ...timeParams,
-                      });
-                      downloadJSON(all, `events-all-${new Date().toISOString().slice(0, 10)}.json`);
-                    }}
-                    title="Export all matching events as JSON"
-                  >
-                    <Download className="h-3 w-3 mr-1" />
-                    All ({response.total.toLocaleString()})
-                  </Button>
-                  {expanded.size > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="text-muted-foreground hover:text-foreground"
-                      onClick={() => setExpanded(new Set())}
-                      title="Collapse all expanded rows"
-                    >
-                      <ChevronsDownUp className="h-3 w-3 mr-1" />
-                      Collapse ({expanded.size})
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
+                <Download className="h-3 w-3 mr-1" />
+                Page
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={async () => {
+                  const timeParams = rangeToParams(timeRange);
+                  const filterParams = filtersToEventsParams(filters);
+                  const all = await fetchAllEvents({
+                    ...filterParams,
+                    ...timeParams,
+                  });
+                  downloadJSON(all, `events-all-${new Date().toISOString().slice(0, 10)}.json`);
+                }}
+                title="Export all matching events as JSON"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                All ({response.total.toLocaleString()})
+              </Button>
+              {expanded.size > 0 && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setExpanded(new Set())}
+                  title="Collapse all expanded rows"
+                >
+                  <ChevronsDownUp className="h-3 w-3 mr-1" />
+                  Collapse ({expanded.size})
+                </Button>
+              )}
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
       {/* Events Table */}
       <Card>
