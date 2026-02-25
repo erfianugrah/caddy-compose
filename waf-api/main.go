@@ -8,14 +8,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Version is the waf-api release version, shown in /api/health.
-const Version = "0.19.0"
+// version is the waf-api release version, shown in /api/health.
+// Set at build time via: -ldflags="-X main.version=0.21.0"
+var version = "dev"
 
 // startTime records when the process started, used for uptime calculation.
 var startTime = time.Now()
@@ -122,6 +124,7 @@ func main() {
 	mux.HandleFunc("GET /api/exclusions/export", handleExportExclusions(exclusionStore))
 	mux.HandleFunc("POST /api/exclusions/import", handleImportExclusions(exclusionStore))
 	mux.HandleFunc("POST /api/exclusions/generate", handleGenerateExclusions(exclusionStore))
+	mux.HandleFunc("GET /api/exclusions/hits", handleExclusionHits(store, exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/{id}", handleGetExclusion(exclusionStore))
 	mux.HandleFunc("PUT /api/exclusions/{id}", handleUpdateExclusion(exclusionStore))
 	mux.HandleFunc("DELETE /api/exclusions/{id}", handleDeleteExclusion(exclusionStore))
@@ -330,7 +333,7 @@ func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclu
 
 		writeJSON(w, http.StatusOK, HealthResponse{
 			Status:  "ok",
-			Version: Version,
+			Version: version,
 			Uptime:  uptime.String(),
 			Stores:  stores,
 		})
@@ -341,6 +344,66 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
+		q := r.URL.Query()
+
+		// Read filter params with operator support (e.g. service_op=in&service=a,b).
+		serviceF := parseFieldFilter(q.Get("service"), q.Get("service_op"))
+		clientF := parseFieldFilter(q.Get("client"), q.Get("client_op"))
+		methodF := parseFieldFilter(q.Get("method"), q.Get("method_op"))
+		eventTypeF := parseFieldFilter(q.Get("event_type"), q.Get("event_type_op"))
+		ruleNameF := parseFieldFilter(q.Get("rule_name"), q.Get("rule_name_op"))
+
+		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil
+
+		// When any filter is active, collect all events, apply filters, then
+		// summarize — this is the general-purpose filtered path.
+		if hasFilter {
+			var allEvents []Event
+			// Optimization: skip event sources that can't match the event_type filter.
+			etVal := ""
+			if eventTypeF != nil {
+				etVal = eventTypeF.value
+			}
+			if etVal != "rate_limited" && etVal != "ipsum_blocked" {
+				allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
+			}
+			if etVal != "blocked" && etVal != "logged" {
+				allEvents = append(allEvents, getRLEvents(als, tr, hours)...)
+			}
+
+			var filtered []Event
+			for i := range allEvents {
+				ev := &allEvents[i]
+				if !serviceF.matchField(ev.Service) {
+					continue
+				}
+				if !clientF.matchField(ev.ClientIP) {
+					continue
+				}
+				if !methodF.matchField(ev.Method) {
+					continue
+				}
+				if !eventTypeF.matchField(ev.EventType) {
+					continue
+				}
+				if ruleNameF != nil && !matchesPolicyRuleName(ev, ruleNameF.value) {
+					continue
+				}
+				filtered = append(filtered, *ev)
+			}
+
+			summary := summarizeEvents(filtered)
+			allClients := make(map[string]struct{})
+			allServices := make(map[string]struct{})
+			for i := range filtered {
+				allClients[filtered[i].ClientIP] = struct{}{}
+				allServices[filtered[i].Service] = struct{}{}
+			}
+			summary.UniqueClients = len(allClients)
+			summary.UniqueServices = len(allServices)
+			writeJSON(w, http.StatusOK, summary)
+			return
+		}
 
 		var summary SummaryResponse
 		if tr.Valid {
@@ -551,10 +614,12 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
-		service := q.Get("service")
-		client := q.Get("client")
-		method := q.Get("method")
-		eventType := q.Get("event_type") // "blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner", or ""
+		// Read filter params with operator support.
+		serviceF := parseFieldFilter(q.Get("service"), q.Get("service_op"))
+		clientF := parseFieldFilter(q.Get("client"), q.Get("client_op"))
+		methodF := parseFieldFilter(q.Get("method"), q.Get("method_op"))
+		eventTypeF := parseFieldFilter(q.Get("event_type"), q.Get("event_type_op"))
+		ruleNameF := parseFieldFilter(q.Get("rule_name"), q.Get("rule_name_op"))
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -578,14 +643,18 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		hours := parseHours(r)
 
 		// Collect WAF events (unless filtering to only rate_limited or ipsum_blocked).
+		etVal := ""
+		if eventTypeF != nil {
+			etVal = eventTypeF.value
+		}
 		var allEvents []Event
-		if eventType != "rate_limited" && eventType != "ipsum_blocked" {
+		if etVal != "rate_limited" && etVal != "ipsum_blocked" {
 			wafEvents := getWAFEvents(store, tr, hours)
 			allEvents = append(allEvents, wafEvents...)
 		}
 
 		// Collect access-log events (429 + ipsum) unless filtering to WAF-only types.
-		if eventType != "blocked" && eventType != "logged" {
+		if etVal != "blocked" && etVal != "logged" {
 			rlEvents := getRLEvents(als, tr, hours)
 			allEvents = append(allEvents, rlEvents...)
 		}
@@ -599,19 +668,22 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		var filtered []Event
 		for i := range allEvents {
 			ev := &allEvents[i]
-			if service != "" && !strings.EqualFold(ev.Service, service) {
+			if !serviceF.matchField(ev.Service) {
 				continue
 			}
-			if client != "" && ev.ClientIP != client {
+			if !clientF.matchField(ev.ClientIP) {
 				continue
 			}
-			if method != "" && !strings.EqualFold(ev.Method, method) {
+			if !methodF.matchField(ev.Method) {
 				continue
 			}
 			if blocked != nil && ev.IsBlocked != *blocked {
 				continue
 			}
-			if eventType != "" && ev.EventType != eventType {
+			if !eventTypeF.matchField(ev.EventType) {
+				continue
+			}
+			if ruleNameF != nil && !matchesPolicyRuleName(ev, ruleNameF.value) {
 				continue
 			}
 			filtered = append(filtered, *ev)
@@ -766,6 +838,106 @@ func handleIPLookup(store *Store) http.HandlerFunc {
 }
 
 // --- Handlers: Exclusion CRUD ---
+
+// handleExclusionHits returns per-exclusion hit counts derived from policy events.
+// It scans events for policy_* event types, matches the msg field in matched_rules
+// back to exclusion names, and returns both total hit counts and an hourly sparkline.
+//
+// Response: { "hits": { "<exclusion_name>": { "total": N, "sparkline": [n, n, ...] } } }
+// The sparkline is a 24-element array (one per hour, oldest first).
+func handleExclusionHits(store *Store, es *ExclusionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hoursStr := r.URL.Query().Get("hours")
+		hours := 24
+		if hoursStr != "" {
+			if h, err := strconv.Atoi(hoursStr); err == nil && h > 0 && h <= 720 {
+				hours = h
+			}
+		}
+
+		events := store.SnapshotSince(hours)
+		exclusions := es.List()
+
+		// Build a set of known exclusion names for fast lookup.
+		nameSet := make(map[string]bool, len(exclusions))
+		for _, exc := range exclusions {
+			nameSet[exc.Name] = true
+		}
+
+		// Determine the sparkline bucket boundaries.
+		now := time.Now().UTC()
+		bucketCount := hours
+		if bucketCount > 168 { // cap at 168 buckets (1 week hourly)
+			bucketCount = 168
+		}
+		bucketStart := now.Truncate(time.Hour).Add(-time.Duration(bucketCount-1) * time.Hour)
+
+		type hitData struct {
+			Total     int   `json:"total"`
+			Sparkline []int `json:"sparkline"`
+		}
+		hits := make(map[string]*hitData)
+
+		// Initialize entries for all exclusions (so the frontend doesn't need to handle missing keys).
+		for _, exc := range exclusions {
+			hits[exc.Name] = &hitData{Sparkline: make([]int, bucketCount)}
+		}
+
+		for i := range events {
+			ev := &events[i]
+			if !strings.HasPrefix(ev.EventType, "policy_") {
+				continue
+			}
+			for _, mr := range ev.MatchedRules {
+				// msg format: "Policy Allow: <name>", "Policy Skip: <name>", "Policy Block: <name>"
+				name := extractPolicyName(mr.Msg)
+				if name == "" || !nameSet[name] {
+					continue
+				}
+				hd, ok := hits[name]
+				if !ok {
+					hd = &hitData{Sparkline: make([]int, bucketCount)}
+					hits[name] = hd
+				}
+				hd.Total++
+				// Assign to sparkline bucket.
+				bucket := int(ev.Timestamp.Sub(bucketStart).Hours())
+				if bucket >= 0 && bucket < bucketCount {
+					hd.Sparkline[bucket]++
+				}
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
+	}
+}
+
+// matchesPolicyRuleName checks whether an event was triggered by a policy
+// exclusion with the given name.  It scans the matched_rules for a msg
+// containing "Policy Allow/Skip/Block: <name>".
+func matchesPolicyRuleName(ev *Event, name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, mr := range ev.MatchedRules {
+		if extractPolicyName(mr.Msg) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// extractPolicyName extracts the exclusion name from a policy rule msg string.
+// Expected formats: "Policy Allow: <name>", "Policy Skip: <name>", "Policy Block: <name>"
+func extractPolicyName(msg string) string {
+	prefixes := []string{"Policy Allow: ", "Policy Skip: ", "Policy Block: "}
+	for _, p := range prefixes {
+		if strings.HasPrefix(msg, p) {
+			return msg[len(p):]
+		}
+	}
+	return ""
+}
 
 func handleListExclusions(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
@@ -1138,4 +1310,79 @@ func queryInt(s string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// --- Field filter with operator support ---
+
+// fieldFilter represents a single filter condition with an operator.
+// Supported operators: eq (default), neq, contains, in, regex.
+type fieldFilter struct {
+	value string
+	op    string         // "eq", "neq", "contains", "in", "regex"
+	re    *regexp.Regexp // compiled only when op == "regex"
+	ins   []string       // split values only when op == "in"
+}
+
+// validFilterOps is the set of recognized filter operators.
+var validFilterOps = map[string]bool{
+	"eq": true, "neq": true, "contains": true, "in": true, "regex": true,
+}
+
+// parseFieldFilter reads a filter value and its companion _op param from query.
+// Returns nil when the field is empty (no filter).
+func parseFieldFilter(value, op string) *fieldFilter {
+	if value == "" {
+		return nil
+	}
+	if !validFilterOps[op] {
+		op = "eq"
+	}
+	f := &fieldFilter{value: value, op: op}
+	switch op {
+	case "regex":
+		re, err := regexp.Compile(value)
+		if err != nil {
+			// Fall back to literal contains on bad regex.
+			f.op = "contains"
+		} else {
+			f.re = re
+		}
+	case "in":
+		parts := strings.Split(value, ",")
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				f.ins = append(f.ins, t)
+			}
+		}
+	}
+	return f
+}
+
+// matchField tests whether target matches the filter condition.
+// Case-insensitive for eq/neq/contains/in; regex uses the compiled pattern as-is.
+func (f *fieldFilter) matchField(target string) bool {
+	if f == nil {
+		return true // no filter = always match
+	}
+	switch f.op {
+	case "eq":
+		return strings.EqualFold(target, f.value)
+	case "neq":
+		return !strings.EqualFold(target, f.value)
+	case "contains":
+		return strings.Contains(strings.ToLower(target), strings.ToLower(f.value))
+	case "in":
+		for _, v := range f.ins {
+			if strings.EqualFold(target, v) {
+				return true
+			}
+		}
+		return false
+	case "regex":
+		if f.re != nil {
+			return f.re.MatchString(target)
+		}
+		return strings.Contains(strings.ToLower(target), strings.ToLower(f.value))
+	}
+	return true
 }
