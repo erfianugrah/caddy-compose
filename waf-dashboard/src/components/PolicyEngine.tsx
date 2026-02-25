@@ -10,7 +10,6 @@ import {
   Pencil,
   Copy,
   Check,
-  GripVertical,
   AlertTriangle,
   Code2,
   Zap,
@@ -1936,25 +1935,27 @@ export default function PolicyEngine() {
     try {
       const created = await createExclusion(data);
       setExclusions((prev) => [...prev, created]);
-      showSuccess("Exclusion created — deploying...");
-
-      // Auto-deploy after creating a rule so it takes effect immediately.
-      try {
-        setDeployStep("Writing WAF files & reloading Caddy...");
-        const result = await deployConfig();
-        setDeployResult(result);
-        if (result.status === "deployed") {
-          showSuccess("Rule created and deployed successfully");
-        } else {
-          showSuccess("Rule created — config files written, Caddy reload needs manual intervention");
-        }
-      } catch (deployErr: any) {
-        setError(`Rule saved but deploy failed: ${deployErr.message}`);
-      } finally {
-        setDeployStep(null);
-      }
+      await autoDeploy("Rule created");
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  // Auto-deploy after any mutation so changes take effect immediately.
+  const autoDeploy = async (action: string) => {
+    try {
+      setDeployStep("Deploying...");
+      const result = await deployConfig();
+      setDeployResult(result);
+      if (result.status === "deployed") {
+        showSuccess(`${action} — deployed`);
+      } else {
+        showSuccess(`${action} — config written, Caddy reload needs manual intervention`);
+      }
+    } catch (deployErr: any) {
+      setError(`${action}, but deploy failed: ${deployErr.message}`);
+    } finally {
+      setDeployStep(null);
     }
   };
 
@@ -1963,7 +1964,7 @@ export default function PolicyEngine() {
       const updated = await updateExclusion(id, data);
       setExclusions((prev) => prev.map((e) => (e.id === id ? updated : e)));
       setEditingId(null);
-      showSuccess("Exclusion updated");
+      await autoDeploy("Rule updated");
     } catch (err: any) {
       setError(err.message);
     }
@@ -1974,7 +1975,7 @@ export default function PolicyEngine() {
       await deleteExclusion(id);
       setExclusions((prev) => prev.filter((e) => e.id !== id));
       setDeleteConfirmId(null);
-      showSuccess("Exclusion deleted");
+      await autoDeploy("Rule deleted");
     } catch (err: any) {
       setError(err.message);
     }
@@ -1984,6 +1985,7 @@ export default function PolicyEngine() {
     try {
       const updated = await updateExclusion(id, { enabled });
       setExclusions((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      await autoDeploy(enabled ? "Rule enabled" : "Rule disabled");
     } catch (err: any) {
       setError(err.message);
     }
@@ -2055,6 +2057,9 @@ export default function PolicyEngine() {
     input.click();
   };
 
+  // ─── Dialog state for create/edit ──────────────────────────────────
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   // Editing: determine which tab the exclusion belongs to so we show the edit form in the right tab
   const exclusionToEdit = editingId ? exclusions.find((e) => e.id === editingId) : null;
 
@@ -2080,8 +2085,31 @@ export default function PolicyEngine() {
   useEffect(() => {
     if (editingId) {
       setActiveTab(isEditingRaw ? "raw" : "advanced");
+      setDialogOpen(true);
     }
   }, [editingId, isEditingRaw]);
+
+  // Open create dialog
+  const openCreateDialog = () => {
+    setEditingId(null);
+    setActiveTab("quick");
+    setDialogOpen(true);
+  };
+
+  // Close dialog and reset edit state
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingId(null);
+    setEventPrefill(null);
+  };
+
+  // Open dialog with prefill from event
+  useEffect(() => {
+    if (eventPrefill) {
+      setActiveTab("quick");
+      setDialogOpen(true);
+    }
+  }, [eventPrefill]);
 
   return (
     <div className="space-y-6">
@@ -2121,87 +2149,13 @@ export default function PolicyEngine() {
         </Alert>
       )}
 
-      {/* Builder Section — 3 Tabs */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-neon-green" />
-            <CardTitle className="text-sm">
-              {editingId ? "Edit Rule" : "Create Rule"}
-            </CardTitle>
-          </div>
-          <CardDescription>
-            Use Quick Actions for common tasks, Advanced for ModSecurity experts, or Raw Editor for full control
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="quick" className="gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                Quick Actions
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="gap-1.5">
-                <Code2 className="h-3.5 w-3.5" />
-                Advanced
-              </TabsTrigger>
-              <TabsTrigger value="honeypot" className="gap-1.5">
-                <Crosshair className="h-3.5 w-3.5" />
-                Honeypot
-              </TabsTrigger>
-              <TabsTrigger value="raw" className="gap-1.5">
-                <FileCode className="h-3.5 w-3.5" />
-                Raw Editor
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="quick">
-              <QuickActionsForm
-                services={services}
-                crsRules={crsData?.rules ?? []}
-                crsCategories={crsData?.categories ?? []}
-                onSubmit={(data) => {
-                  handleCreate(data);
-                  setEventPrefill(null);
-                }}
-                prefill={eventPrefill}
-                onPrefillConsumed={() => setEventPrefill(null)}
-              />
-            </TabsContent>
-
-            <TabsContent value="advanced">
-              {editingId && editFormState && !isEditingRaw ? (
-                <AdvancedBuilderForm
-                  key={editingId}
-                  initial={editFormState}
-                  services={services}
-                  onSubmit={(data) => handleUpdate(editingId, data)}
-                  onCancel={() => setEditingId(null)}
-                  submitLabel="Update Rule"
-                />
-              ) : (
-                <AdvancedBuilderForm
-                  services={services}
-                  onSubmit={handleCreate}
-                  submitLabel="Add Exclusion"
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="honeypot">
-              <HoneypotForm onSubmit={handleCreate} />
-            </TabsContent>
-
-            <TabsContent value="raw">
-              <RawEditorForm
-                autocompleteData={autocompleteData}
-                crsRules={crsData?.rules ?? []}
-                onSubmit={handleCreate}
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {deployStep && (
+        <Alert>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertTitle>Deploying</AlertTitle>
+          <AlertDescription>{deployStep}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Exclusion List */}
       <Card>
@@ -2211,10 +2165,16 @@ export default function PolicyEngine() {
               <CardTitle className="text-sm">Rules ({exclusions.length})</CardTitle>
               <CardDescription>Manage your WAF rules and exclusions</CardDescription>
             </div>
-            <Button onClick={handleGenerateConfig} disabled={generating || exclusions.length === 0} size="sm">
-              <FileCode className="h-3.5 w-3.5" />
-              {generating ? "Generating..." : "Generate Config"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={handleGenerateConfig} disabled={generating || exclusions.length === 0} size="sm" variant="outline">
+                <FileCode className="h-3.5 w-3.5" />
+                {generating ? "Generating..." : "Generate Config"}
+              </Button>
+              <Button onClick={openCreateDialog} size="sm">
+                <Plus className="h-3.5 w-3.5" />
+                Create Rule
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -2228,7 +2188,6 @@ export default function PolicyEngine() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-8" />
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Target / Conditions</TableHead>
@@ -2245,9 +2204,6 @@ export default function PolicyEngine() {
                     ref={isHighlighted ? highlightedRef : undefined}
                     className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-emerald-500/5 transition-all duration-700" : undefined}
                   >
-                    <TableCell className="w-8">
-                      <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground/50" />
-                    </TableCell>
                     <TableCell>
                       <div>
                         <p className="text-xs font-medium">{excl.name}</p>
@@ -2298,7 +2254,11 @@ export default function PolicyEngine() {
             <div className="flex flex-col items-center justify-center py-12">
               <Shield className="mb-3 h-8 w-8 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">No rules configured yet</p>
-              <p className="text-xs text-muted-foreground/70">Use the builder above to create your first rule</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                <button className="text-neon-cyan hover:underline" onClick={openCreateDialog}>
+                  Create your first rule
+                </button>
+              </p>
             </div>
           )}
         </CardContent>
@@ -2339,6 +2299,90 @@ export default function PolicyEngine() {
           <ConfigViewer config={generatedConfig} />
         </div>
       )}
+
+      {/* Create / Edit Rule Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-neon-green" />
+              {editingId ? "Edit Rule" : "Create Rule"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingId
+                ? "Modify the rule below. Changes are deployed automatically on save."
+                : "Use Quick Actions for common tasks, Advanced for ModSecurity experts, or Raw Editor for full control."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="quick" className="gap-1.5" disabled={!!editingId}>
+                <Zap className="h-3.5 w-3.5" />
+                Quick Actions
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="gap-1.5">
+                <Code2 className="h-3.5 w-3.5" />
+                Advanced
+              </TabsTrigger>
+              <TabsTrigger value="honeypot" className="gap-1.5" disabled={!!editingId}>
+                <Crosshair className="h-3.5 w-3.5" />
+                Honeypot
+              </TabsTrigger>
+              <TabsTrigger value="raw" className="gap-1.5" disabled={!!editingId && !isEditingRaw}>
+                <FileCode className="h-3.5 w-3.5" />
+                Raw Editor
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="quick">
+              <QuickActionsForm
+                services={services}
+                crsRules={crsData?.rules ?? []}
+                crsCategories={crsData?.categories ?? []}
+                onSubmit={(data) => {
+                  handleCreate(data);
+                  closeDialog();
+                  setEventPrefill(null);
+                }}
+                prefill={eventPrefill}
+                onPrefillConsumed={() => setEventPrefill(null)}
+              />
+            </TabsContent>
+
+            <TabsContent value="advanced">
+              {editingId && editFormState && !isEditingRaw ? (
+                <AdvancedBuilderForm
+                  key={editingId}
+                  initial={editFormState}
+                  services={services}
+                  onSubmit={(data) => { handleUpdate(editingId!, data); closeDialog(); }}
+                  onCancel={closeDialog}
+                  submitLabel="Save Changes"
+                />
+              ) : (
+                <AdvancedBuilderForm
+                  services={services}
+                  onSubmit={(data) => { handleCreate(data); closeDialog(); }}
+                  submitLabel="Add Exclusion"
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="honeypot">
+              <HoneypotForm onSubmit={(data) => { handleCreate(data); closeDialog(); }} />
+            </TabsContent>
+
+            <TabsContent value="raw">
+              <RawEditorForm
+                autocompleteData={autocompleteData}
+                crsRules={crsData?.rules ?? []}
+                onSubmit={(data) => { handleCreate(data); closeDialog(); }}
+              />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>

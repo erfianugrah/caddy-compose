@@ -100,6 +100,8 @@ test-frontend: ## Run frontend tests
 
 # ── SCP / Deploy ────────────────────────────────────────────────────
 scp: ## SCP Caddyfile + compose.yaml to remote
+	@echo "Checking SSH connectivity to $(REMOTE)..."
+	@ssh -o ConnectTimeout=30 $(REMOTE) true
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
 	scp compose.yaml $(REMOTE):$(COMPOSE_DEST)
 
