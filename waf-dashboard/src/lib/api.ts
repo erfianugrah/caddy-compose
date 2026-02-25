@@ -127,6 +127,7 @@ export interface EventsParams {
   method?: string;
   event_type?: EventType | null;
   search?: string;
+  client?: string;  // Filter by client IP (exact match)
   hours?: number;
   start?: string; // ISO 8601
   end?: string;   // ISO 8601
@@ -626,6 +627,7 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
     searchParams.set("blocked", String(params.blocked));
   if (params.method) searchParams.set("method", params.method);
   if (params.event_type) searchParams.set("event_type", params.event_type);
+  if (params.client) searchParams.set("client", params.client);
   if (params.start && params.end) {
     searchParams.set("start", params.start);
     searchParams.set("end", params.end);
@@ -659,6 +661,7 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
     searchParams.set("blocked", String(params.blocked));
   if (params.method) searchParams.set("method", params.method);
   if (params.event_type) searchParams.set("event_type", params.event_type);
+  if (params.client) searchParams.set("client", params.client);
   if (params.start && params.end) {
     searchParams.set("start", params.start);
     searchParams.set("end", params.end);

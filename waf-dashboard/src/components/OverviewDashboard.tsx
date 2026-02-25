@@ -14,7 +14,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Shield, ShieldAlert, ShieldBan, ShieldCheck, Ban, Users, Server, Clock, ChevronDown, ChevronRight, Bug, Radar } from "lucide-react";
+import { Shield, ShieldAlert, ShieldBan, ShieldCheck, Ban, Users, Server, Clock, ChevronDown, ChevronRight, Bug, Radar, ArrowRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -35,40 +35,14 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { fetchSummary, type SummaryData, type WAFEvent } from "@/lib/api";
+import { formatNumber, formatTime, formatDate } from "@/lib/format";
 import { EventDetailPanel } from "@/components/EventsTable";
+import { EventTypeBadge } from "./EventTypeBadge";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
-import { ACTION_COLORS, ACTION_LABELS, ACTION_BADGE_CLASSES, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatTime(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return ts;
-  }
-}
-
-function formatDate(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
-}
 
 /** Format ISO timestamp to HH:MM for chart X-axis ticks */
 function formatHourTick(ts: string): string {
@@ -98,6 +72,36 @@ function formatTooltipLabel(ts: string): string {
   } catch {
     return ts;
   }
+}
+
+/** Custom Y-axis tick renderer that wraps the label in a clickable link. */
+function LinkTickRenderer({
+  x,
+  y,
+  payload,
+  buildHref,
+}: {
+  x: number;
+  y: number;
+  payload: { value: string };
+  buildHref: (value: string) => string;
+}) {
+  return (
+    <a href={buildHref(payload.value)}>
+      <text
+        x={x}
+        y={y}
+        dy={4}
+        textAnchor="end"
+        fill="#7a8baa"
+        fontSize={10}
+        className="hover:fill-neon-green cursor-pointer"
+        style={{ textDecoration: "none" }}
+      >
+        {payload.value}
+      </text>
+    </a>
+  );
 }
 
 // ─── Count-up animation hook ────────────────────────────────────────
@@ -140,12 +144,14 @@ function StatCard({
   icon: Icon,
   color,
   loading,
+  href,
 }: {
   title: string;
   value: number;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
   loading: boolean;
+  href?: string;
 }) {
   const animatedValue = useCountUp(loading ? 0 : value);
 
@@ -168,8 +174,8 @@ function StatCard({
     red: "text-red-400",
   };
 
-  return (
-    <Card>
+  const card = (
+    <Card className={href ? "cursor-pointer hover:ring-1 hover:ring-neon-green/30 transition-all" : undefined}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardDescription className="text-xs font-medium uppercase tracking-wider">
           {title}
@@ -189,6 +195,11 @@ function StatCard({
       </CardContent>
     </Card>
   );
+
+  if (href) {
+    return <a href={href} className="block no-underline">{card}</a>;
+  }
+  return card;
 }
 
 
@@ -314,6 +325,7 @@ export default function OverviewDashboard() {
           icon={Shield}
           color="green"
           loading={loading}
+          href="/events"
         />
         <StatCard
           title="Blocked"
@@ -321,6 +333,7 @@ export default function OverviewDashboard() {
           icon={ShieldAlert}
           color="pink"
           loading={loading}
+          href="/events?type=blocked"
         />
         <StatCard
           title="Rate Limited"
@@ -328,6 +341,7 @@ export default function OverviewDashboard() {
           icon={ShieldBan}
           color="yellow"
           loading={loading}
+          href="/events?type=rate_limited"
         />
         <StatCard
           title="IPsum Blocked"
@@ -335,6 +349,7 @@ export default function OverviewDashboard() {
           icon={Ban}
           color="purple"
           loading={loading}
+          href="/events?type=ipsum_blocked"
         />
         <StatCard
           title="Honeypot"
@@ -342,6 +357,7 @@ export default function OverviewDashboard() {
           icon={Bug}
           color="orange"
           loading={loading}
+          href="/events?type=honeypot"
         />
         <StatCard
           title="Scanner"
@@ -349,6 +365,7 @@ export default function OverviewDashboard() {
           icon={Radar}
           color="red"
           loading={loading}
+          href="/events?type=scanner"
         />
         <StatCard
           title="Policy Matched"
@@ -356,6 +373,7 @@ export default function OverviewDashboard() {
           icon={ShieldCheck}
           color="green"
           loading={loading}
+          href="/events?type=policy_skip"
         />
         <StatCard
           title="Unique Clients"
@@ -363,6 +381,7 @@ export default function OverviewDashboard() {
           icon={Users}
           color="cyan"
           loading={loading}
+          href="/analytics?tab=top-ips"
         />
         <StatCard
           title="Unique Services"
@@ -370,6 +389,7 @@ export default function OverviewDashboard() {
           icon={Server}
           color="cyan"
           loading={loading}
+          href="/services"
         />
       </div>
 
@@ -605,6 +625,14 @@ export default function OverviewDashboard() {
                     tickLine={false}
                     axisLine={false}
                     width={110}
+                    tick={(props: Record<string, unknown>) => (
+                      <LinkTickRenderer
+                        x={props.x as number}
+                        y={props.y as number}
+                        payload={props.payload as { value: string }}
+                        buildHref={(svc) => `/events?service=${encodeURIComponent(svc)}`}
+                      />
+                    )}
                   />
                   <Tooltip {...chartTooltipStyle} />
                   <Legend
@@ -676,6 +704,14 @@ export default function OverviewDashboard() {
                     tickLine={false}
                     axisLine={false}
                     width={110}
+                    tick={(props: Record<string, unknown>) => (
+                      <LinkTickRenderer
+                        x={props.x as number}
+                        y={props.y as number}
+                        payload={props.payload as { value: string }}
+                        buildHref={(ip) => `/analytics?tab=ip&q=${encodeURIComponent(ip)}`}
+                      />
+                    )}
                   />
                   <Tooltip
                     {...chartTooltipStyle}
@@ -738,6 +774,7 @@ export default function OverviewDashboard() {
                   <TableHead className="max-w-[250px]">URI</TableHead>
                   <TableHead>Client IP</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead className="w-8"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -766,48 +803,22 @@ export default function OverviewDashboard() {
                       </TableCell>
                       <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
                       <TableCell>
-                        {evt.event_type === "honeypot" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.honeypot}`}>
-                            HONEYPOT
-                          </Badge>
-                        ) : evt.event_type === "scanner" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.scanner}`}>
-                            SCANNER
-                          </Badge>
-                        ) : evt.event_type === "ipsum_blocked" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.ipsum_blocked}`}>
-                            IPSUM
-                          </Badge>
-                        ) : evt.event_type === "rate_limited" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.rate_limited}`}>
-                            RATE LIMITED
-                          </Badge>
-                        ) : evt.event_type === "policy_skip" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_skip}`}>
-                            SKIPPED
-                          </Badge>
-                        ) : evt.event_type === "policy_allow" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_allow}`}>
-                            ALLOWED
-                          </Badge>
-                        ) : evt.event_type === "policy_block" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_block}`}>
-                            POLICY BLOCK
-                          </Badge>
-                        ) : evt.event_type === "blocked" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.blocked}`}>
-                            BLOCKED
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.logged}`}>
-                            LOGGED
-                          </Badge>
-                        )}
+                        <EventTypeBadge eventType={evt.event_type} />
+                      </TableCell>
+                      <TableCell className="w-8 px-2">
+                        <a
+                          href={`/events?type=${encodeURIComponent(evt.event_type)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-muted-foreground hover:text-neon-green transition-colors"
+                          title="View in Events"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </a>
                       </TableCell>
                     </TableRow>
                     {expanded.has(evt.id || String(idx)) && (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={7} className="bg-navy-950/50 p-0">
+                        <TableCell colSpan={8} className="bg-navy-950/50 p-0">
                           <EventDetailPanel event={evt} />
                         </TableCell>
                       </TableRow>

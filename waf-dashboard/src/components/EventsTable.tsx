@@ -46,43 +46,8 @@ import {
   type EventType,
 } from "@/lib/api";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
-import { ACTION_BADGE_CLASSES } from "@/lib/utils";
-
-/** Convert ISO 3166-1 alpha-2 code to regional indicator flag emoji. */
-function countryFlagEmoji(code: string): string {
-  if (!code || code.length !== 2) return "";
-  const upper = code.toUpperCase();
-  return String.fromCodePoint(
-    0x1f1e6 + upper.charCodeAt(0) - 65,
-    0x1f1e6 + upper.charCodeAt(1) - 65,
-  );
-}
-
-function formatTime(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return ts;
-  }
-}
-
-function formatDate(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "";
-  }
-}
+import { countryFlag, formatTime, formatDate } from "@/lib/format";
+import { EventTypeBadge } from "./EventTypeBadge";
 
 const SEVERITY_MAP: Record<number, { label: string; color: string }> = {
   2: { label: "CRITICAL", color: "text-neon-pink" },
@@ -206,7 +171,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
               <span className="text-foreground">{event.client_ip}</span>
               {event.country && event.country !== "XX" && (
                 <span className="text-muted-foreground">
-                  ({countryFlagEmoji(event.country)} {event.country})
+                  ({countryFlag(event.country)} {event.country})
                 </span>
               )}
             </div>
@@ -599,12 +564,31 @@ export default function EventsTable() {
     label: "Last 24 hours",
   });
 
-  // Filters
+  // Filters — read URL query params for initial values
+  const [initialParams] = useState(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.toString() === "") return null;
+    const parsed = {
+      type: params.get("type"),
+      service: params.get("service"),
+      status: params.get("status"),
+      method: params.get("method"),
+      ip: params.get("ip"),
+    };
+    // Clear URL params so refresh doesn't re-apply stale filters
+    if (Object.values(parsed).some(Boolean)) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    return parsed;
+  });
+
   const [page, setPage] = useState(1);
-  const [serviceFilter, setServiceFilter] = useState("all");
-  const [blockedFilter, setBlockedFilter] = useState<string>("all");
-  const [methodFilter, setMethodFilter] = useState("ALL");
-  const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
+  const [serviceFilter, setServiceFilter] = useState(initialParams?.service || "all");
+  const [blockedFilter, setBlockedFilter] = useState<string>(initialParams?.status || "all");
+  const [methodFilter, setMethodFilter] = useState(initialParams?.method?.toUpperCase() || "ALL");
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>(initialParams?.type || "all");
+  const [clientFilter, setClientFilter] = useState(initialParams?.ip || "");
 
   const perPage = 25;
 
@@ -623,12 +607,13 @@ export default function EventsTable() {
             : false,
       method: methodFilter === "ALL" ? undefined : methodFilter,
       event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter as EventType,
+      client: clientFilter || undefined,
       ...timeParams,
     })
       .then(setResponse)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [page, serviceFilter, blockedFilter, methodFilter, eventTypeFilter, timeRange]);
+  }, [page, serviceFilter, blockedFilter, methodFilter, eventTypeFilter, clientFilter, timeRange]);
 
   useEffect(() => {
     fetchServices()
@@ -643,7 +628,7 @@ export default function EventsTable() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [serviceFilter, blockedFilter, methodFilter, eventTypeFilter, timeRange]);
+  }, [serviceFilter, blockedFilter, methodFilter, eventTypeFilter, clientFilter, timeRange]);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -746,6 +731,17 @@ export default function EventsTable() {
               </SelectContent>
             </Select>
 
+            {clientFilter && (
+              <Badge
+                variant="outline"
+                className="text-xs font-mono px-2 py-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/50 transition-colors"
+                onClick={() => setClientFilter("")}
+                title="Click to clear IP filter"
+              >
+                IP: {clientFilter} &times;
+              </Badge>
+            )}
+
             {response && (
               <div className="ml-auto flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">
@@ -773,6 +769,7 @@ export default function EventsTable() {
                         blocked: blockedFilter === "all" ? null : blockedFilter === "blocked",
                         method: methodFilter === "ALL" ? undefined : methodFilter,
                         event_type: eventTypeFilter === "all" ? undefined : (eventTypeFilter as EventType),
+                        client: clientFilter || undefined,
                         ...timeParams,
                       });
                       downloadJSON(all, `events-all-${new Date().toISOString().slice(0, 10)}.json`);
@@ -872,7 +869,7 @@ export default function EventsTable() {
                       <TableCell className="text-xs">
                         {evt.country && evt.country !== "XX" ? (
                           <span className="inline-flex items-center gap-1">
-                            <span>{countryFlagEmoji(evt.country)}</span>
+                            <span>{countryFlag(evt.country)}</span>
                             <span className="font-mono">{evt.country}</span>
                           </span>
                         ) : (
@@ -925,43 +922,7 @@ export default function EventsTable() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {evt.event_type === "honeypot" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.honeypot}`}>
-                            HONEYPOT
-                          </Badge>
-                        ) : evt.event_type === "scanner" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.scanner}`}>
-                            SCANNER
-                          </Badge>
-                        ) : evt.event_type === "ipsum_blocked" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.ipsum_blocked}`}>
-                            IPSUM
-                          </Badge>
-                        ) : evt.event_type === "rate_limited" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.rate_limited}`}>
-                            RATE LIMITED
-                          </Badge>
-                        ) : evt.event_type === "policy_skip" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_skip}`}>
-                            SKIPPED
-                          </Badge>
-                        ) : evt.event_type === "policy_allow" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_allow}`}>
-                            ALLOWED
-                          </Badge>
-                        ) : evt.event_type === "policy_block" ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_block}`}>
-                            POLICY BLOCK
-                          </Badge>
-                        ) : evt.event_type === "blocked" || evt.blocked ? (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.blocked}`}>
-                            BLOCKED
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.logged}`}>
-                            LOGGED
-                          </Badge>
-                        )}
+                        <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
                       </TableCell>
                     </TableRow>
                     {expanded.has(evt.id) && (
