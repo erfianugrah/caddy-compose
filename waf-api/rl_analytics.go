@@ -484,7 +484,7 @@ func (s *AccessLogStore) snapshotSince(hours int) []RateLimitEvent {
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 	var result []RateLimitEvent
 	for _, e := range s.events {
-		if e.Timestamp.After(cutoff) {
+		if !e.Timestamp.Before(cutoff) {
 			result = append(result, e)
 		}
 	}
