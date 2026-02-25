@@ -57,7 +57,7 @@ interface FieldMeta {
 }
 
 const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "blocked", label: "Blocked" },
+  { value: "blocked", label: "CRS Blocked" },
   { value: "logged", label: "Logged" },
   { value: "rate_limited", label: "Rate Limited" },
   { value: "ipsum_blocked", label: "IPsum Blocked" },

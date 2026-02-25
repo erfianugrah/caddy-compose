@@ -211,7 +211,7 @@ describe("filtersToEventsParams", () => {
 
 describe("filterDisplayValue", () => {
   it("returns option label for event_type values", () => {
-    expect(filterDisplayValue("event_type", "blocked")).toBe("Blocked");
+    expect(filterDisplayValue("event_type", "blocked")).toBe("CRS Blocked");
     expect(filterDisplayValue("event_type", "rate_limited")).toBe("Rate Limited");
     expect(filterDisplayValue("event_type", "ipsum_blocked")).toBe("IPsum Blocked");
     expect(filterDisplayValue("event_type", "honeypot")).toBe("Honeypot");
@@ -238,7 +238,7 @@ describe("filterDisplayValue", () => {
   });
 
   it("resolves comma-separated IN values to labels", () => {
-    expect(filterDisplayValue("event_type", "blocked,logged")).toBe("Blocked, Logged");
+    expect(filterDisplayValue("event_type", "blocked,logged")).toBe("CRS Blocked, Logged");
     expect(filterDisplayValue("method", "GET,POST,DELETE")).toBe("GET, POST, DELETE");
   });
 

@@ -216,11 +216,14 @@ export default function PolicyEngine() {
     return result;
   }, [exclusions, searchQuery, typeFilter]);
 
-  // Unique exclusion types present in current data (for filter dropdown)
-  const presentTypes = useMemo(() => {
-    const types = new Set(exclusions.map((e) => e.type));
-    return Array.from(types).sort();
-  }, [exclusions]);
+  // All possible exclusion types for the filter dropdown (ordered logically)
+  const allExclusionTypes: ExclusionType[] = [
+    "allow", "block", "skip_rule", "honeypot", "raw",
+    "SecRuleRemoveById", "SecRuleRemoveByTag",
+    "SecRuleUpdateTargetById", "SecRuleUpdateTargetByTag",
+    "ctl:ruleRemoveById", "ctl:ruleRemoveByTag",
+    "ctl:ruleRemoveTargetById", "ctl:ruleRemoveTargetByTag",
+  ];
 
   // Scroll to the highlighted rule once exclusions have loaded.
   useEffect(() => {
@@ -471,7 +474,7 @@ export default function PolicyEngine() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All types</SelectItem>
-                  {presentTypes.map((type) => (
+                  {allExclusionTypes.map((type) => (
                     <SelectItem key={type} value={type}>{exclusionTypeLabel(type)}</SelectItem>
                   ))}
                 </SelectContent>

@@ -594,7 +594,6 @@ export default function EventsTable() {
 
   const [page, setPage] = useState(1);
   const [serviceFilter, setServiceFilter] = useState(initialParams?.service || "all");
-  const [blockedFilter, setBlockedFilter] = useState<string>(initialParams?.status || "all");
   const [methodFilter, setMethodFilter] = useState(initialParams?.method?.toUpperCase() || "ALL");
   const [eventTypeFilter, setEventTypeFilter] = useState<string>(initialParams?.type || "all");
   const [clientFilter, setClientFilter] = useState(initialParams?.ip || "");
@@ -609,12 +608,6 @@ export default function EventsTable() {
       page,
       per_page: perPage,
       service: serviceFilter === "all" ? undefined : serviceFilter,
-      blocked:
-        blockedFilter === "all"
-          ? null
-          : blockedFilter === "blocked"
-            ? true
-            : false,
       method: methodFilter === "ALL" ? undefined : methodFilter,
       event_type: eventTypeFilter === "all" ? undefined : eventTypeFilter as EventType,
       client: clientFilter || undefined,
@@ -624,7 +617,7 @@ export default function EventsTable() {
       .then(setResponse)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [page, serviceFilter, blockedFilter, methodFilter, eventTypeFilter, clientFilter, ruleNameFilter, timeRange]);
+  }, [page, serviceFilter, methodFilter, eventTypeFilter, clientFilter, ruleNameFilter, timeRange]);
 
   useEffect(() => {
     fetchServices()
@@ -639,7 +632,7 @@ export default function EventsTable() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [serviceFilter, blockedFilter, methodFilter, eventTypeFilter, clientFilter, timeRange]);
+  }, [serviceFilter, methodFilter, eventTypeFilter, clientFilter, timeRange]);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -700,17 +693,6 @@ export default function EventsTable() {
               </SelectContent>
             </Select>
 
-            <Select value={blockedFilter} onValueChange={setBlockedFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Events</SelectItem>
-                <SelectItem value="blocked">Blocked Only</SelectItem>
-                <SelectItem value="logged">Logged Only</SelectItem>
-              </SelectContent>
-            </Select>
-
             <Select value={methodFilter} onValueChange={setMethodFilter}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue placeholder="Method" />
@@ -730,7 +712,7 @@ export default function EventsTable() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="blocked">Blocked</SelectItem>
+                <SelectItem value="blocked">CRS Blocked</SelectItem>
                 <SelectItem value="logged">Logged</SelectItem>
                 <SelectItem value="rate_limited">Rate Limited</SelectItem>
                 <SelectItem value="ipsum_blocked">IPsum Blocked</SelectItem>
@@ -777,7 +759,6 @@ export default function EventsTable() {
                       const timeParams = rangeToParams(timeRange);
                       const all = await fetchAllEvents({
                         service: serviceFilter === "all" ? undefined : serviceFilter,
-                        blocked: blockedFilter === "all" ? null : blockedFilter === "blocked",
                         method: methodFilter === "ALL" ? undefined : methodFilter,
                         event_type: eventTypeFilter === "all" ? undefined : (eventTypeFilter as EventType),
                         client: clientFilter || undefined,
