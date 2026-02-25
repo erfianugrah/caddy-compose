@@ -91,7 +91,9 @@ storage:
     path: "/config/db.sqlite3"
 
 notifier:
-  # Filesystem notifier for development — TOTP registration links are written to this file.
-  # Replace with SMTP for production use.
-  filesystem:
-    filename: "/config/notification.txt"
+  smtp:
+    address: "smtps://smtp.resend.com:465"
+    username: "resend"
+    sender: "Authelia <noreply@erfi.io>"
+    disable_require_tls: false
+    disable_starttls: true

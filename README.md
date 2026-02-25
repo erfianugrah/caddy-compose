@@ -505,8 +505,3 @@ make waf-deploy        # trigger WAF config deploy + Caddy reload
 scp Caddyfile <remote>:/path/to/caddy/Caddyfile
 ssh <remote> 'docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile'
 ```
-
-## TODO
-
-- [ ] SMTP notifier for Authelia (replace filesystem notifier)
-- [ ] OpenID Connect provider for native SSO
