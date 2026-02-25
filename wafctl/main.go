@@ -838,8 +838,17 @@ func handleIPLookup(store *Store) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid IP address"})
 			return
 		}
+		q := r.URL.Query()
 		hours := parseHours(r)
-		result := store.IPLookup(ip, hours)
+		limit := queryInt(q.Get("limit"), 50)
+		if limit <= 0 || limit > 1000 {
+			limit = 50
+		}
+		offset := queryInt(q.Get("offset"), 0)
+		if offset < 0 {
+			offset = 0
+		}
+		result := store.IPLookup(ip, hours, limit, offset)
 		writeJSON(w, http.StatusOK, result)
 	}
 }

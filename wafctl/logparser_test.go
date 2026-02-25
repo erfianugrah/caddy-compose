@@ -1826,7 +1826,7 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	resp := s.IPLookup("10.0.0.1", 168)
+	resp := s.IPLookup("10.0.0.1", 168, 50, 0)
 
 	if resp.Total != 4 {
 		t.Errorf("Total = %d, want 4", resp.Total)

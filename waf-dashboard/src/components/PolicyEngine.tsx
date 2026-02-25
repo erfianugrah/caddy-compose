@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { TablePagination, paginateArray } from "./TablePagination";
 import {
   Shield,
   Plus,
@@ -141,6 +142,7 @@ export default function PolicyEngine() {
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ExclusionType | "all">("all");
+  const [rulesPage, setRulesPage] = useState(1);
 
   const [deployStep, setDeployStep] = useState<string | null>(null);
 
@@ -215,6 +217,12 @@ export default function PolicyEngine() {
     }
     return result;
   }, [exclusions, searchQuery, typeFilter]);
+
+  // Reset page when filters change
+  useEffect(() => { setRulesPage(1); }, [searchQuery, typeFilter]);
+
+  const RULES_PAGE_SIZE = 15;
+  const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(filteredExclusions, rulesPage, RULES_PAGE_SIZE);
 
   // All possible exclusion types for the filter dropdown (ordered logically)
   const allExclusionTypes: ExclusionType[] = [
@@ -508,7 +516,7 @@ export default function PolicyEngine() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExclusions.map((excl) => {
+                {pagedExclusions.map((excl) => {
                   const isHighlighted = highlightedRule !== null && excl.name === highlightedRule;
                   return (
                   <TableRow
@@ -587,6 +595,7 @@ export default function PolicyEngine() {
                 })}
               </TableBody>
             </Table>
+            <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredExclusions.length} />
             {filteredExclusions.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8">
                 <Search className="mb-2 h-6 w-6 text-muted-foreground/50" />

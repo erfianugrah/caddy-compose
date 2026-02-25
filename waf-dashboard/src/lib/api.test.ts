@@ -568,33 +568,27 @@ describe("lookupIP", () => {
     expect(result.recent_events).toEqual([]);
   });
 
-  it("limits recent_events to 20", async () => {
-    const events = Array.from({ length: 30 }, (_, i) => ({
-      id: `E${i}`,
-      timestamp: "2026-02-22T09:00:00Z",
-      service: "test.erfi.io",
-      method: "GET",
-      uri: "/",
-      client_ip: "10.0.0.1",
-      is_blocked: false,
-      response_status: 200,
-    }));
-
+  it("passes limit and offset query params", async () => {
     vi.stubGlobal(
       "fetch",
       mockFetchResponse({
         ip: "10.0.0.1",
-        total: 30,
+        total: 100,
         blocked: 0,
+        events_total: 100,
         first_seen: "2026-02-22T07:00:00Z",
         last_seen: "2026-02-22T09:00:00Z",
         services: [],
-        events,
+        events: [],
       })
     );
 
-    const result = await lookupIP("10.0.0.1");
-    expect(result.recent_events).toHaveLength(20);
+    const result = await lookupIP("10.0.0.1", 20, 40);
+    expect(result.events_total).toBe(100);
+
+    const callUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(callUrl).toContain("limit=20");
+    expect(callUrl).toContain("offset=40");
   });
 });
 

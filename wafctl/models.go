@@ -305,13 +305,14 @@ type HealthResponse struct {
 // IP Lookup response
 
 type IPLookupResponse struct {
-	IP        string          `json:"ip"`
-	Total     int             `json:"total"`
-	Blocked   int             `json:"blocked"`
-	FirstSeen *time.Time      `json:"first_seen"`
-	LastSeen  *time.Time      `json:"last_seen"`
-	Services  []ServiceDetail `json:"services"`
-	Events    []Event         `json:"events"`
+	IP          string          `json:"ip"`
+	Total       int             `json:"total"`
+	Blocked     int             `json:"blocked"`
+	FirstSeen   *time.Time      `json:"first_seen"`
+	LastSeen    *time.Time      `json:"last_seen"`
+	Services    []ServiceDetail `json:"services"`
+	Events      []Event         `json:"events"`
+	EventsTotal int             `json:"events_total"`
 }
 
 // Rule Exclusion model

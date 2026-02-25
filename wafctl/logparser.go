@@ -1182,7 +1182,7 @@ func computeServices(events []Event) ServicesResponse {
 }
 
 // IPLookup returns all events and stats for a specific IP address.
-func (s *Store) IPLookup(ip string, hours int) IPLookupResponse {
+func (s *Store) IPLookup(ip string, hours, limit, offset int) IPLookupResponse {
 	events := s.SnapshotSince(hours)
 
 	var matched []Event
@@ -1193,9 +1193,9 @@ func (s *Store) IPLookup(ip string, hours int) IPLookupResponse {
 	}
 
 	resp := IPLookupResponse{
-		IP:     ip,
-		Total:  len(matched),
-		Events: matched,
+		IP:          ip,
+		Total:       len(matched),
+		EventsTotal: len(matched),
 	}
 
 	// Compute per-service breakdown, first/last seen, blocked count.
@@ -1235,6 +1235,17 @@ func (s *Store) IPLookup(ip string, hours int) IPLookupResponse {
 		case "policy_skip", "policy_allow", "policy_block":
 			c.policy++
 		}
+	}
+
+	// Apply limit/offset pagination to the events slice.
+	if offset >= len(matched) {
+		resp.Events = []Event{}
+	} else {
+		end := offset + limit
+		if end > len(matched) {
+			end = len(matched)
+		}
+		resp.Events = matched[offset:end]
 	}
 
 	svcList := make([]ServiceDetail, 0, len(svcMap))

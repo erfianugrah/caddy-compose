@@ -203,7 +203,7 @@ func TestIPLookup(t *testing.T) {
 	store := NewStore(path)
 	store.Load()
 
-	result := store.IPLookup("10.0.0.1", 0)
+	result := store.IPLookup("10.0.0.1", 0, 50, 0)
 	if result.Total != 2 {
 		t.Errorf("want 2 events for 10.0.0.1, got %d", result.Total)
 	}
@@ -263,13 +263,66 @@ func TestIPLookupNoResults(t *testing.T) {
 	store := NewStore(path)
 	store.Load()
 
-	result := store.IPLookup("192.168.1.1", 0)
+	result := store.IPLookup("192.168.1.1", 0, 50, 0)
 	if result.Total != 0 {
 		t.Errorf("want 0 events for unknown IP, got %d", result.Total)
 	}
 	if result.FirstSeen != nil || result.LastSeen != nil {
 		t.Error("first_seen/last_seen should be nil for unknown IP")
 	}
+}
+
+func TestIPLookupPagination(t *testing.T) {
+	path := writeTempLog(t, sampleLines)
+	store := NewStore(path)
+	store.Load()
+
+	// 10.0.0.1 has 2 events total
+	t.Run("limit 1 offset 0", func(t *testing.T) {
+		result := store.IPLookup("10.0.0.1", 0, 1, 0)
+		if result.EventsTotal != 2 {
+			t.Errorf("EventsTotal = %d, want 2", result.EventsTotal)
+		}
+		if len(result.Events) != 1 {
+			t.Errorf("len(Events) = %d, want 1", len(result.Events))
+		}
+	})
+	t.Run("limit 1 offset 1", func(t *testing.T) {
+		result := store.IPLookup("10.0.0.1", 0, 1, 1)
+		if result.EventsTotal != 2 {
+			t.Errorf("EventsTotal = %d, want 2", result.EventsTotal)
+		}
+		if len(result.Events) != 1 {
+			t.Errorf("len(Events) = %d, want 1", len(result.Events))
+		}
+	})
+	t.Run("offset beyond total", func(t *testing.T) {
+		result := store.IPLookup("10.0.0.1", 0, 10, 100)
+		if result.EventsTotal != 2 {
+			t.Errorf("EventsTotal = %d, want 2", result.EventsTotal)
+		}
+		if len(result.Events) != 0 {
+			t.Errorf("len(Events) = %d, want 0", len(result.Events))
+		}
+	})
+	t.Run("endpoint with limit/offset params", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
+		req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1?limit=1&offset=0", nil)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("want 200, got %d", w.Code)
+		}
+		var resp IPLookupResponse
+		json.NewDecoder(w.Body).Decode(&resp)
+		if resp.EventsTotal != 2 {
+			t.Errorf("EventsTotal = %d, want 2", resp.EventsTotal)
+		}
+		if len(resp.Events) != 1 {
+			t.Errorf("len(Events) = %d, want 1", len(resp.Events))
+		}
+	})
 }
 
 // --- Hours filter tests ---

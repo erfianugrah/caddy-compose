@@ -49,6 +49,7 @@ import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 import { formatNumber, formatDateTime, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
 import { EventDetailModal } from "./EventDetailModal";
+import { TablePagination, paginateArray } from "./TablePagination";
 import type { WAFEvent } from "@/lib/api";
 
 /** Country code + optional flag. */
@@ -66,11 +67,15 @@ const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
 // ─── IP Lookup Panel ────────────────────────────────────────────────
 
+const IP_EVENTS_PAGE_SIZE = 20;
+
 function IPLookupPanel({ initialIP }: { initialIP?: string }) {
   const [query, setQuery] = useState(initialIP ?? "");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<IPLookupData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const autoSearched = useRef(false);
 
   // Event detail modal
@@ -82,7 +87,8 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
     if (!ip) return;
     setLoading(true);
     setError(null);
-    lookupIP(ip)
+    setEventsPage(1);
+    lookupIP(ip, IP_EVENTS_PAGE_SIZE, 0)
       .then(setData)
       .catch((err) => {
         setError(err.message);
@@ -90,6 +96,21 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
       })
       .finally(() => setLoading(false));
   }, [query]);
+
+  // Paginate events server-side
+  const handleEventsPageChange = useCallback((newPage: number) => {
+    if (!data) return;
+    setEventsPage(newPage);
+    setEventsLoading(true);
+    const offset = (newPage - 1) * IP_EVENTS_PAGE_SIZE;
+    lookupIP(data.ip, IP_EVENTS_PAGE_SIZE, offset)
+      .then((result) => {
+        // Keep summary data, update only events
+        setData((prev) => prev ? { ...prev, recent_events: result.recent_events } : result);
+      })
+      .catch(() => {}) // silently fail pagination
+      .finally(() => setEventsLoading(false));
+  }, [data]);
 
   // Auto-trigger lookup when initialIP is provided
   useEffect(() => {
@@ -279,11 +300,13 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
           </div>
 
           {/* Recent Events for this IP */}
-          {data.recent_events.length > 0 && (
+          {data.events_total > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Recent Events</CardTitle>
-                <CardDescription>Latest events from {data.ip} — click a row to inspect</CardDescription>
+                <CardTitle className="text-sm">Events</CardTitle>
+                <CardDescription>
+                  {data.events_total.toLocaleString()} events from {data.ip} — click a row to inspect
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
@@ -298,43 +321,57 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.recent_events.slice(0, 20).map((evt, idx) => (
-                      <TableRow
-                        key={evt.id || idx}
-                        className="cursor-pointer"
-                        onClick={() => {
-                          setSelectedEvent(evt);
-                          setModalOpen(true);
-                        }}
-                      >
-                        <TableCell className="whitespace-nowrap text-xs">
-                          {formatDateTime(evt.timestamp)}
-                        </TableCell>
-                        <TableCell className="text-xs">{evt.service}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
-                            {evt.method}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate text-xs font-mono">
-                          {evt.uri}
-                        </TableCell>
-                        <TableCell>
-                          {evt.rule_id ? (
+                    {eventsLoading ? (
+                      [...Array(5)].map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      data.recent_events.map((evt, idx) => (
+                        <TableRow
+                          key={evt.id || idx}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setSelectedEvent(evt);
+                            setModalOpen(true);
+                          }}
+                        >
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {formatDateTime(evt.timestamp)}
+                          </TableCell>
+                          <TableCell className="text-xs">{evt.service}</TableCell>
+                          <TableCell>
                             <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
-                              {evt.rule_id}
+                              {evt.method}
                             </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <EventTypeBadge eventType={evt.event_type} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate text-xs font-mono">
+                            {evt.uri}
+                          </TableCell>
+                          <TableCell>
+                            {evt.rule_id ? (
+                              <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                                {evt.rule_id}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <EventTypeBadge eventType={evt.event_type} />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
+                <TablePagination
+                  page={eventsPage}
+                  totalPages={Math.max(1, Math.ceil(data.events_total / IP_EVENTS_PAGE_SIZE))}
+                  onPageChange={handleEventsPageChange}
+                  totalItems={data.events_total}
+                />
               </CardContent>
             </Card>
           )}
@@ -360,13 +397,17 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
 
 // ─── Top Blocked IPs Panel ──────────────────────────────────────────
 
+const ANALYTICS_PAGE_SIZE = 10;
+
 export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<TopBlockedIP[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
+    setPage(1);
     fetchTopBlockedIPs(hours)
       .then(setData)
       .catch((err) => setError(err.message))
@@ -382,6 +423,8 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
       </Alert>
     );
   }
+
+  const { items: pageData, totalPages } = paginateArray(data, page, ANALYTICS_PAGE_SIZE);
 
   return (
     <Card>
@@ -400,6 +443,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
             ))}
           </div>
         ) : data.length > 0 ? (
+          <>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -413,7 +457,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((ip) => (
+              {pageData.map((ip) => (
                 <TableRow key={ip.client_ip}>
                   <TableCell className="font-mono text-xs">
                     {ip.client_ip}
@@ -456,6 +500,8 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
               ))}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={data.length} />
+          </>
         ) : (
           <div className="py-8 text-center text-xs text-muted-foreground">
             No blocked IP data available
@@ -472,9 +518,11 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
   const [data, setData] = useState<TopTargetedURI[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
+    setPage(1);
     fetchTopTargetedURIs(hours)
       .then(setData)
       .catch((err) => setError(err.message))
@@ -490,6 +538,8 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
       </Alert>
     );
   }
+
+  const { items: pageData, totalPages } = paginateArray(data, page, ANALYTICS_PAGE_SIZE);
 
   return (
     <Card>
@@ -508,6 +558,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
             ))}
           </div>
         ) : data.length > 0 ? (
+          <>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -518,7 +569,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((uri, idx) => (
+              {pageData.map((uri, idx) => (
                 <TableRow key={idx}>
                   <TableCell className="max-w-[300px] truncate font-mono text-xs">
                     {uri.uri}
@@ -547,6 +598,8 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
               ))}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={data.length} />
+          </>
         ) : (
           <div className="py-8 text-center text-xs text-muted-foreground">
             No URI data available
@@ -563,9 +616,11 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
   const [data, setData] = useState<CountryCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
+    setPage(1);
     fetchTopCountries(hours)
       .then(setData)
       .catch((err) => setError(err.message))
@@ -583,6 +638,7 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
   }
 
   const maxCount = data.length > 0 ? data[0].count : 1;
+  const { items: pageData, totalPages } = paginateArray(data, page, ANALYTICS_PAGE_SIZE);
 
   return (
     <Card>
@@ -601,6 +657,7 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
             ))}
           </div>
         ) : data.length > 0 ? (
+          <>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -612,7 +669,7 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((c) => {
+              {pageData.map((c) => {
                 const blockRate = c.count > 0 ? (c.blocked / c.count) * 100 : 0;
                 return (
                   <TableRow key={c.country}>
@@ -647,6 +704,8 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
               })}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={data.length} />
+          </>
         ) : (
           <div className="py-8 text-center text-xs text-muted-foreground">
             No country data available. GeoIP data requires Cf-Ipcountry headers or an MMDB database.

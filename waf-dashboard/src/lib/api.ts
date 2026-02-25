@@ -166,6 +166,7 @@ export interface IPLookupData {
   last_seen: string;
   total_events: number;
   blocked_count: number;
+  events_total: number;
   services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   timeline: TimelinePoint[];
   recent_events: WAFEvent[];
@@ -754,15 +755,17 @@ interface RawIPLookup {
   ip: string;
   total: number;
   blocked: number;
+  events_total: number;
   first_seen: string | null;
   last_seen: string | null;
   services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   events: RawEvent[];
 }
 
-export async function lookupIP(ip: string): Promise<IPLookupData> {
+export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLookupData> {
+  const qs = `?limit=${limit}&offset=${offset}`;
   const raw = await fetchJSON<RawIPLookup>(
-    `${API_BASE}/lookup/${encodeURIComponent(ip)}`
+    `${API_BASE}/lookup/${encodeURIComponent(ip)}${qs}`
   );
   return {
     ip: raw.ip,
@@ -770,6 +773,7 @@ export async function lookupIP(ip: string): Promise<IPLookupData> {
     last_seen: raw.last_seen ?? "",
     total_events: raw.total ?? 0,
     blocked_count: raw.blocked ?? 0,
+    events_total: raw.events_total ?? raw.total ?? 0,
     services: (raw.services ?? []).map((s) => ({
       service: s.service,
       total: s.total,
@@ -782,7 +786,7 @@ export async function lookupIP(ip: string): Promise<IPLookupData> {
       policy: s.policy ?? 0,
     })),
     timeline: [],
-    recent_events: (raw.events ?? []).slice(0, 20).map(mapEvent),
+    recent_events: (raw.events ?? []).map(mapEvent),
   };
 }
 
