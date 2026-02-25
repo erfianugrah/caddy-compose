@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AreaChart,
   Area,
@@ -46,40 +46,22 @@ import {
   type TopTargetedURI,
   type CountryCount,
 } from "@/lib/api";
-import { ACTION_COLORS, ACTION_BADGE_CLASSES, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { formatNumber, formatDateTime, countryFlag } from "@/lib/format";
+import { EventTypeBadge } from "./EventTypeBadge";
+import { EventDetailModal } from "./EventDetailModal";
+import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
+import type { WAFEvent } from "@/lib/api";
 
-// ─── Helpers ────────────────────────────────────────────────────────
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatDateTime(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return ts;
-  }
-}
-
-/** Convert ISO 3166-1 alpha-2 code to regional indicator flag emoji. */
-function countryFlag(code: string): string {
-  if (!code || code.length !== 2) return "";
-  const upper = code.toUpperCase();
-  return String.fromCodePoint(
-    0x1f1e6 + upper.charCodeAt(0) - 65,
-    0x1f1e6 + upper.charCodeAt(1) - 65,
-  );
-}
+/** Map URL ?tab= values to internal Tabs values. */
+const TAB_ALIASES: Record<string, string> = {
+  ip: "lookup",
+  lookup: "lookup",
+  "top-ips": "top-ips",
+  "top-uris": "top-uris",
+  countries: "top-countries",
+  "top-countries": "top-countries",
+};
 
 /** Country code + optional flag. */
 function CountryLabel({ code }: { code: string }) {
@@ -96,11 +78,16 @@ const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
 // ─── IP Lookup Panel ────────────────────────────────────────────────
 
-function IPLookupPanel() {
-  const [query, setQuery] = useState("");
+function IPLookupPanel({ initialIP }: { initialIP?: string }) {
+  const [query, setQuery] = useState(initialIP ?? "");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<IPLookupData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const autoSearched = useRef(false);
+
+  // Event detail modal
+  const [selectedEvent, setSelectedEvent] = useState<WAFEvent | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const handleSearch = useCallback(() => {
     const ip = query.trim();
@@ -115,6 +102,14 @@ function IPLookupPanel() {
       })
       .finally(() => setLoading(false));
   }, [query]);
+
+  // Auto-trigger lookup when initialIP is provided
+  useEffect(() => {
+    if (initialIP && !autoSearched.current) {
+      autoSearched.current = true;
+      handleSearch();
+    }
+  }, [initialIP, handleSearch]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch();
@@ -300,7 +295,7 @@ function IPLookupPanel() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Recent Events</CardTitle>
-                <CardDescription>Latest events from {data.ip}</CardDescription>
+                <CardDescription>Latest events from {data.ip} — click a row to inspect</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
@@ -316,7 +311,14 @@ function IPLookupPanel() {
                   </TableHeader>
                   <TableBody>
                     {data.recent_events.slice(0, 20).map((evt, idx) => (
-                      <TableRow key={evt.id || idx}>
+                      <TableRow
+                        key={evt.id || idx}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedEvent(evt);
+                          setModalOpen(true);
+                        }}
+                      >
                         <TableCell className="whitespace-nowrap text-xs">
                           {formatDateTime(evt.timestamp)}
                         </TableCell>
@@ -339,43 +341,7 @@ function IPLookupPanel() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {evt.event_type === "honeypot" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.honeypot}`}>
-                              HONEYPOT
-                            </Badge>
-                          ) : evt.event_type === "scanner" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.scanner}`}>
-                              SCANNER
-                            </Badge>
-                          ) : evt.event_type === "ipsum_blocked" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.ipsum_blocked}`}>
-                              IPSUM
-                            </Badge>
-                          ) : evt.event_type === "rate_limited" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.rate_limited}`}>
-                              RATE LIMITED
-                            </Badge>
-                          ) : evt.event_type === "policy_skip" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_skip}`}>
-                              SKIPPED
-                            </Badge>
-                          ) : evt.event_type === "policy_allow" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_allow}`}>
-                              ALLOWED
-                            </Badge>
-                          ) : evt.event_type === "policy_block" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.policy_block}`}>
-                              POLICY BLOCK
-                            </Badge>
-                          ) : evt.event_type === "blocked" ? (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.blocked}`}>
-                              BLOCKED
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${ACTION_BADGE_CLASSES.logged}`}>
-                              LOGGED
-                            </Badge>
-                          )}
+                          <EventTypeBadge eventType={evt.event_type} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -384,6 +350,9 @@ function IPLookupPanel() {
               </CardContent>
             </Card>
           )}
+
+          {/* Event Detail Modal */}
+          <EventDetailModal event={selectedEvent} open={modalOpen} onOpenChange={setModalOpen} />
         </div>
       )}
 
@@ -403,17 +372,18 @@ function IPLookupPanel() {
 
 // ─── Top Blocked IPs Panel ──────────────────────────────────────────
 
-function TopBlockedIPsPanel() {
+function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<TopBlockedIP[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTopBlockedIPs()
+    setLoading(true);
+    fetchTopBlockedIPs(hours)
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [hours, refreshKey]);
 
   if (error) {
     return (
@@ -510,17 +480,18 @@ function TopBlockedIPsPanel() {
 
 // ─── Top Targeted URIs Panel ────────────────────────────────────────
 
-function TopTargetedURIsPanel() {
+function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<TopTargetedURI[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTopTargetedURIs()
+    setLoading(true);
+    fetchTopTargetedURIs(hours)
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [hours, refreshKey]);
 
   if (error) {
     return (
@@ -600,17 +571,18 @@ function TopTargetedURIsPanel() {
 
 // ─── Top Countries Panel ────────────────────────────────────────────
 
-function TopCountriesPanel() {
+function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refreshKey: number }) {
   const [data, setData] = useState<CountryCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTopCountries()
+    setLoading(true);
+    fetchTopCountries(hours)
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [hours, refreshKey]);
 
   if (error) {
     return (
@@ -700,16 +672,55 @@ function TopCountriesPanel() {
 // ─── Main Analytics Dashboard ───────────────────────────────────────
 
 export default function AnalyticsDashboard() {
+  // ── Read URL query params on mount ──────────────────────────────────
+  const [activeTab, setActiveTab] = useState("lookup");
+  const [initialIP, setInitialIP] = useState<string | undefined>();
+  const [timeRange, setTimeRange] = useState<TimeRange>({ type: "relative", hours: 24, label: "Last 24 hours" });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    const qParam = params.get("q");
+
+    if (tabParam && TAB_ALIASES[tabParam]) {
+      setActiveTab(TAB_ALIASES[tabParam]);
+    } else if (qParam) {
+      // If only ?q= is provided, switch to the lookup tab
+      setActiveTab("lookup");
+    }
+
+    if (qParam) {
+      setInitialIP(qParam);
+    }
+
+    // Clear URL params so refresh doesn't re-apply stale filters
+    if (tabParam || qParam) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
+  const hours = rangeToParams(timeRange).hours;
+  const [refreshKey, setRefreshKey] = useState(0);
+  const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Investigate</h2>
-        <p className="text-sm text-muted-foreground">
-          IP lookup, top threats, and attack targeting analysis.
-        </p>
+      {/* Header with time range */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Investigate</h2>
+          <p className="text-sm text-muted-foreground">
+            IP lookup, top threats, and attack targeting analysis.
+          </p>
+        </div>
+        <TimeRangePicker
+          value={timeRange}
+          onChange={setTimeRange}
+          onRefresh={handleRefresh}
+        />
       </div>
 
-      <Tabs defaultValue="lookup" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="lookup" className="gap-1.5">
             <Search className="h-3.5 w-3.5" />
@@ -730,19 +741,19 @@ export default function AnalyticsDashboard() {
         </TabsList>
 
         <TabsContent value="lookup">
-          <IPLookupPanel />
+          <IPLookupPanel initialIP={initialIP} />
         </TabsContent>
 
         <TabsContent value="top-ips">
-          <TopBlockedIPsPanel />
+          <TopBlockedIPsPanel hours={hours} refreshKey={refreshKey} />
         </TabsContent>
 
         <TabsContent value="top-uris">
-          <TopTargetedURIsPanel />
+          <TopTargetedURIsPanel hours={hours} refreshKey={refreshKey} />
         </TabsContent>
 
         <TabsContent value="top-countries">
-          <TopCountriesPanel />
+          <TopCountriesPanel hours={hours} refreshKey={refreshKey} />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,8 +1,9 @@
 FROM golang:1.23-alpine AS builder
+ARG VERSION=dev
 WORKDIR /build
 COPY go.mod ./
 COPY *.go ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o waf-api .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o waf-api .
 
 FROM alpine:3.21
 RUN apk add --no-cache wget

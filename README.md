@@ -19,7 +19,7 @@ Internet -> Cloudflare -> Caddy (host network, :443) -> backend containers (Dock
 
 ## Docker images
 
-### Caddy image: `erfianugrah/caddy:1.25.0-2.10.2`
+### Caddy image: `erfianugrah/caddy:1.28.0-2.10.2`
 
 Built locally, pushed to Docker Hub. Includes:
 
@@ -31,7 +31,7 @@ Built locally, pushed to Docker Hub. Includes:
 - Cloudflare IP ranges fetched at build time for `trusted_proxies`
 - Entrypoint script that starts `crond` (for IPsum updates) + `caddy run`
 
-### WAF API image: `erfianugrah/waf-api:0.20.0`
+### WAF API image: `erfianugrah/waf-api:0.21.0`
 
 Go stdlib sidecar (zero external dependencies). Provides:
 
@@ -93,8 +93,8 @@ make deploy REMOTE=myhost DEPLOY_MODE=compose
 |---|---|---|
 | `REMOTE` | `servarr` | SSH host alias or `user@host` |
 | `DEPLOY_MODE` | `dockge` | `dockge` (via dockge container) or `compose` (direct) |
-| `CADDY_IMAGE` | `erfianugrah/caddy:1.25.0-2.10.2` | Caddy image tag |
-| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.20.0` | waf-api image tag |
+| `CADDY_IMAGE` | `erfianugrah/caddy:1.28.0-2.10.2` | Caddy image tag |
+| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.21.0` | waf-api image tag |
 | `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Compose file path (inside dockge or on host) |
 | `CADDYFILE_DEST` | `/mnt/user/data/caddy/Caddyfile` | Remote Caddyfile path for SCP |
 | `COMPOSE_DEST` | `/mnt/user/data/dockge/stacks/caddy/compose.yaml` | Remote compose.yaml path for SCP |

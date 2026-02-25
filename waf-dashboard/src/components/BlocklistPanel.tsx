@@ -19,6 +19,7 @@ import {
   type BlocklistCheckResult,
   type BlocklistRefreshResult,
 } from "@/lib/api";
+import { formatNumberLocale as formatNumber } from "@/lib/format";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -38,10 +39,6 @@ function formatBlocklistDate(ts: string): string {
   } catch {
     return ts;
   }
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString();
 }
 
 // ─── Stat Card with left border accent ──────────────────────────────

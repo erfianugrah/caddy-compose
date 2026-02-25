@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:1.25.0-2.10.2
-WAF_API_IMAGE ?= erfianugrah/waf-api:0.20.0
+CADDY_IMAGE   ?= erfianugrah/caddy:1.28.0-2.10.2
+WAF_API_IMAGE ?= erfianugrah/waf-api:0.21.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -77,8 +77,10 @@ build: build-caddy build-waf-api ## Build both images
 build-caddy: ## Build Caddy image (includes waf-dashboard)
 	docker build -t $(CADDY_IMAGE) .
 
+WAF_API_VERSION := $(lastword $(subst :, ,$(WAF_API_IMAGE)))
+
 build-waf-api: ## Build waf-api image
-	docker build -t $(WAF_API_IMAGE) -f waf-api/Dockerfile ./waf-api
+	docker build -t $(WAF_API_IMAGE) --build-arg VERSION=$(WAF_API_VERSION) -f waf-api/Dockerfile ./waf-api
 
 # ── Push ────────────────────────────────────────────────────────────
 push: push-caddy push-waf-api ## Push both images to Docker Hub
