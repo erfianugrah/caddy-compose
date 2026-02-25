@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:1.24.0-2.10.2
-WAF_API_IMAGE ?= erfianugrah/waf-api:0.19.0
+CADDY_IMAGE   ?= erfianugrah/caddy:1.25.0-2.10.2
+WAF_API_IMAGE ?= erfianugrah/waf-api:0.20.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -100,6 +100,8 @@ test-frontend: ## Run frontend tests
 
 # ── SCP / Deploy ────────────────────────────────────────────────────
 scp: ## SCP Caddyfile + compose.yaml to remote
+	@echo "Checking SSH connectivity to $(REMOTE)..."
+	@ssh -o ConnectTimeout=30 $(REMOTE) true
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
 	scp compose.yaml $(REMOTE):$(COMPOSE_DEST)
 

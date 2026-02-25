@@ -770,7 +770,7 @@ export default function EventsTable() {
                       const timeParams = rangeToParams(timeRange);
                       const all = await fetchAllEvents({
                         service: serviceFilter === "all" ? undefined : serviceFilter,
-                        blocked: blockedFilter === "all" ? null : blockedFilter === "true",
+                        blocked: blockedFilter === "all" ? null : blockedFilter === "blocked",
                         method: methodFilter === "ALL" ? undefined : methodFilter,
                         event_type: eventTypeFilter === "all" ? undefined : (eventTypeFilter as EventType),
                         ...timeParams,

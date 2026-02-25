@@ -7296,7 +7296,7 @@ func TestGeoIPStore_CacheEviction(t *testing.T) {
 		store.cache[ip] = geoEntry{country: "XX", ts: time.Now()}
 	}
 	// Manually trigger eviction
-	store.evictOldest()
+	store.evictRandom()
 	size := len(store.cache)
 	store.mu.Unlock()
 
@@ -7846,5 +7846,263 @@ func TestGeoIPStore_HasAPI(t *testing.T) {
 	s3 := NewGeoIPStore("", &GeoIPAPIConfig{URL: ""})
 	if s3.HasAPI() {
 		t.Error("HasAPI() should be false with empty URL")
+	}
+}
+
+// ─── Tests for audit fix changes ──────────────────────────────────
+
+func TestDecodeJSON_ValidBody(t *testing.T) {
+	mux, _ := setupExclusionMux(t)
+	body := `{"name":"Test","type":"remove_by_id","rule_id":"920420","enabled":true}`
+	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("want 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDecodeJSON_InvalidJSON(t *testing.T) {
+	mux, _ := setupExclusionMux(t)
+	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(`{invalid`))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("want 400 for invalid JSON, got %d", w.Code)
+	}
+	var resp ErrorResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Error != "invalid JSON body" {
+		t.Errorf("want 'invalid JSON body', got %q", resp.Error)
+	}
+}
+
+func TestDecodeJSON_BodyTooLarge(t *testing.T) {
+	mux, _ := setupExclusionMux(t)
+	// maxJSONBody is 5 << 20 = 5MB. Build valid JSON that exceeds the limit.
+	// {"name":"AAAA..."} — the padding makes the total body > 5MB.
+	padding := strings.Repeat("A", 6*1024*1024)
+	bigBody := `{"name":"` + padding + `"}`
+	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(bigBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("want 400 for oversized body, got %d", w.Code)
+	}
+	var resp ErrorResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if !strings.Contains(resp.Error, "too large") {
+		t.Errorf("want 'too large' in error, got %q", resp.Error)
+	}
+}
+
+func TestEscapeSecRuleValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain text", "hello", "hello"},
+		{"double quote", `say "hello"`, `say \"hello\"`},
+		{"single quote", "msg:'test'", `msg:\'test\'`},
+		{"backslash", `path\to\file`, `path\\to\\file`},
+		{"newline stripped", "line1\nline2", "line1line2"},
+		{"carriage return stripped", "line1\rline2", "line1line2"},
+		{"combined injection", "foo\"\nSecRule", `foo\"SecRule`},
+		{"backslash before quote", `\"`, `\\\"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := escapeSecRuleValue(tt.input)
+			if got != tt.want {
+				t.Errorf("escapeSecRuleValue(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeComment(t *testing.T) {
+	tests := []struct {
+		input, want string
+	}{
+		{"hello", "hello"},
+		{"line1\nline2", "line1 line2"},
+		{"line1\r\nline2", "line1 line2"},
+		{"no\rcarriage", "nocarriage"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := sanitizeComment(tt.input)
+			if got != tt.want {
+				t.Errorf("sanitizeComment(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateExclusion_SecRuleInjection(t *testing.T) {
+	tests := []struct {
+		name    string
+		exc     RuleExclusion
+		wantErr string
+	}{
+		{
+			name:    "newline in name",
+			exc:     RuleExclusion{Name: "evil\nSecRule", Type: "remove_by_id", RuleID: "920420"},
+			wantErr: "newlines",
+		},
+		{
+			name:    "invalid rule_tag characters",
+			exc:     RuleExclusion{Name: "test", Type: "remove_by_tag", RuleTag: "attack-sqli\"; SecRule"},
+			wantErr: "invalid rule_tag",
+		},
+		{
+			name:    "valid rule_tag with slashes",
+			exc:     RuleExclusion{Name: "test", Type: "remove_by_tag", RuleTag: "OWASP_CRS/WEB_ATTACK/SQL_INJECTION"},
+			wantErr: "",
+		},
+		{
+			name:    "invalid variable characters",
+			exc:     RuleExclusion{Name: "test", Type: "update_target_by_id", RuleID: "920420", Variable: "ARGS:foo\"; deny"},
+			wantErr: "invalid variable",
+		},
+		{
+			name:    "valid variable",
+			exc:     RuleExclusion{Name: "test", Type: "update_target_by_id", RuleID: "920420", Variable: "!REQUEST_COOKIES:/__session/"},
+			wantErr: "",
+		},
+		{
+			name: "newline in condition value",
+			exc: RuleExclusion{
+				Name: "test", Type: "allow",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api\n"}},
+			},
+			wantErr: "newlines",
+		},
+		{
+			name: "invalid named field name in header",
+			exc: RuleExclusion{
+				Name: "test", Type: "allow",
+				Conditions: []Condition{{Field: "header", Operator: "eq", Value: "X-Evil\"; inject:value"}},
+			},
+			wantErr: "invalid header name",
+		},
+		{
+			name: "valid named field name in header",
+			exc: RuleExclusion{
+				Name: "test", Type: "allow",
+				Conditions: []Condition{{Field: "header", Operator: "eq", Value: "X-Forwarded-For:1.2.3.4"}},
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid named cookie",
+			exc: RuleExclusion{
+				Name: "test", Type: "allow",
+				Conditions: []Condition{{Field: "cookie", Operator: "eq", Value: "__session:abc123"}},
+			},
+			wantErr: "",
+		},
+		{
+			name: "skip_rule with invalid rule_tag",
+			exc: RuleExclusion{
+				Name: "test", Type: "skip_rule", RuleTag: "tag with spaces",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}},
+			},
+			wantErr: "invalid rule_tag",
+		},
+		{
+			name: "skip_rule with valid rule_tag",
+			exc: RuleExclusion{
+				Name: "test", Type: "skip_rule", RuleTag: "attack-sqli",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}},
+			},
+			wantErr: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateExclusion(tt.exc)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+			}
+		})
+	}
+}
+
+func TestBlocklistRefreshRaceGuard(t *testing.T) {
+	// Create a blocklist store and verify concurrent Refresh calls are rejected.
+	bs := NewBlocklistStore(filepath.Join(t.TempDir(), "ipsum_block.caddy"))
+	// Manually set refreshing to simulate an in-progress refresh.
+	bs.refreshing.Store(true)
+
+	resp := bs.Refresh(DeployConfig{})
+	if resp.Status != "error" {
+		t.Errorf("expected error status for concurrent refresh, got %q", resp.Status)
+	}
+	if !strings.Contains(resp.Message, "already in progress") {
+		t.Errorf("expected 'already in progress' message, got %q", resp.Message)
+	}
+
+	// Clear the flag and verify Refresh can proceed (it will fail on HTTP but that's ok).
+	bs.refreshing.Store(false)
+	resp2 := bs.Refresh(DeployConfig{CaddyAdminURL: "http://localhost:0"})
+	// Should not get "already in progress" error — it should attempt the download.
+	if strings.Contains(resp2.Message, "already in progress") {
+		t.Error("refresh should have proceeded after clearing the flag")
+	}
+}
+
+func TestGenerateConfigs_EscapesInjection(t *testing.T) {
+	// Generate configs with a malicious exclusion name containing quotes.
+	exclusions := []RuleExclusion{
+		{
+			ID:      "test1",
+			Name:    `Test "injection`,
+			Type:    "allow",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "path", Operator: "eq", Value: `/api/"malicious`},
+			},
+		},
+	}
+	cfg := WAFConfig{Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 10}}
+	resp := GenerateConfigs(cfg, exclusions)
+
+	// The value /api/"malicious should be escaped to /api/\"malicious in the output.
+	// Verify the escaped form is present (backslash-quote before malicious).
+	if !strings.Contains(resp.PreCRS, `\/\"malicious`) && !strings.Contains(resp.PreCRS, `\"malicious`) {
+		t.Error("expected escaped quotes in generated pre-CRS config")
+	}
+
+	// Verify the name in the msg field is escaped: Test \"injection
+	if !strings.Contains(resp.PreCRS, `Test \"injection`) {
+		t.Errorf("expected escaped name in msg field, got:\n%s", resp.PreCRS)
+	}
+
+	// Verify no raw newlines that could inject new directives.
+	for i, line := range strings.Split(resp.PreCRS, "\n") {
+		if strings.Contains(line, "SecRule") && strings.Count(line, `"`)%2 != 0 {
+			// Odd number of unescaped quotes on a SecRule line means broken quoting.
+			// Count only unescaped quotes (not preceded by backslash).
+			unescaped := 0
+			for j, ch := range line {
+				if ch == '"' && (j == 0 || line[j-1] != '\\') {
+					unescaped++
+				}
+			}
+			if unescaped%2 != 0 {
+				t.Errorf("line %d has unbalanced unescaped quotes: %s", i+1, line)
+			}
+		}
 	}
 }

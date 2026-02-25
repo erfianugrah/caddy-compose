@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -115,7 +116,7 @@ func (s *GeoIPStore) LookupIP(ip string) string {
 	s.mu.Lock()
 	// Evict if cache too large
 	if len(s.cache) >= geoCacheMaxSize {
-		s.evictOldest()
+		s.evictRandom()
 	}
 	s.cache[ip] = geoEntry{country: country, ts: time.Now()}
 	s.mu.Unlock()
@@ -221,7 +222,7 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 	// Cache the result (even empty results to avoid repeated failed lookups).
 	s.mu.Lock()
 	if len(s.cache) >= geoCacheMaxSize {
-		s.evictOldest()
+		s.evictRandom()
 	}
 	s.cache[ip] = geoEntry{country: country, ts: time.Now()}
 	s.mu.Unlock()
@@ -229,8 +230,10 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 	return country
 }
 
-// evictOldest removes ~25% of the oldest cache entries. Caller must hold s.mu write lock.
-func (s *GeoIPStore) evictOldest() {
+// evictRandom removes ~25% of cache entries. Map iteration order is random in Go,
+// so this is effectively random eviction — acceptable for a country-code cache
+// where re-derivation is cheap. Caller must hold s.mu write lock.
+func (s *GeoIPStore) evictRandom() {
 	target := geoCacheMaxSize / 4
 	type aged struct {
 		key string
@@ -276,14 +279,10 @@ func TopCountries(events []Event, n int) []CountryCount {
 		result = append(result, *v)
 	}
 
-	// Sort by count descending
-	for i := 0; i < len(result); i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[j].Count > result[i].Count {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	// Sort by count descending.
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Count > result[j].Count
+	})
 
 	if n > 0 && len(result) > n {
 		result = result[:n]

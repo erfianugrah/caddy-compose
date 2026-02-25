@@ -60,7 +60,7 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 
 Image tags live in **four places** that must stay in sync:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAF_API_IMAGE`)
-- `compose.yaml` (lines 3 and 117: image fields)
+- `compose.yaml` (lines 3 and 116: image fields)
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 
@@ -83,7 +83,7 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 
 - Standard library only — no external dependencies
 - Single import block, alphabetically sorted
-- Common: `encoding/json`, `fmt`, `log`, `net/http`, `os`, `path/filepath`, `sort`, `strings`, `sync`, `time`
+- Common: `encoding/json`, `fmt`, `log`, `net/http`, `os`, `path/filepath`, `regexp`, `sort`, `strings`, `sync`, `sync/atomic`, `time`
 
 ### Naming
 
@@ -106,6 +106,7 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 - Go 1.22+ route patterns: `mux.HandleFunc("GET /api/health", handleHealth)`
 - Closure pattern for dependency injection: `handleSummary(store, als) http.HandlerFunc`
 - All JSON responses via `writeJSON()` helper (sets Content-Type, disables HTML escaping)
+- All JSON request bodies decoded via `decodeJSON()` helper (`MaxBytesReader` 5 MB limit, structured error on failure)
 - Server timeouts: `ReadTimeout: 10s`, `WriteTimeout: 150s`, `IdleTimeout: 60s`
 - Caddy reload client timeout: `120s` (accounts for WAF rule initialization)
 - Makefile deploy wget timeout: `120s` (`-T 120`)
@@ -113,7 +114,16 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 ### Concurrency
 
 - `sync.RWMutex` on all stores; `RLock` for reads, `Lock` for mutations
+- `atomic.Int64` for lock-free offset tracking (`Store.offset` in logparser.go)
+- `atomic.Bool` for lock-free guard flags (`BlocklistStore.refreshing`)
 - Return deep copies from getters to prevent concurrent modification
+
+### SecRule Injection Hardening
+
+- `escapeSecRuleValue()` — escapes `\`, `"`, `'`, strips `\n`/`\r` for SecRule pattern/action values
+- `sanitizeComment()` — replaces newlines with spaces for `msg:` and comment fields
+- Input validation regexps in `exclusions.go`: `ruleTagRe` (CRS tag format), `variableRe` (SecRule variable names), `namedFieldNameRe` (header/cookie/args names)
+- `validateExclusion()` rejects newlines in all string fields, validates condition operators/fields against allowlists
 
 ### File Operations and Code Organization
 
@@ -315,7 +325,7 @@ restores events from JSONL before tailing begins.
 - WAF events: `/data/events.jsonl` — large payload fields (`RequestHeaders`,
   `RequestBody`, `RequestArgs`) are stripped when persisting to keep the file compact
 - Access log events: `/data/access-events.jsonl` — rate limit and ipsum events
-- Compaction runs automatically after eviction (removes events older than maxAge)
+- Compaction runs synchronously after eviction via `compactEventFileLocked()` (caller holds lock); `compactEventFile()` wrapper acquires its own lock for external callers
 - At ~400 WAF events/day and 90-day retention: ~36,000 events, ~36MB on disk
 
 ### Blocklist Refresh
@@ -348,4 +358,4 @@ A parallel implementation of the same security concepts exists in `/home/erfi/k3
 - `k3s/middleware/sentinel.go` — inline Traefik middleware plugin (heuristic bot scoring, expression-based firewall rules)
 - `k3s/services/sentinel/` — IPsum CronJob for Kubernetes
 - `k3s/services/security-dashboard/` — Go SSR dashboard (same author, same stdlib-only style)
-- Both repos share: `envOr()` pattern, `sync.RWMutex` stores, section header style, atomic file ops, scanner UA lists, honeypot paths, IP resolution from proxy headers
+- Both repos share: `envOr()` pattern, `sync.RWMutex` stores, section header style, atomic file ops, scanner UA lists, honeypot path concept, IP resolution from proxy headers

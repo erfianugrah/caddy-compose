@@ -788,8 +788,7 @@ func handleGetExclusion(es *ExclusionStore) http.HandlerFunc {
 func handleCreateExclusion(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var exc RuleExclusion
-		if err := json.NewDecoder(r.Body).Decode(&exc); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body", Details: err.Error()})
+		if _, failed := decodeJSON(w, r, &exc); failed {
 			return
 		}
 		if err := validateExclusion(exc); err != nil {
@@ -809,8 +808,7 @@ func handleUpdateExclusion(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		var exc RuleExclusion
-		if err := json.NewDecoder(r.Body).Decode(&exc); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body", Details: err.Error()})
+		if _, failed := decodeJSON(w, r, &exc); failed {
 			return
 		}
 		if err := validateExclusion(exc); err != nil {
@@ -864,8 +862,7 @@ func handleExportExclusions(es *ExclusionStore) http.HandlerFunc {
 func handleImportExclusions(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var export ExclusionExport
-		if err := json.NewDecoder(r.Body).Decode(&export); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body", Details: err.Error()})
+		if _, failed := decodeJSON(w, r, &export); failed {
 			return
 		}
 		if len(export.Exclusions) == 0 {
@@ -911,8 +908,7 @@ func handleGetConfig(cs *ConfigStore) http.HandlerFunc {
 func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg WAFConfig
-		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body", Details: err.Error()})
+		if _, failed := decodeJSON(w, r, &cfg); failed {
 			return
 		}
 		if err := validateConfig(cfg); err != nil {
@@ -1014,8 +1010,7 @@ func handleGetRateLimits(rs *RateLimitStore) http.HandlerFunc {
 func handleUpdateRateLimits(rs *RateLimitStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg RateLimitConfig
-		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body", Details: err.Error()})
+		if _, failed := decodeJSON(w, r, &cfg); failed {
 			return
 		}
 		if err := validateRateLimitConfig(cfg); err != nil {
@@ -1101,6 +1096,27 @@ func handleRLEvents(als *AccessLogStore) http.HandlerFunc {
 		hours := parseHours(r)
 		writeJSON(w, http.StatusOK, als.FilteredEvents(service, client, method, limit, offset, hours))
 	}
+}
+
+// maxJSONBody is the maximum request body size for JSON endpoints (5 MB).
+// Generous for bulk imports (~500+ exclusions) while preventing OOM from
+// unbounded payloads. The dashboard only sends small payloads; this is a
+// safety net, not a functional limit.
+const maxJSONBody = 5 << 20
+
+// decodeJSON limits the request body to maxJSONBody and decodes JSON into dst.
+// Returns a user-facing error string and true on failure; empty string and false on success.
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) (string, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		msg := "invalid JSON body"
+		if err.Error() == "http: request body too large" {
+			msg = "request body too large (max 5 MB)"
+		}
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: msg, Details: err.Error()})
+		return msg, true
+	}
+	return "", false
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -19,7 +19,7 @@ Internet -> Cloudflare -> Caddy (host network, :443) -> backend containers (Dock
 
 ## Docker images
 
-### Caddy image: `erfianugrah/caddy:1.24.0-2.10.2`
+### Caddy image: `erfianugrah/caddy:1.25.0-2.10.2`
 
 Built locally, pushed to Docker Hub. Includes:
 
@@ -31,7 +31,7 @@ Built locally, pushed to Docker Hub. Includes:
 - Cloudflare IP ranges fetched at build time for `trusted_proxies`
 - Entrypoint script that starts `crond` (for IPsum updates) + `caddy run`
 
-### WAF API image: `erfianugrah/waf-api:0.19.0`
+### WAF API image: `erfianugrah/waf-api:0.20.0`
 
 Go stdlib sidecar (zero external dependencies). Provides:
 
@@ -48,7 +48,7 @@ Go stdlib sidecar (zero external dependencies). Provides:
 - Rate limit zone configuration: per-zone `.caddy` file generation and deploy
 - Deploy pipeline with SHA-256 fingerprint injection (ensures Caddy reprovisioning when only included files change)
 - Generate-on-boot: regenerates all WAF config and rate limit files from stored JSON state at startup, so a stack restart always picks up the latest generator output without manual intervention
-- GeoIP resolution: three-tier (Cf-Ipcountry header > local MMDB lookup > empty), pure-Go MMDB reader (ported from k3s Sentinel), in-memory cache
+- GeoIP resolution: three-tier (Cf-Ipcountry header > local MMDB lookup > online API fallback), pure-Go MMDB reader (ported from k3s Sentinel), in-memory cache
 - 9 event types: `blocked`, `logged`, `rate_limited`, `ipsum_blocked`, `policy_skip`, `policy_allow`, `policy_block`, `honeypot`, `scanner`
 - IP lookup, service detail, configuration management
 - UUIDv7 for rate-limit event IDs (time-ordered, globally unique), Coraza tx IDs for WAF events
@@ -93,8 +93,8 @@ make deploy REMOTE=myhost DEPLOY_MODE=compose
 |---|---|---|
 | `REMOTE` | `servarr` | SSH host alias or `user@host` |
 | `DEPLOY_MODE` | `dockge` | `dockge` (via dockge container) or `compose` (direct) |
-| `CADDY_IMAGE` | `erfianugrah/caddy:1.24.0-2.10.2` | Caddy image tag |
-| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.19.0` | waf-api image tag |
+| `CADDY_IMAGE` | `erfianugrah/caddy:1.25.0-2.10.2` | Caddy image tag |
+| `WAF_API_IMAGE` | `erfianugrah/waf-api:0.20.0` | waf-api image tag |
 | `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Compose file path (inside dockge or on host) |
 | `CADDYFILE_DEST` | `/mnt/user/data/caddy/Caddyfile` | Remote Caddyfile path for SCP |
 | `COMPOSE_DEST` | `/mnt/user/data/dockge/stacks/caddy/compose.yaml` | Remote compose.yaml path for SCP |
@@ -216,7 +216,7 @@ caddy-compose/
     deploy.go            # Deploy pipeline (write conf files, generate-on-boot, SecRuleEngine placeholder, SHA-256 fingerprint, reload Caddy)
     ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
-    main_test.go         # 73 Go tests (WAF mode transitions, anomaly score, blocklist, exclusions, deploy, generate-on-boot, etc.)
+    main_test.go         # 254 Go tests (WAF mode transitions, anomaly score, blocklist, exclusions, deploy, generate-on-boot, SecRule injection, decodeJSON, etc.)
     Dockerfile           # waf-api image (alpine + compiled binary, NOT the root Dockerfile's build stage)
     go.mod
   waf-dashboard/
@@ -256,7 +256,7 @@ caddy-compose/
 | `no-new-privileges` | yes | yes | yes |
 | `user` | root (needs port 443) | `1000:1000` | `65534` (nobody) |
 | Healthcheck | yes | yes | yes |
-| Resource limits | 4 CPU / 1024M | 1 CPU / 256M | 0.5 CPU / 128M |
+| Resource limits | 8 CPU / 2048M | 1 CPU / 256M | 0.5 CPU / 128M |
 
 ### Authelia secrets
 

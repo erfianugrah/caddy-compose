@@ -10,11 +10,10 @@ import {
   Pencil,
   Copy,
   Check,
-  GripVertical,
   AlertTriangle,
   Code2,
   Zap,
-  Rocket,
+
   Download,
   Upload,
   X,
@@ -75,7 +74,6 @@ import {
   createExclusion,
   updateExclusion,
   deleteExclusion,
-  generateConfig,
   deployConfig,
   fetchServices,
   exportExclusions,
@@ -89,8 +87,6 @@ import {
   type ConditionField,
   type ConditionOperator,
   type GroupOperator,
-  type GeneratedConfig,
-  type DeployResult,
   type ServiceDetail,
   type CRSRule,
   type CRSCatalogResponse,
@@ -1416,7 +1412,7 @@ function AdvancedBuilderForm({
       <div className="space-y-1.5">
         <Label className="text-xs uppercase tracking-wider text-muted-foreground">Exclusion Type</Label>
         <Select value={form.type} onValueChange={handleTypeChange}>
-          <SelectTrigger>
+          <SelectTrigger className="h-auto py-2">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1729,47 +1725,6 @@ function HoneypotForm({ onSubmit }: { onSubmit: (data: ExclusionCreateData) => v
 
 // ─── Config Viewer ──────────────────────────────────────────────────
 
-function ConfigViewer({ config }: { config: GeneratedConfig }) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">pre-crs.conf</CardTitle>
-            {config.pre_crs && <CopyButton text={config.pre_crs} />}
-          </div>
-          <CardDescription>Loaded before CRS rules</CardDescription>
-        </CardHeader>
-        <Separator />
-        <CardContent className="p-0">
-          <div className="relative max-h-[400px] overflow-auto">
-            <pre className="p-4 text-xs leading-relaxed">
-              <code className="text-neon-green/80">{config.pre_crs || "# No pre-CRS exclusions configured"}</code>
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">post-crs.conf</CardTitle>
-            {config.post_crs && <CopyButton text={config.post_crs} />}
-          </div>
-          <CardDescription>Loaded after CRS rules</CardDescription>
-        </CardHeader>
-        <Separator />
-        <CardContent className="p-0">
-          <div className="relative max-h-[400px] overflow-auto">
-            <pre className="p-4 text-xs leading-relaxed">
-              <code className="text-neon-cyan/80">{config.post_crs || "# No post-CRS exclusions configured"}</code>
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 // ─── Exclusion type label helper ────────────────────────────────────
 
 function conditionsSummary(excl: Exclusion): string {
@@ -1862,10 +1817,9 @@ export default function PolicyEngine() {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [generatedConfig, setGeneratedConfig] = useState<GeneratedConfig | null>(null);
-  const [generating, setGenerating] = useState(false);
+
   const [deployStep, setDeployStep] = useState<string | null>(null);
-  const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Event prefill — consumed once on mount from sessionStorage.
@@ -1936,25 +1890,26 @@ export default function PolicyEngine() {
     try {
       const created = await createExclusion(data);
       setExclusions((prev) => [...prev, created]);
-      showSuccess("Exclusion created — deploying...");
-
-      // Auto-deploy after creating a rule so it takes effect immediately.
-      try {
-        setDeployStep("Writing WAF files & reloading Caddy...");
-        const result = await deployConfig();
-        setDeployResult(result);
-        if (result.status === "deployed") {
-          showSuccess("Rule created and deployed successfully");
-        } else {
-          showSuccess("Rule created — config files written, Caddy reload needs manual intervention");
-        }
-      } catch (deployErr: any) {
-        setError(`Rule saved but deploy failed: ${deployErr.message}`);
-      } finally {
-        setDeployStep(null);
-      }
+      await autoDeploy("Rule created");
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  // Auto-deploy after any mutation so changes take effect immediately.
+  const autoDeploy = async (action: string) => {
+    try {
+      setDeployStep("Deploying...");
+      const result = await deployConfig();
+      if (result.status === "deployed") {
+        showSuccess(`${action} — deployed`);
+      } else {
+        showSuccess(`${action} — config written, Caddy reload needs manual intervention`);
+      }
+    } catch (deployErr: any) {
+      setError(`${action}, but deploy failed: ${deployErr.message}`);
+    } finally {
+      setDeployStep(null);
     }
   };
 
@@ -1963,7 +1918,7 @@ export default function PolicyEngine() {
       const updated = await updateExclusion(id, data);
       setExclusions((prev) => prev.map((e) => (e.id === id ? updated : e)));
       setEditingId(null);
-      showSuccess("Exclusion updated");
+      await autoDeploy("Rule updated");
     } catch (err: any) {
       setError(err.message);
     }
@@ -1974,7 +1929,7 @@ export default function PolicyEngine() {
       await deleteExclusion(id);
       setExclusions((prev) => prev.filter((e) => e.id !== id));
       setDeleteConfirmId(null);
-      showSuccess("Exclusion deleted");
+      await autoDeploy("Rule deleted");
     } catch (err: any) {
       setError(err.message);
     }
@@ -1984,38 +1939,9 @@ export default function PolicyEngine() {
     try {
       const updated = await updateExclusion(id, { enabled });
       setExclusions((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      await autoDeploy(enabled ? "Rule enabled" : "Rule disabled");
     } catch (err: any) {
       setError(err.message);
-    }
-  };
-
-  const handleGenerateConfig = async () => {
-    setGenerating(true);
-    try {
-      const config = await generateConfig();
-      setGeneratedConfig(config);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleDeploy = async () => {
-    setDeployResult(null);
-    try {
-      setDeployStep("Writing WAF files & reloading Caddy...");
-      const result = await deployConfig();
-      setDeployResult(result);
-      if (result.status === "deployed") {
-        showSuccess("Configuration deployed and Caddy reloaded");
-      } else {
-        showSuccess("Config files written — Caddy reload needs manual intervention");
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setDeployStep(null);
     }
   };
 
@@ -2055,6 +1981,9 @@ export default function PolicyEngine() {
     input.click();
   };
 
+  // ─── Dialog state for create/edit ──────────────────────────────────
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   // Editing: determine which tab the exclusion belongs to so we show the edit form in the right tab
   const exclusionToEdit = editingId ? exclusions.find((e) => e.id === editingId) : null;
 
@@ -2080,8 +2009,31 @@ export default function PolicyEngine() {
   useEffect(() => {
     if (editingId) {
       setActiveTab(isEditingRaw ? "raw" : "advanced");
+      setDialogOpen(true);
     }
   }, [editingId, isEditingRaw]);
+
+  // Open create dialog
+  const openCreateDialog = () => {
+    setEditingId(null);
+    setActiveTab("quick");
+    setDialogOpen(true);
+  };
+
+  // Close dialog and reset edit state
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingId(null);
+    setEventPrefill(null);
+  };
+
+  // Open dialog with prefill from event
+  useEffect(() => {
+    if (eventPrefill) {
+      setActiveTab("quick");
+      setDialogOpen(true);
+    }
+  }, [eventPrefill]);
 
   return (
     <div className="space-y-6">
@@ -2121,87 +2073,13 @@ export default function PolicyEngine() {
         </Alert>
       )}
 
-      {/* Builder Section — 3 Tabs */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-neon-green" />
-            <CardTitle className="text-sm">
-              {editingId ? "Edit Rule" : "Create Rule"}
-            </CardTitle>
-          </div>
-          <CardDescription>
-            Use Quick Actions for common tasks, Advanced for ModSecurity experts, or Raw Editor for full control
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="quick" className="gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                Quick Actions
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="gap-1.5">
-                <Code2 className="h-3.5 w-3.5" />
-                Advanced
-              </TabsTrigger>
-              <TabsTrigger value="honeypot" className="gap-1.5">
-                <Crosshair className="h-3.5 w-3.5" />
-                Honeypot
-              </TabsTrigger>
-              <TabsTrigger value="raw" className="gap-1.5">
-                <FileCode className="h-3.5 w-3.5" />
-                Raw Editor
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="quick">
-              <QuickActionsForm
-                services={services}
-                crsRules={crsData?.rules ?? []}
-                crsCategories={crsData?.categories ?? []}
-                onSubmit={(data) => {
-                  handleCreate(data);
-                  setEventPrefill(null);
-                }}
-                prefill={eventPrefill}
-                onPrefillConsumed={() => setEventPrefill(null)}
-              />
-            </TabsContent>
-
-            <TabsContent value="advanced">
-              {editingId && editFormState && !isEditingRaw ? (
-                <AdvancedBuilderForm
-                  key={editingId}
-                  initial={editFormState}
-                  services={services}
-                  onSubmit={(data) => handleUpdate(editingId, data)}
-                  onCancel={() => setEditingId(null)}
-                  submitLabel="Update Rule"
-                />
-              ) : (
-                <AdvancedBuilderForm
-                  services={services}
-                  onSubmit={handleCreate}
-                  submitLabel="Add Exclusion"
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="honeypot">
-              <HoneypotForm onSubmit={handleCreate} />
-            </TabsContent>
-
-            <TabsContent value="raw">
-              <RawEditorForm
-                autocompleteData={autocompleteData}
-                crsRules={crsData?.rules ?? []}
-                onSubmit={handleCreate}
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {deployStep && (
+        <Alert>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertTitle>Deploying</AlertTitle>
+          <AlertDescription>{deployStep}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Exclusion List */}
       <Card>
@@ -2211,9 +2089,9 @@ export default function PolicyEngine() {
               <CardTitle className="text-sm">Rules ({exclusions.length})</CardTitle>
               <CardDescription>Manage your WAF rules and exclusions</CardDescription>
             </div>
-            <Button onClick={handleGenerateConfig} disabled={generating || exclusions.length === 0} size="sm">
-              <FileCode className="h-3.5 w-3.5" />
-              {generating ? "Generating..." : "Generate Config"}
+            <Button onClick={openCreateDialog} size="sm">
+              <Plus className="h-3.5 w-3.5" />
+              Create Rule
             </Button>
           </div>
         </CardHeader>
@@ -2228,7 +2106,6 @@ export default function PolicyEngine() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-8" />
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Target / Conditions</TableHead>
@@ -2245,9 +2122,6 @@ export default function PolicyEngine() {
                     ref={isHighlighted ? highlightedRef : undefined}
                     className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-emerald-500/5 transition-all duration-700" : undefined}
                   >
-                    <TableCell className="w-8">
-                      <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground/50" />
-                    </TableCell>
                     <TableCell>
                       <div>
                         <p className="text-xs font-medium">{excl.name}</p>
@@ -2298,47 +2172,99 @@ export default function PolicyEngine() {
             <div className="flex flex-col items-center justify-center py-12">
               <Shield className="mb-3 h-8 w-8 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">No rules configured yet</p>
-              <p className="text-xs text-muted-foreground/70">Use the builder above to create your first rule</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                <button className="text-neon-cyan hover:underline" onClick={openCreateDialog}>
+                  Create your first rule
+                </button>
+              </p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Generated Config */}
-      {generatedConfig && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Generated Configuration</h3>
-            <Button variant="default" size="sm" onClick={handleDeploy} disabled={deployStep !== null}>
-              {deployStep ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      {/* Create / Edit Rule Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogContent className="w-[90vw] max-w-[1800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-neon-green" />
+              {editingId ? "Edit Rule" : "Create Rule"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingId
+                ? "Modify the rule below. Changes are deployed automatically on save."
+                : "Use Quick Actions for common tasks, Advanced for ModSecurity experts, or Raw Editor for full control."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="quick" className="gap-1.5" disabled={!!editingId}>
+                <Zap className="h-3.5 w-3.5" />
+                Quick Actions
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="gap-1.5">
+                <Code2 className="h-3.5 w-3.5" />
+                Advanced
+              </TabsTrigger>
+              <TabsTrigger value="honeypot" className="gap-1.5" disabled={!!editingId}>
+                <Crosshair className="h-3.5 w-3.5" />
+                Honeypot
+              </TabsTrigger>
+              <TabsTrigger value="raw" className="gap-1.5" disabled={!!editingId && !isEditingRaw}>
+                <FileCode className="h-3.5 w-3.5" />
+                Raw Editor
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="quick">
+              <QuickActionsForm
+                services={services}
+                crsRules={crsData?.rules ?? []}
+                crsCategories={crsData?.categories ?? []}
+                onSubmit={(data) => {
+                  handleCreate(data);
+                  closeDialog();
+                  setEventPrefill(null);
+                }}
+                prefill={eventPrefill}
+                onPrefillConsumed={() => setEventPrefill(null)}
+              />
+            </TabsContent>
+
+            <TabsContent value="advanced">
+              {editingId && editFormState && !isEditingRaw ? (
+                <AdvancedBuilderForm
+                  key={editingId}
+                  initial={editFormState}
+                  services={services}
+                  onSubmit={(data) => { handleUpdate(editingId!, data); closeDialog(); }}
+                  onCancel={closeDialog}
+                  submitLabel="Save Changes"
+                />
               ) : (
-                <Rocket className="h-3.5 w-3.5" />
+                <AdvancedBuilderForm
+                  services={services}
+                  onSubmit={(data) => { handleCreate(data); closeDialog(); }}
+                  submitLabel="Add Exclusion"
+                />
               )}
-              {deployStep ?? "Deploy to Caddy"}
-            </Button>
-          </div>
-          {deployResult && (
-            <Alert variant={deployResult.status === "deployed" ? "default" : "destructive"}>
-              <AlertTitle>
-                {deployResult.status === "deployed" ? "Deployed Successfully" : "Partial Deploy"}
-              </AlertTitle>
-              <AlertDescription>
-                <p>{deployResult.message}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {deployResult.timestamp}
-                  {!deployResult.reloaded && (
-                    <span className="ml-2 text-yellow-600">
-                      Caddy reload failed — run manually: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
-                    </span>
-                  )}
-                </p>
-              </AlertDescription>
-            </Alert>
-          )}
-          <ConfigViewer config={generatedConfig} />
-        </div>
-      )}
+            </TabsContent>
+
+            <TabsContent value="honeypot">
+              <HoneypotForm onSubmit={(data) => { handleCreate(data); closeDialog(); }} />
+            </TabsContent>
+
+            <TabsContent value="raw">
+              <RawEditorForm
+                autocompleteData={autocompleteData}
+                crsRules={crsData?.rules ?? []}
+                onSubmit={(data) => { handleCreate(data); closeDialog(); }}
+              />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>

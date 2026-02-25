@@ -481,10 +481,15 @@ func writeHoneypotRule(b *strings.Builder, honeypots []RuleExclusion) {
 	b.WriteString("# --- Dynamic Honeypot Paths ---\n")
 	b.WriteString("# Consolidated from Policy Engine honeypot groups:\n")
 	for _, n := range names {
-		b.WriteString(fmt.Sprintf("#   - %s\n", n))
+		b.WriteString(fmt.Sprintf("#   - %s\n", sanitizeComment(n)))
+	}
+	// Escape each path for safe inclusion in the SecRule double-quoted string.
+	escaped := make([]string, len(deduped))
+	for i, p := range deduped {
+		escaped[i] = escapeSecRuleValue(p)
 	}
 	b.WriteString(fmt.Sprintf("# Total paths: %d\n", len(deduped)))
-	b.WriteString(fmt.Sprintf("SecRule REQUEST_URI \"@pm %s\" \\\n", strings.Join(deduped, " ")))
+	b.WriteString(fmt.Sprintf("SecRule REQUEST_URI \"@pm %s\" \\\n", strings.Join(escaped, " ")))
 	b.WriteString("    \"id:9100021,\\\n")
 	b.WriteString("    phase:1,\\\n")
 	b.WriteString("    deny,\\\n")
@@ -499,19 +504,38 @@ func writeHoneypotRule(b *strings.Builder, honeypots []RuleExclusion) {
 
 // writeExclusionComment writes the standard comment block for an exclusion.
 func writeExclusionComment(b *strings.Builder, e RuleExclusion) {
-	b.WriteString(fmt.Sprintf("# %s\n", e.Name))
+	b.WriteString(fmt.Sprintf("# %s\n", sanitizeComment(e.Name)))
 	if e.Description != "" {
-		b.WriteString(fmt.Sprintf("# %s\n", e.Description))
+		b.WriteString(fmt.Sprintf("# %s\n", sanitizeComment(e.Description)))
 	}
 	// Summarize conditions in comments for readability.
 	for _, c := range e.Conditions {
-		b.WriteString(fmt.Sprintf("# Condition: %s %s %s\n", c.Field, c.Operator, c.Value))
+		b.WriteString(fmt.Sprintf("# Condition: %s %s %s\n", c.Field, c.Operator, sanitizeComment(c.Value)))
 	}
 }
 
 // escapeSecRuleValue escapes special characters for SecRule patterns.
+// SecRule values are typically enclosed in double quotes ("..."), and may also
+// appear inside single-quoted action fields (msg:'...'). We escape:
+//   - backslash → \\ (must come first to avoid double-escaping)
+//   - double quote → \" (closes the SecRule pattern)
+//   - single quote → \' (closes msg:'...' action fields)
+//   - newlines/carriage returns → stripped (could inject new directives)
 func escapeSecRuleValue(s string) string {
-	return strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
+
+// sanitizeComment removes newlines from a string destined for a SecRule comment
+// or msg field, preventing directive injection via crafted names.
+func sanitizeComment(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
 }
 
 // ruleIDGen is a per-invocation counter for generating unique rule IDs

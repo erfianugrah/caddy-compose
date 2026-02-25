@@ -7,10 +7,38 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+// SecRule field validation patterns — restrict user-supplied values that are
+// interpolated directly into ModSecurity directives to prevent injection.
+var (
+	// ruleTagRe matches valid CRS tag names: letters, digits, /, _, -, .
+	// e.g. "language/php", "OWASP_CRS/WEB_ATTACK/SQL_INJECTION"
+	ruleTagRe = regexp.MustCompile(`^[a-zA-Z0-9/_.\-]+$`)
+
+	// variableRe matches valid SecRule variable expressions: letters, digits,
+	// _, :, !, |, and . — e.g. "ARGS:foo", "!REQUEST_COOKIES:/^__utm/",
+	// "REQUEST_HEADERS:User-Agent"
+	variableRe = regexp.MustCompile(`^[a-zA-Z0-9_:!.|/^\-]+$`)
+
+	// namedFieldNameRe matches the name portion of named condition fields
+	// (header, cookie, args, response_header) — the part before ':' in the
+	// value. e.g. "User-Agent", "X-Forwarded-For", "__session"
+	namedFieldNameRe = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
+)
+
+// namedConditionFields are condition fields where the value has a "Name:value"
+// format and the Name portion is interpolated into the SecRule variable.
+var namedConditionFields = map[string]bool{
+	"header":          true,
+	"cookie":          true,
+	"args":            true,
+	"response_header": true,
+}
 
 // atomicWriteFile writes data to a file atomically by first writing to a
 // temporary file in the same directory, then renaming it to the target path.
@@ -273,6 +301,10 @@ func validateExclusion(e RuleExclusion) error {
 	if e.Name == "" {
 		return fmt.Errorf("name is required")
 	}
+	// Reject control characters in the name (used in SecRule comments and msg fields).
+	if strings.ContainsAny(e.Name, "\n\r") {
+		return fmt.Errorf("name must not contain newlines")
+	}
 	if !validExclusionTypes[e.Type] {
 		return fmt.Errorf("invalid exclusion type: %q", e.Type)
 	}
@@ -306,6 +338,19 @@ func validateExclusion(e RuleExclusion) error {
 				}
 			}
 		}
+		// Validate named field names (header, cookie, args, response_header).
+		// The "Name:value" format uses the Name as a SecRule variable suffix;
+		// restrict it to safe characters to prevent directive injection.
+		if namedConditionFields[c.Field] && strings.Contains(c.Value, ":") {
+			name := c.Value[:strings.Index(c.Value, ":")]
+			if name != "" && !namedFieldNameRe.MatchString(name) {
+				return fmt.Errorf("condition[%d]: invalid %s name %q (letters, digits, hyphens, underscores only)", i, c.Field, name)
+			}
+		}
+		// Reject control characters in condition values.
+		if strings.ContainsAny(c.Value, "\n\r") {
+			return fmt.Errorf("condition[%d]: value must not contain newlines", i)
+		}
 	}
 
 	// Type-specific validation.
@@ -332,6 +377,11 @@ func validateExclusion(e RuleExclusion) error {
 				return fmt.Errorf("invalid rule_id: %w", err)
 			}
 		}
+		if e.RuleTag != "" {
+			if !ruleTagRe.MatchString(e.RuleTag) {
+				return fmt.Errorf("invalid rule_tag %q (letters, digits, /, _, -, . only)", e.RuleTag)
+			}
+		}
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("skip_rule requires at least one condition")
 		}
@@ -352,6 +402,9 @@ func validateExclusion(e RuleExclusion) error {
 		if e.RuleTag == "" {
 			return fmt.Errorf("rule_tag is required for type %q", e.Type)
 		}
+		if !ruleTagRe.MatchString(e.RuleTag) {
+			return fmt.Errorf("invalid rule_tag %q (letters, digits, /, _, -, . only)", e.RuleTag)
+		}
 	}
 
 	// Variable required for update_target types.
@@ -359,6 +412,9 @@ func validateExclusion(e RuleExclusion) error {
 	case "update_target_by_id", "update_target_by_tag", "runtime_remove_target_by_id", "runtime_remove_target_by_tag":
 		if e.Variable == "" {
 			return fmt.Errorf("variable is required for type %q", e.Type)
+		}
+		if !variableRe.MatchString(e.Variable) {
+			return fmt.Errorf("invalid variable %q (letters, digits, _, :, !, |, ., / only)", e.Variable)
 		}
 	}
 
