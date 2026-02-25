@@ -201,7 +201,20 @@ func (s *AccessLogStore) appendEventsToJSONL(events []RateLimitEvent) {
 }
 
 // compactEventFile rewrites the JSONL file with only the current in-memory events.
+// Acquires a read lock internally — do NOT call while holding s.mu (use
+// compactEventFileLocked instead).
 func (s *AccessLogStore) compactEventFile() {
+	if s.eventFile == "" {
+		return
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.compactEventFileLocked()
+}
+
+// compactEventFileLocked rewrites the JSONL file with the current in-memory
+// events. The caller MUST hold s.mu (at least RLock).
+func (s *AccessLogStore) compactEventFileLocked() {
 	if s.eventFile == "" {
 		return
 	}
@@ -212,7 +225,6 @@ func (s *AccessLogStore) compactEventFile() {
 		return
 	}
 
-	s.mu.RLock()
 	count := len(s.events)
 	for i := range s.events {
 		data, err := json.Marshal(s.events[i])
@@ -222,7 +234,6 @@ func (s *AccessLogStore) compactEventFile() {
 		f.Write(data)
 		f.Write([]byte{'\n'})
 	}
-	s.mu.RUnlock()
 
 	f.Sync()
 	f.Close()
@@ -413,8 +424,10 @@ func (s *AccessLogStore) evict() {
 		copy(remaining, s.events[idx:])
 		s.events = remaining
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
-		// Compact the JSONL file to match in-memory state.
-		go s.compactEventFile()
+		// Compact the JSONL file synchronously to avoid racing with
+		// appendEventsToJSONL on the next tail cycle. Use the locked
+		// variant since we already hold s.mu.
+		s.compactEventFileLocked()
 	}
 }
 

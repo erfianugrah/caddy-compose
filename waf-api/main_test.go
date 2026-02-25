@@ -7296,7 +7296,7 @@ func TestGeoIPStore_CacheEviction(t *testing.T) {
 		store.cache[ip] = geoEntry{country: "XX", ts: time.Now()}
 	}
 	// Manually trigger eviction
-	store.evictOldest()
+	store.evictRandom()
 	size := len(store.cache)
 	store.mu.Unlock()
 

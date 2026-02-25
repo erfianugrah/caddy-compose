@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,7 +23,7 @@ type Store struct {
 
 	// file tailing state
 	path       string
-	offset     int64
+	offset     atomic.Int64
 	offsetFile string // persistent offset file (empty = don't persist)
 
 	// JSONL event persistence (empty = don't persist events)
@@ -49,7 +50,7 @@ func (s *Store) SetOffsetFile(path string) {
 	// Restore offset from disk.
 	if data, err := os.ReadFile(path); err == nil {
 		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
-			s.offset = v
+			s.offset.Store(v)
 			log.Printf("restored audit log offset %d from %s", v, path)
 		}
 	}
@@ -60,7 +61,7 @@ func (s *Store) saveOffset() {
 	if s.offsetFile == "" {
 		return
 	}
-	data := []byte(strconv.FormatInt(s.offset, 10) + "\n")
+	data := []byte(strconv.FormatInt(s.offset.Load(), 10) + "\n")
 	if err := os.WriteFile(s.offsetFile, data, 0644); err != nil {
 		log.Printf("error saving audit log offset to %s: %v", s.offsetFile, err)
 	}
@@ -98,7 +99,7 @@ func (s *Store) SetEventFile(path string) {
 	log.Printf("restored %d events from %s", len(events), path)
 	if migrated > 0 {
 		log.Printf("migrated %d misclassified policy_skip→blocked events", migrated)
-		go s.compactEventFile()
+		s.compactEventFileLocked()
 	}
 }
 
@@ -130,12 +131,24 @@ func (s *Store) appendEventsToJSONL(events []Event) {
 }
 
 // compactEventFile rewrites the JSONL file with only the current in-memory events.
-// Called after eviction to remove old entries from disk.
+// Acquires a read lock internally — do NOT call while holding s.mu (use
+// compactEventFileLocked instead).
 func (s *Store) compactEventFile() {
 	if s.eventFile == "" {
 		return
 	}
-	// Write to temp file, then atomic rename.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.compactEventFileLocked()
+}
+
+// compactEventFileLocked rewrites the JSONL file with the current in-memory
+// events. The caller MUST hold s.mu (at least RLock).
+func (s *Store) compactEventFileLocked() {
+	if s.eventFile == "" {
+		return
+	}
+
 	tmp := s.eventFile + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
@@ -143,7 +156,6 @@ func (s *Store) compactEventFile() {
 		return
 	}
 
-	s.mu.RLock()
 	count := len(s.events)
 	for i := range s.events {
 		stripped := s.events[i]
@@ -157,7 +169,6 @@ func (s *Store) compactEventFile() {
 		f.Write(data)
 		f.Write([]byte{'\n'})
 	}
-	s.mu.RUnlock()
 
 	f.Sync()
 	f.Close()
@@ -230,16 +241,16 @@ func (s *Store) Load() {
 		log.Printf("error stat audit log: %v", err)
 		return
 	}
-	if info.Size() < s.offset {
-		log.Printf("audit log appears rotated (size %d < offset %d), re-reading from start", info.Size(), s.offset)
-		s.offset = 0
+	if info.Size() < s.offset.Load() {
+		log.Printf("audit log appears rotated (size %d < offset %d), re-reading from start", info.Size(), s.offset.Load())
+		s.offset.Store(0)
 		s.saveOffset()
 		// Don't clear in-memory events — with copytruncate rotation the
 		// already-parsed events are still valid. The eviction loop will
 		// age them out naturally based on maxAge.
 	}
 
-	bytesToRead := info.Size() - s.offset
+	bytesToRead := info.Size() - s.offset.Load()
 	if bytesToRead == 0 {
 		// No new data, but still run eviction for time-based cleanup.
 		s.evict()
@@ -247,11 +258,11 @@ func (s *Store) Load() {
 	}
 
 	log.Printf("audit log: parsing %s from offset %d (%s to read)",
-		s.path, s.offset, formatBytes(bytesToRead))
+		s.path, s.offset.Load(), formatBytes(bytesToRead))
 
 	// Seek to where we left off.
-	if s.offset > 0 {
-		if _, err := f.Seek(s.offset, io.SeekStart); err != nil {
+	if s.offset.Load() > 0 {
+		if _, err := f.Seek(s.offset.Load(), io.SeekStart); err != nil {
 			log.Printf("error seeking audit log: %v", err)
 			return
 		}
@@ -316,7 +327,7 @@ func (s *Store) Load() {
 	if err != nil {
 		log.Printf("error getting file offset: %v", err)
 	} else {
-		s.offset = newOffset
+		s.offset.Store(newOffset)
 		s.saveOffset()
 	}
 
@@ -359,8 +370,10 @@ func (s *Store) evict() {
 		copy(remaining, s.events[idx:])
 		s.events = remaining
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
-		// Compact the JSONL file to match in-memory state.
-		go s.compactEventFile()
+		// Compact the JSONL file synchronously to avoid racing with
+		// appendEventsToJSONL on the next tail cycle. Use the locked
+		// variant since we already hold s.mu.
+		s.compactEventFileLocked()
 	}
 }
 
@@ -689,7 +702,7 @@ func (s *Store) Stats() map[string]any {
 	stats := map[string]any{
 		"events":     len(s.events),
 		"log_file":   s.path,
-		"offset":     s.offset,
+		"offset":     s.offset.Load(),
 		"max_age":    s.maxAge.String(),
 		"event_file": s.eventFile,
 	}
