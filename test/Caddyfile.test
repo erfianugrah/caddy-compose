@@ -1,0 +1,137 @@
+{
+	admin localhost:2019
+	order coraza_waf first
+	log {
+		level INFO
+		output stdout
+		format json
+	}
+	servers {
+		strict_sni_host insecure_off
+	}
+}
+
+(cors) {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://{http.request.host}"
+		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
+		header Access-Control-Allow-Headers "Content-Type"
+		header Access-Control-Max-Age "3600"
+		respond "" 204
+	}
+	header Access-Control-Allow-Origin "https://{http.request.host}"
+	header Vary Origin
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+		-X-Powered-By
+	}
+}
+
+(waf) {
+	@not_websocket {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket {
+		coraza_waf {
+			load_owasp_crs
+			directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			SecRuleEngine On
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(rate_limit) {
+	rate_limit {
+		zone {args[0]} {
+			match {
+				not header Connection *Upgrade*
+			}
+			key {http.request.remote.host}
+			events {args[1]}
+			window {args[2]}
+		}
+	}
+	header X-RateLimit-Limit "{args[1]}"
+	header X-RateLimit-Policy "{args[1]};w={args[2]};name=\"{args[0]}\""
+}
+
+(site_log) {
+	log {
+		level INFO
+		output stdout
+		format json
+	}
+}
+
+(ipsum_blocklist) {
+	import /etc/caddy/ipsum_block.caddy
+}
+
+(static_cache) {
+	@fonts path *.woff *.woff2 *.ttf *.eot *.otf
+	header @fonts ?Cache-Control "public, max-age=31536000, immutable"
+
+	@images path *.png *.jpg *.jpeg *.gif *.webp *.avif *.svg *.ico
+	header @images ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@styles path *.css
+	header @styles ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@scripts path *.js
+	header @scripts ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@media path *.mp3 *.mp4 *.flac *.mkv *.avi *.ogg *.opus *.wav *.aac *.webm
+	header @media ?Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
+}
+
+(proxy_headers) {
+	header_up X-Forwarded-For {remote_host}
+}
+
+(error_pages) {
+	handle_errors {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+:8080 {
+	import cors
+	import security_headers
+	import static_cache
+	import waf
+	import ipsum_blocklist
+	import rate_limit test_zone 10 1m
+	encode zstd gzip
+	reverse_proxy httpbun:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log test
+}
+
+:2018 {
+	metrics
+}

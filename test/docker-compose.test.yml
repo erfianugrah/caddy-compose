@@ -1,0 +1,18 @@
+services:
+  caddy:
+    image: erfianugrah/caddy:1.29.0-2.11.1
+    container_name: caddy-test
+    ports:
+      - "8080:8080"
+      - "2018:2018"
+      - "2019:2019"
+    volumes:
+      - ./Caddyfile.test:/etc/caddy/Caddyfile:ro
+      - ./ipsum_block.caddy:/etc/caddy/ipsum_block.caddy:ro
+
+    depends_on:
+      - httpbun
+
+  httpbun:
+    image: mccutchen/go-httpbin
+    container_name: httpbun

@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import PolicyEngine from "../components/PolicyEngine";
+---
+
+<DashboardLayout title="wafctl — Policy Engine" active="policy">
+  <PolicyEngine client:load />
+</DashboardLayout>

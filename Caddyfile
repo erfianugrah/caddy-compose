@@ -1,0 +1,703 @@
+{
+	# Admin API — localhost for healthcheck/metrics + Unix socket for wafctl reload
+	admin localhost:2019
+
+	# Prometheus metrics — exposed via admin API at localhost:2019/metrics
+	metrics
+
+	email {$EMAIL}
+	acme_dns cloudflare {$CF_API_TOKEN}
+	cert_issuer acme
+	grace_period 5s
+
+	# Encrypted Client Hello — hides real SNI from ISP/eavesdroppers
+	# Requires client DoH/DoT for full privacy benefit
+	dns cloudflare {$CF_API_TOKEN}
+	ech ech.erfi.io
+
+	# Coraza WAF must run before other handlers
+	order coraza_waf first
+
+	log {
+		level INFO
+		output file /var/log/access.log {
+			roll_size 256mb
+			roll_keep 5
+			roll_keep_for 168h
+		}
+		format json {
+			time_format wall
+		}
+	}
+	servers {
+		strict_sni_host on
+		protocols h1 h2 h3
+		import /etc/caddy/cf_trusted_proxies.caddy
+	}
+	dynamic_dns {
+		provider cloudflare {$CF_API_TOKEN}
+		domains {
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin cdn
+		}
+		versions ipv4
+		check_interval 5m
+		ip_source upnp
+		ip_source simple_http https://icanhazip.com
+		ip_source simple_http https://api.ipify.org
+		ip_source simple_http https://myip.addr.space
+		ip_source simple_http https://ifconfig.me
+		ip_source simple_http https://ident.me
+		ip_source simple_http https://bot.whatismyipaddress.com
+		ip_source simple_http https://ipecho.net/plain
+	}
+}
+
+(cors) {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://{http.request.host}"
+		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
+		header Access-Control-Allow-Headers "Content-Type"
+		header Access-Control-Max-Age "3600"
+		respond "" 204
+	}
+	header Access-Control-Allow-Origin "https://{http.request.host}"
+	header Vary Origin
+}
+
+# Static asset caching — sets Cache-Control only if the upstream didn't already.
+# Respects upstream headers from apps that set their own (Jellyfin, Vaultwarden, Immich).
+# Cloudflare edge and browsers both honour these.
+# Usage: import static_cache
+(static_cache) {
+	@fonts path *.woff *.woff2 *.ttf *.eot *.otf
+	header @fonts ?Cache-Control "public, max-age=31536000, immutable"
+
+	@images path *.png *.jpg *.jpeg *.gif *.webp *.avif *.svg *.ico
+	header @images ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@styles path *.css
+	header @styles ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@scripts path *.js
+	header @scripts ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+
+	@media path *.mp3 *.mp4 *.flac *.mkv *.avi *.ogg *.opus *.wav *.aac *.webm
+	header @media ?Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
+}
+
+# Global security headers — applied to every site via import
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		X-Permitted-Cross-Domain-Policies "none"
+		?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' wss: ws: https:; media-src 'self' blob: https:; frame-src 'self' https:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+		-Server
+		-X-Powered-By
+	}
+}
+
+# Coraza WAF — OWASP CRS with dynamic per-service configuration.
+# WebSocket upgrades are skipped (Coraza mangles the 101 handshake).
+#
+# (waf)     — Unified WAF snippet. Per-service settings (paranoia level,
+#             thresholds, rule groups, mode) are dynamically generated via
+#             custom-waf-settings.conf, managed by the wafctl Settings page.
+# (waf_off) — No WAF processing. For metrics-only or respond-only services.
+#
+# Config loading order inside (waf):
+#   1. /etc/caddy/coraza/pre-crs.conf           — Baked-in defaults (image build)
+#   2. /data/coraza/custom-pre-crs.conf         — Dynamic exclusions (Policy Engine UI)
+#   3. @crs-setup.conf.example                  — CRS default setup
+#   4. /data/coraza/custom-waf-settings.conf    — Dynamic settings (SecRuleEngine, paranoia, thresholds, rule groups)
+#   5. @owasp_crs/*.conf                        — CRS detection rules
+#   6. /etc/caddy/coraza/post-crs.conf          — Baked-in post-CRS rules (image build)
+#   7. /data/coraza/custom-post-crs.conf        — Dynamic post-CRS exclusions (Policy Engine UI)
+#
+# NOTE: SecRuleEngine is NOT set in this Caddyfile. It is emitted by
+# custom-waf-settings.conf (generated by wafctl) so the Settings UI
+# is the single source of truth for the WAF engine mode.
+(waf) {
+	@not_websocket {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket {
+		coraza_waf {
+			load_owasp_crs
+			directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include /data/coraza/custom-pre-crs.conf
+			Include @crs-setup.conf.example
+			Include /data/coraza/custom-waf-settings.conf
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			Include /data/coraza/custom-post-crs.conf
+			SecAuditEngine RelevantOnly
+			SecAuditLog /var/log/coraza-audit.log
+			SecAuditLogFormat json
+			SecAuditLogParts ABCFHKZ
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(waf_off) {
+	# No WAF processing — placeholder snippet for services that don't need it.
+}
+
+# Rate limiting — per-zone .caddy files managed by wafctl Rate Limit Engine.
+# Each site block imports its zone file via glob pattern:
+#   import /data/caddy/rl/<zone>_rl*.caddy
+# The _rl suffix prevents glob collisions (e.g. "caddy" vs "caddy-prometheus").
+# If no file exists for a zone, the glob is a no-op (no rate limit applied).
+# wafctl scans this Caddyfile on boot and creates placeholder files for
+# any zone that doesn't have a .caddy file yet, so new site blocks work
+# without manually configuring rate limits first.
+# Zone files are written by wafctl and contain rate_limit directives.
+# The plugin automatically sets Retry-After on 429 responses.
+
+# Common TLS config snippet
+(tls_config) {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
+		}
+	}
+}
+
+# Standard log config — INFO level, per-site log file + combined log
+(site_log) {
+	log {
+		level INFO
+		output file /var/log/{args[0]}-access.log {
+			roll_size 256mb
+			roll_keep 5
+			roll_keep_for 168h
+		}
+		format json {
+			time_format wall
+		}
+	}
+	log combined {
+		level INFO
+		output file /var/log/combined-access.log {
+			mode 0644
+			roll_size 256mb
+			roll_keep 3
+			roll_keep_for 168h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+# IPsum blocklist — auto-generated file with @ipsum_blocked matcher + respond 403
+# Returns 403 with X-Blocked-By: ipsum header (logged in access log for analytics)
+# Updated daily by scripts/update-ipsum.sh via cron
+# Usage: import ipsum_blocklist (place BEFORE waf to skip WAF processing for blocked IPs)
+(ipsum_blocklist) {
+	import /data/coraza/ipsum_block.caddy
+}
+
+# Authelia forward auth — applied to protected services
+# Usage: import forward_auth
+(forward_auth) {
+	forward_auth 172.19.99.2:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+	}
+}
+
+# Common reverse proxy headers snippet
+(proxy_headers) {
+	trusted_proxies private_ranges
+	header_up X-Forwarded-For {client_ip}
+	header_down -Access-Control-Allow-Origin
+	header_down -Access-Control-Allow-Methods
+	header_down -Access-Control-Allow-Headers
+	header_down -Access-Control-Max-Age
+}
+
+# Custom error pages — serves /etc/caddy/errors/error.html with Caddy templates
+# Covers remaining error codes not handled by the (waf) snippet.
+# The (waf) snippet handles 403 and 429 specifically; this catches the rest
+# (404, 500, 502, 503, 504, etc.)
+# Usage: import error_pages
+(error_pages) {
+	handle_errors {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+# caddy.erfi.io — Admin API is localhost-only.
+# Use `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` to reload.
+# Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
+caddy.erfi.io {
+	import cors
+	import security_headers
+	import ipsum_blocklist
+	import /data/caddy/rl/caddy_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	respond "Caddy is running. Admin API available via localhost:2019 only." 200
+	import error_pages
+	import site_log caddy-api
+}
+
+waf.erfi.io {
+	import cors
+	import security_headers
+	import forward_auth
+	import ipsum_blocklist
+	import /data/caddy/rl/waf_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	handle /api/* {
+		reverse_proxy 172.19.98.2:8080 {
+			import proxy_headers
+		}
+	}
+	# Fallback: auth redirects and HTML get no-store (prevents Cloudflare/browser caching 302s)
+	header ?Cache-Control "no-store"
+	handle {
+		root * /etc/caddy/waf-ui
+		# Hashed assets are immutable — only reached after forward_auth succeeds
+		@waf_hashed path /_astro/*
+		header @waf_hashed Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} {path}/index.html /index.html
+		file_server
+	}
+	import error_pages
+	import site_log waf
+}
+
+authelia.erfi.io {
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/authelia_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.99.2:9091 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log authelia
+}
+
+servarr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/servarr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+
+	# Unraid GraphQL API — bypass Authelia, rely on Unraid's own x-api-key auth
+	route {
+		@unraid_api path /graphql
+		reverse_proxy @unraid_api localhost:90 {
+			import proxy_headers
+		}
+
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+
+		reverse_proxy localhost:90 {
+			import proxy_headers
+		}
+	}
+	import error_pages
+	import site_log servarr
+}
+
+sonarr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/sonarr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.3:8989 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log sonarr
+}
+
+radarr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/radarr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.2:7878 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log radarr
+}
+
+bazarr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/bazarr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.4:6767 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log bazarr
+}
+
+tracearr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/tracearr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.23:3000 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log tracearr
+}
+
+vault.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/vault_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.4.2:80 {
+		import proxy_headers
+		header_up X-Real-IP {remote_host}
+	}
+	import error_pages
+	import site_log vaultwarden
+}
+
+prowlarr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/prowlarr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.10:9696 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log prowlarr
+}
+
+jellyfin.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/jellyfin_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.15:8096 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log jellyfin
+}
+
+qbit.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/qbit_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.22:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log qbit
+}
+
+change.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import forward_auth
+	import /data/caddy/rl/change_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.3.2:5000 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log change
+}
+
+seerr.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/seerr_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.21:5055 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log seerr
+}
+
+keycloak.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/keycloak_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.12.2:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log keycloak
+}
+
+joplin.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/joplin_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.13.2:22300 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log joplin
+}
+
+navidrome.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/navidrome_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.17:4533 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log navidrome
+}
+
+sabnzbd.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/sabnzbd_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.1.19:6666 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log sabnzbd
+}
+
+immich.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/immich_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.22.2:2283 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log immich
+}
+
+caddy-prometheus.erfi.io {
+	import cors
+	import security_headers
+	import waf_off
+	import ipsum_blocklist
+	import /data/caddy/rl/caddy-prometheus_rl*.caddy
+	import tls_config
+	import forward_auth
+	encode zstd gzip
+	reverse_proxy /metrics localhost:2019 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log caddy-prometheus
+}
+
+copyparty.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/copyparty_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.66.2:3923 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log copyparty
+}
+
+dockge.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/dockge_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.17.0.2:5001 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log dockge
+}
+
+httpbun.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/httpbun_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.15.2:80 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log httpbun
+}
+
+httpbin.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/httpbin_rl*.caddy
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.15.3:80 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log httpbin
+}
+
+cdn.erfi.io {
+	import cors
+	import security_headers
+	import static_cache
+	import ipsum_blocklist
+	import waf
+	import /data/caddy/rl/cdn_rl*.caddy
+	import tls_config
+	encode zstd gzip
+
+	# S3 API / bucket proxy — bypass Authelia, bucket policies control access
+	# Console — protected behind Authelia, strip /console prefix for port 9001
+	route {
+		@s3_api not path /console /console/*
+		reverse_proxy @s3_api 172.70.0.2:9000 {
+			import proxy_headers
+		}
+
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+
+		uri strip_prefix /console
+		reverse_proxy 172.70.0.2:9001 {
+			import proxy_headers
+		}
+	}
+	import error_pages
+	import site_log cdn
+}
+
+# Internal admin API proxy — allows wafctl to trigger Caddy reloads.
+# Restricted to the wafctl Docker subnet (172.19.98.0/24).
+:2020 {
+	@allowed remote_ip 172.19.98.0/24 172.17.0.0/16
+	handle @allowed {
+		reverse_proxy localhost:2019 {
+			header_up Host localhost:2019
+		}
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+}

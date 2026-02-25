@@ -1,0 +1,185 @@
+name: Build, Scan, Push, Sign
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'Caddyfile'
+      - 'wafctl/**'
+      - 'waf-dashboard/**'
+      - 'coraza/**'
+      - 'scripts/**'
+      - 'errors/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+env:
+  CADDY_IMAGE: erfianugrah/caddy
+  CADDY_TAG: "1.29.0-2.11.1"
+  CADDY_VERSION: "2.11.1"
+  WAFCTL_IMAGE: erfianugrah/wafctl
+  WAFCTL_VERSION: "0.21.0"
+
+permissions:
+  contents: read
+  id-token: write  # cosign keyless signing via GitHub OIDC
+
+jobs:
+  # ── Determine which images changed ───────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      caddy: ${{ steps.filter.outputs.caddy }}
+      wafctl: ${{ steps.filter.outputs.wafctl }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            caddy:
+              - 'Dockerfile'
+              - 'Caddyfile'
+              - 'waf-dashboard/**'
+              - 'wafctl/**'
+              - 'coraza/**'
+              - 'scripts/**'
+              - 'errors/**'
+            wafctl:
+              - 'wafctl/**'
+
+  # ── Build + scan + push + sign Caddy image ───────────────────────
+  caddy:
+    needs: changes
+    if: needs.changes.outputs.caddy == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image ref
+        id: meta
+        run: echo "full=${CADDY_IMAGE}:${CADDY_TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.full }}
+          build-args: |
+            VERSION=${{ env.CADDY_VERSION }}
+            WAFCTL_VERSION=${{ env.WAFCTL_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.full }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - uses: sigstore/cosign-installer@main
+
+      - name: Sign image
+        run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.full }}
+          format: spdx-json
+          output-file: caddy.spdx.json
+
+      - name: Attest SBOM
+        run: cosign attest --yes --predicate caddy.spdx.json --type spdxjson "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
+
+  # ── Build + scan + push + sign wafctl image ─────────────────────
+  wafctl:
+    needs: changes
+    if: needs.changes.outputs.wafctl == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: echo "full=${WAFCTL_IMAGE}:${WAFCTL_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: ./wafctl
+          file: ./wafctl/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.full }}
+          build-args: VERSION=${{ env.WAFCTL_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.full }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - uses: sigstore/cosign-installer@main
+
+      - name: Sign image
+        run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.full }}
+          format: spdx-json
+          output-file: wafctl.spdx.json
+
+      - name: Attest SBOM
+        run: cosign attest --yes --predicate wafctl.spdx.json --type spdxjson "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
+
+  # ── Run tests ────────────────────────────────────────────────────
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Run Go tests
+        run: go test -count=1 -timeout 60s ./...
+        working-directory: wafctl
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: waf-dashboard/package-lock.json
+      - run: npm ci
+        working-directory: waf-dashboard
+      - run: npx vitest run
+        working-directory: waf-dashboard

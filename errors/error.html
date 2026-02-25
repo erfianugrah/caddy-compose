@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Req.Host}} &mdash; {{placeholder "http.error.status_code"}}</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{height:100%}
+  body{
+    min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:#0f1117;color:#c9d1d9;padding:2rem;text-align:center;
+  }
+  .container{max-width:520px;width:100%}
+  .code{
+    font-size:clamp(5rem,15vw,8rem);font-weight:800;letter-spacing:-.04em;
+    background:linear-gradient(135deg,#58a6ff 0%,#bc8cff 50%,#f778ba 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;line-height:1.1;
+  }
+  .title{font-size:1.25rem;font-weight:600;color:#e6edf3;margin:.75rem 0 .5rem}
+  .desc{font-size:.95rem;color:#8b949e;line-height:1.6;margin-bottom:2rem}
+  .actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+  a,button{
+    display:inline-flex;align-items:center;gap:.4rem;
+    padding:.6rem 1.4rem;border-radius:8px;font-size:.875rem;font-weight:500;
+    text-decoration:none;cursor:pointer;transition:all .15s ease;border:none;
+  }
+  .btn-primary{background:#58a6ff;color:#0f1117}
+  .btn-primary:hover{background:#79b8ff}
+  .btn-secondary{background:transparent;color:#8b949e;border:1px solid #30363d}
+  .btn-secondary:hover{color:#c9d1d9;border-color:#58a6ff}
+  .meta{margin-top:3rem;font-size:.75rem;color:#484f58}
+  .divider{width:60px;height:2px;background:#21262d;margin:1.5rem auto}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="code">{{placeholder "http.error.status_code"}}</div>
+
+  {{if eq (placeholder "http.error.status_code") "400"}}
+  <p class="title">Bad request</p>
+  <p class="desc">The request was malformed or couldn't be understood by the server.</p>
+  {{else if eq (placeholder "http.error.status_code") "403"}}
+  <p class="title">Access denied</p>
+  <p class="desc">You don't have permission to view this page.</p>
+  {{else if eq (placeholder "http.error.status_code") "404"}}
+  <p class="title">Not found</p>
+  <p class="desc">The page you're looking for doesn't exist or has been moved.</p>
+  {{else if eq (placeholder "http.error.status_code") "429"}}
+  <p class="title">Slow down</p>
+  <p class="desc">You're sending requests too quickly. Wait a moment and try again.</p>
+  {{else if eq (placeholder "http.error.status_code") "500"}}
+  <p class="title">Internal server error</p>
+  <p class="desc">Something went wrong on our end. Try again in a few moments.</p>
+  {{else if eq (placeholder "http.error.status_code") "502"}}
+  <p class="title">Bad gateway</p>
+  <p class="desc">The upstream service isn't responding. It may be restarting.</p>
+  {{else if eq (placeholder "http.error.status_code") "503"}}
+  <p class="title">Service unavailable</p>
+  <p class="desc">This service is temporarily offline for maintenance.</p>
+  {{else if eq (placeholder "http.error.status_code") "504"}}
+  <p class="title">Gateway timeout</p>
+  <p class="desc">The upstream service took too long to respond.</p>
+  {{else}}
+  <p class="title">Something went wrong</p>
+  <p class="desc">An unexpected error occurred while processing your request.</p>
+  {{end}}
+
+  <div class="actions">
+    <a href="javascript:location.reload()" class="btn-primary">Try again</a>
+    <a href="/" class="btn-secondary">Go home</a>
+  </div>
+
+  <div class="divider"></div>
+  <p class="meta">{{.Req.Host}}</p>
+</div>
+</body>
+</html>

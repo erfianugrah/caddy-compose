@@ -1,0 +1,195 @@
+# caddy-compose Makefile
+# Builds images locally, pushes to Docker Hub, deploys to a remote host.
+#
+# All settings can be overridden via environment variables or a .env.mk file.
+# Example:
+#   echo 'REMOTE=myhost' > .env.mk
+#   echo 'DEPLOY_MODE=compose' >> .env.mk
+#   make deploy
+#
+# Or inline:
+#   make deploy REMOTE=myhost DEPLOY_MODE=compose
+
+# ── Load overrides from .env.mk if it exists ───────────────────────
+-include .env.mk
+
+# ── Image tags ──────────────────────────────────────────────────────
+CADDY_IMAGE   ?= erfianugrah/caddy:1.29.0-2.11.1
+WAFCTL_IMAGE ?= erfianugrah/wafctl:0.21.0
+
+# ── Remote host ─────────────────────────────────────────────────────
+# SSH host alias or user@host for the deployment target.
+REMOTE ?= servarr
+
+# ── Deploy mode ─────────────────────────────────────────────────────
+# "dockge"  — runs docker compose inside a dockge container (default)
+# "compose" — runs docker compose directly on the remote host
+DEPLOY_MODE ?= dockge
+
+# ── Remote paths ────────────────────────────────────────────────────
+# Where the compose stack lives on the remote host.
+# Dockge mode: path inside the dockge container (mapped from host).
+# Compose mode: absolute path on the remote host.
+STACK_PATH     ?= /opt/stacks/caddy/compose.yaml
+CADDYFILE_DEST ?= /mnt/user/data/caddy/Caddyfile
+COMPOSE_DEST   ?= /mnt/user/data/dockge/stacks/caddy/compose.yaml
+AUTHELIA_DEST  ?= /mnt/user/data/authelia/config
+
+# For dockge mode only — the container name running dockge.
+DOCKGE_CONTAINER ?= dockge
+
+# ── WAF data paths (on remote host) ────────────────────────────────
+WAF_CONFIG_PATH    ?= /mnt/user/data/wafctl/waf-config.json
+WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/coraza/custom-waf-settings.conf
+
+# ── Computed helpers ────────────────────────────────────────────────
+ifeq ($(DEPLOY_MODE),dockge)
+  COMPOSE_CMD = ssh $(REMOTE) "docker exec $(DOCKGE_CONTAINER) docker compose -f $(STACK_PATH)"
+  EXEC_CMD    = ssh $(REMOTE) "docker exec $(DOCKGE_CONTAINER) docker exec"
+else
+  COMPOSE_CMD = ssh $(REMOTE) "docker compose -f $(STACK_PATH)"
+  EXEC_CMD    = ssh $(REMOTE) "docker exec"
+endif
+
+.PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
+        deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
+        test test-go test-frontend status logs caddy-reload waf-deploy waf-config config \
+        scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+config: ## Show current configuration
+	@echo "REMOTE:           $(REMOTE)"
+	@echo "DEPLOY_MODE:      $(DEPLOY_MODE)"
+	@echo "CADDY_IMAGE:      $(CADDY_IMAGE)"
+	@echo "WAFCTL_IMAGE:    $(WAFCTL_IMAGE)"
+	@echo "STACK_PATH:       $(STACK_PATH)"
+	@echo "CADDYFILE_DEST:   $(CADDYFILE_DEST)"
+	@echo "COMPOSE_DEST:     $(COMPOSE_DEST)"
+ifeq ($(DEPLOY_MODE),dockge)
+	@echo "DOCKGE_CONTAINER: $(DOCKGE_CONTAINER)"
+endif
+
+# ── Build ───────────────────────────────────────────────────────────
+build: build-caddy build-wafctl ## Build both images
+
+build-caddy: ## Build Caddy image (includes waf-dashboard)
+	docker build -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
+
+WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
+
+build-wafctl: ## Build wafctl image
+	docker build -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile ./wafctl
+
+# ── Push ────────────────────────────────────────────────────────────
+push: push-caddy push-wafctl ## Push both images to Docker Hub
+
+push-caddy: ## Push Caddy image
+	docker push $(CADDY_IMAGE)
+
+push-wafctl: ## Push wafctl image
+	docker push $(WAFCTL_IMAGE)
+
+# ── Test ────────────────────────────────────────────────────────────
+test: test-go test-frontend ## Run all tests
+
+test-go: ## Run Go tests
+	cd wafctl && go test -count=1 -timeout 60s ./...
+
+test-frontend: ## Run frontend tests
+	cd waf-dashboard && npx vitest run
+
+# ── Security: scan, sign, SBOM ──────────────────────────────────────
+TRIVY_SEVERITY ?= CRITICAL,HIGH
+SBOM_DIR       ?= .sbom
+
+scan: scan-caddy scan-wafctl ## Scan both images for vulnerabilities
+
+scan-caddy: ## Trivy scan Caddy image
+	trivy image --severity $(TRIVY_SEVERITY) --exit-code 1 $(CADDY_IMAGE)
+
+scan-wafctl: ## Trivy scan wafctl image
+	trivy image --severity $(TRIVY_SEVERITY) --exit-code 1 $(WAFCTL_IMAGE)
+
+sign: sign-caddy sign-wafctl ## Sign both images (keyless / Sigstore)
+
+sign-caddy: ## Sign Caddy image with cosign (keyless)
+	cosign sign $(CADDY_IMAGE)
+
+sign-wafctl: ## Sign wafctl image with cosign (keyless)
+	cosign sign $(WAFCTL_IMAGE)
+
+verify: ## Verify signatures on both images
+	cosign verify $(CADDY_IMAGE) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+	cosign verify $(WAFCTL_IMAGE) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+
+sbom: sbom-caddy sbom-wafctl ## Generate SBOMs for both images
+
+sbom-caddy: ## Generate SBOM for Caddy image and attest to registry
+	@mkdir -p $(SBOM_DIR)
+	syft $(CADDY_IMAGE) -o spdx-json=$(SBOM_DIR)/caddy.spdx.json -o cyclonedx-json=$(SBOM_DIR)/caddy.cdx.json
+	cosign attest --yes --predicate $(SBOM_DIR)/caddy.spdx.json --type spdxjson $(CADDY_IMAGE)
+
+sbom-wafctl: ## Generate SBOM for wafctl image and attest to registry
+	@mkdir -p $(SBOM_DIR)
+	syft $(WAFCTL_IMAGE) -o spdx-json=$(SBOM_DIR)/wafctl.spdx.json -o cyclonedx-json=$(SBOM_DIR)/wafctl.cdx.json
+	cosign attest --yes --predicate $(SBOM_DIR)/wafctl.spdx.json --type spdxjson $(WAFCTL_IMAGE)
+
+# ── SCP / Deploy ────────────────────────────────────────────────────
+scp: ## SCP Caddyfile + compose.yaml to remote
+	@echo "Checking SSH connectivity to $(REMOTE)..."
+	@ssh -o ConnectTimeout=30 $(REMOTE) true
+	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
+	scp compose.yaml $(REMOTE):$(COMPOSE_DEST)
+
+scp-authelia: ## SCP Authelia config + users database to remote
+	scp authelia/configuration.yml $(REMOTE):$(AUTHELIA_DEST)/configuration.yml
+	scp authelia/users_database.yml $(REMOTE):$(AUTHELIA_DEST)/users_database.yml
+
+authelia-notification: ## Fetch and display Authelia 2FA notification.txt from remote
+	@ssh $(REMOTE) "cat $(AUTHELIA_DEST)/notification.txt"
+
+pull: ## Pull images on remote
+	$(COMPOSE_CMD) pull
+
+restart: ## Recreate containers on remote (picks up new images)
+	$(COMPOSE_CMD) up -d
+
+restart-force: ## Force restart all containers (re-reads bind-mounted configs)
+	$(COMPOSE_CMD) restart
+
+status: ## Show container status on remote
+	$(COMPOSE_CMD) ps
+
+logs: ## Tail logs from all containers
+	$(COMPOSE_CMD) logs --tail 30
+
+# ── Composite deploy targets ────────────────────────────────────────
+deploy-caddy: build-caddy scan-caddy push-caddy sign-caddy sbom-caddy scp pull restart ## Build, scan, push, sign, SBOM, SCP, restart Caddy
+	@echo "Caddy deployed (signed + SBOM attached)."
+
+deploy-wafctl: build-wafctl scan-wafctl push-wafctl sign-wafctl sbom-wafctl pull ## Build, scan, push, sign, SBOM, restart wafctl
+	$(COMPOSE_CMD) up -d wafctl
+	@echo "wafctl deployed (signed + SBOM attached)."
+
+deploy-all: build scan push sign sbom scp pull restart ## Full deploy: build + scan + push + sign + SBOM + SCP + restart
+	@echo "Full deploy complete (signed + SBOM attached)."
+
+deploy: deploy-all ## Alias for deploy-all
+
+# ── Caddy operations ────────────────────────────────────────────────
+caddy-reload: ## SCP Caddyfile, sync rate limit zones, reload Caddy
+	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/rate-limits/deploy --post-data=""
+
+# ── WAF operations (via wafctl on remote) ──────────────────────────
+waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/config/deploy --post-data=""
+
+waf-config: ## Show current WAF config from remote
+	@echo "=== waf-config.json ==="
+	@ssh $(REMOTE) "cat $(WAF_CONFIG_PATH)"
+	@echo "\n=== custom-waf-settings.conf ==="
+	@ssh $(REMOTE) "cat $(WAF_SETTINGS_PATH)"

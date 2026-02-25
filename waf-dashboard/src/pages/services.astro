@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import ServicesList from "../components/ServicesList";
+---
+
+<DashboardLayout title="wafctl — Services" active="services">
+  <ServicesList client:load />
+</DashboardLayout>

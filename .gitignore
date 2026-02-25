@@ -1,0 +1,38 @@
+# Secrets — plaintext .env used by Docker Compose (never committed)
+.env
+.env.mk
+*.pem
+*.key
+*.dec
+
+# Out-of-sync API config dump (contains hardcoded tokens)
+config.json
+
+# Go binaries
+wafctl/wafctl
+
+# Caddy runtime data
+/data/
+/config/
+/log/
+
+# Authelia runtime data (SQLite DB, notification file, logs)
+authelia/db.sqlite3
+authelia/notification.txt
+authelia/authelia.log
+
+# Authelia users database on the host (contains real password hashes)
+# The template in authelia/users_database.yml IS committed (placeholder hash only)
+
+# IPsum blocklist (generated at runtime by scripts/update-ipsum.sh)
+ipsum.txt
+ipsum_block.caddy
+
+# SBOM output
+.sbom/
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store

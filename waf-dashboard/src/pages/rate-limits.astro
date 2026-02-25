@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import RateLimitsPanel from "../components/RateLimitsPanel";
+---
+
+<DashboardLayout title="wafctl — Rate Limits" active="rate-limits">
+  <RateLimitsPanel client:load />
+</DashboardLayout>

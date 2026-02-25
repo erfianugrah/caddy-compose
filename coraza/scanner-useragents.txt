@@ -1,0 +1,53 @@
+# Known scanner and attack tool User-Agent substrings.
+# Matched via @pmFromFile (case-insensitive substring match).
+# Rule ID: 9100032 in pre-crs.conf
+#
+# Any client identifying as one of these tools is not a false positive.
+# Action: drop (connection reset — no response sent).
+#
+# SQL injection / exploitation
+sqlmap
+havij
+# Web vulnerability scanners
+nikto
+nuclei
+acunetix
+nessus
+qualys
+arachni
+whatweb
+wapiti
+skipfish
+# Directory / path brute-forcers
+gobuster
+dirbuster
+dirb
+ffuf
+wfuzz
+feroxbuster
+# Network scanners / crawlers
+nmap
+masscan
+zgrab
+censys
+shodan
+netcraft
+# Proxy / interception tools
+burpsuite
+burp
+zaproxy
+zap
+# Recon / enumeration
+httprobe
+subfinder
+amass
+httpx
+# Generic bot frameworks
+python-requests
+go-http-client
+libwww-perl
+lwp-trivial
+wget
+curl/
+mechanize
+scrapy
