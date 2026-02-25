@@ -19,11 +19,11 @@ Internet -> Cloudflare -> Caddy (host network, :443) -> backend containers (Dock
 
 ## Docker images
 
-### Caddy image: `erfianugrah/caddy:1.28.0-2.10.2`
+### Caddy image: `erfianugrah/caddy:1.29.0-2.11.1`
 
 Built locally, pushed to Docker Hub. Includes:
 
-- Caddy 2.10.2 with plugins: `caddy-dns/cloudflare`, `caddy-dynamicdns`, `caddy-ratelimit`, `coraza-caddy/v2`
+- Caddy 2.11.1 with plugins: `caddy-dns/cloudflare`, `caddy-dynamicdns`, `caddy-ratelimit`, `coraza-caddy/v2`
 - Custom Coraza WAF rules (`coraza/pre-crs.conf`, `coraza/post-crs.conf`) baked in
 - WAF dashboard static files (Astro build) at `/etc/caddy/waf-ui/`
 - Custom error pages (`errors/error.html`) at `/etc/caddy/errors/`
@@ -93,7 +93,7 @@ make deploy REMOTE=myhost DEPLOY_MODE=compose
 |---|---|---|
 | `REMOTE` | `servarr` | SSH host alias or `user@host` |
 | `DEPLOY_MODE` | `dockge` | `dockge` (via dockge container) or `compose` (direct) |
-| `CADDY_IMAGE` | `erfianugrah/caddy:1.28.0-2.10.2` | Caddy image tag |
+| `CADDY_IMAGE` | `erfianugrah/caddy:1.29.0-2.11.1` | Caddy image tag |
 | `WAFCTL_IMAGE` | `erfianugrah/wafctl:0.21.0` | wafctl image tag |
 | `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Compose file path (inside dockge or on host) |
 | `CADDYFILE_DEST` | `/mnt/user/data/caddy/Caddyfile` | Remote Caddyfile path for SCP |

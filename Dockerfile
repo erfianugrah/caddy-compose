@@ -1,4 +1,4 @@
-ARG VERSION=2.10.2
+ARG VERSION=2.11.1
 
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
@@ -44,11 +44,12 @@ COPY waf-dashboard/ ./
 RUN npm run build
 
 # Build wafctl sidecar
-FROM golang:1.23-alpine AS wafctl
+FROM golang:1.24-alpine AS wafctl
+ARG WAFCTL_VERSION=dev
 WORKDIR /build
 COPY wafctl/go.mod ./
 COPY wafctl/*.go ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o wafctl .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o wafctl .
 
 FROM caddy:${VERSION}-alpine
 RUN apk add --no-cache curl

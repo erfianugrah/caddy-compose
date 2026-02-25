@@ -28,6 +28,9 @@ authelia/authelia.log
 ipsum.txt
 ipsum_block.caddy
 
+# SBOM output
+.sbom/
+
 # Docker
 .dockerignore
 

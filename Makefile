@@ -14,7 +14,7 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:1.28.0-2.10.2
+CADDY_IMAGE   ?= erfianugrah/caddy:1.29.0-2.11.1
 WAFCTL_IMAGE ?= erfianugrah/wafctl:0.21.0
 
 # ── Remote host ─────────────────────────────────────────────────────
@@ -53,7 +53,8 @@ endif
 
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
         deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
-        test test-go test-frontend status logs caddy-reload waf-deploy waf-config config
+        test test-go test-frontend status logs caddy-reload waf-deploy waf-config config \
+        scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -75,7 +76,7 @@ endif
 build: build-caddy build-wafctl ## Build both images
 
 build-caddy: ## Build Caddy image (includes waf-dashboard)
-	docker build -t $(CADDY_IMAGE) .
+	docker build -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
 
 WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
 
@@ -99,6 +100,42 @@ test-go: ## Run Go tests
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
+
+# ── Security: scan, sign, SBOM ──────────────────────────────────────
+TRIVY_SEVERITY ?= CRITICAL,HIGH
+SBOM_DIR       ?= .sbom
+
+scan: scan-caddy scan-wafctl ## Scan both images for vulnerabilities
+
+scan-caddy: ## Trivy scan Caddy image
+	trivy image --severity $(TRIVY_SEVERITY) --exit-code 1 $(CADDY_IMAGE)
+
+scan-wafctl: ## Trivy scan wafctl image
+	trivy image --severity $(TRIVY_SEVERITY) --exit-code 1 $(WAFCTL_IMAGE)
+
+sign: sign-caddy sign-wafctl ## Sign both images (keyless / Sigstore)
+
+sign-caddy: ## Sign Caddy image with cosign (keyless)
+	cosign sign $(CADDY_IMAGE)
+
+sign-wafctl: ## Sign wafctl image with cosign (keyless)
+	cosign sign $(WAFCTL_IMAGE)
+
+verify: ## Verify signatures on both images
+	cosign verify $(CADDY_IMAGE) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+	cosign verify $(WAFCTL_IMAGE) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+
+sbom: sbom-caddy sbom-wafctl ## Generate SBOMs for both images
+
+sbom-caddy: ## Generate SBOM for Caddy image and attest to registry
+	@mkdir -p $(SBOM_DIR)
+	syft $(CADDY_IMAGE) -o spdx-json=$(SBOM_DIR)/caddy.spdx.json -o cyclonedx-json=$(SBOM_DIR)/caddy.cdx.json
+	cosign attest --yes --predicate $(SBOM_DIR)/caddy.spdx.json --type spdxjson $(CADDY_IMAGE)
+
+sbom-wafctl: ## Generate SBOM for wafctl image and attest to registry
+	@mkdir -p $(SBOM_DIR)
+	syft $(WAFCTL_IMAGE) -o spdx-json=$(SBOM_DIR)/wafctl.spdx.json -o cyclonedx-json=$(SBOM_DIR)/wafctl.cdx.json
+	cosign attest --yes --predicate $(SBOM_DIR)/wafctl.spdx.json --type spdxjson $(WAFCTL_IMAGE)
 
 # ── SCP / Deploy ────────────────────────────────────────────────────
 scp: ## SCP Caddyfile + compose.yaml to remote
@@ -130,15 +167,15 @@ logs: ## Tail logs from all containers
 	$(COMPOSE_CMD) logs --tail 30
 
 # ── Composite deploy targets ────────────────────────────────────────
-deploy-caddy: build-caddy push-caddy scp pull restart ## Build, push, SCP, restart Caddy
-	@echo "Caddy deployed."
+deploy-caddy: build-caddy scan-caddy push-caddy sign-caddy sbom-caddy scp pull restart ## Build, scan, push, sign, SBOM, SCP, restart Caddy
+	@echo "Caddy deployed (signed + SBOM attached)."
 
-deploy-wafctl: build-wafctl push-wafctl pull ## Build, push, restart wafctl
+deploy-wafctl: build-wafctl scan-wafctl push-wafctl sign-wafctl sbom-wafctl pull ## Build, scan, push, sign, SBOM, restart wafctl
 	$(COMPOSE_CMD) up -d wafctl
-	@echo "wafctl deployed."
+	@echo "wafctl deployed (signed + SBOM attached)."
 
-deploy-all: build push scp pull restart ## Full deploy: build + push + SCP + restart all
-	@echo "Full deploy complete."
+deploy-all: build scan push sign sbom scp pull restart ## Full deploy: build + scan + push + sign + SBOM + SCP + restart
+	@echo "Full deploy complete (signed + SBOM attached)."
 
 deploy: deploy-all ## Alias for deploy-all
 
