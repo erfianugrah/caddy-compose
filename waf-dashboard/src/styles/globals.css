@@ -52,6 +52,16 @@
     border-color: var(--color-border);
   }
 
+  /* Tailwind Preflight resets cursor to default on interactive elements.
+     Restore pointer cursor for buttons, links, selects, and summary. */
+  button,
+  [role="button"],
+  a,
+  select,
+  summary {
+    cursor: pointer;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
