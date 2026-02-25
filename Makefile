@@ -115,27 +115,27 @@ scan-wafctl: ## Trivy scan wafctl image
 
 sign: sign-caddy sign-wafctl ## Sign both images (keyless / Sigstore)
 
-sign-caddy: ## Sign Caddy image with cosign (keyless)
-	cosign sign $(CADDY_IMAGE)
+sign-caddy: ## Sign Caddy image with cosign (keyless, by digest)
+	cosign sign $$(docker inspect --format='{{index .RepoDigests 0}}' $(CADDY_IMAGE))
 
-sign-wafctl: ## Sign wafctl image with cosign (keyless)
-	cosign sign $(WAFCTL_IMAGE)
+sign-wafctl: ## Sign wafctl image with cosign (keyless, by digest)
+	cosign sign $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE))
 
 verify: ## Verify signatures on both images
-	cosign verify $(CADDY_IMAGE) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
-	cosign verify $(WAFCTL_IMAGE) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+	cosign verify $$(docker inspect --format='{{index .RepoDigests 0}}' $(CADDY_IMAGE)) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+	cosign verify $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE)) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
 
 sbom: sbom-caddy sbom-wafctl ## Generate SBOMs for both images
 
-sbom-caddy: ## Generate SBOM for Caddy image and attest to registry
+sbom-caddy: ## Generate SBOM for Caddy image and attest to registry (by digest)
 	@mkdir -p $(SBOM_DIR)
 	syft $(CADDY_IMAGE) -o spdx-json=$(SBOM_DIR)/caddy.spdx.json -o cyclonedx-json=$(SBOM_DIR)/caddy.cdx.json
-	cosign attest --yes --predicate $(SBOM_DIR)/caddy.spdx.json --type spdxjson $(CADDY_IMAGE)
+	cosign attest --yes --predicate $(SBOM_DIR)/caddy.spdx.json --type spdxjson $$(docker inspect --format='{{index .RepoDigests 0}}' $(CADDY_IMAGE))
 
-sbom-wafctl: ## Generate SBOM for wafctl image and attest to registry
+sbom-wafctl: ## Generate SBOM for wafctl image and attest to registry (by digest)
 	@mkdir -p $(SBOM_DIR)
 	syft $(WAFCTL_IMAGE) -o spdx-json=$(SBOM_DIR)/wafctl.spdx.json -o cyclonedx-json=$(SBOM_DIR)/wafctl.cdx.json
-	cosign attest --yes --predicate $(SBOM_DIR)/wafctl.spdx.json --type spdxjson $(WAFCTL_IMAGE)
+	cosign attest --yes --predicate $(SBOM_DIR)/wafctl.spdx.json --type spdxjson $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE))
 
 # ── SCP / Deploy ────────────────────────────────────────────────────
 scp: ## SCP Caddyfile + compose.yaml to remote
