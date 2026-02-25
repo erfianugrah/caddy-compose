@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   Code2,
   Zap,
-  Rocket,
+
   Download,
   Upload,
   X,
@@ -74,7 +74,6 @@ import {
   createExclusion,
   updateExclusion,
   deleteExclusion,
-  generateConfig,
   deployConfig,
   fetchServices,
   exportExclusions,
@@ -88,8 +87,6 @@ import {
   type ConditionField,
   type ConditionOperator,
   type GroupOperator,
-  type GeneratedConfig,
-  type DeployResult,
   type ServiceDetail,
   type CRSRule,
   type CRSCatalogResponse,
@@ -1415,7 +1412,7 @@ function AdvancedBuilderForm({
       <div className="space-y-1.5">
         <Label className="text-xs uppercase tracking-wider text-muted-foreground">Exclusion Type</Label>
         <Select value={form.type} onValueChange={handleTypeChange}>
-          <SelectTrigger>
+          <SelectTrigger className="h-auto py-2">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1728,47 +1725,6 @@ function HoneypotForm({ onSubmit }: { onSubmit: (data: ExclusionCreateData) => v
 
 // ─── Config Viewer ──────────────────────────────────────────────────
 
-function ConfigViewer({ config }: { config: GeneratedConfig }) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">pre-crs.conf</CardTitle>
-            {config.pre_crs && <CopyButton text={config.pre_crs} />}
-          </div>
-          <CardDescription>Loaded before CRS rules</CardDescription>
-        </CardHeader>
-        <Separator />
-        <CardContent className="p-0">
-          <div className="relative max-h-[400px] overflow-auto">
-            <pre className="p-4 text-xs leading-relaxed">
-              <code className="text-neon-green/80">{config.pre_crs || "# No pre-CRS exclusions configured"}</code>
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">post-crs.conf</CardTitle>
-            {config.post_crs && <CopyButton text={config.post_crs} />}
-          </div>
-          <CardDescription>Loaded after CRS rules</CardDescription>
-        </CardHeader>
-        <Separator />
-        <CardContent className="p-0">
-          <div className="relative max-h-[400px] overflow-auto">
-            <pre className="p-4 text-xs leading-relaxed">
-              <code className="text-neon-cyan/80">{config.post_crs || "# No post-CRS exclusions configured"}</code>
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 // ─── Exclusion type label helper ────────────────────────────────────
 
 function conditionsSummary(excl: Exclusion): string {
@@ -1861,10 +1817,9 @@ export default function PolicyEngine() {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [generatedConfig, setGeneratedConfig] = useState<GeneratedConfig | null>(null);
-  const [generating, setGenerating] = useState(false);
+
   const [deployStep, setDeployStep] = useState<string | null>(null);
-  const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Event prefill — consumed once on mount from sessionStorage.
@@ -1946,7 +1901,6 @@ export default function PolicyEngine() {
     try {
       setDeployStep("Deploying...");
       const result = await deployConfig();
-      setDeployResult(result);
       if (result.status === "deployed") {
         showSuccess(`${action} — deployed`);
       } else {
@@ -1988,36 +1942,6 @@ export default function PolicyEngine() {
       await autoDeploy(enabled ? "Rule enabled" : "Rule disabled");
     } catch (err: any) {
       setError(err.message);
-    }
-  };
-
-  const handleGenerateConfig = async () => {
-    setGenerating(true);
-    try {
-      const config = await generateConfig();
-      setGeneratedConfig(config);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleDeploy = async () => {
-    setDeployResult(null);
-    try {
-      setDeployStep("Writing WAF files & reloading Caddy...");
-      const result = await deployConfig();
-      setDeployResult(result);
-      if (result.status === "deployed") {
-        showSuccess("Configuration deployed and Caddy reloaded");
-      } else {
-        showSuccess("Config files written — Caddy reload needs manual intervention");
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setDeployStep(null);
     }
   };
 
@@ -2165,16 +2089,10 @@ export default function PolicyEngine() {
               <CardTitle className="text-sm">Rules ({exclusions.length})</CardTitle>
               <CardDescription>Manage your WAF rules and exclusions</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Button onClick={handleGenerateConfig} disabled={generating || exclusions.length === 0} size="sm" variant="outline">
-                <FileCode className="h-3.5 w-3.5" />
-                {generating ? "Generating..." : "Generate Config"}
-              </Button>
-              <Button onClick={openCreateDialog} size="sm">
-                <Plus className="h-3.5 w-3.5" />
-                Create Rule
-              </Button>
-            </div>
+            <Button onClick={openCreateDialog} size="sm">
+              <Plus className="h-3.5 w-3.5" />
+              Create Rule
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -2264,45 +2182,9 @@ export default function PolicyEngine() {
         </CardContent>
       </Card>
 
-      {/* Generated Config */}
-      {generatedConfig && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Generated Configuration</h3>
-            <Button variant="default" size="sm" onClick={handleDeploy} disabled={deployStep !== null}>
-              {deployStep ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Rocket className="h-3.5 w-3.5" />
-              )}
-              {deployStep ?? "Deploy to Caddy"}
-            </Button>
-          </div>
-          {deployResult && (
-            <Alert variant={deployResult.status === "deployed" ? "default" : "destructive"}>
-              <AlertTitle>
-                {deployResult.status === "deployed" ? "Deployed Successfully" : "Partial Deploy"}
-              </AlertTitle>
-              <AlertDescription>
-                <p>{deployResult.message}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {deployResult.timestamp}
-                  {!deployResult.reloaded && (
-                    <span className="ml-2 text-yellow-600">
-                      Caddy reload failed — run manually: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
-                    </span>
-                  )}
-                </p>
-              </AlertDescription>
-            </Alert>
-          )}
-          <ConfigViewer config={generatedConfig} />
-        </div>
-      )}
-
       {/* Create / Edit Rule Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-neon-green" />
