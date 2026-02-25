@@ -153,16 +153,16 @@ When only included config files change (not the Caddyfile itself), Caddy's `/loa
 Accessible at `waf.erfi.io` (protected by Authelia `two_factor`).
 
 ### Pages
-- **Overview** — Timeline chart (7 independent overlapping areas: blocked, rate limited, ipsum, logged, honeypot, scanner, policy — unstacked so smaller series remain visible at any scale), service breakdown donut (up to 7 slices with name-keyed color map), recent events (all 9 types with color-coded badges), top clients/services with 7-color stacked bar charts and legends. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
+- **Overview** — CF-style dashboard with DashboardFilterBar (3-step popover: Field→Operator→Value, filter chips with operator symbols, service "in" multi-select). Timeline chart with click-drag brush zoom (7 independent overlapping areas: blocked, rate limited, ipsum, logged, honeypot, scanner, policy — unstacked so smaller series remain visible at any scale). Service breakdown donut (up to 7 slices with name-keyed color map, clickable labels → Events page). Live events feed with color-coded EventTypeBadge, click-to-expand EventDetailModal. Top clients (clickable → Investigate page) and top services with 7-color stacked bar charts. Stat cards link to filtered Events view. Grafana-style time range picker with quick ranges, custom from/to (to the second), auto-refresh intervals, refresh button
 - **Blocklist** — IPsum threat intelligence stats (blocked IP count, last updated, source, min score), IP check search (look up any IP against the blocklist), "Update Now" button to refresh the blocklist on-demand from GitHub (downloads, filters, writes, reloads Caddy)
-- **Events** — Paginated event table with unified WAF + 429 + IPsum event stream, event type filter (All/Blocked/Logged/Rate Limited/IPsum Blocked), type badges, inbound/outbound anomaly score columns (color-coded: cyan <10, amber 10-24, pink >=25), expandable detail rows with collapsible sections (matched rules table with ID/message/severity/file, request headers, request body, query args), JSON export (single event, current page, or all events). "Create Exception" button pre-populates the Policy Engine with the event's rule IDs, URI, host, and client IP via sessionStorage. Same time range picker
+- **Events** — Paginated event table with unified WAF + 429 + IPsum event stream. Reads URL params on mount (`?type=`, `?service=`, `?status=`, `?method=`, `?ip=`, `?rule_name=`) for cross-page drill-down. Type badges (EventTypeBadge), inbound/outbound anomaly score columns (color-coded: cyan <10, amber 10-24, pink >=25), expandable detail rows with collapsible sections (matched rules table with ID/message/severity/file, syntax-highlighted request headers, request body, query args), JSON export (single event, current page, or all events). "Create Exception" button pre-populates the Policy Engine with the event's rule IDs, URI, host, and client IP via sessionStorage. Policy rule events (9500000-9599999) link to `/policy?rule=<name>`. Same time range picker
 - **Services** — Per-service stats, top URIs, top triggered rules
-- **Investigate** — Top blocked IPs, top targeted URIs
-- **Policy Engine** — Three-tab rule builder:
+- **Investigate** — Top blocked IPs, top targeted URIs, top countries. IP Lookup tab with auto-lookup from URL params (`?tab=ip&q=<ip>`), clickable events in lookup results open EventDetailModal. TimeRangePicker for analytics panels
+- **Policy Engine** — Split into 7 modules under `policy/`. Search/filter across exclusion list, per-rule sparkline SVG hit charts (from `GET /api/exclusions/hits`), sparkline click → Overview with `rule_name` filter. Three-tab rule builder:
   - **Quick Actions** — Dynamic condition builder (field/operator/value with AND/OR logic) for Allow, Block, Skip/Bypass rules. Host field has service dropdown with "All Services" option + custom text input. Multi-tag rule ID input (RuleIdTagInput) with Enter/comma/space to add, Backspace to remove, paste multiple IDs, deduplication. CRS rule picker supports multi-select (toggle rules on/off in catalog). Supports event prefill from the Events page "Create Exception" button
   - **Advanced** — ModSecurity directive types (SecRuleRemoveById, ctl:ruleRemoveById, etc.) with condition builder for runtime types
   - **Raw Editor** — CodeMirror 6 with ModSecurity syntax highlighting and CRS autocomplete
-- **Rate Limits** — Per-zone rate limit configuration, enable/disable zones, deploy pipeline
+- **Rate Limits** — Per-zone rate limit configuration, enable/disable zones, delete confirmation dialog, button loading states, deploy pipeline
 - **Settings** — Per-service WAF config (paranoia level, anomaly thresholds, WAF mode) with global defaults and per-service overrides. Deploy buttons across all panels show step-by-step progress with spinner (e.g. "Saving config..." -> "Writing WAF files & reloading Caddy...")
 
 ### Policy Engine condition builder
@@ -180,6 +180,17 @@ Pick a field, operator, and value. Multiple conditions with AND/OR logic:
 | Query String | contains, matches regex |
 
 When "All Services" (`*`) is selected for the Host field, the host condition is omitted from the generated SecRule — the rule applies globally.
+
+### Cross-page drill-down
+
+The dashboard supports Cloudflare-style click-to-investigate navigation:
+
+- **Overview → Events**: Click stat cards, service labels, or event type badges to drill into filtered Events view
+- **Overview → Investigate**: Click client IPs to jump to IP Lookup with auto-search
+- **Events → Policy**: "Create Exception" pre-populates a new Policy Engine rule from the event's context
+- **Events → Policy**: Policy-generated rule events (IDs 9500000-9599999) link directly to the matching policy rule
+- **Policy → Overview**: Click sparkline hit counts to see matching events on the Overview timeline
+- **DashboardFilterBar**: CF-style filter chips on Overview with operator support (eq, neq, contains, in, regex). 3-step popover: pick Field → pick Operator → enter Value. Service "in" operator shows a checkbox multi-select with known services + search + custom text entry
 
 ## File structure
 
@@ -203,39 +214,52 @@ caddy-compose/
   scripts/
     entrypoint.sh        # Container entrypoint (crond + caddy run)
     update-ipsum.sh      # Fetches IPsum blocklist, generates Caddy snippet, reloads
-  waf-api/
-    main.go              # HTTP handlers and routes (summary/events/services with start/end support, ?export=true for bulk JSON)
-    models.go            # Data models (Event with InboundScore/OutboundScore/BlockedBy/MatchedRules/RequestHeaders/RequestBody/RequestArgs, SummaryResponse, BlocklistStats)
-    blocklist.go         # IPsum blocklist: file parser with mtime fallback, cached stats, IP check, on-demand refresh (download + filter + write + Caddy reload)
+  waf-api/                     # 12 source files, 12 test files, 441 Go tests
+    main.go              # HTTP handlers, routes, fieldFilter operator system (eq/neq/contains/in/regex)
+    models.go            # Data models (Event, SummaryResponse, BlocklistStats, etc.)
+    blocklist.go         # IPsum blocklist: file parser with mtime fallback, cached stats, IP check, on-demand refresh
     config.go            # WAF config store (file-backed persistence, old format migration)
     exclusions.go        # Exclusion store, validation, UUIDv4/v7 generators
-    generator.go         # SecRuleEngine emission, condition -> SecRule generation (AND=chain, OR=separate), All Services wildcard
-    geoip.go             # Pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser
-    logparser.go         # Coraza audit log parser (JSON, Part K matched rules, Part B/C/I request context, inbound/outbound anomaly score, BlockedBy classification, SnapshotRange)
+    generator.go         # SecRuleEngine emission, condition -> SecRule generation (AND=chain, OR=separate)
+    geoip.go             # Pure-Go MMDB reader, GeoIP store with in-memory cache, CF header parser
+    logparser.go         # Coraza audit log parser, summarizeEvents (handles WAF/RL/ipsum), SnapshotRange
     rl_analytics.go      # Combined access log parser for 429/ipsum events, UUIDv7 event IDs
-    deploy.go            # Deploy pipeline (write conf files, generate-on-boot, SecRuleEngine placeholder, SHA-256 fingerprint, reload Caddy)
+    deploy.go            # Deploy pipeline (write conf files, generate-on-boot, SHA-256 fingerprint, reload Caddy)
     ratelimit.go         # Rate limit zone config store + .caddy file generation
     crs_rules.go         # CRS catalog (141 rules, 11 categories, autocomplete data)
-    main_test.go         # 254 Go tests (WAF mode transitions, anomaly score, blocklist, exclusions, deploy, generate-on-boot, SecRule injection, decodeJSON, etc.)
-    Dockerfile           # waf-api image (alpine + compiled binary, NOT the root Dockerfile's build stage)
+    *_test.go            # 12 domain-specific test files (split from monolithic main_test.go)
+    Dockerfile           # waf-api image (alpine + compiled binary, VERSION ARG for ldflags)
     go.mod
-  waf-dashboard/
+  waf-dashboard/               # 6 test files, 229 frontend tests
     src/
       components/
+        DashboardFilterBar.tsx # CF-style filter bar: 3-step popover, operator support, service multi-select
+        EventTypeBadge.tsx     # Shared color-coded event type badge
+        EventDetailModal.tsx   # Reusable Dialog wrapping EventDetailPanel with actions
         TimeRangePicker.tsx    # Grafana-style: quick ranges, custom from/to, auto-refresh
-        PolicyEngine.tsx       # Three-tab policy builder (Quick/Advanced/Raw), RuleIdTagInput, CRSRulePicker multi-select, event prefill from sessionStorage
+        OverviewDashboard.tsx  # Timeline with brush zoom, filter bar, live events, drill-down links
+        EventsTable.tsx        # Unified events with URL param reading, syntax-highlighted headers, drill-down
+        AnalyticsDashboard.tsx # Top IPs/URIs/countries, IP Lookup with EventDetailModal (Investigate page)
+        PolicyEngine.tsx       # Policy list with search/filter, sparklines, CRUD (imports from policy/)
         SecRuleEditor.tsx      # CodeMirror 6 with ModSecurity syntax highlighting
-        EventsTable.tsx        # Unified WAF+429+ipsum events, type filter/badges, inbound/outbound scores, matched rules, request context, JSON export, "Create Exception" prefill
-        OverviewDashboard.tsx  # Timeline (unstacked areas), service breakdown, recent events, 4-color bar charts
-        AnalyticsDashboard.tsx # Top IPs, top URIs charts (renamed to "Investigate")
         BlocklistPanel.tsx     # IPsum blocklist stats + IP check search
-        RateLimitsPanel.tsx    # Rate limit zone config management
+        RateLimitsPanel.tsx    # Rate limit zones with delete confirmation + loading states
         ServicesList.tsx       # Per-service detail
         SettingsPanel.tsx      # WAF config management
-        ui/popover.tsx         # Radix popover (used by TimeRangePicker)
+        policy/
+          constants.ts         # Exclusion type definitions, operator lists, field metadata
+          eventPrefill.ts      # sessionStorage-based event → exclusion prefill logic
+          exclusionHelpers.ts  # Form data ↔ API type conversion helpers
+          TagInputs.tsx        # RuleIdTagInput, PipeTagInput, MethodMultiSelect components
+          ConditionBuilder.tsx # Condition row builder (field/operator/value with AND/OR)
+          CRSRulePicker.tsx    # CRS rule catalog multi-select picker
+          PolicyForms.tsx      # Quick/Advanced/Raw tab form components
+        ui/popover.tsx         # Radix popover (used by TimeRangePicker, DashboardFilterBar)
       lib/
-        api.ts                 # API client, types, Go<->frontend mappers, TimeRangeParams
-        api.test.ts            # 66 tests (event types, blocklist, services, lookups, refresh)
+        api.ts                 # API client, types, FilterOp, SummaryParams/EventsParams with _op variants
+        api.test.ts            # 70 tests (events, blocklist, services, lookups, operators)
+        format.ts              # Shared formatters: formatNumber, formatTime, formatDate, countryFlag
+        utils.ts               # cn(), ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE
     package.json
     astro.config.mjs
     vitest.config.ts

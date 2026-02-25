@@ -24,8 +24,12 @@ make deploy             # Full pipeline: build + push + SCP + restart
 ### Go (waf-api)
 
 ```bash
-cd waf-api && CGO_ENABLED=0 go build -ldflags="-s -w" -o waf-api .
+cd waf-api && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.21.0" -o waf-api .
 ```
+
+Version is injected at build time via `-ldflags "-X main.version=..."`. The
+`var version = "dev"` in `main.go` is the fallback for local builds. The
+Dockerfile and Makefile both pass `--build-arg VERSION=` which feeds the ldflags.
 
 ### Frontend (waf-dashboard)
 
@@ -64,8 +68,8 @@ Image tags live in **four places** that must stay in sync:
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.15.0-2.10.2`).
-waf-api tag format: simple semver (e.g. `0.10.0`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.28.0-2.10.2`).
+waf-api tag format: simple semver (e.g. `0.21.0`).
 
 ## Secrets and Encryption
 
@@ -110,6 +114,14 @@ waf-api tag format: simple semver (e.g. `0.10.0`).
 - Server timeouts: `ReadTimeout: 10s`, `WriteTimeout: 150s`, `IdleTimeout: 60s`
 - Caddy reload client timeout: `120s` (accounts for WAF rule initialization)
 - Makefile deploy wget timeout: `120s` (`-T 120`)
+
+### Query Filter System
+
+- `fieldFilter` type with `parseFieldFilter(value, op)` and `matchField(target)` method
+- Operators: `eq` (default), `neq`, `contains`, `in` (comma-separated), `regex` (Go RE2)
+- Query param format: `<field>=<value>&<field>_op=<operator>` — backward compatible (no `_op` = `eq`)
+- Used by `handleSummary` and `handleEvents` for: `service`, `client`, `method`, `event_type`, `rule_name`
+- When any filter is active on `/api/summary`, all events (WAF + RL) are collected, filtered, then re-summarized via `summarizeEvents()`
 
 ### Concurrency
 
@@ -227,6 +239,8 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 - Go returns `snake_case` JSON; the frontend `api.ts` maps it to `camelCase`
 - Type-safe interfaces for all API responses
 - When adding API endpoints, update both Go handler (`main.go`) and frontend client (`api.ts`)
+- `FilterOp` type: `"eq" | "neq" | "contains" | "in" | "regex"` — maps to backend `_op` query params
+- `SummaryParams` and `EventsParams` include `_op` variants for all filter fields
 
 ### UI Patterns
 
@@ -238,6 +252,24 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
   - `PipeTagInput` — pipe-separated values for `in` operator (Enter/comma/pipe to add)
   - `MethodMultiSelect` — pill chips + popover picker for HTTP methods with `in` operator
 - `ConditionRow` value input branching: `host` → `HostValueInput` (service dropdown), `method` + `in` → `MethodMultiSelect`, other + `in` → `PipeTagInput`, default → plain `<Input>`
+
+### Shared Components
+
+- `EventTypeBadge` — shared color-coded event type badge
+- `EventDetailModal` — reusable Dialog wrapping EventDetailPanel with actions
+- `TimeRangePicker` — Grafana-style time range picker with quick ranges, custom from/to, auto-refresh
+- `DashboardFilterBar` — CF-style filter bar with 3-step popover (Field→Operator→Value), service `in` multi-select with checkbox list + search + custom text entry, filter chips with operator symbols. Exports: `parseFiltersFromURL`, `filtersToSummaryParams`, `filtersToEventsParams`, `filterDisplayValue`, `operatorChip`, `FILTER_FIELDS`
+
+### Cross-Page Navigation
+
+- **Overview → Events**: Stat cards link to `/events?type=<filter>`, service bar labels link to `/events?service=<name>`, client IPs link to `/analytics?tab=ip&q=<ip>`
+- **Events ← URL params**: Reads `?type=`, `?service=`, `?status=`, `?method=`, `?ip=`, `?rule_name=` on mount, applies as initial filters, clears URL via `history.replaceState`
+- **Investigate ← URL params**: Reads `?tab=` and `?q=` for tab selection and auto IP lookup
+- **Events → Policy**: "Create Exception" stores event in sessionStorage, navigates to `/policy?from_event=1`
+- **Events → Policy**: Policy rule events (9500000-9599999) link to `/policy?rule=<name>`
+- **Policy → Overview**: Sparkline hit counts link to `/?rule_name=<name>`
+- All cross-page links use native `<a href>` anchors (Astro static pages, not SPA)
+- **SSR/Hydration caveat**: Read URL params in `useEffect` (client-only), never in `useState` initializer — causes React error #418
 
 ### Dashboard Pages (file-based routing)
 
@@ -251,7 +283,7 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 | Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris`, `GET /api/analytics/top-countries` |
 | IP Lookup | `GET /api/lookup/{ip}` |
 | Exclusions | `GET\|POST /api/exclusions`, `GET\|PUT\|DELETE /api/exclusions/{id}` |
-| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate` |
+| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits` |
 | CRS | `GET /api/crs/rules`, `GET /api/crs/autocomplete` |
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/deploy` |
 | Rate Limits | `GET\|PUT /api/rate-limits`, `POST /api/rate-limits/deploy` |
@@ -260,17 +292,20 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
 ## Test Patterns
 
-### Go
-- All tests in `main_test.go`, `package main` (whitebox)
+### Go (441 tests across 12 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `ratelimit_test.go`, `crs_rules_test.go`, `handlers_test.go`, `testhelpers_test.go`
+- All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
 - `httptest.NewServer` to mock the Caddy admin API
-- Temp file helpers: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`
+- Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
+- `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend
+### Frontend (229 tests across 6 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- Tests live alongside source: `api.test.ts` next to `api.ts`
+- Tests live alongside source: `api.test.ts` next to `api.ts`, `DashboardFilterBar.test.ts` next to component
+- Policy sub-module tests in `components/policy/`: `constants.test.ts`, `eventPrefill.test.ts`, `exclusionHelpers.test.ts`, `TagInputs.test.ts`
 
 ## Key Architecture Notes
 
