@@ -58,6 +58,7 @@ import {
   ImpactCurve,
   TimeOfDayChart,
 } from "./AdvisorCharts";
+import { T } from "@/lib/typography";
 
 // ─── Advisor Filter Constants ───────────────────────────────────────
 
@@ -408,7 +409,7 @@ export function RateAdvisorPanel({
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-neon-cyan" />
-          <h3 className="text-sm font-semibold">Request Rate Analysis</h3>
+          <h3 className={T.sectionHeading}>Request Rate Analysis</h3>
         </div>
         <p className="text-xs text-muted-foreground">
           Analyze request rates using statistical anomaly detection (MAD-based) to find optimal
@@ -509,14 +510,14 @@ export function RateAdvisorPanel({
           <div className="grid gap-4 sm:grid-cols-5">
             <Card>
               <CardContent className="p-5">
-                <div className="text-xs text-muted-foreground mb-1">Total Requests</div>
-                <div className="text-2xl font-bold tabular-nums">{data.total_requests.toLocaleString()}</div>
+                <div className={`${T.statLabel} mb-1`}>Total Requests</div>
+                <div className={T.statValue}>{data.total_requests.toLocaleString()}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-5">
-                <div className="text-xs text-muted-foreground mb-1">Unique Clients</div>
-                <div className="text-2xl font-bold tabular-nums">{data.unique_clients.toLocaleString()}</div>
+                <div className={`${T.statLabel} mb-1`}>Unique Clients</div>
+                <div className={T.statValue}>{data.unique_clients.toLocaleString()}</div>
                 <div className="flex gap-2 mt-1.5 text-xs">
                   <span className="text-neon-green">{classifications.normal} ok</span>
                   <span className="text-neon-amber">{classifications.suspicious} sus</span>
@@ -526,8 +527,8 @@ export function RateAdvisorPanel({
             </Card>
             <Card>
               <CardContent className="p-5">
-                <div className="text-xs text-muted-foreground mb-1">P95 Rate</div>
-                <div className="text-2xl font-bold tabular-nums text-neon-yellow">{data.percentiles.p95}</div>
+                <div className={`${T.statLabel} mb-1`}>P95 Rate</div>
+                <div className={`${T.statValue} text-neon-yellow`}>{data.percentiles.p95}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   req/{window}
                   {data.normalized_percentiles && data.window_seconds > 0 && (
@@ -538,8 +539,8 @@ export function RateAdvisorPanel({
             </Card>
             <Card>
               <CardContent className="p-5">
-                <div className="text-xs text-muted-foreground mb-1">Median / MAD</div>
-                <div className="text-xl font-bold tabular-nums">
+                <div className={`${T.statLabel} mb-1`}>Median / MAD</div>
+                <div className={T.statValueSm}>
                   {rec ? `${rec.median}` : data.percentiles.p50}
                   {rec && <span className="text-sm text-muted-foreground font-normal ml-1">±{rec.mad}</span>}
                 </div>
@@ -550,8 +551,8 @@ export function RateAdvisorPanel({
             </Card>
             <Card>
               <CardContent className="p-5">
-                <div className="text-xs text-muted-foreground mb-1">Would Be Limited</div>
-                <div className="text-2xl font-bold tabular-nums text-neon-red">{affectedClients.length}</div>
+                <div className={`${T.statLabel} mb-1`}>Would Be Limited</div>
+                <div className={`${T.statValue} text-neon-red`}>{affectedClients.length}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {affectedRequests.toLocaleString()} requests ({data.total_requests > 0 ? ((affectedRequests / data.total_requests) * 100).toFixed(1) : 0}%)
                 </div>
@@ -682,7 +683,7 @@ export function RateAdvisorPanel({
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">
+                <CardTitle className={T.cardTitle}>
                   Top {data.clients.length} Clients
                 </CardTitle>
                 <div className="flex items-center gap-2">

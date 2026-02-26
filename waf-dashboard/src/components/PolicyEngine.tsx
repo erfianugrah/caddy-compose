@@ -75,6 +75,7 @@ import {
   type ExclusionHitsResponse,
 } from "@/lib/api";
 
+import { T } from "@/lib/typography";
 import type { AdvancedFormState } from "./policy/constants";
 import type { EventPrefill } from "./policy/eventPrefill";
 import { consumePrefillEvent } from "./policy/eventPrefill";
@@ -409,8 +410,8 @@ export default function PolicyEngine() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Policy Engine</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className={T.pageTitle}>Policy Engine</h2>
+          <p className={T.pageDescription}>
             Create allow/block rules, manage CRS exclusions, or write raw SecRule directives.
           </p>
         </div>
@@ -455,7 +456,7 @@ export default function PolicyEngine() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm">Rules ({exclusions.length})</CardTitle>
+              <CardTitle className={T.cardTitle}>Rules ({exclusions.length})</CardTitle>
               <CardDescription>Manage your WAF rules and exclusions</CardDescription>
             </div>
             <Button onClick={openCreateDialog} size="sm">
@@ -533,14 +534,14 @@ export default function PolicyEngine() {
                   >
                     <TableCell>
                       <div>
-                        <p className="text-xs font-medium">{excl.name}</p>
+                        <p className={T.tableRowName}>{excl.name}</p>
                         {excl.description && (
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">{excl.description}</p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={exclusionTypeBadgeVariant(excl.type)} className="text-xs px-1.5 py-0 font-mono">
+                      <Badge variant={exclusionTypeBadgeVariant(excl.type)} className={T.badgeMono}>
                         {exclusionTypeLabel(excl.type)}
                       </Badge>
                     </TableCell>

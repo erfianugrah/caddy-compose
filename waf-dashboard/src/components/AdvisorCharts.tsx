@@ -5,6 +5,7 @@ import type {
   ImpactPoint,
   TimeOfDayBaseline,
 } from "@/lib/api";
+import { T } from "@/lib/typography";
 
 // ─── Classification Badge ───────────────────────────────────────────
 
@@ -114,7 +115,7 @@ export function DistributionHistogram({
         return (
           <g key={tick}>
             <line x1={padLeft} y1={y} x2={vw - padRight} y2={y} stroke="currentColor" strokeOpacity={0.08} />
-            <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
+            <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>
               {tick}
             </text>
           </g>
@@ -140,17 +141,17 @@ export function DistributionHistogram({
               rx={2}
             />
             {bin.count > 0 && barH > 18 && (
-              <text x={x + barW / 2} y={padTop + chartH - barH + 14} textAnchor="middle" className="fill-foreground" fontSize={11} fontFamily="monospace" fontWeight={500}>
+              <text x={x + barW / 2} y={padTop + chartH - barH + 14} textAnchor="middle" className="fill-foreground" fontSize={T.chartLabel} fontFamily="monospace" fontWeight={500}>
                 {bin.count}
               </text>
             )}
             {bin.count > 0 && barH > 0 && barH <= 18 && (
-              <text x={x + barW / 2} y={padTop + chartH - barH - 4} textAnchor="middle" className="fill-foreground" fontSize={10} fontFamily="monospace">
+              <text x={x + barW / 2} y={padTop + chartH - barH - 4} textAnchor="middle" className="fill-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
                 {bin.count}
               </text>
             )}
             {(visibleBins.length <= 12 || i % Math.max(1, Math.floor(visibleBins.length / 8)) === 0 || i === visibleBins.length - 1) && (
-              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10} fontFamily="monospace">
+              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
                 {bin.min}
               </text>
             )}
@@ -188,11 +189,11 @@ export function DistributionHistogram({
       })()}
 
       {/* Y-axis label */}
-      <text x={4} y={padTop + chartH / 2} className="fill-muted-foreground" fontSize={11} transform={`rotate(-90, 10, ${padTop + chartH / 2})`} textAnchor="middle">
+      <text x={4} y={padTop + chartH / 2} className="fill-muted-foreground" fontSize={T.chartLabel} transform={`rotate(-90, 10, ${padTop + chartH / 2})`} textAnchor="middle">
         clients
       </text>
       {/* X-axis label */}
-      <text x={padLeft + chartW / 2} y={vh - 4} textAnchor="middle" className="fill-muted-foreground" fontSize={11}>
+      <text x={padLeft + chartW / 2} y={vh - 4} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartLabel}>
         requests / window
       </text>
       {/* Baseline */}
@@ -253,16 +254,16 @@ export function ImpactCurve({
       <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
 
       {/* Y-axis labels */}
-      <text x={padLeft - 4} y={padTop + 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>100%</text>
-      <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={10}>50%</text>
-      <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>0%</text>
+      <text x={padLeft - 4} y={padTop + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>100%</text>
+      <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>50%</text>
+      <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0%</text>
 
       {/* X-axis tick labels */}
       {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
         const val = minT + frac * range;
         const x = padLeft + frac * chartW;
         return (
-          <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10} fontFamily="monospace">
+          <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
             {Math.round(val)}
           </text>
         );
@@ -270,9 +271,9 @@ export function ImpactCurve({
 
       {/* Legend */}
       <line x1={padLeft + 8} y1={vh - 8} x2={padLeft + 22} y2={vh - 8} stroke="#22d3ee" strokeWidth={2} />
-      <text x={padLeft + 26} y={vh - 4} className="fill-muted-foreground" fontSize={10}>Clients</text>
+      <text x={padLeft + 26} y={vh - 4} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
       <line x1={padLeft + 80} y1={vh - 8} x2={padLeft + 94} y2={vh - 8} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
-      <text x={padLeft + 98} y={vh - 4} className="fill-muted-foreground" fontSize={10}>Requests</text>
+      <text x={padLeft + 98} y={vh - 4} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
     </svg>
   );
 }
@@ -308,7 +309,7 @@ export function TimeOfDayChart({
         return (
           <g key={tick}>
             <line x1={padLeft} y1={y} x2={vw - padRight} y2={y} stroke="currentColor" strokeOpacity={0.06} />
-            <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
+            <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>
               {tick < 1 ? tick.toFixed(2) : tick.toFixed(1)}
             </text>
           </g>
@@ -323,7 +324,7 @@ export function TimeOfDayChart({
           return (
             <g key={hour}>
               {hour % 3 === 0 && (
-                <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground/40" fontSize={10}>
+                <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground/40" fontSize={T.chartAxisTick}>
                   {String(hour).padStart(2, "0")}
                 </text>
               )}
@@ -353,7 +354,7 @@ export function TimeOfDayChart({
               rx={2}
             />
             {hour % 3 === 0 && (
-              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10}>
+              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick}>
                 {String(hour).padStart(2, "0")}
               </text>
             )}
@@ -365,10 +366,10 @@ export function TimeOfDayChart({
       <line x1={padLeft} y1={padTop + chartH} x2={padLeft + chartW} y2={padTop + chartH} stroke="currentColor" strokeOpacity={0.15} />
 
       {/* Y-axis label */}
-      <text x={4} y={padTop + chartH / 2} className="fill-muted-foreground" fontSize={11} transform={`rotate(-90, 10, ${padTop + chartH / 2})`} textAnchor="middle">
+      <text x={4} y={padTop + chartH / 2} className="fill-muted-foreground" fontSize={T.chartLabel} transform={`rotate(-90, 10, ${padTop + chartH / 2})`} textAnchor="middle">
         req/s
       </text>
-      <text x={padLeft - 6} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>0</text>
+      <text x={padLeft - 6} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0</text>
     </svg>
   );
 }

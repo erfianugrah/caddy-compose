@@ -39,6 +39,7 @@ import {
 } from "@/lib/api";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import { countryFlag, formatTime, formatDate } from "@/lib/format";
+import { T } from "@/lib/typography";
 import { EventTypeBadge } from "./EventTypeBadge";
 import DashboardFilterBar, {
   parseFiltersFromURL,
@@ -151,7 +152,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <h4 className={T.sectionLabel}>
             Request Details
           </h4>
           <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
@@ -186,7 +187,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <h4 className={T.sectionLabel}>
             {event.event_type === "ipsum_blocked" ? "IPsum Blocklist Details"
               : event.event_type === "rate_limited" ? "Rate Limit Details"
               : event.event_type === "honeypot" ? "Honeypot Trap Details"
@@ -543,7 +544,7 @@ function ExpandableSection({ title, children }: { title: string; children: React
     <div className="space-y-2">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+        className={`flex items-center gap-1 ${T.sectionLabel} hover:text-foreground transition-colors`}
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         {title}
@@ -658,8 +659,8 @@ export default function EventsTable() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Event Log</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className={T.pageTitle}>Event Log</h2>
+          <p className={T.pageDescription}>
             All WAF and rate limit events with filtering and detail view.
           </p>
         </div>

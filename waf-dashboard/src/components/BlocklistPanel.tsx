@@ -20,6 +20,7 @@ import {
   type BlocklistRefreshResult,
 } from "@/lib/api";
 import { formatNumberLocale as formatNumber } from "@/lib/format";
+import { T } from "@/lib/typography";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -73,10 +74,10 @@ function BlocklistStat({
           </div>
         ) : (
           <>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className={T.statLabelUpper}>
               {title}
             </p>
-            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
+            <p className={`mt-1 ${T.statValueSm} text-foreground`}>
               {value}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
@@ -209,8 +210,8 @@ export default function BlocklistPanel() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Blocklist</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className={T.pageTitle}>Blocklist</h2>
+          <p className={T.pageDescription}>
             IPsum threat intelligence blocklist
           </p>
         </div>
@@ -296,7 +297,7 @@ export default function BlocklistPanel() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Search className="h-4 w-4 text-neon-green" />
-              <CardTitle className="text-sm">Check IP</CardTitle>
+              <CardTitle className={T.cardTitle}>Check IP</CardTitle>
             </div>
             <CardDescription>Search blocklist</CardDescription>
           </div>
@@ -375,7 +376,7 @@ export default function BlocklistPanel() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Database className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">About IPsum</CardTitle>
+            <CardTitle className={T.cardTitle}>About IPsum</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-xs text-muted-foreground">

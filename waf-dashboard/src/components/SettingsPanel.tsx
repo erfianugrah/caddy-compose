@@ -58,6 +58,7 @@ import {
   presetToSettings,
   settingsToPreset,
 } from "@/lib/api";
+import { T } from "@/lib/typography";
 
 // ─── Tooltip Helper ─────────────────────────────────────────────────
 
@@ -193,7 +194,7 @@ function SensitivitySettings({
     <div className="space-y-4">
       {/* Preset Selector */}
       <div className="space-y-2">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        <Label className={T.formLabel}>
           Sensitivity Preset
         </Label>
         <div className={`grid gap-2 ${compact ? "grid-cols-2" : "grid-cols-4"}`}>
@@ -224,7 +225,7 @@ function SensitivitySettings({
 
       {/* Paranoia Level */}
       <div className="space-y-2">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        <Label className={T.formLabel}>
           Paranoia Level
         </Label>
         <div className="flex items-center gap-4">
@@ -255,7 +256,7 @@ function SensitivitySettings({
       {settings.mode !== "detection_only" && (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            <Label className={T.formLabel}>
               Inbound Threshold
             </Label>
             <Input
@@ -269,7 +270,7 @@ function SensitivitySettings({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            <Label className={T.formLabel}>
               Outbound Threshold
             </Label>
             <Input
@@ -321,7 +322,7 @@ function RuleGroupToggles({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className={T.formLabel}>
         CRS Rule Groups
       </Label>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -365,7 +366,7 @@ function AdvancedParanoiaSettings({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        <Label className={T.formLabel}>
           Blocking / Detection PL Split
         </Label>
         <Switch
@@ -449,7 +450,7 @@ function RequestPolicySettings({
 }) {
   return (
     <div className="space-y-4">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className={T.formLabel}>
         Request Policy
       </Label>
       <p className="text-xs text-muted-foreground">
@@ -595,7 +596,7 @@ function LimitsSettings({
 
   return (
     <div className="space-y-4">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className={T.formLabel}>
         Argument & File Limits
       </Label>
       <p className="text-xs text-muted-foreground">
@@ -634,7 +635,7 @@ function CRSExclusionProfiles({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className={T.formLabel}>
         CRS Exclusion Profiles
       </Label>
       <p className="text-xs text-muted-foreground">
@@ -677,7 +678,7 @@ function AdvancedCRSControls({
 }) {
   return (
     <div className="space-y-4">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className={T.formLabel}>
         Advanced CRS Controls
       </Label>
       <p className="text-xs text-muted-foreground">
@@ -837,7 +838,7 @@ function ServiceSettingsCard({
         <CardContent className="space-y-5 border-t border-border pt-4">
           {/* Mode */}
           <div className="space-y-2">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Mode</Label>
+            <Label className={T.formLabel}>Mode</Label>
             <ModeSelector
               value={settings.mode}
               onChange={(mode) => onChange({ ...settings, mode })}
@@ -1053,8 +1054,8 @@ export default function SettingsPanel() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <p className="text-sm text-muted-foreground">Dynamic WAF configuration</p>
+          <h2 className={T.pageTitle}>Settings</h2>
+          <p className={T.pageDescription}>Dynamic WAF configuration</p>
         </div>
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
@@ -1075,8 +1076,8 @@ export default function SettingsPanel() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className={T.pageTitle}>Settings</h2>
+          <p className={T.pageDescription}>
             Configure WAF behavior per service. Changes take effect after deploy.
           </p>
         </div>
@@ -1133,7 +1134,7 @@ export default function SettingsPanel() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4 text-neon-cyan" />
-            <CardTitle className="text-sm">Global Defaults</CardTitle>
+            <CardTitle className={T.cardTitle}>Global Defaults</CardTitle>
           </div>
           <CardDescription>
             Applied to all services without explicit overrides
@@ -1179,7 +1180,7 @@ export default function SettingsPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Settings2 className="h-4 w-4 text-neon-purple" />
-            <h3 className="text-sm font-semibold">Per-Service Overrides</h3>
+            <h3 className={T.sectionHeading}>Per-Service Overrides</h3>
             <Badge variant="outline" className="text-xs">
               {Object.keys(serviceOverrides).length}
             </Badge>

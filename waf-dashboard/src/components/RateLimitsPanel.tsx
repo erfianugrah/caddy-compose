@@ -81,6 +81,7 @@ import {
 import type { FieldDef } from "./policy/constants";
 import { CONDITION_FIELDS } from "./policy/constants";
 import { RateAdvisorPanel } from "./RateAdvisorPanel";
+import { T } from "@/lib/typography";
 
 // ─── RL-specific condition fields (subset of WAF fields) ────────────
 
@@ -165,13 +166,13 @@ function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
 function ActionBadge({ action }: { action: RLRuleAction }) {
   if (action === "log_only") {
     return (
-      <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono bg-neon-amber/10 text-neon-amber border-neon-amber/30">
+      <Badge variant="outline" className={`${T.badgeMono} bg-neon-amber/10 text-neon-amber border-neon-amber/30`}>
         Monitor
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono bg-neon-pink/10 text-neon-pink border-neon-pink/30">
+      <Badge variant="outline" className={`${T.badgeMono} bg-neon-pink/10 text-neon-pink border-neon-pink/30`}>
       Deny
     </Badge>
   );
@@ -496,7 +497,7 @@ function GlobalSettingsPanel({ config, onChange, onSave, saving, dirty }: Global
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm flex items-center gap-2">
+        <CardTitle className={`${T.cardTitle} flex items-center gap-2`}>
           <Settings2 className="h-4 w-4" />
           Global Settings
         </CardTitle>
@@ -833,8 +834,8 @@ export default function RateLimitsPanel() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold">Rate Limits</h2>
-          <p className="text-sm text-muted-foreground">Condition-based rate limiting rules</p>
+          <h2 className={T.pageTitle}>Rate Limits</h2>
+          <p className={T.pageDescription}>Condition-based rate limiting rules</p>
         </div>
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
@@ -854,8 +855,8 @@ export default function RateLimitsPanel() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Rate Limits</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className={T.pageTitle}>Rate Limits</h2>
+          <p className={T.pageDescription}>
             Condition-based rate limiting rules with per-path matching, flexible keys, and auto-deploy.
           </p>
         </div>
@@ -916,26 +917,26 @@ export default function RateLimitsPanel() {
           <div className="grid gap-4 sm:grid-cols-4">
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Total Rules</div>
-                <div className="text-2xl font-bold tabular-nums">{rules.length}</div>
+                <div className={T.statLabel}>Total Rules</div>
+                <div className={T.statValue}>{rules.length}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Active</div>
-                <div className="text-2xl font-bold tabular-nums text-neon-green">{enabledCount}</div>
+                <div className={T.statLabel}>Active</div>
+                <div className={`${T.statValue} text-neon-green`}>{enabledCount}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Deny</div>
-                <div className="text-2xl font-bold tabular-nums text-neon-pink">{denyCount}</div>
+                <div className={T.statLabel}>Deny</div>
+                <div className={`${T.statValue} text-neon-pink`}>{denyCount}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Monitor</div>
-                <div className="text-2xl font-bold tabular-nums text-neon-amber">{monitorCount}</div>
+                <div className={T.statLabel}>Monitor</div>
+                <div className={`${T.statValue} text-neon-amber`}>{monitorCount}</div>
               </CardContent>
             </Card>
           </div>
@@ -945,7 +946,7 @@ export default function RateLimitsPanel() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm">Rate Limit Rules</CardTitle>
+                  <CardTitle className={T.cardTitle}>Rate Limit Rules</CardTitle>
                   <CardDescription>Per-service rate limiting with conditions, flexible keys, and auto-deploy.</CardDescription>
                 </div>
                 <Button onClick={openCreateDialog} size="sm">
@@ -1013,7 +1014,7 @@ export default function RateLimitsPanel() {
                         <TableRow key={rule.id} className={!rule.enabled ? "opacity-50" : ""}>
                           <TableCell>
                             <div>
-                              <p className="text-xs font-medium">{rule.name}</p>
+                              <p className={T.tableRowName}>{rule.name}</p>
                               {rule.description && (
                                 <p className="text-xs text-muted-foreground truncate max-w-[200px]">{rule.description}</p>
                               )}

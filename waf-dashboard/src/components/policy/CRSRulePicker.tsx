@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CRSRule } from "@/lib/api";
+import { T } from "@/lib/typography";
 import { RuleIdTagInput, parseRuleIds, joinRuleIds } from "./TagInputs";
 
 // ─── CRS Rule Picker (searchable dropdown) ──────────────────────────
@@ -50,7 +51,7 @@ export function CRSRulePicker({
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className={T.formLabel}>
         Rule ID / Range
       </Label>
       <RuleIdTagInput

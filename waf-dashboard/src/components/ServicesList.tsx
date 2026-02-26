@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchServices, type ServiceDetail } from "@/lib/api";
+import { T } from "@/lib/typography";
 
 function BlockRateBar({ rate }: { rate: number }) {
   const color =
@@ -46,7 +47,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
     <div className="grid gap-4 p-4 md:grid-cols-2">
       {/* Top URIs */}
       <div>
-        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <h4 className={`mb-2 ${T.sectionLabel}`}>
           Top Triggered URIs
         </h4>
         <div className="space-y-1">
@@ -78,7 +79,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
 
       {/* Top Rules */}
       <div>
-        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <h4 className={`mb-2 ${T.sectionLabel}`}>
           Top Triggered Rules
         </h4>
         <div className="space-y-1">
@@ -88,7 +89,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
               className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
             >
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono">
+                <Badge variant="outline" className={T.badgeMono}>
                   {r.rule_id}
                 </Badge>
                 <span className="max-w-[180px] truncate text-muted-foreground">
@@ -143,8 +144,8 @@ export default function ServicesList() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Services</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className={T.pageTitle}>Services</h2>
+        <p className={T.pageDescription}>
           Per-service WAF event breakdown. Click a row to expand details.
         </p>
       </div>
