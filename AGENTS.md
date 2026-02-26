@@ -24,7 +24,7 @@ make deploy             # Full pipeline: build + push + SCP + restart
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.23.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=1.0.0" -o wafctl .
 ```
 
 Version is injected at build time via `-ldflags "-X main.version=..."`. The
@@ -68,8 +68,8 @@ Image tags live in **four places** that must stay in sync:
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.32.0-2.11.1`).
-wafctl tag format: simple semver (e.g. `0.23.0`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.0.0-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.0.0`).
 
 ## Secrets and Encryption
 
