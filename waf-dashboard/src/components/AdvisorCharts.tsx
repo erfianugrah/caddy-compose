@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import type {
   ClientClassification,
@@ -6,6 +7,112 @@ import type {
   TimeOfDayBaseline,
 } from "@/lib/api";
 import { T } from "@/lib/typography";
+
+// ─── SVG Drag-to-Zoom Hook ─────────────────────────────────────────
+
+interface DragZoomState {
+  /** Fractional X positions [0–1] within the chart area for the zoomed domain. null = full view */
+  zoomFracLeft: number | null;
+  zoomFracRight: number | null;
+  /** Selection overlay fractions during drag */
+  selFracLeft: number | null;
+  selFracRight: number | null;
+  isDragging: boolean;
+}
+
+function useSvgDragZoom(padLeft: number, chartW: number) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [state, setState] = useState<DragZoomState>({
+    zoomFracLeft: null, zoomFracRight: null,
+    selFracLeft: null, selFracRight: null,
+    isDragging: false,
+  });
+
+  /** Convert a mouse event to a fractional X position [0–1] within the chart area */
+  const toFrac = useCallback((e: ReactMouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return 0;
+    const rect = svg.getBoundingClientRect();
+    // Map pixel position to SVG viewBox coordinates
+    const viewBox = svg.viewBox.baseVal;
+    const svgX = ((e.clientX - rect.left) / rect.width) * viewBox.width;
+    return Math.max(0, Math.min(1, (svgX - padLeft) / chartW));
+  }, [padLeft, chartW]);
+
+  const onMouseDown = useCallback((e: ReactMouseEvent<SVGSVGElement>) => {
+    // Only left-click
+    if (e.button !== 0) return;
+    const frac = toFrac(e);
+    setState((s) => ({ ...s, selFracLeft: frac, selFracRight: frac, isDragging: true }));
+  }, [toFrac]);
+
+  const onMouseMove = useCallback((e: ReactMouseEvent<SVGSVGElement>) => {
+    setState((s) => {
+      if (!s.isDragging) return s;
+      const frac = toFrac(e);
+      return { ...s, selFracRight: frac };
+    });
+  }, [toFrac]);
+
+  const onMouseUp = useCallback(() => {
+    setState((s) => {
+      if (!s.isDragging || s.selFracLeft === null || s.selFracRight === null) {
+        return { ...s, isDragging: false, selFracLeft: null, selFracRight: null };
+      }
+      const left = Math.min(s.selFracLeft, s.selFracRight);
+      const right = Math.max(s.selFracLeft, s.selFracRight);
+      // Ignore tiny drags (< 2% of chart width) — treat as click
+      if (right - left < 0.02) {
+        return { ...s, isDragging: false, selFracLeft: null, selFracRight: null };
+      }
+      // If already zoomed, compose: map selection fracs through the existing zoom window
+      const curLeft = s.zoomFracLeft ?? 0;
+      const curRight = s.zoomFracRight ?? 1;
+      const curRange = curRight - curLeft;
+      return {
+        zoomFracLeft: curLeft + left * curRange,
+        zoomFracRight: curLeft + right * curRange,
+        selFracLeft: null, selFracRight: null, isDragging: false,
+      };
+    });
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setState({ zoomFracLeft: null, zoomFracRight: null, selFracLeft: null, selFracRight: null, isDragging: false });
+  }, []);
+
+  const onDoubleClick = useCallback(() => {
+    resetZoom();
+  }, [resetZoom]);
+
+  const isZoomed = state.zoomFracLeft !== null && state.zoomFracRight !== null;
+
+  return { svgRef, state, onMouseDown, onMouseMove, onMouseUp, onDoubleClick, resetZoom, isZoomed };
+}
+
+/** Render the blue selection overlay rectangle during drag */
+function SelectionOverlay({ state, padLeft, padTop, chartW, chartH }: {
+  state: DragZoomState; padLeft: number; padTop: number; chartW: number; chartH: number;
+}) {
+  if (!state.isDragging || state.selFracLeft === null || state.selFracRight === null) return null;
+  const left = Math.min(state.selFracLeft, state.selFracRight);
+  const right = Math.max(state.selFracLeft, state.selFracRight);
+  const x = padLeft + left * chartW;
+  const w = (right - left) * chartW;
+  return <rect x={x} y={padTop} width={w} height={chartH} fill="rgba(34,211,238,0.15)" stroke="#22d3ee" strokeWidth={1} strokeOpacity={0.4} />;
+}
+
+/** Small "Reset zoom" badge shown when zoomed */
+function ResetZoomBadge({ onClick, x, y }: { onClick: () => void; x: number; y: number }) {
+  return (
+    <g onClick={onClick} className="cursor-pointer" role="button">
+      <rect x={x} y={y} width={80} height={18} rx={4} fill="rgba(34,211,238,0.12)" stroke="#22d3ee" strokeWidth={0.5} strokeOpacity={0.4} />
+      <text x={x + 40} y={y + 13} textAnchor="middle" className="fill-cyan-400" fontSize={9} fontFamily="monospace">
+        Reset zoom
+      </text>
+    </g>
+  );
+}
 
 // ─── Classification Badge ───────────────────────────────────────────
 
@@ -226,46 +333,81 @@ export function ImpactCurve({
   const padBottom = 50;
   const chartW = vw - padLeft - padRight;
   const chartH = vh - padTop - padBottom;
-  const minT = curve[0].threshold;
-  const maxT = curve[curve.length - 1].threshold;
-  const range = maxT - minT || 1;
+  const fullMinT = curve[0].threshold;
+  const fullMaxT = curve[curve.length - 1].threshold;
+  const fullRange = fullMaxT - fullMinT || 1;
 
-  const clientLine = curve.map((p, i) => {
-    const x = padLeft + ((p.threshold - minT) / range) * chartW;
+  const zoom = useSvgDragZoom(padLeft, chartW);
+
+  // Compute zoomed domain
+  const zMinT = zoom.isZoomed ? fullMinT + zoom.state.zoomFracLeft! * fullRange : fullMinT;
+  const zMaxT = zoom.isZoomed ? fullMinT + zoom.state.zoomFracRight! * fullRange : fullMaxT;
+  const zRange = zMaxT - zMinT || 1;
+
+  // Filter points within zoomed domain (with a small margin for line continuity)
+  const visibleCurve = curve.filter((p) => p.threshold >= zMinT - zRange * 0.02 && p.threshold <= zMaxT + zRange * 0.02);
+
+  const clientLine = visibleCurve.map((p, i) => {
+    const x = padLeft + ((p.threshold - zMinT) / zRange) * chartW;
     const y = padTop + (1 - p.client_pct) * chartH;
     return `${i === 0 ? "M" : "L"}${x},${y}`;
   }).join(" ");
 
-  const requestLine = curve.map((p, i) => {
-    const x = padLeft + ((p.threshold - minT) / range) * chartW;
+  const requestLine = visibleCurve.map((p, i) => {
+    const x = padLeft + ((p.threshold - zMinT) / zRange) * chartW;
     const y = padTop + (1 - p.request_pct) * chartH;
     return `${i === 0 ? "M" : "L"}${x},${y}`;
   }).join(" ");
 
-  const thresholdX = padLeft + ((threshold - minT) / range) * chartW;
+  const thresholdX = padLeft + ((threshold - zMinT) / zRange) * chartW;
+  const showThreshold = threshold >= zMinT && threshold <= zMaxT;
 
   return (
-    <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+    <svg
+      ref={zoom.svgRef}
+      viewBox={`0 0 ${vw} ${vh}`}
+      className="w-full h-auto select-none"
+      preserveAspectRatio="xMidYMid meet"
+      onMouseDown={zoom.onMouseDown}
+      onMouseMove={zoom.onMouseMove}
+      onMouseUp={zoom.onMouseUp}
+      onMouseLeave={zoom.onMouseUp}
+      onDoubleClick={zoom.onDoubleClick}
+    >
+      {/* Clip path for chart area */}
+      <defs>
+        <clipPath id="impact-clip">
+          <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
+        </clipPath>
+      </defs>
+
       {/* Gridlines */}
       {[0.25, 0.5, 0.75].map((frac) => {
         const y = padTop + (1 - frac) * chartH;
         return <line key={frac} x1={padLeft} y1={y} x2={padLeft + chartW} y2={y} stroke="currentColor" strokeOpacity={0.06} />;
       })}
 
-      <path d={clientLine} fill="none" stroke="#22d3ee" strokeWidth={2} opacity={0.9} />
-      <path d={requestLine} fill="none" stroke="#f472b6" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
+      <g clipPath="url(#impact-clip)">
+        <path d={clientLine} fill="none" stroke="#22d3ee" strokeWidth={2} opacity={0.9} />
+        <path d={requestLine} fill="none" stroke="#f472b6" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
 
-      {/* Threshold line */}
-      <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
+        {/* Threshold line */}
+        {showThreshold && (
+          <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
+        )}
+      </g>
+
+      {/* Selection overlay */}
+      <SelectionOverlay state={zoom.state} padLeft={padLeft} padTop={padTop} chartW={chartW} chartH={chartH} />
 
       {/* Y-axis labels */}
       <text x={padLeft - 4} y={padTop + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>100%</text>
       <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>50%</text>
       <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0%</text>
 
-      {/* X-axis tick labels */}
+      {/* X-axis tick labels — zoomed domain */}
       {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
-        const val = minT + frac * range;
+        const val = zMinT + frac * zRange;
         const x = padLeft + frac * chartW;
         return (
           <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
@@ -279,6 +421,9 @@ export function ImpactCurve({
       <text x={padLeft + 40} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
       <line x1={padLeft + 120} y1={vh - 10} x2={padLeft + 142} y2={vh - 10} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
       <text x={padLeft + 148} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
+
+      {/* Reset zoom badge */}
+      {zoom.isZoomed && <ResetZoomBadge onClick={zoom.resetZoom} x={vw - padRight - 90} y={padTop + 2} />}
     </svg>
   );
 }
@@ -301,8 +446,18 @@ export function TimeOfDayChart({
   const padTop = 12;
   const chartW = vw - padLeft - padRight;
   const chartH = vh - padBottom - padTop;
-  const maxRPS = Math.max(...baselines.map((b) => b.p95_rps), 0.001);
-  const barW = chartW / 24;
+
+  const zoom = useSvgDragZoom(padLeft, chartW);
+
+  // Compute zoomed hour range [0–24]
+  const zHourMin = zoom.isZoomed ? zoom.state.zoomFracLeft! * 24 : 0;
+  const zHourMax = zoom.isZoomed ? zoom.state.zoomFracRight! * 24 : 24;
+  const zHourRange = zHourMax - zHourMin || 24;
+
+  // Filter baselines to visible range and recompute Y-axis from visible data
+  const visibleBaselines = baselines.filter((b) => b.hour >= Math.floor(zHourMin) && b.hour < Math.ceil(zHourMax));
+  const maxRPS = Math.max(...(visibleBaselines.length > 0 ? visibleBaselines : baselines).map((b) => b.p95_rps), 0.001);
+  const barW = chartW / zHourRange;
 
   const ticks = niceYTicks(maxRPS, 4);
   const niceMax = ticks.length > 0 ? ticks[ticks.length - 1] : maxRPS;
@@ -316,8 +471,29 @@ export function TimeOfDayChart({
     return s.replace(/\.?0+$/, "");
   };
 
+  // Determine which hours to label on X-axis (adaptive spacing)
+  const visibleHours = Math.ceil(zHourMax) - Math.floor(zHourMin);
+  const labelEvery = visibleHours <= 6 ? 1 : visibleHours <= 12 ? 2 : 3;
+
   return (
-    <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+    <svg
+      ref={zoom.svgRef}
+      viewBox={`0 0 ${vw} ${vh}`}
+      className="w-full h-auto select-none"
+      preserveAspectRatio="xMidYMid meet"
+      onMouseDown={zoom.onMouseDown}
+      onMouseMove={zoom.onMouseMove}
+      onMouseUp={zoom.onMouseUp}
+      onMouseLeave={zoom.onMouseUp}
+      onDoubleClick={zoom.onDoubleClick}
+    >
+      {/* Clip path for chart area */}
+      <defs>
+        <clipPath id="tod-clip">
+          <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
+        </clipPath>
+      </defs>
+
       {/* Y-axis gridlines */}
       {ticks.map((tick) => {
         const y = padTop + chartH - (tick / niceMax) * chartH;
@@ -331,51 +507,60 @@ export function TimeOfDayChart({
         );
       })}
 
-      {/* Bars for all 24 hours */}
-      {Array.from({ length: 24 }, (_, hour) => {
-        const baseline = baselines.find((b) => b.hour === hour);
-        const x = padLeft + hour * barW;
-        if (!baseline) {
+      {/* Bars for visible hours */}
+      <g clipPath="url(#tod-clip)">
+        {Array.from({ length: 24 }, (_, hour) => {
+          // Position relative to zoomed domain
+          const x = padLeft + ((hour - zHourMin) / zHourRange) * chartW;
+          // Skip hours fully outside view
+          if (x + barW < padLeft || x > padLeft + chartW) return null;
+
+          const baseline = baselines.find((b) => b.hour === hour);
+          if (!baseline) {
+            return (
+              <g key={hour}>
+                {(hour - Math.floor(zHourMin)) % labelEvery === 0 && (
+                  <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground/40" fontSize={9} fontFamily="monospace">
+                    {String(hour).padStart(2, "0")}
+                  </text>
+                )}
+              </g>
+            );
+          }
+          const gap = Math.min(barW * 0.08, 2);
+          const bw = barW - gap * 2;
+          const medH = (baseline.median_rps / niceMax) * chartH;
+          const p95H = (baseline.p95_rps / niceMax) * chartH;
           return (
             <g key={hour}>
-              {hour % 3 === 0 && (
-                <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground/40" fontSize={9} fontFamily="monospace">
+              <rect
+                x={x + gap}
+                y={padTop + chartH - p95H}
+                width={Math.max(bw, 2)}
+                height={Math.max(p95H, 0)}
+                fill="rgba(34,211,238,0.15)"
+                rx={2}
+              />
+              <rect
+                x={x + gap}
+                y={padTop + chartH - medH}
+                width={Math.max(bw, 2)}
+                height={Math.max(medH, 0)}
+                fill="rgba(34,211,238,0.5)"
+                rx={2}
+              />
+              {(hour - Math.floor(zHourMin)) % labelEvery === 0 && (
+                <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">
                   {String(hour).padStart(2, "0")}
                 </text>
               )}
             </g>
           );
-        }
-        const gap = Math.min(barW * 0.08, 2);
-        const bw = barW - gap * 2;
-        const medH = (baseline.median_rps / niceMax) * chartH;
-        const p95H = (baseline.p95_rps / niceMax) * chartH;
-        return (
-          <g key={hour}>
-            <rect
-              x={x + gap}
-              y={padTop + chartH - p95H}
-              width={Math.max(bw, 2)}
-              height={Math.max(p95H, 0)}
-              fill="rgba(34,211,238,0.15)"
-              rx={2}
-            />
-            <rect
-              x={x + gap}
-              y={padTop + chartH - medH}
-              width={Math.max(bw, 2)}
-              height={Math.max(medH, 0)}
-              fill="rgba(34,211,238,0.5)"
-              rx={2}
-            />
-            {hour % 3 === 0 && (
-              <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">
-                {String(hour).padStart(2, "0")}
-              </text>
-            )}
-          </g>
-        );
-      })}
+        })}
+      </g>
+
+      {/* Selection overlay */}
+      <SelectionOverlay state={zoom.state} padLeft={padLeft} padTop={padTop} chartW={chartW} chartH={chartH} />
 
       {/* Baseline */}
       <line x1={padLeft} y1={padTop + chartH} x2={padLeft + chartW} y2={padTop + chartH} stroke="currentColor" strokeOpacity={0.15} />
@@ -385,6 +570,9 @@ export function TimeOfDayChart({
         req/s
       </text>
       <text x={padLeft - 6} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">0</text>
+
+      {/* Reset zoom badge */}
+      {zoom.isZoomed && <ResetZoomBadge onClick={zoom.resetZoom} x={vw - padRight - 160} y={padTop + 2} />}
     </svg>
   );
 }
