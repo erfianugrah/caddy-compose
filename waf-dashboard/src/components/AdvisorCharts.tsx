@@ -102,15 +102,15 @@ function SelectionOverlay({ state, padLeft, padTop, chartW, chartH }: {
   return <rect x={x} y={padTop} width={w} height={chartH} fill="rgba(34,211,238,0.15)" stroke="#22d3ee" strokeWidth={1} strokeOpacity={0.4} />;
 }
 
-/** Small "Reset zoom" badge shown when zoomed */
-function ResetZoomBadge({ onClick, x, y }: { onClick: () => void; x: number; y: number }) {
+/** HTML reset zoom button positioned outside SVG */
+function ResetZoomButton({ onClick }: { onClick: () => void }) {
   return (
-    <g onClick={onClick} className="cursor-pointer" role="button">
-      <rect x={x} y={y} width={80} height={18} rx={4} fill="rgba(34,211,238,0.12)" stroke="#22d3ee" strokeWidth={0.5} strokeOpacity={0.4} />
-      <text x={x + 40} y={y + 13} textAnchor="middle" className="fill-cyan-400" fontSize={9} fontFamily="monospace">
-        Reset zoom
-      </text>
-    </g>
+    <button
+      onClick={onClick}
+      className="absolute top-1 right-1 px-2 py-0.5 text-[10px] font-mono text-cyan-400 bg-cyan-400/10 border border-cyan-400/30 rounded hover:bg-cyan-400/20 transition-colors cursor-pointer z-10"
+    >
+      Reset zoom
+    </button>
   );
 }
 
@@ -363,68 +363,68 @@ export function ImpactCurve({
   const showThreshold = threshold >= zMinT && threshold <= zMaxT;
 
   return (
-    <svg
-      ref={zoom.svgRef}
-      viewBox={`0 0 ${vw} ${vh}`}
-      className="w-full h-auto select-none"
-      preserveAspectRatio="xMidYMid meet"
-      onMouseDown={zoom.onMouseDown}
-      onMouseMove={zoom.onMouseMove}
-      onMouseUp={zoom.onMouseUp}
-      onMouseLeave={zoom.onMouseUp}
-      onDoubleClick={zoom.onDoubleClick}
-    >
-      {/* Clip path for chart area */}
-      <defs>
-        <clipPath id="impact-clip">
-          <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
-        </clipPath>
-      </defs>
+    <div className="relative">
+      {zoom.isZoomed && <ResetZoomButton onClick={zoom.resetZoom} />}
+      <svg
+        ref={zoom.svgRef}
+        viewBox={`0 0 ${vw} ${vh}`}
+        className="w-full h-auto select-none"
+        preserveAspectRatio="xMidYMid meet"
+        onMouseDown={zoom.onMouseDown}
+        onMouseMove={zoom.onMouseMove}
+        onMouseUp={zoom.onMouseUp}
+        onMouseLeave={zoom.onMouseUp}
+        onDoubleClick={zoom.onDoubleClick}
+      >
+        {/* Clip path for chart area */}
+        <defs>
+          <clipPath id="impact-clip">
+            <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
+          </clipPath>
+        </defs>
 
-      {/* Gridlines */}
-      {[0.25, 0.5, 0.75].map((frac) => {
-        const y = padTop + (1 - frac) * chartH;
-        return <line key={frac} x1={padLeft} y1={y} x2={padLeft + chartW} y2={y} stroke="currentColor" strokeOpacity={0.06} />;
-      })}
+        {/* Gridlines */}
+        {[0.25, 0.5, 0.75].map((frac) => {
+          const y = padTop + (1 - frac) * chartH;
+          return <line key={frac} x1={padLeft} y1={y} x2={padLeft + chartW} y2={y} stroke="currentColor" strokeOpacity={0.06} />;
+        })}
 
-      <g clipPath="url(#impact-clip)">
-        <path d={clientLine} fill="none" stroke="#22d3ee" strokeWidth={2} opacity={0.9} />
-        <path d={requestLine} fill="none" stroke="#f472b6" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
+        <g clipPath="url(#impact-clip)">
+          <path d={clientLine} fill="none" stroke="#22d3ee" strokeWidth={2} opacity={0.9} />
+          <path d={requestLine} fill="none" stroke="#f472b6" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
 
-        {/* Threshold line */}
-        {showThreshold && (
-          <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
-        )}
-      </g>
+          {/* Threshold line */}
+          {showThreshold && (
+            <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
+          )}
+        </g>
 
-      {/* Selection overlay */}
-      <SelectionOverlay state={zoom.state} padLeft={padLeft} padTop={padTop} chartW={chartW} chartH={chartH} />
+        {/* Selection overlay */}
+        <SelectionOverlay state={zoom.state} padLeft={padLeft} padTop={padTop} chartW={chartW} chartH={chartH} />
 
-      {/* Y-axis labels */}
-      <text x={padLeft - 4} y={padTop + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>100%</text>
-      <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>50%</text>
-      <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0%</text>
+        {/* Y-axis labels */}
+        <text x={padLeft - 4} y={padTop + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>100%</text>
+        <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>50%</text>
+        <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0%</text>
 
-      {/* X-axis tick labels — zoomed domain */}
-      {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
-        const val = zMinT + frac * zRange;
-        const x = padLeft + frac * chartW;
-        return (
-          <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
-            {Math.round(val)}
-          </text>
-        );
-      })}
+        {/* X-axis tick labels — zoomed domain */}
+        {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+          const val = zMinT + frac * zRange;
+          const x = padLeft + frac * chartW;
+          return (
+            <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
+              {Math.round(val)}
+            </text>
+          );
+        })}
 
-      {/* Legend */}
-      <line x1={padLeft + 12} y1={vh - 10} x2={padLeft + 34} y2={vh - 10} stroke="#22d3ee" strokeWidth={2} />
-      <text x={padLeft + 40} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
-      <line x1={padLeft + 120} y1={vh - 10} x2={padLeft + 142} y2={vh - 10} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
-      <text x={padLeft + 148} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
-
-      {/* Reset zoom badge */}
-      {zoom.isZoomed && <ResetZoomBadge onClick={zoom.resetZoom} x={vw - padRight - 90} y={padTop + 2} />}
-    </svg>
+        {/* Legend */}
+        <line x1={padLeft + 12} y1={vh - 10} x2={padLeft + 34} y2={vh - 10} stroke="#22d3ee" strokeWidth={2} />
+        <text x={padLeft + 40} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
+        <line x1={padLeft + 120} y1={vh - 10} x2={padLeft + 142} y2={vh - 10} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
+        <text x={padLeft + 148} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
+      </svg>
+    </div>
   );
 }
 
@@ -476,20 +476,22 @@ export function TimeOfDayChart({
   const labelEvery = visibleHours <= 6 ? 1 : visibleHours <= 12 ? 2 : 3;
 
   return (
-    <svg
-      ref={zoom.svgRef}
-      viewBox={`0 0 ${vw} ${vh}`}
-      className="w-full h-auto select-none"
-      preserveAspectRatio="xMidYMid meet"
-      onMouseDown={zoom.onMouseDown}
-      onMouseMove={zoom.onMouseMove}
-      onMouseUp={zoom.onMouseUp}
-      onMouseLeave={zoom.onMouseUp}
-      onDoubleClick={zoom.onDoubleClick}
-    >
-      {/* Clip path for chart area */}
-      <defs>
-        <clipPath id="tod-clip">
+    <div className="relative">
+      {zoom.isZoomed && <ResetZoomButton onClick={zoom.resetZoom} />}
+      <svg
+        ref={zoom.svgRef}
+        viewBox={`0 0 ${vw} ${vh}`}
+        className="w-full h-auto select-none"
+        preserveAspectRatio="xMidYMid meet"
+        onMouseDown={zoom.onMouseDown}
+        onMouseMove={zoom.onMouseMove}
+        onMouseUp={zoom.onMouseUp}
+        onMouseLeave={zoom.onMouseUp}
+        onDoubleClick={zoom.onDoubleClick}
+      >
+        {/* Clip path for chart area */}
+        <defs>
+          <clipPath id="tod-clip">
           <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
         </clipPath>
       </defs>
@@ -571,8 +573,7 @@ export function TimeOfDayChart({
       </text>
       <text x={padLeft - 6} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">0</text>
 
-      {/* Reset zoom badge */}
-      {zoom.isZoomed && <ResetZoomBadge onClick={zoom.resetZoom} x={vw - padRight - 160} y={padTop + 2} />}
     </svg>
+    </div>
   );
 }
