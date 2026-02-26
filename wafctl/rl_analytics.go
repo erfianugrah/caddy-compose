@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -706,4 +707,165 @@ func (s *AccessLogStore) FilteredEvents(service, client, method string, limit, o
 	}
 
 	return RLEventsResponse{Total: total, Events: filtered[offset:end]}
+}
+
+// ─── Per-Rule Hit Attribution (condition-based inference) ────────────
+
+// RLRuleHitStats holds per-rule hit counts with a sparkline.
+type RLRuleHitStats struct {
+	Total     int   `json:"total"`
+	Sparkline []int `json:"sparkline"` // Hourly buckets, oldest-first
+}
+
+// RuleHits returns per-rule hit counts by matching 429 events against
+// stored rule conditions. Uses condition-based inference: for each 429
+// event, evaluates rules in priority order and attributes the event to
+// the first matching rule.
+func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]RLRuleHitStats {
+	events := s.snapshotSince(hours)
+
+	// Pre-initialize all rules so the frontend gets zero-filled entries.
+	result := make(map[string]RLRuleHitStats, len(rules))
+	numBuckets := hours
+	if numBuckets <= 0 || numBuckets > 168 {
+		numBuckets = 24
+	}
+	for _, r := range rules {
+		result[r.Name] = RLRuleHitStats{
+			Total:     0,
+			Sparkline: make([]int, numBuckets),
+		}
+	}
+
+	if len(events) == 0 || len(rules) == 0 {
+		return result
+	}
+
+	// Sort rules by priority for evaluation order.
+	sorted := make([]RateLimitRule, len(rules))
+	copy(sorted, rules)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Priority < sorted[j].Priority
+	})
+
+	// Build sparkline time boundaries.
+	now := time.Now().UTC()
+	bucketStart := now.Add(-time.Duration(numBuckets) * time.Hour)
+
+	for _, evt := range events {
+		// Only count rate-limited events (not ipsum).
+		if evt.Source != "" {
+			continue
+		}
+
+		// Find the first matching rule for this event.
+		ruleName := matchEventToRule(evt, sorted)
+		if ruleName == "" {
+			continue
+		}
+
+		stats := result[ruleName]
+		stats.Total++
+
+		// Sparkline bucket.
+		if evt.Timestamp.After(bucketStart) {
+			bucket := int(evt.Timestamp.Sub(bucketStart).Hours())
+			if bucket >= 0 && bucket < numBuckets {
+				stats.Sparkline[bucket]++
+			}
+		}
+		result[ruleName] = stats
+	}
+
+	return result
+}
+
+// matchEventToRule evaluates rules in priority order against a 429 event.
+// Returns the name of the first matching rule, or "" if none match.
+func matchEventToRule(evt RateLimitEvent, rules []RateLimitRule) string {
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		// Service must match.
+		if rule.Service != "*" && rule.Service != evt.Service {
+			continue
+		}
+		// If no conditions, rule matches all events for this service.
+		if len(rule.Conditions) == 0 {
+			return rule.Name
+		}
+		// Evaluate conditions (AND by default).
+		if matchRLConditions(evt, rule.Conditions, rule.GroupOp) {
+			return rule.Name
+		}
+	}
+	return ""
+}
+
+// matchRLConditions checks if a rate limit event matches the given conditions.
+func matchRLConditions(evt RateLimitEvent, conditions []Condition, groupOp string) bool {
+	if groupOp == "or" {
+		for _, c := range conditions {
+			if matchRLCondition(evt, c) {
+				return true
+			}
+		}
+		return false
+	}
+	// AND (default).
+	for _, c := range conditions {
+		if !matchRLCondition(evt, c) {
+			return false
+		}
+	}
+	return true
+}
+
+// matchRLCondition checks if a single condition matches a rate limit event.
+func matchRLCondition(evt RateLimitEvent, c Condition) bool {
+	var target string
+	switch c.Field {
+	case "path", "uri_path":
+		target = evt.URI
+	case "method":
+		target = evt.Method
+	case "ip":
+		target = evt.ClientIP
+	case "host":
+		target = evt.Service
+	case "user_agent":
+		target = evt.UserAgent
+	case "country":
+		target = evt.Country
+	default:
+		return false
+	}
+
+	switch c.Operator {
+	case "eq", "ip_match":
+		return target == c.Value
+	case "neq", "not_ip_match":
+		return target != c.Value
+	case "contains":
+		return strings.Contains(target, c.Value)
+	case "begins_with":
+		return strings.HasPrefix(target, c.Value)
+	case "ends_with":
+		return strings.HasSuffix(target, c.Value)
+	case "in":
+		for _, v := range splitPipe(c.Value) {
+			if target == v {
+				return true
+			}
+		}
+		return false
+	case "regex":
+		re, err := regexp.Compile(c.Value)
+		if err != nil {
+			return false
+		}
+		return re.MatchString(target)
+	}
+	return false
 }

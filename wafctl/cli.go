@@ -31,6 +31,12 @@ Commands:
   rules delete <id>  Delete a rule by ID
   deploy             Deploy WAF config to Caddy (generate + reload)
   events             List recent WAF events
+  ratelimit list     List all rate limit rules (alias: rl)
+  ratelimit get <id> Get a rate limit rule by ID
+  ratelimit create   Create a rate limit rule (JSON on stdin or --file)
+  ratelimit delete   Delete a rate limit rule by ID
+  ratelimit deploy   Deploy rate limit configs to Caddy
+  ratelimit global   Show global rate limit settings
   blocklist stats    Show IPsum blocklist statistics
   blocklist check    Check if an IP is blocklisted
   blocklist refresh  Refresh the blocklist from upstream
@@ -145,6 +151,36 @@ func runCLI(args []string) int {
 		return cliDeploy(flags)
 	case "events":
 		return cliEvents(flags, command[1:])
+	case "ratelimit", "rl":
+		if len(command) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wafctl ratelimit <list|get|create|delete|deploy|global> [id]\n")
+			return 1
+		}
+		switch command[1] {
+		case "list", "ls":
+			return cliRateLimitList(flags)
+		case "get":
+			if len(command) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: wafctl ratelimit get <id>\n")
+				return 1
+			}
+			return cliRateLimitGet(flags, command[2])
+		case "create":
+			return cliRateLimitCreate(flags)
+		case "delete", "rm":
+			if len(command) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: wafctl ratelimit delete <id>\n")
+				return 1
+			}
+			return cliRateLimitDelete(flags, command[2])
+		case "deploy":
+			return cliRateLimitDeploy(flags)
+		case "global":
+			return cliRateLimitGlobal(flags)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown ratelimit subcommand: %s\n", command[1])
+			return 1
+		}
 	case "blocklist":
 		if len(command) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: wafctl blocklist <stats|check|refresh>\n")
@@ -585,6 +621,174 @@ func cliEvents(flags cliFlags, args []string) int {
 	tw.Flush()
 	fmt.Printf("\nShowing %d of %d event(s)\n", len(resp.Events), resp.Total)
 	return 0
+}
+
+// --- Rate Limit CLI subcommands ---
+
+func cliRateLimitList(flags cliFlags) int {
+	data, err := cliGet(flags, "/api/rate-rules")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if flags.asJSON {
+		printJSON(data)
+		return 0
+	}
+
+	var rules []struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Service  string `json:"service"`
+		Key      string `json:"key"`
+		Events   int    `json:"events"`
+		Window   string `json:"window"`
+		Action   string `json:"action"`
+		Priority int    `json:"priority"`
+		Enabled  bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(data, &rules); err != nil {
+		printJSON(data)
+		return 0
+	}
+
+	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(tw, "ID\tNAME\tSERVICE\tKEY\tEVENTS\tWINDOW\tACTION\tENABLED\n")
+	fmt.Fprintf(tw, "--\t----\t-------\t---\t------\t------\t------\t-------\n")
+	for _, r := range rules {
+		enabled := "yes"
+		if !r.Enabled {
+			enabled = "no"
+		}
+		action := r.Action
+		if action == "" {
+			action = "deny"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
+			r.ID, r.Name, r.Service, r.Key, r.Events, r.Window, action, enabled)
+	}
+	tw.Flush()
+	fmt.Printf("\n%d rule(s)\n", len(rules))
+	return 0
+}
+
+func cliRateLimitGet(flags cliFlags, id string) int {
+	data, err := cliGet(flags, "/api/rate-rules/"+url.PathEscape(id))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	printJSON(data)
+	return 0
+}
+
+func cliRateLimitCreate(flags cliFlags) int {
+	payload, err := readInput(flags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+		return 1
+	}
+	data, err := cliPost(flags, "/api/rate-rules", payload)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if flags.asJSON {
+		printJSON(data)
+	} else {
+		var created struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(data, &created) == nil {
+			fmt.Printf("Rate limit rule created: %s (%s)\n", created.Name, created.ID)
+		} else {
+			printJSON(data)
+		}
+	}
+	return 0
+}
+
+func cliRateLimitDelete(flags cliFlags, id string) int {
+	_, err := cliDelete(flags, "/api/rate-rules/"+url.PathEscape(id))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	fmt.Printf("Rate limit rule %s deleted.\n", id)
+	return 0
+}
+
+func cliRateLimitDeploy(flags cliFlags) int {
+	fmt.Print("Deploying rate limit configuration to Caddy... ")
+	data, err := cliPost(flags, "/api/rate-rules/deploy", nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+		return 1
+	}
+	if flags.asJSON {
+		fmt.Println()
+		printJSON(data)
+		return 0
+	}
+	var result struct {
+		Status  string   `json:"status"`
+		Message string   `json:"message"`
+		Files   []string `json:"files"`
+	}
+	if json.Unmarshal(data, &result) == nil {
+		fmt.Printf("done\nStatus: %s\nFiles: %d\n", result.Status, len(result.Files))
+		if result.Message != "" {
+			fmt.Println(result.Message)
+		}
+	} else {
+		fmt.Println("done")
+		printJSON(data)
+	}
+	return 0
+}
+
+func cliRateLimitGlobal(flags cliFlags) int {
+	data, err := cliGet(flags, "/api/rate-rules/global")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if flags.asJSON {
+		printJSON(data)
+		return 0
+	}
+
+	var cfg struct {
+		Jitter        float64 `json:"jitter"`
+		SweepInterval string  `json:"sweep_interval"`
+		Distributed   bool    `json:"distributed"`
+		ReadInterval  string  `json:"read_interval"`
+		WriteInterval string  `json:"write_interval"`
+		PurgeAge      string  `json:"purge_age"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		printJSON(data)
+		return 0
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(tw, "Jitter:\t%.2f\n", cfg.Jitter)
+	fmt.Fprintf(tw, "Sweep Interval:\t%s\n", orDefault(cfg.SweepInterval, "(default)"))
+	fmt.Fprintf(tw, "Distributed:\t%v\n", cfg.Distributed)
+	if cfg.Distributed {
+		fmt.Fprintf(tw, "Read Interval:\t%s\n", orDefault(cfg.ReadInterval, "(default)"))
+		fmt.Fprintf(tw, "Write Interval:\t%s\n", orDefault(cfg.WriteInterval, "(default)"))
+		fmt.Fprintf(tw, "Purge Age:\t%s\n", orDefault(cfg.PurgeAge, "(default)"))
+	}
+	tw.Flush()
+	return 0
+}
+
+func orDefault(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }
 
 func cliBlocklistStats(flags cliFlags) int {

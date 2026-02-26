@@ -53,6 +53,19 @@ import {
   settingsToPreset,
 } from "@/lib/api";
 
+// ─── CRS v4 Exclusion Profiles ──────────────────────────────────────
+
+const CRS_EXCLUSION_PROFILES: { value: string; label: string; desc: string }[] = [
+  { value: "wordpress", label: "WordPress", desc: "Excludes common WP admin/editor false positives" },
+  { value: "nextcloud", label: "Nextcloud", desc: "Excludes Nextcloud WebDAV and sync operations" },
+  { value: "drupal", label: "Drupal", desc: "Excludes Drupal admin and module operations" },
+  { value: "cpanel", label: "cPanel", desc: "Excludes cPanel/WHM control panel operations" },
+  { value: "dokuwiki", label: "DokuWiki", desc: "Excludes DokuWiki editing operations" },
+  { value: "phpbb", label: "phpBB", desc: "Excludes phpBB forum operations" },
+  { value: "phpmyadmin", label: "phpMyAdmin", desc: "Excludes phpMyAdmin database operations" },
+  { value: "xenforo", label: "XenForo", desc: "Excludes XenForo forum operations" },
+];
+
 // ─── Constants ──────────────────────────────────────────────────────
 
 const PARANOIA_DESCRIPTIONS: Record<number, { label: string; desc: string }> = {
@@ -314,6 +327,333 @@ function RuleGroupToggles({
   );
 }
 
+// ─── Advanced Paranoia (BPL / DPL Split) ────────────────────────────
+
+function AdvancedParanoiaSettings({
+  settings,
+  onChange,
+}: {
+  settings: WAFServiceSettings;
+  onChange: (s: WAFServiceSettings) => void;
+}) {
+  const bpl = settings.blocking_paranoia_level || settings.paranoia_level;
+  const dpl = settings.detection_paranoia_level || settings.paranoia_level;
+  const isSplit = bpl !== settings.paranoia_level || dpl !== settings.paranoia_level;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Blocking / Detection PL Split
+        </Label>
+        <Switch
+          checked={isSplit}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              onChange({
+                ...settings,
+                blocking_paranoia_level: settings.paranoia_level,
+                detection_paranoia_level: settings.paranoia_level,
+              });
+            } else {
+              onChange({
+                ...settings,
+                blocking_paranoia_level: undefined,
+                detection_paranoia_level: undefined,
+              });
+            }
+          }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Detect at a higher PL but only block at a lower PL — CRS v4's primary tuning knob.
+      </p>
+      {isSplit && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Blocking PL</Label>
+            <Select
+              value={String(bpl)}
+              onValueChange={(v) => onChange({ ...settings, blocking_paranoia_level: Number(v) })}
+            >
+              <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Detection PL</Label>
+            <Select
+              value={String(dpl)}
+              onValueChange={(v) => onChange({ ...settings, detection_paranoia_level: Number(v) })}
+            >
+              <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Request Policy Settings ────────────────────────────────────────
+
+function RequestPolicySettings({
+  settings,
+  onChange,
+}: {
+  settings: WAFServiceSettings;
+  onChange: (s: WAFServiceSettings) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        Request Policy
+      </Label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Allowed Methods</Label>
+          <Input
+            placeholder="GET HEAD POST OPTIONS"
+            value={settings.allowed_methods ?? ""}
+            onChange={(e) => onChange({ ...settings, allowed_methods: e.target.value || undefined })}
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground/60">Rule 911100. Space-separated.</p>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Allowed HTTP Versions</Label>
+          <Input
+            placeholder="HTTP/1.0 HTTP/1.1 HTTP/2 HTTP/2.0"
+            value={settings.allowed_http_versions ?? ""}
+            onChange={(e) => onChange({ ...settings, allowed_http_versions: e.target.value || undefined })}
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground/60">Rule 920230. Space-separated.</p>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">Allowed Content Types</Label>
+        <Input
+          placeholder="|application/x-www-form-urlencoded| |multipart/form-data| |application/json|"
+          value={settings.allowed_request_content_type ?? ""}
+          onChange={(e) => onChange({ ...settings, allowed_request_content_type: e.target.value || undefined })}
+          className="font-mono text-xs"
+        />
+        <p className="text-xs text-muted-foreground/60">Rule 920420. Pipe-delimited format.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Restricted Extensions</Label>
+          <Input
+            placeholder=".asa .asax .backup .bak ..."
+            value={settings.restricted_extensions ?? ""}
+            onChange={(e) => onChange({ ...settings, restricted_extensions: e.target.value || undefined })}
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground/60">Rule 920440.</p>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Restricted Headers</Label>
+          <Input
+            placeholder="/accept-charset/ /proxy/ ..."
+            value={settings.restricted_headers ?? ""}
+            onChange={(e) => onChange({ ...settings, restricted_headers: e.target.value || undefined })}
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground/60">Rule 920450. Slash-delimited.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Argument & File Limits ─────────────────────────────────────────
+
+function LimitsSettings({
+  settings,
+  onChange,
+}: {
+  settings: WAFServiceSettings;
+  onChange: (s: WAFServiceSettings) => void;
+}) {
+  const numField = (
+    label: string, field: keyof WAFServiceSettings, placeholder: string, rule: string
+  ) => (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Input
+        type="number"
+        min={0}
+        placeholder={placeholder}
+        value={(settings[field] as number) || ""}
+        onChange={(e) => {
+          const val = e.target.value === "" ? undefined : Number(e.target.value);
+          onChange({ ...settings, [field]: val });
+        }}
+        className="w-28"
+      />
+      <p className="text-xs text-muted-foreground/60">{rule}</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        Argument & File Limits
+      </Label>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {numField("Max Arguments", "max_num_args", "255", "Rule 920300")}
+        {numField("Arg Name Length", "arg_name_length", "100", "Rule 920310")}
+        {numField("Arg Value Length", "arg_length", "400", "Rule 920320")}
+        {numField("Total Arg Length", "total_arg_length", "64000", "Rule 920330")}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {numField("Max File Size (bytes)", "max_file_size", "1048576", "Rule 920400")}
+        {numField("Combined File Sizes", "combined_file_sizes", "1048576", "Rule 920410")}
+      </div>
+    </div>
+  );
+}
+
+// ─── CRS Exclusion Profiles ─────────────────────────────────────────
+
+function CRSExclusionProfiles({
+  exclusions,
+  onChange,
+}: {
+  exclusions: string[];
+  onChange: (exclusions: string[]) => void;
+}) {
+  const activeSet = new Set(exclusions);
+
+  const toggle = (name: string) => {
+    const next = new Set(activeSet);
+    if (next.has(name)) {
+      next.delete(name);
+    } else {
+      next.add(name);
+    }
+    onChange([...next]);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        CRS Exclusion Profiles
+      </Label>
+      <p className="text-xs text-muted-foreground">
+        Built-in CRS v4 exclusion profiles reduce false positives for known applications.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {CRS_EXCLUSION_PROFILES.map((profile) => {
+          const isActive = activeSet.has(profile.value);
+          return (
+            <div
+              key={profile.value}
+              className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium truncate">{profile.label}</p>
+                <p className="text-xs text-muted-foreground truncate">{profile.desc}</p>
+              </div>
+              <Switch
+                checked={isActive}
+                onCheckedChange={() => toggle(profile.value)}
+                className="ml-2 shrink-0"
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Advanced CRS Controls ──────────────────────────────────────────
+
+function AdvancedCRSControls({
+  settings,
+  onChange,
+}: {
+  settings: WAFServiceSettings;
+  onChange: (s: WAFServiceSettings) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        Advanced CRS Controls
+      </Label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-medium">Early Blocking</p>
+            <p className="text-xs text-muted-foreground">Block at phase 1/2 before full inspection</p>
+          </div>
+          <Switch
+            checked={settings.early_blocking ?? false}
+            onCheckedChange={(v) => onChange({ ...settings, early_blocking: v || undefined })}
+          />
+        </div>
+        <div className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-medium">Enforce URL-Encoded Body</p>
+            <p className="text-xs text-muted-foreground">Force body processor for url-encoded POSTs</p>
+          </div>
+          <Switch
+            checked={settings.enforce_bodyproc_urlencoded ?? false}
+            onCheckedChange={(v) => onChange({ ...settings, enforce_bodyproc_urlencoded: v || undefined })}
+          />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Sampling Percentage</Label>
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            placeholder="100"
+            value={settings.sampling_percentage ?? ""}
+            onChange={(e) => {
+              const val = e.target.value === "" ? undefined : Number(e.target.value);
+              onChange({ ...settings, sampling_percentage: val });
+            }}
+            className="w-24"
+          />
+          <p className="text-xs text-muted-foreground/60">% of requests to inspect (1-100)</p>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Reporting Level</Label>
+          <Select
+            value={settings.reporting_level ? String(settings.reporting_level) : ""}
+            onValueChange={(v) => onChange({ ...settings, reporting_level: v ? Number(v) : undefined })}
+          >
+            <SelectTrigger className="w-24">
+              <SelectValue placeholder="Auto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Auto (= PL)</SelectItem>
+              {[1, 2, 3, 4].map((n) => (
+                <SelectItem key={n} value={String(n)}>PL {n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground/60">PL for audit reporting</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Per-Service Card ───────────────────────────────────────────────
 
 function ServiceSettingsCard({
@@ -401,6 +741,19 @@ function ServiceSettingsCard({
                 disabledGroups={settings.disabled_groups ?? []}
                 onChange={(groups) => onChange({ ...settings, disabled_groups: groups })}
               />
+              <Separator />
+              <CRSExclusionProfiles
+                exclusions={settings.crs_exclusions ?? []}
+                onChange={(excl) => onChange({ ...settings, crs_exclusions: excl.length > 0 ? excl : undefined })}
+              />
+              <Separator />
+              <AdvancedParanoiaSettings settings={settings} onChange={onChange} />
+              <Separator />
+              <RequestPolicySettings settings={settings} onChange={onChange} />
+              <Separator />
+              <LimitsSettings settings={settings} onChange={onChange} />
+              <Separator />
+              <AdvancedCRSControls settings={settings} onChange={onChange} />
             </>
           )}
 
@@ -689,6 +1042,19 @@ export default function SettingsPanel() {
                 disabledGroups={defaults.disabled_groups ?? []}
                 onChange={(groups) => handleDefaultsChange({ ...defaults, disabled_groups: groups })}
               />
+              <Separator />
+              <CRSExclusionProfiles
+                exclusions={defaults.crs_exclusions ?? []}
+                onChange={(excl) => handleDefaultsChange({ ...defaults, crs_exclusions: excl.length > 0 ? excl : undefined })}
+              />
+              <Separator />
+              <AdvancedParanoiaSettings settings={defaults} onChange={handleDefaultsChange} />
+              <Separator />
+              <RequestPolicySettings settings={defaults} onChange={handleDefaultsChange} />
+              <Separator />
+              <LimitsSettings settings={defaults} onChange={handleDefaultsChange} />
+              <Separator />
+              <AdvancedCRSControls settings={defaults} onChange={handleDefaultsChange} />
             </>
           )}
         </CardContent>

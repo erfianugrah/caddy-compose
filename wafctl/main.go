@@ -97,12 +97,12 @@ func runServe() int {
 
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	configStore := NewConfigStore(configFile)
-	rateLimitStore := NewRateLimitStore(rateLimitFile)
+	rlRuleStore := NewRateLimitRuleStore(rateLimitFile)
 
 	// Generate-on-boot: regenerate WAF and rate limit config files from stored
 	// state so a stack restart always picks up the latest generator output.
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
-	generateOnBoot(configStore, exclusionStore, rateLimitStore, deployCfg)
+	generateOnBoot(configStore, exclusionStore, rlRuleStore, deployCfg)
 
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
@@ -142,21 +142,29 @@ func runServe() int {
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, deployCfg))
 
-	// Rate Limits
-	mux.HandleFunc("GET /api/rate-limits", handleGetRateLimits(rateLimitStore))
-	mux.HandleFunc("PUT /api/rate-limits", handleUpdateRateLimits(rateLimitStore))
-	mux.HandleFunc("POST /api/rate-limits/deploy", handleDeployRateLimits(rateLimitStore, deployCfg))
+	// Rate Limit Rules (policy engine)
+	mux.HandleFunc("GET /api/rate-rules", handleListRLRules(rlRuleStore))
+	mux.HandleFunc("POST /api/rate-rules", handleCreateRLRule(rlRuleStore))
+	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rlRuleStore))
+	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rlRuleStore))
+	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, deployCfg))
+	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
+	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))
+	mux.HandleFunc("GET /api/rate-rules/hits", handleRLRuleHits(accessLogStore, rlRuleStore))
+	mux.HandleFunc("GET /api/rate-rules/{id}", handleGetRLRule(rlRuleStore))
+	mux.HandleFunc("PUT /api/rate-rules/{id}", handleUpdateRLRule(rlRuleStore))
+	mux.HandleFunc("DELETE /api/rate-rules/{id}", handleDeleteRLRule(rlRuleStore))
 
-	// Rate Limit Analytics (429 events from combined access log)
+	// Rate Limit Analytics (access log based)
 	mux.HandleFunc("GET /api/rate-limits/summary", handleRLSummary(accessLogStore))
 	mux.HandleFunc("GET /api/rate-limits/events", handleRLEvents(accessLogStore))
 
 	// Blocklist (IPsum)
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
-	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rateLimitStore, deployCfg))
+	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rlRuleStore, deployCfg))
 
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
@@ -1196,7 +1204,7 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		exclusions := es.EnabledExclusions()
@@ -1213,8 +1221,8 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, deplo
 			return
 		}
 
-		// Ensure any new Caddyfile zones have rate limit files before reload.
-		syncCaddyfileZones(rs, deployCfg)
+		// Ensure any new Caddyfile services have rate limit files before reload.
+		syncCaddyfileServices(rs, deployCfg)
 
 		// Reload Caddy via admin API.
 		// Pass the config file paths so reloadCaddy can fingerprint them and
@@ -1251,65 +1259,114 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, deplo
 	}
 }
 
-// --- Handlers: Rate Limits ---
+// ─── Handlers: Rate Limit Rules (Policy Engine) ────────────────────
 
-func handleGetRateLimits(rs *RateLimitStore) http.HandlerFunc {
+func handleListRLRules(rs *RateLimitRuleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, rs.Get())
+		writeJSON(w, http.StatusOK, rs.List())
 	}
 }
 
-func handleUpdateRateLimits(rs *RateLimitStore) http.HandlerFunc {
+func handleGetRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var cfg RateLimitConfig
-		if _, failed := decodeJSON(w, r, &cfg); failed {
+		id := r.PathValue("id")
+		rule := rs.Get(id)
+		if rule == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "rule not found"})
 			return
 		}
-		if err := validateRateLimitConfig(cfg); err != nil {
+		writeJSON(w, http.StatusOK, rule)
+	}
+}
+
+func handleCreateRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var rule RateLimitRule
+		if _, failed := decodeJSON(w, r, &rule); failed {
+			return
+		}
+		if err := validateRateLimitRule(rule); err != nil {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
 			return
 		}
-		updated, err := rs.Update(cfg)
+		created, err := rs.Create(rule)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update rate limits", Details: err.Error()})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to create rule", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+	}
+}
+
+func handleUpdateRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		var rule RateLimitRule
+		if _, failed := decodeJSON(w, r, &rule); failed {
+			return
+		}
+		if err := validateRateLimitRule(rule); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
+			return
+		}
+		updated, found, err := rs.Update(id, rule)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update rule", Details: err.Error()})
+			return
+		}
+		if !found {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "rule not found"})
 			return
 		}
 		writeJSON(w, http.StatusOK, updated)
 	}
 }
 
-func handleDeployRateLimits(rs *RateLimitStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeleteRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		found, err := rs.Delete(id)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to delete rule", Details: err.Error()})
+			return
+		}
+		if !found {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "rule not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	}
+}
+
+func handleDeployRLRules(rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		// Discover any new zones from the Caddyfile before writing files.
-		// Use MergeCaddyfileZones directly (not syncCaddyfileZones) because
-		// writeZoneFiles below already writes all zones in one pass.
-		rs.MergeCaddyfileZones(deployCfg.CaddyfilePath)
+		// Discover any new services from the Caddyfile.
+		rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
 
-		cfg := rs.Get()
+		rules := rs.EnabledRules()
+		global := rs.GetGlobal()
+		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath)
 
-		// Write zone files to the shared volume.
-		written, err := writeZoneFiles(deployCfg.RateLimitDir, cfg.Zones)
+		written, err := writeRLFiles(deployCfg.RateLimitDir, files)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-				Error:   "failed to write zone files",
+				Error:   "failed to write RL files",
 				Details: err.Error(),
 			})
 			return
 		}
 
-		// Reload Caddy via admin API.
-		// Pass the written zone files so reloadCaddy can fingerprint them.
 		reloaded := true
 		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, written...); err != nil {
-			log.Printf("warning: Caddy reload failed after rate limit deploy: %v", err)
+			log.Printf("warning: Caddy reload failed after RL deploy: %v", err)
 			reloaded = false
 		}
 
 		status := "deployed"
-		msg := fmt.Sprintf("Wrote %d zone files and Caddy reloaded successfully", len(written))
+		msg := fmt.Sprintf("Wrote %d RL files and Caddy reloaded successfully", len(written))
 		if !reloaded {
 			status = "partial"
-			msg = fmt.Sprintf("Wrote %d zone files but Caddy reload failed — manual reload may be needed", len(written))
+			msg = fmt.Sprintf("Wrote %d RL files but Caddy reload failed — manual reload may be needed", len(written))
 		}
 
 		writeJSON(w, http.StatusOK, RateLimitDeployResponse{
@@ -1322,7 +1379,73 @@ func handleDeployRateLimits(rs *RateLimitStore, deployCfg DeployConfig) http.Han
 	}
 }
 
-// ─── Rate Limit Analytics handlers ──────────────────────────────────
+func handleGetRLGlobal(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, rs.GetGlobal())
+	}
+}
+
+func handleUpdateRLGlobal(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var cfg RateLimitGlobalConfig
+		if _, failed := decodeJSON(w, r, &cfg); failed {
+			return
+		}
+		if err := validateRateLimitGlobal(cfg); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
+			return
+		}
+		if err := rs.UpdateGlobal(cfg); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update global config", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, rs.GetGlobal())
+	}
+}
+
+func handleExportRLRules(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, rs.Export())
+	}
+}
+
+func handleImportRLRules(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var export RateLimitRuleExport
+		if _, failed := decodeJSON(w, r, &export); failed {
+			return
+		}
+		// Validate all imported rules.
+		for i, rule := range export.Rules {
+			if err := validateRateLimitRule(rule); err != nil {
+				writeJSON(w, http.StatusBadRequest, ErrorResponse{
+					Error:   fmt.Sprintf("rule[%d] validation failed", i),
+					Details: err.Error(),
+				})
+				return
+			}
+		}
+		if err := rs.Import(export.Rules); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "import failed", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":   "imported",
+			"imported": len(export.Rules),
+		})
+	}
+}
+
+func handleRLRuleHits(als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hours := parseHours(r)
+		rules := rs.List()
+		hits := als.RuleHits(rules, hours)
+		writeJSON(w, http.StatusOK, hits)
+	}
+}
+
+// --- Rate Limit Analytics handlers ---
 
 func handleRLSummary(als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

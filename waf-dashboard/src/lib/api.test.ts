@@ -13,6 +13,16 @@ import {
   getBlocklistStats,
   checkBlocklistIP,
   refreshBlocklist,
+  getRLRules,
+  createRLRule,
+  updateRLRule,
+  deleteRLRule,
+  deployRLRules,
+  getRLGlobal,
+  updateRLGlobal,
+  exportRLRules,
+  importRLRules,
+  getRLRuleHits,
   type SummaryData,
   type EventsResponse,
   type ServiceDetail,
@@ -23,6 +33,11 @@ import {
   type CountryCount,
   type BlocklistStats,
   type BlocklistRefreshResult,
+  type RateLimitRule,
+  type RateLimitGlobalConfig,
+  type RateLimitRuleExport,
+  type RateLimitDeployResult,
+  type RLRuleHitsResponse,
 } from "./api";
 
 // ─── Mock fetch ─────────────────────────────────────────────────────
@@ -799,6 +814,136 @@ describe("updateConfig", () => {
   });
 });
 
+// ─── CRS v4 Extended Settings ───────────────────────────────────────
+
+describe("getConfig with CRS v4 extended settings", () => {
+  it("returns CRS v4 extended fields when present", async () => {
+    const apiResponse = {
+      defaults: {
+        mode: "enabled",
+        paranoia_level: 3,
+        inbound_threshold: 10,
+        outbound_threshold: 8,
+        blocking_paranoia_level: 1,
+        detection_paranoia_level: 3,
+        early_blocking: true,
+        sampling_percentage: 50,
+        reporting_level: 2,
+        enforce_bodyproc_urlencoded: true,
+        allowed_methods: "GET HEAD POST",
+        allowed_http_versions: "HTTP/1.1 HTTP/2",
+        max_num_args: 500,
+        arg_name_length: 200,
+        arg_length: 800,
+        total_arg_length: 128000,
+        max_file_size: 10485760,
+        combined_file_sizes: 20971520,
+        crs_exclusions: ["wordpress", "nextcloud"],
+      },
+      services: {},
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(apiResponse));
+
+    const { getConfig } = await import("./api");
+    const result = await getConfig();
+
+    expect(result.defaults.blocking_paranoia_level).toBe(1);
+    expect(result.defaults.detection_paranoia_level).toBe(3);
+    expect(result.defaults.early_blocking).toBe(true);
+    expect(result.defaults.sampling_percentage).toBe(50);
+    expect(result.defaults.reporting_level).toBe(2);
+    expect(result.defaults.enforce_bodyproc_urlencoded).toBe(true);
+    expect(result.defaults.allowed_methods).toBe("GET HEAD POST");
+    expect(result.defaults.allowed_http_versions).toBe("HTTP/1.1 HTTP/2");
+    expect(result.defaults.max_num_args).toBe(500);
+    expect(result.defaults.arg_name_length).toBe(200);
+    expect(result.defaults.arg_length).toBe(800);
+    expect(result.defaults.total_arg_length).toBe(128000);
+    expect(result.defaults.max_file_size).toBe(10485760);
+    expect(result.defaults.combined_file_sizes).toBe(20971520);
+    expect(result.defaults.crs_exclusions).toEqual(["wordpress", "nextcloud"]);
+  });
+
+  it("handles missing CRS v4 fields gracefully (all undefined)", async () => {
+    const apiResponse = {
+      defaults: {
+        mode: "enabled",
+        paranoia_level: 1,
+        inbound_threshold: 5,
+        outbound_threshold: 4,
+      },
+      services: {},
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(apiResponse));
+
+    const { getConfig } = await import("./api");
+    const result = await getConfig();
+
+    expect(result.defaults.blocking_paranoia_level).toBeUndefined();
+    expect(result.defaults.crs_exclusions).toBeUndefined();
+    expect(result.defaults.early_blocking).toBeUndefined();
+    expect(result.defaults.max_num_args).toBeUndefined();
+  });
+
+  it("sends CRS v4 fields in updateConfig payload", async () => {
+    const config = {
+      defaults: {
+        mode: "enabled" as const,
+        paranoia_level: 2,
+        inbound_threshold: 10,
+        outbound_threshold: 8,
+        blocking_paranoia_level: 1,
+        crs_exclusions: ["wordpress"],
+        max_num_args: 500,
+      },
+      services: {},
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(config));
+
+    const { updateConfig } = await import("./api");
+    await updateConfig(config);
+
+    const putCall = vi.mocked(fetch).mock.calls[0];
+    const putBody = JSON.parse(putCall[1]?.body as string);
+    expect(putBody.defaults.blocking_paranoia_level).toBe(1);
+    expect(putBody.defaults.crs_exclusions).toEqual(["wordpress"]);
+    expect(putBody.defaults.max_num_args).toBe(500);
+  });
+});
+
+describe("presetToSettings and settingsToPreset", () => {
+  it("presets only affect core trio", async () => {
+    const { presetToSettings, settingsToPreset } = await import("./api");
+
+    // Strict preset
+    const strict = presetToSettings("strict");
+    expect(strict.paranoia_level).toBe(1);
+    expect(strict.inbound_threshold).toBe(5);
+    expect(strict.outbound_threshold).toBe(4);
+    // Extended fields are NOT set by presets
+    expect((strict as any).blocking_paranoia_level).toBeUndefined();
+    expect((strict as any).crs_exclusions).toBeUndefined();
+  });
+
+  it("settingsToPreset ignores extended fields", async () => {
+    const { settingsToPreset } = await import("./api");
+
+    // Even with extended fields, if core trio matches strict, it's strict
+    const settings = {
+      mode: "enabled" as const,
+      paranoia_level: 1,
+      inbound_threshold: 5,
+      outbound_threshold: 4,
+      blocking_paranoia_level: 1,
+      crs_exclusions: ["wordpress"],
+    };
+    expect(settingsToPreset(settings)).toBe("strict");
+  });
+});
+
 // ─── Exclusion type/field mapping ───────────────────────────────────
 
 describe("getExclusions", () => {
@@ -1382,5 +1527,324 @@ describe("refreshBlocklist", () => {
     const result = await refreshBlocklist();
     expect(result.status).toBe("partial");
     expect(result.reloaded).toBe(false);
+  });
+});
+
+// ─── Rate Limit Rule API Tests ──────────────────────────────────────
+
+const mockRLRule: RateLimitRule = {
+  id: "rl-001",
+  name: "API rate limit",
+  description: "Protect API from abuse",
+  service: "api.erfi.io",
+  conditions: [
+    { field: "path", operator: "begins_with", value: "/api/" },
+  ],
+  group_operator: "and",
+  key: "client_ip",
+  events: 100,
+  window: "1m",
+  action: "deny",
+  priority: 10,
+  enabled: true,
+  created_at: "2026-02-25T10:00:00Z",
+  updated_at: "2026-02-25T10:00:00Z",
+};
+
+describe("getRLRules", () => {
+  it("returns list of rate limit rules with defaults applied", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse([mockRLRule]));
+
+    const result = await getRLRules();
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("rl-001");
+    expect(result[0].name).toBe("API rate limit");
+    expect(result[0].service).toBe("api.erfi.io");
+    expect(result[0].conditions).toHaveLength(1);
+    expect(result[0].conditions[0].field).toBe("path");
+    expect(result[0].key).toBe("client_ip");
+    expect(result[0].events).toBe(100);
+    expect(result[0].window).toBe("1m");
+    expect(result[0].action).toBe("deny");
+    expect(result[0].enabled).toBe(true);
+  });
+
+  it("calls the correct endpoint", async () => {
+    const mockFetch = mockFetchResponse([]);
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getRLRules();
+    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules", undefined);
+  });
+
+  it("handles null response gracefully", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(null));
+
+    const result = await getRLRules();
+    expect(result).toEqual([]);
+  });
+
+  it("applies defaults for missing fields", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse([{
+      id: "rl-002",
+      name: "Sparse rule",
+      service: "web.erfi.io",
+      events: 50,
+      window: "30s",
+      enabled: true,
+      created_at: "2026-02-25T10:00:00Z",
+      updated_at: "2026-02-25T10:00:00Z",
+    }]));
+
+    const result = await getRLRules();
+    expect(result[0].description).toBe("");
+    expect(result[0].conditions).toEqual([]);
+    expect(result[0].group_operator).toBe("and");
+    expect(result[0].key).toBe("client_ip");
+    expect(result[0].action).toBe("deny");
+    expect(result[0].priority).toBe(0);
+  });
+});
+
+describe("createRLRule", () => {
+  it("sends POST and returns created rule", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockRLRule, 201));
+
+    const result = await createRLRule({
+      name: "API rate limit",
+      service: "api.erfi.io",
+      conditions: [{ field: "path", operator: "begins_with", value: "/api/" }],
+      key: "client_ip",
+      events: 100,
+      window: "1m",
+      action: "deny",
+      enabled: true,
+    });
+
+    expect(result.id).toBe("rl-001");
+    expect(result.name).toBe("API rate limit");
+
+    // Verify POST payload
+    const postCall = vi.mocked(fetch).mock.calls[0];
+    expect(postCall[1]?.method).toBe("POST");
+    const body = JSON.parse(postCall[1]?.body as string);
+    expect(body.name).toBe("API rate limit");
+    expect(body.service).toBe("api.erfi.io");
+    expect(body.key).toBe("client_ip");
+    expect(body.events).toBe(100);
+  });
+});
+
+describe("updateRLRule", () => {
+  it("sends PUT and returns updated rule", async () => {
+    const updated = { ...mockRLRule, events: 200 };
+    vi.stubGlobal("fetch", mockFetchResponse(updated));
+
+    const result = await updateRLRule("rl-001", { events: 200 });
+
+    expect(result.events).toBe(200);
+
+    // Verify PUT call
+    const putCall = vi.mocked(fetch).mock.calls[0];
+    expect(putCall[0]).toBe("/api/rate-rules/rl-001");
+    expect(putCall[1]?.method).toBe("PUT");
+  });
+});
+
+describe("deleteRLRule", () => {
+  it("sends DELETE request", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({ status: "deleted" }));
+
+    await deleteRLRule("rl-001");
+
+    const deleteCall = vi.mocked(fetch).mock.calls[0];
+    expect(deleteCall[0]).toBe("/api/rate-rules/rl-001");
+    expect(deleteCall[1]?.method).toBe("DELETE");
+  });
+});
+
+describe("deployRLRules", () => {
+  it("calls POST and returns deploy result", async () => {
+    const deployResponse: RateLimitDeployResult = {
+      status: "deployed",
+      message: "3 rate limit files written and Caddy reloaded",
+      files: ["api.erfi.io_rate_limit.caddy", "web.erfi.io_rate_limit.caddy"],
+      reloaded: true,
+      timestamp: "2026-02-25T10:00:00Z",
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(deployResponse));
+
+    const result = await deployRLRules();
+    expect(result.status).toBe("deployed");
+    expect(result.reloaded).toBe(true);
+    expect(result.files).toHaveLength(2);
+  });
+
+  it("handles partial deploy (reload failed)", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({
+      status: "partial",
+      message: "Files written but Caddy reload failed",
+      files: [],
+      reloaded: false,
+      timestamp: "2026-02-25T10:00:00Z",
+    }));
+
+    const result = await deployRLRules();
+    expect(result.status).toBe("partial");
+    expect(result.reloaded).toBe(false);
+  });
+});
+
+describe("getRLGlobal / updateRLGlobal", () => {
+  const mockGlobal: RateLimitGlobalConfig = {
+    jitter: 0.1,
+    sweep_interval: "1m",
+    distributed: false,
+    read_interval: "5s",
+    write_interval: "5s",
+    purge_age: "24h",
+  };
+
+  it("returns global config", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockGlobal));
+
+    const result = await getRLGlobal();
+    expect(result.jitter).toBe(0.1);
+    expect(result.sweep_interval).toBe("1m");
+    expect(result.distributed).toBe(false);
+  });
+
+  it("calls correct endpoint", async () => {
+    const mockFetch = mockFetchResponse(mockGlobal);
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getRLGlobal();
+    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/global", undefined);
+  });
+
+  it("updates global config", async () => {
+    const updated = { ...mockGlobal, distributed: true, read_interval: "1s" };
+    vi.stubGlobal("fetch", mockFetchResponse(updated));
+
+    const result = await updateRLGlobal(updated);
+    expect(result.distributed).toBe(true);
+    expect(result.read_interval).toBe("1s");
+
+    // Verify PUT
+    const putCall = vi.mocked(fetch).mock.calls[0];
+    expect(putCall[0]).toBe("/api/rate-rules/global");
+    expect(putCall[1]?.method).toBe("PUT");
+  });
+});
+
+describe("exportRLRules / importRLRules", () => {
+  it("exports rules as JSON", async () => {
+    const exportData: RateLimitRuleExport = {
+      version: 1,
+      exported_at: "2026-02-25T10:00:00Z",
+      rules: [mockRLRule],
+      global: {
+        jitter: 0.1,
+        sweep_interval: "1m",
+        distributed: false,
+        read_interval: "5s",
+        write_interval: "5s",
+        purge_age: "24h",
+      },
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(exportData));
+
+    const result = await exportRLRules();
+    expect(result.version).toBe(1);
+    expect(result.rules).toHaveLength(1);
+    expect(result.rules[0].id).toBe("rl-001");
+    expect(result.global.jitter).toBe(0.1);
+  });
+
+  it("calls export endpoint", async () => {
+    const mockFetch = mockFetchResponse({ version: 1, rules: [], global: {} });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await exportRLRules();
+    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/export", undefined);
+  });
+
+  it("imports rules and returns count", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({ status: "imported", imported: 5 }));
+
+    const result = await importRLRules({
+      version: 1,
+      exported_at: "2026-02-25T10:00:00Z",
+      rules: [],
+      global: {
+        jitter: 0.1,
+        sweep_interval: "1m",
+        distributed: false,
+        read_interval: "5s",
+        write_interval: "5s",
+        purge_age: "24h",
+      },
+    });
+    expect(result.imported).toBe(5);
+
+    // Verify POST
+    const postCall = vi.mocked(fetch).mock.calls[0];
+    expect(postCall[0]).toBe("/api/rate-rules/import");
+    expect(postCall[1]?.method).toBe("POST");
+  });
+});
+
+describe("getRLRuleHits", () => {
+  it("returns hit stats with sparkline", async () => {
+    const hitsResponse: RLRuleHitsResponse = {
+      "rl-001": { total: 42, sparkline: [1, 2, 3, 5, 8, 13, 10] },
+      "rl-002": { total: 0, sparkline: [0, 0, 0, 0, 0, 0, 0] },
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(hitsResponse));
+
+    const result = await getRLRuleHits(24);
+    expect(result["rl-001"].total).toBe(42);
+    expect(result["rl-001"].sparkline).toHaveLength(7);
+    expect(result["rl-002"].total).toBe(0);
+  });
+
+  it("passes hours parameter", async () => {
+    const mockFetch = mockFetchResponse({});
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getRLRuleHits(48);
+    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/hits?hours=48", undefined);
+  });
+
+  it("defaults to 24 hours", async () => {
+    const mockFetch = mockFetchResponse({});
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getRLRuleHits();
+    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/hits?hours=24", undefined);
+  });
+});
+
+describe("RL API error handling", () => {
+  it("throws on non-OK response for getRLRules", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({ error: "server error" }, 500));
+    await expect(getRLRules()).rejects.toThrow("API error: 500");
+  });
+
+  it("throws on non-OK response for createRLRule", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({ error: "validation failed" }, 400));
+    await expect(createRLRule({
+      name: "Test",
+      service: "test.erfi.io",
+      key: "client_ip",
+      events: 100,
+      window: "1m",
+      enabled: true,
+    })).rejects.toThrow("API error: 400");
+  });
+
+  it("throws on non-OK response for deployRLRules", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({ error: "deploy failed" }, 500));
+    await expect(deployRLRules()).rejects.toThrow("API error: 500");
   });
 });

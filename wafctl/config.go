@@ -190,9 +190,11 @@ func (s *ConfigStore) Get() WAFConfig {
 	// Return a deep copy.
 	cp := s.config
 	cp.Defaults.DisabledGroups = copyStringSlice(s.config.Defaults.DisabledGroups)
+	cp.Defaults.CRSExclusions = copyStringSlice(s.config.Defaults.CRSExclusions)
 	cp.Services = make(map[string]WAFServiceSettings, len(s.config.Services))
 	for k, v := range s.config.Services {
 		v.DisabledGroups = copyStringSlice(v.DisabledGroups)
+		v.CRSExclusions = copyStringSlice(v.CRSExclusions)
 		cp.Services[k] = v
 	}
 	return cp
@@ -258,5 +260,49 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 			return fmt.Errorf("%s: invalid rule group tag %q", name, tag)
 		}
 	}
+
+	// CRS v4 extended settings validation.
+	if ss.BlockingParanoiaLevel != 0 && (ss.BlockingParanoiaLevel < 1 || ss.BlockingParanoiaLevel > 4) {
+		return fmt.Errorf("%s: blocking_paranoia_level must be between 1 and 4", name)
+	}
+	if ss.DetectionParanoiaLevel != 0 && (ss.DetectionParanoiaLevel < 1 || ss.DetectionParanoiaLevel > 4) {
+		return fmt.Errorf("%s: detection_paranoia_level must be between 1 and 4", name)
+	}
+	if ss.SamplingPercentage != 0 && (ss.SamplingPercentage < 1 || ss.SamplingPercentage > 100) {
+		return fmt.Errorf("%s: sampling_percentage must be between 1 and 100", name)
+	}
+	if ss.ReportingLevel != 0 && (ss.ReportingLevel < 1 || ss.ReportingLevel > 4) {
+		return fmt.Errorf("%s: reporting_level must be between 1 and 4", name)
+	}
+
+	// Argument limits (must be positive when set).
+	if ss.MaxNumArgs < 0 {
+		return fmt.Errorf("%s: max_num_args must be non-negative", name)
+	}
+	if ss.ArgNameLength < 0 {
+		return fmt.Errorf("%s: arg_name_length must be non-negative", name)
+	}
+	if ss.ArgLength < 0 {
+		return fmt.Errorf("%s: arg_length must be non-negative", name)
+	}
+	if ss.TotalArgLength < 0 {
+		return fmt.Errorf("%s: total_arg_length must be non-negative", name)
+	}
+
+	// File limits (must be non-negative when set).
+	if ss.MaxFileSize < 0 {
+		return fmt.Errorf("%s: max_file_size must be non-negative", name)
+	}
+	if ss.CombinedFileSizes < 0 {
+		return fmt.Errorf("%s: combined_file_sizes must be non-negative", name)
+	}
+
+	// CRS exclusion profiles.
+	for _, excl := range ss.CRSExclusions {
+		if !validCRSExclusions[excl] {
+			return fmt.Errorf("%s: invalid CRS exclusion profile %q", name, excl)
+		}
+	}
+
 	return nil
 }

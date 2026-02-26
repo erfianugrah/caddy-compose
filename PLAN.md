@@ -666,15 +666,15 @@ The current 644-line flat zone table is replaced with a policy engine-style inte
 
 ### Phase 7: Migration & Cleanup (Est. 0.5 day)
 1. Auto-migration from v1 format on startup
-2. Deprecation warnings on old endpoints
+2. Remove old `ratelimit.go`, `ratelimit_test.go`, old handlers from `main.go`
 3. Update AGENTS.md, README.md
 
 ---
 
 ## 9. Backward Compatibility
 
-- **Old API endpoints** (`/api/rate-limits`, `/api/rate-limits/summary`, `/api/rate-limits/events`) remain functional
-- **Old JSON format** (`{"zones":[...]}`) auto-migrated on first startup
+- **Old API endpoints removed** — `/api/rate-limits`, `/api/rate-limits/summary`, `/api/rate-limits/events` are deleted. New endpoints at `/api/rate-rules/*`. RL analytics served via unified `/api/summary` and `/api/events`.
+- **Old JSON format** (`{"zones":[...]}`) auto-migrated on first startup to `{"rules":[...], "global":{}}`. Backup saved to `rate-limits.json.v1.bak`.
 - **Caddyfile import pattern** unchanged — same `import /data/caddy/rl/<zone>_rl*.caddy` globs
 - **Generated file naming** — new rules still produce `<service>_rl.caddy` files (one per service, containing all zones for that service)
 - **Environment variables** — `WAF_RATELIMIT_FILE`, `WAF_RATELIMIT_DIR` paths unchanged
@@ -692,16 +692,32 @@ When merging, update version in:
 
 ---
 
-## 11. Open Questions
+## 11. Design Decisions (Resolved)
 
-1. **Should the old `/api/rate-limits` endpoints be removed immediately or kept as deprecated?**
-   Recommendation: Keep for 1 release cycle, proxy to new store internally.
+1. **Old `/api/rate-limits` endpoints: Remove immediately.**
+   No deprecation shim. The old `RateLimitStore`, its handlers, and the flat zone model
+   are replaced outright by the new `RateLimitRuleStore` and `/api/rate-rules` endpoints.
+   The old `ratelimit.go` is deleted. Analytics endpoints (`/api/rate-limits/summary`,
+   `/api/rate-limits/events`) are also removed — analytics are served through the
+   unified `/api/summary` and `/api/events` with `event_type=rate_limited`.
 
-2. **Should `log_only` action use Caddy's built-in logging or a custom mechanism?**
-   Recommendation: Use a high threshold (99999 events/window) so requests are never actually denied but the rate_limit plugin still tracks them. This avoids needing a separate Caddy config path.
+2. **`log_only` action: Separate logging path.**
+   When `action = "log_only"`, the generator produces a Caddy `log` directive block
+   that records matching requests to a structured log *without* the `rate_limit` plugin.
+   This provides accurate monitoring without false 429s or inflated thresholds.
+   Implementation: generate a `@rl_monitor_<zone>` named matcher + `log` directive
+   that writes to the combined access log with an `X-RateLimit-Monitor: <rule_name>`
+   header. The `AccessLogStore` recognizes this header to count "monitored" events.
 
-3. **Should distributed RL be exposed in v1 of this feature?**
-   Recommendation: Include the `global.distributed` toggle in the model and generator, but don't build UI for configuring distributed read/write intervals until demand exists.
+3. **Distributed RL: Full UI in v1.**
+   The Global Settings panel includes: distributed toggle (on/off), read interval,
+   write interval, purge age. All wired to `RateLimitGlobalConfig` and emitted in
+   the generated `rate_limit { distributed { ... } }` block.
 
-4. **How to handle the `X-RateLimit-Policy` header for per-zone attribution?**
-   The current header is set *after* the `rate_limit` block as a static `header` directive. For multi-zone services, we need the header to reflect the *last triggered zone*. Caddy's rate_limit plugin doesn't natively set which zone was triggered. Alternative: parse the `Retry-After` header presence + rule conditions to infer which rule matched.
+4. **Zone attribution: Condition-based inference.**
+   When a 429 is received, the `AccessLogStore` matches the request's path, method,
+   IP, and headers against stored `RateLimitRule` conditions to infer which rule
+   triggered. The `AccessLogStore` receives a reference to `RateLimitRuleStore` to
+   perform this lookup. For multi-zone services, rules are evaluated in priority
+   order (lower priority number = checked first); the first matching rule is
+   attributed. If no rule matches, the event is attributed to the service generically.

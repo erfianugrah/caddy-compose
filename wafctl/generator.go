@@ -594,15 +594,34 @@ func GenerateWAFSettings(cfg WAFConfig) string {
 		inT, outT = detectionOnlyThreshold, detectionOnlyThreshold
 	}
 
+	// Resolve blocking/detection paranoia levels: if explicitly set, use them;
+	// otherwise default to the main paranoia level (legacy behavior).
+	bpl := d.BlockingParanoiaLevel
+	if bpl == 0 {
+		bpl = d.ParanoiaLevel
+	}
+	dpl := d.DetectionParanoiaLevel
+	if dpl == 0 {
+		dpl = d.ParanoiaLevel
+	}
+
 	b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,"+
 		"setvar:tx.paranoia_level=%d,"+
 		"setvar:tx.blocking_paranoia_level=%d,"+
 		"setvar:tx.detection_paranoia_level=%d\"\n",
-		idGen.next(), d.ParanoiaLevel, d.ParanoiaLevel, d.ParanoiaLevel))
+		idGen.next(), d.ParanoiaLevel, bpl, dpl))
 	b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,"+
 		"setvar:tx.inbound_anomaly_score_threshold=%d,"+
-		"setvar:tx.outbound_anomaly_score_threshold=%d\"\n\n",
+		"setvar:tx.outbound_anomaly_score_threshold=%d\"\n",
 		idGen.next(), inT, outT))
+
+	// Emit extended CRS v4 settings (only non-zero/non-default values).
+	extVars := collectExtendedSetvars(d)
+	if len(extVars) > 0 {
+		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,%s\"\n",
+			idGen.next(), strings.Join(extVars, ",")))
+	}
+	b.WriteString("\n")
 
 	// Emit SecRuleEngine directive based on the global mode.
 	// This is a config-time directive (not per-request ctl), making the
@@ -641,6 +660,62 @@ func GenerateWAFSettings(cfg WAFConfig) string {
 	}
 
 	return b.String()
+}
+
+// collectExtendedSetvars collects setvar directives for CRS v4 extended settings.
+// Only emits setvars for non-zero/non-default values.
+func collectExtendedSetvars(ss WAFServiceSettings) []string {
+	var vars []string
+	if ss.EarlyBlocking != nil && *ss.EarlyBlocking {
+		vars = append(vars, "setvar:tx.early_blocking=1")
+	}
+	if ss.SamplingPercentage > 0 && ss.SamplingPercentage != 100 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.sampling_percentage=%d", ss.SamplingPercentage))
+	}
+	if ss.ReportingLevel > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.reporting_level=%d", ss.ReportingLevel))
+	}
+	if ss.EnforceBodyprocURLEncoded != nil && *ss.EnforceBodyprocURLEncoded {
+		vars = append(vars, "setvar:tx.enforce_bodyproc_urlencoded=1")
+	}
+	if ss.AllowedMethods != "" {
+		vars = append(vars, fmt.Sprintf("setvar:'tx.allowed_methods=%s'", escapeSecRuleValue(ss.AllowedMethods)))
+	}
+	if ss.AllowedRequestContentType != "" {
+		vars = append(vars, fmt.Sprintf("setvar:'tx.allowed_request_content_type=%s'", escapeSecRuleValue(ss.AllowedRequestContentType)))
+	}
+	if ss.AllowedHTTPVersions != "" {
+		vars = append(vars, fmt.Sprintf("setvar:'tx.allowed_http_versions=%s'", escapeSecRuleValue(ss.AllowedHTTPVersions)))
+	}
+	if ss.RestrictedExtensions != "" {
+		vars = append(vars, fmt.Sprintf("setvar:'tx.restricted_extensions=%s'", escapeSecRuleValue(ss.RestrictedExtensions)))
+	}
+	if ss.RestrictedHeaders != "" {
+		vars = append(vars, fmt.Sprintf("setvar:'tx.restricted_headers=%s'", escapeSecRuleValue(ss.RestrictedHeaders)))
+	}
+	if ss.MaxNumArgs > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.max_num_args=%d", ss.MaxNumArgs))
+	}
+	if ss.ArgNameLength > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.arg_name_length=%d", ss.ArgNameLength))
+	}
+	if ss.ArgLength > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.arg_length=%d", ss.ArgLength))
+	}
+	if ss.TotalArgLength > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.total_arg_length=%d", ss.TotalArgLength))
+	}
+	if ss.MaxFileSize > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.max_file_size=%d", ss.MaxFileSize))
+	}
+	if ss.CombinedFileSizes > 0 {
+		vars = append(vars, fmt.Sprintf("setvar:tx.combined_file_sizes=%d", ss.CombinedFileSizes))
+	}
+	// CRS exclusion profiles: each profile sets tx.crs_exclusions_<name>=1
+	for _, excl := range ss.CRSExclusions {
+		vars = append(vars, fmt.Sprintf("setvar:tx.crs_exclusions_%s=1", excl))
+	}
+	return vars
 }
 
 // writeServiceOverride generates SecRule(s) for a single service override.
@@ -688,6 +763,31 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 	needsParanoiaOverride := ss.ParanoiaLevel != defaults.ParanoiaLevel
 	needsThresholdOverride := inT != defInT || outT != defOutT
 
+	// Resolve per-service blocking/detection paranoia levels.
+	svcBPL := ss.BlockingParanoiaLevel
+	if svcBPL == 0 {
+		svcBPL = ss.ParanoiaLevel
+	}
+	svcDPL := ss.DetectionParanoiaLevel
+	if svcDPL == 0 {
+		svcDPL = ss.ParanoiaLevel
+	}
+	defBPL := defaults.BlockingParanoiaLevel
+	if defBPL == 0 {
+		defBPL = defaults.ParanoiaLevel
+	}
+	defDPL := defaults.DetectionParanoiaLevel
+	if defDPL == 0 {
+		defDPL = defaults.ParanoiaLevel
+	}
+	needsBPLOverride := svcBPL != defBPL
+	needsDPLOverride := svcDPL != defDPL
+
+	// Extended CRS v4 settings: compare against defaults to emit only differences.
+	svcExtVars := collectExtendedSetvars(ss)
+	defExtVars := collectExtendedSetvars(defaults)
+	needsExtOverride := !stringSliceEqual(svcExtVars, defExtVars)
+
 	// Disabled rule groups (unique to this service, not already in defaults).
 	defaultDisabled := make(map[string]bool, len(defaults.DisabledGroups))
 	for _, tag := range defaults.DisabledGroups {
@@ -701,7 +801,7 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 	}
 
 	// Skip this service entirely if it produces no output (identical to defaults).
-	if engineOverride == "" && !needsParanoiaOverride && !needsThresholdOverride && len(extraGroups) == 0 {
+	if engineOverride == "" && !needsParanoiaOverride && !needsBPLOverride && !needsDPLOverride && !needsThresholdOverride && !needsExtOverride && len(extraGroups) == 0 {
 		return
 	}
 
@@ -713,13 +813,21 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 			escapedHost, idGen.next(), engineOverride))
 	}
 
-	if needsParanoiaOverride || needsThresholdOverride {
+	if needsParanoiaOverride || needsBPLOverride || needsDPLOverride || needsThresholdOverride {
 		var setvars []string
 		if needsParanoiaOverride {
 			setvars = append(setvars,
 				fmt.Sprintf("setvar:tx.paranoia_level=%d", ss.ParanoiaLevel),
-				fmt.Sprintf("setvar:tx.blocking_paranoia_level=%d", ss.ParanoiaLevel),
-				fmt.Sprintf("setvar:tx.detection_paranoia_level=%d", ss.ParanoiaLevel),
+			)
+		}
+		if needsParanoiaOverride || needsBPLOverride {
+			setvars = append(setvars,
+				fmt.Sprintf("setvar:tx.blocking_paranoia_level=%d", svcBPL),
+			)
+		}
+		if needsParanoiaOverride || needsDPLOverride {
+			setvars = append(setvars,
+				fmt.Sprintf("setvar:tx.detection_paranoia_level=%d", svcDPL),
 			)
 		}
 		if needsThresholdOverride {
@@ -732,12 +840,31 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 			escapedHost, idGen.next(), strings.Join(setvars, ",")))
 	}
 
+	// Extended CRS v4 settings override.
+	if needsExtOverride && len(svcExtVars) > 0 {
+		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,%s\"\n",
+			escapedHost, idGen.next(), strings.Join(svcExtVars, ",")))
+	}
+
 	for _, tag := range extraGroups {
 		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleRemoveByTag=%s\"\n",
 			escapedHost, idGen.next(), tag))
 	}
 
 	b.WriteString("\n")
+}
+
+// stringSliceEqual compares two string slices for equality.
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // sortedKeys returns map keys sorted alphabetically.

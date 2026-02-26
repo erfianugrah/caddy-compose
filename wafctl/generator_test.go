@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-
 // --- Generator tests ---
 
 func TestGenerateConfigBasic(t *testing.T) {
@@ -70,8 +69,6 @@ func TestGenerateConfigBasic(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateConfigEmpty(t *testing.T) {
 	ResetRuleIDCounter()
 
@@ -97,8 +94,6 @@ func TestGenerateConfigEmpty(t *testing.T) {
 
 // --- WAF Settings Generator tests ---
 
-
-
 // --- WAF Settings Generator tests ---
 
 func TestGenerateWAFSettingsDefaults(t *testing.T) {
@@ -123,8 +118,6 @@ func TestGenerateWAFSettingsDefaults(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateWAFSettingsDetectionOnly(t *testing.T) {
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{Mode: "detection_only", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
@@ -147,8 +140,6 @@ func TestGenerateWAFSettingsDetectionOnly(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateWAFSettingsDisabled(t *testing.T) {
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
@@ -160,8 +151,6 @@ func TestGenerateWAFSettingsDisabled(t *testing.T) {
 		t.Error("disabled mode should contain SecRuleEngine Off")
 	}
 }
-
-
 
 func TestGenerateWAFSettingsPerService(t *testing.T) {
 	cfg := WAFConfig{
@@ -190,8 +179,6 @@ func TestGenerateWAFSettingsPerService(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateWAFSettingsDisabledGroups(t *testing.T) {
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"attack-sqli"}},
@@ -211,8 +198,6 @@ func TestGenerateWAFSettingsDisabledGroups(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateWAFSettingsNoUnnecessaryOverrides(t *testing.T) {
 	// Service with same settings as defaults should NOT generate overrides.
 	cfg := WAFConfig{
@@ -227,8 +212,6 @@ func TestGenerateWAFSettingsNoUnnecessaryOverrides(t *testing.T) {
 		t.Error("service with identical settings should not generate a SERVER_NAME override")
 	}
 }
-
-
 
 func TestGenerateWAFSettingsDeterministic(t *testing.T) {
 	cfg := WAFConfig{
@@ -264,8 +247,6 @@ func TestGenerateWAFSettingsDeterministic(t *testing.T) {
 		t.Error("services should be sorted alphabetically (a before b)")
 	}
 }
-
-
 
 func TestGenerateWAFSettingsReEnableEngine(t *testing.T) {
 	// Bug #1: When default mode is "disabled", services with "enabled" or
@@ -315,7 +296,6 @@ func TestGenerateWAFSettingsReEnableEngine(t *testing.T) {
 // TestGenerateWAFSettingsAllModeTransitions tests every combination of
 // global default mode and per-service override mode to ensure the correct
 // SecRuleEngine / ctl:ruleEngine directives are emitted.
-
 
 // TestGenerateWAFSettingsAllModeTransitions tests every combination of
 // global default mode and per-service override mode to ensure the correct
@@ -397,7 +377,6 @@ func TestGenerateWAFSettingsAllModeTransitions(t *testing.T) {
 // "enabled" mode explicitly emits SecRuleEngine On, since the Caddyfile no
 // longer contains this directive.
 
-
 // TestGenerateWAFSettingsEnabledEmitsSecRuleEngineOn verifies that the default
 // "enabled" mode explicitly emits SecRuleEngine On, since the Caddyfile no
 // longer contains this directive.
@@ -425,7 +404,6 @@ func TestGenerateWAFSettingsEnabledEmitsSecRuleEngineOn(t *testing.T) {
 
 // TestGenerateWAFSettingsDetectionOnlyToBlocking tests switching from
 // detection_only global to per-service blocking (enabled) mode.
-
 
 // TestGenerateWAFSettingsDetectionOnlyToBlocking tests switching from
 // detection_only global to per-service blocking (enabled) mode.
@@ -457,7 +435,6 @@ func TestGenerateWAFSettingsDetectionOnlyToBlocking(t *testing.T) {
 // TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine verifies the
 // placeholder file written by ensureCorazaDir includes SecRuleEngine On.
 
-
 // TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine verifies the
 // placeholder file written by ensureCorazaDir includes SecRuleEngine On.
 func TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine(t *testing.T) {
@@ -473,8 +450,6 @@ func TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine(t *testing.T) {
 		t.Error("placeholder custom-waf-settings.conf should contain SecRuleEngine On")
 	}
 }
-
-
 
 // --- Generate config endpoint test ---
 
@@ -522,8 +497,6 @@ func TestGenerateConfigEndpoint(t *testing.T) {
 
 // --- UUID generation test ---
 
-
-
 // --- UUID generation test ---
 
 func TestGenerateUUID(t *testing.T) {
@@ -544,8 +517,6 @@ func TestGenerateUUID(t *testing.T) {
 }
 
 // --- SnapshotSince test ---
-
-
 
 // --- Enhanced generator tests (method chaining, path operators) ---
 
@@ -580,8 +551,6 @@ func TestGenerateWithMethodFilter(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateWithMultiMethodFilter(t *testing.T) {
 	ResetRuleIDCounter()
 
@@ -609,8 +578,6 @@ func TestGenerateWithMultiMethodFilter(t *testing.T) {
 		t.Error("pre-crs should contain chain action")
 	}
 }
-
-
 
 func TestGenerateWithPathOperator(t *testing.T) {
 	ResetRuleIDCounter()
@@ -642,8 +609,6 @@ func TestGenerateWithPathOperator(t *testing.T) {
 		t.Error("pre-crs should contain @beginsWith operator")
 	}
 }
-
-
 
 func TestGenerateWithMethodAndOperator(t *testing.T) {
 	ResetRuleIDCounter()
@@ -678,8 +643,6 @@ func TestGenerateWithMethodAndOperator(t *testing.T) {
 }
 
 // --- Condition validation tests ---
-
-
 
 // --- Condition validation tests ---
 
@@ -761,8 +724,6 @@ func TestValidateConditionFields(t *testing.T) {
 	}
 }
 
-
-
 func TestValidateGroupOperator(t *testing.T) {
 	base := RuleExclusion{
 		Name:       "test",
@@ -787,8 +748,6 @@ func TestValidateGroupOperator(t *testing.T) {
 
 // --- Quick Action validation tests ---
 
-
-
 // --- Quick Action validation tests ---
 
 func TestValidateAllowAction(t *testing.T) {
@@ -811,8 +770,6 @@ func TestValidateAllowAction(t *testing.T) {
 	}
 }
 
-
-
 func TestValidateBlockAction(t *testing.T) {
 	// Valid: block by IP
 	e := RuleExclusion{Name: "Block bad IP", Type: "block", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "10.0.0.1"}}}
@@ -832,8 +789,6 @@ func TestValidateBlockAction(t *testing.T) {
 		t.Error("block with no conditions should fail validation")
 	}
 }
-
-
 
 func TestValidateSkipRuleAction(t *testing.T) {
 	// Valid: skip rule by ID + path
@@ -897,8 +852,6 @@ func TestValidateSkipRuleAction(t *testing.T) {
 	}
 }
 
-
-
 func TestValidateRawAction(t *testing.T) {
 	// Valid
 	e := RuleExclusion{Name: "Custom rule", Type: "raw", RawRule: "SecRule REQUEST_URI \"@streq /test\" \"id:10001,phase:1,pass,nolog\""}
@@ -914,8 +867,6 @@ func TestValidateRawAction(t *testing.T) {
 }
 
 // --- Quick Action generator tests ---
-
-
 
 // --- Quick Action generator tests ---
 
@@ -934,8 +885,6 @@ func TestGenerateAllowByIP(t *testing.T) {
 		t.Error("expected ctl:ruleEngine=Off in pre-CRS output for allow action")
 	}
 }
-
-
 
 func TestGenerateAllowByIPAndPath(t *testing.T) {
 	ResetRuleIDCounter()
@@ -959,8 +908,6 @@ func TestGenerateAllowByIPAndPath(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByIP(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -976,8 +923,6 @@ func TestGenerateBlockByIP(t *testing.T) {
 		t.Error("expected deny action in pre-CRS output")
 	}
 }
-
-
 
 func TestGenerateBlockByUA(t *testing.T) {
 	ResetRuleIDCounter()
@@ -995,8 +940,6 @@ func TestGenerateBlockByUA(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateSkipRule(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1013,8 +956,6 @@ func TestGenerateSkipRule(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateSkipRuleByTag(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1027,8 +968,6 @@ func TestGenerateSkipRuleByTag(t *testing.T) {
 		t.Error("expected ctl:ruleRemoveByTag in pre-CRS output")
 	}
 }
-
-
 
 func TestGenerateRawRule(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1048,8 +987,6 @@ func TestGenerateRawRule(t *testing.T) {
 }
 
 // --- GeoIP country condition tests ---
-
-
 
 // --- GeoIP country condition tests ---
 
@@ -1088,8 +1025,6 @@ func TestValidateCountryCondition(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByCountry(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1111,8 +1046,6 @@ func TestGenerateBlockByCountry(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByCountryList(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1131,8 +1064,6 @@ func TestGenerateBlockByCountryList(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateAllowByCountry(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1150,8 +1081,6 @@ func TestGenerateAllowByCountry(t *testing.T) {
 		t.Error("expected ctl:ruleEngine=Off for allow action")
 	}
 }
-
-
 
 func TestGenerateBlockByCountryAndPath(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1175,8 +1104,6 @@ func TestGenerateBlockByCountryAndPath(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateSkipRuleByCountry(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1196,8 +1123,6 @@ func TestGenerateSkipRuleByCountry(t *testing.T) {
 }
 
 // --- New condition field tests (cookie, body, args, uri_path, referer, response_header, response_status, http_version) ---
-
-
 
 // --- New condition field tests (cookie, body, args, uri_path, referer, response_header, response_status, http_version) ---
 
@@ -1268,8 +1193,6 @@ func TestValidateNewConditionFields(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByCookie(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1290,8 +1213,6 @@ func TestGenerateBlockByCookie(t *testing.T) {
 		t.Error("expected deny action")
 	}
 }
-
-
 
 func TestGenerateSkipRuleByCookie(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1314,8 +1235,6 @@ func TestGenerateSkipRuleByCookie(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByBody(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1333,8 +1252,6 @@ func TestGenerateBlockByBody(t *testing.T) {
 		t.Error("expected @contains for body content")
 	}
 }
-
-
 
 func TestGenerateBlockByArgs(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1354,8 +1271,6 @@ func TestGenerateBlockByArgs(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateAllowByURIPath(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1373,8 +1288,6 @@ func TestGenerateAllowByURIPath(t *testing.T) {
 		t.Error("expected @beginsWith operator")
 	}
 }
-
-
 
 func TestGenerateBlockByReferer(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1394,8 +1307,6 @@ func TestGenerateBlockByReferer(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByResponseStatus(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1413,8 +1324,6 @@ func TestGenerateBlockByResponseStatus(t *testing.T) {
 		t.Error("expected @streq for response status")
 	}
 }
-
-
 
 func TestGenerateBlockByHTTPVersion(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1434,8 +1343,6 @@ func TestGenerateBlockByHTTPVersion(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateBlockByResponseHeader(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1453,8 +1360,6 @@ func TestGenerateBlockByResponseHeader(t *testing.T) {
 		t.Error("expected @contains for response header value")
 	}
 }
-
-
 
 func TestGenerateCookieWithoutColon(t *testing.T) {
 	// Cookie without colon should match all cookies
@@ -1474,8 +1379,6 @@ func TestGenerateCookieWithoutColon(t *testing.T) {
 		t.Error("expected @contains for cookie value")
 	}
 }
-
-
 
 func TestGenerateMultiConditionWithNewFields(t *testing.T) {
 	// Combine new fields with existing fields
@@ -1502,8 +1405,6 @@ func TestGenerateMultiConditionWithNewFields(t *testing.T) {
 
 // --- Runtime surgical exclusion (ctl:ruleRemoveTargetByTag) ---
 
-
-
 // --- Runtime surgical exclusion (ctl:ruleRemoveTargetByTag) ---
 
 func TestGenerateRuntimeRemoveTargetByTag(t *testing.T) {
@@ -1527,8 +1428,6 @@ func TestGenerateRuntimeRemoveTargetByTag(t *testing.T) {
 		t.Errorf("expected ctl:ruleRemoveTargetByTag action, got:\n%s", result.PreCRS)
 	}
 }
-
-
 
 func TestGenerateRuntimeRemoveTargetByTagConditional(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1554,8 +1453,6 @@ func TestGenerateRuntimeRemoveTargetByTagConditional(t *testing.T) {
 		t.Error("expected SERVER_NAME condition for host")
 	}
 }
-
-
 
 func TestValidateRuntimeRemoveTargetByTag(t *testing.T) {
 	// Valid
@@ -1595,8 +1492,6 @@ func TestValidateRuntimeRemoveTargetByTag(t *testing.T) {
 }
 
 // --- Honeypot exclusion tests ---
-
-
 
 // --- Honeypot exclusion tests ---
 
@@ -1638,8 +1533,6 @@ func TestValidateHoneypotExclusion(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateHoneypotSingle(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1666,8 +1559,6 @@ func TestGenerateHoneypotSingle(t *testing.T) {
 		t.Error("expected section header comment")
 	}
 }
-
-
 
 func TestGenerateHoneypotMultipleGroups(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1702,8 +1593,6 @@ func TestGenerateHoneypotMultipleGroups(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateHoneypotDedup(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1724,8 +1613,6 @@ func TestGenerateHoneypotDedup(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateHoneypotDisabledSkipped(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
@@ -1738,8 +1625,6 @@ func TestGenerateHoneypotDisabledSkipped(t *testing.T) {
 		t.Error("no honeypot exclusions should not generate a rule")
 	}
 }
-
-
 
 func TestGenerateHoneypotWithEqOperator(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1755,8 +1640,6 @@ func TestGenerateHoneypotWithEqOperator(t *testing.T) {
 		t.Error("expected @pm with single path from eq condition")
 	}
 }
-
-
 
 func TestGenerateHoneypotMixedWithQuickActions(t *testing.T) {
 	ResetRuleIDCounter()
@@ -1787,8 +1670,6 @@ func TestGenerateHoneypotMixedWithQuickActions(t *testing.T) {
 }
 
 // --- Deploy tests ---
-
-
 
 // ─── Multi-rule-ID skip_rule bug tests ──────────────────────────────
 
@@ -1878,8 +1759,6 @@ func TestConditionAction_MultipleRuleIDs(t *testing.T) {
 	}
 }
 
-
-
 func TestGenerateConfigs_MultiRuleIDSkipRule(t *testing.T) {
 	// End-to-end: a skip_rule exclusion with multiple rule IDs should generate
 	// valid SecRules with separate ctl:ruleRemoveById actions.
@@ -1921,9 +1800,234 @@ func TestGenerateConfigs_MultiRuleIDSkipRule(t *testing.T) {
 	}
 }
 
+// ─── CRS v4 Extended Settings Generator Tests ──────────────────────
+
+func TestGenerateWAFSettingsBlockingParanoiaLevel(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 3, InboundThreshold: 10, OutboundThreshold: 8,
+			BlockingParanoiaLevel: 1,
+		},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Should detect at PL3 but block at PL1.
+	if !strings.Contains(output, "paranoia_level=3") {
+		t.Error("should set paranoia_level=3")
+	}
+	if !strings.Contains(output, "blocking_paranoia_level=1") {
+		t.Error("should set blocking_paranoia_level=1 (explicit)")
+	}
+	if !strings.Contains(output, "detection_paranoia_level=3") {
+		t.Error("detection_paranoia_level should default to PL when not explicitly set")
+	}
+}
+
+func TestGenerateWAFSettingsDetectionParanoiaLevel(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+			DetectionParanoiaLevel: 4,
+		},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if !strings.Contains(output, "blocking_paranoia_level=1") {
+		t.Error("blocking_paranoia_level should default to PL1")
+	}
+	if !strings.Contains(output, "detection_paranoia_level=4") {
+		t.Error("should set detection_paranoia_level=4")
+	}
+}
+
+func TestGenerateWAFSettingsExtendedSettings(t *testing.T) {
+	earlyBlocking := true
+	enforceBody := true
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8,
+			EarlyBlocking:             &earlyBlocking,
+			SamplingPercentage:        50,
+			ReportingLevel:            3,
+			EnforceBodyprocURLEncoded: &enforceBody,
+			AllowedMethods:            "GET HEAD POST",
+			AllowedHTTPVersions:       "HTTP/1.1 HTTP/2 HTTP/2.0",
+			MaxNumArgs:                500,
+			ArgNameLength:             200,
+			ArgLength:                 800,
+			TotalArgLength:            128000,
+			MaxFileSize:               10485760,
+			CombinedFileSizes:         20971520,
+			CRSExclusions:             []string{"wordpress", "nextcloud"},
+		},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	checks := []string{
+		"tx.early_blocking=1",
+		"tx.sampling_percentage=50",
+		"tx.reporting_level=3",
+		"tx.enforce_bodyproc_urlencoded=1",
+		"tx.allowed_methods=GET HEAD POST",
+		"tx.allowed_http_versions=HTTP/1.1 HTTP/2 HTTP/2.0",
+		"tx.max_num_args=500",
+		"tx.arg_name_length=200",
+		"tx.arg_length=800",
+		"tx.total_arg_length=128000",
+		"tx.max_file_size=10485760",
+		"tx.combined_file_sizes=20971520",
+		"tx.crs_exclusions_wordpress=1",
+		"tx.crs_exclusions_nextcloud=1",
+	}
+	for _, check := range checks {
+		if !strings.Contains(output, check) {
+			t.Errorf("output should contain %q", check)
+		}
+	}
+}
+
+func TestGenerateWAFSettingsExtendedDefaultsOmitted(t *testing.T) {
+	// When no extended settings are set, no extra SecAction should be emitted.
+	cfg := defaultConfig()
+	output := GenerateWAFSettings(cfg)
+
+	// Should NOT contain any of the extended settings.
+	notExpected := []string{
+		"tx.early_blocking",
+		"tx.sampling_percentage",
+		"tx.reporting_level",
+		"tx.enforce_bodyproc_urlencoded",
+		"tx.allowed_methods",
+		"tx.allowed_http_versions",
+		"tx.restricted_extensions",
+		"tx.restricted_headers",
+		"tx.max_num_args",
+		"tx.arg_name_length",
+		"tx.arg_length",
+		"tx.total_arg_length",
+		"tx.max_file_size",
+		"tx.combined_file_sizes",
+		"tx.crs_exclusions_",
+	}
+	for _, ne := range notExpected {
+		if strings.Contains(output, ne) {
+			t.Errorf("output should NOT contain %q when using defaults", ne)
+		}
+	}
+}
+
+func TestGenerateWAFSettingsPerServiceExtended(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+		},
+		Services: map[string]WAFServiceSettings{
+			"wp.erfi.io": {
+				Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+				CRSExclusions: []string{"wordpress"},
+				MaxNumArgs:    1000,
+			},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Service should get its own rules for extended settings.
+	if !strings.Contains(output, "@streq wp.erfi.io") {
+		t.Error("should contain wp.erfi.io SERVER_NAME check")
+	}
+	if !strings.Contains(output, "tx.crs_exclusions_wordpress=1") {
+		t.Error("should contain crs_exclusions_wordpress for wp.erfi.io")
+	}
+	if !strings.Contains(output, "tx.max_num_args=1000") {
+		t.Error("should contain max_num_args=1000 for wp.erfi.io")
+	}
+}
+
+func TestGenerateWAFSettingsPerServiceBPLOverride(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8,
+			BlockingParanoiaLevel: 1,
+		},
+		Services: map[string]WAFServiceSettings{
+			"strict.erfi.io": {
+				Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8,
+				BlockingParanoiaLevel: 2, // Override BPL to match PL
+			},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	// Service should get a BPL override because BPL differs from default's effective BPL.
+	idx := strings.Index(output, "strict.erfi.io")
+	if idx < 0 {
+		t.Fatal("should contain strict.erfi.io")
+	}
+	after := output[idx:]
+	if !strings.Contains(after, "blocking_paranoia_level=2") {
+		t.Error("strict.erfi.io should have blocking_paranoia_level=2")
+	}
+}
+
+func TestGenerateWAFSettingsRestrictedExtensions(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+			RestrictedExtensions: ".asa .asax .backup .bak .bat",
+			RestrictedHeaders:    "/accept-charset/ /content-encoding/ /proxy/",
+		},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if !strings.Contains(output, "tx.restricted_extensions=.asa .asax .backup .bak .bat") {
+		t.Error("should contain restricted_extensions")
+	}
+	if !strings.Contains(output, "tx.restricted_headers=/accept-charset/ /content-encoding/ /proxy/") {
+		t.Error("should contain restricted_headers")
+	}
+}
+
+func TestGenerateWAFSettingsAllowedRequestContentType(t *testing.T) {
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+			AllowedRequestContentType: "|application/x-www-form-urlencoded| |multipart/form-data| |application/json|",
+		},
+		Services: map[string]WAFServiceSettings{},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if !strings.Contains(output, "tx.allowed_request_content_type=") {
+		t.Error("should contain allowed_request_content_type")
+	}
+}
+
+func TestGenerateWAFSettingsServiceExtendedIdenticalToDefaults(t *testing.T) {
+	// Service with same extended settings as defaults should NOT produce extra output.
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+			MaxNumArgs: 500,
+		},
+		Services: map[string]WAFServiceSettings{
+			"same.erfi.io": {
+				Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+				MaxNumArgs: 500,
+			},
+		},
+	}
+	output := GenerateWAFSettings(cfg)
+
+	if strings.Contains(output, "@streq same.erfi.io") {
+		t.Error("service with identical extended settings should not generate a SERVER_NAME override")
+	}
+}
+
 // ─── Policy event logging tests ─────────────────────────────────────
-
-
 
 // ─── Policy event logging tests ─────────────────────────────────────
 
