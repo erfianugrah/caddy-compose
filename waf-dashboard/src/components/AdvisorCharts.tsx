@@ -292,13 +292,13 @@ export function TimeOfDayChart({
 }) {
   if (!baselines || baselines.length < 2) return null;
 
-  // Normalized viewBox matching sibling charts — SVG scales to fill container
-  const vw = 960;
-  const vh = 240;
-  const padLeft = 56;
-  const padRight = 12;
-  const padBottom = 32;
-  const padTop = 10;
+  // Wide viewBox so that font-size 10 renders small relative to chart area
+  const vw = 1400;
+  const vh = 320;
+  const padLeft = 62;
+  const padRight = 14;
+  const padBottom = 36;
+  const padTop = 12;
   const chartW = vw - padLeft - padRight;
   const chartH = vh - padBottom - padTop;
   const maxRPS = Math.max(...baselines.map((b) => b.p95_rps), 0.001);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import {
   Zap,
   BarChart3,
@@ -8,12 +8,13 @@ import {
   Plus,
   X,
   ChevronRight,
+  ChevronDown,
   Search,
+  Info,
 } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -43,6 +44,12 @@ import {
 } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   getRateAdvisor,
   type RateLimitRuleCreateData,
   type RateAdvisorResponse,
@@ -59,6 +66,21 @@ import {
   TimeOfDayChart,
 } from "./AdvisorCharts";
 import { T } from "@/lib/typography";
+
+// ─── Stat Tooltip Helper ────────────────────────────────────────────
+
+function StatTip({ tip }: { tip: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Info className="ml-1 inline h-3 w-3 shrink-0 cursor-help text-muted-foreground/40 hover:text-muted-foreground" />
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
+        <p>{tip}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 // ─── Advisor Filter Constants ───────────────────────────────────────
 
@@ -116,6 +138,16 @@ export function RateAdvisorPanel({
   const [threshold, setThreshold] = useState<number>(0);
   const [maxRate, setMaxRate] = useState(100);
   const [clientSort, setClientSort] = useState<"requests" | "anomaly_score" | "error_rate">("requests");
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+
+  const toggleClientExpand = (ip: string) => {
+    setExpandedClients((prev) => {
+      const next = new Set(prev);
+      if (next.has(ip)) next.delete(ip);
+      else next.add(ip);
+      return next;
+    });
+  };
 
   // Filter bar state
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
@@ -420,6 +452,7 @@ export function RateAdvisorPanel({
   );
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-5">
       {/* Header */}
       <div className="space-y-1">
@@ -561,17 +594,47 @@ export function RateAdvisorPanel({
             </div>
           )}
 
+          {/* Create Rule action — top of page for visibility */}
+          {threshold > 0 && (
+            <div className="flex items-center justify-between rounded-lg border border-neon-green/30 bg-neon-green/5 px-5 py-4">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Create a rule that limits clients to </span>
+                <span className="font-mono font-medium text-neon-cyan">{threshold}</span>
+                <span className="text-muted-foreground"> requests per </span>
+                <span className="font-mono font-medium text-neon-cyan">{window}</span>
+                {service && (
+                  <>
+                    <span className="text-muted-foreground"> on </span>
+                    <span className="font-mono font-medium text-neon-cyan">{service}</span>
+                  </>
+                )}
+                <span className="text-muted-foreground">
+                  ? Starts in <span className="text-neon-yellow">monitor mode</span> — switch to deny when confident.
+                </span>
+              </div>
+              <Button size="sm" onClick={handleCreateRule} className="gap-1.5 shrink-0 ml-4">
+                Create Rule <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+
           {/* Stats */}
           <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             <Card>
               <CardContent className="p-4">
-                <div className={`${T.statLabelUpper} mb-1`}>Total Requests</div>
+                <div className={`${T.statLabelUpper} mb-1`}>
+                  Total Requests
+                  <StatTip tip="Total number of requests seen in the selected time window, after applying any service/path/method filters." />
+                </div>
                 <div className={T.statValue}>{data.total_requests.toLocaleString()}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={`${T.statLabelUpper} mb-1`}>Unique Clients</div>
+                <div className={`${T.statLabelUpper} mb-1`}>
+                  Unique Clients
+                  <StatTip tip="Distinct client IPs observed. Classified by composite anomaly score: normal (<30), elevated (30–59), suspicious (60–79), or abusive (80+)." />
+                </div>
                 <div className={T.statValue}>{data.unique_clients.toLocaleString()}</div>
                 <div className="flex gap-2 mt-1.5 text-xs">
                   <span className="text-neon-green">{classifications.normal} ok</span>
@@ -582,7 +645,10 @@ export function RateAdvisorPanel({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={`${T.statLabelUpper} mb-1`}>P95 Rate</div>
+                <div className={`${T.statLabelUpper} mb-1`}>
+                  P95 Rate
+                  <StatTip tip="95th percentile of per-client request counts within the window. 95% of clients made fewer requests than this value." />
+                </div>
                 <div className={`${T.statValue} text-neon-yellow`}>{data.percentiles.p95}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   req/{window}
@@ -594,7 +660,10 @@ export function RateAdvisorPanel({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={`${T.statLabelUpper} mb-1`}>Median / MAD</div>
+                <div className={`${T.statLabelUpper} mb-1`}>
+                  Median / MAD
+                  <StatTip tip="Median: the middle client's request count. MAD (Median Absolute Deviation): a robust measure of spread. Separation (σ) indicates how many MADs the threshold is from the median — higher means clearer distinction between normal and anomalous traffic." />
+                </div>
                 <div className={T.statValue}>
                   {rec ? `${rec.median}` : data.percentiles.p50}
                   {rec && <span className="text-sm text-muted-foreground font-normal ml-1">±{rec.mad}</span>}
@@ -606,7 +675,10 @@ export function RateAdvisorPanel({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={`${T.statLabelUpper} mb-1`}>Would Be Limited</div>
+                <div className={`${T.statLabelUpper} mb-1`}>
+                  Would Be Limited
+                  <StatTip tip="Number of clients whose request count exceeds the current threshold. Adjust the slider below to see the impact of different thresholds." />
+                </div>
                 <div className={`${T.statValue} text-neon-red`}>{affectedClients.length}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {affectedRequests.toLocaleString()} requests ({data.total_requests > 0 ? ((affectedRequests / data.total_requests) * 100).toFixed(1) : 0}%)
@@ -760,23 +832,60 @@ export function RateAdvisorPanel({
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Client IP</TableHead>
-                    <TableHead>Country</TableHead>
-                    <TableHead className="text-right">Requests</TableHead>
-                    <TableHead className="text-right">Req/s</TableHead>
-                    <TableHead className="text-right">Error %</TableHead>
-                    <TableHead className="text-right">Diversity</TableHead>
-                    <TableHead className="text-right">Burstiness</TableHead>
-                    <TableHead className="text-right">Score</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Top Paths</TableHead>
+                     <TableHead className="w-8" />
+                     <TableHead>Client IP</TableHead>
+                     <TableHead>Country</TableHead>
+                     <TableHead className="text-right">
+                       <span className="inline-flex items-center gap-1 justify-end">Requests
+                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
+                       <TooltipContent side="top" className="max-w-xs text-xs">Total requests from this client in the selected window.</TooltipContent></Tooltip></span>
+                     </TableHead>
+                     <TableHead className="text-right">
+                       <span className="inline-flex items-center gap-1 justify-end">Req/s
+                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
+                       <TooltipContent side="top" className="max-w-xs text-xs">Requests per second — normalized rate for cross-window comparison.</TooltipContent></Tooltip></span>
+                     </TableHead>
+                     <TableHead className="text-right">
+                       <span className="inline-flex items-center gap-1 justify-end">Error %
+                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
+                       <TooltipContent side="top" className="max-w-xs text-xs">Percentage of 4xx/5xx responses. High error rates may indicate scanning or brute-force attempts.</TooltipContent></Tooltip></span>
+                     </TableHead>
+                     <TableHead className="text-right">
+                       <span className="inline-flex items-center gap-1 justify-end">Diversity
+                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
+                       <TooltipContent side="top" className="max-w-xs text-xs">Path diversity — unique paths / total requests. Low values (near 0) mean the client hammers one endpoint; high values (near 1) mean varied browsing.</TooltipContent></Tooltip></span>
+                     </TableHead>
+                     <TableHead className="text-right">
+                       <span className="inline-flex items-center gap-1 justify-end">Burstiness
+                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
+                       <TooltipContent side="top" className="max-w-xs text-xs">Fano factor over 10-second sub-windows. 1.0 = evenly spread (Poisson). Values well above 1 indicate bursty, bot-like request patterns.</TooltipContent></Tooltip></span>
+                     </TableHead>
+                     <TableHead className="text-right">
+                       <span className="inline-flex items-center gap-1 justify-end">Score
+                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
+                       <TooltipContent side="top" className="max-w-xs text-xs">Composite anomaly score (0–100). Weighted: 40% volume deviation, 30% burstiness, 30% path concentration. Higher = more anomalous.</TooltipContent></Tooltip></span>
+                     </TableHead>
+                     <TableHead>Class</TableHead>
+                     <TableHead>Top Paths</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sortedClients.map((client) => {
                     const isAbove = client.requests >= threshold;
+                    const isExpanded = expandedClients.has(client.client_ip);
                     return (
-                      <TableRow key={client.client_ip} className={isAbove ? "bg-red-500/5" : ""}>
+                      <Fragment key={client.client_ip}>
+                      <TableRow
+                        className={`cursor-pointer ${isAbove ? "bg-red-500/5" : ""}`}
+                        onClick={() => toggleClientExpand(client.client_ip)}
+                      >
+                        <TableCell className="w-8">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{client.client_ip}</TableCell>
                         <TableCell className="text-xs">{client.country || "—"}</TableCell>
                         <TableCell className={`text-xs font-mono tabular-nums text-right ${isAbove ? "text-red-400 font-medium" : ""}`}>
@@ -800,10 +909,77 @@ export function RateAdvisorPanel({
                         <TableCell>
                           <ClassificationBadge classification={client.classification} />
                         </TableCell>
-                        <TableCell className="text-xs font-mono text-muted-foreground max-w-[250px] truncate">
-                          {client.top_paths?.map((p) => `${p.count}× ${p.path}`).join(", ") || "—"}
+                        <TableCell className="text-xs text-muted-foreground">
+                          {client.top_paths && client.top_paths.length > 0
+                            ? `${client.top_paths.length} path${client.top_paths.length !== 1 ? "s" : ""}`
+                            : "—"}
                         </TableCell>
                       </TableRow>
+                      {isExpanded && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={11} className="bg-navy-950/50 p-4">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              {/* Left: all paths with bars */}
+                              <div className="space-y-1.5">
+                                <div className={T.sectionLabel}>Request Paths</div>
+                                {client.top_paths && client.top_paths.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {client.top_paths.map((p, i) => {
+                                      const maxCount = client.top_paths![0].count;
+                                      const pct = maxCount > 0 ? (p.count / maxCount) * 100 : 0;
+                                      return (
+                                        <div key={i} className="relative">
+                                          <div
+                                            className="absolute inset-y-0 left-0 rounded-sm bg-neon-cyan/10"
+                                            style={{ width: `${pct}%` }}
+                                          />
+                                          <div className="relative flex items-center justify-between gap-3 px-2 py-0.5 text-xs">
+                                            <span className="font-mono text-muted-foreground truncate" title={p.path}>
+                                              {p.path}
+                                            </span>
+                                            <span className="font-mono tabular-nums text-foreground shrink-0">
+                                              {p.count.toLocaleString()}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground/50">No path data</span>
+                                )}
+                              </div>
+                              {/* Right: metrics summary */}
+                              <div className="space-y-1.5">
+                                <div className={T.sectionLabel}>Anomaly Metrics</div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                                  <div className="text-muted-foreground">Classification</div>
+                                  <div><ClassificationBadge classification={client.classification} /></div>
+                                  <div className="text-muted-foreground">Anomaly Score</div>
+                                  <div className="font-mono tabular-nums">{client.anomaly_score.toFixed(1)} / 100</div>
+                                  <div className="text-muted-foreground">Requests</div>
+                                  <div className="font-mono tabular-nums">{client.requests.toLocaleString()} total ({client.requests_per_sec > 0 ? `${client.requests_per_sec.toFixed(2)} req/s` : "—"})</div>
+                                  <div className="text-muted-foreground">Error Rate</div>
+                                  <div className={`font-mono tabular-nums ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
+                                    {(client.error_rate * 100).toFixed(1)}%
+                                  </div>
+                                  <div className="text-muted-foreground">Path Diversity</div>
+                                  <div className={`font-mono tabular-nums ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
+                                    {client.path_diversity.toFixed(3)} <span className="text-muted-foreground font-normal">({client.path_diversity < 0.05 ? "very focused" : client.path_diversity < 0.2 ? "focused" : client.path_diversity < 0.5 ? "moderate" : "varied"})</span>
+                                  </div>
+                                  <div className="text-muted-foreground">Burstiness (Fano)</div>
+                                  <div className={`font-mono tabular-nums ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
+                                    {client.burstiness.toFixed(2)} <span className="text-muted-foreground font-normal">({client.burstiness <= 1.2 ? "even" : client.burstiness <= 3 ? "moderate" : "bursty"})</span>
+                                  </div>
+                                  <div className="text-muted-foreground">Country</div>
+                                  <div>{client.country || "Unknown"}</div>
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </TableBody>
@@ -811,29 +987,6 @@ export function RateAdvisorPanel({
             </CardContent>
           </Card>
 
-          {/* Create Rule action */}
-          {threshold > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-border bg-navy-950 px-5 py-4">
-              <div className="text-sm">
-                <span className="text-muted-foreground">Create a rule that limits clients to </span>
-                <span className="font-mono font-medium text-neon-cyan">{threshold}</span>
-                <span className="text-muted-foreground"> requests per </span>
-                <span className="font-mono font-medium text-neon-cyan">{window}</span>
-                {service && (
-                  <>
-                    <span className="text-muted-foreground"> on </span>
-                    <span className="font-mono font-medium text-neon-cyan">{service}</span>
-                  </>
-                )}
-                <span className="text-muted-foreground">
-                  ? Starts in <span className="text-neon-yellow">monitor mode</span> — switch to deny when confident.
-                </span>
-              </div>
-              <Button size="sm" onClick={handleCreateRule} className="gap-1.5 shrink-0 ml-4">
-                Create Rule <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
         </>
       )}
 
@@ -852,5 +1005,6 @@ export function RateAdvisorPanel({
         </Card>
       )}
     </div>
+    </TooltipProvider>
   );
 }

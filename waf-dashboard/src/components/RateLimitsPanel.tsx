@@ -126,11 +126,7 @@ function isValidWindow(s: string): boolean {
   return /^\d+[smh]$/.test(s.trim().toLowerCase());
 }
 
-/** Format window value for display */
-function windowDisplayLabel(v: string): string {
-  const opt = WINDOW_OPTIONS.find((o) => o.value === v);
-  return opt ? opt.label : v;
-}
+
 
 // ─── Inline SVG Sparkline ───────────────────────────────────────────
 
