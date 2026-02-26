@@ -52,51 +52,74 @@ export function ConfidenceBadge({ confidence }: { confidence: string }) {
   );
 }
 
+// ─── Nice Y-axis Ticks ──────────────────────────────────────────────
+
+/** Compute distinct, round Y-axis tick values. Avoids duplicate integers. */
+function niceYTicks(maxVal: number, maxTicks = 4): number[] {
+  if (maxVal <= 0) return [];
+  const ceil = Math.ceil(maxVal);
+  if (ceil <= maxTicks) {
+    // Small values: just use 1, 2, ..., ceil
+    return Array.from({ length: ceil }, (_, i) => i + 1);
+  }
+  const rawStep = maxVal / maxTicks;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  const step = norm <= 1 ? mag : norm <= 2 ? 2 * mag : norm <= 5 ? 5 * mag : 10 * mag;
+  const ticks: number[] = [];
+  for (let v = step; v <= maxVal * 1.01; v += step) {
+    ticks.push(Math.round(v));
+  }
+  if (ticks.length === 0) ticks.push(ceil);
+  return [...new Set(ticks)];
+}
+
 // ─── SVG Distribution Histogram ─────────────────────────────────────
 
 export function DistributionHistogram({
   histogram,
   threshold,
-  width = 700,
-  height = 200,
 }: {
   histogram: HistogramBin[];
   threshold: number;
-  width?: number;
-  height?: number;
 }) {
   if (!histogram || histogram.length === 0) return null;
 
-  // Filter to only bins that have data or are adjacent to bins with data,
-  // plus keep first/last for axis context. This avoids huge empty gaps.
   const nonEmpty = histogram.filter((b) => b.count > 0);
   if (nonEmpty.length === 0) return null;
 
-  // Find the range that matters: from first non-empty bin to last, with 1 bin padding
+  // Trim to visible range with 1-bin padding
   const firstIdx = histogram.indexOf(nonEmpty[0]);
   const lastIdx = histogram.indexOf(nonEmpty[nonEmpty.length - 1]);
   const startIdx = Math.max(0, firstIdx - 1);
   const endIdx = Math.min(histogram.length - 1, lastIdx + 1);
   const visibleBins = histogram.slice(startIdx, endIdx + 1);
 
-  const maxCount = Math.max(...visibleBins.map((b) => b.count), 1);
+  // ViewBox dimensions (internal coordinates — SVG scales to fill container)
+  const vw = 720;
+  const vh = 210;
   const padLeft = 45;
+  const padRight = 10;
   const padBottom = 32;
-  const padTop = 8;
-  const chartW = width - padLeft - 10;
-  const chartH = height - padBottom - padTop;
+  const padTop = 10;
+  const chartW = vw - padLeft - padRight;
+  const chartH = vh - padBottom - padTop;
   const barW = chartW / visibleBins.length;
 
+  const rawMax = Math.max(...visibleBins.map((b) => b.count), 1);
+  const ticks = niceYTicks(rawMax);
+  const niceMax = ticks.length > 0 ? ticks[ticks.length - 1] : rawMax;
+
   return (
-    <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-      {/* Y-axis gridlines */}
-      {[0.25, 0.5, 0.75, 1].map((frac) => {
-        const y = padTop + chartH - frac * chartH;
+    <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+      {/* Y-axis gridlines + labels */}
+      {ticks.map((tick) => {
+        const y = padTop + chartH - (tick / niceMax) * chartH;
         return (
-          <g key={frac}>
-            <line x1={padLeft} y1={y} x2={width - 10} y2={y} stroke="currentColor" strokeOpacity={0.06} />
+          <g key={tick}>
+            <line x1={padLeft} y1={y} x2={vw - padRight} y2={y} stroke="currentColor" strokeOpacity={0.08} />
             <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
-              {Math.round(maxCount * frac)}
+              {tick}
             </text>
           </g>
         );
@@ -105,20 +128,21 @@ export function DistributionHistogram({
       {/* Bars */}
       {visibleBins.map((bin, i) => {
         const x = padLeft + i * barW;
-        const barH = (bin.count / maxCount) * chartH;
+        const gap = Math.min(barW * 0.08, 2);
+        const bw = barW - gap * 2;
+        const barH = (bin.count / niceMax) * chartH;
         const midpoint = (bin.min + bin.max) / 2;
         const isAbove = midpoint >= threshold;
         return (
           <g key={i}>
             <rect
-              x={x + 2}
+              x={x + gap}
               y={padTop + chartH - barH}
-              width={Math.max(barW - 4, 2)}
+              width={Math.max(bw, 2)}
               height={Math.max(barH, 0)}
               fill={isAbove ? "rgba(239,68,68,0.6)" : "rgba(34,211,238,0.4)"}
               rx={2}
             />
-            {/* Count label on top of bars */}
             {bin.count > 0 && barH > 18 && (
               <text x={x + barW / 2} y={padTop + chartH - barH + 14} textAnchor="middle" className="fill-foreground" fontSize={11} fontFamily="monospace" fontWeight={500}>
                 {bin.count}
@@ -129,9 +153,8 @@ export function DistributionHistogram({
                 {bin.count}
               </text>
             )}
-            {/* X-axis label: show for every bin if few, or every Nth */}
             {(visibleBins.length <= 12 || i % Math.max(1, Math.floor(visibleBins.length / 8)) === 0 || i === visibleBins.length - 1) && (
-              <text x={x + barW / 2} y={height - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10} fontFamily="monospace">
+              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10} fontFamily="monospace">
                 {bin.min}
               </text>
             )}
@@ -143,7 +166,6 @@ export function DistributionHistogram({
       {(() => {
         const idx = visibleBins.findIndex((b) => threshold >= b.min && threshold < b.max);
         if (idx < 0) {
-          // Threshold is beyond visible range — check if it's past the last bin
           const lastBin = visibleBins[visibleBins.length - 1];
           if (threshold >= lastBin.min) {
             const x = padLeft + chartW;
@@ -164,7 +186,7 @@ export function DistributionHistogram({
         clients
       </text>
       {/* X-axis label */}
-      <text x={padLeft + chartW / 2} y={height - 4} textAnchor="middle" className="fill-muted-foreground" fontSize={11}>
+      <text x={padLeft + chartW / 2} y={vh - 4} textAnchor="middle" className="fill-muted-foreground" fontSize={11}>
         requests / window
       </text>
       {/* Baseline */}
@@ -178,21 +200,20 @@ export function DistributionHistogram({
 export function ImpactCurve({
   curve,
   threshold,
-  width = 340,
-  height = 200,
 }: {
   curve: ImpactPoint[];
   threshold: number;
-  width?: number;
-  height?: number;
 }) {
   if (!curve || curve.length < 2) return null;
+
+  const vw = 400;
+  const vh = 240;
   const padLeft = 36;
   const padRight = 10;
   const padTop = 8;
-  const padBottom = 28;
-  const chartW = width - padLeft - padRight;
-  const chartH = height - padTop - padBottom;
+  const padBottom = 32;
+  const chartW = vw - padLeft - padRight;
+  const chartH = vh - padTop - padBottom;
   const minT = curve[0].threshold;
   const maxT = curve[curve.length - 1].threshold;
   const range = maxT - minT || 1;
@@ -212,7 +233,7 @@ export function ImpactCurve({
   const thresholdX = padLeft + ((threshold - minT) / range) * chartW;
 
   return (
-    <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
       {/* Gridlines */}
       {[0.25, 0.5, 0.75].map((frac) => {
         const y = padTop + (1 - frac) * chartH;
@@ -230,11 +251,22 @@ export function ImpactCurve({
       <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={10}>50%</text>
       <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>0%</text>
 
+      {/* X-axis tick labels */}
+      {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+        const val = minT + frac * range;
+        const x = padLeft + frac * chartW;
+        return (
+          <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10} fontFamily="monospace">
+            {Math.round(val)}
+          </text>
+        );
+      })}
+
       {/* Legend */}
-      <line x1={padLeft + 8} y1={height - 8} x2={padLeft + 22} y2={height - 8} stroke="#22d3ee" strokeWidth={2} />
-      <text x={padLeft + 26} y={height - 4} className="fill-muted-foreground" fontSize={10}>Clients</text>
-      <line x1={padLeft + 80} y1={height - 8} x2={padLeft + 94} y2={height - 8} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
-      <text x={padLeft + 98} y={height - 4} className="fill-muted-foreground" fontSize={10}>Requests</text>
+      <line x1={padLeft + 8} y1={vh - 8} x2={padLeft + 22} y2={vh - 8} stroke="#22d3ee" strokeWidth={2} />
+      <text x={padLeft + 26} y={vh - 4} className="fill-muted-foreground" fontSize={10}>Clients</text>
+      <line x1={padLeft + 80} y1={vh - 8} x2={padLeft + 94} y2={vh - 8} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
+      <text x={padLeft + 98} y={vh - 4} className="fill-muted-foreground" fontSize={10}>Requests</text>
     </svg>
   );
 }
@@ -243,32 +275,35 @@ export function ImpactCurve({
 
 export function TimeOfDayChart({
   baselines,
-  width = 700,
-  height = 160,
 }: {
   baselines: TimeOfDayBaseline[];
-  width?: number;
-  height?: number;
 }) {
   if (!baselines || baselines.length < 2) return null;
+
+  const vw = 720;
+  const vh = 180;
   const padLeft = 45;
+  const padRight = 10;
   const padBottom = 28;
   const padTop = 8;
-  const chartW = width - padLeft - 10;
-  const chartH = height - padBottom - padTop;
+  const chartW = vw - padLeft - padRight;
+  const chartH = vh - padBottom - padTop;
   const maxRPS = Math.max(...baselines.map((b) => b.p95_rps), 0.001);
   const barW = chartW / 24;
 
+  const ticks = niceYTicks(maxRPS, 4);
+  const niceMax = ticks.length > 0 ? ticks[ticks.length - 1] : maxRPS;
+
   return (
-    <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
       {/* Y-axis gridlines */}
-      {[0.25, 0.5, 0.75, 1].map((frac) => {
-        const y = padTop + chartH - frac * chartH;
+      {ticks.map((tick) => {
+        const y = padTop + chartH - (tick / niceMax) * chartH;
         return (
-          <g key={frac}>
-            <line x1={padLeft} y1={y} x2={width - 10} y2={y} stroke="currentColor" strokeOpacity={0.06} />
+          <g key={tick}>
+            <line x1={padLeft} y1={y} x2={vw - padRight} y2={y} stroke="currentColor" strokeOpacity={0.06} />
             <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
-              {(maxRPS * frac).toFixed(2)}
+              {tick < 1 ? tick.toFixed(2) : tick.toFixed(1)}
             </text>
           </g>
         );
@@ -282,38 +317,37 @@ export function TimeOfDayChart({
           return (
             <g key={hour}>
               {hour % 3 === 0 && (
-                <text x={x + barW / 2} y={height - padBottom + 16} textAnchor="middle" className="fill-muted-foreground/40" fontSize={10}>
+                <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground/40" fontSize={10}>
                   {String(hour).padStart(2, "0")}
                 </text>
               )}
             </g>
           );
         }
-        const medH = (baseline.median_rps / maxRPS) * chartH;
-        const p95H = (baseline.p95_rps / maxRPS) * chartH;
+        const gap = Math.min(barW * 0.08, 2);
+        const bw = barW - gap * 2;
+        const medH = (baseline.median_rps / niceMax) * chartH;
+        const p95H = (baseline.p95_rps / niceMax) * chartH;
         return (
           <g key={hour}>
-            {/* P95 bar (light) */}
             <rect
-              x={x + 2}
+              x={x + gap}
               y={padTop + chartH - p95H}
-              width={Math.max(barW - 4, 2)}
+              width={Math.max(bw, 2)}
               height={Math.max(p95H, 0)}
               fill="rgba(34,211,238,0.15)"
               rx={2}
             />
-            {/* Median bar (solid) */}
             <rect
-              x={x + 2}
+              x={x + gap}
               y={padTop + chartH - medH}
-              width={Math.max(barW - 4, 2)}
+              width={Math.max(bw, 2)}
               height={Math.max(medH, 0)}
               fill="rgba(34,211,238,0.5)"
               rx={2}
             />
-            {/* Hour label every 3 hours */}
             {hour % 3 === 0 && (
-              <text x={x + barW / 2} y={height - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10}>
+              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={10}>
                 {String(hour).padStart(2, "0")}
               </text>
             )}

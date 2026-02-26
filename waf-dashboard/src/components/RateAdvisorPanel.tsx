@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Zap,
   BarChart3,
   Loader2,
   ArrowRight,
+  Filter,
+  Plus,
+  X,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import {
   Card,
@@ -12,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +36,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import {
   getRateAdvisor,
@@ -47,6 +58,29 @@ import {
   ImpactCurve,
   TimeOfDayChart,
 } from "./AdvisorCharts";
+
+// ─── Advisor Filter Constants ───────────────────────────────────────
+
+const WINDOW_OPTIONS = [
+  { value: "1m", label: "1 min" },
+  { value: "5m", label: "5 min" },
+  { value: "10m", label: "10 min" },
+  { value: "1h", label: "1 hour" },
+] as const;
+
+const WINDOW_LABELS: Record<string, string> = Object.fromEntries(
+  WINDOW_OPTIONS.map((o) => [o.value, o.label])
+);
+
+const METHOD_OPTIONS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+type AdvisorField = "service" | "method" | "path";
+
+const ADVISOR_FIELD_META: { field: AdvisorField; label: string; placeholder: string }[] = [
+  { field: "service", label: "Service", placeholder: "Search services..." },
+  { field: "method", label: "Method", placeholder: "Select method" },
+  { field: "path", label: "Path", placeholder: "/api/..." },
+];
 
 // ─── Rate Advisor Panel ─────────────────────────────────────────────
 
@@ -67,6 +101,21 @@ export function RateAdvisorPanel({
   const [maxRate, setMaxRate] = useState(100);
   const [clientSort, setClientSort] = useState<"requests" | "anomaly_score" | "error_rate">("requests");
 
+  // Filter bar state
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
+  const [windowPopoverOpen, setWindowPopoverOpen] = useState(false);
+  const [editingField, setEditingField] = useState<AdvisorField | null>(null);
+  const [filterInput, setFilterInput] = useState("");
+  const filterInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when editing a text field
+  useEffect(() => {
+    if (editingField === "service" || editingField === "path") {
+      const t = setTimeout(() => filterInputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [editingField]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -78,13 +127,11 @@ export function RateAdvisorPanel({
         limit: 50,
       });
       setData(result);
-      // Auto-set threshold to recommendation or P95.
       if (result.recommendation && result.recommendation.threshold > 0) {
         setThreshold(result.recommendation.threshold);
       } else if (result.percentiles.p95 > 0) {
         setThreshold(result.percentiles.p95);
       }
-      // Set max for slider.
       const topRate = result.clients.length > 0 ? result.clients[0].requests : 100;
       setMaxRate(Math.max(topRate, 10));
     } catch {
@@ -149,75 +196,282 @@ export function RateAdvisorPanel({
     });
   };
 
+  // Which optional fields are currently active
+  const activeOptionalFields = useMemo(() => {
+    const active: AdvisorField[] = [];
+    if (service) active.push("service");
+    if (method) active.push("method");
+    if (path) active.push("path");
+    return active;
+  }, [service, method, path]);
+
+  const availableFields = useMemo(
+    () => ADVISOR_FIELD_META.filter((f) => !activeOptionalFields.includes(f.field)),
+    [activeOptionalFields]
+  );
+
+  const resetFilterPopover = useCallback(() => {
+    setEditingField(null);
+    setFilterInput("");
+  }, []);
+
+  const applyFilter = useCallback((field: AdvisorField, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (field === "service") setService(trimmed);
+    else if (field === "method") setMethod(trimmed);
+    else if (field === "path") setPath(trimmed);
+    setFilterPopoverOpen(false);
+    resetFilterPopover();
+  }, [resetFilterPopover]);
+
+  const removeFilter = useCallback((field: AdvisorField) => {
+    if (field === "service") setService("");
+    else if (field === "method") setMethod("");
+    else if (field === "path") setPath("");
+  }, []);
+
+  function renderFilterPopoverContent() {
+    // Step 1: Pick a field
+    if (!editingField) {
+      if (availableFields.length === 0) {
+        return <p className="px-2 py-2 text-xs text-muted-foreground">All filters are active</p>;
+      }
+      return (
+        <div className="space-y-1">
+          <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Add filter</p>
+          {availableFields.map((f) => (
+            <button
+              key={f.field}
+              className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+              onClick={() => setEditingField(f.field)}
+            >
+              <span>{f.label}</span>
+              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // Step 2: Enter value
+    const meta = ADVISOR_FIELD_META.find((f) => f.field === editingField)!;
+
+    // Method: button list
+    if (editingField === "method") {
+      return (
+        <div className="space-y-1">
+          <button
+            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+            onClick={() => setEditingField(null)}
+          >
+            &larr; Back
+          </button>
+          <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Select method</p>
+          {METHOD_OPTIONS.map((m) => (
+            <button
+              key={m}
+              className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-mono hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+              onClick={() => applyFilter("method", m)}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // Service: searchable list + free text
+    if (editingField === "service") {
+      const serviceNames = services.map((s) => s.service);
+      const filtered = filterInput
+        ? serviceNames.filter((s) => s.toLowerCase().includes(filterInput.toLowerCase()))
+        : serviceNames;
+
+      return (
+        <div className="space-y-1.5">
+          <button
+            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+            onClick={() => { setEditingField(null); setFilterInput(""); }}
+          >
+            &larr; Back
+          </button>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              ref={filterInputRef}
+              placeholder={meta.placeholder}
+              value={filterInput}
+              onChange={(e) => setFilterInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && filterInput.trim()) {
+                  e.preventDefault();
+                  applyFilter("service", filterInput);
+                }
+                if (e.key === "Escape") {
+                  setFilterPopoverOpen(false);
+                  resetFilterPopover();
+                }
+              }}
+              className="h-8 text-sm pl-7"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {filtered.length > 0 ? (
+              filtered.map((s) => (
+                <button
+                  key={s}
+                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-mono hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                  onClick={() => applyFilter("service", s)}
+                >
+                  {s}
+                </button>
+              ))
+            ) : filterInput.trim() ? (
+              <button
+                className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                onClick={() => applyFilter("service", filterInput)}
+              >
+                Use &quot;{filterInput}&quot;
+              </button>
+            ) : (
+              <p className="px-2 py-2 text-xs text-muted-foreground">Type a service name...</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Path: free text input
+    return (
+      <div className="space-y-2">
+        <button
+          className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+          onClick={() => { setEditingField(null); setFilterInput(""); }}
+        >
+          &larr; Back
+        </button>
+        <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Path prefix</p>
+        <Input
+          ref={filterInputRef}
+          placeholder={meta.placeholder}
+          value={filterInput}
+          onChange={(e) => setFilterInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && filterInput.trim()) {
+              e.preventDefault();
+              applyFilter("path", filterInput);
+            }
+            if (e.key === "Escape") {
+              setFilterPopoverOpen(false);
+              resetFilterPopover();
+            }
+          }}
+          className="h-8 text-sm font-mono"
+        />
+        <Button
+          size="sm"
+          className="h-7 w-full text-xs"
+          disabled={!filterInput.trim()}
+          onClick={() => applyFilter("path", filterInput)}
+        >
+          Apply
+        </Button>
+      </div>
+    );
+  }
+
   const rec = data?.recommendation;
+
+  // Helper to render a filter chip
+  const FilterChip = ({ field, label, value, mono }: { field: AdvisorField; label: string; value: string; mono?: boolean }) => (
+    <Badge
+      variant="secondary"
+      className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
+    >
+      <span className="text-muted-foreground font-medium">{label}</span>
+      <span className="text-neon-cyan/70 font-mono text-xs">=</span>
+      <span className={mono ? "font-mono" : ""}>{value}</span>
+      <button
+        className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
+        onClick={() => removeFilter(field)}
+        title={`Remove ${label} filter`}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </Badge>
+  );
 
   return (
     <div className="space-y-5">
-      {/* Filters */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-neon-cyan" />
-            <CardTitle className="text-sm">Request Rate Analysis</CardTitle>
-          </div>
-          <CardDescription>
-            Analyze request rates using statistical anomaly detection (MAD-based) to find optimal
-            rate limiting thresholds. Clients are classified as normal, suspicious, or abusive.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Window</Label>
-              <Select value={window} onValueChange={setWindow}>
-                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1m">1 min</SelectItem>
-                  <SelectItem value="5m">5 min</SelectItem>
-                  <SelectItem value="10m">10 min</SelectItem>
-                  <SelectItem value="1h">1 hour</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Service</Label>
-              <Select value={service || "all"} onValueChange={(v) => setService(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All services</SelectItem>
-                  {services.map((s) => (
-                    <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Method</Label>
-              <Select value={method || "all"} onValueChange={(v) => setMethod(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Path prefix</Label>
-              <Input
-                placeholder="/api/..."
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                className="w-44 font-mono text-xs"
-              />
-            </div>
-            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Analyze"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Header */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-neon-cyan" />
+          <h3 className="text-sm font-semibold">Request Rate Analysis</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Analyze request rates using statistical anomaly detection (MAD-based) to find optimal
+          rate limiting thresholds. Clients are classified as normal, suspicious, or abusive.
+        </p>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="flex items-center gap-2 rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2">
+        <Filter className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
+        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+          {/* Window chip (always present, click to change) */}
+          <Popover open={windowPopoverOpen} onOpenChange={setWindowPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/30 bg-neon-cyan/15 px-2 py-0.5 text-xs transition-colors hover:bg-neon-cyan/25 cursor-pointer">
+                <span className="text-muted-foreground font-medium">Window</span>
+                <span className="text-neon-cyan/70 font-mono">=</span>
+                <span className="font-medium">{WINDOW_LABELS[window] || window}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-36 p-2" align="start">
+              {WINDOW_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors cursor-pointer ${
+                    window === opt.value ? "bg-neon-cyan/10 text-neon-cyan" : "hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                  onClick={() => { setWindow(opt.value); setWindowPopoverOpen(false); }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+
+          {/* Active filter chips */}
+          {service && <FilterChip field="service" label="Service" value={service} mono />}
+          {method && <FilterChip field="method" label="Method" value={method} mono />}
+          {path && <FilterChip field="path" label="Path" value={path} mono />}
+
+          {/* Add filter button */}
+          {availableFields.length > 0 && (
+            <Popover open={filterPopoverOpen} onOpenChange={(open) => {
+              setFilterPopoverOpen(open);
+              if (!open) resetFilterPopover();
+            }}>
+              <PopoverTrigger asChild>
+                <button className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer">
+                  <Plus className="h-3 w-3" />
+                  Add
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3" align="start">
+                {renderFilterPopoverContent()}
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+
+        <Button variant="outline" size="sm" onClick={load} disabled={loading} className="shrink-0 gap-1.5">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Analyze"}
+        </Button>
+      </div>
 
       {data && !loading && data.total_requests > 0 && (
         <>
@@ -310,7 +564,7 @@ export function RateAdvisorPanel({
             {/* Threshold slider + histogram */}
             <Card className="lg:col-span-2">
               <CardContent className="p-5 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Rate Limit Threshold</Label>
                     <div className="flex items-center gap-2">
@@ -325,12 +579,20 @@ export function RateAdvisorPanel({
                       <span className="text-sm text-muted-foreground">req / {window}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-                    <span>P50: {data.percentiles.p50}</span>
-                    <span>P75: {data.percentiles.p75}</span>
-                    <span>P90: {data.percentiles.p90}</span>
-                    <span className="font-medium text-neon-yellow">P95: {data.percentiles.p95}</span>
-                    <span>P99: {data.percentiles.p99}</span>
+                  {/* Percentile display — high contrast */}
+                  <div className="flex items-center gap-4 tabular-nums font-mono">
+                    {([
+                      { label: "P50", value: data.percentiles.p50, highlight: false },
+                      { label: "P75", value: data.percentiles.p75, highlight: false },
+                      { label: "P90", value: data.percentiles.p90, highlight: false },
+                      { label: "P95", value: data.percentiles.p95, highlight: true },
+                      { label: "P99", value: data.percentiles.p99, highlight: false },
+                    ] as const).map(({ label, value, highlight }) => (
+                      <span key={label} className={highlight ? "text-neon-yellow" : ""}>
+                        <span className={`text-xs mr-1 ${highlight ? "text-neon-yellow/70" : "text-muted-foreground"}`}>{label}</span>
+                        <span className={`text-sm font-medium ${highlight ? "font-semibold" : "text-foreground"}`}>{value}</span>
+                      </span>
+                    ))}
                   </div>
                 </div>
                 <Slider
