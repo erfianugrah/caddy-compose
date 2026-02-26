@@ -102,7 +102,7 @@ WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.2.0
 ```bash
 make build     # builds both images locally
 make push      # pushes to your registry
-make deploy    # build + push + SCP config files + restart on remote host
+make deploy    # build + scan + push + SCP config files + pull + restart on remote host
 ```
 
 Or step by step:
@@ -295,6 +295,9 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_GEOIP_DB` | `/data/geoip/country.mmdb` | Path to MMDB file for GeoIP lookups |
 | `WAF_GEOIP_API_URL` | (disabled) | Online GeoIP API URL (e.g. `https://ipinfo.io/%s/json`) |
 | `WAF_GEOIP_API_KEY` | (empty) | Bearer token for online GeoIP API |
+| `WAF_AUDIT_OFFSET_FILE` | `/data/.audit-log-offset` | Persists audit log read offset across restarts |
+| `WAF_ACCESS_OFFSET_FILE` | `/data/.access-log-offset` | Persists access log read offset across restarts |
+| `WAF_CADDYFILE_PATH` | `/data/Caddyfile` | Path to Caddyfile for RL auto-discovery |
 
 ## Site block patterns
 
@@ -467,6 +470,8 @@ caddy-compose/
     error.html           # Custom error page template
   scripts/
     entrypoint.sh        # Container entrypoint (crond + caddy run)
+    rotate-audit-log.sh  # Hourly audit log rotation (256 MB copytruncate)
+    update-geoip.sh      # GeoIP database updater
     update-ipsum.sh      # IPsum blocklist updater
   wafctl/                # Go sidecar (zero external dependencies)
     main.go              # HTTP handlers, routes, filter system

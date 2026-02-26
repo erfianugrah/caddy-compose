@@ -7,7 +7,7 @@ Guidance for AI coding agents working in this repository.
 Docker Compose infrastructure for a Caddy reverse proxy with Coraza WAF (OWASP CRS),
 Authelia 2FA forward auth, and a custom WAF management sidecar. Two codebases live here:
 
-- **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.23+)
+- **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.24+)
 - **waf-dashboard/** — Astro 5 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
 - Root level: Caddyfile, Dockerfile (6-stage multi-stage), compose.yaml, Makefile
 
@@ -194,7 +194,7 @@ inherit from global defaults; only non-zero fields are emitted as `setvar` direc
 | `total_arg_length` | `total_arg_length` | int | 0+ |
 | `max_file_size` | `max_file_size` | int | 0+ |
 | `combined_file_sizes` | `combined_file_sizes` | int | 0+ |
-| `extensions_blocked` | `extensions_blocked` | string | Space-separated (e.g., `.bak .sql`) |
+| `restricted_extensions` | `restricted_extensions` | string | Space-separated (e.g., `.bak .sql`) |
 | `allowed_http_versions` | `allowed_http_versions` | string | Space-separated (e.g., `HTTP/1.1 HTTP/2`) |
 | `restricted_headers` | `restricted_headers` | string | Pipe-separated header names |
 | `crs_exclusions` | (CRS exclusion profiles) | []string | `wordpress`, `nextcloud`, `drupal`, `cpanel`, `dokuwiki`, `phpmyadmin`, etc. |
@@ -525,6 +525,7 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
+- `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for RL auto-discovery
 
 ### CLI Subcommands
 
