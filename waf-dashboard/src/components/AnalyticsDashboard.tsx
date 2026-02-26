@@ -46,6 +46,7 @@ import {
   type CountryCount,
 } from "@/lib/api";
 import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { T } from "@/lib/typography";
 import { formatNumber, formatDateTime, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
 import { EventDetailModal } from "./EventDetailModal";
@@ -192,7 +193,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
               <CardContent>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className={T.formLabel}>
                       First Seen
                     </p>
                     <p className="text-sm font-medium">
@@ -200,7 +201,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className={T.formLabel}>
                       Last Seen
                     </p>
                     <p className="text-sm font-medium">
@@ -208,7 +209,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className={T.formLabel}>
                       Total Events
                     </p>
                     <p className="text-sm font-bold text-neon-cyan">
@@ -216,7 +217,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className={T.formLabel}>
                       Blocked
                     </p>
                     <p className="text-sm font-bold text-neon-pink">
@@ -228,7 +229,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                 {/* Per-service breakdown */}
                 {data.services.length > 0 && (
                   <div className="mt-4 space-y-2">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className={T.formLabel}>
                       Per-Service Breakdown
                     </p>
                     <div className="space-y-1">
@@ -245,7 +246,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                             {svc.blocked > 0 && (
                               <Badge
                                 variant="destructive"
-                                className="text-[10px] px-1.5 py-0"
+                                className="text-xs px-1.5 py-0"
                               >
                                 {svc.blocked} blocked
                               </Badge>
@@ -262,7 +263,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
             {/* Event Timeline for this IP */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Event Timeline</CardTitle>
+                <CardTitle className={T.cardTitle}>Event Timeline</CardTitle>
                 <CardDescription>Events from this IP over time</CardDescription>
               </CardHeader>
               <CardContent>
@@ -283,8 +284,8 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
-                      <XAxis dataKey="hour" stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="hour" stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} />
                       <Tooltip {...chartTooltipStyle} />
                       <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#ipGradBlocked)" strokeWidth={2} />
                       <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} />
@@ -303,12 +304,12 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
           {data.events_total > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Events</CardTitle>
+                <CardTitle className={T.cardTitle}>Events</CardTitle>
                 <CardDescription>
                   {data.events_total.toLocaleString()} events from {data.ip} — click a row to inspect
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -342,7 +343,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           </TableCell>
                           <TableCell className="text-xs">{evt.service}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                            <Badge variant="outline" className={T.badgeMono}>
                               {evt.method}
                             </Badge>
                           </TableCell>
@@ -351,7 +352,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           </TableCell>
                           <TableCell>
                             {evt.rule_id ? (
-                              <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                              <Badge variant="outline" className={T.badgeMono}>
                                 {evt.rule_id}
                               </Badge>
                             ) : (
@@ -431,11 +432,11 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
       <CardHeader>
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-neon-pink" />
-          <CardTitle className="text-sm">Top Blocked IPs</CardTitle>
+          <CardTitle className={T.cardTitle}>Top Blocked IPs</CardTitle>
         </div>
         <CardDescription>IP addresses with the most blocked events</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <div className="space-y-2 p-6">
             {[...Array(8)].map((_, i) => (
@@ -546,11 +547,11 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
       <CardHeader>
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-neon-amber" />
-          <CardTitle className="text-sm">Top Targeted URIs</CardTitle>
+          <CardTitle className={T.cardTitle}>Top Targeted URIs</CardTitle>
         </div>
         <CardDescription>Most-hit URIs across all services</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <div className="space-y-2 p-6">
             {[...Array(8)].map((_, i) => (
@@ -583,12 +584,12 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {uri.services.slice(0, 3).map((s) => (
-                        <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge key={s} variant="outline" className={T.badgeMono}>
                           {s}
                         </Badge>
                       ))}
                       {uri.services.length > 3 && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="secondary" className={T.badgeMono}>
                           +{uri.services.length - 3}
                         </Badge>
                       )}
@@ -645,11 +646,11 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
       <CardHeader>
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4 text-neon-cyan" />
-          <CardTitle className="text-sm">Top Countries</CardTitle>
+          <CardTitle className={T.cardTitle}>Top Countries</CardTitle>
         </div>
         <CardDescription>Request origins by country code</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <div className="space-y-2 p-6">
             {[...Array(8)].map((_, i) => (
@@ -734,8 +735,8 @@ export default function AnalyticsDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">IP Lookup</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className={T.pageTitle}>IP Lookup</h2>
+        <p className={T.pageDescription}>
           Look up any IP address to see its WAF event history, timeline, and service breakdown.
         </p>
       </div>

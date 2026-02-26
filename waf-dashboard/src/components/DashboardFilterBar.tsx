@@ -380,7 +380,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
               {inValues.filter((v) => !inOptions.some((o) => o.value === v)).map((v) => (
                 <span
                   key={v}
-                  className="inline-flex items-center gap-1 rounded bg-neon-cyan/10 px-1.5 py-0.5 text-[11px] font-mono text-neon-cyan"
+                  className="inline-flex items-center gap-1 rounded bg-neon-cyan/10 px-1.5 py-0.5 text-xs font-mono text-neon-cyan"
                 >
                   {v}
                   <button
@@ -408,7 +408,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
                     );
                   }}
                 >
-                  <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center text-[10px] ${
+                  <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center text-xs ${
                     checked ? "border-neon-cyan bg-neon-cyan/20 text-neon-cyan" : "border-muted-foreground"
                   }`}>
                     {checked && "✓"}
@@ -533,12 +533,12 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
           &larr; {FILTER_FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
         </button>
         {selectedOp === "regex" && (
-          <p className="px-1 text-[10px] text-neon-cyan/60 font-mono">
+          <p className="px-1 text-xs text-neon-cyan/60 font-mono">
             Go regexp syntax (RE2)
           </p>
         )}
         {selectedOp === "in" && (
-          <p className="px-1 text-[10px] text-muted-foreground">
+          <p className="px-1 text-xs text-muted-foreground">
             Separate values with commas
           </p>
         )}
@@ -600,7 +600,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
                   className="gap-1 pl-2 pr-2 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20"
                 >
                   <span className="text-muted-foreground font-medium">{meta.label}</span>
-                  <span className="text-neon-cyan/70 font-mono text-[10px]">{operatorChip(f.operator)}</span>
+                  <span className="text-neon-cyan/70 font-mono text-xs">{operatorChip(f.operator)}</span>
                 </Badge>
                 {values.map((v) => {
                   const label = meta.options?.find((o) => o.value === v)?.label ?? v;
@@ -655,7 +655,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
               className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
             >
               <span className="text-muted-foreground font-medium">{FILTER_FIELDS[f.field].label}</span>
-              <span className="text-neon-cyan/70 font-mono text-[10px]">{operatorChip(f.operator)}</span>
+              <span className="text-neon-cyan/70 font-mono text-xs">{operatorChip(f.operator)}</span>
               <span className="font-mono">{filterDisplayValue(f.field, f.value)}</span>
               <button
                 className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"

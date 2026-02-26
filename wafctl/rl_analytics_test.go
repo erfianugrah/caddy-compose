@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-
 func TestAccessLogStoreLoad(t *testing.T) {
 	path := writeTempAccessLog(t, sampleAccessLogLines)
 	store := NewAccessLogStore(path)
@@ -22,8 +21,6 @@ func TestAccessLogStoreLoad(t *testing.T) {
 		t.Fatalf("expected 3 429 events, got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreIgnoresNon429(t *testing.T) {
 	// All 200s — should produce zero events.
@@ -39,8 +36,6 @@ func TestAccessLogStoreIgnoresNon429(t *testing.T) {
 		t.Fatalf("expected 0 429 events, got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreIncrementalLoad(t *testing.T) {
 	dir := t.TempDir()
@@ -70,8 +65,6 @@ func TestAccessLogStoreIncrementalLoad(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreFileRotation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "combined-access.log")
@@ -100,8 +93,6 @@ func TestAccessLogStoreFileRotation(t *testing.T) {
 		t.Fatalf("expected 4 after rotation (3 kept + 1 new), got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreOffsetPersistence(t *testing.T) {
 	dir := t.TempDir()
@@ -155,10 +146,6 @@ func TestAccessLogStoreOffsetPersistence(t *testing.T) {
 
 // --- Access Log JSONL event persistence tests ---
 
-
-
-// --- Access Log JSONL event persistence tests ---
-
 func TestAccessLogStoreEventFilePersistence(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "combined-access.log")
@@ -191,8 +178,6 @@ func TestAccessLogStoreEventFilePersistence(t *testing.T) {
 		t.Fatalf("store2: expected 3 events restored from JSONL, got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreEventFileIncremental(t *testing.T) {
 	dir := t.TempDir()
@@ -232,8 +217,6 @@ func TestAccessLogStoreEventFileIncremental(t *testing.T) {
 		t.Fatalf("store2: expected 3 from JSONL, got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreEventFileRotation(t *testing.T) {
 	dir := t.TempDir()
@@ -275,8 +258,6 @@ func TestAccessLogStoreEventFileRotation(t *testing.T) {
 		t.Fatalf("store2: expected 4 from JSONL, got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreEventFileEvictionCompaction(t *testing.T) {
 	dir := t.TempDir()
@@ -320,8 +301,6 @@ func TestAccessLogStoreEventFileEvictionCompaction(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreEventFileDataIntegrity(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "combined-access.log")
@@ -362,8 +341,6 @@ func TestAccessLogStoreEventFileDataIntegrity(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreEventFileMalformedLines(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "combined-access.log")
@@ -386,8 +363,6 @@ func TestAccessLogStoreEventFileMalformedLines(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreEventFileEmpty(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "combined-access.log")
@@ -404,8 +379,6 @@ func TestAccessLogStoreEventFileEmpty(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreMissingFile(t *testing.T) {
 	store := NewAccessLogStore("/nonexistent/combined-access.log")
 	store.Load() // should not panic
@@ -413,8 +386,6 @@ func TestAccessLogStoreMissingFile(t *testing.T) {
 		t.Errorf("expected 0 events for missing file, got %d", got)
 	}
 }
-
-
 
 func TestAccessLogStoreEventFields(t *testing.T) {
 	// Single 429 line — verify all fields parsed correctly.
@@ -451,8 +422,6 @@ func TestAccessLogStoreEventFields(t *testing.T) {
 		t.Errorf("timestamp: want %v, got %v", expected, e.Timestamp)
 	}
 }
-
-
 
 func TestAccessLogStoreSummary(t *testing.T) {
 	path := writeTempAccessLog(t, sampleAccessLogLines)
@@ -504,8 +473,6 @@ func TestAccessLogStoreSummary(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreFilteredEvents(t *testing.T) {
 	path := writeTempAccessLog(t, sampleAccessLogLines)
 	store := NewAccessLogStore(path)
@@ -554,8 +521,6 @@ func TestAccessLogStoreFilteredEvents(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreSnapshotSince(t *testing.T) {
 	// Use old 429 events that are outside any hours window.
 	oldLine := `{"level":"info","ts":"2020/01/01 00:00:00","logger":"combined","msg":"handled request","request":{"remote_ip":"1.1.1.1","client_ip":"1.1.1.1","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":429,"size":0,"duration":0.001}`
@@ -575,8 +540,6 @@ func TestAccessLogStoreSnapshotSince(t *testing.T) {
 		t.Errorf("hours=1 for old events: want 0, got %d", len(recent))
 	}
 }
-
-
 
 func TestAccessLogStoreSummaryWithHours(t *testing.T) {
 	// Mix of old and "recent" (future-dated) 429 events.
@@ -602,10 +565,6 @@ func TestAccessLogStoreSummaryWithHours(t *testing.T) {
 		t.Logf("hours=1 returned %d events (expected 0 or 1 depending on time)", s.Total429s)
 	}
 }
-
-// --- Rate Limit Analytics HTTP endpoint tests ---
-
-
 
 // --- Rate Limit Analytics HTTP endpoint tests ---
 
@@ -640,8 +599,6 @@ func TestRLSummaryEndpoint(t *testing.T) {
 		t.Errorf("unique_services: want 2, got %d", resp.UniqueServices)
 	}
 }
-
-
 
 func TestRLSummaryEndpointWithHours(t *testing.T) {
 	// Old 429 events only.
@@ -679,8 +636,6 @@ func TestRLSummaryEndpointWithHours(t *testing.T) {
 	}
 }
 
-
-
 func TestRLEventsEndpoint(t *testing.T) {
 	path := writeTempAccessLog(t, sampleAccessLogLines)
 	store := NewAccessLogStore(path)
@@ -707,8 +662,6 @@ func TestRLEventsEndpoint(t *testing.T) {
 		t.Errorf("events count: want 3, got %d", len(resp.Events))
 	}
 }
-
-
 
 func TestRLEventsEndpointWithFilters(t *testing.T) {
 	path := writeTempAccessLog(t, sampleAccessLogLines)
@@ -760,8 +713,6 @@ func TestRLEventsEndpointWithFilters(t *testing.T) {
 	}
 }
 
-
-
 func TestRLEventsEndpointEmpty(t *testing.T) {
 	// No 429 events at all.
 	lines := []string{
@@ -801,8 +752,6 @@ func TestRLEventsEndpointEmpty(t *testing.T) {
 	}
 }
 
-
-
 func TestAccessLogStoreMalformedLines(t *testing.T) {
 	// Mix of valid and malformed JSON — malformed should be silently skipped.
 	lines := []string{
@@ -821,8 +770,6 @@ func TestAccessLogStoreMalformedLines(t *testing.T) {
 }
 
 // ─── Event Type + Merge tests ───────────────────────────────────────
-
-
 
 func TestAccessLogStoreEviction(t *testing.T) {
 	lines := []string{
@@ -843,4 +790,5 @@ func TestAccessLogStoreEviction(t *testing.T) {
 	}
 }
 
-// --- Atomic write tests ---
+// Advisor algorithm tests, cache tests, normalized rates tests, time-of-day
+// baselines tests, and integration tests live in rl_advisor_test.go.

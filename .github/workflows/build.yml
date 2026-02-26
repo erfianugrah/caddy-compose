@@ -16,10 +16,10 @@ on:
 
 env:
   CADDY_IMAGE: erfianugrah/caddy
-  CADDY_TAG: "1.32.0-2.11.1"
+  CADDY_TAG: "2.1.0-2.11.1"
   CADDY_VERSION: "2.11.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "0.23.0"
+  WAFCTL_VERSION: "1.1.0"
 
 permissions:
   contents: read

@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-
 // --- Deploy tests ---
 
 func TestEnsureCorazaDir(t *testing.T) {
@@ -37,8 +36,6 @@ func TestEnsureCorazaDir(t *testing.T) {
 		t.Fatalf("second ensureCorazaDir failed: %v", err)
 	}
 }
-
-
 
 func TestWriteConfFiles(t *testing.T) {
 	dir := t.TempDir()
@@ -75,8 +72,6 @@ func TestWriteConfFiles(t *testing.T) {
 	}
 }
 
-
-
 func TestDeployEndpoint(t *testing.T) {
 	corazaDir := t.TempDir()
 	caddyfileDir := t.TempDir()
@@ -112,7 +107,7 @@ func TestDeployEndpoint(t *testing.T) {
 		Enabled: true,
 	})
 
-	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, deployCfg))
@@ -147,8 +142,6 @@ func TestDeployEndpoint(t *testing.T) {
 	}
 }
 
-
-
 func TestDeployEndpointReloadFail(t *testing.T) {
 	corazaDir := t.TempDir()
 	caddyfilePath := filepath.Join(t.TempDir(), "Caddyfile")
@@ -169,7 +162,7 @@ func TestDeployEndpointReloadFail(t *testing.T) {
 
 	es := NewExclusionStore(filepath.Join(t.TempDir(), "exclusions.json"))
 	cs := NewConfigStore(filepath.Join(t.TempDir(), "config.json"))
-	rs := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, deployCfg))
@@ -194,8 +187,6 @@ func TestDeployEndpointReloadFail(t *testing.T) {
 }
 
 // --- Analytics endpoint tests ---
-
-
 
 // --- Atomic write tests ---
 
@@ -233,8 +224,6 @@ func TestAtomicWriteFile(t *testing.T) {
 	}
 }
 
-
-
 func TestAtomicWriteFileOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.json")
@@ -252,8 +241,6 @@ func TestAtomicWriteFileOverwrite(t *testing.T) {
 }
 
 // --- Deploy fingerprint tests ---
-
-
 
 // --- Deploy fingerprint tests ---
 
@@ -296,8 +283,6 @@ func TestDeployFingerprint(t *testing.T) {
 		t.Errorf("empty fingerprint should be 16 hex chars, got %d", len(fp5))
 	}
 }
-
-
 
 func TestReloadCaddyInjectsFingerprint(t *testing.T) {
 	caddyfileDir := t.TempDir()
@@ -349,8 +334,6 @@ func TestReloadCaddyInjectsFingerprint(t *testing.T) {
 	}
 }
 
-
-
 func TestReloadCaddyFingerprintChangesWithContent(t *testing.T) {
 	caddyfileDir := t.TempDir()
 	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
@@ -385,8 +368,6 @@ func TestReloadCaddyFingerprintChangesWithContent(t *testing.T) {
 		t.Error("POST bodies should differ when config file content changes")
 	}
 }
-
-
 
 // ─── End-to-End Deploy Pipeline Tests ───────────────────────────────
 
@@ -434,7 +415,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	// Create stores.
 	exclusionStore := newTestExclusionStore(t)
 	configStore := newTestConfigStore(t)
-	rateLimitStore := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	rateLimitStore := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	// Register all handlers on a mux (same as main()).
 	mux := http.NewServeMux()
@@ -568,7 +549,6 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 // TestDeployEndToEnd_SettingsOnlyNoExclusions verifies that deploying
 // with settings but zero exclusions still produces valid files.
 
-
 // TestDeployEndToEnd_SettingsOnlyNoExclusions verifies that deploying
 // with settings but zero exclusions still produces valid files.
 func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
@@ -593,7 +573,7 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 
 	exclusionStore := newTestExclusionStore(t)
 	configStore := newTestConfigStore(t)
-	rateLimitStore := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	rateLimitStore := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	// Change settings to detection_only with paranoia 3.
 	mux := http.NewServeMux()
@@ -650,7 +630,6 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 
 // TestDeployEndToEnd_CaddyReloadFails verifies partial deploy when Caddy is unreachable.
 
-
 // TestDeployEndToEnd_CaddyReloadFails verifies partial deploy when Caddy is unreachable.
 func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
 	corazaDir := t.TempDir()
@@ -676,7 +655,7 @@ func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
 
 	exclusionStore := newTestExclusionStore(t)
 	configStore := newTestConfigStore(t)
-	rateLimitStore := NewRateLimitStore(filepath.Join(t.TempDir(), "rl.json"))
+	rateLimitStore := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy",
 		nil)

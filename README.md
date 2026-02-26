@@ -1,6 +1,6 @@
 # caddy-compose
 
-Docker Compose stack for a Caddy reverse proxy with Coraza WAF (OWASP CRS), Authelia 2FA, per-service rate limiting, and a WAF management sidecar + dashboard.
+Docker Compose stack for a Caddy reverse proxy with Coraza WAF (OWASP CRS v4), Authelia 2FA, condition-based rate limiting, and a WAF management sidecar + dashboard.
 
 ## Architecture
 
@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:1.32.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:0.23.0
+CADDY_IMAGE   ?= <your-registry>/caddy:2.1.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.1.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -150,14 +150,15 @@ The `.env` file and `authelia/users_database.yml` are SOPS-encrypted with age. A
 
 ### Version management
 
-Image tags must stay in sync across four files:
+Image tags must stay in sync across five files:
 
-- `Makefile` (lines 17-18)
-- `compose.yaml` (image fields)
-- `test/docker-compose.test.yml`
-- `.github/workflows/build.yml` (env block)
+- `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
+- `compose.yaml` (lines 3 and 117: image fields)
+- `test/docker-compose.test.yml` (line 3: caddy image)
+- `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
+- `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `1.32.0-2.11.1`), wafctl is plain semver (e.g. `0.23.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.1.0-2.11.1`), wafctl is plain semver (e.g. `1.1.0`).
 
 ## WAF configuration
 
@@ -204,20 +205,22 @@ The dashboard is an Astro 5 + React 19 static site served by Caddy, protected by
 
 **Pages:**
 
-- **Overview** — timeline chart with brush zoom (7 event types, unstacked), service breakdown donut, live event feed, top clients/services, stat cards linking to filtered views. Includes a filter bar with field/operator/value popover and filter chips.
+- **Overview** — timeline chart with brush zoom (7 event types, unstacked), service breakdown donut, live event feed, top clients/services, stat cards linking to filtered views. Includes a CF-style filter bar with field/operator/value popover and filter chips.
 - **Events** — paginated table of WAF + rate limit + IPsum events. Expandable rows with matched rules, request headers/body/args. JSON export. "Create Exception" button pre-fills a policy engine rule from the event context.
 - **Policy Engine** — CRUD for WAF exclusions (allow, block, skip, honeypot, raw SecRule, and various CRS removal types). Condition builder with AND/OR logic. CRS rule catalog picker. Sparkline hit charts per rule.
-- **Rate Limits** — per-zone rate limit configuration and deployment.
+- **Rate Limits** — condition-based rate limiting policy engine with per-path/method/header matching, flexible rate keys, auto-deploy, sparkline hit charts, import/export. Includes a **Rate Advisor** tab with statistical anomaly detection (MAD, Fano factor, IQR) that analyzes real traffic patterns and recommends rules with one-click creation. Global settings panel for jitter, sweep interval, and distributed rate limiting.
 - **Blocklist** — IPsum threat intelligence stats, per-IP lookup, on-demand refresh.
 - **Services** — per-service stats, top URIs, top triggered rules.
-- **Investigate** — top blocked IPs, top URIs, top countries, IP lookup.
-- **Settings** — global and per-service WAF settings (paranoia, thresholds, mode). Deploy button with step-by-step progress.
+- **Investigate** — top blocked IPs, top URIs, top countries, IP lookup with GeoIP resolution.
+- **Settings** — global and per-service WAF settings including full CRS v4 coverage (paranoia levels, anomaly thresholds, mode, allowed methods, content types, argument limits, file limits, blocked extensions, HTTP versions, restricted headers, CRS exclusion profiles). All fields have tooltips explaining their purpose. Deploy button with step-by-step progress.
 
 Cross-page navigation ties everything together: clicking a stat card on Overview drills into Events, clicking an IP goes to Investigate, "Create Exception" from Events pre-fills the Policy Engine, and policy sparklines link back to Overview.
 
 ## wafctl
 
 wafctl is both an HTTP API server and a CLI tool. When run without arguments (or with `serve`), it starts the API server. Otherwise it acts as a thin client that talks to a running instance.
+
+It manages WAF configuration (including full CRS v4 settings), the WAF policy engine (exclusions with condition-based matching), condition-based rate limiting with a traffic advisor, IPsum blocklist operations, and GeoIP resolution with a three-tier lookup (Cloudflare header → local MMDB → online API).
 
 ### CLI usage
 
@@ -238,6 +241,13 @@ wafctl rules delete <id>
 wafctl deploy           # deploy WAF config to Caddy
 wafctl events           # list events (--hours, --limit, --service, --type, etc.)
 
+wafctl ratelimit list       # list all rate limit rules (alias: rl)
+wafctl ratelimit get <id>   # get a rate limit rule by ID
+wafctl ratelimit create     # create rule (JSON on stdin or --file)
+wafctl ratelimit delete <id>
+wafctl ratelimit deploy     # deploy rate limit configs to Caddy
+wafctl ratelimit global     # show global rate limit settings
+
 wafctl blocklist stats
 wafctl blocklist check <ip>
 wafctl blocklist refresh
@@ -256,7 +266,9 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits` |
 | CRS | `GET /api/crs/rules`, `GET /api/crs/autocomplete` |
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/deploy` |
-| Rate Limits | `GET\|PUT /api/rate-limits`, `POST /api/rate-limits/deploy` |
+| RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
+| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
+| RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
@@ -386,7 +398,7 @@ Every site block should include these, in order:
 | `import error_pages` | yes | Custom error page templates |
 | `import site_log <name>` | yes | JSON access log + combined log for analytics |
 
-Rate limit zones are managed by wafctl. On boot it creates placeholder `.caddy` files for any zone it detects in the Caddyfile, so the glob import works without manual setup.
+Rate limit rules are managed by wafctl. On boot it creates placeholder `.caddy` files for any service it detects in the Caddyfile, so the glob import works without manual setup. Rules support condition-based matching (per-path, per-method, per-header), flexible rate keys (client IP, path, header values), and auto-deploy on save.
 
 ## Security hardening
 
@@ -422,8 +434,8 @@ The CI pipeline (GitHub Actions) includes:
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (493 tests across 13 files)
-make test-frontend     # Vitest frontend tests (229 tests across 6 files)
+make test-go           # Go tests only (744 tests across 16 files)
+make test-frontend     # Vitest frontend tests (265 tests across 6 files)
 ```
 
 Run a single test:
@@ -459,28 +471,34 @@ caddy-compose/
   wafctl/                # Go sidecar (zero external dependencies)
     main.go              # HTTP handlers, routes, filter system
     cli.go               # CLI subcommand framework
-    models.go            # Data models
-    config.go            # WAF config store
-    exclusions.go        # Policy engine exclusion store
-    generator.go         # SecRule generation
+    models.go            # Data models (WAF, RL, exclusion, event types)
+    config.go            # WAF config store (CRS v4 extended settings)
+    exclusions.go        # Policy engine exclusion store + shared condition validation
+    generator.go         # SecRule generation (CRS v4 setvar, BPL/DPL resolution)
     logparser.go         # Audit log parser, event summarization
-    rl_analytics.go      # Access log parser (429/ipsum events)
+    rl_rules.go          # Rate limit rule store (CRUD, validation, v1 migration)
+    rl_generator.go      # Rate limit Caddy config generator (matchers, keys)
+    rl_analytics.go      # Access log parser, condition-based 429 attribution
+    rl_advisor.go        # Rate advisor (anomaly detection, caching, baselines)
     deploy.go            # Deploy pipeline (write + fingerprint + reload)
     blocklist.go         # IPsum blocklist management
     geoip.go             # Pure-Go MMDB reader, GeoIP resolution
-    ratelimit.go         # Rate limit zone config
     crs_rules.go         # CRS rule catalog (141 rules, 11 categories)
-    *_test.go            # 13 test files
+    *_test.go            # 16 test files (744 tests)
     Dockerfile           # Standalone wafctl image
     go.mod
   waf-dashboard/         # Astro 5 + React 19 + shadcn/ui frontend
     src/
       components/        # Dashboard components
+        RateLimitsPanel.tsx   # RL rules CRUD + global settings
+        RateAdvisorPanel.tsx  # Rate advisor UI (form, client table, recommendations)
+        AdvisorCharts.tsx     # Advisor visualizations (histograms, impact curves, ToD chart)
+        SettingsPanel.tsx     # WAF settings with CRS v4 fields + tooltips
         policy/          # Policy engine sub-modules
         ui/              # shadcn/ui primitives
       lib/
         api.ts           # API client with snake_case -> camelCase mapping
-      pages/             # Astro file-based routing
+      pages/             # Astro file-based routing (8 pages)
     package.json
     astro.config.mjs
     vitest.config.ts

@@ -24,7 +24,7 @@ make deploy             # Full pipeline: build + push + SCP + restart
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.23.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=1.1.0" -o wafctl .
 ```
 
 Version is injected at build time via `-ldflags "-X main.version=..."`. The
@@ -62,14 +62,15 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 
 ## Version Management
 
-Image tags live in **four places** that must stay in sync:
+Image tags live in **five places** that must stay in sync:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
-- `compose.yaml` (lines 3 and 116: image fields)
+- `compose.yaml` (lines 3 and 117: image fields)
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
+- `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.32.0-2.11.1`).
-wafctl tag format: simple semver (e.g. `0.23.0`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.1.0-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.1.0`).
 
 ## Secrets and Encryption
 
@@ -136,6 +137,7 @@ wafctl tag format: simple semver (e.g. `0.23.0`).
 - `sanitizeComment()` — replaces newlines with spaces for `msg:` and comment fields
 - Input validation regexps in `exclusions.go`: `ruleTagRe` (CRS tag format), `variableRe` (SecRule variable names), `namedFieldNameRe` (header/cookie/args names)
 - `validateExclusion()` rejects newlines in all string fields, validates condition operators/fields against allowlists
+- `validateConditions()` — shared condition validation function used by both WAF exclusions and RL rules
 
 ### File Operations and Code Organization
 
@@ -146,6 +148,10 @@ wafctl tag format: simple semver (e.g. `0.23.0`).
 - All data models in `models.go`; most HTTP handlers in `main.go`, domain-specific handlers co-located with their store (e.g. `blocklist.go` has `handleBlocklistStats`, `handleBlocklistRefresh`)
 - `geoip.go` — pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser, online API fallback (configurable via `WAF_GEOIP_API_URL`)
 - `blocklist.go` — IPsum blocklist file parser with `# Updated:` comment extraction and mtime fallback, cached stats/check, on-demand refresh (download + filter + atomic write + Caddy reload)
+- `rl_rules.go` — Rate limit rule store with CRUD, validation, v1 migration, Caddyfile auto-discovery
+- `rl_generator.go` — Rate limit Caddy config generator, condition→matcher translation, file writer
+- `rl_analytics.go` — Rate limit analytics, condition-based rule attribution for 429 events
+- `rl_advisor.go` — Rate limit advisor: traffic analysis, statistical anomaly detection (MAD, Fano factor, IQR), client classification, time-of-day baselines, 30s TTL caching
 
 ## Coraza Rule ID Namespaces
 
@@ -166,6 +172,36 @@ When adding custom SecRules, use the correct ID range:
 - Inbound anomaly threshold: `10`, Outbound: `10`
 - Request body limit: `13 MB`, action: `ProcessPartial` (inspect first 13 MB, pass the rest — allows large uploads like S3/MinIO)
 - Per-service overrides stored in `WAFConfig.Services` map
+
+### CRS v4 Extended Settings
+
+All fields use `omitempty` — zero values mean "use CRS defaults". Per-service overrides
+inherit from global defaults; only non-zero fields are emitted as `setvar` directives.
+
+| Field | tx.* Variable | Type | Range / Values |
+|-------|---------------|------|----------------|
+| `blocking_paranoia_level` | `blocking_paranoia_level` | int | 1–4 (defaults to `paranoia_level`) |
+| `detection_paranoia_level` | `detection_paranoia_level` | int | 1–4 (defaults to `paranoia_level`) |
+| `sampling_percentage` | `sampling_percentage` | int | 0–100 |
+| `reporting_level` | `reporting_level` | int | 1–5 |
+| `early_blocking` | `early_blocking` | *bool | true/false (uses `*bool` to distinguish false from unset) |
+| `enforce_bodyproc_urlencoded` | `enforce_bodyproc_urlencoded` | *bool | true/false |
+| `allowed_methods` | `allowed_methods` | string | Space-separated HTTP methods |
+| `allowed_request_content_type` | `allowed_request_content_type` | string | Pipe-separated MIME types |
+| `max_num_args` | `max_num_args` | int | 0+ |
+| `arg_name_length` | `arg_name_length` | int | 0+ |
+| `arg_length` | `arg_length` | int | 0+ |
+| `total_arg_length` | `total_arg_length` | int | 0+ |
+| `max_file_size` | `max_file_size` | int | 0+ |
+| `combined_file_sizes` | `combined_file_sizes` | int | 0+ |
+| `extensions_blocked` | `extensions_blocked` | string | Space-separated (e.g., `.bak .sql`) |
+| `allowed_http_versions` | `allowed_http_versions` | string | Space-separated (e.g., `HTTP/1.1 HTTP/2`) |
+| `restricted_headers` | `restricted_headers` | string | Pipe-separated header names |
+| `crs_exclusions` | (CRS exclusion profiles) | []string | `wordpress`, `nextcloud`, `drupal`, `cpanel`, `dokuwiki`, `phpmyadmin`, etc. |
+
+Generator resolves BPL/DPL independently: if `blocking_paranoia_level` is set explicitly
+it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paranoia_level`.
+`collectExtendedSetvars()` helper only emits directives for non-zero/non-default values.
 
 ## Policy Engine Exclusion Types
 
@@ -220,6 +256,105 @@ The online API supports IPinfo.io, ip-api.com, and similar services. Results are
 cached in the shared 24h/100k in-memory cache. Supports `%s` URL placeholder for
 IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 
+## Rate Limit Policy Engine
+
+Condition-based rate limiting system that mirrors the WAF Policy Engine architecture.
+Each rule targets a service and can optionally specify request-phase conditions for
+fine-grained per-path, per-method, or per-header rate limiting.
+
+### Architecture
+
+- **Store**: `rl_rules.go` — `RateLimitRuleStore` with `sync.RWMutex`, CRUD, validation, v1 migration from flat zones, Caddyfile auto-discovery
+- **Generator**: `rl_generator.go` — translates rules into Caddy `rate_limit` plugin configs with named matchers
+- **Analytics**: `rl_analytics.go` — condition-based inference to attribute 429 events to specific rules
+- **Advisor**: `rl_advisor.go` — traffic analysis, anomaly detection, client classification, recommendations with impact curves and time-of-day baselines
+- **Handlers**: 12 HTTP endpoints under `/api/rate-rules` (CRUD, deploy, global config, export/import, hits, advisor)
+- **CLI**: `wafctl ratelimit` / `wafctl rl` subcommands (list, get, create, delete, deploy, global)
+- **Frontend**: `RateLimitsPanel.tsx` (rules CRUD + global settings), `RateAdvisorPanel.tsx` (advisor UI), `AdvisorCharts.tsx` (visualization components)
+
+### Rule Model
+
+```
+RateLimitRule {
+  id, name, description, service, conditions[], group_operator,
+  key, events, window, action, priority, enabled, created_at, updated_at
+}
+```
+
+### Rate Limit Keys
+
+| Key | Caddy Placeholder | Description |
+|-----|-------------------|-------------|
+| `client_ip` | `{http.request.remote.host}` | Per client IP (default) |
+| `path` | `{http.request.uri.path}` | Per request path |
+| `static` | `static` | Single global counter |
+| `client_ip+path` | `{http.request.remote.host}_{http.request.uri.path}` | Per IP+path combo |
+| `client_ip+method` | `{http.request.remote.host}_{http.request.method}` | Per IP+method combo |
+| `header:<Name>` | `{http.request.header.<Name>}` | Per header value (e.g., API key) |
+| `cookie:<Name>` | `{http.request.cookie.<Name>}` | Per cookie value |
+
+### Rate Limit Actions
+
+| Action | Behavior |
+|--------|----------|
+| `deny` | Return 429 when rate exceeded (default) |
+| `log_only` | Set `X-RateLimit-Monitor` header instead of blocking — uses Caddy named matcher + header directive, NOT a `rate_limit` block |
+
+### RL Condition Fields (subset of WAF fields)
+
+Request-phase only: `ip`, `path`, `host`, `method`, `user_agent`, `header`, `query`,
+`country`, `cookie`, `uri_path`, `referer`, `http_version`. Response-phase fields
+(`body`, `args`, `response_header`, `response_status`) are excluded.
+
+`http_version` uses Caddy's `protocol` matcher. Values are normalized: `HTTP/2.0` → `http/2`,
+but `HTTP/1.0` and `HTTP/1.1` keep their minor version (→ `http/1.0`, `http/1.1`).
+
+### Global Config
+
+`RateLimitGlobalConfig` controls jitter, sweep interval, and distributed RL settings
+(read/write intervals, purge age). Stored alongside rules in the same JSON file.
+
+### Caddyfile Generation
+
+Each enabled rule generates a `<service>_rate_limit.caddy` file containing:
+- Named matcher (`@rl_<zone>`) with conditions translated to Caddy matcher syntax
+- `rate_limit` block with the configured key, events, window, and global settings
+- For `log_only` rules: matcher + `header_up X-RateLimit-Monitor` instead of `rate_limit`
+- Disabled rules generate comment-only files (no-op)
+- Stale files for removed services are automatically cleaned up
+
+### v1 Migration
+
+Old flat zone format (`RateLimitZone`: name/events/window/enabled) is automatically
+migrated to the new rule format on first load. Zones become rules with `key: "client_ip"`,
+`action: "deny"`, `service` set from the zone name.
+
+### Rate Limit Advisor
+
+CF-style traffic analysis tool that scans access logs and recommends rate limit rules.
+The advisor analyzes request patterns, detects anomalous clients using statistical methods,
+and generates one-click rule creation from recommendations.
+
+**Statistical Algorithms**:
+- **MAD (Median Absolute Deviation)** — robust outlier detection resistant to skew; threshold at `median + 3×MAD`
+- **Fano Factor** — burstiness detection via variance-to-mean ratio; values >1 indicate bursty traffic
+- **IQR (Interquartile Range)** — fallback when MAD=0 (uniform-ish distributions); threshold at `Q3 + 1.5×IQR`
+- **Composite Anomaly Score** — weighted combination: `0.4×volume + 0.3×burstiness + 0.3×concentration`
+- **Cohen's d** — effect size measurement comparing client rate vs population mean
+- **Client Classification** — categorizes clients as `normal`, `elevated`, `suspicious`, or `abusive` based on composite score thresholds
+
+**Features**:
+- Normalized rates (`RequestsPerSec`) for cross-window comparisons
+- `NormalizedPercentiles` (P50/P75/P90/P95/P99 in req/s) on response
+- Impact curve: simulated block rates at various threshold levels
+- Distribution histogram: request count frequency distribution
+- Time-of-day baselines: per-hour median/P95 RPS computed when ≥2 distinct hours of data present
+- 30-second TTL cache keyed by `"window|service|path|method|limit"`, max 50 entries with expired-first eviction
+
+**Query params**: `window` (`1m`/`5m`/`10m`/`1h`), `service`, `path`, `method`, `limit` (max clients, default 100)
+
+**Frontend**: `RateAdvisorPanel.tsx` handles the form, client table with req/s columns, and recommendation cards. `AdvisorCharts.tsx` contains `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, and `TimeOfDayChart` visualization components.
+
 ## Code Style — TypeScript/React (waf-dashboard/)
 
 ### Imports
@@ -259,6 +394,8 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 - `EventDetailModal` — reusable Dialog wrapping EventDetailPanel with actions
 - `TimeRangePicker` — Grafana-style time range picker with quick ranges, custom from/to, auto-refresh
 - `DashboardFilterBar` — CF-style filter bar with wide 3-step popover (Field→Operator→Value, `w-96`), service and rule_name `in` multi-select with checkbox list + search + custom text entry, filter chips with operator symbols, `in` operator renders individual pills per value with `×` buttons. Dynamic searchable dropdowns for `service` (from API) and `rule_name` (from exclusions). Exports: `parseFiltersFromURL`, `filtersToSummaryParams`, `filtersToEventsParams`, `filterDisplayValue`, `operatorChip`, `FILTER_FIELDS`, `DashboardFilter`, `FilterField`
+- `RateAdvisorPanel` — rate limit advisor UI: service/path/method/window form, client table with anomaly scores and req/s, recommendation cards with one-click rule creation
+- `AdvisorCharts` — visualization components for the advisor: `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, `TimeOfDayChart`
 
 ### Cross-Page Navigation
 
@@ -286,14 +423,16 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 | Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits` |
 | CRS | `GET /api/crs/rules`, `GET /api/crs/autocomplete` |
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/deploy` |
-| Rate Limits | `GET\|PUT /api/rate-limits`, `POST /api/rate-limits/deploy` |
+| RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
+| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
+| RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ## Test Patterns
 
-### Go (493 tests across 13 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `ratelimit_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
+### Go (744 tests across 16 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -301,7 +440,7 @@ IP or path-append. API key sent as Bearer token via `WAF_GEOIP_API_KEY`.
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (229 tests across 6 files)
+### Frontend (265 tests across 6 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
 - Tests live alongside source: `api.test.ts` next to `api.ts`, `DashboardFilterBar.test.ts` next to component
@@ -328,12 +467,12 @@ Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `custom-waf-settings.conf` — SecRuleEngine mode, paranoia levels, thresholds
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
 - `ipsum_block.caddy` — updated daily by cron at 02:00, or on-demand via `POST /api/blocklist/refresh`
-- `<service>_rate_limit.caddy` — rate limit zone configs
+- `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 
 ### Startup Behavior (generate-on-boot)
 
 On startup, wafctl calls `generateOnBoot()` which regenerates all config files
-from stored JSON state (WAF config, exclusions, rate limit zones). This ensures a
+from stored JSON state (WAF config, exclusions, rate limit rules). This ensures a
 stack restart always picks up the latest generator output without requiring a
 manual `POST /api/config/deploy`. No Caddy reload is performed — Caddy reads
 the files fresh on its own startup.
@@ -406,6 +545,12 @@ wafctl rules create # Create rule (JSON on stdin or --file)
 wafctl rules delete ID
 wafctl deploy       # Deploy WAF config to Caddy
 wafctl events       # List events (--hours, --limit, --service, --type, --client, --method, --rule)
+wafctl ratelimit list       # List all rate limit rules (alias: rl)
+wafctl ratelimit get ID     # Get a rate limit rule by ID
+wafctl ratelimit create     # Create rule (JSON on stdin or --file)
+wafctl ratelimit delete ID  # Delete a rate limit rule
+wafctl ratelimit deploy     # Deploy rate limit configs to Caddy
+wafctl ratelimit global     # Show global rate limit settings
 wafctl blocklist stats
 wafctl blocklist check IP
 wafctl blocklist refresh

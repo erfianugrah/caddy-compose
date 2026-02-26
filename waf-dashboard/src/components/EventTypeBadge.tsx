@@ -38,7 +38,7 @@ export function EventTypeBadge({ eventType, blocked }: EventTypeBadgeProps) {
   const classes = ACTION_BADGE_CLASSES[key] ?? ACTION_BADGE_CLASSES.logged;
 
   return (
-    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${classes}`}>
+    <Badge variant="outline" className={`text-xs px-1.5 py-0 ${classes}`}>
       {label}
     </Badge>
   );

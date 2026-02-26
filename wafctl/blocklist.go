@@ -326,10 +326,10 @@ func handleBlocklistCheck(bs *BlocklistStore) http.HandlerFunc {
 	}
 }
 
-func handleBlocklistRefresh(bs *BlocklistStore, rs *RateLimitStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleBlocklistRefresh(bs *BlocklistStore, rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		// Ensure any new Caddyfile zones have rate limit files before Caddy reloads.
-		syncCaddyfileZones(rs, deployCfg)
+		// Ensure any new Caddyfile services have rate limit files before Caddy reloads.
+		syncCaddyfileServices(rs, deployCfg)
 
 		result := bs.Refresh(deployCfg)
 		status := http.StatusOK

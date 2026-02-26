@@ -70,6 +70,7 @@ import DashboardFilterBar, {
 } from "./DashboardFilterBar";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import { ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { T } from "@/lib/typography";
 import { TopBlockedIPsPanel, TopTargetedURIsPanel, TopCountriesPanel } from "./AnalyticsDashboard";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ function LinkTickRenderer({
         dy={4}
         textAnchor="end"
         fill="#7a8baa"
-        fontSize={10}
+        fontSize={T.chartLabel}
         className="hover:fill-neon-green cursor-pointer"
         style={{ textDecoration: "none" }}
       >
@@ -204,7 +205,7 @@ function StatCard({
   const card = (
     <Card className={href ? "cursor-pointer hover:ring-1 hover:ring-neon-green/30 transition-all" : undefined}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardDescription className="text-xs font-medium uppercase tracking-wider">
+        <CardDescription className={T.statLabelUpper}>
           {title}
         </CardDescription>
         <div className={`rounded-md p-2 ${colorMap[color]}`}>
@@ -215,7 +216,7 @@ function StatCard({
         {loading ? (
           <Skeleton className="h-8 w-24" />
         ) : (
-          <div className={`text-2xl font-bold tabular-nums ${textColorMap[color]}`}>
+          <div className={`${T.statValue} ${textColorMap[color]}`}>
             {formatNumber(animatedValue)}
           </div>
         )}
@@ -470,8 +471,8 @@ export default function OverviewDashboard() {
       {/* Header with time range */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Security Overview</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className={T.pageTitle}>Security Overview</h2>
+          <p className={T.pageDescription}>
             WAF event summary and real-time event feed
           </p>
         </div>
@@ -482,7 +483,7 @@ export default function OverviewDashboard() {
       <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} ruleNames={ruleNames} />
 
       {/* ── Stat Cards ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
         <StatCard title="Total Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
         <StatCard title="Blocked" value={data?.blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=blocked" />
         <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
@@ -497,7 +498,7 @@ export default function OverviewDashboard() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm">Event Timeline</CardTitle>
+              <CardTitle className={T.cardTitle}>Event Timeline</CardTitle>
               <CardDescription>
                 {zoomTimeParams
                   ? "Zoomed in — events table below is filtered to this window"
@@ -562,14 +563,14 @@ export default function OverviewDashboard() {
                 <XAxis
                   dataKey="hour"
                   stroke="#7a8baa"
-                  fontSize={11}
+                  fontSize={T.chartLabel}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={formatHourTick}
                 />
                 <YAxis
                   stroke="#7a8baa"
-                  fontSize={11}
+                  fontSize={T.chartLabel}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={formatNumber}
@@ -580,7 +581,7 @@ export default function OverviewDashboard() {
                   height={28}
                   iconType="square"
                   iconSize={10}
-                  wrapperStyle={{ fontSize: "11px", color: "#7a8baa" }}
+                  wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }}
                 />
                 <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} />
                 <Area type="monotone" dataKey="ipsum_blocked" stroke={ACTION_COLORS.ipsum} fill="url(#gradIpsumBlocked)" strokeWidth={2} name="IPsum Blocked" />
@@ -622,7 +623,7 @@ export default function OverviewDashboard() {
               {/* Donut */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Action Breakdown</CardTitle>
+                  <CardTitle className={T.cardTitle}>Action Breakdown</CardTitle>
                   <CardDescription>Events by action type</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center">
@@ -678,7 +679,7 @@ export default function OverviewDashboard() {
               {/* Top Clients chart */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Top Clients</CardTitle>
+                  <CardTitle className={T.cardTitle}>Top Clients</CardTitle>
                   <CardDescription>By total event count</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -687,7 +688,7 @@ export default function OverviewDashboard() {
                       {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
                     </div>
                   ) : (data?.top_clients ?? []).length > 0 ? (
-                    <ResponsiveContainer width="100%" height={Math.max((data?.top_clients ?? []).slice(0, 8).length * 36 + 36, 160)}>
+                    <ResponsiveContainer width="100%" height={Math.max((data?.top_clients ?? []).slice(0, 8).length * 40 + 40, 180)}>
                       <BarChart
                         data={(data?.top_clients ?? []).slice(0, 8).map((c) => ({
                           ...c,
@@ -698,15 +699,15 @@ export default function OverviewDashboard() {
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" horizontal={false} />
-                        <XAxis type="number" stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
+                        <XAxis type="number" stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
                         <YAxis
                           type="category"
                           dataKey="label"
                           stroke="#7a8baa"
-                          fontSize={9}
+                          fontSize={T.chartLabel}
                           tickLine={false}
                           axisLine={false}
-                          width={100}
+                          width={110}
                           tick={(props: Record<string, unknown>) => (
                             <LinkTickRenderer
                               x={props.x as number}
@@ -723,6 +724,7 @@ export default function OverviewDashboard() {
                             return client?.country && client.country !== "XX" ? `${label} (${client.country})` : label;
                           }}
                         />
+                        <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                         <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                         <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
@@ -742,7 +744,7 @@ export default function OverviewDashboard() {
             {/* Events by Service */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Events by Service</CardTitle>
+                <CardTitle className={T.cardTitle}>Events by Service</CardTitle>
                 <CardDescription>Event breakdown per service</CardDescription>
               </CardHeader>
               <CardContent>
@@ -758,12 +760,12 @@ export default function OverviewDashboard() {
                       margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" horizontal={false} />
-                      <XAxis type="number" stroke="#7a8baa" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
+                      <XAxis type="number" stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
                       <YAxis
                         type="category"
                         dataKey="service"
                         stroke="#7a8baa"
-                        fontSize={10}
+                        fontSize={T.chartLabel}
                         tickLine={false}
                         axisLine={false}
                         width={110}
@@ -777,7 +779,7 @@ export default function OverviewDashboard() {
                         )}
                       />
                       <Tooltip {...chartTooltipStyle} />
-                      <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: "11px", color: "#7a8baa" }} />
+                      <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                       <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                       <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                       <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
@@ -808,7 +810,7 @@ export default function OverviewDashboard() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm">Events</CardTitle>
+              <CardTitle className={T.cardTitle}>Events</CardTitle>
               <CardDescription>
                 {zoomTimeParams
                   ? `Showing ${eventsTotal.toLocaleString()} events in selected time window`
@@ -822,7 +824,7 @@ export default function OverviewDashboard() {
             </a>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -863,7 +865,7 @@ export default function OverviewDashboard() {
                     </TableCell>
                     <TableCell className="text-xs">{evt.service}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                      <Badge variant="outline" className={T.badgeMono}>
                         {evt.method}
                       </Badge>
                     </TableCell>

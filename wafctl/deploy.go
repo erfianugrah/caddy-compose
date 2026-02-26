@@ -75,7 +75,7 @@ func ensureCorazaDir(dir string) error {
 // This ensures a stack restart always picks up the latest generator output
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, deployCfg DeployConfig) {
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, deployCfg DeployConfig) {
 	// WAF config: generate exclusion rules + WAF settings.
 	cfg := cs.Get()
 	exclusions := es.EnabledExclusions()
@@ -90,17 +90,19 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitStore, dep
 			len(exclusions), cfg.Defaults.Mode, cfg.Defaults.ParanoiaLevel)
 	}
 
-	// Rate limit zones: discover new zones from the Caddyfile (merge only),
-	// then write zone files for all configured zones in one pass.
-	rs.MergeCaddyfileZones(deployCfg.CaddyfilePath)
+	// Rate limit rules: discover new services from the Caddyfile (merge only),
+	// then write RL files for all enabled rules in one pass.
+	rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
 
-	rlCfg := rs.Get()
-	if len(rlCfg.Zones) > 0 {
-		written, err := writeZoneFiles(deployCfg.RateLimitDir, rlCfg.Zones)
+	rules := rs.EnabledRules()
+	global := rs.GetGlobal()
+	rlFiles := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath)
+	if len(rlFiles) > 0 {
+		written, err := writeRLFiles(deployCfg.RateLimitDir, rlFiles)
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
 		} else {
-			log.Printf("[boot] regenerated %d rate limit zone files", len(written))
+			log.Printf("[boot] regenerated %d rate limit files", len(written))
 		}
 	}
 }

@@ -49,6 +49,7 @@ import type { EventPrefill } from "./eventPrefill";
 import { RuleIdTagInput } from "./TagInputs";
 import { ConditionRow } from "./ConditionBuilder";
 import { CRSRulePicker } from "./CRSRulePicker";
+import { T } from "@/lib/typography";
 
 // ─── Icon map (avoids passing component refs through constants) ─────
 
@@ -220,7 +221,7 @@ export function QuickActionsForm({
       {/* Name & Description */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Name</Label>
+          <Label className={T.formLabel}>Name</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -232,7 +233,7 @@ export function QuickActionsForm({
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Description</Label>
+          <Label className={T.formLabel}>Description</Label>
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -244,7 +245,7 @@ export function QuickActionsForm({
       {/* Condition Builder */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          <Label className={T.formLabel}>
             When incoming requests match...
           </Label>
           {conditions.length > 1 && (
@@ -269,7 +270,7 @@ export function QuickActionsForm({
               {i > 0 && (
                 <div className="flex items-center gap-2 py-1">
                   <div className="h-px flex-1 bg-border" />
-                  <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
                     {groupOp}
                   </span>
                   <div className="h-px flex-1 bg-border" />
@@ -296,7 +297,7 @@ export function QuickActionsForm({
       {actionType === "skip_rule" && (
         <div className="space-y-3">
           <div className="flex items-center gap-4">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Skip by:</Label>
+            <Label className={T.formLabel}>Skip by:</Label>
             <div className="flex gap-2">
               <Button
                 variant={skipMode === "id" ? "default" : "outline"}
@@ -324,7 +325,7 @@ export function QuickActionsForm({
             />
           ) : (
             <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label className={T.formLabel}>
                 Rule Tag
               </Label>
               <Select value={ruleTag} onValueChange={setRuleTag}>
@@ -462,18 +463,18 @@ export function AdvancedBuilderForm({
       {/* Name & Description */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Name</Label>
+          <Label className={T.formLabel}>Name</Label>
           <Input value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="e.g., Allow WordPress admin" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Description</Label>
+          <Label className={T.formLabel}>Description</Label>
           <Input value={form.description} onChange={(e) => update("description", e.target.value)} placeholder="Optional description" />
         </div>
       </div>
 
       {/* Exclusion Type */}
       <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Exclusion Type</Label>
+        <Label className={T.formLabel}>Exclusion Type</Label>
         <Select value={form.type} onValueChange={handleTypeChange}>
           <SelectTrigger className="h-auto py-2">
             <SelectValue />
@@ -486,14 +487,14 @@ export function AdvancedBuilderForm({
               return [
                 gi > 0 ? <SelectSeparator key={`sep-${group}`} /> : null,
                 <SelectGroup key={`group-${group}`}>
-                  <SelectLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
+                  <SelectLabel className="text-xs uppercase tracking-widest text-muted-foreground/60">
                     {groupLabel}
                   </SelectLabel>
                   {items.map((t) => (
                     <SelectItem key={t.value} value={t.value} textValue={t.label} className="py-2">
                       <div className="flex flex-col gap-0.5">
                         <span className="font-medium text-sm">{t.label}</span>
-                        <span className="text-[11px] leading-tight text-muted-foreground">{t.description}</span>
+                        <span className="text-xs leading-tight text-muted-foreground">{t.description}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -508,7 +509,7 @@ export function AdvancedBuilderForm({
       <div className="grid gap-3 sm:grid-cols-2">
         {needsRuleId && (
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Rule ID / Range</Label>
+            <Label className={T.formLabel}>Rule ID / Range</Label>
             <RuleIdTagInput
               value={form.rule_id}
               onChange={(v) => update("rule_id", v)}
@@ -518,7 +519,7 @@ export function AdvancedBuilderForm({
         )}
         {needsRuleTag && (
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Rule Tag</Label>
+            <Label className={T.formLabel}>Rule Tag</Label>
             <Select value={form.rule_tag} onValueChange={(v) => update("rule_tag", v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a tag" />
@@ -533,7 +534,7 @@ export function AdvancedBuilderForm({
         )}
         {needsVariable && (
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Variable</Label>
+            <Label className={T.formLabel}>Variable</Label>
             <Input value={form.variable} onChange={(e) => update("variable", e.target.value)} placeholder='e.g., ARGS:wp_post, REQUEST_COOKIES:/^uid_.*/' />
           </div>
         )}
@@ -543,7 +544,7 @@ export function AdvancedBuilderForm({
       {needsConditions && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            <Label className={T.formLabel}>
               Apply when requests match...
             </Label>
             {form.conditions.length > 1 && (
@@ -568,7 +569,7 @@ export function AdvancedBuilderForm({
                 {i > 0 && (
                   <div className="flex items-center gap-2 py-1">
                     <div className="h-px flex-1 bg-border" />
-                    <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                    <span className="text-xs font-medium uppercase text-muted-foreground">
                       {form.group_operator}
                     </span>
                     <div className="h-px flex-1 bg-border" />
@@ -642,12 +643,12 @@ export function RawEditorForm({
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Name</Label>
+        <Label className={T.formLabel}>Name</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Exclusion name" />
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+        <Label className={T.formLabel}>
           SecRule Directive
         </Label>
         <p className="text-xs text-muted-foreground mb-2">

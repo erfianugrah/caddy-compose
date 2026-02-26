@@ -297,27 +297,14 @@ func (s *ExclusionStore) EnabledExclusions() []RuleExclusion {
 	return result
 }
 
-// validateExclusion checks that the exclusion has required fields.
-func validateExclusion(e RuleExclusion) error {
-	if e.Name == "" {
-		return fmt.Errorf("name is required")
+// validateConditions validates a slice of conditions against a set of allowed fields.
+// Pass nil for allowedFields to use validConditionFields (all fields allowed).
+func validateConditions(conditions []Condition, allowedFields map[string]bool) error {
+	if allowedFields == nil {
+		allowedFields = validConditionFields
 	}
-	// Reject control characters in the name (used in SecRule comments and msg fields).
-	if strings.ContainsAny(e.Name, "\n\r") {
-		return fmt.Errorf("name must not contain newlines")
-	}
-	if !validExclusionTypes[e.Type] {
-		return fmt.Errorf("invalid exclusion type: %q", e.Type)
-	}
-
-	// Validate group operator.
-	if !validGroupOperators[e.GroupOp] {
-		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", e.GroupOp)
-	}
-
-	// Validate conditions.
-	for i, c := range e.Conditions {
-		if !validConditionFields[c.Field] {
+	for i, c := range conditions {
+		if !allowedFields[c.Field] {
 			return fmt.Errorf("condition[%d]: invalid field %q", i, c.Field)
 		}
 		ops, ok := validOperatorsForField[c.Field]
@@ -352,6 +339,31 @@ func validateExclusion(e RuleExclusion) error {
 		if strings.ContainsAny(c.Value, "\n\r") {
 			return fmt.Errorf("condition[%d]: value must not contain newlines", i)
 		}
+	}
+	return nil
+}
+
+// validateExclusion checks that the exclusion has required fields.
+func validateExclusion(e RuleExclusion) error {
+	if e.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	// Reject control characters in the name (used in SecRule comments and msg fields).
+	if strings.ContainsAny(e.Name, "\n\r") {
+		return fmt.Errorf("name must not contain newlines")
+	}
+	if !validExclusionTypes[e.Type] {
+		return fmt.Errorf("invalid exclusion type: %q", e.Type)
+	}
+
+	// Validate group operator.
+	if !validGroupOperators[e.GroupOp] {
+		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", e.GroupOp)
+	}
+
+	// Validate conditions (all fields allowed for WAF exclusions).
+	if err := validateConditions(e.Conditions, nil); err != nil {
+		return err
 	}
 
 	// Type-specific validation.

@@ -103,6 +103,11 @@ func TestRunCLIMissingSubcommand(t *testing.T) {
 		{"rules get no id", []string{"rules", "get"}},
 		{"rules delete no id", []string{"rules", "delete"}},
 		{"blocklist check no ip", []string{"blocklist", "check"}},
+		{"ratelimit no sub", []string{"ratelimit"}},
+		{"rl no sub", []string{"rl"}},
+		{"ratelimit get no id", []string{"ratelimit", "get"}},
+		{"ratelimit delete no id", []string{"ratelimit", "delete"}},
+		{"ratelimit unknown sub", []string{"ratelimit", "xyz"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

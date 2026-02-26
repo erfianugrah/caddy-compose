@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-
 func TestConfigStoreDefaults(t *testing.T) {
 	cs := newTestConfigStore(t)
 	cfg := cs.Get()
@@ -30,8 +29,6 @@ func TestConfigStoreDefaults(t *testing.T) {
 	}
 }
 
-
-
 func TestDefaultServiceSettingsMatchesDefaultConfig(t *testing.T) {
 	ss := defaultServiceSettings()
 	dc := defaultConfig().Defaults
@@ -49,8 +46,6 @@ func TestDefaultServiceSettingsMatchesDefaultConfig(t *testing.T) {
 		t.Errorf("OutboundThreshold: defaultServiceSettings()=%d, defaultConfig().Defaults=%d", ss.OutboundThreshold, dc.OutboundThreshold)
 	}
 }
-
-
 
 func TestConfigStoreUpdate(t *testing.T) {
 	cs := newTestConfigStore(t)
@@ -73,8 +68,6 @@ func TestConfigStoreUpdate(t *testing.T) {
 	}
 }
 
-
-
 func TestConfigStorePersistence(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -91,8 +84,6 @@ func TestConfigStorePersistence(t *testing.T) {
 		t.Errorf("persistence: want paranoia 3, got %d", cfg.Defaults.ParanoiaLevel)
 	}
 }
-
-
 
 func TestConfigValidation(t *testing.T) {
 	tests := []struct {
@@ -182,8 +173,6 @@ func TestConfigValidation(t *testing.T) {
 
 // --- Config HTTP endpoint tests ---
 
-
-
 // --- Config HTTP endpoint tests ---
 
 func TestConfigEndpoints(t *testing.T) {
@@ -225,8 +214,6 @@ func TestConfigEndpoints(t *testing.T) {
 	}
 }
 
-
-
 func TestConfigEndpointInvalid(t *testing.T) {
 	cs := newTestConfigStore(t)
 	mux := http.NewServeMux()
@@ -242,8 +229,6 @@ func TestConfigEndpointInvalid(t *testing.T) {
 }
 
 // --- Generator tests ---
-
-
 
 func TestConfigMigrationFromOldFormat(t *testing.T) {
 	dir := t.TempDir()
@@ -279,8 +264,6 @@ func TestConfigMigrationFromOldFormat(t *testing.T) {
 		t.Errorf("migrated qbit.erfi.io mode: want disabled, got %s", ss.Mode)
 	}
 }
-
-
 
 func TestConfigMigrationFallbacksForInvalidValues(t *testing.T) {
 	// Old format is detected by presence of "rule_engine" field in JSON.
@@ -343,6 +326,103 @@ func TestConfigMigrationFallbacksForInvalidValues(t *testing.T) {
 				t.Errorf("outbound: want %d, got %d", tt.wantOut, cfg.Defaults.OutboundThreshold)
 			}
 		})
+	}
+}
+
+// --- CRS v4 Extended Settings validation tests ---
+
+func TestValidateCRSv4ExtendedSettings(t *testing.T) {
+	base := WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4}
+
+	tests := []struct {
+		name    string
+		modify  func(*WAFServiceSettings)
+		wantErr bool
+	}{
+		{"valid blocking_paranoia_level=1", func(s *WAFServiceSettings) { s.BlockingParanoiaLevel = 1 }, false},
+		{"valid blocking_paranoia_level=4", func(s *WAFServiceSettings) { s.BlockingParanoiaLevel = 4 }, false},
+		{"invalid blocking_paranoia_level=5", func(s *WAFServiceSettings) { s.BlockingParanoiaLevel = 5 }, true},
+		{"invalid blocking_paranoia_level=-1", func(s *WAFServiceSettings) { s.BlockingParanoiaLevel = -1 }, true},
+		{"valid detection_paranoia_level=3", func(s *WAFServiceSettings) { s.DetectionParanoiaLevel = 3 }, false},
+		{"invalid detection_paranoia_level=0 (skip)", func(s *WAFServiceSettings) { s.DetectionParanoiaLevel = 0 }, false},
+		{"invalid detection_paranoia_level=5", func(s *WAFServiceSettings) { s.DetectionParanoiaLevel = 5 }, true},
+		{"valid sampling_percentage=50", func(s *WAFServiceSettings) { s.SamplingPercentage = 50 }, false},
+		{"valid sampling_percentage=1", func(s *WAFServiceSettings) { s.SamplingPercentage = 1 }, false},
+		{"valid sampling_percentage=100", func(s *WAFServiceSettings) { s.SamplingPercentage = 100 }, false},
+		{"invalid sampling_percentage=0 (skip)", func(s *WAFServiceSettings) { s.SamplingPercentage = 0 }, false},
+		{"invalid sampling_percentage=101", func(s *WAFServiceSettings) { s.SamplingPercentage = 101 }, true},
+		{"valid reporting_level=2", func(s *WAFServiceSettings) { s.ReportingLevel = 2 }, false},
+		{"invalid reporting_level=5", func(s *WAFServiceSettings) { s.ReportingLevel = 5 }, true},
+		{"valid max_num_args=500", func(s *WAFServiceSettings) { s.MaxNumArgs = 500 }, false},
+		{"invalid max_num_args=-1", func(s *WAFServiceSettings) { s.MaxNumArgs = -1 }, true},
+		{"valid arg_name_length=200", func(s *WAFServiceSettings) { s.ArgNameLength = 200 }, false},
+		{"valid arg_length=800", func(s *WAFServiceSettings) { s.ArgLength = 800 }, false},
+		{"valid total_arg_length=128000", func(s *WAFServiceSettings) { s.TotalArgLength = 128000 }, false},
+		{"valid max_file_size=10485760", func(s *WAFServiceSettings) { s.MaxFileSize = 10485760 }, false},
+		{"invalid max_file_size=-1", func(s *WAFServiceSettings) { s.MaxFileSize = -1 }, true},
+		{"valid combined_file_sizes=5242880", func(s *WAFServiceSettings) { s.CombinedFileSizes = 5242880 }, false},
+		{"invalid combined_file_sizes=-1", func(s *WAFServiceSettings) { s.CombinedFileSizes = -1 }, true},
+		{"valid crs_exclusions wordpress", func(s *WAFServiceSettings) { s.CRSExclusions = []string{"wordpress"} }, false},
+		{"valid crs_exclusions multiple", func(s *WAFServiceSettings) { s.CRSExclusions = []string{"wordpress", "nextcloud"} }, false},
+		{"invalid crs_exclusions unknown", func(s *WAFServiceSettings) { s.CRSExclusions = []string{"unknownapp"} }, true},
+		{"valid early_blocking true", func(s *WAFServiceSettings) { b := true; s.EarlyBlocking = &b }, false},
+		{"valid enforce_bodyproc true", func(s *WAFServiceSettings) { b := true; s.EnforceBodyprocURLEncoded = &b }, false},
+		{"valid allowed_methods", func(s *WAFServiceSettings) { s.AllowedMethods = "GET POST" }, false},
+		{"valid allowed_http_versions", func(s *WAFServiceSettings) { s.AllowedHTTPVersions = "HTTP/1.1 HTTP/2" }, false},
+		{"valid restricted_extensions", func(s *WAFServiceSettings) { s.RestrictedExtensions = ".asa .backup" }, false},
+		{"valid restricted_headers", func(s *WAFServiceSettings) { s.RestrictedHeaders = "/proxy/ /lock-token/" }, false},
+		{"valid allowed_request_content_type", func(s *WAFServiceSettings) {
+			s.AllowedRequestContentType = "|application/json| |text/html|"
+		}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ss := base
+			tt.modify(&ss)
+			cfg := WAFConfig{
+				Defaults: ss,
+				Services: map[string]WAFServiceSettings{},
+			}
+			err := validateConfig(cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestConfigDeepCopyCRSExclusions(t *testing.T) {
+	cs := newTestConfigStore(t)
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+			CRSExclusions: []string{"wordpress"},
+		},
+		Services: map[string]WAFServiceSettings{
+			"test.erfi.io": {
+				Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+				CRSExclusions: []string{"nextcloud"},
+			},
+		},
+	}
+	cs.Update(cfg)
+
+	got := cs.Get()
+	// Mutate the returned copy.
+	got.Defaults.CRSExclusions = append(got.Defaults.CRSExclusions, "drupal")
+	got.Services["test.erfi.io"] = WAFServiceSettings{
+		Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+		CRSExclusions: []string{"xenforo"},
+	}
+
+	// Original should be unchanged.
+	got2 := cs.Get()
+	if len(got2.Defaults.CRSExclusions) != 1 || got2.Defaults.CRSExclusions[0] != "wordpress" {
+		t.Errorf("defaults CRSExclusions should be unchanged, got %v", got2.Defaults.CRSExclusions)
+	}
+	if svc, ok := got2.Services["test.erfi.io"]; !ok || len(svc.CRSExclusions) != 1 || svc.CRSExclusions[0] != "nextcloud" {
+		t.Errorf("service CRSExclusions should be unchanged, got %v", got2.Services["test.erfi.io"].CRSExclusions)
 	}
 }
 
