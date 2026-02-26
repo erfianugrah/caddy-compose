@@ -1168,15 +1168,65 @@ export async function getRLEvents(params?: {
 
 // ─── Rate Limit Advisor ─────────────────────────────────────────────
 
+export type ClientClassification = "normal" | "suspicious" | "abusive";
+
 export interface RateAdvisorClient {
   client_ip: string;
   country?: string;
   requests: number;
+  requests_per_sec: number;
+  error_rate: number;
+  path_diversity: number;
+  burstiness: number;
+  classification: ClientClassification;
+  anomaly_score: number;
   top_paths: { path: string; count: number }[];
+}
+
+export interface AdvisorRecommendation {
+  threshold: number;
+  confidence: "low" | "medium" | "high";
+  method: "mad" | "p99" | "iqr";
+  affected_clients: number;
+  affected_requests: number;
+  median: number;
+  mad: number;
+  separation: number;
+}
+
+export interface ImpactPoint {
+  threshold: number;
+  clients_affected: number;
+  requests_affected: number;
+  client_pct: number;
+  request_pct: number;
+}
+
+export interface HistogramBin {
+  min: number;
+  max: number;
+  count: number;
+}
+
+export interface NormalizedPercentiles {
+  p50: number;
+  p75: number;
+  p90: number;
+  p95: number;
+  p99: number;
+}
+
+export interface TimeOfDayBaseline {
+  hour: number;
+  median_rps: number;
+  p95_rps: number;
+  clients: number;
+  requests: number;
 }
 
 export interface RateAdvisorResponse {
   window: string;
+  window_seconds: number;
   service?: string;
   path?: string;
   method?: string;
@@ -1190,6 +1240,11 @@ export interface RateAdvisorResponse {
     p95: number;
     p99: number;
   };
+  normalized_percentiles: NormalizedPercentiles;
+  recommendation?: AdvisorRecommendation;
+  impact_curve: ImpactPoint[];
+  histogram: HistogramBin[];
+  time_of_day_baselines?: TimeOfDayBaseline[];
 }
 
 export async function getRateAdvisor(params?: {

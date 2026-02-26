@@ -150,6 +150,7 @@ wafctl tag format: simple semver (e.g. `1.0.0`).
 - `rl_rules.go` — Rate limit rule store with CRUD, validation, v1 migration, Caddyfile auto-discovery
 - `rl_generator.go` — Rate limit Caddy config generator, condition→matcher translation, file writer
 - `rl_analytics.go` — Rate limit analytics, condition-based rule attribution for 429 events
+- `rl_advisor.go` — Rate limit advisor: traffic analysis, statistical anomaly detection (MAD, Fano factor, IQR), client classification, time-of-day baselines, 30s TTL caching
 
 ## Coraza Rule ID Namespaces
 
@@ -265,9 +266,10 @@ fine-grained per-path, per-method, or per-header rate limiting.
 - **Store**: `rl_rules.go` — `RateLimitRuleStore` with `sync.RWMutex`, CRUD, validation, v1 migration from flat zones, Caddyfile auto-discovery
 - **Generator**: `rl_generator.go` — translates rules into Caddy `rate_limit` plugin configs with named matchers
 - **Analytics**: `rl_analytics.go` — condition-based inference to attribute 429 events to specific rules
-- **Handlers**: 11 HTTP endpoints under `/api/rate-rules` (CRUD, deploy, global config, export/import, hits)
+- **Advisor**: `rl_advisor.go` — traffic analysis, anomaly detection, client classification, recommendations with impact curves and time-of-day baselines
+- **Handlers**: 12 HTTP endpoints under `/api/rate-rules` (CRUD, deploy, global config, export/import, hits, advisor)
 - **CLI**: `wafctl ratelimit` / `wafctl rl` subcommands (list, get, create, delete, deploy, global)
-- **Frontend**: `RateLimitsPanel.tsx` — condition-based policy engine UI with auto-deploy
+- **Frontend**: `RateLimitsPanel.tsx` (rules CRUD + global settings), `RateAdvisorPanel.tsx` (advisor UI), `AdvisorCharts.tsx` (visualization components)
 
 ### Rule Model
 
@@ -326,6 +328,32 @@ Old flat zone format (`RateLimitZone`: name/events/window/enabled) is automatica
 migrated to the new rule format on first load. Zones become rules with `key: "client_ip"`,
 `action: "deny"`, `service` set from the zone name.
 
+### Rate Limit Advisor
+
+CF-style traffic analysis tool that scans access logs and recommends rate limit rules.
+The advisor analyzes request patterns, detects anomalous clients using statistical methods,
+and generates one-click rule creation from recommendations.
+
+**Statistical Algorithms**:
+- **MAD (Median Absolute Deviation)** — robust outlier detection resistant to skew; threshold at `median + 3×MAD`
+- **Fano Factor** — burstiness detection via variance-to-mean ratio; values >1 indicate bursty traffic
+- **IQR (Interquartile Range)** — fallback when MAD=0 (uniform-ish distributions); threshold at `Q3 + 1.5×IQR`
+- **Composite Anomaly Score** — weighted combination: `0.4×volume + 0.3×burstiness + 0.3×concentration`
+- **Cohen's d** — effect size measurement comparing client rate vs population mean
+- **Client Classification** — categorizes clients as `normal`, `elevated`, `suspicious`, or `abusive` based on composite score thresholds
+
+**Features**:
+- Normalized rates (`RequestsPerSec`) for cross-window comparisons
+- `NormalizedPercentiles` (P50/P75/P90/P95/P99 in req/s) on response
+- Impact curve: simulated block rates at various threshold levels
+- Distribution histogram: request count frequency distribution
+- Time-of-day baselines: per-hour median/P95 RPS computed when ≥2 distinct hours of data present
+- 30-second TTL cache keyed by `"window|service|path|method|limit"`, max 50 entries with expired-first eviction
+
+**Query params**: `window` (`1m`/`5m`/`10m`/`1h`), `service`, `path`, `method`, `limit` (max clients, default 100)
+
+**Frontend**: `RateAdvisorPanel.tsx` handles the form, client table with req/s columns, and recommendation cards. `AdvisorCharts.tsx` contains `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, and `TimeOfDayChart` visualization components.
+
 ## Code Style — TypeScript/React (waf-dashboard/)
 
 ### Imports
@@ -365,6 +393,8 @@ migrated to the new rule format on first load. Zones become rules with `key: "cl
 - `EventDetailModal` — reusable Dialog wrapping EventDetailPanel with actions
 - `TimeRangePicker` — Grafana-style time range picker with quick ranges, custom from/to, auto-refresh
 - `DashboardFilterBar` — CF-style filter bar with wide 3-step popover (Field→Operator→Value, `w-96`), service and rule_name `in` multi-select with checkbox list + search + custom text entry, filter chips with operator symbols, `in` operator renders individual pills per value with `×` buttons. Dynamic searchable dropdowns for `service` (from API) and `rule_name` (from exclusions). Exports: `parseFiltersFromURL`, `filtersToSummaryParams`, `filtersToEventsParams`, `filterDisplayValue`, `operatorChip`, `FILTER_FIELDS`, `DashboardFilter`, `FilterField`
+- `RateAdvisorPanel` — rate limit advisor UI: service/path/method/window form, client table with anomaly scores and req/s, recommendation cards with one-click rule creation
+- `AdvisorCharts` — visualization components for the advisor: `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, `TimeOfDayChart`
 
 ### Cross-Page Navigation
 
@@ -394,13 +424,14 @@ migrated to the new rule format on first load. Zones become rules with `key: "cl
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/deploy` |
 | RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
 | RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
+| RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ## Test Patterns
 
-### Go (687 tests across 15 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
+### Go (744 tests across 16 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -408,7 +439,7 @@ migrated to the new rule format on first load. Zones become rules with `key: "cl
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (255 tests across 6 files)
+### Frontend (265 tests across 6 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
 - Tests live alongside source: `api.test.ts` next to `api.ts`, `DashboardFilterBar.test.ts` next to component

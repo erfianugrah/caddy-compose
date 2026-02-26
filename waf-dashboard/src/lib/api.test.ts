@@ -23,6 +23,7 @@ import {
   exportRLRules,
   importRLRules,
   getRLRuleHits,
+  getRateAdvisor,
   type SummaryData,
   type EventsResponse,
   type ServiceDetail,
@@ -38,6 +39,7 @@ import {
   type RateLimitRuleExport,
   type RateLimitDeployResult,
   type RLRuleHitsResponse,
+  type RateAdvisorResponse,
 } from "./api";
 
 // ─── Mock fetch ─────────────────────────────────────────────────────
@@ -1846,5 +1848,198 @@ describe("RL API error handling", () => {
   it("throws on non-OK response for deployRLRules", async () => {
     vi.stubGlobal("fetch", mockFetchResponse({ error: "deploy failed" }, 500));
     await expect(deployRLRules()).rejects.toThrow("API error: 500");
+  });
+});
+
+// ─── Rate Advisor API Tests ───────────────────────────────────────
+
+describe("getRateAdvisor", () => {
+  const mockAdvisorResponse: RateAdvisorResponse = {
+    window: "1m",
+    window_seconds: 60,
+    service: "test.erfi.io",
+    total_requests: 1500,
+    unique_clients: 25,
+    clients: [
+      {
+        client_ip: "9.9.9.9",
+        country: "US",
+        requests: 500,
+        requests_per_sec: 8.33,
+        error_rate: 0.6,
+        path_diversity: 0.01,
+        burstiness: 15.0,
+        classification: "abusive",
+        anomaly_score: 92.5,
+        top_paths: [{ path: "/admin/login", count: 498 }],
+      },
+      {
+        client_ip: "1.1.1.1",
+        country: "DE",
+        requests: 10,
+        requests_per_sec: 0.17,
+        error_rate: 0.02,
+        path_diversity: 0.8,
+        burstiness: 1.1,
+        classification: "normal",
+        anomaly_score: 5.2,
+        top_paths: [{ path: "/", count: 5 }, { path: "/about", count: 3 }],
+      },
+    ],
+    percentiles: { p50: 8, p75: 15, p90: 30, p95: 45, p99: 200 },
+    normalized_percentiles: { p50: 0.13, p75: 0.25, p90: 0.5, p95: 0.75, p99: 3.33 },
+    recommendation: {
+      threshold: 52,
+      confidence: "high",
+      method: "mad",
+      affected_clients: 3,
+      affected_requests: 800,
+      median: 8.5,
+      mad: 3.2,
+      separation: 4.5,
+    },
+    impact_curve: [
+      { threshold: 1, clients_affected: 25, requests_affected: 1500, client_pct: 1.0, request_pct: 1.0 },
+      { threshold: 50, clients_affected: 3, requests_affected: 800, client_pct: 0.12, request_pct: 0.53 },
+      { threshold: 500, clients_affected: 1, requests_affected: 500, client_pct: 0.04, request_pct: 0.33 },
+    ],
+    histogram: [
+      { min: 1, max: 5, count: 10 },
+      { min: 5, max: 15, count: 8 },
+      { min: 15, max: 50, count: 4 },
+      { min: 50, max: 200, count: 2 },
+      { min: 200, max: 600, count: 1 },
+    ],
+    time_of_day_baselines: [
+      { hour: 10, median_rps: 0.05, p95_rps: 0.25, clients: 15, requests: 400 },
+      { hour: 14, median_rps: 0.08, p95_rps: 0.42, clients: 20, requests: 800 },
+      { hour: 22, median_rps: 0.02, p95_rps: 0.10, clients: 8, requests: 300 },
+    ],
+  };
+
+  it("fetches advisor data with all parameters", async () => {
+    const mockFetch = mockFetchResponse(mockAdvisorResponse);
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await getRateAdvisor({
+      window: "1m",
+      service: "test.erfi.io",
+      path: "/api",
+      method: "POST",
+      limit: 50,
+    });
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/api/rate-rules/advisor");
+    expect(calledUrl).toContain("window=1m");
+    expect(calledUrl).toContain("service=test.erfi.io");
+    expect(calledUrl).toContain("path=%2Fapi");
+    expect(calledUrl).toContain("method=POST");
+    expect(calledUrl).toContain("limit=50");
+
+    expect(result.total_requests).toBe(1500);
+    expect(result.unique_clients).toBe(25);
+  });
+
+  it("returns clients with anomaly metrics", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+
+    expect(result.clients).toHaveLength(2);
+    const abusive = result.clients[0];
+    expect(abusive.classification).toBe("abusive");
+    expect(abusive.anomaly_score).toBeGreaterThan(50);
+    expect(abusive.error_rate).toBe(0.6);
+    expect(abusive.path_diversity).toBe(0.01);
+    expect(abusive.burstiness).toBe(15.0);
+
+    const normal = result.clients[1];
+    expect(normal.classification).toBe("normal");
+    expect(normal.anomaly_score).toBeLessThan(20);
+  });
+
+  it("returns recommendation with confidence", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+
+    expect(result.recommendation).toBeDefined();
+    expect(result.recommendation!.threshold).toBe(52);
+    expect(result.recommendation!.confidence).toBe("high");
+    expect(result.recommendation!.method).toBe("mad");
+    expect(result.recommendation!.affected_clients).toBe(3);
+    expect(result.recommendation!.median).toBe(8.5);
+    expect(result.recommendation!.mad).toBe(3.2);
+    expect(result.recommendation!.separation).toBe(4.5);
+  });
+
+  it("returns impact curve", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+
+    expect(result.impact_curve).toHaveLength(3);
+    expect(result.impact_curve[0].threshold).toBe(1);
+    expect(result.impact_curve[0].client_pct).toBe(1.0);
+    expect(result.impact_curve[2].clients_affected).toBe(1);
+  });
+
+  it("returns histogram", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+
+    expect(result.histogram).toHaveLength(5);
+    expect(result.histogram[0].min).toBe(1);
+    expect(result.histogram[0].count).toBe(10);
+  });
+
+  it("handles response without recommendation", async () => {
+    const noRecResponse = { ...mockAdvisorResponse, recommendation: undefined };
+    vi.stubGlobal("fetch", mockFetchResponse(noRecResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+    expect(result.recommendation).toBeUndefined();
+  });
+
+  it("fetches with default params when none provided", async () => {
+    const mockFetch = mockFetchResponse(mockAdvisorResponse);
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getRateAdvisor();
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toBe("/api/rate-rules/advisor");
+  });
+
+  it("returns normalized rates per second", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+
+    expect(result.window_seconds).toBe(60);
+    expect(result.normalized_percentiles).toBeDefined();
+    expect(result.normalized_percentiles.p50).toBe(0.13);
+    expect(result.normalized_percentiles.p95).toBe(0.75);
+    expect(result.normalized_percentiles.p99).toBe(3.33);
+
+    // Clients should have requests_per_sec
+    expect(result.clients[0].requests_per_sec).toBe(8.33);
+    expect(result.clients[1].requests_per_sec).toBe(0.17);
+  });
+
+  it("returns time-of-day baselines", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+
+    expect(result.time_of_day_baselines).toBeDefined();
+    expect(result.time_of_day_baselines).toHaveLength(3);
+    expect(result.time_of_day_baselines![0].hour).toBe(10);
+    expect(result.time_of_day_baselines![0].median_rps).toBe(0.05);
+    expect(result.time_of_day_baselines![0].p95_rps).toBe(0.25);
+    expect(result.time_of_day_baselines![0].clients).toBe(15);
+    expect(result.time_of_day_baselines![0].requests).toBe(400);
+    expect(result.time_of_day_baselines![2].hour).toBe(22);
+  });
+
+  it("handles response without time-of-day baselines", async () => {
+    const noBaselinesResponse = { ...mockAdvisorResponse, time_of_day_baselines: undefined };
+    vi.stubGlobal("fetch", mockFetchResponse(noBaselinesResponse));
+    const result = await getRateAdvisor({ window: "1m" });
+    expect(result.time_of_day_baselines).toBeUndefined();
   });
 });
