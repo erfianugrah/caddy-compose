@@ -338,13 +338,13 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
                       <span className="text-muted-foreground">Rule ID:</span>
                       {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
                         <a href={policyRuleLink(event.rule_msg)!} className="inline-flex items-center gap-1 group" onClick={(e) => e.stopPropagation()}>
-                          <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors">
+                          <Badge variant="outline" className={`${T.badgeMono} group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors`}>
                             {event.rule_id}
                           </Badge>
                           <ExternalLink className="h-3 w-3 text-muted-foreground group-hover:text-emerald-400 transition-colors" />
                         </a>
                       ) : (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono">
+                        <Badge variant="outline" className={T.badgeMono}>
                           {event.rule_id}
                         </Badge>
                       )}
@@ -404,7 +404,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
                   <div className="flex flex-wrap gap-1 pt-1">
                     <span className="text-muted-foreground">Tags:</span>
                     {event.rule_tags.map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs px-1 py-0 font-mono text-muted-foreground">
+                      <Badge key={tag} variant="outline" className={`${T.badgeMono} text-muted-foreground`}>
                         {tag}
                       </Badge>
                     ))}
@@ -426,7 +426,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
               return (
                 <div key={rule.id} className="rounded border border-navy-800 bg-navy-950/50 p-2 space-y-1 text-xs">
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono">{rule.id}</Badge>
+                    <Badge variant="outline" className={T.badgeMono}>{rule.id}</Badge>
                     <span className={sev.color + " text-xs font-medium"}>{sev.label}</span>
                     <span className="text-foreground/80 truncate">{rule.msg}</span>
                   </div>
@@ -466,7 +466,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
           <div className="space-y-3">
             {event.request_args && Object.keys(event.request_args).length > 0 && (
               <div className="space-y-1">
-                <h5 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">Query / Form Args</h5>
+                <h5 className={T.sectionLabel}>Query / Form Args</h5>
                 <div className="rounded border border-navy-800 bg-navy-950/50 p-2">
                   {Object.entries(event.request_args).map(([key, value]) => {
                     const trigger = event.matched_data ? parseMatchedData(event.matched_data)?.trigger : undefined;
@@ -485,7 +485,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
 
             {event.request_body && (
               <div className="space-y-1">
-                <h5 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">Request Body</h5>
+                <h5 className={T.sectionLabel}>Request Body</h5>
                 <div className="rounded border border-navy-800 bg-navy-950/50 p-2">
                   <pre className="text-xs text-foreground/80 whitespace-pre-wrap break-all">
                     {(() => {
@@ -501,7 +501,7 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
 
             {event.request_headers && Object.keys(event.request_headers).length > 0 && (
               <div className="space-y-1">
-                <h5 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">Headers</h5>
+                <h5 className={T.sectionLabel}>Headers</h5>
                 <div className="rounded border border-navy-800 bg-navy-950/50 p-2 font-mono text-xs">
                   {Object.entries(event.request_headers).map(([k, v]) => {
                     const value = Array.isArray(v) ? v.join(", ") : v;
@@ -750,7 +750,7 @@ export default function EventsTable() {
 
       {/* Events Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -805,7 +805,7 @@ export default function EventsTable() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className="text-xs font-mono px-1.5 py-0"
+                          className={T.badgeMono}
                         >
                           {evt.method}
                         </Badge>
@@ -830,12 +830,12 @@ export default function EventsTable() {
                         {evt.rule_id ? (
                           isPolicyRuleEvent(evt) && policyRuleLink(evt.rule_msg) ? (
                             <a href={policyRuleLink(evt.rule_msg)!} className="inline-flex items-center gap-1 group" onClick={(e) => e.stopPropagation()}>
-                              <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors">
+                              <Badge variant="outline" className={`${T.badgeMono} group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors`}>
                                 {evt.rule_id}
                               </Badge>
                             </a>
                           ) : (
-                            <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono">
+                            <Badge variant="outline" className={T.badgeMono}>
                               {evt.rule_id}
                             </Badge>
                           )

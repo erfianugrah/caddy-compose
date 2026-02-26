@@ -483,7 +483,7 @@ export default function OverviewDashboard() {
       <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} ruleNames={ruleNames} />
 
       {/* ── Stat Cards ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
         <StatCard title="Total Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
         <StatCard title="Blocked" value={data?.blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=blocked" />
         <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
@@ -688,7 +688,7 @@ export default function OverviewDashboard() {
                       {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
                     </div>
                   ) : (data?.top_clients ?? []).length > 0 ? (
-                    <ResponsiveContainer width="100%" height={Math.max((data?.top_clients ?? []).slice(0, 8).length * 36 + 36, 160)}>
+                    <ResponsiveContainer width="100%" height={Math.max((data?.top_clients ?? []).slice(0, 8).length * 40 + 40, 180)}>
                       <BarChart
                         data={(data?.top_clients ?? []).slice(0, 8).map((c) => ({
                           ...c,
@@ -707,7 +707,7 @@ export default function OverviewDashboard() {
                           fontSize={T.chartLabel}
                           tickLine={false}
                           axisLine={false}
-                          width={100}
+                          width={110}
                           tick={(props: Record<string, unknown>) => (
                             <LinkTickRenderer
                               x={props.x as number}
@@ -724,6 +724,7 @@ export default function OverviewDashboard() {
                             return client?.country && client.country !== "XX" ? `${label} (${client.country})` : label;
                           }}
                         />
+                        <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                         <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                         <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
@@ -823,7 +824,7 @@ export default function OverviewDashboard() {
             </a>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -864,7 +865,7 @@ export default function OverviewDashboard() {
                     </TableCell>
                     <TableCell className="text-xs">{evt.service}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
+                      <Badge variant="outline" className={T.badgeMono}>
                         {evt.method}
                       </Badge>
                     </TableCell>

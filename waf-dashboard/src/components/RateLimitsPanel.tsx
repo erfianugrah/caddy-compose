@@ -914,28 +914,28 @@ export default function RateLimitsPanel() {
 
         <TabsContent value="rules" className="space-y-4 mt-4">
           {/* Summary stats */}
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="p-4">
-                <div className={T.statLabel}>Total Rules</div>
+                <div className={T.statLabelUpper}>Total Rules</div>
                 <div className={T.statValue}>{rules.length}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={T.statLabel}>Active</div>
+                <div className={T.statLabelUpper}>Active</div>
                 <div className={`${T.statValue} text-neon-green`}>{enabledCount}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={T.statLabel}>Deny</div>
+                <div className={T.statLabelUpper}>Deny</div>
                 <div className={`${T.statValue} text-neon-pink`}>{denyCount}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className={T.statLabel}>Monitor</div>
+                <div className={T.statLabelUpper}>Monitor</div>
                 <div className={`${T.statValue} text-neon-amber`}>{monitorCount}</div>
               </CardContent>
             </Card>
@@ -992,7 +992,7 @@ export default function RateLimitsPanel() {
                 </div>
               )}
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {rules.length > 0 ? (
                 <>
                   <Table>

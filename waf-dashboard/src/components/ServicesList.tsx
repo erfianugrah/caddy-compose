@@ -142,16 +142,18 @@ export default function ServicesList() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className={T.pageTitle}>Services</h2>
-        <p className={T.pageDescription}>
-          Per-service WAF event breakdown. Click a row to expand details.
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className={T.pageTitle}>Services</h2>
+          <p className={T.pageDescription}>
+            Per-service WAF event breakdown. Click a row to expand details.
+          </p>
+        </div>
       </div>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">

@@ -13,25 +13,25 @@ export function ClassificationBadge({ classification }: { classification: Client
   switch (classification) {
     case "abusive":
       return (
-        <Badge variant="outline" className="text-xs px-1.5 py-0.5 font-mono bg-red-500/10 text-red-400 border-red-500/30">
+         <Badge variant="outline" className={`${T.badgeMono} bg-red-500/10 text-red-400 border-red-500/30`}>
           Abusive
         </Badge>
       );
     case "suspicious":
       return (
-        <Badge variant="outline" className="text-xs px-1.5 py-0.5 font-mono bg-neon-amber/10 text-neon-amber border-neon-amber/30">
+        <Badge variant="outline" className={`${T.badgeMono} bg-neon-amber/10 text-neon-amber border-neon-amber/30`}>
           Suspicious
         </Badge>
       );
     case "elevated":
       return (
-        <Badge variant="outline" className="text-xs px-1.5 py-0.5 font-mono bg-neon-yellow/10 text-neon-yellow border-neon-yellow/30">
+        <Badge variant="outline" className={`${T.badgeMono} bg-neon-yellow/10 text-neon-yellow border-neon-yellow/30`}>
           Elevated
         </Badge>
       );
     default:
       return (
-        <Badge variant="outline" className="text-xs px-1.5 py-0.5 font-mono bg-neon-green/10 text-neon-green border-neon-green/30">
+        <Badge variant="outline" className={`${T.badgeMono} bg-neon-green/10 text-neon-green border-neon-green/30`}>
           Normal
         </Badge>
       );
@@ -47,7 +47,7 @@ export function ConfidenceBadge({ confidence }: { confidence: string }) {
       ? "bg-neon-amber/10 text-neon-amber border-neon-amber/30"
       : "bg-muted text-muted-foreground border-border";
   return (
-    <Badge variant="outline" className={`text-xs px-1.5 py-0.5 font-mono ${cls}`}>
+    <Badge variant="outline" className={`${T.badgeMono} ${cls}`}>
       {confidence}
     </Badge>
   );
@@ -213,12 +213,12 @@ export function ImpactCurve({
 }) {
   if (!curve || curve.length < 2) return null;
 
-  const vw = 460;
+  const vw = 720;
   const vh = 240;
-  const padLeft = 40;
-  const padRight = 10;
-  const padTop = 8;
-  const padBottom = 32;
+  const padLeft = 63;
+  const padRight = 16;
+  const padTop = 12;
+  const padBottom = 50;
   const chartW = vw - padLeft - padRight;
   const chartH = vh - padTop - padBottom;
   const minT = curve[0].threshold;
@@ -270,10 +270,10 @@ export function ImpactCurve({
       })}
 
       {/* Legend */}
-      <line x1={padLeft + 8} y1={vh - 8} x2={padLeft + 22} y2={vh - 8} stroke="#22d3ee" strokeWidth={2} />
-      <text x={padLeft + 26} y={vh - 4} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
-      <line x1={padLeft + 80} y1={vh - 8} x2={padLeft + 94} y2={vh - 8} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
-      <text x={padLeft + 98} y={vh - 4} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
+      <line x1={padLeft + 12} y1={vh - 10} x2={padLeft + 34} y2={vh - 10} stroke="#22d3ee" strokeWidth={2} />
+      <text x={padLeft + 40} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
+      <line x1={padLeft + 120} y1={vh - 10} x2={padLeft + 142} y2={vh - 10} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
+      <text x={padLeft + 148} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
     </svg>
   );
 }

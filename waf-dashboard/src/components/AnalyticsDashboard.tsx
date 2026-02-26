@@ -309,7 +309,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                   {data.events_total.toLocaleString()} events from {data.ip} — click a row to inspect
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -343,7 +343,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           </TableCell>
                           <TableCell className="text-xs">{evt.service}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
+                            <Badge variant="outline" className={T.badgeMono}>
                               {evt.method}
                             </Badge>
                           </TableCell>
@@ -352,7 +352,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           </TableCell>
                           <TableCell>
                             {evt.rule_id ? (
-                              <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
+                              <Badge variant="outline" className={T.badgeMono}>
                                 {evt.rule_id}
                               </Badge>
                             ) : (
@@ -436,7 +436,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
         </div>
         <CardDescription>IP addresses with the most blocked events</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <div className="space-y-2 p-6">
             {[...Array(8)].map((_, i) => (
@@ -551,7 +551,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
         </div>
         <CardDescription>Most-hit URIs across all services</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <div className="space-y-2 p-6">
             {[...Array(8)].map((_, i) => (
@@ -584,12 +584,12 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {uri.services.slice(0, 3).map((s) => (
-                        <Badge key={s} variant="outline" className="text-xs px-1.5 py-0">
+                        <Badge key={s} variant="outline" className={T.badgeMono}>
                           {s}
                         </Badge>
                       ))}
                       {uri.services.length > 3 && (
-                        <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                        <Badge variant="secondary" className={T.badgeMono}>
                           +{uri.services.length - 3}
                         </Badge>
                       )}
@@ -650,7 +650,7 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
         </div>
         <CardDescription>Request origins by country code</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <div className="space-y-2 p-6">
             {[...Array(8)].map((_, i) => (

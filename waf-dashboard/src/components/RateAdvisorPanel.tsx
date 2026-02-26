@@ -507,16 +507,16 @@ export function RateAdvisorPanel({
           )}
 
           {/* Stats */}
-          <div className="grid gap-4 sm:grid-cols-5">
+          <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             <Card>
-              <CardContent className="p-5">
-                <div className={`${T.statLabel} mb-1`}>Total Requests</div>
+              <CardContent className="p-4">
+                <div className={`${T.statLabelUpper} mb-1`}>Total Requests</div>
                 <div className={T.statValue}>{data.total_requests.toLocaleString()}</div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5">
-                <div className={`${T.statLabel} mb-1`}>Unique Clients</div>
+              <CardContent className="p-4">
+                <div className={`${T.statLabelUpper} mb-1`}>Unique Clients</div>
                 <div className={T.statValue}>{data.unique_clients.toLocaleString()}</div>
                 <div className="flex gap-2 mt-1.5 text-xs">
                   <span className="text-neon-green">{classifications.normal} ok</span>
@@ -526,8 +526,8 @@ export function RateAdvisorPanel({
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5">
-                <div className={`${T.statLabel} mb-1`}>P95 Rate</div>
+              <CardContent className="p-4">
+                <div className={`${T.statLabelUpper} mb-1`}>P95 Rate</div>
                 <div className={`${T.statValue} text-neon-yellow`}>{data.percentiles.p95}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   req/{window}
@@ -538,9 +538,9 @@ export function RateAdvisorPanel({
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5">
-                <div className={`${T.statLabel} mb-1`}>Median / MAD</div>
-                <div className={T.statValueSm}>
+              <CardContent className="p-4">
+                <div className={`${T.statLabelUpper} mb-1`}>Median / MAD</div>
+                <div className={T.statValue}>
                   {rec ? `${rec.median}` : data.percentiles.p50}
                   {rec && <span className="text-sm text-muted-foreground font-normal ml-1">±{rec.mad}</span>}
                 </div>
@@ -550,8 +550,8 @@ export function RateAdvisorPanel({
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5">
-                <div className={`${T.statLabel} mb-1`}>Would Be Limited</div>
+              <CardContent className="p-4">
+                <div className={`${T.statLabelUpper} mb-1`}>Would Be Limited</div>
                 <div className={`${T.statValue} text-neon-red`}>{affectedClients.length}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {affectedRequests.toLocaleString()} requests ({data.total_requests > 0 ? ((affectedRequests / data.total_requests) * 100).toFixed(1) : 0}%)
@@ -667,7 +667,7 @@ export function RateAdvisorPanel({
                   </div>
                 </div>
                 <TimeOfDayChart baselines={data.time_of_day_baselines} />
-                <div className="flex gap-4 text-xs text-muted-foreground pt-2 border-t border-border flex-wrap">
+                <div className="flex gap-4 text-xs text-muted-foreground pt-2 border-t border-border overflow-x-auto flex-nowrap">
                   {data.time_of_day_baselines.map((b) => (
                     <span key={b.hour} className="font-mono">
                       {String(b.hour).padStart(2, "0")}h: {b.median_rps.toFixed(3)}/{b.p95_rps.toFixed(3)} rps
@@ -701,7 +701,7 @@ export function RateAdvisorPanel({
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
