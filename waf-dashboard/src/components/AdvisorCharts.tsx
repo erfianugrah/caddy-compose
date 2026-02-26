@@ -212,8 +212,8 @@ export function ImpactCurve({
 }) {
   if (!curve || curve.length < 2) return null;
 
-  const vw = 720;
-  const vh = 200;
+  const vw = 460;
+  const vh = 240;
   const padLeft = 40;
   const padRight = 10;
   const padTop = 8;
