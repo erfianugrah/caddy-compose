@@ -24,7 +24,7 @@ make deploy             # Full pipeline: build + push + SCP + restart
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=1.0.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=1.1.0" -o wafctl .
 ```
 
 Version is injected at build time via `-ldflags "-X main.version=..."`. The
@@ -62,14 +62,15 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 
 ## Version Management
 
-Image tags live in **four places** that must stay in sync:
+Image tags live in **five places** that must stay in sync:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
-- `compose.yaml` (lines 3 and 116: image fields)
+- `compose.yaml` (lines 3 and 117: image fields)
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
+- `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.0.0-2.11.1`).
-wafctl tag format: simple semver (e.g. `1.0.0`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.1.0-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.1.0`).
 
 ## Secrets and Encryption
 
@@ -544,6 +545,12 @@ wafctl rules create # Create rule (JSON on stdin or --file)
 wafctl rules delete ID
 wafctl deploy       # Deploy WAF config to Caddy
 wafctl events       # List events (--hours, --limit, --service, --type, --client, --method, --rule)
+wafctl ratelimit list       # List all rate limit rules (alias: rl)
+wafctl ratelimit get ID     # Get a rate limit rule by ID
+wafctl ratelimit create     # Create rule (JSON on stdin or --file)
+wafctl ratelimit delete ID  # Delete a rate limit rule
+wafctl ratelimit deploy     # Deploy rate limit configs to Caddy
+wafctl ratelimit global     # Show global rate limit settings
 wafctl blocklist stats
 wafctl blocklist check IP
 wafctl blocklist refresh
