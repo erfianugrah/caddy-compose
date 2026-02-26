@@ -430,7 +430,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(`API error: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
   }
   // Handle 204 No Content (e.g., DELETE responses)
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return undefined as unknown as T;
   return res.json();
 }
 
@@ -791,35 +791,20 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
 }
 
 // Analytics
-// These endpoints don't exist yet in the Go API — derive from summary/services data.
-// Return empty arrays gracefully so the UI shows "no data" instead of crashing.
+
 export async function fetchTopBlockedIPs(hours?: number): Promise<TopBlockedIP[]> {
-  try {
-    const qs = hours ? `?hours=${hours}` : "";
-    return await fetchJSON<TopBlockedIP[]>(`${API_BASE}/analytics/top-ips${qs}`);
-  } catch {
-    // Endpoint not implemented yet — return empty
-    return [];
-  }
+  const qs = hours ? `?hours=${hours}` : "";
+  return fetchJSON<TopBlockedIP[]>(`${API_BASE}/analytics/top-ips${qs}`);
 }
 
 export async function fetchTopTargetedURIs(hours?: number): Promise<TopTargetedURI[]> {
-  try {
-    const qs = hours ? `?hours=${hours}` : "";
-    return await fetchJSON<TopTargetedURI[]>(`${API_BASE}/analytics/top-uris${qs}`);
-  } catch {
-    // Endpoint not implemented yet — return empty
-    return [];
-  }
+  const qs = hours ? `?hours=${hours}` : "";
+  return fetchJSON<TopTargetedURI[]>(`${API_BASE}/analytics/top-uris${qs}`);
 }
 
 export async function fetchTopCountries(hours?: number): Promise<CountryCount[]> {
-  try {
-    const qs = hours ? `?hours=${hours}` : "";
-    return await fetchJSON<CountryCount[]>(`${API_BASE}/analytics/top-countries${qs}`);
-  } catch {
-    return [];
-  }
+  const qs = hours ? `?hours=${hours}` : "";
+  return fetchJSON<CountryCount[]>(`${API_BASE}/analytics/top-countries${qs}`);
 }
 
 // CRS Catalog

@@ -492,7 +492,7 @@ func cliDeploy(flags cliFlags) int {
 func cliEvents(flags cliFlags, args []string) int {
 	params := url.Values{}
 	params.Set("hours", "24")
-	params.Set("per_page", "50")
+	params.Set("limit", "50")
 
 	// Parse optional flags: --hours, --limit, --service, --type, --client, --method
 	for i := 0; i < len(args); i++ {
@@ -504,7 +504,7 @@ func cliEvents(flags cliFlags, args []string) int {
 			}
 		case "--limit":
 			if i+1 < len(args) {
-				params.Set("per_page", args[i+1])
+				params.Set("limit", args[i+1])
 				i++
 			}
 		case "--service":

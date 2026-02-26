@@ -595,11 +595,10 @@ describe("lookupIP", () => {
 // ─── fetchTopBlockedIPs / fetchTopTargetedURIs ──────────────────────
 
 describe("fetchTopBlockedIPs", () => {
-  it("returns empty array on API error (endpoint not implemented)", async () => {
+  it("throws on API error", async () => {
     vi.stubGlobal("fetch", mockFetchResponse({ error: "not found" }, 404));
 
-    const result = await fetchTopBlockedIPs();
-    expect(result).toEqual([]);
+    await expect(fetchTopBlockedIPs()).rejects.toThrow("API error");
   });
 
   it("returns data when endpoint is available", async () => {
@@ -622,11 +621,10 @@ describe("fetchTopBlockedIPs", () => {
 });
 
 describe("fetchTopTargetedURIs", () => {
-  it("returns empty array on API error (endpoint not implemented)", async () => {
+  it("throws on API error", async () => {
     vi.stubGlobal("fetch", mockFetchResponse({ error: "not found" }, 404));
 
-    const result = await fetchTopTargetedURIs();
-    expect(result).toEqual([]);
+    await expect(fetchTopTargetedURIs()).rejects.toThrow("API error");
   });
 });
 
@@ -1114,10 +1112,9 @@ describe("fetchTopCountries", () => {
     expect(mockFetch).toHaveBeenCalledWith("/api/analytics/top-countries?hours=168", undefined);
   });
 
-  it("returns empty array on error", async () => {
+  it("throws on error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fail")));
-    const result = await fetchTopCountries();
-    expect(result).toEqual([]);
+    await expect(fetchTopCountries()).rejects.toThrow("fail");
   });
 });
 

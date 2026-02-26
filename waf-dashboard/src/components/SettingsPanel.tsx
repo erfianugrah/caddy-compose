@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Shield,
   AlertTriangle,
@@ -457,10 +457,13 @@ export default function SettingsPanel() {
     loadData();
   }, [loadData]);
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSuccess = (msg: string) => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 4000);
+    successTimerRef.current = setTimeout(() => setSuccessMsg(null), 4000);
   };
+  useEffect(() => () => { if (successTimerRef.current) clearTimeout(successTimerRef.current); }, []);
 
   const markDirty = () => setDirty(true);
 
@@ -479,8 +482,8 @@ export default function SettingsPanel() {
       setServiceOverrides(updated.services);
       setDirty(false);
       showSuccess("Settings saved");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -499,8 +502,8 @@ export default function SettingsPanel() {
       } else {
         showSuccess("Config files written — Caddy reload may be needed");
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Deploy failed");
     } finally {
       setDeployStep(null);
     }
@@ -545,8 +548,8 @@ export default function SettingsPanel() {
       a.click();
       URL.revokeObjectURL(url);
       showSuccess("Configuration exported");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Export failed");
     }
   };
 
@@ -564,8 +567,8 @@ export default function SettingsPanel() {
         if (data.services) setServiceOverrides(data.services);
         setDirty(true);
         showSuccess("Configuration imported — save or deploy to apply");
-      } catch (err: any) {
-        setError("Failed to parse config: " + err.message);
+      } catch (err: unknown) {
+        setError("Failed to parse config: " + (err instanceof Error ? err.message : "unknown error"));
       }
     };
     input.click();

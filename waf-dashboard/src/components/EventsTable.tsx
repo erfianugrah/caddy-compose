@@ -596,6 +596,7 @@ export default function EventsTable() {
 
   // Rule names for filter bar autocomplete
   const [ruleNames, setRuleNames] = useState<string[]>([]);
+  const [exportingAll, setExportingAll] = useState(false);
 
   const loadEvents = useCallback(() => {
     setLoading(true);
@@ -700,19 +701,34 @@ export default function EventsTable() {
                 variant="ghost"
                 size="xs"
                 className="text-muted-foreground hover:text-foreground"
+                disabled={exportingAll}
                 onClick={async () => {
-                  const timeParams = rangeToParams(timeRange);
-                  const filterParams = filtersToEventsParams(filters);
-                  const all = await fetchAllEvents({
-                    ...filterParams,
-                    ...timeParams,
-                  });
-                  downloadJSON(all, `events-all-${new Date().toISOString().slice(0, 10)}.json`);
+                  setExportingAll(true);
+                  try {
+                    const timeParams = rangeToParams(timeRange);
+                    const filterParams = filtersToEventsParams(filters);
+                    const all = await fetchAllEvents({
+                      ...filterParams,
+                      ...timeParams,
+                    });
+                    downloadJSON(all, `events-all-${new Date().toISOString().slice(0, 10)}.json`);
+                  } catch {
+                    // Best-effort: alert on failure since this is a transient action
+                    alert("Failed to export events. Please try again.");
+                  } finally {
+                    setExportingAll(false);
+                  }
                 }}
                 title="Export all matching events as JSON"
               >
-                <Download className="h-3 w-3 mr-1" />
-                All ({response.total.toLocaleString()})
+                {exportingAll ? (
+                  "Exporting..."
+                ) : (
+                  <>
+                    <Download className="h-3 w-3 mr-1" />
+                    All ({response.total.toLocaleString()})
+                  </>
+                )}
               </Button>
               {expanded.size > 0 && (
                 <Button

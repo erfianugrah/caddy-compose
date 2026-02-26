@@ -243,22 +243,24 @@ export default function PolicyEngine() {
     }
   }, [highlightedRule, loading, exclusions]);
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSuccess = (msg: string) => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
+    successTimerRef.current = setTimeout(() => setSuccessMsg(null), 3000);
   };
+  useEffect(() => () => { if (successTimerRef.current) clearTimeout(successTimerRef.current); }, []);
 
   const handleCreate = async (data: ExclusionCreateData) => {
     try {
       const created = await createExclusion(data);
       setExclusions((prev) => [...prev, created]);
       await autoDeploy("Rule created");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Operation failed");
     }
   };
 
-  // Auto-deploy after any mutation so changes take effect immediately.
   const autoDeploy = async (action: string) => {
     try {
       setDeployStep("Deploying...");
@@ -268,8 +270,8 @@ export default function PolicyEngine() {
       } else {
         showSuccess(`${action} — config written, Caddy reload needs manual intervention`);
       }
-    } catch (deployErr: any) {
-      setError(`${action}, but deploy failed: ${deployErr.message}`);
+    } catch (deployErr: unknown) {
+      setError(`${action}, but deploy failed: ${deployErr instanceof Error ? deployErr.message : "unknown error"}`);
     } finally {
       setDeployStep(null);
     }
@@ -281,8 +283,8 @@ export default function PolicyEngine() {
       setExclusions((prev) => prev.map((e) => (e.id === id ? updated : e)));
       setEditingId(null);
       await autoDeploy("Rule updated");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Update failed");
     }
   };
 
@@ -292,8 +294,8 @@ export default function PolicyEngine() {
       setExclusions((prev) => prev.filter((e) => e.id !== id));
       setDeleteConfirmId(null);
       await autoDeploy("Rule deleted");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
@@ -302,8 +304,8 @@ export default function PolicyEngine() {
       const updated = await updateExclusion(id, { enabled });
       setExclusions((prev) => prev.map((e) => (e.id === id ? updated : e)));
       await autoDeploy(enabled ? "Rule enabled" : "Rule disabled");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Toggle failed");
     }
   };
 
@@ -318,8 +320,8 @@ export default function PolicyEngine() {
       a.click();
       URL.revokeObjectURL(url);
       showSuccess("Exclusions exported");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Export failed");
     }
   };
 
@@ -332,12 +334,17 @@ export default function PolicyEngine() {
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text);
-        const result = await importExclusions(data);
+        const parsed = JSON.parse(text);
+        // Support both array format and { exclusions: [...] } export format.
+        const exclusions = Array.isArray(parsed) ? parsed : parsed.exclusions;
+        if (!Array.isArray(exclusions)) {
+          throw new Error("Invalid import file: expected an array of exclusions or { exclusions: [...] }");
+        }
+        const result = await importExclusions(exclusions);
         showSuccess(`Imported ${result.imported} exclusions`);
         loadData();
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Import failed");
       }
     };
     input.click();

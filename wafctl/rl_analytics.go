@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -109,7 +110,7 @@ type AccessLogStore struct {
 	events []RateLimitEvent
 
 	path       string
-	offset     int64
+	offset     atomic.Int64
 	offsetFile string // persistent offset file (empty = don't persist)
 
 	// JSONL event persistence (empty = don't persist events)
@@ -135,7 +136,7 @@ func (s *AccessLogStore) SetOffsetFile(path string) {
 	s.offsetFile = path
 	if data, err := os.ReadFile(path); err == nil {
 		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
-			s.offset = v
+			s.offset.Store(v)
 			log.Printf("restored access log offset %d from %s", v, path)
 		}
 	}
@@ -146,8 +147,8 @@ func (s *AccessLogStore) saveOffset() {
 	if s.offsetFile == "" {
 		return
 	}
-	data := []byte(strconv.FormatInt(s.offset, 10) + "\n")
-	if err := os.WriteFile(s.offsetFile, data, 0644); err != nil {
+	data := []byte(strconv.FormatInt(s.offset.Load(), 10) + "\n")
+	if err := atomicWriteFile(s.offsetFile, data, 0644); err != nil {
 		log.Printf("error saving access log offset to %s: %v", s.offsetFile, err)
 	}
 }
@@ -300,27 +301,34 @@ func (s *AccessLogStore) Load() {
 	}
 
 	// Detect rotation.
-	if info.Size() < s.offset {
-		log.Printf("combined access log rotated (size %d < offset %d), re-reading", info.Size(), s.offset)
-		s.offset = 0
+	curOffset := s.offset.Load()
+	if info.Size() < curOffset {
+		log.Printf("combined access log rotated (size %d < offset %d), re-reading", info.Size(), curOffset)
+		s.offset.Store(0)
+		curOffset = 0
 		s.saveOffset()
 		// Don't clear in-memory events — with copytruncate rotation the
 		// already-parsed events are still valid. The eviction loop will
 		// age them out naturally based on maxAge.
 	}
 
-	if info.Size() == s.offset {
+	if info.Size() == curOffset {
 		// No new data, but still run eviction for time-based cleanup.
 		s.evict()
 		return
 	}
 
-	if s.offset > 0 {
-		if _, err := f.Seek(s.offset, io.SeekStart); err != nil {
+	if curOffset > 0 {
+		if _, err := f.Seek(curOffset, io.SeekStart); err != nil {
 			log.Printf("error seeking combined access log: %v", err)
 			return
 		}
 	}
+
+	// Snapshot geoIP reference under lock to avoid a data race with SetGeoIP.
+	s.mu.RLock()
+	geoIP := s.geoIP
+	s.mu.RUnlock()
 
 	var newEvents []RateLimitEvent
 	reader := bufio.NewReaderSize(f, 64*1024)
@@ -357,9 +365,9 @@ func (s *AccessLogStore) Load() {
 						evt.Source = "ipsum"
 					}
 					// Enrich with country from Cf-Ipcountry header or MMDB lookup.
-					if s.geoIP != nil {
+					if geoIP != nil {
 						cfCountry := headerValue(entry.Request.Headers, "Cf-Ipcountry")
-						evt.Country = s.geoIP.Resolve(entry.Request.ClientIP, cfCountry)
+						evt.Country = geoIP.Resolve(entry.Request.ClientIP, cfCountry)
 					}
 					newEvents = append(newEvents, evt)
 				}
@@ -378,7 +386,7 @@ func (s *AccessLogStore) Load() {
 	if err != nil {
 		log.Printf("error getting combined access log offset: %v", err)
 	} else {
-		s.offset = newOffset
+		s.offset.Store(newOffset)
 		s.saveOffset()
 	}
 
@@ -456,7 +464,7 @@ func (s *AccessLogStore) Stats() map[string]any {
 	stats := map[string]any{
 		"events":     len(s.events),
 		"log_file":   s.path,
-		"offset":     s.offset,
+		"offset":     s.offset.Load(),
 		"max_age":    s.maxAge.String(),
 		"event_file": s.eventFile,
 	}

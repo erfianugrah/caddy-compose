@@ -62,7 +62,7 @@ func (s *Store) saveOffset() {
 		return
 	}
 	data := []byte(strconv.FormatInt(s.offset.Load(), 10) + "\n")
-	if err := os.WriteFile(s.offsetFile, data, 0644); err != nil {
+	if err := atomicWriteFile(s.offsetFile, data, 0644); err != nil {
 		log.Printf("error saving audit log offset to %s: %v", s.offsetFile, err)
 	}
 }
@@ -268,6 +268,11 @@ func (s *Store) Load() {
 		}
 	}
 
+	// Snapshot geoIP reference under lock to avoid a data race with SetGeoIP.
+	s.mu.RLock()
+	geoIP := s.geoIP
+	s.mu.RUnlock()
+
 	var newEvents []Event
 	var linesRead, linesSkipped int
 	var bytesRead int64
@@ -296,9 +301,9 @@ func (s *Store) Load() {
 			} else {
 				ev := parseEvent(entry)
 				// Enrich with country from Cf-Ipcountry header or MMDB lookup.
-				if s.geoIP != nil {
+				if geoIP != nil {
 					cfCountry := headerValue(entry.Transaction.Request.Headers, "Cf-Ipcountry")
-					ev.Country = s.geoIP.Resolve(ev.ClientIP, cfCountry)
+					ev.Country = geoIP.Resolve(ev.ClientIP, cfCountry)
 				}
 				newEvents = append(newEvents, ev)
 			}
@@ -1270,8 +1275,16 @@ func (s *Store) IPLookup(ip string, hours, limit, offset int) IPLookupResponse {
 
 // TopBlockedIPs returns the top N IPs by blocked count.
 func (s *Store) TopBlockedIPs(hours, n int) []TopBlockedIP {
-	events := s.SnapshotSince(hours)
+	return topBlockedIPs(s.SnapshotSince(hours), n)
+}
 
+// TopTargetedURIs returns the top N URIs by total event count.
+func (s *Store) TopTargetedURIs(hours, n int) []TopTargetedURI {
+	return topTargetedURIs(s.SnapshotSince(hours), n)
+}
+
+// topBlockedIPs aggregates the top N IPs by blocked count from a pre-filtered event slice.
+func topBlockedIPs(events []Event, n int) []TopBlockedIP {
 	type ipStats struct {
 		total, blocked int
 		first, last    time.Time
@@ -1330,10 +1343,8 @@ func (s *Store) TopBlockedIPs(hours, n int) []TopBlockedIP {
 	return result
 }
 
-// TopTargetedURIs returns the top N URIs by total event count.
-func (s *Store) TopTargetedURIs(hours, n int) []TopTargetedURI {
-	events := s.SnapshotSince(hours)
-
+// topTargetedURIs aggregates the top N URIs by total event count from a pre-filtered event slice.
+func topTargetedURIs(events []Event, n int) []TopTargetedURI {
 	type uriStats struct {
 		total, blocked int
 		services       map[string]bool

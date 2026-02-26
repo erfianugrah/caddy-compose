@@ -367,14 +367,36 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		if hasFilter {
 			var allEvents []Event
 			// Optimization: skip event sources that can't match the event_type filter.
-			etVal := ""
-			if eventTypeF != nil {
-				etVal = eventTypeF.value
+			wafTypes := map[string]bool{
+				"blocked": true, "logged": true,
+				"policy_skip": true, "policy_allow": true, "policy_block": true,
+				"honeypot": true, "scanner": true,
 			}
-			if etVal != "rate_limited" && etVal != "ipsum_blocked" {
+			rlTypes := map[string]bool{"rate_limited": true, "ipsum_blocked": true}
+			needWAF, needRL := true, true
+			if eventTypeF != nil {
+				switch eventTypeF.op {
+				case "eq":
+					needWAF = wafTypes[eventTypeF.value]
+					needRL = rlTypes[eventTypeF.value]
+				case "in":
+					needWAF, needRL = false, false
+					for _, v := range strings.Split(eventTypeF.value, ",") {
+						if wafTypes[strings.TrimSpace(v)] {
+							needWAF = true
+						}
+						if rlTypes[strings.TrimSpace(v)] {
+							needRL = true
+						}
+					}
+				default:
+					// neq, contains, regex — can't prune safely, fetch both
+				}
+			}
+			if needWAF {
 				allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
 			}
-			if etVal != "blocked" && etVal != "logged" {
+			if needRL {
 				allEvents = append(allEvents, getRLEvents(als, tr, hours)...)
 			}
 
@@ -587,22 +609,26 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			summary.TopClients = summary.TopClients[:topNSummary]
 		}
 
-		// Merge unique clients/services (union).
-		wafSnapshot := getWAFEvents(store, tr, hours)
-		allClients := make(map[string]struct{})
-		allServices := make(map[string]struct{})
-		for i := range wafSnapshot {
-			allClients[wafSnapshot[i].ClientIP] = struct{}{}
-			allServices[wafSnapshot[i].Service] = struct{}{}
+		// Merge unique clients/services (union of WAF + RL).
+		// Only re-fetch WAF events when RL events introduce new clients/services;
+		// otherwise keep the WAF-only counts already in summary.
+		if len(rlClients) > 0 || len(rlServices) > 0 {
+			wafSnapshot := getWAFEvents(store, tr, hours)
+			allClients := make(map[string]struct{}, len(wafSnapshot)+len(rlClients))
+			allServices := make(map[string]struct{}, len(wafSnapshot)+len(rlServices))
+			for i := range wafSnapshot {
+				allClients[wafSnapshot[i].ClientIP] = struct{}{}
+				allServices[wafSnapshot[i].Service] = struct{}{}
+			}
+			for c := range rlClients {
+				allClients[c] = struct{}{}
+			}
+			for s := range rlServices {
+				allServices[s] = struct{}{}
+			}
+			summary.UniqueClients = len(allClients)
+			summary.UniqueServices = len(allServices)
 		}
-		for c := range rlClients {
-			allClients[c] = struct{}{}
-		}
-		for s := range rlServices {
-			allServices[s] = struct{}{}
-		}
-		summary.UniqueClients = len(allClients)
-		summary.UniqueServices = len(allServices)
 
 		// Merge RL events into recent_events, re-sort newest-first.
 		summary.RecentEvents = append(summary.RecentEvents, rlEvents...)
@@ -650,18 +676,39 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		hours := parseHours(r)
 
 		// Collect WAF events (unless filtering to only rate_limited or ipsum_blocked).
-		etVal := ""
+		wafTypes := map[string]bool{
+			"blocked": true, "logged": true,
+			"policy_skip": true, "policy_allow": true, "policy_block": true,
+			"honeypot": true, "scanner": true,
+		}
+		rlTypes := map[string]bool{"rate_limited": true, "ipsum_blocked": true}
+		needWAF, needRL := true, true
 		if eventTypeF != nil {
-			etVal = eventTypeF.value
+			switch eventTypeF.op {
+			case "eq":
+				needWAF = wafTypes[eventTypeF.value]
+				needRL = rlTypes[eventTypeF.value]
+			case "in":
+				needWAF, needRL = false, false
+				for _, v := range strings.Split(eventTypeF.value, ",") {
+					if wafTypes[strings.TrimSpace(v)] {
+						needWAF = true
+					}
+					if rlTypes[strings.TrimSpace(v)] {
+						needRL = true
+					}
+				}
+			default:
+				// neq, contains, regex — can't prune safely, fetch both
+			}
 		}
 		var allEvents []Event
-		if etVal != "rate_limited" && etVal != "ipsum_blocked" {
-			wafEvents := getWAFEvents(store, tr, hours)
-			allEvents = append(allEvents, wafEvents...)
+		if needWAF {
+			allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
 		}
 
 		// Collect access-log events (429 + ipsum) unless filtering to WAF-only types.
-		if etVal != "blocked" && etVal != "logged" {
+		if needRL {
 			rlEvents := getRLEvents(als, tr, hours)
 			allEvents = append(allEvents, rlEvents...)
 		}
@@ -787,36 +834,41 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 
 func handleTopBlockedIPs(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(r.URL.Query().Get("limit"), 50)
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
-		writeJSON(w, http.StatusOK, store.TopBlockedIPs(hours, limit))
+		events := getWAFEvents(store, tr, hours)
+		writeJSON(w, http.StatusOK, topBlockedIPs(events, limit))
 	}
 }
 
 func handleTopTargetedURIs(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(r.URL.Query().Get("limit"), 50)
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
-		writeJSON(w, http.StatusOK, store.TopTargetedURIs(hours, limit))
+		events := getWAFEvents(store, tr, hours)
+		writeJSON(w, http.StatusOK, topTargetedURIs(events, limit))
 	}
 }
 
 func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(r.URL.Query().Get("limit"), 50)
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
 		// Merge WAF events + rate-limit/ipsum events
-		wafEvents := store.SnapshotSince(hours)
-		rlEvents := als.SnapshotAsEvents(hours)
+		wafEvents := getWAFEvents(store, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours)
 		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
 		all = append(all, wafEvents...)
 		all = append(all, rlEvents...)

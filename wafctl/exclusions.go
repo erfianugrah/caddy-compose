@@ -238,7 +238,8 @@ func (s *ExclusionStore) Delete(id string) (bool, error) {
 
 	for i, e := range s.exclusions {
 		if e.ID == id {
-			old := s.exclusions
+			old := make([]RuleExclusion, len(s.exclusions))
+			copy(old, s.exclusions)
 			s.exclusions = append(s.exclusions[:i], s.exclusions[i+1:]...)
 			if err := s.save(); err != nil {
 				s.exclusions = old // roll back

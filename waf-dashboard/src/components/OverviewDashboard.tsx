@@ -433,7 +433,10 @@ export default function OverviewDashboard() {
         ]
       : [];
 
-  const serviceBreakdown = data?.service_breakdown ?? data?.top_services ?? [];
+  const serviceBreakdown = useMemo(
+    () => data?.service_breakdown ?? data?.top_services ?? [],
+    [data],
+  );
   const serviceNames = useMemo(
     () => serviceBreakdown.map((s) => s.service),
     [serviceBreakdown],

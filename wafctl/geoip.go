@@ -495,6 +495,9 @@ func (db *geoIPDB) extractISOFromSubmap(offset int) string {
 // readLeft reads the left record of node n.
 func (db *geoIPDB) readLeft(n uint32) uint32 {
 	off := int(n) * db.nodeSize
+	if off+db.nodeSize > len(db.data) {
+		return 0 // bounds check: corrupted or truncated MMDB
+	}
 	switch db.recordSize {
 	case 24:
 		return uint32(db.data[off])<<16 | uint32(db.data[off+1])<<8 | uint32(db.data[off+2])
@@ -509,6 +512,9 @@ func (db *geoIPDB) readLeft(n uint32) uint32 {
 // readRight reads the right record of node n.
 func (db *geoIPDB) readRight(n uint32) uint32 {
 	off := int(n) * db.nodeSize
+	if off+db.nodeSize > len(db.data) {
+		return 0 // bounds check: corrupted or truncated MMDB
+	}
 	switch db.recordSize {
 	case 24:
 		return uint32(db.data[off+3])<<16 | uint32(db.data[off+4])<<8 | uint32(db.data[off+5])

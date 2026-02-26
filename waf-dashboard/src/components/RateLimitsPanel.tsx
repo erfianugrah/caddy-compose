@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AlertTriangle,
   Check,
@@ -269,10 +269,13 @@ export default function RateLimitsPanel() {
     loadData();
   }, [loadData]);
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSuccess = (msg: string) => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 4000);
+    successTimerRef.current = setTimeout(() => setSuccessMsg(null), 4000);
   };
+  useEffect(() => () => { if (successTimerRef.current) clearTimeout(successTimerRef.current); }, []);
 
   const updateZone = (index: number, updates: Partial<RateLimitZone>) => {
     if (!config) return;
@@ -308,8 +311,8 @@ export default function RateLimitsPanel() {
       setConfig(updated);
       setDirty(false);
       showSuccess("Rate limit configuration saved");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -332,8 +335,8 @@ export default function RateLimitsPanel() {
       } else {
         showSuccess("Zone files written but Caddy reload failed");
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Deploy failed");
     } finally {
       setDeployStep(null);
     }
