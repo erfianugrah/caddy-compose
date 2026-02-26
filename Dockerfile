@@ -5,7 +5,7 @@ RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/mholt/caddy-ratelimit \
-	--with github.com/corazawaf/coraza-caddy/v2
+	--with github.com/corazawaf/coraza-caddy/v2=github.com/erfianugrah/coraza-caddy/v2@60543c28852ea99bf58579e7b2b5f3189ea318b1
 
 # Fetch IPsum blocklist at build time so it's never empty on first boot.
 # The host volume mount + cron job overwrites this at runtime.

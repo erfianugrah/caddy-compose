@@ -165,6 +165,8 @@ All WAF settings are managed through the dashboard or wafctl CLI. No hand-editin
 
 A single `(waf)` Caddyfile snippet loads the Coraza WAF for any site block that imports it. Per-service settings (paranoia level, anomaly thresholds, WAF mode) are stored in `waf-config.json` and written to generated `.conf` files by wafctl.
 
+WebSocket connections are handled gracefully. The initial HTTP upgrade request is inspected (phases 1-2), then response processing is skipped once the connection is hijacked. This is provided by a [fork of coraza-caddy](https://github.com/erfianugrah/coraza-caddy/tree/fix/websocket-hijack) ([upstream PR](https://github.com/corazawaf/coraza-caddy/pull/259)) that adds hijack tracking to the response interceptor.
+
 ### WAF modes
 
 | Mode | Effect |
@@ -439,7 +441,7 @@ cd waf-dashboard && npx vitest run -t "test description"
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + site blocks)
-  Dockerfile             # 6-stage multi-stage build
+  Dockerfile             # 6-stage multi-stage build (uses erfianugrah/coraza-caddy fork)
   Makefile               # Build, push, deploy, test, WAF operations
   compose.yaml           # Caddy + Authelia + wafctl services
   .env                   # SOPS-encrypted secrets (CF token, email)

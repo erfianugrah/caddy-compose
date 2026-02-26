@@ -37,20 +37,15 @@
 }
 
 (waf) {
-	@not_websocket {
-		not header Connection *Upgrade*
-	}
-	route @not_websocket {
-		coraza_waf {
-			load_owasp_crs
-			directives `
-			Include /etc/caddy/coraza/pre-crs.conf
-			Include @crs-setup.conf.example
-			Include @owasp_crs/*.conf
-			Include /etc/caddy/coraza/post-crs.conf
-			SecRuleEngine On
-			`
-		}
+	coraza_waf {
+		load_owasp_crs
+		directives `
+		Include /etc/caddy/coraza/pre-crs.conf
+		Include @crs-setup.conf.example
+		Include @owasp_crs/*.conf
+		Include /etc/caddy/coraza/post-crs.conf
+		SecRuleEngine On
+		`
 	}
 	handle_errors 400 403 429 {
 		root * /etc/caddy/errors

@@ -57,3 +57,24 @@ These findings from the review are valid but are configuration/infra changes, no
 - #17: cosign verify wildcard matchers
 - #19: Services missing forward_auth
 - #20: Short brute-force ban time
+
+---
+
+## WebSocket Hijack Fix (coraza-caddy fork)
+
+Not from the code review — separate upstream bug.
+
+**Problem:** Coraza's response interceptor (`rwInterceptor`) tried to call `WriteHeader` and
+`ProcessResponseBody` on connections that had been hijacked for WebSocket upgrade. This broke
+WebSocket connections even in `DetectionOnly` mode because the underlying `net.Conn` was no
+longer usable as an `http.ResponseWriter` after `Hijack()`.
+
+**Fix:** Added a `hijackTracker` wrapper in `interceptor.go` that sets `rwInterceptor.hijacked = true`
+on successful `Hijack()`. Guards in `WriteHeader`, `Write`, and `flushWriteHeader` early-return
+when hijacked. The `responseProcessor` closure short-circuits before phase 3/4 processing.
+
+- Fork: [erfianugrah/coraza-caddy](https://github.com/erfianugrah/coraza-caddy/tree/fix/websocket-hijack)
+- Upstream PR: [corazawaf/coraza-caddy#259](https://github.com/corazawaf/coraza-caddy/pull/259)
+- 7 new tests added (20/20 total passing)
+- Removed `@not_websocket` bypass from Caddyfile and test/Caddyfile.test
+- Dockerfile updated to use fork via xcaddy `--with` replacement
