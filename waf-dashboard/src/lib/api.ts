@@ -1168,7 +1168,7 @@ export async function getRLEvents(params?: {
 
 // ─── Rate Limit Advisor ─────────────────────────────────────────────
 
-export type ClientClassification = "normal" | "suspicious" | "abusive";
+export type ClientClassification = "normal" | "elevated" | "suspicious" | "abusive";
 
 export interface RateAdvisorClient {
   client_ip: string;

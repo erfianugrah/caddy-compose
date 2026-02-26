@@ -19,7 +19,7 @@ import (
 
 // RateAdvisorRequest holds query parameters for the advisor endpoint.
 type RateAdvisorRequest struct {
-	Window  string // "1m", "5m", "10m", "1h"
+	Window  string // duration string: "30s", "5m", "2h", etc.
 	Service string // filter by host
 	Path    string // filter by URI prefix
 	Method  string // filter by HTTP method
@@ -116,20 +116,27 @@ type NormalizedPercentiles struct {
 	P99 float64 `json:"p99"`
 }
 
-// parseAdvisorWindow parses window strings like "1m", "5m", "10m", "1h".
+// parseAdvisorWindow parses duration strings like "30s", "5m", "2h".
+// Accepts any positive integer followed by s, m, or h.
 func parseAdvisorWindow(s string) time.Duration {
 	s = strings.TrimSpace(strings.ToLower(s))
-	switch s {
-	case "1m":
+	if len(s) < 2 {
 		return time.Minute
-	case "5m":
-		return 5 * time.Minute
-	case "10m":
-		return 10 * time.Minute
-	case "1h":
-		return time.Hour
+	}
+	unit := s[len(s)-1]
+	num, err := strconv.Atoi(s[:len(s)-1])
+	if err != nil || num <= 0 {
+		return time.Minute
+	}
+	switch unit {
+	case 's':
+		return time.Duration(num) * time.Second
+	case 'm':
+		return time.Duration(num) * time.Minute
+	case 'h':
+		return time.Duration(num) * time.Hour
 	default:
-		return time.Minute // default 1m
+		return time.Minute
 	}
 }
 

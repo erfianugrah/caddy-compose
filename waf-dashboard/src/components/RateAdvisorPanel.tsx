@@ -63,15 +63,30 @@ import { T } from "@/lib/typography";
 // ─── Advisor Filter Constants ───────────────────────────────────────
 
 const WINDOW_OPTIONS = [
+  { value: "30s", label: "30 sec" },
   { value: "1m", label: "1 min" },
+  { value: "2m", label: "2 min" },
   { value: "5m", label: "5 min" },
   { value: "10m", label: "10 min" },
+  { value: "30m", label: "30 min" },
   { value: "1h", label: "1 hour" },
+  { value: "6h", label: "6 hours" },
+  { value: "24h", label: "24 hours" },
 ] as const;
 
 const WINDOW_LABELS: Record<string, string> = Object.fromEntries(
   WINDOW_OPTIONS.map((o) => [o.value, o.label])
 );
+
+/** Validate a custom window string like "3m", "45s", "2h" */
+function isValidWindow(s: string): boolean {
+  return /^\d+[smh]$/.test(s.trim().toLowerCase());
+}
+
+/** Format a window value for display */
+function windowLabel(v: string): string {
+  return WINDOW_LABELS[v] || v;
+}
 
 const METHOD_OPTIONS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -105,6 +120,7 @@ export function RateAdvisorPanel({
   // Filter bar state
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const [windowPopoverOpen, setWindowPopoverOpen] = useState(false);
+  const [customWindow, setCustomWindow] = useState("");
   const [editingField, setEditingField] = useState<AdvisorField | null>(null);
   const [filterInput, setFilterInput] = useState("");
   const filterInputRef = useRef<HTMLInputElement>(null);
@@ -422,15 +438,18 @@ export function RateAdvisorPanel({
         <Filter className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
         <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
           {/* Window chip (always present, click to change) */}
-          <Popover open={windowPopoverOpen} onOpenChange={setWindowPopoverOpen}>
+          <Popover open={windowPopoverOpen} onOpenChange={(open) => {
+            setWindowPopoverOpen(open);
+            if (!open) setCustomWindow("");
+          }}>
             <PopoverTrigger asChild>
               <button className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/30 bg-neon-cyan/15 px-2 py-0.5 text-xs transition-colors hover:bg-neon-cyan/25 cursor-pointer">
                 <span className="text-muted-foreground font-medium">Window</span>
                 <span className="text-neon-cyan/70 font-mono">=</span>
-                <span className="font-medium">{WINDOW_LABELS[window] || window}</span>
+                <span className="font-medium">{windowLabel(window)}</span>
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-36 p-2" align="start">
+            <PopoverContent className="w-48 p-2" align="start">
               {WINDOW_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -442,6 +461,42 @@ export function RateAdvisorPanel({
                   {opt.label}
                 </button>
               ))}
+              <div className="border-t border-border mt-1.5 pt-1.5">
+                <p className="px-2 py-0.5 text-xs text-muted-foreground">Custom</p>
+                <div className="flex items-center gap-1.5 px-1 mt-1">
+                  <Input
+                    placeholder="e.g. 3m, 45s"
+                    value={customWindow}
+                    onChange={(e) => setCustomWindow(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const v = customWindow.trim().toLowerCase();
+                        if (isValidWindow(v)) {
+                          setWindow(v);
+                          setWindowPopoverOpen(false);
+                          setCustomWindow("");
+                        }
+                      }
+                    }}
+                    className="h-7 text-xs font-mono flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    disabled={!isValidWindow(customWindow)}
+                    onClick={() => {
+                      const v = customWindow.trim().toLowerCase();
+                      setWindow(v);
+                      setWindowPopoverOpen(false);
+                      setCustomWindow("");
+                    }}
+                  >
+                    Go
+                  </Button>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
 

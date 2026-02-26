@@ -119,6 +119,19 @@ const WINDOW_OPTIONS = [
   { value: "1h", label: "1 hour" },
 ];
 
+const WINDOW_VALUES = new Set(WINDOW_OPTIONS.map((o) => o.value));
+
+/** Validate a custom window string like "3m", "45s", "2h" */
+function isValidWindow(s: string): boolean {
+  return /^\d+[smh]$/.test(s.trim().toLowerCase());
+}
+
+/** Format window value for display */
+function windowDisplayLabel(v: string): string {
+  const opt = WINDOW_OPTIONS.find((o) => o.value === v);
+  return opt ? opt.label : v;
+}
+
 // ─── Inline SVG Sparkline ───────────────────────────────────────────
 
 function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
@@ -397,16 +410,46 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel }: RuleFo
         </div>
         <div className="space-y-2">
           <Label>Window</Label>
-          <Select value={window} onValueChange={setWindow}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {WINDOW_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {WINDOW_VALUES.has(window) || window === "" ? (
+            <Select value={window || "1m"} onValueChange={(v) => {
+              if (v === "__custom") {
+                setWindow("");
+              } else {
+                setWindow(v);
+              }
+            }}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WINDOW_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+                <SelectItem value="__custom">Custom...</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <Input
+                value={window}
+                onChange={(e) => setWindow(e.target.value.trim().toLowerCase())}
+                placeholder="e.g. 3m, 45s, 2h"
+                className="font-mono text-sm"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2 shrink-0"
+                onClick={() => setWindow("1m")}
+                title="Switch to presets"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+          {window && !WINDOW_VALUES.has(window) && !isValidWindow(window) && (
+            <p className="text-xs text-red-400">Invalid format. Use number + s/m/h (e.g. 3m, 45s, 2h)</p>
+          )}
         </div>
       </div>
 

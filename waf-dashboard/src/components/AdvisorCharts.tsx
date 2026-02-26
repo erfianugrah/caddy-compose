@@ -55,23 +55,28 @@ export function ConfidenceBadge({ confidence }: { confidence: string }) {
 
 // ─── Nice Y-axis Ticks ──────────────────────────────────────────────
 
-/** Compute distinct, round Y-axis tick values. Avoids duplicate integers. */
+/** Compute distinct, round Y-axis tick values. Works for both integers and small fractions. */
 function niceYTicks(maxVal: number, maxTicks = 4): number[] {
   if (maxVal <= 0) return [];
-  const ceil = Math.ceil(maxVal);
-  if (ceil <= maxTicks) {
-    // Small values: just use 1, 2, ..., ceil
-    return Array.from({ length: ceil }, (_, i) => i + 1);
-  }
+
+  // For fractional values (< 1), compute nice ticks using magnitude-aware stepping
   const rawStep = maxVal / maxTicks;
   const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
   const norm = rawStep / mag;
   const step = norm <= 1 ? mag : norm <= 2 ? 2 * mag : norm <= 5 ? 5 * mag : 10 * mag;
+
   const ticks: number[] = [];
-  for (let v = step; v <= maxVal * 1.01; v += step) {
-    ticks.push(Math.round(v));
+  for (let v = step; v <= maxVal * 1.05; v += step) {
+    // Round to avoid floating-point drift — use enough precision for the magnitude
+    const decimals = step < 1 ? Math.max(0, -Math.floor(Math.log10(step)) + 1) : 0;
+    const rounded = decimals > 0 ? parseFloat(v.toFixed(decimals)) : Math.round(v);
+    ticks.push(rounded);
   }
-  if (ticks.length === 0) ticks.push(ceil);
+  if (ticks.length === 0) {
+    // Fallback: at least one tick at the ceiling
+    const decimals = maxVal < 1 ? Math.max(1, -Math.floor(Math.log10(maxVal)) + 1) : 0;
+    ticks.push(decimals > 0 ? parseFloat(maxVal.toFixed(decimals)) : Math.ceil(maxVal));
+  }
   return [...new Set(ticks)];
 }
 
@@ -287,12 +292,13 @@ export function TimeOfDayChart({
 }) {
   if (!baselines || baselines.length < 2) return null;
 
-  const vw = 720;
-  const vh = 180;
-  const padLeft = 45;
-  const padRight = 10;
-  const padBottom = 28;
-  const padTop = 8;
+  // Normalized viewBox matching sibling charts — SVG scales to fill container
+  const vw = 960;
+  const vh = 240;
+  const padLeft = 56;
+  const padRight = 12;
+  const padBottom = 32;
+  const padTop = 10;
   const chartW = vw - padLeft - padRight;
   const chartH = vh - padBottom - padTop;
   const maxRPS = Math.max(...baselines.map((b) => b.p95_rps), 0.001);
@@ -300,6 +306,15 @@ export function TimeOfDayChart({
 
   const ticks = niceYTicks(maxRPS, 4);
   const niceMax = ticks.length > 0 ? ticks[ticks.length - 1] : maxRPS;
+
+  // Format tick: strip trailing zeros (e.g. "0.50" → "0.5", "1.0" → "1")
+  const fmtTick = (v: number) => {
+    if (v === 0) return "0";
+    if (v >= 1 && v === Math.floor(v)) return String(v);
+    // Use enough decimals, then strip trailing zeros
+    const s = v < 0.01 ? v.toFixed(4) : v < 0.1 ? v.toFixed(3) : v.toFixed(2);
+    return s.replace(/\.?0+$/, "");
+  };
 
   return (
     <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
@@ -309,8 +324,8 @@ export function TimeOfDayChart({
         return (
           <g key={tick}>
             <line x1={padLeft} y1={y} x2={vw - padRight} y2={y} stroke="currentColor" strokeOpacity={0.06} />
-            <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>
-              {tick < 1 ? tick.toFixed(2) : tick.toFixed(1)}
+            <text x={padLeft - 6} y={y + 3} textAnchor="end" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">
+              {fmtTick(tick)}
             </text>
           </g>
         );
@@ -324,7 +339,7 @@ export function TimeOfDayChart({
           return (
             <g key={hour}>
               {hour % 3 === 0 && (
-                <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground/40" fontSize={T.chartAxisTick}>
+                <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground/40" fontSize={9} fontFamily="monospace">
                   {String(hour).padStart(2, "0")}
                 </text>
               )}
@@ -354,7 +369,7 @@ export function TimeOfDayChart({
               rx={2}
             />
             {hour % 3 === 0 && (
-              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick}>
+              <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">
                 {String(hour).padStart(2, "0")}
               </text>
             )}
@@ -366,10 +381,10 @@ export function TimeOfDayChart({
       <line x1={padLeft} y1={padTop + chartH} x2={padLeft + chartW} y2={padTop + chartH} stroke="currentColor" strokeOpacity={0.15} />
 
       {/* Y-axis label */}
-      <text x={4} y={padTop + chartH / 2} className="fill-muted-foreground" fontSize={T.chartLabel} transform={`rotate(-90, 10, ${padTop + chartH / 2})`} textAnchor="middle">
+      <text x={6} y={padTop + chartH / 2} className="fill-muted-foreground" fontSize={9} transform={`rotate(-90, 10, ${padTop + chartH / 2})`} textAnchor="middle">
         req/s
       </text>
-      <text x={padLeft - 6} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0</text>
+      <text x={padLeft - 6} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">0</text>
     </svg>
   );
 }
