@@ -88,12 +88,8 @@ export function DistributionHistogram({
   const nonEmpty = histogram.filter((b) => b.count > 0);
   if (nonEmpty.length === 0) return null;
 
-  // Trim to visible range with 1-bin padding
-  const firstIdx = histogram.indexOf(nonEmpty[0]);
-  const lastIdx = histogram.indexOf(nonEmpty[nonEmpty.length - 1]);
-  const startIdx = Math.max(0, firstIdx - 1);
-  const endIdx = Math.min(histogram.length - 1, lastIdx + 1);
-  const visibleBins = histogram.slice(startIdx, endIdx + 1);
+  // Collapse to only bins with data — no empty gaps for sparse distributions
+  const visibleBins = nonEmpty;
 
   // ViewBox dimensions (internal coordinates — SVG scales to fill container)
   const vw = 720;
@@ -162,23 +158,33 @@ export function DistributionHistogram({
         );
       })}
 
-      {/* Threshold line */}
+      {/* Threshold line — handles collapsed (non-contiguous) bins */}
       {(() => {
+        // Threshold falls within a visible bin
         const idx = visibleBins.findIndex((b) => threshold >= b.min && threshold < b.max);
-        if (idx < 0) {
-          const lastBin = visibleBins[visibleBins.length - 1];
-          if (threshold >= lastBin.min) {
-            const x = padLeft + chartW;
+        if (idx >= 0) {
+          const bin = visibleBins[idx];
+          const frac = bin.max > bin.min ? (threshold - bin.min) / (bin.max - bin.min) : 0.5;
+          const x = padLeft + idx * barW + frac * barW;
+          return <line x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
+        }
+        // Before all visible bins
+        if (threshold < visibleBins[0].min) {
+          return <line x1={padLeft} y1={padTop} x2={padLeft} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
+        }
+        // After all visible bins
+        const lastBin = visibleBins[visibleBins.length - 1];
+        if (threshold >= lastBin.max) {
+          return <line x1={padLeft + chartW} y1={padTop} x2={padLeft + chartW} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
+        }
+        // Between two non-contiguous visible bins — draw at the gap boundary
+        for (let i = 0; i < visibleBins.length - 1; i++) {
+          if (threshold >= visibleBins[i].max && threshold < visibleBins[i + 1].min) {
+            const x = padLeft + (i + 1) * barW;
             return <line x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
           }
-          return null;
         }
-        const bin = visibleBins[idx];
-        const frac = bin.max > bin.min ? (threshold - bin.min) / (bin.max - bin.min) : 0.5;
-        const x = padLeft + idx * barW + frac * barW;
-        return (
-          <line x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />
-        );
+        return null;
       })()}
 
       {/* Y-axis label */}
@@ -206,9 +212,9 @@ export function ImpactCurve({
 }) {
   if (!curve || curve.length < 2) return null;
 
-  const vw = 400;
-  const vh = 240;
-  const padLeft = 36;
+  const vw = 720;
+  const vh = 200;
+  const padLeft = 40;
   const padRight = 10;
   const padTop = 8;
   const padBottom = 32;

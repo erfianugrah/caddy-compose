@@ -559,10 +559,8 @@ export function RateAdvisorPanel({
             </Card>
           </div>
 
-          {/* Threshold + Histogram + Impact Curve row */}
-          <div className="grid gap-5 lg:grid-cols-3">
-            {/* Threshold slider + histogram */}
-            <Card className="lg:col-span-2">
+          {/* Threshold + Histogram */}
+          <Card>
               <CardContent className="p-5 space-y-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-1.5">
@@ -615,22 +613,17 @@ export function RateAdvisorPanel({
               </CardContent>
             </Card>
 
-            {/* Impact curve */}
-            <Card>
-              <CardContent className="p-5 space-y-3">
+          {/* Impact curve — full width */}
+          <Card>
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-medium mb-0.5">Impact Sensitivity</div>
                   <p className="text-xs text-muted-foreground">
                     % of clients/requests affected as threshold changes
                   </p>
                 </div>
-                {data.impact_curve && data.impact_curve.length >= 2 ? (
-                  <ImpactCurve curve={data.impact_curve} threshold={threshold} />
-                ) : (
-                  <div className="text-xs text-muted-foreground/50 py-8 text-center">Not enough data</div>
-                )}
-                {/* Current impact summary */}
-                <div className="flex items-center gap-4 text-xs pt-2 border-t border-border">
+                <div className="flex items-center gap-4 text-xs">
                   <div>
                     <span className="text-muted-foreground">Clients: </span>
                     <span className="font-mono text-neon-cyan">{affectedClients.length}/{data.unique_clients}</span>
@@ -641,9 +634,14 @@ export function RateAdvisorPanel({
                     <span className="font-mono text-pink-400">{affectedRequests.toLocaleString()}/{data.total_requests.toLocaleString()}</span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+              {data.impact_curve && data.impact_curve.length >= 2 ? (
+                <ImpactCurve curve={data.impact_curve} threshold={threshold} />
+              ) : (
+                <div className="text-xs text-muted-foreground/50 py-8 text-center">Not enough data</div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Time-of-Day Baselines */}
           {data.time_of_day_baselines && data.time_of_day_baselines.length >= 2 && (
