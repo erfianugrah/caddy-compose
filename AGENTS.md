@@ -68,7 +68,7 @@ Image tags live in **four places** that must stay in sync:
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.31.0-2.11.1`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `1.32.0-2.11.1`).
 wafctl tag format: simple semver (e.g. `0.23.0`).
 
 ## Secrets and Encryption
