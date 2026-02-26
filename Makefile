@@ -167,17 +167,27 @@ logs: ## Tail logs from all containers
 	$(COMPOSE_CMD) logs --tail 30
 
 # ── Composite deploy targets ────────────────────────────────────────
-deploy-caddy: build-caddy scan-caddy push-caddy sign-caddy sbom-caddy scp pull restart ## Build, scan, push, sign, SBOM, SCP, restart Caddy
-	@echo "Caddy deployed (signed + SBOM attached)."
+deploy-caddy: build-caddy scan-caddy push-caddy scp pull restart ## Build, scan, push, SCP, restart Caddy
+	@echo "Caddy deployed."
 
-deploy-wafctl: build-wafctl scan-wafctl push-wafctl sign-wafctl sbom-wafctl pull ## Build, scan, push, sign, SBOM, restart wafctl
+deploy-wafctl: build-wafctl scan-wafctl push-wafctl pull ## Build, scan, push, restart wafctl
 	$(COMPOSE_CMD) up -d wafctl
-	@echo "wafctl deployed (signed + SBOM attached)."
+	@echo "wafctl deployed."
 
-deploy-all: build scan push sign sbom scp pull restart ## Full deploy: build + scan + push + sign + SBOM + SCP + restart
-	@echo "Full deploy complete (signed + SBOM attached)."
+deploy-all: build scan push scp pull restart ## Full deploy: build + scan + push + SCP + restart
+	@echo "Full deploy complete."
 
 deploy: deploy-all ## Alias for deploy-all
+
+# ── Release (deploy + sign + SBOM) ─────────────────────────────────
+release-caddy: deploy-caddy sign-caddy sbom-caddy ## Deploy Caddy + sign + SBOM
+	@echo "Caddy released (signed + SBOM attached)."
+
+release-wafctl: deploy-wafctl sign-wafctl sbom-wafctl ## Deploy wafctl + sign + SBOM
+	@echo "wafctl released (signed + SBOM attached)."
+
+release: deploy-all sign sbom ## Full deploy + sign + SBOM
+	@echo "Full release complete (signed + SBOM attached)."
 
 # ── Caddy operations ────────────────────────────────────────────────
 caddy-reload: ## SCP Caddyfile, sync rate limit zones, reload Caddy
