@@ -53,12 +53,17 @@ endif
 
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
         deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
-        test test-go test-frontend status logs caddy-reload waf-deploy waf-config config \
+        test test-go test-frontend check status logs logs-caddy logs-wafctl \
+        health version waf-deploy waf-config waf-events caddy-reload config clean \
         scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+version: ## Print current image versions
+	@echo "caddy:  $(CADDY_IMAGE)"
+	@echo "wafctl: $(WAFCTL_IMAGE)"
 
 config: ## Show current configuration
 	@echo "REMOTE:           $(REMOTE)"
@@ -100,6 +105,10 @@ test-go: ## Run Go tests
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
+
+check: test ## Run tests + type check + build (pre-push validation)
+	cd waf-dashboard && npx tsc --noEmit
+	cd waf-dashboard && npm run build
 
 # ── Security: scan, sign, SBOM ──────────────────────────────────────
 TRIVY_SEVERITY ?= CRITICAL,HIGH
@@ -166,6 +175,15 @@ status: ## Show container status on remote
 logs: ## Tail logs from all containers
 	$(COMPOSE_CMD) logs --tail 30
 
+logs-caddy: ## Tail Caddy logs
+	$(COMPOSE_CMD) logs --tail 50 caddy
+
+logs-wafctl: ## Tail wafctl logs
+	$(COMPOSE_CMD) logs --tail 50 wafctl
+
+health: ## Check wafctl API health on remote
+	@$(EXEC_CMD) wafctl wget -qO- http://localhost:8080/api/health 2>/dev/null || echo "Health check failed"
+
 # ── Composite deploy targets ────────────────────────────────────────
 deploy-caddy: build-caddy scan-caddy push-caddy scp pull restart ## Build, scan, push, SCP, restart Caddy
 	@echo "Caddy deployed."
@@ -203,3 +221,13 @@ waf-config: ## Show current WAF config from remote
 	@ssh $(REMOTE) "cat $(WAF_CONFIG_PATH)"
 	@echo "\n=== custom-waf-settings.conf ==="
 	@ssh $(REMOTE) "cat $(WAF_SETTINGS_PATH)"
+
+waf-events: ## Show recent WAF events from remote (last 1h, limit 20)
+	@$(EXEC_CMD) wafctl wget -qO- "http://localhost:8080/api/events?hours=1&limit=20" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
+		$(EXEC_CMD) wafctl wget -qO- "http://localhost:8080/api/events?hours=1&limit=20"
+
+# ── Cleanup ─────────────────────────────────────────────────────────
+clean: ## Remove local images and SBOM artifacts
+	-docker rmi $(CADDY_IMAGE) 2>/dev/null
+	-docker rmi $(WAFCTL_IMAGE) 2>/dev/null
+	-rm -rf $(SBOM_DIR)
