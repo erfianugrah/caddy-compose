@@ -54,7 +54,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                   {formatTime(event.timestamp)} &middot; {formatDate(event.timestamp)}
                 </span>
-                <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
                   {event.service}
                 </Badge>
               </div>

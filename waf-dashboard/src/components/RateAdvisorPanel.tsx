@@ -32,9 +32,6 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import {
-  TooltipProvider,
-} from "@/components/ui/tooltip";
-import {
   getRateAdvisor,
   type RateLimitRuleCreateData,
   type RateAdvisorResponse,
@@ -122,11 +119,11 @@ export function RateAdvisorPanel({
   }, [data, clientSort]);
 
   const classifications = useMemo(() => {
-    if (!data) return { normal: 0, suspicious: 0, abusive: 0 };
+    if (!data) return { normal: 0, elevated: 0, suspicious: 0, abusive: 0 };
     return data.clients.reduce((acc, c) => {
       acc[c.classification] = (acc[c.classification] || 0) + 1;
       return acc;
-    }, { normal: 0, suspicious: 0, abusive: 0 } as Record<string, number>);
+    }, { normal: 0, elevated: 0, suspicious: 0, abusive: 0 } as Record<string, number>);
   }, [data]);
 
   const handleCreateRule = () => {
@@ -155,8 +152,7 @@ export function RateAdvisorPanel({
   const rec = data?.recommendation;
 
   return (
-    <TooltipProvider delayDuration={200}>
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Filters */}
       <Card>
         <CardHeader className="pb-3">
@@ -170,11 +166,11 @@ export function RateAdvisorPanel({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1">
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Window</Label>
               <Select value={window} onValueChange={setWindow}>
-                <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1m">1 min</SelectItem>
                   <SelectItem value="5m">5 min</SelectItem>
@@ -183,10 +179,10 @@ export function RateAdvisorPanel({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Service</Label>
               <Select value={service || "all"} onValueChange={(v) => setService(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All services</SelectItem>
                   {services.map((s) => (
@@ -195,10 +191,10 @@ export function RateAdvisorPanel({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Method</Label>
               <Select value={method || "all"} onValueChange={(v) => setMethod(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => (
@@ -207,13 +203,13 @@ export function RateAdvisorPanel({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Path prefix</Label>
               <Input
                 placeholder="/api/..."
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                className="w-36 font-mono text-xs"
+                className="w-44 font-mono text-xs"
               />
             </div>
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -227,25 +223,27 @@ export function RateAdvisorPanel({
         <>
           {/* Recommendation banner */}
           {rec && (
-            <div className="flex items-center justify-between rounded-lg border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-3">
+            <div className="flex items-center justify-between rounded-lg border border-neon-cyan/30 bg-neon-cyan/5 px-5 py-4">
               <div className="flex items-center gap-3">
-                <Zap className="h-4 w-4 text-neon-cyan shrink-0" />
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Recommended threshold: </span>
-                  <span className="font-mono font-semibold text-neon-cyan">{rec.threshold}</span>
-                  <span className="text-muted-foreground"> req/{window} </span>
-                  <ConfidenceBadge confidence={rec.confidence} />
-                  <span className="text-muted-foreground text-xs ml-2">
-                    ({rec.method.toUpperCase()}-based — would affect{" "}
+                <Zap className="h-5 w-5 text-neon-cyan shrink-0" />
+                <div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Recommended threshold: </span>
+                    <span className="font-mono font-semibold text-neon-cyan text-base">{rec.threshold}</span>
+                    <span className="text-muted-foreground"> req/{window} </span>
+                    <ConfidenceBadge confidence={rec.confidence} />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {rec.method.toUpperCase()}-based — would affect{" "}
                     <span className="font-mono">{rec.affected_clients}</span> client{rec.affected_clients !== 1 ? "s" : ""},{" "}
-                    <span className="font-mono">{rec.affected_requests.toLocaleString()}</span> requests)
-                  </span>
+                    <span className="font-mono">{rec.affected_requests.toLocaleString()}</span> requests
+                  </div>
                 </div>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                className="shrink-0 text-xs"
+                className="shrink-0"
                 onClick={() => setThreshold(rec.threshold)}
               >
                 Apply
@@ -256,27 +254,27 @@ export function RateAdvisorPanel({
           {/* Stats */}
           <div className="grid gap-4 sm:grid-cols-5">
             <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Total Requests</div>
+              <CardContent className="p-5">
+                <div className="text-xs text-muted-foreground mb-1">Total Requests</div>
                 <div className="text-2xl font-bold tabular-nums">{data.total_requests.toLocaleString()}</div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Unique Clients</div>
+              <CardContent className="p-5">
+                <div className="text-xs text-muted-foreground mb-1">Unique Clients</div>
                 <div className="text-2xl font-bold tabular-nums">{data.unique_clients.toLocaleString()}</div>
-                <div className="flex gap-1.5 mt-1">
-                  <span className="text-[9px] text-neon-green">{classifications.normal} ok</span>
-                  <span className="text-[9px] text-neon-amber">{classifications.suspicious} sus</span>
-                  <span className="text-[9px] text-red-400">{classifications.abusive} bad</span>
+                <div className="flex gap-2 mt-1.5 text-xs">
+                  <span className="text-neon-green">{classifications.normal} ok</span>
+                  <span className="text-neon-amber">{classifications.suspicious} sus</span>
+                  <span className="text-red-400">{classifications.abusive} bad</span>
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">P95 Rate</div>
+              <CardContent className="p-5">
+                <div className="text-xs text-muted-foreground mb-1">P95 Rate</div>
                 <div className="text-2xl font-bold tabular-nums text-neon-yellow">{data.percentiles.p95}</div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   req/{window}
                   {data.normalized_percentiles && data.window_seconds > 0 && (
                     <span className="ml-1 text-neon-cyan">({data.normalized_percentiles.p95.toFixed(2)} rps)</span>
@@ -285,22 +283,22 @@ export function RateAdvisorPanel({
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Median / MAD</div>
-                <div className="text-lg font-bold tabular-nums">
+              <CardContent className="p-5">
+                <div className="text-xs text-muted-foreground mb-1">Median / MAD</div>
+                <div className="text-xl font-bold tabular-nums">
                   {rec ? `${rec.median}` : data.percentiles.p50}
-                  {rec && <span className="text-xs text-muted-foreground font-normal"> ±{rec.mad}</span>}
+                  {rec && <span className="text-sm text-muted-foreground font-normal ml-1">±{rec.mad}</span>}
                 </div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {rec ? `separation: ${rec.separation}σ` : "req/" + window}
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Would Be Limited</div>
+              <CardContent className="p-5">
+                <div className="text-xs text-muted-foreground mb-1">Would Be Limited</div>
                 <div className="text-2xl font-bold tabular-nums text-neon-red">{affectedClients.length}</div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {affectedRequests.toLocaleString()} requests ({data.total_requests > 0 ? ((affectedRequests / data.total_requests) * 100).toFixed(1) : 0}%)
                 </div>
               </CardContent>
@@ -308,12 +306,12 @@ export function RateAdvisorPanel({
           </div>
 
           {/* Threshold + Histogram + Impact Curve row */}
-          <div className="grid gap-4 lg:grid-cols-3">
-            {/* Threshold slider */}
+          <div className="grid gap-5 lg:grid-cols-3">
+            {/* Threshold slider + histogram */}
             <Card className="lg:col-span-2">
-              <CardContent className="p-4 space-y-3">
+              <CardContent className="p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Rate Limit Threshold</Label>
                     <div className="flex items-center gap-2">
                       <Input
@@ -322,12 +320,12 @@ export function RateAdvisorPanel({
                         max={maxRate}
                         value={threshold}
                         onChange={(e) => setThreshold(Number(e.target.value) || 1)}
-                        className="w-20 tabular-nums"
+                        className="w-24 tabular-nums"
                       />
-                      <span className="text-xs text-muted-foreground">req / {window}</span>
+                      <span className="text-sm text-muted-foreground">req / {window}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
                     <span>P50: {data.percentiles.p50}</span>
                     <span>P75: {data.percentiles.p75}</span>
                     <span>P90: {data.percentiles.p90}</span>
@@ -341,13 +339,13 @@ export function RateAdvisorPanel({
                   step={1}
                   value={[threshold]}
                   onValueChange={([v]) => setThreshold(v)}
-                  className="py-2"
+                  className="py-1"
                 />
                 {/* Distribution histogram */}
                 {data.histogram && data.histogram.length > 0 && (
-                  <div className="pt-2">
-                    <div className="text-[10px] text-muted-foreground mb-1">
-                      Client rate distribution (yellow line = threshold, red = above)
+                  <div className="pt-3">
+                    <div className="text-xs text-muted-foreground mb-2">
+                      Client rate distribution <span className="text-neon-yellow">(yellow line = threshold</span>, <span className="text-red-400">red = above)</span>
                     </div>
                     <DistributionHistogram histogram={data.histogram} threshold={threshold} />
                   </div>
@@ -357,18 +355,20 @@ export function RateAdvisorPanel({
 
             {/* Impact curve */}
             <Card>
-              <CardContent className="p-4 space-y-2">
-                <div className="text-xs text-muted-foreground">Impact Sensitivity</div>
-                <p className="text-[10px] text-muted-foreground">
-                  % of clients/requests affected as threshold changes
-                </p>
+              <CardContent className="p-5 space-y-3">
+                <div>
+                  <div className="text-xs font-medium mb-0.5">Impact Sensitivity</div>
+                  <p className="text-xs text-muted-foreground">
+                    % of clients/requests affected as threshold changes
+                  </p>
+                </div>
                 {data.impact_curve && data.impact_curve.length >= 2 ? (
                   <ImpactCurve curve={data.impact_curve} threshold={threshold} />
                 ) : (
-                  <div className="text-[10px] text-muted-foreground/50 py-4 text-center">Not enough data</div>
+                  <div className="text-xs text-muted-foreground/50 py-8 text-center">Not enough data</div>
                 )}
                 {/* Current impact summary */}
-                <div className="flex items-center gap-3 text-[10px] pt-1 border-t border-border">
+                <div className="flex items-center gap-4 text-xs pt-2 border-t border-border">
                   <div>
                     <span className="text-muted-foreground">Clients: </span>
                     <span className="font-mono text-neon-cyan">{affectedClients.length}/{data.unique_clients}</span>
@@ -386,31 +386,31 @@ export function RateAdvisorPanel({
           {/* Time-of-Day Baselines */}
           {data.time_of_day_baselines && data.time_of_day_baselines.length >= 2 && (
             <Card>
-              <CardContent className="p-4 space-y-2">
+              <CardContent className="p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs text-muted-foreground">Traffic by Hour of Day</div>
-                    <p className="text-[10px] text-muted-foreground">
+                    <div className="text-xs font-medium mb-0.5">Traffic by Hour of Day</div>
+                    <p className="text-xs text-muted-foreground">
                       Median &amp; P95 request rates per client, per hour
                     </p>
                   </div>
-                  <div className="flex items-center gap-3 text-[9px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 rounded-sm" style={{ background: "rgba(34,211,238,0.5)" }} />
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(34,211,238,0.5)" }} />
                       Median
                     </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 rounded-sm" style={{ background: "rgba(34,211,238,0.15)" }} />
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(34,211,238,0.15)" }} />
                       P95
                     </span>
                   </div>
                 </div>
-                <TimeOfDayChart baselines={data.time_of_day_baselines} width={800} height={120} />
-                <div className="flex gap-3 text-[9px] text-muted-foreground pt-1 border-t border-border flex-wrap">
+                <TimeOfDayChart baselines={data.time_of_day_baselines} />
+                <div className="flex gap-4 text-xs text-muted-foreground pt-2 border-t border-border flex-wrap">
                   {data.time_of_day_baselines.map((b) => (
                     <span key={b.hour} className="font-mono">
                       {String(b.hour).padStart(2, "0")}h: {b.median_rps.toFixed(3)}/{b.p95_rps.toFixed(3)} rps
-                      <span className="text-muted-foreground/50"> ({b.clients}c, {b.requests}r)</span>
+                      <span className="text-muted-foreground/50 ml-1">({b.clients}c, {b.requests}r)</span>
                     </span>
                   ))}
                 </div>
@@ -420,15 +420,15 @@ export function RateAdvisorPanel({
 
           {/* Client table */}
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs">
+                <CardTitle className="text-sm">
                   Top {data.clients.length} Clients
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <Label className="text-[10px] text-muted-foreground">Sort by</Label>
+                  <Label className="text-xs text-muted-foreground">Sort by</Label>
                   <Select value={clientSort} onValueChange={(v) => setClientSort(v as typeof clientSort)}>
-                    <SelectTrigger className="h-6 text-[10px] w-28">
+                    <SelectTrigger className="h-7 text-xs w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -444,16 +444,16 @@ export function RateAdvisorPanel({
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-[10px]">Client IP</TableHead>
-                    <TableHead className="text-[10px]">Country</TableHead>
-                    <TableHead className="text-[10px] text-right">Requests</TableHead>
-                    <TableHead className="text-[10px] text-right">Req/s</TableHead>
-                    <TableHead className="text-[10px] text-right">Error %</TableHead>
-                    <TableHead className="text-[10px] text-right">Diversity</TableHead>
-                    <TableHead className="text-[10px] text-right">Burstiness</TableHead>
-                    <TableHead className="text-[10px] text-right">Score</TableHead>
-                    <TableHead className="text-[10px]">Class</TableHead>
-                    <TableHead className="text-[10px]">Top Paths</TableHead>
+                    <TableHead>Client IP</TableHead>
+                    <TableHead>Country</TableHead>
+                    <TableHead className="text-right">Requests</TableHead>
+                    <TableHead className="text-right">Req/s</TableHead>
+                    <TableHead className="text-right">Error %</TableHead>
+                    <TableHead className="text-right">Diversity</TableHead>
+                    <TableHead className="text-right">Burstiness</TableHead>
+                    <TableHead className="text-right">Score</TableHead>
+                    <TableHead>Class</TableHead>
+                    <TableHead>Top Paths</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -461,30 +461,30 @@ export function RateAdvisorPanel({
                     const isAbove = client.requests >= threshold;
                     return (
                       <TableRow key={client.client_ip} className={isAbove ? "bg-red-500/5" : ""}>
-                        <TableCell className="font-mono text-[11px]">{client.client_ip}</TableCell>
-                        <TableCell className="text-[10px]">{client.country || "—"}</TableCell>
-                        <TableCell className={`text-[11px] font-mono tabular-nums text-right ${isAbove ? "text-red-400 font-medium" : ""}`}>
+                        <TableCell className="font-mono text-xs">{client.client_ip}</TableCell>
+                        <TableCell className="text-xs">{client.country || "—"}</TableCell>
+                        <TableCell className={`text-xs font-mono tabular-nums text-right ${isAbove ? "text-red-400 font-medium" : ""}`}>
                           {client.requests.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-[10px] font-mono tabular-nums text-right text-neon-cyan">
+                        <TableCell className="text-xs font-mono tabular-nums text-right text-neon-cyan">
                           {client.requests_per_sec > 0 ? client.requests_per_sec.toFixed(2) : "—"}
                         </TableCell>
-                        <TableCell className={`text-[10px] font-mono tabular-nums text-right ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
+                        <TableCell className={`text-xs font-mono tabular-nums text-right ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
                           {(client.error_rate * 100).toFixed(0)}%
                         </TableCell>
-                        <TableCell className={`text-[10px] font-mono tabular-nums text-right ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
+                        <TableCell className={`text-xs font-mono tabular-nums text-right ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
                           {client.path_diversity.toFixed(2)}
                         </TableCell>
-                        <TableCell className={`text-[10px] font-mono tabular-nums text-right ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
+                        <TableCell className={`text-xs font-mono tabular-nums text-right ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
                           {client.burstiness.toFixed(1)}
                         </TableCell>
-                        <TableCell className="text-[10px] font-mono tabular-nums text-right">
+                        <TableCell className="text-xs font-mono tabular-nums text-right">
                           {client.anomaly_score.toFixed(0)}
                         </TableCell>
                         <TableCell>
                           <ClassificationBadge classification={client.classification} />
                         </TableCell>
-                        <TableCell className="text-[10px] font-mono text-muted-foreground max-w-[200px] truncate">
+                        <TableCell className="text-xs font-mono text-muted-foreground max-w-[250px] truncate">
                           {client.top_paths?.map((p) => `${p.count}× ${p.path}`).join(", ") || "—"}
                         </TableCell>
                       </TableRow>
@@ -497,7 +497,7 @@ export function RateAdvisorPanel({
 
           {/* Create Rule action */}
           {threshold > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-border bg-navy-950 px-4 py-3">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-navy-950 px-5 py-4">
               <div className="text-sm">
                 <span className="text-muted-foreground">Create a rule that limits clients to </span>
                 <span className="font-mono font-medium text-neon-cyan">{threshold}</span>
@@ -522,7 +522,7 @@ export function RateAdvisorPanel({
       )}
 
       {loading && (
-        <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
           Scanning access log...
         </div>
@@ -530,12 +530,11 @@ export function RateAdvisorPanel({
 
       {!loading && data && data.total_requests === 0 && (
         <Card>
-          <CardContent className="py-8 text-center text-xs text-muted-foreground">
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
             No traffic found in the selected time window. Try a longer window or remove filters.
           </CardContent>
         </Card>
       )}
     </div>
-    </TooltipProvider>
   );
 }

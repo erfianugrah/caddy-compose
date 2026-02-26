@@ -127,7 +127,7 @@ function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
   color?: string;
 }) {
   if (!data || data.length === 0 || data.every((v) => v === 0)) {
-    return <span className="text-[10px] text-muted-foreground/50">—</span>;
+    return <span className="text-xs text-muted-foreground/50">—</span>;
   }
   const max = Math.max(...data, 1);
   const padding = 1;
@@ -165,13 +165,13 @@ function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
 function ActionBadge({ action }: { action: RLRuleAction }) {
   if (action === "log_only") {
     return (
-      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono bg-neon-amber/10 text-neon-amber border-neon-amber/30">
+      <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono bg-neon-amber/10 text-neon-amber border-neon-amber/30">
         Monitor
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono bg-neon-pink/10 text-neon-pink border-neon-pink/30">
+    <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono bg-neon-pink/10 text-neon-pink border-neon-pink/30">
       Deny
     </Badge>
   );
@@ -515,7 +515,7 @@ function GlobalSettingsPanel({ config, onChange, onSave, saving, dirty }: Global
               onChange={(e) => onChange({ ...config, jitter: parseFloat(e.target.value) || 0 })}
               className="tabular-nums"
             />
-            <p className="text-[10px] text-muted-foreground">Randomization factor (0-1) to spread burst traffic.</p>
+            <p className="text-xs text-muted-foreground">Randomization factor (0-1) to spread burst traffic.</p>
           </div>
           <div className="space-y-2">
             <Label>Sweep Interval</Label>
@@ -530,7 +530,7 @@ function GlobalSettingsPanel({ config, onChange, onSave, saving, dirty }: Global
                 <SelectItem value="10m">10 minutes</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground">How often to clean up expired rate limit entries.</p>
+            <p className="text-xs text-muted-foreground">How often to clean up expired rate limit entries.</p>
           </div>
         </div>
 
@@ -1031,14 +1031,14 @@ export default function RateLimitsPanel() {
                           <TableCell>
                             {(() => {
                               const hit = hitsData?.[rule.id];
-                              if (!hit) return <span className="text-[10px] text-muted-foreground/50">—</span>;
+                              if (!hit) return <span className="text-xs text-muted-foreground/50">—</span>;
                               if (hit.total === 0) {
                                 return <Sparkline data={hit.sparkline} color="#475569" />;
                               }
                               return (
                                 <div className="flex items-center gap-1.5">
                                   <Sparkline data={hit.sparkline} color="#22d3ee" />
-                                  <span className="text-[10px] tabular-nums text-muted-foreground">
+                                  <span className="text-xs tabular-nums text-muted-foreground">
                                     {hit.total.toLocaleString()}
                                   </span>
                                 </div>

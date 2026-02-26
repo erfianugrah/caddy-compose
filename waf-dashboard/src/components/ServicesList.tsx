@@ -63,7 +63,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
                   {u.count}
                 </span>
                 {u.blocked > 0 && (
-                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                  <Badge variant="destructive" className="text-xs px-1.5 py-0">
                     {u.blocked} blocked
                   </Badge>
                 )}
@@ -88,7 +88,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
               className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
             >
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                <Badge variant="outline" className="text-xs px-1.5 py-0 font-mono">
                   {r.rule_id}
                 </Badge>
                 <span className="max-w-[180px] truncate text-muted-foreground">

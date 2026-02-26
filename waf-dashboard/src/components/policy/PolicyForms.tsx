@@ -269,7 +269,7 @@ export function QuickActionsForm({
               {i > 0 && (
                 <div className="flex items-center gap-2 py-1">
                   <div className="h-px flex-1 bg-border" />
-                  <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
                     {groupOp}
                   </span>
                   <div className="h-px flex-1 bg-border" />
@@ -486,14 +486,14 @@ export function AdvancedBuilderForm({
               return [
                 gi > 0 ? <SelectSeparator key={`sep-${group}`} /> : null,
                 <SelectGroup key={`group-${group}`}>
-                  <SelectLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
+                  <SelectLabel className="text-xs uppercase tracking-widest text-muted-foreground/60">
                     {groupLabel}
                   </SelectLabel>
                   {items.map((t) => (
                     <SelectItem key={t.value} value={t.value} textValue={t.label} className="py-2">
                       <div className="flex flex-col gap-0.5">
                         <span className="font-medium text-sm">{t.label}</span>
-                        <span className="text-[11px] leading-tight text-muted-foreground">{t.description}</span>
+                        <span className="text-xs leading-tight text-muted-foreground">{t.description}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -568,7 +568,7 @@ export function AdvancedBuilderForm({
                 {i > 0 && (
                   <div className="flex items-center gap-2 py-1">
                     <div className="h-px flex-1 bg-border" />
-                    <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                    <span className="text-xs font-medium uppercase text-muted-foreground">
                       {form.group_operator}
                     </span>
                     <div className="h-px flex-1 bg-border" />

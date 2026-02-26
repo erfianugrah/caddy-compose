@@ -245,7 +245,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                             {svc.blocked > 0 && (
                               <Badge
                                 variant="destructive"
-                                className="text-[10px] px-1.5 py-0"
+                                className="text-xs px-1.5 py-0"
                               >
                                 {svc.blocked} blocked
                               </Badge>
@@ -283,8 +283,8 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
-                      <XAxis dataKey="hour" stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="hour" stroke="#7a8baa" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#7a8baa" fontSize={11} tickLine={false} axisLine={false} />
                       <Tooltip {...chartTooltipStyle} />
                       <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#ipGradBlocked)" strokeWidth={2} />
                       <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} />
@@ -342,7 +342,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           </TableCell>
                           <TableCell className="text-xs">{evt.service}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                            <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
                               {evt.method}
                             </Badge>
                           </TableCell>
@@ -351,7 +351,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           </TableCell>
                           <TableCell>
                             {evt.rule_id ? (
-                              <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                              <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
                                 {evt.rule_id}
                               </Badge>
                             ) : (
@@ -583,12 +583,12 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {uri.services.slice(0, 3).map((s) => (
-                        <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge key={s} variant="outline" className="text-xs px-1.5 py-0">
                           {s}
                         </Badge>
                       ))}
                       {uri.services.length > 3 && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="secondary" className="text-xs px-1.5 py-0">
                           +{uri.services.length - 3}
                         </Badge>
                       )}

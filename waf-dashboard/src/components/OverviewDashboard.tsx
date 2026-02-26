@@ -122,7 +122,7 @@ function LinkTickRenderer({
         dy={4}
         textAnchor="end"
         fill="#7a8baa"
-        fontSize={10}
+        fontSize={11}
         className="hover:fill-neon-green cursor-pointer"
         style={{ textDecoration: "none" }}
       >
@@ -698,12 +698,12 @@ export default function OverviewDashboard() {
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" horizontal={false} />
-                        <XAxis type="number" stroke="#7a8baa" fontSize={10} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
+                        <XAxis type="number" stroke="#7a8baa" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
                         <YAxis
                           type="category"
                           dataKey="label"
                           stroke="#7a8baa"
-                          fontSize={9}
+                          fontSize={11}
                           tickLine={false}
                           axisLine={false}
                           width={100}
@@ -763,7 +763,7 @@ export default function OverviewDashboard() {
                         type="category"
                         dataKey="service"
                         stroke="#7a8baa"
-                        fontSize={10}
+                        fontSize={11}
                         tickLine={false}
                         axisLine={false}
                         width={110}
@@ -863,7 +863,7 @@ export default function OverviewDashboard() {
                     </TableCell>
                     <TableCell className="text-xs">{evt.service}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                      <Badge variant="outline" className="text-xs font-mono px-1.5 py-0">
                         {evt.method}
                       </Badge>
                     </TableCell>

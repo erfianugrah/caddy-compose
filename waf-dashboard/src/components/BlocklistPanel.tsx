@@ -73,7 +73,7 @@ function BlocklistStat({
           </div>
         ) : (
           <>
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {title}
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
@@ -354,7 +354,7 @@ export default function BlocklistPanel() {
               </div>
               <Badge
                 variant={checkResult.blocked ? "destructive" : "secondary"}
-                className="text-[10px] px-2 py-0.5"
+                className="text-xs px-2 py-0.5"
               >
                 {checkResult.blocked ? "BLOCKED" : "CLEAN"}
               </Badge>

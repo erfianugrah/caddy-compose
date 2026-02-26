@@ -95,7 +95,7 @@ export function CRSRulePicker({
                         <p className="text-muted-foreground">
                           {categoryMap[rule.category] ?? rule.category}
                           {rule.severity && (
-                            <Badge variant="outline" className="ml-1.5 text-[9px] px-1 py-0">
+                            <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0">
                               {rule.severity}
                             </Badge>
                           )}

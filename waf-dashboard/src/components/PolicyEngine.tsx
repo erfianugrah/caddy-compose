@@ -91,7 +91,7 @@ function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
 }) {
   if (!data || data.length === 0 || data.every((v) => v === 0)) {
     return (
-      <span className="text-[10px] text-muted-foreground/50">—</span>
+      <span className="text-xs text-muted-foreground/50">—</span>
     );
   }
   const max = Math.max(...data, 1);
@@ -540,7 +540,7 @@ export default function PolicyEngine() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={exclusionTypeBadgeVariant(excl.type)} className="text-[10px] px-1.5 py-0 font-mono">
+                      <Badge variant={exclusionTypeBadgeVariant(excl.type)} className="text-xs px-1.5 py-0 font-mono">
                         {exclusionTypeLabel(excl.type)}
                       </Badge>
                     </TableCell>
@@ -550,7 +550,7 @@ export default function PolicyEngine() {
                     <TableCell>
                       {(() => {
                         const hit = hitsData?.hits?.[excl.name];
-                        if (!hit) return <span className="text-[10px] text-muted-foreground/50">—</span>;
+                        if (!hit) return <span className="text-xs text-muted-foreground/50">—</span>;
                         if (hit.total === 0) {
                           return (
                             <div className="flex items-center gap-1.5">
@@ -565,7 +565,7 @@ export default function PolicyEngine() {
                             title={`View ${hit.total} events for "${excl.name}" on Overview`}
                           >
                             <Sparkline data={hit.sparkline} color="#22d3ee" />
-                            <span className="text-[10px] tabular-nums text-muted-foreground group-hover:text-neon-cyan transition-colors">
+                            <span className="text-xs tabular-nums text-muted-foreground group-hover:text-neon-cyan transition-colors">
                               {hit.total.toLocaleString()}
                             </span>
                           </a>
