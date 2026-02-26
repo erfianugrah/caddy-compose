@@ -633,15 +633,15 @@ function AdvancedCRSControls({
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Reporting Level</Label>
-          <Select
-            value={settings.reporting_level ? String(settings.reporting_level) : ""}
-            onValueChange={(v) => onChange({ ...settings, reporting_level: v ? Number(v) : undefined })}
+           <Select
+            value={settings.reporting_level ? String(settings.reporting_level) : "auto"}
+            onValueChange={(v) => onChange({ ...settings, reporting_level: v === "auto" ? undefined : Number(v) })}
           >
             <SelectTrigger className="w-24">
               <SelectValue placeholder="Auto" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Auto (= PL)</SelectItem>
+              <SelectItem value="auto">Auto (= PL)</SelectItem>
               {[1, 2, 3, 4].map((n) => (
                 <SelectItem key={n} value={String(n)}>PL {n}</SelectItem>
               ))}
