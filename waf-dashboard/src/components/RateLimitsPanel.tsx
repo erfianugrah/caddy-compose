@@ -14,6 +14,9 @@ import {
   X,
   Settings2,
   Zap,
+  BarChart3,
+  Info,
+  ArrowRight,
 } from "lucide-react";
 import {
   Card,
@@ -55,6 +58,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ConditionRow } from "./policy/ConditionBuilder";
+import { Slider } from "@/components/ui/slider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   getRLRules,
   createRLRule,
@@ -66,12 +76,15 @@ import {
   exportRLRules,
   importRLRules,
   getRLRuleHits,
+  getRateAdvisor,
   fetchServices,
   type RateLimitRule,
   type RateLimitRuleCreateData,
   type RateLimitGlobalConfig,
   type RateLimitDeployResult,
   type RLRuleHitsResponse,
+  type RateAdvisorResponse,
+  type RateAdvisorClient,
   type ServiceDetail,
   type Condition,
   type ConditionField,
@@ -476,6 +489,297 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel }: RuleFo
         <Button onClick={handleSubmit}>{submitLabel}</Button>
       </div>
     </div>
+  );
+}
+
+// ─── Rate Advisor Panel ─────────────────────────────────────────────
+
+function RateAdvisorPanel({
+  services,
+  onCreateRule,
+}: {
+  services: ServiceDetail[];
+  onCreateRule: (data: RateLimitRuleCreateData) => void;
+}) {
+  const [data, setData] = useState<RateAdvisorResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [window, setWindow] = useState("1m");
+  const [service, setService] = useState("");
+  const [path, setPath] = useState("");
+  const [threshold, setThreshold] = useState<number>(0);
+  const [maxRate, setMaxRate] = useState(100);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getRateAdvisor({
+        window,
+        service: service || undefined,
+        path: path || undefined,
+        limit: 50,
+      });
+      setData(result);
+      // Auto-set threshold to p95.
+      if (result.percentiles.p95 > 0) {
+        setThreshold(result.percentiles.p95);
+      }
+      // Set max for slider.
+      const topRate = result.clients.length > 0 ? result.clients[0].requests : 100;
+      setMaxRate(Math.max(topRate, 10));
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [window, service, path]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const affectedClients = data?.clients.filter((c) => c.requests >= threshold) ?? [];
+
+  const handleCreateRule = () => {
+    const conditions: Condition[] = [];
+    if (path) {
+      conditions.push({ field: "path" as ConditionField, operator: "begins_with", value: path });
+    }
+    onCreateRule({
+      name: service ? `${service}-rate-limit` : "rate-limit",
+      description: `Auto-generated from Rate Advisor (${threshold} req/${window})`,
+      service: service || "",
+      conditions,
+      group_operator: "and",
+      key: "client_ip",
+      events: threshold,
+      window,
+      action: "log_only" as RLRuleAction,
+      priority: 0,
+      enabled: true,
+    });
+  };
+
+  return (
+    <TooltipProvider delayDuration={200}>
+    <div className="space-y-4">
+      {/* Filters */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-neon-cyan" />
+            <CardTitle className="text-sm">Request Rate Analysis</CardTitle>
+          </div>
+          <CardDescription>
+            Analyze request rates to find the right threshold for rate limiting.
+            Adjust the slider to see how many clients would be affected.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Window</Label>
+              <Select value={window} onValueChange={setWindow}>
+                <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1m">1 min</SelectItem>
+                  <SelectItem value="5m">5 min</SelectItem>
+                  <SelectItem value="10m">10 min</SelectItem>
+                  <SelectItem value="1h">1 hour</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Service</Label>
+              <Select value={service || "all"} onValueChange={(v) => setService(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All services</SelectItem>
+                  {services.map((s) => (
+                    <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Path prefix</Label>
+              <Input
+                placeholder="/api/..."
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                className="w-40 font-mono text-xs"
+              />
+            </div>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Analyze"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {data && !loading && (
+        <>
+          {/* Stats */}
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Total Requests</div>
+                <div className="text-2xl font-bold tabular-nums">{data.total_requests.toLocaleString()}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Unique Clients</div>
+                <div className="text-2xl font-bold tabular-nums">{data.unique_clients.toLocaleString()}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">P95 Rate</div>
+                <div className="text-2xl font-bold tabular-nums text-neon-yellow">{data.percentiles.p95}</div>
+                <div className="text-[10px] text-muted-foreground">req/{window}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Would Be Rate Limited</div>
+                <div className="text-2xl font-bold tabular-nums text-neon-red">{affectedClients.length}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  of {data.unique_clients} clients at threshold {threshold}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Threshold slider + bar chart */}
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    Rate Limit Threshold
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={maxRate}
+                      value={threshold}
+                      onChange={(e) => setThreshold(Number(e.target.value) || 1)}
+                      className="w-20 tabular-nums"
+                    />
+                    <span className="text-xs text-muted-foreground">req / {window}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>P50: {data.percentiles.p50}</span>
+                  <span>P75: {data.percentiles.p75}</span>
+                  <span>P90: {data.percentiles.p90}</span>
+                  <span className="font-medium text-neon-yellow">P95: {data.percentiles.p95}</span>
+                  <span>P99: {data.percentiles.p99}</span>
+                </div>
+              </div>
+              <Slider
+                min={1}
+                max={maxRate}
+                step={1}
+                value={[threshold]}
+                onValueChange={([v]) => setThreshold(v)}
+                className="py-2"
+              />
+
+              {/* Bar chart */}
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground mb-2">
+                  Top {data.clients.length} clients by request count (red = above threshold)
+                </div>
+                <div className="space-y-0.5">
+                  {data.clients.map((client) => {
+                    const pct = maxRate > 0 ? (client.requests / maxRate) * 100 : 0;
+                    const isAbove = client.requests >= threshold;
+                    return (
+                      <Tooltip key={client.client_ip}>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2 group cursor-default">
+                            <span className="w-28 shrink-0 truncate text-[11px] font-mono text-muted-foreground">
+                              {client.client_ip}
+                            </span>
+                            <div className="flex-1 h-4 rounded bg-muted/30 overflow-hidden relative">
+                              <div
+                                className={`h-full rounded transition-all ${isAbove ? "bg-red-500/80" : "bg-neon-cyan/40"}`}
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                              {/* Threshold line */}
+                              <div
+                                className="absolute top-0 bottom-0 w-px bg-neon-yellow/70"
+                                style={{ left: `${Math.min((threshold / maxRate) * 100, 100)}%` }}
+                              />
+                            </div>
+                            <span className={`w-12 text-right text-[11px] font-mono tabular-nums ${isAbove ? "text-red-400 font-medium" : "text-muted-foreground"}`}>
+                              {client.requests}
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="text-xs">
+                          <p className="font-mono">{client.client_ip}{client.country ? ` (${client.country})` : ""}</p>
+                          <p>{client.requests} requests in {window}</p>
+                          {client.top_paths?.length > 0 && (
+                            <div className="mt-1 border-t border-border pt-1">
+                              {client.top_paths.map((p) => (
+                                <p key={p.path} className="font-mono text-[10px] text-muted-foreground">
+                                  {p.count}x {p.path}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Create Rule action */}
+          {threshold > 0 && (
+            <div className="flex items-center justify-between rounded-lg border border-border bg-navy-950 px-4 py-3">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Create a rule that limits clients to </span>
+                <span className="font-mono font-medium text-neon-cyan">{threshold}</span>
+                <span className="text-muted-foreground"> requests per </span>
+                <span className="font-mono font-medium text-neon-cyan">{window}</span>
+                {service && (
+                  <>
+                    <span className="text-muted-foreground"> on </span>
+                    <span className="font-mono font-medium text-neon-cyan">{service}</span>
+                  </>
+                )}
+                <span className="text-muted-foreground">
+                  ? Starts in <span className="text-neon-yellow">monitor mode</span> — switch to deny when confident.
+                </span>
+              </div>
+              <Button size="sm" onClick={handleCreateRule} className="gap-1.5 shrink-0 ml-4">
+                Create Rule <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {loading && (
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+          Scanning access log...
+        </div>
+      )}
+
+      {!loading && data && data.total_requests === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center text-xs text-muted-foreground">
+            No traffic found in the selected time window. Try a longer window or remove filters.
+          </CardContent>
+        </Card>
+      )}
+    </div>
+    </TooltipProvider>
   );
 }
 
@@ -898,6 +1202,10 @@ export default function RateLimitsPanel() {
             <Zap className="h-3.5 w-3.5" />
             Rules ({rules.length})
           </TabsTrigger>
+          <TabsTrigger value="advisor" className="gap-1.5">
+            <BarChart3 className="h-3.5 w-3.5" />
+            Rate Advisor
+          </TabsTrigger>
           <TabsTrigger value="settings" className="gap-1.5">
             <Settings2 className="h-3.5 w-3.5" />
             Global Settings
@@ -1094,6 +1402,23 @@ export default function RateLimitsPanel() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="advisor" className="mt-4">
+          <RateAdvisorPanel
+            services={services}
+            onCreateRule={async (data) => {
+              try {
+                await createRLRule(data);
+                await deployRLRules();
+                const updated = await getRLRules();
+                setRules(updated);
+                setActiveTab("rules");
+              } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : "Failed to create rule");
+              }
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4">

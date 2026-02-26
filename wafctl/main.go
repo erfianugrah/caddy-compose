@@ -153,6 +153,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/hits", handleRLRuleHits(accessLogStore, rlRuleStore))
+	mux.HandleFunc("GET /api/rate-rules/advisor", handleRLAdvisor(accessLogStore))
 	mux.HandleFunc("GET /api/rate-rules/{id}", handleGetRLRule(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/{id}", handleUpdateRLRule(rlRuleStore))
 	mux.HandleFunc("DELETE /api/rate-rules/{id}", handleDeleteRLRule(rlRuleStore))
@@ -1442,6 +1443,26 @@ func handleRLRuleHits(als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerF
 		rules := rs.List()
 		hits := als.RuleHits(rules, hours)
 		writeJSON(w, http.StatusOK, hits)
+	}
+}
+
+// --- Rate Limit Advisor handler ---
+
+func handleRLAdvisor(als *AccessLogStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		limit := queryInt(q.Get("limit"), 50)
+		if limit <= 0 || limit > 500 {
+			limit = 50
+		}
+		req := RateAdvisorRequest{
+			Window:  q.Get("window"),
+			Service: q.Get("service"),
+			Path:    q.Get("path"),
+			Method:  q.Get("method"),
+			Limit:   limit,
+		}
+		writeJSON(w, http.StatusOK, als.ScanRates(req))
 	}
 }
 

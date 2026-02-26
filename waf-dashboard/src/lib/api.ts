@@ -1166,6 +1166,49 @@ export async function getRLEvents(params?: {
   return fetchJSON<RLEventsData>(`${API_BASE}/rate-limits/events${qs ? `?${qs}` : ""}`);
 }
 
+// ─── Rate Limit Advisor ─────────────────────────────────────────────
+
+export interface RateAdvisorClient {
+  client_ip: string;
+  country?: string;
+  requests: number;
+  top_paths: { path: string; count: number }[];
+}
+
+export interface RateAdvisorResponse {
+  window: string;
+  service?: string;
+  path?: string;
+  method?: string;
+  total_requests: number;
+  unique_clients: number;
+  clients: RateAdvisorClient[];
+  percentiles: {
+    p50: number;
+    p75: number;
+    p90: number;
+    p95: number;
+    p99: number;
+  };
+}
+
+export async function getRateAdvisor(params?: {
+  window?: string;
+  service?: string;
+  path?: string;
+  method?: string;
+  limit?: number;
+}): Promise<RateAdvisorResponse> {
+  const q = new URLSearchParams();
+  if (params?.window) q.set("window", params.window);
+  if (params?.service) q.set("service", params.service);
+  if (params?.path) q.set("path", params.path);
+  if (params?.method) q.set("method", params.method);
+  if (params?.limit) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return fetchJSON<RateAdvisorResponse>(`${API_BASE}/rate-rules/advisor${qs ? `?${qs}` : ""}`);
+}
+
 // ─── Blocklist (IPsum) ──────────────────────────────────────────────
 
 export interface BlocklistStats {
