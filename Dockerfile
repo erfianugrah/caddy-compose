@@ -1,13 +1,12 @@
 ARG VERSION=2.11.1
 
 FROM caddy:${VERSION}-builder AS builder
-COPY caddy-body-matcher/ /tmp/caddy-body-matcher/
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/mholt/caddy-ratelimit \
 	--with github.com/corazawaf/coraza-caddy/v2=github.com/erfianugrah/coraza-caddy/v2@60543c28852ea99bf58579e7b2b5f3189ea318b1 \
-	--with github.com/erfianugrah/caddy-body-matcher=/tmp/caddy-body-matcher
+	--with github.com/erfianugrah/caddy-body-matcher@v0.1.0
 
 # Fetch IPsum blocklist at build time so it's never empty on first boot.
 # wafctl's scheduled refresh overwrites this at runtime.
