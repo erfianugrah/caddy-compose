@@ -319,7 +319,7 @@ type IPLookupResponse struct {
 // Rule Exclusion model
 
 type Condition struct {
-	Field    string `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query", "country", "cookie", "body", "args", "uri_path", "referer", "response_header", "response_status", "http_version"
+	Field    string `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query", "country", "cookie", "body", "body_json", "body_form", "args", "uri_path", "referer", "response_header", "response_status", "http_version"
 	Operator string `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in"
 	Value    string `json:"value"`
 }
@@ -529,6 +529,8 @@ var validConditionFields = map[string]bool{
 	"country":         true,
 	"cookie":          true,
 	"body":            true,
+	"body_json":       true,
+	"body_form":       true,
 	"args":            true,
 	"uri_path":        true,
 	"referer":         true,
@@ -568,7 +570,13 @@ var validOperatorsForField = map[string]map[string]bool{
 		"eq": true, "neq": true, "contains": true, "regex": true,
 	},
 	"body": {
-		"contains": true, "regex": true,
+		"eq": true, "contains": true, "begins_with": true, "ends_with": true, "regex": true,
+	},
+	"body_json": {
+		"eq": true, "contains": true, "regex": true, "exists": true,
+	},
+	"body_form": {
+		"eq": true, "contains": true, "regex": true,
 	},
 	"args": {
 		"eq": true, "neq": true, "contains": true, "regex": true,
@@ -670,7 +678,7 @@ var validRLKeys = map[string]bool{
 }
 
 // validRLKeyPrefixes are key prefixes that take a parameter (e.g. "header:X-API-Key")
-var validRLKeyPrefixes = []string{"header:", "cookie:"}
+var validRLKeyPrefixes = []string{"header:", "cookie:", "body_json:", "body_form:"}
 
 // Valid rate limit actions
 var validRLActions = map[string]bool{
@@ -691,6 +699,9 @@ var validRLConditionFields = map[string]bool{
 	"query":        true,
 	"country":      true,
 	"cookie":       true,
+	"body":         true,
+	"body_json":    true,
+	"body_form":    true,
 	"uri_path":     true,
 	"referer":      true,
 	"http_version": true,

@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Condition, ConditionField, ConditionOperator, ServiceDetail } from "@/lib/api";
-import { CONDITION_FIELDS, getFieldDef } from "./constants";
+import { CONDITION_FIELDS, getFieldDef, type FieldDef } from "./constants";
 import { MethodMultiSelect, PipeTagInput } from "./TagInputs";
 
 // ─── Host Value Input ───────────────────────────────────────────────
@@ -87,13 +87,16 @@ export function ConditionRow({
   onChange,
   onRemove,
   services,
+  fields,
 }: {
   condition: Condition;
   index: number;
   onChange: (index: number, condition: Condition) => void;
   onRemove: (index: number) => void;
   services: ServiceDetail[];
+  fields?: FieldDef[];
 }) {
+  const availableFields = fields ?? CONDITION_FIELDS;
   const fieldDef = getFieldDef(condition.field);
   const operators = fieldDef.operators;
 
@@ -116,7 +119,7 @@ export function ConditionRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {CONDITION_FIELDS.map((f) => (
+          {availableFields.map((f) => (
             <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
           ))}
         </SelectContent>
@@ -138,31 +141,36 @@ export function ConditionRow({
       </Select>
 
       {/* Value input — specialized inputs for specific field/operator combos */}
-      {condition.field === "host" ? (
-        <HostValueInput
-          value={condition.value}
-          services={services}
-          onChange={(v) => onChange(index, { ...condition, value: v })}
-        />
-      ) : condition.field === "method" && condition.operator === "in" ? (
-        <MethodMultiSelect
-          value={condition.value}
-          onChange={(v) => onChange(index, { ...condition, value: v })}
-        />
-      ) : condition.operator === "in" ? (
-        <PipeTagInput
-          value={condition.value}
-          onChange={(v) => onChange(index, { ...condition, value: v })}
-          placeholder={fieldDef.placeholder}
-        />
-      ) : (
-        <Input
-          value={condition.value}
-          onChange={(e) => onChange(index, { ...condition, value: e.target.value })}
-          placeholder={fieldDef.placeholder}
-          className="flex-1"
-        />
-      )}
+      <div className="flex flex-1 flex-col gap-1">
+        {condition.field === "host" ? (
+          <HostValueInput
+            value={condition.value}
+            services={services}
+            onChange={(v) => onChange(index, { ...condition, value: v })}
+          />
+        ) : condition.field === "method" && condition.operator === "in" ? (
+          <MethodMultiSelect
+            value={condition.value}
+            onChange={(v) => onChange(index, { ...condition, value: v })}
+          />
+        ) : condition.operator === "in" ? (
+          <PipeTagInput
+            value={condition.value}
+            onChange={(v) => onChange(index, { ...condition, value: v })}
+            placeholder={fieldDef.placeholder}
+          />
+        ) : (
+          <Input
+            value={condition.value}
+            onChange={(e) => onChange(index, { ...condition, value: e.target.value })}
+            placeholder={fieldDef.placeholder}
+            className="flex-1"
+          />
+        )}
+        {fieldDef.hint && (
+          <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
+        )}
+      </div>
 
       {/* Remove button */}
       <Button

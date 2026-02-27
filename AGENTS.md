@@ -8,6 +8,7 @@ Docker Compose infrastructure for a Caddy reverse proxy with Coraza WAF (OWASP C
 Authelia 2FA forward auth, and a custom WAF management sidecar. Two codebases live here:
 
 - **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.24+)
+- **caddy-body-matcher/** — Caddy request body matcher plugin (Go module, zero external deps beyond Caddy)
 - **waf-dashboard/** — Astro 5 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
 - Root level: Caddyfile, Dockerfile (6-stage multi-stage), compose.yaml, Makefile
 
@@ -232,7 +233,9 @@ it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paran
 | `query` | `QUERY_STRING` | `contains`, `regex` |
 | `country` | `REQUEST_HEADERS:Cf-Ipcountry` | `eq`, `neq`, `in` |
 | `cookie` | `REQUEST_COOKIES:<Name>` | `eq`, `neq`, `contains`, `regex` |
-| `body` | `REQUEST_BODY` | `contains`, `regex` |
+| `body` | `REQUEST_BODY` | `eq`, `contains`, `begins_with`, `ends_with`, `regex` |
+| `body_json` | `REQUEST_BODY` | `eq`, `contains`, `regex`, `exists` |
+| `body_form` | `ARGS:<Name>` | `eq`, `contains`, `regex` |
 | `args` | `ARGS:<Name>` | `eq`, `neq`, `contains`, `regex` |
 | `uri_path` | `REQUEST_FILENAME` | `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex` |
 | `referer` | `REQUEST_HEADERS:Referer` | `eq`, `neq`, `contains`, `regex` |
@@ -240,9 +243,11 @@ it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paran
 | `response_status` | `RESPONSE_STATUS` | `eq`, `neq`, `in` |
 | `http_version` | `REQUEST_PROTOCOL` | `eq`, `neq` |
 
-Named fields (`header`, `cookie`, `args`, `response_header`) use `Name:value` format
+Named fields (`header`, `cookie`, `args`, `response_header`, `body_form`) use `Name:value` format
 in the value field — the name before `:` becomes the SecRule variable suffix, the
 value after `:` is the match target. Without `:`, the entire collection is matched.
+`body_json` uses `dotpath:value` format (e.g., `.user.role:admin`) — the dot-path
+before `:` navigates the JSON document, the value after `:` is the match target.
 
 ### GeoIP Three-tier Resolution
 
@@ -292,6 +297,8 @@ RateLimitRule {
 | `client_ip+method` | `{http.request.remote.host}_{http.request.method}` | Per IP+method combo |
 | `header:<Name>` | `{http.request.header.<Name>}` | Per header value (e.g., API key) |
 | `cookie:<Name>` | `{http.request.cookie.<Name>}` | Per cookie value |
+| `body_json:<DotPath>` | `{http.vars.body_json.<DotPath>}` | Per JSON body field (e.g., API key in body) |
+| `body_form:<Field>` | `{http.vars.body_form.<Field>}` | Per form-encoded field value |
 
 ### Rate Limit Actions
 
@@ -303,8 +310,9 @@ RateLimitRule {
 ### RL Condition Fields (subset of WAF fields)
 
 Request-phase only: `ip`, `path`, `host`, `method`, `user_agent`, `header`, `query`,
-`country`, `cookie`, `uri_path`, `referer`, `http_version`. Response-phase fields
-(`body`, `args`, `response_header`, `response_status`) are excluded.
+`country`, `cookie`, `body`, `body_json`, `body_form`, `uri_path`, `referer`, `http_version`.
+Response-phase fields (`args`, `response_header`, `response_status`) are excluded.
+Body fields use the `caddy-body-matcher` plugin for Caddy-side matching.
 
 `http_version` uses Caddy's `protocol` matcher. Values are normalized: `HTTP/2.0` → `http/2`,
 but `HTTP/1.0` and `HTTP/1.1` keep their minor version (→ `http/1.0`, `http/1.1`).
@@ -428,6 +436,78 @@ and generates one-click rule creation from recommendations.
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
+
+## Caddy Body Matcher Plugin (caddy-body-matcher/)
+
+Custom Caddy HTTP request body plugin with two modules:
+- **Matcher** — `http.matchers.body`: inspects request body for matching
+- **Handler** — `http.handlers.body_vars`: extracts body field values as Caddy placeholders
+
+Zero external dependencies beyond Caddy itself.
+
+### Match Types (http.matchers.body)
+
+| Category | Caddyfile Syntax | Description |
+|----------|-----------------|-------------|
+| Raw contains | `body contains "string"` | Substring match |
+| Raw equals | `body eq "string"` | Exact match |
+| Raw prefix | `body starts_with "string"` | Prefix match |
+| Raw suffix | `body ends_with "string"` | Suffix match |
+| Raw regex | `body regex "pattern"` | RE2 regex match |
+| JSON field eq | `body json .path "value"` | JSON dot-path exact match |
+| JSON field contains | `body json_contains .path "value"` | JSON dot-path substring match |
+| JSON field regex | `body json_regex .path "pattern"` | JSON dot-path regex match |
+| JSON field exists | `body json_exists .path` | JSON field presence check |
+| Form field eq | `body form field "value"` | URL-encoded form field exact match |
+| Form field contains | `body form_contains field "value"` | Form field substring match |
+| Form field regex | `body form_regex field "pattern"` | Form field regex match |
+
+### Body Vars Handler (http.handlers.body_vars)
+
+Middleware handler that reads the request body, extracts configured JSON and form
+field values, and exposes them as Caddy variables (placeholders). Enables body field
+values to be used as rate limit keys, in log templates, SecRule conditions, or any
+Caddy directive that supports placeholders.
+
+**Exposed placeholders:**
+- `{http.vars.body_json.<dotpath>}` — value from a JSON body field
+- `{http.vars.body_form.<field>}` — value from a form-encoded field
+
+**Caddyfile syntax:**
+```
+body_vars {
+    json .user.api_key
+    json .tenant.id
+    form action
+    form token
+    max_size 13mb
+}
+```
+
+**Single-field shorthand:**
+```
+body_vars json .user.api_key
+body_vars form action
+```
+
+**Auto-generated by wafctl:** When a rate limit rule uses a `body_json:` or `body_form:` key,
+`rl_generator.go` automatically emits a `body_vars { ... }` block before the `rate_limit`
+directive. The handler must run first so placeholders are populated for bucket keying.
+
+### Design
+
+- **One match type per instance** — compose multiple via Caddy named matcher blocks
+- **Body buffering** — reads once via `io.LimitReader`, re-wraps `r.Body` with `io.MultiReader` so downstream handlers still see the full body
+- **Default max_size: 13 MiB** — matches Coraza WAF `request_body_limit`; configurable via `max_size` directive
+- **JSON path resolution** — dot-notation via `encoding/json` → `map[string]interface{}`, array indices as numeric segments (e.g., `.items.0.type`)
+- **Block syntax** for max_size override:
+  ```
+  body {
+      max_size 13mb
+      contains "search term"
+  }
+  ```
+- **Built into Docker image** — COPY'd into builder stage, referenced via xcaddy `--replace`; no external repo needed
 
 ## Test Patterns
 

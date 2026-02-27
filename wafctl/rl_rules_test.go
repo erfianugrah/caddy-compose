@@ -552,6 +552,21 @@ func TestValidateRateLimitRule(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "valid with body_json key",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "body_json:.user.api_key", Events: 100, Window: "1m"},
+			wantErr: false,
+		},
+		{
+			name:    "valid with body_json key no leading dot",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "body_json:user.role", Events: 100, Window: "1m"},
+			wantErr: false,
+		},
+		{
+			name:    "valid with body_form key",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "body_form:action", Events: 100, Window: "1m"},
+			wantErr: false,
+		},
+		{
 			name:    "valid log_only action",
 			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Action: "log_only"},
 			wantErr: false,

@@ -45,6 +45,8 @@ export interface FieldDef {
   label: string;
   operators: { value: ConditionOperator; label: string }[];
   placeholder: string;
+  /** Persistent hint text shown below the value input for syntax guidance. */
+  hint?: string;
 }
 
 export const CONDITION_FIELDS: FieldDef[] = [
@@ -106,6 +108,7 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "regex", label: "matches regex" },
     ],
     placeholder: "e.g., X-Custom-Header:value",
+    hint: "Syntax: HeaderName:value — name before colon is the header, value after is the match target.",
   },
   {
     value: "query", label: "Query String",
@@ -132,15 +135,40 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "contains", label: "contains" },
       { value: "regex", label: "matches regex" },
     ],
-    placeholder: "e.g., session_id:abc123 or cookie_name:value",
+    placeholder: "e.g., session_id:abc123",
+    hint: "Syntax: cookie_name:value — name before colon is the cookie, value after is the match target.",
   },
   {
     value: "body", label: "Request Body",
     operators: [
+      { value: "eq", label: "equals" },
       { value: "contains", label: "contains" },
+      { value: "begins_with", label: "begins with" },
+      { value: "ends_with", label: "ends with" },
       { value: "regex", label: "matches regex" },
     ],
     placeholder: "e.g., <script> or password=.*",
+  },
+  {
+    value: "body_json", label: "Body JSON Field",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "exists", label: "exists" },
+    ],
+    placeholder: "e.g., .user.role:admin",
+    hint: "Syntax: .dot.path:value — dot-path navigates JSON, colon separates match value. Use .path for exists.",
+  },
+  {
+    value: "body_form", label: "Body Form Field",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., action:delete",
+    hint: "Syntax: field_name:value — name before colon is the form field, value after is the match target.",
   },
   {
     value: "args", label: "Parameter (Args)",
@@ -150,7 +178,8 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "contains", label: "contains" },
       { value: "regex", label: "matches regex" },
     ],
-    placeholder: "e.g., action:delete or param_name:value",
+    placeholder: "e.g., action:delete",
+    hint: "Syntax: param_name:value — name before colon is the parameter, value after is the match target.",
   },
   {
     value: "uri_path", label: "URI Path (no query)",

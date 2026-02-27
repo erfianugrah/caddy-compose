@@ -22,6 +22,11 @@ func TestRLKeyToPlaceholder(t *testing.T) {
 		{"client_ip+method", "{http.request.remote.host}{http.request.method}"},
 		{"header:X-API-Key", "{http.request.header.X-API-Key}"},
 		{"cookie:session", "{http.request.cookie.session}"},
+		{"body_json:.user.api_key", "{http.vars.body_json.user.api_key}"},
+		{"body_json:user.role", "{http.vars.body_json.user.role}"},
+		{"body_json:.tenant.id", "{http.vars.body_json.tenant.id}"},
+		{"body_form:action", "{http.vars.body_form.action}"},
+		{"body_form:token", "{http.vars.body_form.token}"},
 		{"unknown", "{http.request.remote.host}"}, // fallback
 	}
 
@@ -310,7 +315,83 @@ func TestRLConditionToMatcher(t *testing.T) {
 		},
 		{
 			name: "unknown field",
-			cond: Condition{Field: "body", Operator: "contains", Value: "test"},
+			cond: Condition{Field: "nonexistent", Operator: "eq", Value: "test"},
+			want: "",
+		},
+		// --- Body matchers (caddy-body-matcher plugin) ---
+		{
+			name: "body contains",
+			cond: Condition{Field: "body", Operator: "contains", Value: "password"},
+			want: `body contains "password"`,
+		},
+		{
+			name: "body eq",
+			cond: Condition{Field: "body", Operator: "eq", Value: "exact"},
+			want: `body eq "exact"`,
+		},
+		{
+			name: "body begins_with",
+			cond: Condition{Field: "body", Operator: "begins_with", Value: "{\"type\":"},
+			want: `body starts_with "{\"type\":"`,
+		},
+		{
+			name: "body ends_with",
+			cond: Condition{Field: "body", Operator: "ends_with", Value: "</html>"},
+			want: `body ends_with "</html>"`,
+		},
+		{
+			name: "body regex",
+			cond: Condition{Field: "body", Operator: "regex", Value: "password=.*"},
+			want: `body regex "password=.*"`,
+		},
+		{
+			name: "body_json eq",
+			cond: Condition{Field: "body_json", Operator: "eq", Value: ".user.role:admin"},
+			want: `body json .user.role "admin"`,
+		},
+		{
+			name: "body_json contains",
+			cond: Condition{Field: "body_json", Operator: "contains", Value: ".name:test"},
+			want: `body json_contains .name "test"`,
+		},
+		{
+			name: "body_json regex",
+			cond: Condition{Field: "body_json", Operator: "regex", Value: ".email:^[a-z]+@"},
+			want: `body json_regex .email "^[a-z]+@"`,
+		},
+		{
+			name: "body_json exists",
+			cond: Condition{Field: "body_json", Operator: "exists", Value: ".token:"},
+			want: "body json_exists .token",
+		},
+		{
+			name: "body_json without leading dot",
+			cond: Condition{Field: "body_json", Operator: "eq", Value: "user.role:admin"},
+			want: `body json .user.role "admin"`,
+		},
+		{
+			name: "body_json empty name",
+			cond: Condition{Field: "body_json", Operator: "eq", Value: ""},
+			want: "",
+		},
+		{
+			name: "body_form eq",
+			cond: Condition{Field: "body_form", Operator: "eq", Value: "action:delete"},
+			want: `body form action "delete"`,
+		},
+		{
+			name: "body_form contains",
+			cond: Condition{Field: "body_form", Operator: "contains", Value: "query:SELECT"},
+			want: `body form_contains query "SELECT"`,
+		},
+		{
+			name: "body_form regex",
+			cond: Condition{Field: "body_form", Operator: "regex", Value: "cmd:^ls\\s"},
+			want: `body form_regex cmd "^ls\\s"`,
+		},
+		{
+			name: "body_form empty name",
+			cond: Condition{Field: "body_form", Operator: "eq", Value: ""},
 			want: "",
 		},
 	}
@@ -688,7 +769,7 @@ func TestMatchRLCondition(t *testing.T) {
 		{"country in match", Condition{Field: "country", Operator: "in", Value: "US|CA"}, true},
 		{"country in no match", Condition{Field: "country", Operator: "in", Value: "CN|RU"}, false},
 		{"uri_path delegates to path", Condition{Field: "uri_path", Operator: "eq", Value: "/api/v3/queue"}, true},
-		{"unknown field", Condition{Field: "body", Operator: "contains", Value: "test"}, false},
+		{"unknown field", Condition{Field: "nonexistent", Operator: "contains", Value: "test"}, false},
 		{"regex invalid", Condition{Field: "path", Operator: "regex", Value: "[invalid"}, false},
 	}
 
@@ -826,6 +907,134 @@ func TestMatchEventToRule(t *testing.T) {
 		got := matchEventToRule(evt, disabledRules)
 		if got != "" {
 			t.Errorf("want empty for disabled rule, got %q", got)
+		}
+	})
+}
+
+// ─── Body Vars Block Generation ─────────────────────────────────────
+
+func TestWriteBodyVarsBlock(t *testing.T) {
+	t.Run("no body keys", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{Key: "client_ip", Enabled: true},
+			{Key: "header:X-API-Key", Enabled: true},
+		}
+		var b strings.Builder
+		writeBodyVarsBlock(&b, rules)
+		if b.String() != "" {
+			t.Errorf("expected empty output for non-body keys, got %q", b.String())
+		}
+	})
+
+	t.Run("json key only", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{Key: "body_json:.user.api_key", Enabled: true},
+		}
+		var b strings.Builder
+		writeBodyVarsBlock(&b, rules)
+		got := b.String()
+		if !strings.Contains(got, "body_vars {") {
+			t.Errorf("expected body_vars block, got %q", got)
+		}
+		if !strings.Contains(got, "json .user.api_key") {
+			t.Errorf("expected json .user.api_key, got %q", got)
+		}
+		if strings.Contains(got, "form ") {
+			t.Errorf("expected no form directive, got %q", got)
+		}
+	})
+
+	t.Run("form key only", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{Key: "body_form:action", Enabled: true},
+		}
+		var b strings.Builder
+		writeBodyVarsBlock(&b, rules)
+		got := b.String()
+		if !strings.Contains(got, "body_vars {") {
+			t.Errorf("expected body_vars block, got %q", got)
+		}
+		if !strings.Contains(got, "form action") {
+			t.Errorf("expected form action, got %q", got)
+		}
+		if strings.Contains(got, "json ") {
+			t.Errorf("expected no json directive, got %q", got)
+		}
+	})
+
+	t.Run("mixed json and form keys", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{Key: "body_json:.user.api_key", Enabled: true},
+			{Key: "body_form:token", Enabled: true},
+			{Key: "body_json:.tenant.id", Enabled: true},
+		}
+		var b strings.Builder
+		writeBodyVarsBlock(&b, rules)
+		got := b.String()
+		if !strings.Contains(got, "json .tenant.id") {
+			t.Errorf("expected json .tenant.id, got %q", got)
+		}
+		if !strings.Contains(got, "json .user.api_key") {
+			t.Errorf("expected json .user.api_key, got %q", got)
+		}
+		if !strings.Contains(got, "form token") {
+			t.Errorf("expected form token, got %q", got)
+		}
+	})
+
+	t.Run("disabled rules ignored", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{Key: "body_json:.user.api_key", Enabled: false},
+		}
+		var b strings.Builder
+		writeBodyVarsBlock(&b, rules)
+		if b.String() != "" {
+			t.Errorf("expected empty output for disabled rules, got %q", b.String())
+		}
+	})
+
+	t.Run("deduplicated keys", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{Key: "body_json:.user.api_key", Enabled: true},
+			{Key: "body_json:.user.api_key", Enabled: true},
+		}
+		var b strings.Builder
+		writeBodyVarsBlock(&b, rules)
+		got := b.String()
+		count := strings.Count(got, "json .user.api_key")
+		if count != 1 {
+			t.Errorf("expected 1 occurrence of json path, got %d in %q", count, got)
+		}
+	})
+
+	t.Run("integrated in generateServiceRL", func(t *testing.T) {
+		rules := []RateLimitRule{
+			{
+				ID:      "test-001",
+				Name:    "body-key-rule",
+				Service: "api",
+				Key:     "body_json:.user.api_key",
+				Events:  100,
+				Window:  "1m",
+				Action:  "deny",
+				Enabled: true,
+			},
+		}
+		got := generateServiceRL("api", rules, RateLimitGlobalConfig{})
+		if !strings.Contains(got, "body_vars {") {
+			t.Errorf("expected body_vars block in generated output, got:\n%s", got)
+		}
+		if !strings.Contains(got, "json .user.api_key") {
+			t.Errorf("expected json .user.api_key in body_vars block, got:\n%s", got)
+		}
+		if !strings.Contains(got, "{http.vars.body_json.user.api_key}") {
+			t.Errorf("expected placeholder in rate_limit zone key, got:\n%s", got)
+		}
+		// Verify body_vars comes before rate_limit
+		bvIdx := strings.Index(got, "body_vars {")
+		rlIdx := strings.Index(got, "rate_limit {")
+		if bvIdx >= rlIdx {
+			t.Errorf("body_vars must come before rate_limit in output:\n%s", got)
 		}
 	})
 }

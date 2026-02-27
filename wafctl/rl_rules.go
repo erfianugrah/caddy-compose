@@ -419,7 +419,8 @@ func syncCaddyfileServices(rs *RateLimitRuleStore, deployCfg DeployConfig) int {
 var validWindowPattern = regexp.MustCompile(`^\d+[smh]$`)
 
 // validRLKeyPattern matches key formats: plain keys or prefix:name keys.
-var validRLKeyPattern = regexp.MustCompile(`^(client_ip|path|static|client_ip\+path|client_ip\+method|header:[A-Za-z0-9_-]+|cookie:[A-Za-z0-9_-]+)$`)
+// body_json: accepts dot-paths (e.g. body_json:.user.api_key), body_form: accepts field names.
+var validRLKeyPattern = regexp.MustCompile(`^(client_ip|path|static|client_ip\+path|client_ip\+method|header:[A-Za-z0-9_-]+|cookie:[A-Za-z0-9_-]+|body_json:\.?[A-Za-z0-9_.]+|body_form:[A-Za-z0-9_-]+)$`)
 
 // validateRateLimitRule checks that a rule has valid fields.
 func validateRateLimitRule(rule RateLimitRule) error {
