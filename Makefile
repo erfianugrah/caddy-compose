@@ -54,7 +54,7 @@ endif
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
         deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
         test test-go test-frontend check status logs logs-caddy logs-wafctl \
-        health version waf-deploy waf-config waf-events caddy-reload config clean \
+         health version waf-deploy waf-config waf-events caddy-reload caddy-quick-reload config clean \
         scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
 
 help: ## Show this help
@@ -208,9 +208,14 @@ release: deploy-all sign sbom ## Full deploy + sign + SBOM
 	@echo "Full release complete (signed + SBOM attached)."
 
 # ── Caddy operations ────────────────────────────────────────────────
-caddy-reload: ## SCP Caddyfile, sync rate limit zones, reload Caddy
+caddy-reload: ## SCP Caddyfile, deploy WAF + RL configs, reload Caddy
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
-	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/rate-limits/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/config/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/rate-rules/deploy --post-data=""
+
+caddy-quick-reload: ## SCP Caddyfile and reload Caddy (no WAF/RL regeneration)
+	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
+	$(EXEC_CMD) caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 
 # ── WAF operations (via wafctl on remote) ──────────────────────────
 waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)

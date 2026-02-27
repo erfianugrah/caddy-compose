@@ -88,7 +88,8 @@
 }
 
 # Global security headers — applied to every site via import
-(security_headers) {
+# Base security headers (no CSP) — for services with native app clients (e.g. Jellyfin)
+(security_headers_base) {
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
@@ -97,10 +98,15 @@
 		Cross-Origin-Opener-Policy "same-origin"
 		Cross-Origin-Resource-Policy "same-origin"
 		X-Permitted-Cross-Domain-Policies "none"
-		?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' wss: ws: https:; media-src 'self' blob: https:; frame-src 'self' https:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
 		-Server
 		-X-Powered-By
 	}
+}
+
+# Full security headers (base + CSP) — for browser-only services
+(security_headers) {
+	import security_headers_base
+	header ?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' wss: ws: https:; media-src 'self' blob: https:; frame-src 'self' https:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
 }
 
 # Coraza WAF — OWASP CRS with dynamic per-service configuration.
@@ -448,10 +454,10 @@ prowlarr.erfi.io {
 
 jellyfin.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_base
 	import static_cache
+	import waf
 	import ipsum_blocklist
-	# import waf
 	import /data/caddy/rl/jellyfin_rl*.caddy
 	import /data/caddy/rl/jellyfin.erfi.io_rl*.caddy
 	import tls_config
