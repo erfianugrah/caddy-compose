@@ -74,11 +74,51 @@ describe("parseFiltersFromURL", () => {
     expect(result).toContainEqual({ field: "event_type", operator: "eq", value: "blocked" });
   });
 
-  it("parses all five params together", () => {
+  it("parses all eight params together", () => {
     const result = parseFiltersFromURL(
-      "?service=api.io&client=10.0.0.1&event_type=rate_limited&method=GET&rule_name=My+Rule"
+      "?service=api.io&client=10.0.0.1&event_type=rate_limited&method=GET&rule_name=My+Rule&uri=/api/v1&status_code=403&country=US"
     );
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(8);
+  });
+
+  it("parses uri param", () => {
+    const result = parseFiltersFromURL("?uri=/api/v1/users");
+    expect(result).toEqual([{ field: "uri", operator: "eq", value: "/api/v1/users" }]);
+  });
+
+  it("parses path param as uri (alias)", () => {
+    const result = parseFiltersFromURL("?path=/graphql");
+    expect(result).toEqual([{ field: "uri", operator: "eq", value: "/graphql" }]);
+  });
+
+  it("parses status_code param", () => {
+    const result = parseFiltersFromURL("?status_code=403");
+    expect(result).toEqual([{ field: "status_code", operator: "eq", value: "403" }]);
+  });
+
+  it("parses status param as status_code (alias)", () => {
+    const result = parseFiltersFromURL("?status=500");
+    expect(result).toEqual([{ field: "status_code", operator: "eq", value: "500" }]);
+  });
+
+  it("parses country param", () => {
+    const result = parseFiltersFromURL("?country=DE");
+    expect(result).toEqual([{ field: "country", operator: "eq", value: "DE" }]);
+  });
+
+  it("parses uri with contains operator", () => {
+    const result = parseFiltersFromURL("?uri=/api&uri_op=contains");
+    expect(result).toEqual([{ field: "uri", operator: "contains", value: "/api" }]);
+  });
+
+  it("parses status_code with in operator", () => {
+    const result = parseFiltersFromURL("?status_code=403,429&status_code_op=in");
+    expect(result).toEqual([{ field: "status_code", operator: "in", value: "403,429" }]);
+  });
+
+  it("parses country with in operator", () => {
+    const result = parseFiltersFromURL("?country=US,DE,CN&country_op=in");
+    expect(result).toEqual([{ field: "country", operator: "in", value: "US,DE,CN" }]);
   });
 
   it("ignores empty param values", () => {
@@ -170,6 +210,21 @@ describe("filtersToSummaryParams", () => {
     });
   });
 
+  it("maps uri filter", () => {
+    const filters: DashboardFilter[] = [{ field: "uri", operator: "contains", value: "/api" }];
+    expect(filtersToSummaryParams(filters)).toEqual({ uri: "/api", uri_op: "contains" });
+  });
+
+  it("maps status_code filter", () => {
+    const filters: DashboardFilter[] = [{ field: "status_code", operator: "eq", value: "403" }];
+    expect(filtersToSummaryParams(filters)).toEqual({ status_code: "403", status_code_op: "eq" });
+  });
+
+  it("maps country filter", () => {
+    const filters: DashboardFilter[] = [{ field: "country", operator: "in", value: "US,DE" }];
+    expect(filtersToSummaryParams(filters)).toEqual({ country: "US,DE", country_op: "in" });
+  });
+
   it("last filter wins for duplicate fields", () => {
     const filters: DashboardFilter[] = [
       { field: "service", operator: "eq", value: "a.io" },
@@ -195,6 +250,9 @@ describe("filtersToEventsParams", () => {
       { field: "event_type", operator: "eq", value: "honeypot" },
       { field: "method", operator: "in", value: "GET,POST" },
       { field: "rule_name", operator: "contains", value: "Allow" },
+      { field: "uri", operator: "contains", value: "/api" },
+      { field: "status_code", operator: "in", value: "403,429" },
+      { field: "country", operator: "neq", value: "CN" },
     ];
     const result = filtersToEventsParams(filters);
     expect(result).toEqual({
@@ -203,6 +261,9 @@ describe("filtersToEventsParams", () => {
       event_type: "honeypot", event_type_op: "eq",
       method: "GET,POST", method_op: "in",
       rule_name: "Allow", rule_name_op: "contains",
+      uri: "/api", uri_op: "contains",
+      status_code: "403,429", status_code_op: "in",
+      country: "CN", country_op: "neq",
     });
   });
 });
@@ -274,13 +335,16 @@ describe("operatorChip", () => {
 // ─── FILTER_FIELDS metadata ─────────────────────────────────────────
 
 describe("FILTER_FIELDS", () => {
-  it("defines all five filter fields", () => {
+  it("defines all eight filter fields", () => {
     const fields = Object.keys(FILTER_FIELDS);
     expect(fields).toContain("service");
     expect(fields).toContain("client");
     expect(fields).toContain("event_type");
     expect(fields).toContain("method");
     expect(fields).toContain("rule_name");
+    expect(fields).toContain("uri");
+    expect(fields).toContain("status_code");
+    expect(fields).toContain("country");
   });
 
   it("event_type has 9 options", () => {
@@ -303,8 +367,20 @@ describe("FILTER_FIELDS", () => {
     expect(FILTER_FIELDS.rule_name.options).toBeUndefined();
   });
 
+  it("uri has no options (free text)", () => {
+    expect(FILTER_FIELDS.uri.options).toBeUndefined();
+  });
+
+  it("status_code has no options (free text)", () => {
+    expect(FILTER_FIELDS.status_code.options).toBeUndefined();
+  });
+
+  it("country has no options (free text)", () => {
+    expect(FILTER_FIELDS.country.options).toBeUndefined();
+  });
+
   it("all fields have a label and placeholder", () => {
-    const allFields: FilterField[] = ["service", "client", "event_type", "method", "rule_name"];
+    const allFields: FilterField[] = ["service", "client", "event_type", "method", "rule_name", "uri", "status_code", "country"];
     for (const field of allFields) {
       expect(FILTER_FIELDS[field].label).toBeTruthy();
       expect(FILTER_FIELDS[field].placeholder).toBeTruthy();

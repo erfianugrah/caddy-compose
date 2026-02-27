@@ -12,7 +12,7 @@ import type { SummaryParams, EventsParams, EventType, FilterOp } from "@/lib/api
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export type FilterField = "service" | "client" | "event_type" | "method" | "rule_name";
+export type FilterField = "service" | "client" | "event_type" | "method" | "rule_name" | "uri" | "status_code" | "country";
 
 export interface DashboardFilter {
   field: FilterField;
@@ -38,11 +38,14 @@ const OP_META: Record<FilterOp, OpMeta> = {
 
 /** Operators available per field. Order matters — first is default. */
 const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
-  service:    ["eq", "neq", "contains", "in", "regex"],
-  client:     ["eq", "neq", "in"],
-  event_type: ["eq", "in"],
-  method:     ["eq", "in"],
-  rule_name:  ["eq", "contains", "regex"],
+  service:     ["eq", "neq", "contains", "in", "regex"],
+  client:      ["eq", "neq", "in"],
+  event_type:  ["eq", "in"],
+  method:      ["eq", "in"],
+  rule_name:   ["eq", "contains", "regex"],
+  uri:         ["eq", "neq", "contains", "regex"],
+  status_code: ["eq", "neq", "in", "regex"],
+  country:     ["eq", "neq", "in"],
 };
 
 // ─── Field metadata ─────────────────────────────────────────────────
@@ -84,9 +87,12 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   event_type: { label: "Event Type", placeholder: "Select type", options: EVENT_TYPE_OPTIONS },
   method: { label: "Method", placeholder: "Select method", options: METHOD_OPTIONS },
   rule_name: { label: "Policy Rule", placeholder: "Search rules...", dynamic: true },
+  uri: { label: "Path", placeholder: "e.g. /api/v1/users" },
+  status_code: { label: "Status Code", placeholder: "e.g. 403 or 4\\d\\d" },
+  country: { label: "Country", placeholder: "e.g. US, DE, CN" },
 };
 
-const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "method", "rule_name"];
+const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "method", "rule_name", "uri", "status_code", "country"];
 
 // ─── Pure logic functions (exported for testing) ────────────────────
 
@@ -105,6 +111,9 @@ export function parseFiltersFromURL(search: string): DashboardFilter[] {
     { key: "event_type", alias: "type", field: "event_type" },
     { key: "method", field: "method" },
     { key: "rule_name", field: "rule_name" },
+    { key: "uri", alias: "path", field: "uri" },
+    { key: "status_code", alias: "status", field: "status_code" },
+    { key: "country", field: "country" },
   ];
 
   for (const { key, alias, field } of fieldMap) {
@@ -128,11 +137,14 @@ export function filtersToSummaryParams(filters: DashboardFilter[]): Partial<Summ
   const params: Partial<SummaryParams> = {};
   for (const f of filters) {
     switch (f.field) {
-      case "service":    params.service = f.value;    params.service_op = f.operator;    break;
-      case "client":     params.client = f.value;     params.client_op = f.operator;     break;
-      case "event_type": params.event_type = f.value; params.event_type_op = f.operator; break;
-      case "method":     params.method = f.value;     params.method_op = f.operator;     break;
-      case "rule_name":  params.rule_name = f.value;  params.rule_name_op = f.operator;  break;
+      case "service":     params.service = f.value;     params.service_op = f.operator;     break;
+      case "client":      params.client = f.value;      params.client_op = f.operator;      break;
+      case "event_type":  params.event_type = f.value;  params.event_type_op = f.operator;  break;
+      case "method":      params.method = f.value;      params.method_op = f.operator;      break;
+      case "rule_name":   params.rule_name = f.value;   params.rule_name_op = f.operator;   break;
+      case "uri":         params.uri = f.value;         params.uri_op = f.operator;         break;
+      case "status_code": params.status_code = f.value; params.status_code_op = f.operator; break;
+      case "country":     params.country = f.value;     params.country_op = f.operator;     break;
     }
   }
   return params;
@@ -143,11 +155,14 @@ export function filtersToEventsParams(filters: DashboardFilter[]): Partial<Event
   const params: Partial<EventsParams> = {};
   for (const f of filters) {
     switch (f.field) {
-      case "service":    params.service = f.value;                         params.service_op = f.operator;    break;
-      case "client":     params.client = f.value;                          params.client_op = f.operator;     break;
-      case "event_type": params.event_type = f.value as EventType;         params.event_type_op = f.operator; break;
-      case "method":     params.method = f.value;                          params.method_op = f.operator;     break;
-      case "rule_name":  params.rule_name = f.value;                       params.rule_name_op = f.operator;  break;
+      case "service":     params.service = f.value;                          params.service_op = f.operator;     break;
+      case "client":      params.client = f.value;                          params.client_op = f.operator;      break;
+      case "event_type":  params.event_type = f.value as EventType;         params.event_type_op = f.operator;  break;
+      case "method":      params.method = f.value;                          params.method_op = f.operator;      break;
+      case "rule_name":   params.rule_name = f.value;                       params.rule_name_op = f.operator;   break;
+      case "uri":         params.uri = f.value;                             params.uri_op = f.operator;         break;
+      case "status_code": params.status_code = f.value;                     params.status_code_op = f.operator; break;
+      case "country":     params.country = f.value;                         params.country_op = f.operator;     break;
     }
   }
   return params;

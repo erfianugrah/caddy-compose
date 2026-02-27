@@ -136,6 +136,12 @@ export interface EventsParams {
   client_op?: FilterOp;
   rule_name?: string;  // Filter by policy exclusion name (matched_rules msg)
   rule_name_op?: FilterOp;
+  uri?: string;        // Filter by request URI/path
+  uri_op?: FilterOp;
+  status_code?: string; // Filter by response status code
+  status_code_op?: FilterOp;
+  country?: string;    // Filter by country code (ISO 3166-1 alpha-2)
+  country_op?: FilterOp;
   hours?: number;
   start?: string; // ISO 8601
   end?: string;   // ISO 8601
@@ -523,6 +529,12 @@ export interface SummaryParams extends TimeRangeParams {
   event_type_op?: FilterOp;
   rule_name?: string;   // Filter to events matching a specific policy exclusion name
   rule_name_op?: FilterOp;
+  uri?: string;         // Filter by request URI/path
+  uri_op?: FilterOp;
+  status_code?: string; // Filter by response status code
+  status_code_op?: FilterOp;
+  country?: string;     // Filter by country code (ISO 3166-1 alpha-2)
+  country_op?: FilterOp;
 }
 
 export async function fetchSummary(params?: SummaryParams): Promise<SummaryData> {
@@ -543,6 +555,12 @@ export async function fetchSummary(params?: SummaryParams): Promise<SummaryData>
   if (params?.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
   if (params?.rule_name) searchParams.set("rule_name", params.rule_name);
   if (params?.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
+  if (params?.uri) searchParams.set("uri", params.uri);
+  if (params?.uri_op && params.uri_op !== "eq") searchParams.set("uri_op", params.uri_op);
+  if (params?.status_code) searchParams.set("status_code", params.status_code);
+  if (params?.status_code_op && params.status_code_op !== "eq") searchParams.set("status_code_op", params.status_code_op);
+  if (params?.country) searchParams.set("country", params.country);
+  if (params?.country_op && params.country_op !== "eq") searchParams.set("country_op", params.country_op);
   const qs = searchParams.toString() ? `?${searchParams}` : "";
   const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`);
   return {
@@ -694,6 +712,12 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
   if (params.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
   if (params.rule_name) searchParams.set("rule_name", params.rule_name);
   if (params.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
+  if (params.uri) searchParams.set("uri", params.uri);
+  if (params.uri_op && params.uri_op !== "eq") searchParams.set("uri_op", params.uri_op);
+  if (params.status_code) searchParams.set("status_code", params.status_code);
+  if (params.status_code_op && params.status_code_op !== "eq") searchParams.set("status_code_op", params.status_code_op);
+  if (params.country) searchParams.set("country", params.country);
+  if (params.country_op && params.country_op !== "eq") searchParams.set("country_op", params.country_op);
   if (params.start && params.end) {
     searchParams.set("start", params.start);
     searchParams.set("end", params.end);
@@ -734,6 +758,12 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
   if (params.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
   if (params.rule_name) searchParams.set("rule_name", params.rule_name);
   if (params.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
+  if (params.uri) searchParams.set("uri", params.uri);
+  if (params.uri_op && params.uri_op !== "eq") searchParams.set("uri_op", params.uri_op);
+  if (params.status_code) searchParams.set("status_code", params.status_code);
+  if (params.status_code_op && params.status_code_op !== "eq") searchParams.set("status_code_op", params.status_code_op);
+  if (params.country) searchParams.set("country", params.country);
+  if (params.country_op && params.country_op !== "eq") searchParams.set("country_op", params.country_op);
   if (params.start && params.end) {
     searchParams.set("start", params.start);
     searchParams.set("end", params.end);

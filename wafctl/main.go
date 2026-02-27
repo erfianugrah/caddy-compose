@@ -386,8 +386,12 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		methodF := parseFieldFilter(q.Get("method"), q.Get("method_op"))
 		eventTypeF := parseFieldFilter(q.Get("event_type"), q.Get("event_type_op"))
 		ruleNameF := parseFieldFilter(q.Get("rule_name"), q.Get("rule_name_op"))
+		uriF := parseFieldFilter(q.Get("uri"), q.Get("uri_op"))
+		statusCodeF := parseFieldFilter(q.Get("status_code"), q.Get("status_code_op"))
+		countryF := parseFieldFilter(q.Get("country"), q.Get("country_op"))
 
-		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil
+		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil ||
+			uriF != nil || statusCodeF != nil || countryF != nil
 
 		// When any filter is active, collect all events, apply filters, then
 		// summarize — this is the general-purpose filtered path.
@@ -443,6 +447,15 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 					continue
 				}
 				if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
+					continue
+				}
+				if !uriF.matchField(ev.URI) {
+					continue
+				}
+				if !statusCodeF.matchField(strconv.Itoa(ev.ResponseStatus)) {
+					continue
+				}
+				if !countryF.matchField(ev.Country) {
 					continue
 				}
 				filtered = append(filtered, *ev)
@@ -680,6 +693,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		methodF := parseFieldFilter(q.Get("method"), q.Get("method_op"))
 		eventTypeF := parseFieldFilter(q.Get("event_type"), q.Get("event_type_op"))
 		ruleNameF := parseFieldFilter(q.Get("rule_name"), q.Get("rule_name_op"))
+		uriF := parseFieldFilter(q.Get("uri"), q.Get("uri_op"))
+		statusCodeF := parseFieldFilter(q.Get("status_code"), q.Get("status_code_op"))
+		countryF := parseFieldFilter(q.Get("country"), q.Get("country_op"))
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -765,6 +781,15 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				continue
 			}
 			if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
+				continue
+			}
+			if !uriF.matchField(ev.URI) {
+				continue
+			}
+			if !statusCodeF.matchField(strconv.Itoa(ev.ResponseStatus)) {
+				continue
+			}
+			if !countryF.matchField(ev.Country) {
 				continue
 			}
 			filtered = append(filtered, *ev)
