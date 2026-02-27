@@ -88,7 +88,7 @@
 }
 
 # Global security headers — applied to every site via import
-# Base security headers (no CSP) — for services with native app clients (e.g. Jellyfin)
+# Base security headers (no CSP, relaxed CORP) — for services with native app clients (e.g. Jellyfin)
 (security_headers_base) {
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -96,7 +96,7 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Resource-Policy "same-origin"
+		Cross-Origin-Resource-Policy "cross-origin"
 		X-Permitted-Cross-Domain-Policies "none"
 		-Server
 		-X-Powered-By
