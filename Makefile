@@ -81,12 +81,12 @@ endif
 build: build-caddy build-wafctl ## Build both images
 
 build-caddy: ## Build Caddy image (includes waf-dashboard)
-	docker build -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
+	docker build --no-cache -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
 
 WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
 
 build-wafctl: ## Build wafctl image
-	docker build -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile ./wafctl
+	docker build --no-cache -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile ./wafctl
 
 # ── Push ────────────────────────────────────────────────────────────
 push: push-caddy push-wafctl ## Push both images to Docker Hub
