@@ -160,7 +160,7 @@ When adding custom SecRules, use the correct ID range:
 - `9100001–9100006` — pre-CRS rules (baked in `coraza/pre-crs.conf`)
 - `9100010–9100019` — post-CRS custom detection rules (baked in `coraza/post-crs.conf`)
 - `9100020–9100029` — honeypot path rules (fully dynamic via Policy Engine; `9100021` generated in `custom-pre-crs.conf`)
-- `9100030–9100039` — heuristic bot signal rules (baked in `coraza/pre-crs.conf`, scanner UAs in `coraza/scanner-useragents.txt`)
+- `9100030–9100039` — heuristic bot signal rules (baked in `coraza/pre-crs.conf`, scanner UAs in `coraza/scanner-useragents.txt`). Rule 9100032 uses `drop` action (treated as `deny,status:403` by our coraza-caddy fork)
 - `9100050–9100059` — GeoIP blocking rules (reserved; country blocking uses Policy Engine `95xxxxx` IDs via `REQUEST_HEADERS:Cf-Ipcountry`)
 - `95xxxxx` — generated exclusion rules (from Policy Engine, `generator.go`)
 - `97xxxxx` — generated WAF settings overrides (`generator.go`)
@@ -525,6 +525,31 @@ directive. The handler must run first so placeholders are populated for bucket k
 - `beforeEach`/`afterEach` for setup/teardown
 - Tests live alongside source: `api.test.ts` next to `api.ts`, `DashboardFilterBar.test.ts` next to component
 - Policy sub-module tests in `components/policy/`: `constants.test.ts`, `eventPrefill.test.ts`, `exclusionHelpers.test.ts`, `TagInputs.test.ts`
+
+## Coraza-Caddy Fork
+
+The Dockerfile uses a fork of coraza-caddy (`github.com/erfianugrah/coraza-caddy/v2`)
+pinned by commit hash. The fork contains two fixes over upstream:
+
+1. **WebSocket hijack tracking** — prevents response writes on upgraded connections
+   that would panic or log "WriteHeader on hijacked connection". The `rwInterceptor`
+   tracks hijack state via a `hijackTracker` wrapper and skips response processing
+   when the connection has been taken over. ([upstream PR #259](https://github.com/corazawaf/coraza-caddy/pull/259))
+
+2. **`drop` action status code fix** — upstream's `obtainStatusCodeFromInterruptionOrDefault()`
+   only handles `action == "deny"`, causing `drop` to fall through to `defaultStatusCode`
+   (200). Since coraza-caddy operates as HTTP middleware and cannot perform TCP-level
+   FIN/RST, `drop` is now treated identically to `deny` — uses the rule's `status:`
+   field or defaults to 403. This ensures Caddy's `handle_errors` serves error pages
+   with the correct HTTP status code.
+
+### Error Pages
+
+The `(waf)` snippet includes `handle_errors 400 403 429` which serves `errors/error.html`
+via Caddy's `templates` + `file_server`. The `(error_pages)` snippet catches remaining
+error codes (404, 500, 502, etc.). The template uses `{placeholder "http.error.status_code"}`
+for conditional content (different messages per status code). `file_server` inside
+`handle_errors` preserves the error's HTTP status code via `statusOverrideResponseWriter`.
 
 ## Key Architecture Notes
 
