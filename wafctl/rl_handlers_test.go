@@ -19,6 +19,7 @@ func setupRLRuleMux(t *testing.T) (*http.ServeMux, *RateLimitRuleStore) {
 	mux.HandleFunc("POST /api/rate-rules", handleCreateRLRule(rs))
 	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rs))
 	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rs))
+	mux.HandleFunc("PUT /api/rate-rules/reorder", handleReorderRLRules(rs))
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rs))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rs))
 	mux.HandleFunc("GET /api/rate-rules/hits", handleRLRuleHits(als, rs))
@@ -262,5 +263,44 @@ func TestRLRuleHandlerHits(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("hits: want 200, got %d", w.Code)
+	}
+}
+
+func TestRLRuleHandlerReorder(t *testing.T) {
+	mux, rs := setupRLRuleMux(t)
+
+	// Create 3 rules.
+	var ids []string
+	for _, name := range []string{"A", "B", "C"} {
+		r, _ := rs.Create(RateLimitRule{Name: name, Service: "s.io", Key: "client_ip", Events: 10, Window: "1m", Enabled: true})
+		ids = append(ids, r.ID)
+	}
+
+	// Reorder: C, A, B.
+	body := `{"ids":["` + ids[2] + `","` + ids[0] + `","` + ids[1] + `"]}`
+	req := httptest.NewRequest("PUT", "/api/rate-rules/reorder", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("reorder: want 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var result []RateLimitRule
+	json.Unmarshal(w.Body.Bytes(), &result)
+	if len(result) != 3 {
+		t.Fatalf("want 3 rules, got %d", len(result))
+	}
+	if result[0].Name != "C" || result[1].Name != "A" || result[2].Name != "B" {
+		t.Errorf("want C,A,B got %s,%s,%s", result[0].Name, result[1].Name, result[2].Name)
+	}
+
+	// Error: empty ids.
+	req2 := httptest.NewRequest("PUT", "/api/rate-rules/reorder", strings.NewReader(`{"ids":[]}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	mux.ServeHTTP(w2, req2)
+	if w2.Code != 400 {
+		t.Errorf("empty ids: want 400, got %d", w2.Code)
 	}
 }

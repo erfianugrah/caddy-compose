@@ -145,6 +145,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/exclusions/export", handleExportExclusions(exclusionStore))
 	mux.HandleFunc("POST /api/exclusions/import", handleImportExclusions(exclusionStore))
 	mux.HandleFunc("POST /api/exclusions/generate", handleGenerateExclusions(exclusionStore))
+	mux.HandleFunc("PUT /api/exclusions/reorder", handleReorderExclusions(exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/hits", handleExclusionHits(store, exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/{id}", handleGetExclusion(exclusionStore))
 	mux.HandleFunc("PUT /api/exclusions/{id}", handleUpdateExclusion(exclusionStore))
@@ -167,6 +168,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, deployCfg))
+	mux.HandleFunc("PUT /api/rate-rules/reorder", handleReorderRLRules(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/hits", handleRLRuleHits(accessLogStore, rlRuleStore))
@@ -1208,6 +1210,26 @@ func handleImportExclusions(es *ExclusionStore) http.HandlerFunc {
 	}
 }
 
+func handleReorderExclusions(es *ExclusionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			IDs []string `json:"ids"`
+		}
+		if _, failed := decodeJSON(w, r, &req); failed {
+			return
+		}
+		if len(req.IDs) == 0 {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "ids array is required"})
+			return
+		}
+		if err := es.Reorder(req.IDs); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "reorder failed", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, es.List())
+	}
+}
+
 // --- Handlers: CRS Catalog ---
 
 func handleCRSRules(w http.ResponseWriter, _ *http.Request) {
@@ -1533,6 +1555,26 @@ func handleImportRLRules(rs *RateLimitRuleStore) http.HandlerFunc {
 			"status":   "imported",
 			"imported": len(export.Rules),
 		})
+	}
+}
+
+func handleReorderRLRules(rs *RateLimitRuleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			IDs []string `json:"ids"`
+		}
+		if _, failed := decodeJSON(w, r, &req); failed {
+			return
+		}
+		if len(req.IDs) == 0 {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "ids array is required"})
+			return
+		}
+		if err := rs.Reorder(req.IDs); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "reorder failed", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, rs.List())
 	}
 }
 

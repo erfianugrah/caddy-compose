@@ -257,6 +257,45 @@ func (s *ExclusionStore) Delete(id string) (bool, error) {
 	return false, nil
 }
 
+// Reorder rearranges exclusions to match the given ID order and persists.
+// All existing IDs must be present exactly once.
+func (s *ExclusionStore) Reorder(ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) != len(s.exclusions) {
+		return fmt.Errorf("expected %d IDs, got %d", len(s.exclusions), len(ids))
+	}
+
+	// Build index for O(1) lookup.
+	idx := make(map[string]int, len(s.exclusions))
+	for i, e := range s.exclusions {
+		idx[e.ID] = i
+	}
+
+	reordered := make([]RuleExclusion, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		i, ok := idx[id]
+		if !ok {
+			return fmt.Errorf("unknown exclusion ID: %s", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("duplicate ID: %s", id)
+		}
+		seen[id] = true
+		reordered = append(reordered, s.exclusions[i])
+	}
+
+	old := s.exclusions
+	s.exclusions = reordered
+	if err := s.save(); err != nil {
+		s.exclusions = old // roll back
+		return err
+	}
+	return nil
+}
+
 // Import replaces all exclusions with the provided list and persists.
 func (s *ExclusionStore) Import(exclusions []RuleExclusion) error {
 	s.mu.Lock()

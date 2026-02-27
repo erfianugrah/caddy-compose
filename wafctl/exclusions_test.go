@@ -147,6 +147,53 @@ func TestExclusionStoreImportExport(t *testing.T) {
 	}
 }
 
+func TestExclusionStoreReorder(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	a, _ := es.Create(RuleExclusion{Name: "A", Type: "remove_by_id", RuleID: "1", Enabled: true})
+	b, _ := es.Create(RuleExclusion{Name: "B", Type: "remove_by_id", RuleID: "2", Enabled: true})
+	c, _ := es.Create(RuleExclusion{Name: "C", Type: "remove_by_id", RuleID: "3", Enabled: true})
+
+	// Reorder: C, A, B
+	err := es.Reorder([]string{c.ID, a.ID, b.ID})
+	if err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	list := es.List()
+	if len(list) != 3 {
+		t.Fatalf("want 3, got %d", len(list))
+	}
+	if list[0].Name != "C" || list[1].Name != "A" || list[2].Name != "B" {
+		t.Errorf("want C,A,B got %s,%s,%s", list[0].Name, list[1].Name, list[2].Name)
+	}
+
+	// Verify persistence: reload and check order.
+	es2 := NewExclusionStore(es.filePath)
+	list2 := es2.List()
+	if list2[0].Name != "C" || list2[1].Name != "A" || list2[2].Name != "B" {
+		t.Errorf("after reload: want C,A,B got %s,%s,%s", list2[0].Name, list2[1].Name, list2[2].Name)
+	}
+}
+
+func TestExclusionStoreReorderErrors(t *testing.T) {
+	es := newTestExclusionStore(t)
+	a, _ := es.Create(RuleExclusion{Name: "A", Type: "remove_by_id", RuleID: "1", Enabled: true})
+	es.Create(RuleExclusion{Name: "B", Type: "remove_by_id", RuleID: "2", Enabled: true})
+
+	// Wrong count.
+	if err := es.Reorder([]string{a.ID}); err == nil {
+		t.Error("expected error for wrong ID count")
+	}
+	// Unknown ID.
+	if err := es.Reorder([]string{a.ID, "bogus"}); err == nil {
+		t.Error("expected error for unknown ID")
+	}
+	// Duplicate ID.
+	if err := es.Reorder([]string{a.ID, a.ID}); err == nil {
+		t.Error("expected error for duplicate ID")
+	}
+}
+
 func TestExclusionStoreEnabledFilter(t *testing.T) {
 	es := newTestExclusionStore(t)
 	es.Create(RuleExclusion{Name: "Enabled", Type: "remove_by_id", RuleID: "1", Enabled: true})
@@ -399,6 +446,42 @@ func TestExclusionEndpointImportInvalid(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	if w.Code != 400 {
 		t.Fatalf("import empty: want 400, got %d", w.Code)
+	}
+}
+
+func TestExclusionEndpointReorder(t *testing.T) {
+	mux, es := setupExclusionMux(t)
+
+	a, _ := es.Create(RuleExclusion{Name: "A", Type: "remove_by_id", RuleID: "1", Enabled: true})
+	b, _ := es.Create(RuleExclusion{Name: "B", Type: "remove_by_id", RuleID: "2", Enabled: true})
+	c, _ := es.Create(RuleExclusion{Name: "C", Type: "remove_by_id", RuleID: "3", Enabled: true})
+
+	// Reorder: C, A, B.
+	body := `{"ids":["` + c.ID + `","` + a.ID + `","` + b.ID + `"]}`
+	req := httptest.NewRequest("PUT", "/api/exclusions/reorder", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("reorder: want 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var result []RuleExclusion
+	json.Unmarshal(w.Body.Bytes(), &result)
+	if len(result) != 3 {
+		t.Fatalf("want 3, got %d", len(result))
+	}
+	if result[0].Name != "C" || result[1].Name != "A" || result[2].Name != "B" {
+		t.Errorf("want C,A,B got %s,%s,%s", result[0].Name, result[1].Name, result[2].Name)
+	}
+
+	// Error: empty ids.
+	req2 := httptest.NewRequest("PUT", "/api/exclusions/reorder", strings.NewReader(`{"ids":[]}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	mux.ServeHTTP(w2, req2)
+	if w2.Code != 400 {
+		t.Errorf("empty ids: want 400, got %d", w2.Code)
 	}
 }
 

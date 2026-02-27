@@ -1,6 +1,23 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { TablePagination, paginateArray } from "./TablePagination";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Shield,
   Plus,
   Trash2,
@@ -15,6 +32,7 @@ import {
   Settings2,
   Zap,
   BarChart3,
+  GripVertical,
 } from "lucide-react";
 import {
   Card,
@@ -61,6 +79,7 @@ import {
   createRLRule,
   updateRLRule,
   deleteRLRule,
+  reorderRLRules,
   deployRLRules,
   getRLGlobal,
   updateRLGlobal,
@@ -665,6 +684,60 @@ function GlobalSettingsPanel({ config, onChange, onSave, saving, dirty }: Global
   );
 }
 
+const RL_RULES_PAGE_SIZE = 15;
+
+// ─── Sortable Table Row ─────────────────────────────────────────────
+
+function SortableTableRow({
+  id,
+  disabled,
+  children,
+  className,
+}: {
+  id: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+    position: "relative",
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style} className={className} {...attributes}>
+      <TableCell className="w-[52px] px-1">
+        <div className="flex items-center gap-0.5">
+          {!disabled ? (
+            <button
+              className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/50 hover:text-muted-foreground touch-none"
+              {...listeners}
+              tabIndex={-1}
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <span className="p-0.5 w-[18px]" />
+          )}
+        </div>
+      </TableCell>
+      {children}
+    </TableRow>
+  );
+}
+
 // ─── Main Rate Limits Panel ─────────────────────────────────────────
 
 export default function RateLimitsPanel() {
@@ -686,6 +759,39 @@ export default function RateLimitsPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionFilter, setActionFilter] = useState<RLRuleAction | "all">("all");
   const [rulesPage, setRulesPage] = useState(1);
+
+  // Drag-and-drop reorder
+  const isFiltered = searchQuery.trim() !== "" || actionFilter !== "all";
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const pageStartIdx = (rulesPage - 1) * RL_RULES_PAGE_SIZE;
+    const pageIds = rules.slice(pageStartIdx, pageStartIdx + RL_RULES_PAGE_SIZE).map((r) => r.id);
+    const oldIdx = pageIds.indexOf(active.id as string);
+    const newIdx = pageIds.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    const newRules = [...rules];
+    const pageSlice = newRules.splice(pageStartIdx, pageIds.length);
+    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
+    newRules.splice(pageStartIdx, 0, ...reorderedPage);
+
+    const prev = rules;
+    setRules(newRules);
+    try {
+      const result = await reorderRLRules(newRules.map((r) => r.id));
+      setRules(result);
+    } catch (err: unknown) {
+      setRules(prev);
+      setError(err instanceof Error ? err.message : "Reorder failed");
+    }
+  }, [rules, rulesPage]);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -738,8 +844,7 @@ export default function RateLimitsPanel() {
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [searchQuery, actionFilter]);
 
-  const RULES_PAGE_SIZE = 15;
-  const { items: pagedRules, totalPages: rulesTotalPages } = paginateArray(filteredRules, rulesPage, RULES_PAGE_SIZE);
+  const { items: pagedRules, totalPages: rulesTotalPages } = paginateArray(filteredRules, rulesPage, RL_RULES_PAGE_SIZE);
 
   // Success toast
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1101,9 +1206,11 @@ export default function RateLimitsPanel() {
             <CardContent className="p-0 overflow-x-auto">
               {rules.length > 0 ? (
                 <>
+                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[52px] px-1">#</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Service</TableHead>
                         <TableHead>Conditions / Target</TableHead>
@@ -1115,9 +1222,20 @@ export default function RateLimitsPanel() {
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
+                    <SortableContext items={pagedRules.map((r) => r.id)} strategy={verticalListSortingStrategy}>
                     <TableBody>
-                      {pagedRules.map((rule) => (
-                        <TableRow key={rule.id} className={!rule.enabled ? "opacity-50" : ""}>
+                      {pagedRules.map((rule, pageIdx) => {
+                        const globalIdx = (rulesPage - 1) * RL_RULES_PAGE_SIZE + pageIdx + 1;
+                        return (
+                        <SortableTableRow
+                          key={rule.id}
+                          id={rule.id}
+                          disabled={isFiltered}
+                          className={!rule.enabled ? "opacity-50" : ""}
+                        >
+                          <TableCell className="text-xs tabular-nums text-muted-foreground/60">
+                            {globalIdx}
+                          </TableCell>
                           <TableCell>
                             <div>
                               <p className={T.tableRowName}>{rule.name}</p>
@@ -1177,10 +1295,13 @@ export default function RateLimitsPanel() {
                               </Button>
                             </div>
                           </TableCell>
-                        </TableRow>
-                      ))}
+                        </SortableTableRow>
+                        );
+                      })}
                     </TableBody>
+                    </SortableContext>
                   </Table>
+                  </DndContext>
                    {filteredRules.length > 0 && (
                     <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredRules.length} />
                   )}

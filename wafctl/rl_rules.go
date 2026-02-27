@@ -220,6 +220,48 @@ func (s *RateLimitRuleStore) Delete(id string) (bool, error) {
 	return false, nil
 }
 
+// Reorder rearranges rules to match the given ID order and persists.
+// All existing IDs must be present exactly once. Priority fields are
+// auto-assigned from the new array position (0, 1, 2, ...).
+func (s *RateLimitRuleStore) Reorder(ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) != len(s.config.Rules) {
+		return fmt.Errorf("expected %d IDs, got %d", len(s.config.Rules), len(ids))
+	}
+
+	idx := make(map[string]int, len(s.config.Rules))
+	for i, r := range s.config.Rules {
+		idx[r.ID] = i
+	}
+
+	reordered := make([]RateLimitRule, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for pos, id := range ids {
+		i, ok := idx[id]
+		if !ok {
+			return fmt.Errorf("unknown rule ID: %s", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("duplicate ID: %s", id)
+		}
+		seen[id] = true
+		r := s.config.Rules[i]
+		r.Priority = pos
+		reordered = append(reordered, r)
+	}
+
+	old := make([]RateLimitRule, len(s.config.Rules))
+	copy(old, s.config.Rules)
+	s.config.Rules = reordered
+	if err := s.save(); err != nil {
+		s.config.Rules = old
+		return err
+	}
+	return nil
+}
+
 // ─── Queries ────────────────────────────────────────────────────────
 
 // GetGlobal returns the global rate limit configuration.

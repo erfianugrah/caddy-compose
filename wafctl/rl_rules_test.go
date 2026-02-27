@@ -330,6 +330,48 @@ func TestRLRuleStoreImport(t *testing.T) {
 	}
 }
 
+func TestRLRuleStoreReorder(t *testing.T) {
+	s := newTestRLRuleStore(t)
+	a, _ := s.Create(RateLimitRule{Name: "A", Service: "s.io", Key: "client_ip", Events: 10, Window: "1m", Enabled: true, Priority: 99})
+	b, _ := s.Create(RateLimitRule{Name: "B", Service: "s.io", Key: "client_ip", Events: 20, Window: "1m", Enabled: true, Priority: 50})
+	c, _ := s.Create(RateLimitRule{Name: "C", Service: "s.io", Key: "client_ip", Events: 30, Window: "1m", Enabled: true, Priority: 10})
+
+	// Reorder: C, A, B — priorities should become 0, 1, 2.
+	if err := s.Reorder([]string{c.ID, a.ID, b.ID}); err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	rules := s.List()
+	if rules[0].Name != "C" || rules[1].Name != "A" || rules[2].Name != "B" {
+		t.Errorf("want C,A,B got %s,%s,%s", rules[0].Name, rules[1].Name, rules[2].Name)
+	}
+	if rules[0].Priority != 0 || rules[1].Priority != 1 || rules[2].Priority != 2 {
+		t.Errorf("priorities: want 0,1,2 got %d,%d,%d", rules[0].Priority, rules[1].Priority, rules[2].Priority)
+	}
+
+	// Verify persistence.
+	s2 := NewRateLimitRuleStore(s.filePath)
+	list2 := s2.List()
+	if list2[0].Name != "C" || list2[1].Name != "A" || list2[2].Name != "B" {
+		t.Errorf("after reload: want C,A,B got %s,%s,%s", list2[0].Name, list2[1].Name, list2[2].Name)
+	}
+}
+
+func TestRLRuleStoreReorderErrors(t *testing.T) {
+	s := newTestRLRuleStore(t)
+	a, _ := s.Create(sampleRLRule())
+	s.Create(sampleRLRule())
+
+	if err := s.Reorder([]string{a.ID}); err == nil {
+		t.Error("expected error for wrong ID count")
+	}
+	if err := s.Reorder([]string{a.ID, "bogus"}); err == nil {
+		t.Error("expected error for unknown ID")
+	}
+	if err := s.Reorder([]string{a.ID, a.ID}); err == nil {
+		t.Error("expected error for duplicate ID")
+	}
+}
+
 // ─── V1 Migration ───────────────────────────────────────────────────
 
 func TestRLRuleStoreMigrateFromV1(t *testing.T) {

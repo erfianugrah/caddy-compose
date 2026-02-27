@@ -15,7 +15,6 @@ var sampleLines = []string{
 	`{"transaction":{"timestamp":"2026/02/22 08:00:00","unix_timestamp":1771747200000000000,"id":"CCC333","client_ip":"10.0.0.1","client_port":0,"host_ip":"","host_port":0,"server_id":"radarr.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/api/v3/queue","http_version":"","headers":{"User-Agent":["Radarr/5.0"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":["OWASP_CRS/4.15.0"]},"highest_severity":"","is_interrupted":false}}`,
 }
 
-
 func writeTempLog(t *testing.T, lines []string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -31,8 +30,6 @@ func writeTempLog(t *testing.T, lines []string) string {
 	return path
 }
 
-
-
 // --- HTTP handler tests ---
 
 // testHealthHandler returns a handleHealth closure with minimal test stores.
@@ -46,16 +43,12 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	return handleHealth(store, als, geoStore, exclStore, blStore)
 }
 
-
-
 // emptyAccessLogStore returns an AccessLogStore with no events for tests that
 // don't care about 429 merging.
 func emptyAccessLogStore(t *testing.T) *AccessLogStore {
 	t.Helper()
 	return NewAccessLogStore(filepath.Join(t.TempDir(), "empty-access.log"))
 }
-
-
 
 // --- Exclusion Store tests ---
 
@@ -65,8 +58,6 @@ func newTestExclusionStore(t *testing.T) *ExclusionStore {
 	path := filepath.Join(dir, "exclusions.json")
 	return NewExclusionStore(path)
 }
-
-
 
 // --- Exclusion HTTP endpoint tests ---
 
@@ -79,13 +70,12 @@ func setupExclusionMux(t *testing.T) (*http.ServeMux, *ExclusionStore) {
 	mux.HandleFunc("GET /api/exclusions/export", handleExportExclusions(es))
 	mux.HandleFunc("POST /api/exclusions/import", handleImportExclusions(es))
 	mux.HandleFunc("POST /api/exclusions/generate", handleGenerateExclusions(es))
+	mux.HandleFunc("PUT /api/exclusions/reorder", handleReorderExclusions(es))
 	mux.HandleFunc("GET /api/exclusions/{id}", handleGetExclusion(es))
 	mux.HandleFunc("PUT /api/exclusions/{id}", handleUpdateExclusion(es))
 	mux.HandleFunc("DELETE /api/exclusions/{id}", handleDeleteExclusion(es))
 	return mux, es
 }
-
-
 
 // --- Config Store tests ---
 
@@ -95,8 +85,6 @@ func newTestConfigStore(t *testing.T) *ConfigStore {
 	path := filepath.Join(dir, "config.json")
 	return NewConfigStore(path)
 }
-
-
 
 func writeTempAccessLog(t *testing.T, lines []string) string {
 	t.Helper()
@@ -113,8 +101,6 @@ func writeTempAccessLog(t *testing.T, lines []string) string {
 	return path
 }
 
-
-
 // ─── Blocklist tests ────────────────────────────────────────────────
 
 func writeTempBlocklist(t *testing.T, content string) string {
@@ -126,7 +112,6 @@ func writeTempBlocklist(t *testing.T, content string) string {
 	}
 	return path
 }
-
 
 var sampleAccessLogLines = []string{
 	`{"level":"info","ts":"2026/02/22 12:00:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"status":200,"size":1234,"duration":0.05}`,

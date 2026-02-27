@@ -1,6 +1,23 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { TablePagination, paginateArray } from "./TablePagination";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Shield,
   Plus,
   Trash2,
@@ -16,6 +33,7 @@ import {
   Crosshair,
   Search,
   X,
+  GripVertical,
 } from "lucide-react";
 import {
   Card,
@@ -59,6 +77,7 @@ import {
   createExclusion,
   updateExclusion,
   deleteExclusion,
+  reorderExclusions,
   deployConfig,
   fetchServices,
   exportExclusions,
@@ -127,6 +146,72 @@ function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
   );
 }
 
+// ─── Sortable Table Row ─────────────────────────────────────────────
+
+function SortableTableRow({
+  id,
+  disabled,
+  children,
+  className,
+  rowRef,
+}: {
+  id: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+  className?: string;
+  rowRef?: React.Ref<HTMLTableRowElement>;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+    position: "relative",
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  // Merge refs if rowRef is provided
+  const mergedRef = useCallback(
+    (node: HTMLTableRowElement | null) => {
+      setNodeRef(node);
+      if (typeof rowRef === "function") rowRef(node);
+      else if (rowRef && "current" in rowRef) (rowRef as React.MutableRefObject<HTMLTableRowElement | null>).current = node;
+    },
+    [setNodeRef, rowRef],
+  );
+
+  return (
+    <TableRow ref={mergedRef} style={style} className={className} {...attributes}>
+      <TableCell className="w-[52px] px-1">
+        <div className="flex items-center gap-0.5">
+          {!disabled ? (
+            <button
+              className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/50 hover:text-muted-foreground touch-none"
+              {...listeners}
+              tabIndex={-1}
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <span className="p-0.5 w-[18px]" />
+          )}
+        </div>
+      </TableCell>
+      {children}
+    </TableRow>
+  );
+}
+
+const RULES_PAGE_SIZE = 15;
+
 // ─── Main Policy Engine Component ───────────────────────────────────
 
 export default function PolicyEngine() {
@@ -156,6 +241,42 @@ export default function PolicyEngine() {
     const prefill = consumePrefillEvent();
     if (prefill) setEventPrefill(prefill);
   }, []);
+
+  // Drag-and-drop reorder state
+  const isFiltered = searchQuery.trim() !== "" || typeFilter !== "all";
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    // Compute reordered array for the current page
+    const pageStartIdx = (rulesPage - 1) * RULES_PAGE_SIZE;
+    const pageIds = exclusions.slice(pageStartIdx, pageStartIdx + RULES_PAGE_SIZE).map((e) => e.id);
+    const oldIdx = pageIds.indexOf(active.id as string);
+    const newIdx = pageIds.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    // Reorder the full array: splice the page portion, reorder it, put it back
+    const newExclusions = [...exclusions];
+    const pageSlice = newExclusions.splice(pageStartIdx, pageIds.length);
+    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
+    newExclusions.splice(pageStartIdx, 0, ...reorderedPage);
+
+    // Optimistic update
+    const prev = exclusions;
+    setExclusions(newExclusions);
+    try {
+      const result = await reorderExclusions(newExclusions.map((e) => e.id));
+      setExclusions(result);
+    } catch (err: unknown) {
+      setExclusions(prev); // rollback
+      setError(err instanceof Error ? err.message : "Reorder failed");
+    }
+  }, [exclusions, rulesPage]);
 
   // Highlight a specific exclusion when navigating from an event (e.g. /policy?rule=<name>).
   // The name is extracted from the Policy Engine rule's msg field.
@@ -222,7 +343,6 @@ export default function PolicyEngine() {
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [searchQuery, typeFilter]);
 
-  const RULES_PAGE_SIZE = 15;
   const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(filteredExclusions, rulesPage, RULES_PAGE_SIZE);
 
   // All possible exclusion types for the filter dropdown (ordered logically)
@@ -512,9 +632,11 @@ export default function PolicyEngine() {
             </div>
           ) : exclusions.length > 0 ? (
             <>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[52px] px-1">#</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Target / Conditions</TableHead>
@@ -523,15 +645,22 @@ export default function PolicyEngine() {
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
+              <SortableContext items={pagedExclusions.map((e) => e.id)} strategy={verticalListSortingStrategy}>
               <TableBody>
-                {pagedExclusions.map((excl) => {
+                {pagedExclusions.map((excl, pageIdx) => {
                   const isHighlighted = highlightedRule !== null && excl.name === highlightedRule;
+                  const globalIdx = (rulesPage - 1) * RULES_PAGE_SIZE + pageIdx + 1;
                   return (
-                  <TableRow
+                  <SortableTableRow
                     key={excl.id}
-                    ref={isHighlighted ? highlightedRef : undefined}
+                    id={excl.id}
+                    disabled={isFiltered}
+                    rowRef={isHighlighted ? highlightedRef : undefined}
                     className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-emerald-500/5 transition-all duration-700" : undefined}
                   >
+                    <TableCell className="text-xs tabular-nums text-muted-foreground/60">
+                      {globalIdx}
+                    </TableCell>
                     <TableCell>
                       <div>
                         <p className={T.tableRowName}>{excl.name}</p>
@@ -598,11 +727,13 @@ export default function PolicyEngine() {
                         </Button>
                       </div>
                     </TableCell>
-                  </TableRow>
+                  </SortableTableRow>
                   );
                 })}
               </TableBody>
+              </SortableContext>
             </Table>
+            </DndContext>
             <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredExclusions.length} />
             {filteredExclusions.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8">

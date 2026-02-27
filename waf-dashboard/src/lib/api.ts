@@ -959,6 +959,11 @@ export async function fetchExclusionHits(hours = 24): Promise<ExclusionHitsRespo
   return fetchJSON<ExclusionHitsResponse>(`${API_BASE}/exclusions/hits?hours=${hours}`);
 }
 
+export async function reorderExclusions(ids: string[]): Promise<Exclusion[]> {
+  const raw = await putJSON<RawExclusion[]>(`${API_BASE}/exclusions/reorder`, { ids });
+  return raw.map(mapExclusionFromGo);
+}
+
 // Config / Settings
 // New format: Go API returns WAFConfig directly with defaults + per-service settings.
 // No field name mapping needed — frontend types match Go JSON tags.
@@ -1098,6 +1103,11 @@ export async function importRLRules(data: RateLimitRuleExport): Promise<{ status
 
 export async function getRLRuleHits(hours = 24): Promise<RLRuleHitsResponse> {
   return fetchJSON<RLRuleHitsResponse>(`${API_BASE}/rate-rules/hits?hours=${hours}`);
+}
+
+export async function reorderRLRules(ids: string[]): Promise<RateLimitRule[]> {
+  const raw = await putJSON<RateLimitRule[]>(`${API_BASE}/rate-rules/reorder`, { ids });
+  return raw.map(mapRLRule);
 }
 
 // ─── Rate Limit Rule Mapper ─────────────────────────────────────────
