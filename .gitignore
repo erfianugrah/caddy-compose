@@ -24,7 +24,7 @@ authelia/authelia.log
 # Authelia users database on the host (contains real password hashes)
 # The template in authelia/users_database.yml IS committed (placeholder hash only)
 
-# IPsum blocklist (generated at runtime by scripts/update-ipsum.sh)
+# IPsum blocklist (generated at runtime by wafctl scheduled refresh)
 ipsum.txt
 ipsum_block.caddy
 

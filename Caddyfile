@@ -205,7 +205,7 @@
 
 # IPsum blocklist — auto-generated file with @ipsum_blocked matcher + respond 403
 # Returns 403 with X-Blocked-By: ipsum header (logged in access log for analytics)
-# Updated daily by scripts/update-ipsum.sh via cron
+# Updated daily at 06:00 UTC by wafctl scheduled refresh
 # Usage: import ipsum_blocklist (place BEFORE waf to skip WAF processing for blocked IPs)
 (ipsum_blocklist) {
 	import /data/coraza/ipsum_block.caddy

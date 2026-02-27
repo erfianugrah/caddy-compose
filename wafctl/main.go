@@ -107,6 +107,18 @@ func runServe() int {
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
 
+	// Schedule daily blocklist refresh at the configured UTC hour (default 06:00).
+	// Replaces the old cron + shell script approach that ran in the caddy container.
+	refreshHour := 6
+	if h := envOr("WAF_BLOCKLIST_REFRESH_HOUR", ""); h != "" {
+		if n, err := strconv.Atoi(h); err == nil && n >= 0 && n <= 23 {
+			refreshHour = n
+		} else {
+			log.Printf("warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
+		}
+	}
+	blocklistStore.StartScheduledRefresh(refreshHour, deployCfg, rlRuleStore)
+
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events

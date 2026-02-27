@@ -69,8 +69,8 @@ Image tags live in **five places** that must stay in sync:
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.2.1-2.11.1`).
-wafctl tag format: simple semver (e.g. `1.2.1`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.2.2-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.2.2`).
 
 ## Secrets and Encryption
 
@@ -466,7 +466,7 @@ Files baked into the image at build time (in `/etc/caddy/`):
 Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `custom-waf-settings.conf` — SecRuleEngine mode, paranoia levels, thresholds
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
-- `ipsum_block.caddy` — updated daily by cron at 02:00, or on-demand via `POST /api/blocklist/refresh`
+- `ipsum_block.caddy` — updated daily at 06:00 UTC by wafctl scheduled refresh, or on-demand via `POST /api/blocklist/refresh`
 - `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 
 ### Startup Behavior (generate-on-boot)
@@ -526,6 +526,7 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
 - `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for RL auto-discovery
+- `WAF_BLOCKLIST_REFRESH_HOUR` (default `6`) — UTC hour (0–23) for daily IPsum blocklist refresh
 
 ### CLI Subcommands
 

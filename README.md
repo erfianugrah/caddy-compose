@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:2.2.1-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.2.1
+CADDY_IMAGE   ?= <your-registry>/caddy:2.2.2-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.2.2
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.2.1-2.11.1`), wafctl is plain semver (e.g. `1.2.1`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.2.2-2.11.1`), wafctl is plain semver (e.g. `1.2.2`).
 
 ## WAF configuration
 
@@ -419,7 +419,7 @@ Rate limit rules are managed by wafctl. On boot it creates placeholder `.caddy` 
 
 ### Additional layers
 
-- **IPsum blocklist** — ~20k known-malicious IPs, baked in at build time, updated daily by cron, refreshable on demand from the dashboard.
+- **IPsum blocklist** — ~20k known-malicious IPs, baked in at build time, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
 - **Cloudflare trusted proxies** — IP ranges fetched at build time so Caddy resolves the real client IP from `X-Forwarded-For`.
 - **Security headers** — HSTS (2yr, preload), nosniff, SAMEORIGIN, strict referrer, permissions-policy, COOP, CORP, baseline CSP.
 - **ECH** (Encrypted Client Hello) — hides SNI from network observers.
@@ -469,10 +469,9 @@ caddy-compose/
   errors/
     error.html           # Custom error page template
   scripts/
-    entrypoint.sh        # Container entrypoint (crond + caddy run)
+    entrypoint.sh        # Container entrypoint (crond for log rotation + caddy run)
     rotate-audit-log.sh  # Hourly audit log rotation (256 MB copytruncate)
-    update-geoip.sh      # GeoIP database updater
-    update-ipsum.sh      # IPsum blocklist updater
+    update-geoip.sh      # GeoIP database updater (manual)
   wafctl/                # Go sidecar (zero external dependencies)
     main.go              # HTTP handlers, routes, filter system
     cli.go               # CLI subcommand framework

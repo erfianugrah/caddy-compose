@@ -249,7 +249,7 @@ export default function BlocklistPanel() {
         <BlocklistStat
           title="Last Updated"
           value={stats ? formatBlocklistDate(stats.last_updated) : "Unknown"}
-          subtitle="Daily 06:00 UTC via CronJob"
+          subtitle="Daily 06:00 UTC via wafctl"
           color="green"
           loading={loading}
         />
@@ -388,7 +388,7 @@ export default function BlocklistPanel() {
           <div className="flex flex-wrap gap-4">
             <div className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" />
-              <span>Updated daily at 06:00 UTC</span>
+              <span>Updated daily at 06:00 UTC via wafctl</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Shield className="h-3.5 w-3.5" />

@@ -8,7 +8,7 @@ RUN xcaddy build \
 	--with github.com/corazawaf/coraza-caddy/v2=github.com/erfianugrah/coraza-caddy/v2@60543c28852ea99bf58579e7b2b5f3189ea318b1
 
 # Fetch IPsum blocklist at build time so it's never empty on first boot.
-# The host volume mount + cron job overwrites this at runtime.
+# wafctl's scheduled refresh overwrites this at runtime.
 FROM alpine:3.21 AS ipsum
 ARG IPSUM_MIN_SCORE=3
 RUN apk add --no-cache curl \
@@ -59,13 +59,11 @@ COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_p
 COPY --from=waf-dashboard /build/dist/ /etc/caddy/waf-ui/
 COPY errors/ /etc/caddy/errors/
 COPY coraza/ /etc/caddy/coraza/
-COPY scripts/update-ipsum.sh /usr/local/bin/update-ipsum.sh
 COPY scripts/rotate-audit-log.sh /usr/local/bin/rotate-audit-log.sh
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/update-ipsum.sh /usr/local/bin/rotate-audit-log.sh /usr/local/bin/entrypoint.sh \
-	&& echo '0 2 * * * /usr/local/bin/update-ipsum.sh >> /var/log/ipsum-update.log 2>&1' \
-	   >> /var/spool/cron/crontabs/root \
+RUN chmod +x /usr/local/bin/rotate-audit-log.sh /usr/local/bin/entrypoint.sh \
 	&& echo '0 * * * * /usr/local/bin/rotate-audit-log.sh >> /var/log/audit-rotate.log 2>&1' \
-	   >> /var/spool/cron/crontabs/root
+	   >> /var/spool/cron/crontabs/root \
+	&& chmod 0600 /var/spool/cron/crontabs/root
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
