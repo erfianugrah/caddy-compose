@@ -8,7 +8,6 @@ Docker Compose infrastructure for a Caddy reverse proxy with Coraza WAF (OWASP C
 Authelia 2FA forward auth, and a custom WAF management sidecar. Two codebases live here:
 
 - **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.24+)
-- **caddy-body-matcher/** — Caddy request body matcher plugin (Go module, zero external deps beyond Caddy)
 - **waf-dashboard/** — Astro 5 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
 - Root level: Caddyfile, Dockerfile (6-stage multi-stage), compose.yaml, Makefile
 
@@ -437,7 +436,7 @@ and generates one-click rule creation from recommendations.
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
-## Caddy Body Matcher Plugin (caddy-body-matcher/)
+## Caddy Body Matcher Plugin (github.com/erfianugrah/caddy-body-matcher)
 
 Custom Caddy HTTP request body plugin with two modules:
 - **Matcher** — `http.matchers.body`: inspects request body for matching
@@ -507,7 +506,7 @@ directive. The handler must run first so placeholders are populated for bucket k
       contains "search term"
   }
   ```
-- **Built into Docker image** — COPY'd into builder stage, referenced via xcaddy `--replace`; no external repo needed
+- **External GitHub repo** — fetched by xcaddy via `--with github.com/erfianugrah/caddy-body-matcher@v0.1.0`; tagged releases
 
 ## Test Patterns
 
