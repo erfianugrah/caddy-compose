@@ -631,14 +631,14 @@ export default function OverviewDashboard() {
                     <Skeleton className="h-[220px] w-[220px] rounded-full" />
                   ) : donutData.length > 0 ? (
                     <>
-                      <ResponsiveContainer width="100%" height={200}>
+                      <ResponsiveContainer width="100%" height={280}>
                         <PieChart>
                           <Pie
                             data={donutData}
                             cx="50%"
                             cy="50%"
-                            innerRadius={55}
-                            outerRadius={80}
+                            innerRadius={80}
+                            outerRadius={115}
                             paddingAngle={4}
                             dataKey="value"
                             stroke="none"
@@ -650,14 +650,14 @@ export default function OverviewDashboard() {
                           <Tooltip {...chartTooltipStyle} />
                         </PieChart>
                       </ResponsiveContainer>
-                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2.5 text-xs">
                         {donutData.map((entry) => (
                           <div key={entry.name} className="flex items-center gap-1.5">
                             <div
-                              className="h-2.5 w-2.5 rounded-full"
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: DONUT_COLOR_MAP[entry.name] ?? "#7a8baa" }}
                             />
-                            <span className="text-muted-foreground">
+                            <span className="text-muted-foreground truncate">
                               {entry.name} ({entry.value.toLocaleString()})
                             </span>
                           </div>

@@ -28,12 +28,12 @@ const navItems = [
     <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
-  <body class="min-h-screen bg-background text-foreground antialiased">
-    <div class="flex min-h-screen">
+  <body class="h-screen overflow-hidden bg-background text-foreground antialiased">
+    <div class="flex h-screen overflow-hidden">
       <!-- Sidebar -->
       <aside
         id="sidebar"
-        class="hidden w-60 flex-shrink-0 border-r border-border bg-navy-950 md:block"
+        class="hidden w-60 flex-shrink-0 overflow-y-auto border-r border-border bg-navy-950 md:block"
       >
         <div class="flex h-full flex-col">
           <!-- Logo area -->
@@ -216,7 +216,7 @@ const navItems = [
       </aside>
 
       <!-- Main content area -->
-      <div class="flex flex-1 flex-col">
+      <div class="flex flex-1 flex-col overflow-hidden">
         <!-- Header -->
         <header
           class="flex h-14 items-center justify-between border-b border-border bg-navy-950/50 px-6"
@@ -261,11 +261,42 @@ const navItems = [
         </header>
 
         <!-- Page content -->
-        <main class="flex-1 overflow-auto p-6">
+        <main id="main-content" class="flex-1 overflow-y-auto p-6">
           <slot />
+
+          <!-- Scroll to top button -->
+          <button
+            id="scroll-top-btn"
+            class="fixed bottom-6 right-6 z-40 hidden h-10 w-10 items-center justify-center rounded-full border border-border bg-navy-950/90 text-muted-foreground shadow-lg backdrop-blur-sm transition-all hover:bg-accent hover:text-foreground"
+            aria-label="Scroll to top"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </button>
         </main>
       </div>
     </div>
+
+    <!-- Scroll to top -->
+    <script>
+      const mainEl = document.getElementById("main-content");
+      const scrollBtn = document.getElementById("scroll-top-btn");
+      if (mainEl && scrollBtn) {
+        mainEl.addEventListener("scroll", () => {
+          if (mainEl.scrollTop > 400) {
+            scrollBtn.classList.remove("hidden");
+            scrollBtn.classList.add("flex");
+          } else {
+            scrollBtn.classList.add("hidden");
+            scrollBtn.classList.remove("flex");
+          }
+        });
+        scrollBtn.addEventListener("click", () => {
+          mainEl.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      }
+    </script>
 
     <!-- Mobile nav overlay -->
     <script>
