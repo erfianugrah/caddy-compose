@@ -429,7 +429,7 @@ and generates one-click rule creation from recommendations.
 | Exclusions | `GET\|POST /api/exclusions`, `GET\|PUT\|DELETE /api/exclusions/{id}` |
 | Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits` |
 | CRS | `GET /api/crs/rules`, `GET /api/crs/autocomplete` |
-| Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/deploy` |
+| Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/validate`, `POST /api/config/deploy` |
 | RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
 | RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |

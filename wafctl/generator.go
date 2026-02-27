@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -305,7 +306,9 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 	}
 
 	// Determine the action string.
-	action := conditionAction(e)
+	// Peek at the next generated ID so we can filter out self-references
+	// in skip_rule exclusions (prevents ctl:ruleRemoveById=<own_id>).
+	action := conditionAction(e, idGen.peek())
 
 	if len(conditions) == 0 {
 		// All conditions were wildcards — emit a SecAction (unconditional).
@@ -320,29 +323,34 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 	} else {
 		// OR: each condition gets its own standalone rule with the same action.
 		for _, c := range conditions {
+			// For OR groups, each condition gets its own ID.
+			// Re-compute action with the next ID to filter self-refs correctly.
+			action = conditionAction(e, idGen.peek())
 			writeChainedRule(b, []Condition{c}, action, idGen)
 		}
 	}
 }
 
 // conditionAction returns the SecRule action string for an exclusion type.
+// selfID is the generated rule ID for this exclusion, used to filter out
+// self-referencing ctl:ruleRemoveById actions in skip_rule exclusions.
 // All policy actions include logdata:'%{MATCHED_VAR}' so the audit log
 // captures what the condition actually matched (IP, path, hostname, etc.),
 // giving events the same level of detail as CRS blocked/logged events.
-func conditionAction(e RuleExclusion) string {
+func conditionAction(e RuleExclusion, selfID string) string {
 	switch e.Type {
 	case "allow":
 		// ctl:ruleEngine=Off disables the WAF for the entire transaction.
 		// Bare "allow" only stops evaluation for the current phase, which
 		// can let later-phase rules still fire. This is the canonical
 		// ModSecurity/Coraza pattern for a full WAF bypass.
-		return fmt.Sprintf("pass,t:none,log,msg:'Policy Allow: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleEngine=Off", escapeSecRuleValue(e.Name))
+		return fmt.Sprintf("pass,t:none,log,msg:'Policy Allow: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleEngine=Off", escapeSecRuleMsgValue(e.Name))
 	case "block":
-		return fmt.Sprintf("deny,status:403,t:none,log,msg:'Policy Block: %s',logdata:'%%{MATCHED_VAR}'", escapeSecRuleValue(e.Name))
+		return fmt.Sprintf("deny,status:403,t:none,log,msg:'Policy Block: %s',logdata:'%%{MATCHED_VAR}'", escapeSecRuleMsgValue(e.Name))
 	case "skip_rule":
-		escapedName := escapeSecRuleValue(e.Name)
+		escapedName := escapeSecRuleMsgValue(e.Name)
 		if e.RuleID != "" {
-			return buildSkipRuleAction(e.RuleID, escapedName)
+			return buildSkipRuleAction(e.RuleID, escapedName, selfID)
 		}
 		if e.RuleTag != "" {
 			return fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleRemoveByTag=%s", escapedName, e.RuleTag)
@@ -357,17 +365,35 @@ func conditionAction(e RuleExclusion) string {
 // rule IDs. Coraza's ctl:ruleRemoveById only accepts a single ID or a
 // hyphenated range per action, so when the user specifies multiple IDs
 // (space- or comma-separated) we emit a separate ctl action for each.
-func buildSkipRuleAction(ruleIDField string, escapedName string) string {
+// selfID is the generated ID of the containing rule — any matching token
+// is silently filtered out to prevent self-referencing ctl:ruleRemoveById.
+func buildSkipRuleAction(ruleIDField string, escapedName string, selfID string) string {
 	// Normalize: replace commas with spaces, then split on whitespace.
 	normalized := strings.ReplaceAll(ruleIDField, ",", " ")
 	tokens := strings.Fields(normalized)
 
+	// Filter out self-referencing IDs.
+	var filtered []string
+	for _, tok := range tokens {
+		if tok == selfID {
+			log.Printf("[generator] WARNING: skip_rule %q tried to remove its own generated ID %s — filtering out", escapedName, selfID)
+			continue
+		}
+		filtered = append(filtered, tok)
+	}
+	tokens = filtered
+
 	msgPart := fmt.Sprintf("msg:'Policy Skip: %s'", escapedName)
 	logdataPart := "logdata:'%{MATCHED_VAR}'"
 
+	if len(tokens) == 0 {
+		// All tokens were self-references — emit pass with no ctl action.
+		return fmt.Sprintf("pass,t:none,log,%s,%s", msgPart, logdataPart)
+	}
+
 	if len(tokens) <= 1 {
 		// Single ID or range.
-		return fmt.Sprintf("pass,t:none,log,%s,%s,ctl:ruleRemoveById=%s", msgPart, logdataPart, strings.TrimSpace(ruleIDField))
+		return fmt.Sprintf("pass,t:none,log,%s,%s,ctl:ruleRemoveById=%s", msgPart, logdataPart, tokens[0])
 	}
 
 	// Multiple IDs/ranges — emit one ctl:ruleRemoveById per token.
@@ -542,6 +568,17 @@ func escapeSecRuleValue(s string) string {
 	return s
 }
 
+// escapeSecRuleMsgValue escapes a value for use inside a msg:'...' field.
+// In addition to standard escaping, commas are replaced with semicolons.
+// While Coraza's parseActions correctly handles commas inside single-quoted
+// values per the ModSecurity spec, removing commas from msg fields eliminates
+// a class of parsing edge cases and makes the generated rules more robust.
+func escapeSecRuleMsgValue(s string) string {
+	s = escapeSecRuleValue(s)
+	s = strings.ReplaceAll(s, ",", ";")
+	return s
+}
+
 // sanitizeComment removes newlines from a string destined for a SecRule comment
 // or msg field, preventing directive injection via crafted names.
 func sanitizeComment(s string) string {
@@ -565,6 +602,11 @@ func newRuleIDGen() *ruleIDGen {
 func (g *ruleIDGen) next() string {
 	g.counter++
 	return fmt.Sprintf("95%05d", g.counter)
+}
+
+// peek returns the next ID that will be generated without consuming it.
+func (g *ruleIDGen) peek() string {
+	return fmt.Sprintf("95%05d", g.counter+1)
 }
 
 // ResetRuleIDCounter is kept for backward compatibility in tests.

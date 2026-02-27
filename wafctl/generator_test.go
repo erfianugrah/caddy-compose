@@ -1758,7 +1758,7 @@ func TestConditionAction_MultipleRuleIDs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := conditionAction(tt.exclusion)
+			got := conditionAction(tt.exclusion, "9500000")
 			for _, want := range tt.wantParts {
 				if !strings.Contains(got, want) {
 					t.Errorf("conditionAction() = %q, want it to contain %q", got, want)
@@ -2090,7 +2090,7 @@ func TestConditionAction_LogWithMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := conditionAction(tt.exclusion)
+			got := conditionAction(tt.exclusion, "9500000")
 			for _, want := range tt.wantParts {
 				if !strings.Contains(got, want) {
 					t.Errorf("conditionAction() = %q, want it to contain %q", got, want)

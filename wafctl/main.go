@@ -158,6 +158,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore))
+	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore))
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, deployCfg))
 
 	// Rate Limit Rules (policy engine)
@@ -1220,6 +1221,39 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 	}
 }
 
+// --- Handler: Validate ---
+
+func handleValidateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cs.Get()
+		exclusions := es.EnabledExclusions()
+		ResetRuleIDCounter()
+		result := GenerateConfigs(cfg, exclusions)
+		wafSettings := GenerateWAFSettings(cfg)
+
+		vr := ValidateGeneratedConfig(result.PreCRS, result.PostCRS, wafSettings)
+
+		// Also check for self-referencing rule IDs.
+		selfRefWarnings := validateGeneratedRuleIDs(exclusions)
+		vr.Warnings = append(vr.Warnings, selfRefWarnings...)
+		for _, w := range selfRefWarnings {
+			if w.Level == "error" {
+				vr.Valid = false
+			}
+		}
+
+		// Include generated configs if ?include_configs=true.
+		if r.URL.Query().Get("include_configs") == "true" {
+			vr.PreCRSConf = result.PreCRS
+			vr.PostCRSConf = result.PostCRS
+			vr.WAFSettings = wafSettings
+		}
+
+		logValidationResult(vr)
+		writeJSON(w, http.StatusOK, vr)
+	}
+}
+
 // --- Handler: Deploy ---
 
 func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
@@ -1229,6 +1263,12 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, d
 		ResetRuleIDCounter()
 		result := GenerateConfigs(cfg, exclusions)
 		wafSettings := GenerateWAFSettings(cfg)
+
+		// Validate generated config before writing.
+		vr := ValidateGeneratedConfig(result.PreCRS, result.PostCRS, wafSettings)
+		selfRefWarnings := validateGeneratedRuleIDs(exclusions)
+		vr.Warnings = append(vr.Warnings, selfRefWarnings...)
+		logValidationResult(vr)
 
 		// Write config files to the shared volume.
 		if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {

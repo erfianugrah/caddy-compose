@@ -83,6 +83,12 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	result := GenerateConfigs(cfg, exclusions)
 	wafSettings := GenerateWAFSettings(cfg)
 
+	// Validate generated config at boot to catch issues early.
+	vr := ValidateGeneratedConfig(result.PreCRS, result.PostCRS, wafSettings)
+	selfRefWarnings := validateGeneratedRuleIDs(exclusions)
+	vr.Warnings = append(vr.Warnings, selfRefWarnings...)
+	logValidationResult(vr)
+
 	if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
 		log.Printf("[boot] warning: failed to generate WAF configs: %v", err)
 	} else {
