@@ -112,6 +112,7 @@ wafctl tag format: simple semver (e.g. `1.2.2`).
 - Closure pattern for dependency injection: `handleSummary(store, als) http.HandlerFunc`
 - All JSON responses via `writeJSON()` helper (sets Content-Type, disables HTML escaping)
 - All JSON request bodies decoded via `decodeJSON()` helper (`MaxBytesReader` 5 MB limit, structured error on failure)
+- `PUT /api/exclusions/{id}` supports partial updates via JSON merge — decodes incoming fields into `map[string]json.RawMessage`, overlays onto the existing exclusion's JSON, then decodes the merged result. This enables toggling `enabled` without sending the full exclusion object.
 - Server timeouts: `ReadTimeout: 10s`, `WriteTimeout: 150s`, `IdleTimeout: 60s`
 - Caddy reload client timeout: `120s` (accounts for WAF rule initialization)
 - Makefile deploy wget timeout: `120s` (`-T 120`)
@@ -121,7 +122,7 @@ wafctl tag format: simple semver (e.g. `1.2.2`).
 - `fieldFilter` type with `parseFieldFilter(value, op)` and `matchField(target)` method
 - Operators: `eq` (default), `neq`, `contains`, `in` (comma-separated), `regex` (Go RE2)
 - Query param format: `<field>=<value>&<field>_op=<operator>` — backward compatible (no `_op` = `eq`)
-- Used by `handleSummary` and `handleEvents` for: `service`, `client`, `method`, `event_type`, `rule_name`
+- Used by `handleSummary` and `handleEvents` for: `service`, `client`, `method`, `event_type`, `rule_name`, `uri`, `status_code`, `country`
 - When any filter is active on `/api/summary`, all events (WAF + RL) are collected, filtered, then re-summarized via `summarizeEvents()`
 
 ### Concurrency
@@ -161,6 +162,7 @@ wafctl tag format: simple semver (e.g. `1.2.2`).
 - `rl_generator.go` — Rate limit Caddy config generator, condition→matcher translation, file writer
 - `rl_analytics.go` — Rate limit analytics, condition-based rule attribution for 429 events
 - `rl_advisor.go` — Rate limit advisor: traffic analysis, statistical anomaly detection (MAD, Fano factor, IQR), client classification, time-of-day baselines, 30s TTL caching
+- `validate.go` — Config validation engine (`ValidateGeneratedConfig`): checks quote balance, self-referencing `ctl:ruleRemoveById`, commas in `msg:` fields, long action lines
 
 ## Coraza Rule ID Namespaces
 
@@ -519,7 +521,7 @@ directive. The handler must run first so placeholders are populated for bucket k
 
 ## Test Patterns
 
-### Go (744 tests across 16 files)
+### Go (817 tests across 16 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
@@ -528,7 +530,7 @@ directive. The handler must run first so placeholders are populated for bucket k
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (265 tests across 6 files)
+### Frontend (279 tests across 6 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
 - Tests live alongside source: `api.test.ts` next to `api.ts`, `DashboardFilterBar.test.ts` next to component
@@ -550,6 +552,16 @@ pinned by commit hash. The fork contains two fixes over upstream:
    FIN/RST, `drop` is now treated identically to `deny` — uses the rule's `status:`
    field or defaults to 403. This ensures Caddy's `handle_errors` serves error pages
    with the correct HTTP status code.
+
+### WebSocket Bypass
+
+The fork's hijack tracking prevents panics on upgraded connections, but a
+Caddyfile-level `@not_websocket` bypass is **still required**. Without it,
+WebSocket connections fail with `NS_ERROR_WEBSOCKET_CONNECTION_REFUSED`.
+The `(waf)` snippet wraps the entire `coraza_waf` block in
+`route @not_websocket { ... }` so WebSocket traffic bypasses WAF entirely.
+The initial HTTP upgrade request is NOT inspected — this is intentional to
+avoid breaking the upgrade handshake.
 
 ### Error Pages
 
