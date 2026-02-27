@@ -76,6 +76,10 @@ func generateServiceRL(service string, rules []RateLimitRule, global RateLimitGl
 		}
 	}
 
+	// Emit body_vars directive if any rules use body-based keys.
+	// This must come before rate_limit so the placeholders are populated.
+	writeBodyVarsBlock(&b, rules)
+
 	// Generate the rate_limit block for deny rules.
 	if len(denyRules) > 0 {
 		b.WriteString("rate_limit {\n")
@@ -208,6 +212,12 @@ func rlConditionToMatcher(c Condition) string {
 		return rlRefererMatcher(c)
 	case "http_version":
 		return rlHTTPVersionMatcher(c)
+	case "body":
+		return rlBodyMatcher(c)
+	case "body_json":
+		return rlBodyJSONMatcher(c)
+	case "body_form":
+		return rlBodyFormMatcher(c)
 	}
 	return ""
 }
@@ -381,6 +391,72 @@ func rlHTTPVersionMatcher(c Condition) string {
 	return ""
 }
 
+// ─── Body Matchers (caddy-body-matcher plugin) ─────────────────────
+
+func rlBodyMatcher(c Condition) string {
+	// Raw body matching via the body matcher plugin.
+	// Caddyfile syntax: body <op> <value>
+	switch c.Operator {
+	case "contains":
+		return fmt.Sprintf("body contains %q", c.Value)
+	case "eq":
+		return fmt.Sprintf("body eq %q", c.Value)
+	case "begins_with":
+		return fmt.Sprintf("body starts_with %q", c.Value)
+	case "ends_with":
+		return fmt.Sprintf("body ends_with %q", c.Value)
+	case "regex":
+		return fmt.Sprintf("body regex %q", c.Value)
+	}
+	return ""
+}
+
+func rlBodyJSONMatcher(c Condition) string {
+	// JSON field matching via body matcher plugin.
+	// Value format: "dotpath:value" (named field pattern like header).
+	// Caddyfile syntax: body json <path> <value>, body json_contains <path> <value>,
+	//                   body json_regex <path> <pattern>, body json_exists <path>
+	name, value := splitNamedField(c.Value)
+	if name == "" {
+		return ""
+	}
+	// Ensure dot-path starts with "."
+	if !strings.HasPrefix(name, ".") {
+		name = "." + name
+	}
+	switch c.Operator {
+	case "eq":
+		return fmt.Sprintf("body json %s %q", name, value)
+	case "contains":
+		return fmt.Sprintf("body json_contains %s %q", name, value)
+	case "regex":
+		return fmt.Sprintf("body json_regex %s %q", name, value)
+	case "exists":
+		return fmt.Sprintf("body json_exists %s", name)
+	}
+	return ""
+}
+
+func rlBodyFormMatcher(c Condition) string {
+	// URL-encoded form field matching via body matcher plugin.
+	// Value format: "field:value" (named field pattern like header).
+	// Caddyfile syntax: body form <field> <value>, body form_contains <field> <value>,
+	//                   body form_regex <field> <pattern>
+	name, value := splitNamedField(c.Value)
+	if name == "" {
+		return ""
+	}
+	switch c.Operator {
+	case "eq":
+		return fmt.Sprintf("body form %s %q", name, value)
+	case "contains":
+		return fmt.Sprintf("body form_contains %s %q", name, value)
+	case "regex":
+		return fmt.Sprintf("body form_regex %s %q", name, value)
+	}
+	return ""
+}
+
 // ─── Key Translation ────────────────────────────────────────────────
 
 // rlKeyToPlaceholder translates a key descriptor to a Caddy placeholder string.
@@ -407,7 +483,70 @@ func rlKeyToPlaceholder(key string) string {
 		name := strings.TrimPrefix(key, "cookie:")
 		return fmt.Sprintf("{http.request.cookie.%s}", name)
 	}
+	// body_json:.user.api_key → {http.vars.body_json.user.api_key}
+	if strings.HasPrefix(key, "body_json:") {
+		dotPath := strings.TrimPrefix(key, "body_json:")
+		dotPath = strings.TrimPrefix(dotPath, ".") // normalize: strip leading dot
+		return fmt.Sprintf("{http.vars.body_json.%s}", dotPath)
+	}
+	// body_form:action → {http.vars.body_form.action}
+	if strings.HasPrefix(key, "body_form:") {
+		field := strings.TrimPrefix(key, "body_form:")
+		return fmt.Sprintf("{http.vars.body_form.%s}", field)
+	}
 	return "{http.request.remote.host}" // fallback
+}
+
+// ─── Body Vars Handler ──────────────────────────────────────────────
+
+// writeBodyVarsBlock emits a body_vars { ... } directive if any rules
+// use body_json: or body_form: keys. This handler must run before
+// rate_limit so that placeholders like {http.vars.body_json.user.api_key}
+// are available as rate limit bucket keys.
+func writeBodyVarsBlock(b *strings.Builder, rules []RateLimitRule) {
+	jsonPaths := make(map[string]bool)
+	formFields := make(map[string]bool)
+
+	for _, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		if strings.HasPrefix(r.Key, "body_json:") {
+			dotPath := strings.TrimPrefix(r.Key, "body_json:")
+			jsonPaths[dotPath] = true
+		}
+		if strings.HasPrefix(r.Key, "body_form:") {
+			field := strings.TrimPrefix(r.Key, "body_form:")
+			formFields[field] = true
+		}
+	}
+
+	if len(jsonPaths) == 0 && len(formFields) == 0 {
+		return
+	}
+
+	b.WriteString("body_vars {\n")
+
+	// Sort for deterministic output.
+	sortedJSON := make([]string, 0, len(jsonPaths))
+	for p := range jsonPaths {
+		sortedJSON = append(sortedJSON, p)
+	}
+	sort.Strings(sortedJSON)
+	for _, p := range sortedJSON {
+		b.WriteString(fmt.Sprintf("\tjson %s\n", p))
+	}
+
+	sortedForm := make([]string, 0, len(formFields))
+	for f := range formFields {
+		sortedForm = append(sortedForm, f)
+	}
+	sort.Strings(sortedForm)
+	for _, f := range sortedForm {
+		b.WriteString(fmt.Sprintf("\tform %s\n", f))
+	}
+
+	b.WriteString("}\n")
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────

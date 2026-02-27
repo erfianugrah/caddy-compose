@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.2.4-2.11.1`), wafctl is plain semver (e.g. `1.2.4`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.3.1-2.11.1`), wafctl is plain semver (e.g. `1.3.0`).
 
 ## WAF configuration
 
@@ -166,7 +166,9 @@ All WAF settings are managed through the dashboard or wafctl CLI. No hand-editin
 
 A single `(waf)` Caddyfile snippet loads the Coraza WAF for any site block that imports it. Per-service settings (paranoia level, anomaly thresholds, WAF mode) are stored in `waf-config.json` and written to generated `.conf` files by wafctl.
 
-WebSocket connections are handled gracefully. The initial HTTP upgrade request is inspected (phases 1-2), then response processing is skipped once the connection is hijacked. This is provided by a [fork of coraza-caddy](https://github.com/erfianugrah/coraza-caddy/tree/fix/websocket-hijack) ([upstream PR](https://github.com/corazawaf/coraza-caddy/pull/259)) that adds hijack tracking to the response interceptor.
+WebSocket connections are handled gracefully. The initial HTTP upgrade request is inspected (phases 1-2), then response processing is skipped once the connection is hijacked. This is provided by a [fork of coraza-caddy](https://github.com/erfianugrah/coraza-caddy/tree/fix/websocket-hijack) ([upstream PR](https://github.com/corazawaf/coraza-caddy/pull/259)) that adds hijack tracking to the response interceptor. The fork also fixes the `drop` action status code — upstream returns HTTP 200 for `drop` rules since coraza-caddy can't perform TCP-level resets; the fork treats `drop` the same as `deny` (uses the rule's status or defaults to 403) so `handle_errors` serves the correct error page.
+
+A custom [caddy-body-matcher](https://github.com/erfianugrah/caddy-body-matcher) plugin provides request body matching (raw, JSON, form) and a `body_vars` handler that extracts body field values as Caddy placeholders. This enables body-aware rate limiting (e.g., rate limit by a JSON API key field) and body-based WAF conditions.
 
 ### WAF modes
 
@@ -456,7 +458,7 @@ cd waf-dashboard && npx vitest run -t "test description"
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + site blocks)
-  Dockerfile             # 6-stage multi-stage build (uses erfianugrah/coraza-caddy fork)
+  Dockerfile             # 6-stage multi-stage build (uses erfianugrah/coraza-caddy fork + caddy-body-matcher plugin)
   Makefile               # Build, push, deploy, test, WAF operations
   compose.yaml           # Caddy + Authelia + wafctl services
   .env                   # SOPS-encrypted secrets (CF token, email)

@@ -88,7 +88,8 @@ import { T } from "@/lib/typography";
 
 const RL_CONDITION_FIELDS: ConditionField[] = [
   "ip", "path", "host", "method", "user_agent",
-  "header", "query", "country", "cookie", "uri_path", "referer", "http_version",
+  "header", "query", "country", "cookie", "body", "body_json", "body_form",
+  "uri_path", "referer", "http_version",
 ];
 
 const RL_FIELD_DEFS: FieldDef[] = CONDITION_FIELDS.filter(
@@ -105,6 +106,8 @@ const RL_KEY_OPTIONS: { value: string; label: string; description: string }[] = 
   { value: "client_ip+method", label: "Client IP + Method", description: "Rate limit per IP and HTTP method" },
   { value: "header:", label: "Header Value", description: "Rate limit per request header value (e.g., header:X-API-Key)" },
   { value: "cookie:", label: "Cookie Value", description: "Rate limit per cookie value (e.g., cookie:session_id)" },
+  { value: "body_json:", label: "Body JSON Field", description: "Rate limit per JSON body field value (e.g., body_json:.user.api_key)" },
+  { value: "body_form:", label: "Body Form Field", description: "Rate limit per form field value (e.g., body_form:action)" },
 ];
 
 // ─── Window Options ─────────────────────────────────────────────────
@@ -189,6 +192,8 @@ function keyLabel(key: string): string {
   if (found) return found.label;
   if (key.startsWith("header:")) return `Header: ${key.slice(7)}`;
   if (key.startsWith("cookie:")) return `Cookie: ${key.slice(7)}`;
+  if (key.startsWith("body_json:")) return `Body JSON: ${key.slice(10)}`;
+  if (key.startsWith("body_form:")) return `Body Form: ${key.slice(10)}`;
   return key;
 }
 
@@ -233,8 +238,9 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, saving }
   const [key, setKey] = useState(initial?.key ?? "client_ip");
   const [customKeyParam, setCustomKeyParam] = useState(() => {
     const k = initial?.key ?? "";
-    if (k.startsWith("header:")) return k.slice(7);
-    if (k.startsWith("cookie:")) return k.slice(7);
+    for (const p of ["header:", "cookie:", "body_json:", "body_form:"] as const) {
+      if (k.startsWith(p)) return k.slice(p.length);
+    }
     return "";
   });
   const [events, setEvents] = useState(initial?.events ?? 100);
@@ -245,12 +251,13 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, saving }
   const [error, setError] = useState<string | null>(null);
 
   // Is key a parameterized type?
-  const keyBase = key.startsWith("header:") ? "header:" : key.startsWith("cookie:") ? "cookie:" : key;
-  const isParameterizedKey = keyBase === "header:" || keyBase === "cookie:";
+  const paramPrefixes = ["header:", "cookie:", "body_json:", "body_form:"] as const;
+  const keyBase = paramPrefixes.find((p) => key.startsWith(p)) ?? key;
+  const isParameterizedKey = paramPrefixes.some((p) => p === keyBase);
 
   const handleKeyChange = (v: string) => {
     setKey(v);
-    if (v !== "header:" && v !== "cookie:") {
+    if (!paramPrefixes.some((p) => p === v)) {
       setCustomKeyParam("");
     }
   };
@@ -276,7 +283,11 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, saving }
     if (!service.trim()) { setError("Service is required"); return; }
     if (events < 1 || events > 100000) { setError("Events must be between 1 and 100,000"); return; }
     if (isParameterizedKey && !customKeyParam.trim()) {
-      setError(`${keyBase === "header:" ? "Header" : "Cookie"} name is required for this key type`);
+      const keyTypeName = keyBase === "header:" ? "Header" :
+        keyBase === "cookie:" ? "Cookie" :
+        keyBase === "body_json:" ? "JSON dot-path" :
+        keyBase === "body_form:" ? "Form field" : "Parameter";
+      setError(`${keyTypeName} is required for this key type`);
       return;
     }
 
@@ -351,6 +362,7 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, saving }
             onChange={updateCondition}
             onRemove={removeCondition}
             services={services}
+            fields={RL_FIELD_DEFS}
           />
         ))}
         <Button variant="outline" size="sm" onClick={addCondition}>
@@ -384,7 +396,13 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, saving }
             <Input
               value={customKeyParam}
               onChange={(e) => setCustomKeyParam(e.target.value)}
-              placeholder={keyBase === "header:" ? "e.g., X-API-Key" : "e.g., session_id"}
+              placeholder={
+                keyBase === "header:" ? "e.g., X-API-Key" :
+                keyBase === "cookie:" ? "e.g., session_id" :
+                keyBase === "body_json:" ? "e.g., .user.api_key" :
+                keyBase === "body_form:" ? "e.g., action" :
+                ""
+              }
               className="mt-1"
             />
           )}
@@ -803,7 +821,25 @@ export default function RateLimitsPanel() {
     setError(null);
     setSaving(true);
     try {
-      const updated = await updateRLRule(id, { enabled });
+      const existing = rules.find((r) => r.id === id);
+      if (!existing) {
+        setError("Rule not found");
+        return;
+      }
+      const payload = {
+        name: existing.name,
+        description: existing.description,
+        service: existing.service,
+        conditions: existing.conditions,
+        group_operator: existing.group_operator,
+        key: existing.key,
+        events: existing.events,
+        window: existing.window,
+        action: existing.action,
+        priority: existing.priority,
+        enabled,
+      };
+      const updated = await updateRLRule(id, payload);
       setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
       await autoDeploy(enabled ? "Rule enabled" : "Rule disabled");
     } catch (err: unknown) {

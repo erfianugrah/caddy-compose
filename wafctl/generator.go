@@ -189,6 +189,17 @@ func conditionVariable(c Condition) string {
 		return "REQUEST_COOKIES"
 	case "body":
 		return "REQUEST_BODY"
+	case "body_json":
+		// JSON field matching — SecRule operates on raw REQUEST_BODY.
+		// Caddy-side body matcher handles JSON path extraction; WAF falls back to raw body match.
+		return "REQUEST_BODY"
+	case "body_form":
+		// Form field matching — SecRule can target ARGS for url-encoded form fields.
+		// Use ARGS:<name> when a named field is present (same as args).
+		if idx := strings.Index(c.Value, ":"); idx > 0 {
+			return fmt.Sprintf("ARGS:%s", c.Value[:idx])
+		}
+		return "ARGS"
 	case "args":
 		// Args field value format: "ParamName:value" — extract the parameter name.
 		if idx := strings.Index(c.Value, ":"); idx > 0 {
@@ -242,12 +253,13 @@ func conditionOperator(c Condition) (string, bool) {
 }
 
 // conditionValue extracts the value to match.
-// For named fields (header, cookie, args, response_header), strips the "name:" prefix.
+// For named fields (header, cookie, args, response_header, body_json, body_form),
+// strips the "name:" prefix.
 // For "in" operator, converts pipe-separated values to space-separated for @pm.
 func conditionValue(c Condition) string {
 	v := c.Value
 	switch c.Field {
-	case "header", "cookie", "args", "response_header":
+	case "header", "cookie", "args", "response_header", "body_json", "body_form":
 		if idx := strings.Index(v, ":"); idx > 0 {
 			v = strings.TrimSpace(v[idx+1:])
 		}

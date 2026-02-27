@@ -38,7 +38,13 @@ var namedConditionFields = map[string]bool{
 	"cookie":          true,
 	"args":            true,
 	"response_header": true,
+	"body_form":       true,
 }
+
+// jsonPathNameRe validates JSON dot-path names used by body_json conditions.
+// Allows dots for path navigation, alphanumeric characters, underscores, and
+// array indices (digits). Leading dot is optional.
+var jsonPathNameRe = regexp.MustCompile(`^\.?[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*$`)
 
 // atomicWriteFile writes data to a file atomically by first writing to a
 // temporary file in the same directory, then renaming it to the target path.
@@ -326,13 +332,20 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 				}
 			}
 		}
-		// Validate named field names (header, cookie, args, response_header).
+		// Validate named field names (header, cookie, args, response_header, body_form).
 		// The "Name:value" format uses the Name as a SecRule variable suffix;
 		// restrict it to safe characters to prevent directive injection.
 		if namedConditionFields[c.Field] && strings.Contains(c.Value, ":") {
 			name := c.Value[:strings.Index(c.Value, ":")]
 			if name != "" && !namedFieldNameRe.MatchString(name) {
 				return fmt.Errorf("condition[%d]: invalid %s name %q (letters, digits, hyphens, underscores only)", i, c.Field, name)
+			}
+		}
+		// Validate body_json dot-path names separately (allows dots for path navigation).
+		if c.Field == "body_json" && strings.Contains(c.Value, ":") {
+			name := c.Value[:strings.Index(c.Value, ":")]
+			if name != "" && !jsonPathNameRe.MatchString(name) {
+				return fmt.Errorf("condition[%d]: invalid body_json path %q (dot-separated alphanumeric segments)", i, name)
 			}
 		}
 		// Reject control characters in condition values.
