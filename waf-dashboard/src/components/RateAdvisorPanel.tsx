@@ -65,6 +65,7 @@ import {
   ImpactCurve,
   TimeOfDayChart,
 } from "./AdvisorCharts";
+import { isValidWindow } from "@/lib/format";
 import { T } from "@/lib/typography";
 
 // ─── Stat Tooltip Helper ────────────────────────────────────────────
@@ -99,11 +100,6 @@ const WINDOW_OPTIONS = [
 const WINDOW_LABELS: Record<string, string> = Object.fromEntries(
   WINDOW_OPTIONS.map((o) => [o.value, o.label])
 );
-
-/** Validate a custom window string like "3m", "45s", "2h" */
-function isValidWindow(s: string): boolean {
-  return /^\d+[smh]$/.test(s.trim().toLowerCase());
-}
 
 /** Format a window value for display */
 function windowLabel(v: string): string {
@@ -794,14 +790,6 @@ export function RateAdvisorPanel({
                   </div>
                 </div>
                 <TimeOfDayChart baselines={data.time_of_day_baselines} />
-                <div className="flex gap-4 text-xs text-muted-foreground pt-2 border-t border-border overflow-x-auto flex-nowrap">
-                  {data.time_of_day_baselines.map((b) => (
-                    <span key={b.hour} className="font-mono">
-                      {String(b.hour).padStart(2, "0")}h: {b.median_rps.toFixed(3)}/{b.p95_rps.toFixed(3)} rps
-                      <span className="text-muted-foreground/50 ml-1">({b.clients}c, {b.requests}r)</span>
-                    </span>
-                  ))}
-                </div>
               </CardContent>
             </Card>
           )}

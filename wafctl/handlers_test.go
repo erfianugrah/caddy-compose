@@ -27,6 +27,9 @@ func TestHealthEndpoint(t *testing.T) {
 	if resp.Version != version {
 		t.Errorf("version: want %s, got %s", version, resp.Version)
 	}
+	if resp.CRSVersion != crsVersion {
+		t.Errorf("crs_version: want %s, got %s", crsVersion, resp.CRSVersion)
+	}
 	if resp.Uptime == "" {
 		t.Error("uptime should not be empty")
 	}

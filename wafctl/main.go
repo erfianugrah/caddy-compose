@@ -19,6 +19,10 @@ import (
 // Set at build time via: -ldflags="-X main.version=0.21.0"
 var version = "dev"
 
+// crsVersion is the OWASP CRS version bundled via coraza-caddy.
+// Derived from the coraza-coreruleset module version in the plugin's go.mod.
+const crsVersion = "4.23.0"
+
 // startTime records when the process started, used for uptime calculation.
 var startTime = time.Now()
 
@@ -360,10 +364,11 @@ func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclu
 		}
 
 		writeJSON(w, http.StatusOK, HealthResponse{
-			Status:  "ok",
-			Version: version,
-			Uptime:  uptime.String(),
-			Stores:  stores,
+			Status:     "ok",
+			Version:    version,
+			CRSVersion: crsVersion,
+			Uptime:     uptime.String(),
+			Stores:     stores,
 		})
 	}
 }

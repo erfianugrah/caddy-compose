@@ -81,6 +81,7 @@ import {
 import type { FieldDef } from "./policy/constants";
 import { CONDITION_FIELDS } from "./policy/constants";
 import { RateAdvisorPanel } from "./RateAdvisorPanel";
+import { isValidWindow } from "@/lib/format";
 import { T } from "@/lib/typography";
 
 // ─── RL-specific condition fields (subset of WAF fields) ────────────
@@ -120,12 +121,6 @@ const WINDOW_OPTIONS = [
 ];
 
 const WINDOW_VALUES = new Set(WINDOW_OPTIONS.map((o) => o.value));
-
-/** Validate a custom window string like "3m", "45s", "2h" */
-function isValidWindow(s: string): boolean {
-  return /^\d+[smh]$/.test(s.trim().toLowerCase());
-}
-
 
 
 // ─── Inline SVG Sparkline ───────────────────────────────────────────
@@ -226,9 +221,10 @@ interface RuleFormProps {
   onSubmit: (data: RateLimitRuleCreateData) => void;
   onCancel?: () => void;
   submitLabel: string;
+  saving?: boolean;
 }
 
-function RuleForm({ initial, services, onSubmit, onCancel, submitLabel }: RuleFormProps) {
+function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, saving }: RuleFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [service, setService] = useState(initial?.service ?? "");
@@ -512,9 +508,12 @@ function RuleForm({ initial, services, onSubmit, onCancel, submitLabel }: RuleFo
       {/* Submit */}
       <div className="flex items-center justify-end gap-2">
         {onCancel && (
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
         )}
-        <Button onClick={handleSubmit}>{submitLabel}</Button>
+        <Button onClick={handleSubmit} disabled={saving}>
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {saving ? "Saving..." : submitLabel}
+        </Button>
       </div>
     </div>
   );
@@ -663,6 +662,7 @@ export default function RateLimitsPanel() {
   const [deployStep, setDeployStep] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [globalSaving, setGlobalSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Search & filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -754,27 +754,39 @@ export default function RateLimitsPanel() {
   };
 
   const handleCreate = async (data: RateLimitRuleCreateData) => {
+    setError(null);
+    setSaving(true);
     try {
       const created = await createRLRule(data);
       setRules((prev) => [...prev, created]);
+      closeDialog();
       await autoDeploy("Rule created");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Create failed");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUpdate = async (id: string, data: RateLimitRuleCreateData) => {
+    setError(null);
+    setSaving(true);
     try {
       const updated = await updateRLRule(id, data);
       setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
       setEditingId(null);
+      closeDialog();
       await autoDeploy("Rule updated");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    setError(null);
+    setSaving(true);
     try {
       await deleteRLRule(id);
       setRules((prev) => prev.filter((r) => r.id !== id));
@@ -782,16 +794,22 @@ export default function RateLimitsPanel() {
       await autoDeploy("Rule deleted");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleToggleEnabled = async (id: string, enabled: boolean) => {
+    setError(null);
+    setSaving(true);
     try {
       const updated = await updateRLRule(id, { enabled });
       setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
       await autoDeploy(enabled ? "Rule enabled" : "Rule disabled");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Toggle failed");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -809,6 +827,19 @@ export default function RateLimitsPanel() {
       setGlobalSaving(false);
     }
   };
+
+  const handleAdvisorCreateRule = useCallback(async (data: RateLimitRuleCreateData) => {
+    setError(null);
+    try {
+      await createRLRule(data);
+      await deployRLRules();
+      const updated = await getRLRules();
+      setRules(updated);
+      setActiveTab("rules");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create rule");
+    }
+  }, []);
 
   const handleExport = async () => {
     try {
@@ -1114,7 +1145,9 @@ export default function RateLimitsPanel() {
                       ))}
                     </TableBody>
                   </Table>
-                  <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredRules.length} />
+                   {filteredRules.length > 0 && (
+                    <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredRules.length} />
+                  )}
                   {filteredRules.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-8">
                       <Search className="mb-2 h-6 w-6 text-muted-foreground/50" />
@@ -1146,17 +1179,7 @@ export default function RateLimitsPanel() {
         <TabsContent value="advisor" className="mt-4">
           <RateAdvisorPanel
             services={services}
-            onCreateRule={async (data) => {
-              try {
-                await createRLRule(data);
-                await deployRLRules();
-                const updated = await getRLRules();
-                setRules(updated);
-                setActiveTab("rules");
-              } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : "Failed to create rule");
-              }
-            }}
+            onCreateRule={handleAdvisorCreateRule}
           />
         </TabsContent>
 
@@ -1193,15 +1216,17 @@ export default function RateLimitsPanel() {
               key={editingId}
               initial={ruleToEdit}
               services={services}
-              onSubmit={(data) => { handleUpdate(editingId!, data); closeDialog(); }}
+              onSubmit={(data) => handleUpdate(editingId, data)}
               onCancel={closeDialog}
               submitLabel="Save Changes"
+              saving={saving}
             />
           ) : (
             <RuleForm
               services={services}
-              onSubmit={(data) => { handleCreate(data); closeDialog(); }}
+              onSubmit={(data) => handleCreate(data)}
               submitLabel="Create Rule"
+              saving={saving}
             />
           )}
         </DialogContent>
@@ -1217,8 +1242,11 @@ export default function RateLimitsPanel() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}>Delete</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)} disabled={saving}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)} disabled={saving}>
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {saving ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

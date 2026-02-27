@@ -333,6 +333,7 @@ func cliHealth(flags cliFlags) int {
 	var health struct {
 		Status     string `json:"status"`
 		Version    string `json:"version"`
+		CRSVersion string `json:"crs_version"`
 		Uptime     string `json:"uptime"`
 		Events     int    `json:"events"`
 		Exclusions int    `json:"exclusions"`
@@ -348,6 +349,7 @@ func cliHealth(flags cliFlags) int {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(tw, "Status:\t%s\n", health.Status)
 	fmt.Fprintf(tw, "Version:\t%s\n", health.Version)
+	fmt.Fprintf(tw, "CRS:\t%s\n", health.CRSVersion)
 	fmt.Fprintf(tw, "Uptime:\t%s\n", health.Uptime)
 	fmt.Fprintf(tw, "Events:\t%d\n", health.Events)
 	fmt.Fprintf(tw, "Exclusions:\t%d\n", health.Exclusions)

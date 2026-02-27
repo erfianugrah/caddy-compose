@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useCallback, useId, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import type {
   ClientClassification,
@@ -213,7 +213,24 @@ export function DistributionHistogram({
   const padTop = 10;
   const chartW = vw - padLeft - padRight;
   const chartH = vh - padBottom - padTop;
-  const barW = chartW / visibleBins.length;
+
+  // Use sqrt-scaled X positioning when the bin value range is wide (>10x),
+  // so the dense low-value region gets proportionally more visual space
+  const globalMin = visibleBins[0].min;
+  const globalMax = visibleBins[visibleBins.length - 1].max;
+  const useScaledX = globalMax / Math.max(globalMin, 1) > 10;
+  const xScale = (v: number) => useScaledX ? Math.sqrt(Math.max(v, 0)) : v;
+  const scaledGlobalMin = xScale(globalMin);
+  const scaledGlobalMax = xScale(globalMax);
+  const scaledGlobalRange = scaledGlobalMax - scaledGlobalMin || 1;
+
+  // Precompute bar positions and widths
+  const barLayouts = visibleBins.map((bin) => {
+    const x0 = padLeft + ((xScale(bin.min) - scaledGlobalMin) / scaledGlobalRange) * chartW;
+    const x1 = padLeft + ((xScale(bin.max) - scaledGlobalMin) / scaledGlobalRange) * chartW;
+    const w = Math.max(x1 - x0, 6); // minimum 6px width so tiny tail bins remain visible
+    return { x: x0, w, mid: x0 + w / 2 };
+  });
 
   const rawMax = Math.max(...visibleBins.map((b) => b.count), 1);
   const ticks = niceYTicks(rawMax);
@@ -236,9 +253,9 @@ export function DistributionHistogram({
 
       {/* Bars */}
       {visibleBins.map((bin, i) => {
-        const x = padLeft + i * barW;
-        const gap = Math.min(barW * 0.08, 2);
-        const bw = barW - gap * 2;
+        const { x, w, mid } = barLayouts[i];
+        const gap = Math.min(w * 0.06, 2);
+        const bw = w - gap * 2;
         const barH = (bin.count / niceMax) * chartH;
         const midpoint = (bin.min + bin.max) / 2;
         const isAbove = midpoint >= threshold;
@@ -252,18 +269,18 @@ export function DistributionHistogram({
               fill={isAbove ? "rgba(239,68,68,0.6)" : "rgba(34,211,238,0.4)"}
               rx={2}
             />
-            {bin.count > 0 && barH > 18 && (
-              <text x={x + barW / 2} y={padTop + chartH - barH + 14} textAnchor="middle" className="fill-foreground" fontSize={T.chartLabel} fontFamily="monospace" fontWeight={500}>
+            {bin.count > 0 && barH > 18 && bw > 14 && (
+              <text x={mid} y={padTop + chartH - barH + 14} textAnchor="middle" className="fill-foreground" fontSize={T.chartLabel} fontFamily="monospace" fontWeight={500}>
                 {bin.count}
               </text>
             )}
-            {bin.count > 0 && barH > 0 && barH <= 18 && (
-              <text x={x + barW / 2} y={padTop + chartH - barH - 4} textAnchor="middle" className="fill-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
+            {bin.count > 0 && ((barH > 0 && barH <= 18) || bw <= 14) && (
+              <text x={mid} y={padTop + chartH - barH - 4} textAnchor="middle" className="fill-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
                 {bin.count}
               </text>
             )}
-            {(visibleBins.length <= 12 || i % Math.max(1, Math.floor(visibleBins.length / 8)) === 0 || i === visibleBins.length - 1) && (
-              <text x={x + barW / 2} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
+            {bw > 20 && (visibleBins.length <= 12 || i % Math.max(1, Math.floor(visibleBins.length / 8)) === 0 || i === visibleBins.length - 1) && (
+              <text x={mid} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
                 {bin.min}
               </text>
             )}
@@ -271,33 +288,18 @@ export function DistributionHistogram({
         );
       })}
 
-      {/* Threshold line — handles collapsed (non-contiguous) bins */}
+      {/* Threshold line — sqrt-scaled position */}
       {(() => {
-        // Threshold falls within a visible bin
-        const idx = visibleBins.findIndex((b) => threshold >= b.min && threshold < b.max);
-        if (idx >= 0) {
-          const bin = visibleBins[idx];
-          const frac = bin.max > bin.min ? (threshold - bin.min) / (bin.max - bin.min) : 0.5;
-          const x = padLeft + idx * barW + frac * barW;
-          return <line x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
-        }
-        // Before all visible bins
-        if (threshold < visibleBins[0].min) {
+        const thresholdScaled = xScale(threshold);
+        const thresholdX = padLeft + ((thresholdScaled - scaledGlobalMin) / scaledGlobalRange) * chartW;
+        // Clamp to chart area
+        if (threshold < globalMin) {
           return <line x1={padLeft} y1={padTop} x2={padLeft} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
         }
-        // After all visible bins
-        const lastBin = visibleBins[visibleBins.length - 1];
-        if (threshold >= lastBin.max) {
+        if (threshold > globalMax) {
           return <line x1={padLeft + chartW} y1={padTop} x2={padLeft + chartW} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
         }
-        // Between two non-contiguous visible bins — draw at the gap boundary
-        for (let i = 0; i < visibleBins.length - 1; i++) {
-          if (threshold >= visibleBins[i].max && threshold < visibleBins[i + 1].min) {
-            const x = padLeft + (i + 1) * barW;
-            return <line x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
-          }
-        }
-        return null;
+        return <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
       })()}
 
       {/* Y-axis label */}
@@ -323,6 +325,7 @@ export function ImpactCurve({
   curve: ImpactPoint[];
   threshold: number;
 }) {
+  const clipId = useId();
   if (!curve || curve.length < 2) return null;
 
   const vw = 720;
@@ -337,29 +340,41 @@ export function ImpactCurve({
   const fullMaxT = curve[curve.length - 1].threshold;
   const fullRange = fullMaxT - fullMinT || 1;
 
+  // Use sqrt scale when range is wide (>10x) to compress outlier tail
+  const useSqrt = fullRange > 0 && fullMaxT / Math.max(fullMinT, 1) > 10;
+  const toScale = (v: number) => useSqrt ? Math.sqrt(v) : v;
+  const fromScale = (v: number) => useSqrt ? v * v : v;
+  const scaledMin = toScale(fullMinT);
+  const scaledMax = toScale(fullMaxT);
+  const scaledRange = scaledMax - scaledMin || 1;
+
   const zoom = useSvgDragZoom(padLeft, chartW);
 
-  // Compute zoomed domain
-  const zMinT = zoom.isZoomed ? fullMinT + zoom.state.zoomFracLeft! * fullRange : fullMinT;
-  const zMaxT = zoom.isZoomed ? fullMinT + zoom.state.zoomFracRight! * fullRange : fullMaxT;
-  const zRange = zMaxT - zMinT || 1;
+  // Compute zoomed domain (in scaled space)
+  const zScaledMin = zoom.isZoomed ? scaledMin + zoom.state.zoomFracLeft! * scaledRange : scaledMin;
+  const zScaledMax = zoom.isZoomed ? scaledMin + zoom.state.zoomFracRight! * scaledRange : scaledMax;
+  const zScaledRange = zScaledMax - zScaledMin || 1;
+  // Convert back to linear for filtering
+  const zMinT = fromScale(zScaledMin);
+  const zMaxT = fromScale(zScaledMax);
 
   // Filter points within zoomed domain (with a small margin for line continuity)
-  const visibleCurve = curve.filter((p) => p.threshold >= zMinT - zRange * 0.02 && p.threshold <= zMaxT + zRange * 0.02);
+  const margin = (zMaxT - zMinT) * 0.02;
+  const visibleCurve = curve.filter((p) => p.threshold >= zMinT - margin && p.threshold <= zMaxT + margin);
 
   const clientLine = visibleCurve.map((p, i) => {
-    const x = padLeft + ((p.threshold - zMinT) / zRange) * chartW;
+    const x = padLeft + ((toScale(p.threshold) - zScaledMin) / zScaledRange) * chartW;
     const y = padTop + (1 - p.client_pct) * chartH;
     return `${i === 0 ? "M" : "L"}${x},${y}`;
   }).join(" ");
 
   const requestLine = visibleCurve.map((p, i) => {
-    const x = padLeft + ((p.threshold - zMinT) / zRange) * chartW;
+    const x = padLeft + ((toScale(p.threshold) - zScaledMin) / zScaledRange) * chartW;
     const y = padTop + (1 - p.request_pct) * chartH;
     return `${i === 0 ? "M" : "L"}${x},${y}`;
   }).join(" ");
 
-  const thresholdX = padLeft + ((threshold - zMinT) / zRange) * chartW;
+  const thresholdX = padLeft + ((toScale(threshold) - zScaledMin) / zScaledRange) * chartW;
   const showThreshold = threshold >= zMinT && threshold <= zMaxT;
 
   return (
@@ -378,7 +393,7 @@ export function ImpactCurve({
       >
         {/* Clip path for chart area */}
         <defs>
-          <clipPath id="impact-clip">
+          <clipPath id={clipId}>
             <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
           </clipPath>
         </defs>
@@ -389,7 +404,7 @@ export function ImpactCurve({
           return <line key={frac} x1={padLeft} y1={y} x2={padLeft + chartW} y2={y} stroke="currentColor" strokeOpacity={0.06} />;
         })}
 
-        <g clipPath="url(#impact-clip)">
+        <g clipPath={`url(#${clipId})`}>
           <path d={clientLine} fill="none" stroke="#22d3ee" strokeWidth={2} opacity={0.9} />
           <path d={requestLine} fill="none" stroke="#f472b6" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
 
@@ -407,9 +422,10 @@ export function ImpactCurve({
         <text x={padLeft - 4} y={padTop + chartH / 2 + 3} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>50%</text>
         <text x={padLeft - 4} y={padTop + chartH + 4} textAnchor="end" className="fill-muted-foreground" fontSize={T.chartAxisTick}>0%</text>
 
-        {/* X-axis tick labels — zoomed domain */}
+        {/* X-axis tick labels — zoomed domain (sqrt-aware) */}
         {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
-          const val = zMinT + frac * zRange;
+          const scaledVal = zScaledMin + frac * zScaledRange;
+          const val = fromScale(scaledVal);
           const x = padLeft + frac * chartW;
           return (
             <text key={frac} x={x} y={vh - padBottom + 16} textAnchor="middle" className="fill-muted-foreground" fontSize={T.chartAxisTick} fontFamily="monospace">
@@ -435,6 +451,7 @@ export function TimeOfDayChart({
 }: {
   baselines: TimeOfDayBaseline[];
 }) {
+  const clipId = useId();
   if (!baselines || baselines.length < 2) return null;
 
   // Wide viewBox so that font-size 10 renders small relative to chart area
@@ -491,7 +508,7 @@ export function TimeOfDayChart({
       >
         {/* Clip path for chart area */}
         <defs>
-          <clipPath id="tod-clip">
+          <clipPath id={clipId}>
           <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
         </clipPath>
       </defs>
@@ -509,30 +526,20 @@ export function TimeOfDayChart({
         );
       })}
 
-      {/* Bars for visible hours */}
-      <g clipPath="url(#tod-clip)">
+      {/* Bars for visible hours (clipped to chart area) */}
+      <g clipPath={`url(#${clipId})`}>
         {Array.from({ length: 24 }, (_, hour) => {
-          // Position relative to zoomed domain
           const x = padLeft + ((hour - zHourMin) / zHourRange) * chartW;
-          // Skip hours fully outside view
           if (x + barW < padLeft || x > padLeft + chartW) return null;
 
           const baseline = baselines.find((b) => b.hour === hour);
-          if (!baseline) {
-            return (
-              <g key={hour}>
-                {(hour - Math.floor(zHourMin)) % labelEvery === 0 && (
-                  <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground/40" fontSize={9} fontFamily="monospace">
-                    {String(hour).padStart(2, "0")}
-                  </text>
-                )}
-              </g>
-            );
-          }
+          if (!baseline) return null;
           const gap = Math.min(barW * 0.08, 2);
           const bw = barW - gap * 2;
-          const medH = (baseline.median_rps / niceMax) * chartH;
-          const p95H = (baseline.p95_rps / niceMax) * chartH;
+          const rawMedH = (baseline.median_rps / niceMax) * chartH;
+          const rawP95H = (baseline.p95_rps / niceMax) * chartH;
+          const medH = baseline.median_rps > 0 ? Math.max(rawMedH, 3) : 0;
+          const p95H = baseline.p95_rps > 0 ? Math.max(rawP95H, 3) : 0;
           return (
             <g key={hour}>
               <rect
@@ -551,15 +558,23 @@ export function TimeOfDayChart({
                 fill="rgba(34,211,238,0.5)"
                 rx={2}
               />
-              {(hour - Math.floor(zHourMin)) % labelEvery === 0 && (
-                <text x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className="fill-muted-foreground" fontSize={9} fontFamily="monospace">
-                  {String(hour).padStart(2, "0")}
-                </text>
-              )}
             </g>
           );
         })}
       </g>
+
+      {/* X-axis hour labels (outside clip group so they're visible) */}
+      {Array.from({ length: 24 }, (_, hour) => {
+        const x = padLeft + ((hour - zHourMin) / zHourRange) * chartW;
+        if (x + barW < padLeft || x > padLeft + chartW) return null;
+        if ((hour - Math.floor(zHourMin)) % labelEvery !== 0) return null;
+        const hasData = baselines.some((b) => b.hour === hour);
+        return (
+          <text key={hour} x={x + barW / 2} y={vh - padBottom + 14} textAnchor="middle" className={hasData ? "fill-muted-foreground" : "fill-muted-foreground/40"} fontSize={9} fontFamily="monospace">
+            {String(hour).padStart(2, "0")}
+          </text>
+        );
+      })}
 
       {/* Selection overlay */}
       <SelectionOverlay state={zoom.state} padLeft={padLeft} padTop={padTop} chartW={chartW} chartH={chartH} />

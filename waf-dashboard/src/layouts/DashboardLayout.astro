@@ -205,7 +205,10 @@ const navItems = [
               .then((r) => r.json())
               .then((d) => {
                 const el = document.getElementById("sidebar-version");
-                if (el && d.version) el.textContent = `wafctl v${d.version}`;
+                if (el && d.version) {
+                  const crs = d.crs_version ? ` · CRS ${d.crs_version}` : "";
+                  el.textContent = `wafctl v${d.version}${crs}`;
+                }
               })
               .catch(() => {});
           </script>

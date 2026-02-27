@@ -55,6 +55,11 @@ export function formatDateTime(ts: string): string {
   }
 }
 
+/** Validate a duration window string like "3m", "45s", "2h". */
+export function isValidWindow(s: string): boolean {
+  return /^\d+[smh]$/.test(s.trim().toLowerCase());
+}
+
 /** Convert ISO 3166-1 alpha-2 code to regional indicator flag emoji. */
 export function countryFlag(code: string): string {
   if (!code || code.length !== 2) return "";
