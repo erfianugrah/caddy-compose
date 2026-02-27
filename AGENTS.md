@@ -134,10 +134,19 @@ wafctl tag format: simple semver (e.g. `1.2.2`).
 ### SecRule Injection Hardening
 
 - `escapeSecRuleValue()` — escapes `\`, `"`, `'`, strips `\n`/`\r` for SecRule pattern/action values
+- `escapeSecRuleMsgValue()` — calls `escapeSecRuleValue()` then replaces commas with semicolons (commas in `msg:'...'` fields cause Coraza's seclang parser to silently stop loading subsequent rules)
 - `sanitizeComment()` — replaces newlines with spaces for `msg:` and comment fields
 - Input validation regexps in `exclusions.go`: `ruleTagRe` (CRS tag format), `variableRe` (SecRule variable names), `namedFieldNameRe` (header/cookie/args names)
 - `validateExclusion()` rejects newlines in all string fields, validates condition operators/fields against allowlists
 - `validateConditions()` — shared condition validation function used by both WAF exclusions and RL rules
+
+### SecRule Chain Generation
+
+- `writeChainedRule()` generates chained SecRules for multi-condition exclusions
+- `splitCTLActions()` separates `ctl:` actions from other action parts (pass, log, msg, etc.)
+- **Critical Coraza quirk**: `ctl:` actions (ruleRemoveById, ruleEngine=Off, etc.) must be placed on the **last** rule of a chain. Coraza silently ignores `ctl:` actions on the first rule of a chain — they parse without error but never execute. Disruptive actions (`pass`, `deny`) and logging (`log`, `msg:`) stay on the first rule as normal.
+- Single-condition rules (no chain) are unaffected — `ctl:` on the only rule works fine
+- `conditionAction()` builds the full action string; `buildSkipRuleAction()` handles multi-ID `ctl:ruleRemoveById` with self-reference prevention
 
 ### File Operations and Code Organization
 

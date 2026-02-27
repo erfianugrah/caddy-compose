@@ -19,7 +19,7 @@ env:
   CADDY_TAG: "2.3.4-2.11.1"
   CADDY_VERSION: "2.11.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "1.3.3"
+  WAFCTL_VERSION: "1.3.5"
 
 permissions:
   contents: read

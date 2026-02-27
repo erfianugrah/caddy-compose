@@ -405,34 +405,61 @@ func buildSkipRuleAction(ruleIDField string, escapedName string, selfID string) 
 	return strings.Join(parts, ",")
 }
 
+// splitCTLActions splits a SecRule action string into non-ctl parts and ctl parts.
+// Coraza requires ctl: actions on the LAST rule of a chain to fire reliably.
+// Returns (nonCTL, ctlParts). If no ctl: actions exist, ctlParts is empty.
+func splitCTLActions(action string) (string, []string) {
+	parts := strings.Split(action, ",")
+	var nonCTL, ctlParts []string
+	for _, p := range parts {
+		if strings.HasPrefix(strings.TrimSpace(p), "ctl:") {
+			ctlParts = append(ctlParts, strings.TrimSpace(p))
+		} else {
+			nonCTL = append(nonCTL, p)
+		}
+	}
+	return strings.Join(nonCTL, ","), ctlParts
+}
+
 // writeChainedRule writes a single SecRule (possibly chained) for a set of conditions.
-// The first condition gets the rule ID and action; subsequent conditions are chained.
+// For chains with ctl: actions, the ctl: parts are moved to the LAST rule in the
+// chain — Coraza ignores ctl: actions on the first rule of a chain.
 func writeChainedRule(b *strings.Builder, conditions []Condition, action string, idGen *ruleIDGen) {
 	ruleID := idGen.next()
+
+	if len(conditions) == 1 {
+		// Single condition, no chain needed.
+		variable := conditionVariable(conditions[0])
+		operator := formatSecRuleOperator(conditions[0])
+		b.WriteString(fmt.Sprintf("SecRule %s %s \"id:%s,phase:1,%s\"\n",
+			variable, operator, ruleID, action))
+		return
+	}
+
+	// Multi-condition chain: split ctl: actions to last rule.
+	firstAction, ctlParts := splitCTLActions(action)
 
 	for i, c := range conditions {
 		variable := conditionVariable(c)
 		operator := formatSecRuleOperator(c)
 
 		if i == 0 {
-			// First rule gets the ID and action.
-			if len(conditions) > 1 {
-				// Chain: first rule includes id + chain action.
-				b.WriteString(fmt.Sprintf("SecRule %s %s \"id:%s,phase:1,%s,chain\"\n",
-					variable, operator, ruleID, action))
-			} else {
-				// Single condition, no chain.
-				b.WriteString(fmt.Sprintf("SecRule %s %s \"id:%s,phase:1,%s\"\n",
-					variable, operator, ruleID, action))
-			}
+			// First rule: id + non-ctl action + chain.
+			b.WriteString(fmt.Sprintf("SecRule %s %s \"id:%s,phase:1,%s,chain\"\n",
+				variable, operator, ruleID, firstAction))
 		} else if i < len(conditions)-1 {
-			// Middle chained rules — no id, just chain.
+			// Middle chained rules — just chain.
 			b.WriteString(fmt.Sprintf("  SecRule %s %s \"t:none,chain\"\n",
 				variable, operator))
 		} else {
-			// Last chained rule — no chain keyword.
-			b.WriteString(fmt.Sprintf("  SecRule %s %s \"t:none\"\n",
-				variable, operator))
+			// Last chained rule — gets ctl: actions.
+			if len(ctlParts) > 0 {
+				b.WriteString(fmt.Sprintf("  SecRule %s %s \"t:none,%s\"\n",
+					variable, operator, strings.Join(ctlParts, ",")))
+			} else {
+				b.WriteString(fmt.Sprintf("  SecRule %s %s \"t:none\"\n",
+					variable, operator))
+			}
 		}
 	}
 }

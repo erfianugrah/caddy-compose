@@ -114,7 +114,7 @@ services:
     build:
       context: wafctl
       dockerfile: Dockerfile
-    image: erfianugrah/wafctl:1.3.3
+    image: erfianugrah/wafctl:1.3.5
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped

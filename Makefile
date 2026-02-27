@@ -15,7 +15,7 @@
 
 # ── Image tags ──────────────────────────────────────────────────────
 CADDY_IMAGE   ?= erfianugrah/caddy:2.3.4-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:1.3.3
+WAFCTL_IMAGE ?= erfianugrah/wafctl:1.3.5
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -81,12 +81,12 @@ endif
 build: build-caddy build-wafctl ## Build both images
 
 build-caddy: ## Build Caddy image (includes waf-dashboard)
-	docker build --no-cache -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
+	docker build -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
 
 WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
 
 build-wafctl: ## Build wafctl image
-	docker build --no-cache -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile ./wafctl
+	docker build -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile ./wafctl
 
 # ── Push ────────────────────────────────────────────────────────────
 push: push-caddy push-wafctl ## Push both images to Docker Hub

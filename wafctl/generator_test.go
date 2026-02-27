@@ -908,6 +908,97 @@ func TestGenerateAllowByIPAndPath(t *testing.T) {
 	}
 }
 
+// TestGenerateMultiConditionSkipRuleUsesChain verifies that multi-condition
+// skip_rule exclusions generate chained SecRules.
+func TestGenerateMultiConditionSkipRuleUsesChain(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip SQLi for gpustat", Type: "skip_rule", RuleID: "942200 942330", Conditions: []Condition{
+			{Field: "path", Operator: "contains", Value: "/plugins/gpustat/gpustatusmulti.php"},
+			{Field: "host", Operator: "eq", Value: "servarr.erfi.io"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Errorf("expected chain for multi-condition skip_rule, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=942200") {
+		t.Error("expected ctl:ruleRemoveById=942200")
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=942330") {
+		t.Error("expected ctl:ruleRemoveById=942330")
+	}
+
+	// Verify ctl: actions are on the LAST rule of the chain, not the first.
+	// Coraza ignores ctl: actions on the first rule of a chain.
+	lines := strings.Split(result.PreCRS, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "chain\"") && strings.Contains(trimmed, "ctl:") {
+			t.Errorf("ctl: action must NOT be on a chained rule (first/middle), found:\n%s", trimmed)
+		}
+	}
+}
+
+func TestCTLActionsOnLastChainRule(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	// Test allow type (ctl:ruleEngine=Off) with chain.
+	exclusions := []RuleExclusion{
+		{Name: "Bypass WAF for uploads", Type: "allow", Conditions: []Condition{
+			{Field: "host", Operator: "eq", Value: "cdn.erfi.io"},
+			{Field: "method", Operator: "in", Value: "POST|PUT"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	lines := strings.Split(result.PreCRS, "\n")
+	var firstLine, lastLine string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "SecRule") && strings.Contains(trimmed, "chain") {
+			firstLine = trimmed
+		}
+		if strings.HasPrefix(trimmed, "SecRule") && !strings.Contains(trimmed, "chain") && strings.Contains(trimmed, "ctl:") {
+			lastLine = trimmed
+		}
+	}
+	if firstLine == "" {
+		t.Fatal("expected a chained first rule")
+	}
+	if strings.Contains(firstLine, "ctl:") {
+		t.Errorf("first chained rule must NOT have ctl: actions, got:\n%s", firstLine)
+	}
+	if lastLine == "" {
+		t.Fatal("expected last rule to have ctl: actions")
+	}
+	if !strings.Contains(lastLine, "ctl:ruleEngine=Off") {
+		t.Errorf("last rule should have ctl:ruleEngine=Off, got:\n%s", lastLine)
+	}
+}
+
+// TestGenerateBlockMultiConditionUsesChain verifies that block rules also chain.
+func TestGenerateBlockMultiConditionUsesChain(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad bot on API", Type: "block", Conditions: []Condition{
+			{Field: "user_agent", Operator: "contains", Value: "BadBot"},
+			{Field: "path", Operator: "begins_with", Value: "/api/"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("expected chain for multi-condition block rule")
+	}
+	if !strings.Contains(result.PreCRS, "deny,status:403") {
+		t.Error("expected deny action")
+	}
+}
+
 func TestGenerateBlockByIP(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()
