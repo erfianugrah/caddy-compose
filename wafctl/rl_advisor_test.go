@@ -955,7 +955,8 @@ func TestScanRatesTimeOfDayBaselinesPresent(t *testing.T) {
 
 func TestScanRatesTimeOfDayBaselinesAbsentSingleHour(t *testing.T) {
 	// All events in a single hour → no baselines (requires >= 2 hours).
-	now := time.Now()
+	// Pin to middle of an hour to avoid flakiness near hour boundaries.
+	now := time.Now().Truncate(time.Hour).Add(30 * time.Minute)
 	var lines []string
 	for i := 0; i < 10; i++ {
 		ts := now.Add(-time.Duration(i) * time.Second)
