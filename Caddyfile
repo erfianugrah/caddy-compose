@@ -32,6 +32,7 @@
 	servers {
 		strict_sni_host on
 		protocols h1 h2 h3
+		trusted_proxies_strict
 		import /etc/caddy/cf_trusted_proxies.caddy
 	}
 	dynamic_dns {
