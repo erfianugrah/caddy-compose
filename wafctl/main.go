@@ -1111,15 +1111,32 @@ func handleCreateExclusion(es *ExclusionStore) http.HandlerFunc {
 func handleUpdateExclusion(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		var exc RuleExclusion
-		if _, failed := decodeJSON(w, r, &exc); failed {
+
+		// Decode into a map first to detect which fields were sent.
+		var raw map[string]json.RawMessage
+		if _, failed := decodeJSON(w, r, &raw); failed {
 			return
 		}
-		if err := validateExclusion(exc); err != nil {
+
+		// Fetch the existing exclusion to use as base for merge.
+		existing, found := es.Get(id)
+		if !found {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "exclusion not found"})
+			return
+		}
+
+		// Marshal existing to JSON, then overlay the incoming fields.
+		base, _ := json.Marshal(existing)
+		var merged RuleExclusion
+		_ = json.Unmarshal(base, &merged)
+		overlay, _ := json.Marshal(raw)
+		_ = json.Unmarshal(overlay, &merged)
+
+		if err := validateExclusion(merged); err != nil {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
 			return
 		}
-		updated, found, err := es.Update(id, exc)
+		updated, found, err := es.Update(id, merged)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update exclusion", Details: err.Error()})
 			return
