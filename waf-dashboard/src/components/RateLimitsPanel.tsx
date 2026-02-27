@@ -787,6 +787,7 @@ export default function RateLimitsPanel() {
     try {
       const result = await reorderRLRules(newRules.map((r) => r.id));
       setRules(result);
+      await autoDeploy("Rules reordered");
     } catch (err: unknown) {
       setRules(prev);
       setError(err instanceof Error ? err.message : "Reorder failed");

@@ -272,6 +272,7 @@ export default function PolicyEngine() {
     try {
       const result = await reorderExclusions(newExclusions.map((e) => e.id));
       setExclusions(result);
+      await autoDeploy("Rules reordered");
     } catch (err: unknown) {
       setExclusions(prev); // rollback
       setError(err instanceof Error ? err.message : "Reorder failed");
