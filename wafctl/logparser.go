@@ -35,6 +35,10 @@ type Store struct {
 
 	// geoIP is an optional GeoIP store for country enrichment.
 	geoIP *GeoIPStore
+
+	// generation increments on every Load() that adds/evicts events.
+	// Used by responseCache to invalidate stale entries.
+	generation atomic.Int64
 }
 
 func NewStore(path string) *Store {
@@ -70,8 +74,6 @@ func (s *Store) saveOffset() {
 // SetEventFile configures a JSONL file for persistent event storage.
 // On startup, existing events are loaded from this file so that parsed
 // events survive restarts without re-parsing the raw audit log.
-// Large payload fields (RequestHeaders, RequestBody, RequestArgs) are
-// stripped when persisting to keep the file compact.
 func (s *Store) SetEventFile(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -103,7 +105,7 @@ func (s *Store) SetEventFile(path string) {
 	}
 }
 
-// appendEventsToJSONL appends events to the JSONL file, stripping large fields.
+// appendEventsToJSONL appends events to the JSONL file.
 func (s *Store) appendEventsToJSONL(events []Event) {
 	if s.eventFile == "" || len(events) == 0 {
 		return
@@ -116,11 +118,7 @@ func (s *Store) appendEventsToJSONL(events []Event) {
 	defer f.Close()
 
 	for i := range events {
-		stripped := events[i]
-		stripped.RequestHeaders = nil
-		stripped.RequestBody = ""
-		stripped.RequestArgs = nil
-		data, err := json.Marshal(stripped)
+		data, err := json.Marshal(events[i])
 		if err != nil {
 			log.Printf("error marshaling event for persistence: %v", err)
 			continue
@@ -158,11 +156,7 @@ func (s *Store) compactEventFileLocked() {
 
 	count := len(s.events)
 	for i := range s.events {
-		stripped := s.events[i]
-		stripped.RequestHeaders = nil
-		stripped.RequestBody = ""
-		stripped.RequestArgs = nil
-		data, err := json.Marshal(stripped)
+		data, err := json.Marshal(s.events[i])
 		if err != nil {
 			continue
 		}
@@ -340,7 +334,8 @@ func (s *Store) Load() {
 		s.mu.Lock()
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
-		// Persist new events to JSONL (stripped of large payload fields).
+		s.generation.Add(1)
+		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
 		log.Printf("audit log: loaded %d new events (%d total) from %d lines (%d skipped) in %s",
 			len(newEvents), s.EventCount(), linesRead, linesSkipped, elapsed)
@@ -375,6 +370,7 @@ func (s *Store) evict() {
 		copy(remaining, s.events[idx:])
 		s.events = remaining
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
+		s.generation.Add(1)
 		// Compact the JSONL file synchronously to avoid racing with
 		// appendEventsToJSONL on the next tail cycle. Use the locked
 		// variant since we already hold s.mu.
@@ -744,35 +740,85 @@ func (s *Store) Snapshot() []Event {
 	return cp
 }
 
+// EventByID returns a copy of the event with the given ID, or nil if not found.
+func (s *Store) EventByID(id string) *Event {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := len(s.events) - 1; i >= 0; i-- {
+		if s.events[i].ID == id {
+			ev := s.events[i]
+			return &ev
+		}
+	}
+	return nil
+}
+
+// searchCutoff returns the index of the first event with Timestamp >= cutoff
+// using binary search. Events must be in chronological order.
+func searchCutoff(events []Event, cutoff time.Time) int {
+	lo, hi := 0, len(events)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if events[mid].Timestamp.Before(cutoff) {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
+// searchEnd returns the index of the first event with Timestamp > end
+// using binary search. Events must be in chronological order.
+func searchEnd(events []Event, end time.Time) int {
+	lo, hi := 0, len(events)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if !events[mid].Timestamp.After(end) {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
 // SnapshotSince returns a copy of events within the last N hours.
-// If hours <= 0, returns all events.
+// Uses binary search on chronologically ordered events — O(log N) to find
+// the cutoff index, then a single copy of the matching tail.
 func (s *Store) SnapshotSince(hours int) []Event {
-	all := s.Snapshot()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if hours <= 0 {
-		return all
+		cp := make([]Event, len(s.events))
+		copy(cp, s.events)
+		return cp
 	}
 
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
-	var filtered []Event
-	for i := range all {
-		if !all[i].Timestamp.Before(cutoff) {
-			filtered = append(filtered, all[i])
-		}
-	}
-	return filtered
+	idx := searchCutoff(s.events, cutoff)
+	n := len(s.events) - idx
+	cp := make([]Event, n)
+	copy(cp, s.events[idx:])
+	return cp
 }
 
 // SnapshotRange returns a copy of events within [start, end].
+// Uses binary search for both bounds — O(log N) each.
 func (s *Store) SnapshotRange(start, end time.Time) []Event {
-	all := s.Snapshot()
-	var filtered []Event
-	for i := range all {
-		ts := all[i].Timestamp
-		if !ts.Before(start) && !ts.After(end) {
-			filtered = append(filtered, all[i])
-		}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	startIdx := searchCutoff(s.events, start)
+	endIdx := searchEnd(s.events, end)
+	if startIdx >= endIdx {
+		return nil
 	}
-	return filtered
+	n := endIdx - startIdx
+	cp := make([]Event, n)
+	copy(cp, s.events[startIdx:endIdx])
+	return cp
 }
 
 // Summary computes aggregate stats from events within the last N hours.
@@ -785,8 +831,22 @@ func (s *Store) SummaryRange(start, end time.Time) SummaryResponse {
 	return summarizeEvents(s.SnapshotRange(start, end))
 }
 
+// summaryResult bundles the SummaryResponse with internal sets needed for
+// efficient merging (avoids re-fetching WAF events just for unique counts).
+type summaryResult struct {
+	SummaryResponse
+	clientSet  map[string]struct{}
+	serviceSet map[string]struct{}
+}
+
 // summarizeEvents computes aggregate stats from a slice of events.
 func summarizeEvents(events []Event) SummaryResponse {
+	return summarizeEventsWithSets(events).SummaryResponse
+}
+
+// summarizeEventsWithSets computes aggregate stats and also returns the
+// unique client/service sets for efficient merging with RL events.
+func summarizeEventsWithSets(events []Event) summaryResult {
 	var totalBlocked, totalLogged, totalPolicy, totalHoneypot, totalScanner int
 	var totalRateLimited, totalIpsumBlocked int
 
@@ -810,6 +870,9 @@ func summarizeEvents(events []Event) SummaryResponse {
 	clientMap := make(map[string]*clientStats)
 
 	uris := make(map[string]int)
+
+	// Per-country breakdown (folded into main loop to avoid second full scan).
+	countryMap := make(map[string]*CountryCount)
 
 	// Collect recent events of all types (newest first, up to 10).
 	var recentEvents []Event
@@ -919,6 +982,33 @@ func summarizeEvents(events []Event) SummaryResponse {
 		}
 
 		uris[ev.URI]++
+
+		// Per-country (avoids second full scan via TopCountries).
+		cc := ev.Country
+		if cc == "" {
+			cc = "XX"
+		}
+		entry, ok := countryMap[cc]
+		if !ok {
+			entry = &CountryCount{Country: cc}
+			countryMap[cc] = entry
+		}
+		entry.Count++
+		if ev.IsBlocked {
+			entry.Blocked++
+		}
+	}
+
+	// Build sorted country counts from the inline map.
+	countryCounts := make([]CountryCount, 0, len(countryMap))
+	for _, v := range countryMap {
+		countryCounts = append(countryCounts, *v)
+	}
+	sort.Slice(countryCounts, func(i, j int) bool {
+		return countryCounts[i].Count > countryCounts[j].Count
+	})
+	if len(countryCounts) > topNAnalytics {
+		countryCounts = countryCounts[:topNAnalytics]
 	}
 
 	// Build sorted hour buckets.
@@ -1007,24 +1097,38 @@ func summarizeEvents(events []Event) SummaryResponse {
 		clientCounts = clientCounts[:topNAnalytics]
 	}
 
-	return SummaryResponse{
-		TotalEvents:      len(events),
-		BlockedEvents:    totalBlocked,
-		LoggedEvents:     totalLogged,
-		RateLimited:      totalRateLimited,
-		IpsumBlocked:     totalIpsumBlocked,
-		PolicyEvents:     totalPolicy,
-		HoneypotEvents:   totalHoneypot,
-		ScannerEvents:    totalScanner,
-		UniqueClients:    len(clientMap),
-		UniqueServices:   len(svcMap),
-		EventsByHour:     hourCounts,
-		TopServices:      svcCounts,
-		TopClients:       clientCounts,
-		TopCountries:     TopCountries(events, topNAnalytics),
-		TopURIs:          topN(uris, topNAnalytics, func(k string, c int) URICount { return URICount{k, c} }),
-		ServiceBreakdown: svcBreakdown,
-		RecentEvents:     recentEvents,
+	// Build unique sets for efficient merging with RL events.
+	cSet := make(map[string]struct{}, len(clientMap))
+	for k := range clientMap {
+		cSet[k] = struct{}{}
+	}
+	sSet := make(map[string]struct{}, len(svcMap))
+	for k := range svcMap {
+		sSet[k] = struct{}{}
+	}
+
+	return summaryResult{
+		SummaryResponse: SummaryResponse{
+			TotalEvents:      len(events),
+			BlockedEvents:    totalBlocked,
+			LoggedEvents:     totalLogged,
+			RateLimited:      totalRateLimited,
+			IpsumBlocked:     totalIpsumBlocked,
+			PolicyEvents:     totalPolicy,
+			HoneypotEvents:   totalHoneypot,
+			ScannerEvents:    totalScanner,
+			UniqueClients:    len(clientMap),
+			UniqueServices:   len(svcMap),
+			EventsByHour:     hourCounts,
+			TopServices:      svcCounts,
+			TopClients:       clientCounts,
+			TopCountries:     countryCounts,
+			TopURIs:          topN(uris, topNAnalytics, func(k string, c int) URICount { return URICount{k, c} }),
+			ServiceBreakdown: svcBreakdown,
+			RecentEvents:     recentEvents,
+		},
+		clientSet:  cSet,
+		serviceSet: sSet,
 	}
 }
 

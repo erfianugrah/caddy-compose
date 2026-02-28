@@ -113,13 +113,20 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
       .finally(() => setEventsLoading(false));
   }, [data]);
 
-  // Auto-trigger lookup when initialIP is provided
+  // Sync query state when initialIP prop arrives (it may be undefined on first render)
   useEffect(() => {
     if (initialIP && !autoSearched.current) {
+      setQuery(initialIP);
+    }
+  }, [initialIP]);
+
+  // Auto-trigger lookup when initialIP is provided and query has been synced
+  useEffect(() => {
+    if (initialIP && query === initialIP && !autoSearched.current) {
       autoSearched.current = true;
       handleSearch();
     }
-  }, [initialIP, handleSearch]);
+  }, [initialIP, query, handleSearch]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch();
@@ -347,7 +354,7 @@ function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                               {evt.method}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-[200px] truncate text-xs font-mono">
+                          <TableCell className="max-w-[200px] truncate text-xs font-mono" title={evt.uri}>
                             {evt.uri}
                           </TableCell>
                           <TableCell>
@@ -572,7 +579,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
             <TableBody>
               {pageData.map((uri, idx) => (
                 <TableRow key={idx}>
-                  <TableCell className="max-w-[300px] truncate font-mono text-xs">
+                  <TableCell className="max-w-[300px] truncate font-mono text-xs" title={uri.uri}>
                     {uri.uri}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">

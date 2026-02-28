@@ -123,10 +123,17 @@ func runServe() int {
 	}
 	blocklistStore.StartScheduledRefresh(refreshHour, deployCfg, rlRuleStore)
 
+	// Cloudflare trusted proxy store — refreshes CF IP ranges at runtime.
+	cfProxyPath := filepath.Join(deployCfg.CorazaDir, "cf_trusted_proxies.caddy")
+	cfProxyStore := NewCFProxyStore(cfProxyPath)
+
+	// Schedule weekly CF IP refresh (Monday at the same hour as blocklist).
+	cfProxyStore.StartScheduledRefresh(refreshHour, deployCfg)
+
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, geoStore, exclusionStore, blocklistStore))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
@@ -185,6 +192,10 @@ func runServe() int {
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
 	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rlRuleStore, deployCfg))
+
+	// Cloudflare trusted proxies
+	mux.HandleFunc("GET /api/cfproxy/stats", handleCFProxyStats(cfProxyStore))
+	mux.HandleFunc("POST /api/cfproxy/refresh", handleCFProxyRefresh(cfProxyStore, deployCfg))
 
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
@@ -349,7 +360,7 @@ func getRLEvents(als *AccessLogStore, tr timeRange, hours int) []Event {
 
 // --- Handlers: Event endpoints ---
 
-func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore) http.HandlerFunc {
+func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
@@ -364,6 +375,7 @@ func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclu
 				"count": len(exclusionStore.List()),
 			},
 			"blocklist": blocklistStore.Stats(),
+			"cfproxy":   cfProxyStore.Stats(),
 		}
 
 		writeJSON(w, http.StatusOK, HealthResponse{
@@ -377,10 +389,20 @@ func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclu
 }
 
 func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(50)
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		q := r.URL.Query()
+
+		// Check response cache — keyed on the raw query string, invalidated by
+		// data generation changes (new events or evictions in either store).
+		cacheKey := r.URL.RawQuery
+		gen := combinedGeneration(&store.generation, &als.generation)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 
 		// Read filter params with operator support (e.g. service_op=in&service=a,b).
 		serviceF := parseFieldFilter(q.Get("service"), q.Get("service_op"))
@@ -472,16 +494,18 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			}
 			summary.UniqueClients = len(allClients)
 			summary.UniqueServices = len(allServices)
+			cache.set(cacheKey, summary, gen, 3*time.Second)
 			writeJSON(w, http.StatusOK, summary)
 			return
 		}
 
-		var summary SummaryResponse
+		var sr summaryResult
 		if tr.Valid {
-			summary = store.SummaryRange(tr.Start, tr.End)
+			sr = summarizeEventsWithSets(store.SnapshotRange(tr.Start, tr.End))
 		} else {
-			summary = store.Summary(hours)
+			sr = summarizeEventsWithSets(store.SnapshotSince(hours))
 		}
+		summary := sr.SummaryResponse
 
 		// Merge access-log events (429 rate-limited + ipsum-blocked) into the summary.
 		rlEvents := getRLEvents(als, tr, hours)
@@ -651,25 +675,17 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			summary.TopClients = summary.TopClients[:topNSummary]
 		}
 
-		// Merge unique clients/services (union of WAF + RL).
-		// Only re-fetch WAF events when RL events introduce new clients/services;
-		// otherwise keep the WAF-only counts already in summary.
+		// Merge unique clients/services (union of WAF + RL) using the sets
+		// already computed by summarizeEventsWithSets — no re-fetch needed.
 		if len(rlClients) > 0 || len(rlServices) > 0 {
-			wafSnapshot := getWAFEvents(store, tr, hours)
-			allClients := make(map[string]struct{}, len(wafSnapshot)+len(rlClients))
-			allServices := make(map[string]struct{}, len(wafSnapshot)+len(rlServices))
-			for i := range wafSnapshot {
-				allClients[wafSnapshot[i].ClientIP] = struct{}{}
-				allServices[wafSnapshot[i].Service] = struct{}{}
-			}
 			for c := range rlClients {
-				allClients[c] = struct{}{}
+				sr.clientSet[c] = struct{}{}
 			}
-			for s := range rlServices {
-				allServices[s] = struct{}{}
+			for svc := range rlServices {
+				sr.serviceSet[svc] = struct{}{}
 			}
-			summary.UniqueClients = len(allClients)
-			summary.UniqueServices = len(allServices)
+			summary.UniqueClients = len(sr.clientSet)
+			summary.UniqueServices = len(sr.serviceSet)
 		}
 
 		// Merge RL events into recent_events, re-sort newest-first.
@@ -681,6 +697,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			summary.RecentEvents = summary.RecentEvents[:topNSummary]
 		}
 
+		cache.set(cacheKey, summary, gen, 3*time.Second)
 		writeJSON(w, http.StatusOK, summary)
 	}
 }
@@ -688,6 +705,18 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
+
+		// Fast path: lookup a single event by ID (WAF events have persistent UUIDs;
+		// access log events use ephemeral IDs so they won't match here — the caller
+		// should also pass filters as fallback).
+		if id := q.Get("id"); id != "" {
+			if ev := store.EventByID(id); ev != nil {
+				writeJSON(w, http.StatusOK, EventsResponse{Total: 1, Events: []Event{*ev}})
+				return
+			}
+			// Not found — fall through to normal filter path so RL/ipsum events
+			// can still be located via service+type+ip+time window.
+		}
 
 		// Read filter params with operator support.
 		serviceF := parseFieldFilter(q.Get("service"), q.Get("service_op"))
@@ -708,7 +737,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		exportAll := strings.EqualFold(q.Get("export"), "true")
 		limit := queryInt(q.Get("limit"), 50)
 		if exportAll {
-			limit = 100000 // export mode: return all matching events
+			limit = 50000 // export mode: capped to prevent OOM on small containers
 		} else if limit <= 0 || limit > 1000 {
 			limit = 50
 		}
@@ -747,77 +776,93 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				// neq, contains, regex — can't prune safely, fetch both
 			}
 		}
-		var allEvents []Event
+		// Collect events from both sources (already in chronological order).
+		var wafEvents, rlEvts []Event
 		if needWAF {
-			allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
+			wafEvents = getWAFEvents(store, tr, hours)
 		}
-
-		// Collect access-log events (429 + ipsum) unless filtering to WAF-only types.
 		if needRL {
-			rlEvents := getRLEvents(als, tr, hours)
-			allEvents = append(allEvents, rlEvents...)
+			rlEvts = getRLEvents(als, tr, hours)
 		}
 
-		// Sort newest-first.
-		sort.Slice(allEvents, func(i, j int) bool {
-			return allEvents[i].Timestamp.After(allEvents[j].Timestamp)
-		})
-
-		// Apply filters.
-		var filtered []Event
-		for i := range allEvents {
-			ev := &allEvents[i]
+		// eventMatchesFilters checks if an event passes all active filters.
+		matchesFilters := func(ev *Event) bool {
 			if !serviceF.matchField(ev.Service) {
-				continue
+				return false
 			}
 			if !clientF.matchField(ev.ClientIP) {
-				continue
+				return false
 			}
 			if !methodF.matchField(ev.Method) {
-				continue
+				return false
 			}
 			if blocked != nil && ev.IsBlocked != *blocked {
-				continue
+				return false
 			}
 			if !eventTypeF.matchField(ev.EventType) {
-				continue
+				return false
 			}
 			if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
-				continue
+				return false
 			}
 			if !uriF.matchField(ev.URI) {
-				continue
+				return false
 			}
 			if !statusCodeF.matchField(strconv.Itoa(ev.ResponseStatus)) {
-				continue
+				return false
 			}
 			if !countryF.matchField(ev.Country) {
+				return false
+			}
+			return true
+		}
+
+		// Reverse-merge two chronologically sorted slices (newest first)
+		// with inline filtering and early-exit pagination.
+		// For export mode we need the total count, so we can't early-exit.
+		wi, ri := len(wafEvents)-1, len(rlEvts)-1
+		filtered := make([]Event, 0)
+		matched := 0
+
+		for wi >= 0 || ri >= 0 {
+			var ev *Event
+			if wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlEvts[ri].Timestamp)) {
+				ev = &wafEvents[wi]
+				wi--
+			} else {
+				ev = &rlEvts[ri]
+				ri--
+			}
+
+			if !matchesFilters(ev) {
 				continue
 			}
-			filtered = append(filtered, *ev)
-		}
 
-		total := len(filtered)
-
-		// Apply pagination.
-		if offset > total {
-			offset = total
+			matched++
+			if matched > offset && len(filtered) < limit {
+				filtered = append(filtered, *ev)
+			}
+			// For non-export: once we have a full page AND enough to know
+			// the total would require scanning everything anyway for total count.
+			// We must continue to get accurate total, so no early-exit here.
 		}
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		page := filtered[offset:end]
 
 		writeJSON(w, http.StatusOK, EventsResponse{
-			Total:  total,
-			Events: page,
+			Total:  matched,
+			Events: filtered,
 		})
 	}
 }
 
 func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := combinedGeneration(&store.generation, &als.generation)
+		cacheKey := r.URL.RawQuery
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 
@@ -880,6 +925,7 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 			return resp.Services[i].Total > resp.Services[j].Total
 		})
 
+		cache.set(cacheKey, resp, gen, 3*time.Second)
 		writeJSON(w, http.StatusOK, resp)
 	}
 }
@@ -887,7 +933,14 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 // --- Handlers: Analytics ---
 
 func handleTopBlockedIPs(store *Store) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := store.generation.Load()
+		cacheKey := r.URL.RawQuery
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(r.URL.Query().Get("limit"), 50)
@@ -895,12 +948,21 @@ func handleTopBlockedIPs(store *Store) http.HandlerFunc {
 			limit = 50
 		}
 		events := getWAFEvents(store, tr, hours)
-		writeJSON(w, http.StatusOK, topBlockedIPs(events, limit))
+		result := topBlockedIPs(events, limit)
+		cache.set(cacheKey, result, gen, 3*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
 func handleTopTargetedURIs(store *Store) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := store.generation.Load()
+		cacheKey := r.URL.RawQuery
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(r.URL.Query().Get("limit"), 50)
@@ -908,12 +970,21 @@ func handleTopTargetedURIs(store *Store) http.HandlerFunc {
 			limit = 50
 		}
 		events := getWAFEvents(store, tr, hours)
-		writeJSON(w, http.StatusOK, topTargetedURIs(events, limit))
+		result := topTargetedURIs(events, limit)
+		cache.set(cacheKey, result, gen, 3*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
 func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := combinedGeneration(&store.generation, &als.generation)
+		cacheKey := r.URL.RawQuery
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(r.URL.Query().Get("limit"), 50)
@@ -926,7 +997,9 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
 		all = append(all, wafEvents...)
 		all = append(all, rlEvents...)
-		writeJSON(w, http.StatusOK, TopCountries(all, limit))
+		result := TopCountries(all, limit)
+		cache.set(cacheKey, result, gen, 3*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
@@ -1682,10 +1755,11 @@ func queryInt(s string, fallback int) int {
 // fieldFilter represents a single filter condition with an operator.
 // Supported operators: eq (default), neq, contains, in, regex.
 type fieldFilter struct {
-	value string
-	op    string         // "eq", "neq", "contains", "in", "regex"
-	re    *regexp.Regexp // compiled only when op == "regex"
-	ins   []string       // split values only when op == "in"
+	value      string
+	valueLower string         // pre-lowered at parse time for case-insensitive ops
+	op         string         // "eq", "neq", "contains", "in", "regex"
+	re         *regexp.Regexp // compiled only when op == "regex"
+	ins        []string       // split + lowered values only when op == "in"
 }
 
 // validFilterOps is the set of recognized filter operators.
@@ -1716,10 +1790,12 @@ func parseFieldFilter(value, op string) *fieldFilter {
 		parts := strings.Split(value, ",")
 		for _, p := range parts {
 			if t := strings.TrimSpace(p); t != "" {
-				f.ins = append(f.ins, t)
+				f.ins = append(f.ins, strings.ToLower(t))
 			}
 		}
 	}
+	// Pre-lowercase for case-insensitive comparison — avoids per-event allocations.
+	f.valueLower = strings.ToLower(f.value)
 	return f
 }
 
@@ -1735,10 +1811,11 @@ func (f *fieldFilter) matchField(target string) bool {
 	case "neq":
 		return !strings.EqualFold(target, f.value)
 	case "contains":
-		return strings.Contains(strings.ToLower(target), strings.ToLower(f.value))
+		return strings.Contains(strings.ToLower(target), f.valueLower)
 	case "in":
+		tl := strings.ToLower(target)
 		for _, v := range f.ins {
-			if strings.EqualFold(target, v) {
+			if tl == v {
 				return true
 			}
 		}
@@ -1747,7 +1824,7 @@ func (f *fieldFilter) matchField(target string) bool {
 		if f.re != nil {
 			return f.re.MatchString(target)
 		}
-		return strings.Contains(strings.ToLower(target), strings.ToLower(f.value))
+		return strings.Contains(strings.ToLower(target), f.valueLower)
 	}
 	return true
 }

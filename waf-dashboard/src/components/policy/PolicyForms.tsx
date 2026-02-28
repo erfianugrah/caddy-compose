@@ -680,17 +680,30 @@ export function RawEditorForm({
 
 // ─── Honeypot Form ──────────────────────────────────────────────────
 
-export function HoneypotForm({ onSubmit }: { onSubmit: (data: ExclusionCreateData) => void }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [pathsText, setPathsText] = useState("");
-  const [enabled, setEnabled] = useState(true);
+interface HoneypotFormProps {
+  onSubmit: (data: ExclusionCreateData) => void;
+  onCancel?: () => void;
+  initial?: { name: string; description: string; conditions: { field: string; operator: string; value: string }[]; enabled: boolean };
+  submitLabel?: string;
+}
+
+export function HoneypotForm({ onSubmit, onCancel, initial, submitLabel }: HoneypotFormProps) {
+  // Convert initial conditions back to one-per-line path text.
+  const initialPaths = initial?.conditions
+    ?.filter((c) => c.field === "path")
+    .map((c) => c.value.split(" ").join("\n"))
+    .join("\n") ?? "";
+
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [pathsText, setPathsText] = useState(initialPaths);
+  const [enabled, setEnabled] = useState(initial?.enabled ?? true);
 
   const resetForm = () => {
-    setName("");
-    setDescription("");
-    setPathsText("");
-    setEnabled(true);
+    setName(initial?.name ?? "");
+    setDescription(initial?.description ?? "");
+    setPathsText(initialPaths);
+    setEnabled(initial?.enabled ?? true);
   };
 
   const handleSubmit = () => {
@@ -779,10 +792,15 @@ export function HoneypotForm({ onSubmit }: { onSubmit: (data: ExclusionCreateDat
         <label htmlFor="honeypot-enabled" className="text-xs">Enabled</label>
       </div>
 
-      <Button onClick={handleSubmit} disabled={pathCount === 0}>
-        <Plus className="h-4 w-4" />
-        Add Honeypot Group
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button onClick={handleSubmit} disabled={pathCount === 0}>
+          <Plus className="h-4 w-4" />
+          {submitLabel ?? "Add Honeypot Group"}
+        </Button>
+        {onCancel && (
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+        )}
+      </div>
     </div>
   );
 }

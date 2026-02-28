@@ -23,6 +23,16 @@ if [ "${needs_seed}" = true ] && [ -f "${IPSUM_SEED}" ]; then
     echo "[entrypoint] Seeded ipsum blocklist from build-time snapshot"
 fi
 
+# Seed Cloudflare trusted proxies from build-time snapshot to the writable volume.
+# wafctl's scheduled refresh will keep this updated at runtime.
+CF_SEED="/etc/caddy/cf_trusted_proxies.caddy"
+CF_RUNTIME="/data/coraza/cf_trusted_proxies.caddy"
+if [ ! -f "${CF_RUNTIME}" ] && [ -f "${CF_SEED}" ]; then
+    mkdir -p "$(dirname "${CF_RUNTIME}")"
+    cp "${CF_SEED}" "${CF_RUNTIME}"
+    echo "[entrypoint] Seeded CF trusted proxies from build-time snapshot"
+fi
+
 # Start crond in the background for audit log rotation.
 if crond -b -l 2; then
     echo "[entrypoint] crond started (audit log rotation)"

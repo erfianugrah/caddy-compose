@@ -122,6 +122,7 @@ export interface EventsResponse {
 export type FilterOp = "eq" | "neq" | "contains" | "in" | "regex";
 
 export interface EventsParams {
+  id?: string;        // Lookup a single event by ID (fast path)
   page?: number;
   per_page?: number;
   service?: string;
@@ -463,8 +464,9 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     const text = await res.text().catch(() => "");
     throw new Error(`API error: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
   }
-  // Handle 204 No Content (e.g., DELETE responses)
-  if (res.status === 204) return undefined as unknown as T;
+  // 204 No Content — used by DELETE endpoints. Callers expecting void
+  // discard the return value; callers expecting data never get 204.
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -537,30 +539,34 @@ export interface SummaryParams extends TimeRangeParams {
   country_op?: FilterOp;
 }
 
+/** Apply shared filter and time-range params to URLSearchParams. */
+function applyFilterParams(sp: URLSearchParams, params?: SummaryParams): void {
+  if (!params) return;
+  if (params.start && params.end) {
+    sp.set("start", params.start);
+    sp.set("end", params.end);
+  } else if (params.hours) {
+    sp.set("hours", String(params.hours));
+  }
+  const filters: [string, string | undefined, FilterOp | undefined][] = [
+    ["service", params.service, params.service_op],
+    ["client", params.client, params.client_op],
+    ["method", params.method, params.method_op],
+    ["event_type", params.event_type, params.event_type_op],
+    ["rule_name", params.rule_name, params.rule_name_op],
+    ["uri", params.uri, params.uri_op],
+    ["status_code", params.status_code, params.status_code_op],
+    ["country", params.country, params.country_op],
+  ];
+  for (const [field, value, op] of filters) {
+    if (value) sp.set(field, value);
+    if (op && op !== "eq") sp.set(`${field}_op`, op);
+  }
+}
+
 export async function fetchSummary(params?: SummaryParams): Promise<SummaryData> {
   const searchParams = new URLSearchParams();
-  if (params?.start && params?.end) {
-    searchParams.set("start", params.start);
-    searchParams.set("end", params.end);
-  } else if (params?.hours) {
-    searchParams.set("hours", String(params.hours));
-  }
-  if (params?.service) searchParams.set("service", params.service);
-  if (params?.service_op && params.service_op !== "eq") searchParams.set("service_op", params.service_op);
-  if (params?.client) searchParams.set("client", params.client);
-  if (params?.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
-  if (params?.method) searchParams.set("method", params.method);
-  if (params?.method_op && params.method_op !== "eq") searchParams.set("method_op", params.method_op);
-  if (params?.event_type) searchParams.set("event_type", params.event_type);
-  if (params?.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
-  if (params?.rule_name) searchParams.set("rule_name", params.rule_name);
-  if (params?.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
-  if (params?.uri) searchParams.set("uri", params.uri);
-  if (params?.uri_op && params.uri_op !== "eq") searchParams.set("uri_op", params.uri_op);
-  if (params?.status_code) searchParams.set("status_code", params.status_code);
-  if (params?.status_code_op && params.status_code_op !== "eq") searchParams.set("status_code_op", params.status_code_op);
-  if (params?.country) searchParams.set("country", params.country);
-  if (params?.country_op && params.country_op !== "eq") searchParams.set("country_op", params.country_op);
+  applyFilterParams(searchParams, params);
   const qs = searchParams.toString() ? `?${searchParams}` : "";
   const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`);
   return {
@@ -694,36 +700,16 @@ function mapEvent(raw: RawEvent): WAFEvent {
 
 export async function fetchEvents(params: EventsParams = {}): Promise<EventsResponse> {
   const searchParams = new URLSearchParams();
+  if (params.id) searchParams.set("id", params.id);
   const page = params.page ?? 1;
   const perPage = params.per_page ?? 25;
   // Convert page/per_page to offset/limit for the Go API
   const offset = (page - 1) * perPage;
   searchParams.set("limit", String(perPage));
   searchParams.set("offset", String(offset));
-  if (params.service) searchParams.set("service", params.service);
-  if (params.service_op && params.service_op !== "eq") searchParams.set("service_op", params.service_op);
   if (params.blocked !== null && params.blocked !== undefined)
     searchParams.set("blocked", String(params.blocked));
-  if (params.method) searchParams.set("method", params.method);
-  if (params.method_op && params.method_op !== "eq") searchParams.set("method_op", params.method_op);
-  if (params.event_type) searchParams.set("event_type", params.event_type);
-  if (params.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
-  if (params.client) searchParams.set("client", params.client);
-  if (params.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
-  if (params.rule_name) searchParams.set("rule_name", params.rule_name);
-  if (params.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
-  if (params.uri) searchParams.set("uri", params.uri);
-  if (params.uri_op && params.uri_op !== "eq") searchParams.set("uri_op", params.uri_op);
-  if (params.status_code) searchParams.set("status_code", params.status_code);
-  if (params.status_code_op && params.status_code_op !== "eq") searchParams.set("status_code_op", params.status_code_op);
-  if (params.country) searchParams.set("country", params.country);
-  if (params.country_op && params.country_op !== "eq") searchParams.set("country_op", params.country_op);
-  if (params.start && params.end) {
-    searchParams.set("start", params.start);
-    searchParams.set("end", params.end);
-  } else if (params.hours) {
-    searchParams.set("hours", String(params.hours));
-  }
+  applyFilterParams(searchParams, params);
 
   const qs = searchParams.toString();
   const raw = await fetchJSON<{ total: number; events: RawEvent[] }>(
@@ -746,30 +732,9 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
 export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEvent[]> {
   const searchParams = new URLSearchParams();
   searchParams.set("export", "true");
-  if (params.service) searchParams.set("service", params.service);
-  if (params.service_op && params.service_op !== "eq") searchParams.set("service_op", params.service_op);
   if (params.blocked !== null && params.blocked !== undefined)
     searchParams.set("blocked", String(params.blocked));
-  if (params.method) searchParams.set("method", params.method);
-  if (params.method_op && params.method_op !== "eq") searchParams.set("method_op", params.method_op);
-  if (params.event_type) searchParams.set("event_type", params.event_type);
-  if (params.event_type_op && params.event_type_op !== "eq") searchParams.set("event_type_op", params.event_type_op);
-  if (params.client) searchParams.set("client", params.client);
-  if (params.client_op && params.client_op !== "eq") searchParams.set("client_op", params.client_op);
-  if (params.rule_name) searchParams.set("rule_name", params.rule_name);
-  if (params.rule_name_op && params.rule_name_op !== "eq") searchParams.set("rule_name_op", params.rule_name_op);
-  if (params.uri) searchParams.set("uri", params.uri);
-  if (params.uri_op && params.uri_op !== "eq") searchParams.set("uri_op", params.uri_op);
-  if (params.status_code) searchParams.set("status_code", params.status_code);
-  if (params.status_code_op && params.status_code_op !== "eq") searchParams.set("status_code_op", params.status_code_op);
-  if (params.country) searchParams.set("country", params.country);
-  if (params.country_op && params.country_op !== "eq") searchParams.set("country_op", params.country_op);
-  if (params.start && params.end) {
-    searchParams.set("start", params.start);
-    searchParams.set("end", params.end);
-  } else if (params.hours) {
-    searchParams.set("hours", String(params.hours));
-  }
+  applyFilterParams(searchParams, params);
 
   const qs = searchParams.toString();
   const raw = await fetchJSON<{ total: number; events: RawEvent[] }>(

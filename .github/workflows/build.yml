@@ -16,10 +16,10 @@ on:
 
 env:
   CADDY_IMAGE: erfianugrah/caddy
-  CADDY_TAG: "2.4.1-2.11.1"
+  CADDY_TAG: "2.4.3-2.11.1"
   CADDY_VERSION: "2.11.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "1.4.1"
+  WAFCTL_VERSION: "1.4.2"
 
 permissions:
   contents: read
@@ -49,9 +49,35 @@ jobs:
             wafctl:
               - 'wafctl/**'
 
+  # ── Run tests (gate builds) ─────────────────────────────────────
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Run Go tests
+        run: go test -count=1 -timeout 60s ./...
+        working-directory: wafctl
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: waf-dashboard/package-lock.json
+      - run: npm ci
+        working-directory: waf-dashboard
+      - run: npx vitest run
+        working-directory: waf-dashboard
+
   # ── Build + scan + push + sign Caddy image ───────────────────────
   caddy:
-    needs: changes
+    needs: [changes, test-go, test-frontend]
     if: needs.changes.outputs.caddy == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -82,20 +108,20 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@1bd062560b422f5944df1de50abd05162bea079e  # master
         with:
           image-ref: ${{ steps.meta.outputs.full }}
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - uses: sigstore/cosign-installer@main
+      - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
 
       - name: Sign image
         run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
         with:
           image: ${{ steps.meta.outputs.full }}
           format: spdx-json
@@ -106,7 +132,7 @@ jobs:
 
   # ── Build + scan + push + sign wafctl image ─────────────────────
   wafctl:
-    needs: changes
+    needs: [changes, test-go, test-frontend]
     if: needs.changes.outputs.wafctl == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -136,20 +162,20 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@1bd062560b422f5944df1de50abd05162bea079e  # master
         with:
           image-ref: ${{ steps.meta.outputs.full }}
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - uses: sigstore/cosign-installer@main
+      - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
 
       - name: Sign image
         run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
         with:
           image: ${{ steps.meta.outputs.full }}
           format: spdx-json
@@ -157,29 +183,3 @@ jobs:
 
       - name: Attest SBOM
         run: cosign attest --yes --predicate wafctl.spdx.json --type spdxjson "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
-
-  # ── Run tests ────────────────────────────────────────────────────
-  test-go:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-      - name: Run Go tests
-        run: go test -count=1 -timeout 60s ./...
-        working-directory: wafctl
-
-  test-frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: waf-dashboard/package-lock.json
-      - run: npm ci
-        working-directory: waf-dashboard
-      - run: npx vitest run
-        working-directory: waf-dashboard

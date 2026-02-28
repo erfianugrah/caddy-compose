@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 // ─── GeoIP Tests ─────────────────────────────────────────────────────────────
 
 func TestGeoIPStore_ResolveWithCFHeader(t *testing.T) {
@@ -38,8 +37,6 @@ func TestGeoIPStore_ResolveWithCFHeader(t *testing.T) {
 	}
 }
 
-
-
 func TestGeoIPStore_LookupIPNoDB(t *testing.T) {
 	store := NewGeoIPStore("", nil)
 	if got := store.LookupIP("8.8.8.8"); got != "" {
@@ -47,16 +44,12 @@ func TestGeoIPStore_LookupIPNoDB(t *testing.T) {
 	}
 }
 
-
-
 func TestGeoIPStore_HasDB(t *testing.T) {
 	store := NewGeoIPStore("", nil)
 	if store.HasDB() {
 		t.Error("HasDB() should be false with no MMDB")
 	}
 }
-
-
 
 func TestGeoIPStore_CacheBehavior(t *testing.T) {
 	store := NewGeoIPStore("", nil) // no MMDB, but we can test cache directly
@@ -70,8 +63,6 @@ func TestGeoIPStore_CacheBehavior(t *testing.T) {
 		t.Errorf("LookupIP cached = %q, want US", got)
 	}
 }
-
-
 
 func TestGeoIPStore_CacheEviction(t *testing.T) {
 	store := NewGeoIPStore("", nil)
@@ -91,8 +82,6 @@ func TestGeoIPStore_CacheEviction(t *testing.T) {
 		t.Errorf("cache size after eviction = %d, want %d", size, expected)
 	}
 }
-
-
 
 func TestTopCountries(t *testing.T) {
 	events := []Event{
@@ -130,8 +119,6 @@ func TestTopCountries(t *testing.T) {
 	}
 }
 
-
-
 func TestTopCountries_Limit(t *testing.T) {
 	events := []Event{
 		{ID: "1", Country: "US"},
@@ -144,8 +131,6 @@ func TestTopCountries_Limit(t *testing.T) {
 		t.Errorf("TopCountries with limit=2 returned %d, want 2", len(result))
 	}
 }
-
-
 
 func TestTopCountries_EmptyCountryBecomesXX(t *testing.T) {
 	events := []Event{
@@ -160,8 +145,6 @@ func TestTopCountries_EmptyCountryBecomesXX(t *testing.T) {
 		t.Errorf("empty country mapped to %q, want XX", result[0].Country)
 	}
 }
-
-
 
 func TestSummarizeEvents_IncludesTopCountries(t *testing.T) {
 	events := []Event{
@@ -180,8 +163,6 @@ func TestSummarizeEvents_IncludesTopCountries(t *testing.T) {
 		t.Errorf("TopCountries[0].Count = %d, want 2", summary.TopCountries[0].Count)
 	}
 }
-
-
 
 func TestTopBlockedIPs_IncludesCountry(t *testing.T) {
 	s := NewStore("")
@@ -207,8 +188,6 @@ func TestTopBlockedIPs_IncludesCountry(t *testing.T) {
 	}
 }
 
-
-
 func TestSummaryClientCountsIncludeCountry(t *testing.T) {
 	events := []Event{
 		{ID: "1", ClientIP: "1.2.3.4", Country: "JP", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
@@ -222,8 +201,6 @@ func TestSummaryClientCountsIncludeCountry(t *testing.T) {
 		t.Errorf("TopClients[0].Country = %q, want JP", summary.TopClients[0].Country)
 	}
 }
-
-
 
 func TestRateLimitEventToEvent_PropagatesCountry(t *testing.T) {
 	rle := RateLimitEvent{
@@ -240,8 +217,6 @@ func TestRateLimitEventToEvent_PropagatesCountry(t *testing.T) {
 		t.Errorf("Event.Country = %q, want FR", ev.Country)
 	}
 }
-
-
 
 func TestHandleTopCountries(t *testing.T) {
 	s := NewStore("")
@@ -279,8 +254,6 @@ func TestHandleTopCountries(t *testing.T) {
 
 // ─── Per-Hour/Service/Client Breakdown Tests ─────────────────────────────────
 
-
-
 // --- GeoIP Online API Fallback Tests ---
 
 func TestGeoIPStore_OnlineAPIFallback(t *testing.T) {
@@ -307,8 +280,6 @@ func TestGeoIPStore_OnlineAPIFallback(t *testing.T) {
 		t.Errorf("Resolve() with CF header = %q, want US", country)
 	}
 }
-
-
 
 func TestGeoIPStore_OnlineAPICaching(t *testing.T) {
 	callCount := 0
@@ -340,8 +311,6 @@ func TestGeoIPStore_OnlineAPICaching(t *testing.T) {
 	}
 }
 
-
-
 func TestGeoIPStore_OnlineAPIError(t *testing.T) {
 	// Server that returns 500.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -357,8 +326,6 @@ func TestGeoIPStore_OnlineAPIError(t *testing.T) {
 		t.Errorf("Resolve() on API error = %q, want empty", country)
 	}
 }
-
-
 
 func TestGeoIPStore_OnlineAPIBearerAuth(t *testing.T) {
 	var receivedAuth string
@@ -376,8 +343,6 @@ func TestGeoIPStore_OnlineAPIBearerAuth(t *testing.T) {
 		t.Errorf("Authorization header = %q, want 'Bearer test-key-123'", receivedAuth)
 	}
 }
-
-
 
 func TestGeoIPStore_OnlineAPICountryCodeFormats(t *testing.T) {
 	// Test different JSON field names for country code.
@@ -411,8 +376,6 @@ func TestGeoIPStore_OnlineAPICountryCodeFormats(t *testing.T) {
 	}
 }
 
-
-
 func TestGeoIPStore_OnlineAPIURLFormat(t *testing.T) {
 	var receivedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -430,8 +393,6 @@ func TestGeoIPStore_OnlineAPIURLFormat(t *testing.T) {
 		t.Errorf("URL path = %q, want /10.20.30.40", receivedPath)
 	}
 }
-
-
 
 func TestGeoIPStore_HasAPI(t *testing.T) {
 	// No API configured.

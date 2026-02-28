@@ -33,7 +33,7 @@
 		strict_sni_host on
 		protocols h1 h2 h3
 		trusted_proxies_strict
-		import /etc/caddy/cf_trusted_proxies.caddy
+		import /data/coraza/cf_trusted_proxies.caddy
 	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
@@ -103,10 +103,19 @@
 	}
 }
 
-# Full security headers (base + CSP) — for browser-only services
+# CSP tiers — DISABLED pending proper research (RFC/spec analysis, Radix UI unsafe-eval necessity).
+# Will revisit in a separate workflow. All tiers currently just import security_headers_base.
+# See FIXES.md "Deferred" section.
+(security_headers_strict) {
+	import security_headers_base
+}
+
 (security_headers) {
 	import security_headers_base
-	header ?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' wss: ws: https:; media-src 'self' blob: https:; frame-src 'self' https:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+}
+
+(security_headers_relaxed) {
+	import security_headers_base
 }
 
 # Coraza WAF — OWASP CRS with dynamic per-service configuration.
@@ -263,7 +272,7 @@
 # Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
 caddy.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_strict
 	import ipsum_blocklist
 	import /data/caddy/rl/caddy_rl*.caddy
 	import /data/caddy/rl/caddy.erfi.io_rl*.caddy
@@ -320,7 +329,7 @@ authelia.erfi.io {
 
 servarr.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -351,7 +360,7 @@ servarr.erfi.io {
 
 sonarr.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -368,7 +377,7 @@ sonarr.erfi.io {
 
 radarr.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -385,7 +394,7 @@ radarr.erfi.io {
 
 bazarr.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -402,7 +411,7 @@ bazarr.erfi.io {
 
 tracearr.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -437,7 +446,7 @@ vault.erfi.io {
 
 prowlarr.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -456,8 +465,8 @@ jellyfin.erfi.io {
 	import cors
 	import security_headers_base
 	import static_cache
-	import waf
 	import ipsum_blocklist
+	import waf
 	import /data/caddy/rl/jellyfin_rl*.caddy
 	import /data/caddy/rl/jellyfin.erfi.io_rl*.caddy
 	import tls_config
@@ -471,7 +480,7 @@ jellyfin.erfi.io {
 
 qbit.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -523,7 +532,7 @@ seerr.erfi.io {
 
 keycloak.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -608,7 +617,7 @@ immich.erfi.io {
 
 caddy-prometheus.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_strict
 	import waf_off
 	import ipsum_blocklist
 	import /data/caddy/rl/caddy-prometheus_rl*.caddy
@@ -642,7 +651,7 @@ copyparty.erfi.io {
 
 dockge.erfi.io {
 	import cors
-	import security_headers
+	import security_headers_relaxed
 	import static_cache
 	import ipsum_blocklist
 	import waf

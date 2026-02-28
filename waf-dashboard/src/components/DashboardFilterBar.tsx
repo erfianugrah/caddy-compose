@@ -12,7 +12,7 @@ import type { SummaryParams, EventsParams, EventType, FilterOp } from "@/lib/api
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export type FilterField = "service" | "client" | "event_type" | "method" | "rule_name" | "uri" | "status_code" | "country";
+export type FilterField = "service" | "client" | "event_type" | "method" | "rule_name" | "uri" | "status_code" | "country" | "event_id";
 
 export interface DashboardFilter {
   field: FilterField;
@@ -46,6 +46,7 @@ const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
   uri:         ["eq", "neq", "contains", "regex"],
   status_code: ["eq", "neq", "in", "regex"],
   country:     ["eq", "neq", "in"],
+  event_id:    ["eq"],
 };
 
 // ─── Field metadata ─────────────────────────────────────────────────
@@ -90,6 +91,7 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   uri: { label: "Path", placeholder: "e.g. /api/v1/users" },
   status_code: { label: "Status Code", placeholder: "e.g. 403 or 4\\d\\d" },
   country: { label: "Country", placeholder: "e.g. US, DE, CN" },
+  event_id: { label: "Event ID", placeholder: "e.g. abc123..." },
 };
 
 const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "method", "rule_name", "uri", "status_code", "country"];
@@ -114,6 +116,7 @@ export function parseFiltersFromURL(search: string): DashboardFilter[] {
     { key: "uri", alias: "path", field: "uri" },
     { key: "status_code", alias: "status", field: "status_code" },
     { key: "country", field: "country" },
+    { key: "event_id", field: "event_id" },
   ];
 
   for (const { key, alias, field } of fieldMap) {
@@ -163,6 +166,7 @@ export function filtersToEventsParams(filters: DashboardFilter[]): Partial<Event
       case "uri":         params.uri = f.value;                             params.uri_op = f.operator;         break;
       case "status_code": params.status_code = f.value;                     params.status_code_op = f.operator; break;
       case "country":     params.country = f.value;                         params.country_op = f.operator;     break;
+      case "event_id":    params.id = f.value;                                                                break;
     }
   }
   return params;

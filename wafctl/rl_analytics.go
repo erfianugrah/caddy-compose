@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -15,6 +16,23 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+// regexCache caches compiled regular expressions for condition matching.
+// Keys are pattern strings, values are *regexp.Regexp.
+var regexCache sync.Map
+
+// cachedRegexp returns a compiled regex from the cache, compiling on first use.
+func cachedRegexp(pattern string) (*regexp.Regexp, error) {
+	if v, ok := regexCache.Load(pattern); ok {
+		return v.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	regexCache.Store(pattern, re)
+	return re, nil
+}
 
 // ─── Caddy access log JSON structure ────────────────────────────────
 
@@ -125,6 +143,9 @@ type AccessLogStore struct {
 
 	// geoIP is an optional GeoIP store for country enrichment.
 	geoIP *GeoIPStore
+
+	// generation increments on every Load() that adds/evicts events.
+	generation atomic.Int64
 
 	// advCache caches advisor scan results for 30 seconds to avoid
 	// redundant 20MB disk scans on rapid re-queries.
@@ -401,6 +422,7 @@ func (s *AccessLogStore) Load() {
 		s.mu.Lock()
 		s.events = append(s.events, newEvents...)
 		s.mu.Unlock()
+		s.generation.Add(1)
 		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
 		rlCount, ipsumCount := 0, 0
@@ -439,6 +461,7 @@ func (s *AccessLogStore) evict() {
 		copy(remaining, s.events[idx:])
 		s.events = remaining
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
+		s.generation.Add(1)
 		// Compact the JSONL file synchronously to avoid racing with
 		// appendEventsToJSONL on the next tail cycle. Use the locked
 		// variant since we already hold s.mu.
@@ -485,7 +508,38 @@ func (s *AccessLogStore) Stats() map[string]any {
 	return stats
 }
 
+// searchCutoffRL returns the index of the first RateLimitEvent with Timestamp >= cutoff
+// using binary search. Events must be in chronological order.
+func searchCutoffRL(events []RateLimitEvent, cutoff time.Time) int {
+	lo, hi := 0, len(events)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if events[mid].Timestamp.Before(cutoff) {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
+// searchEndRL returns the index of the first RateLimitEvent with Timestamp > end
+// using binary search. Events must be in chronological order.
+func searchEndRL(events []RateLimitEvent, end time.Time) int {
+	lo, hi := 0, len(events)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if !events[mid].Timestamp.After(end) {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
 // snapshotSince returns a copy of events within the given hours window (0 = all).
+// Uses binary search on chronologically ordered events.
 func (s *AccessLogStore) snapshotSince(hours int) []RateLimitEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -497,30 +551,41 @@ func (s *AccessLogStore) snapshotSince(hours int) []RateLimitEvent {
 	}
 
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
-	var result []RateLimitEvent
-	for _, e := range s.events {
-		if !e.Timestamp.Before(cutoff) {
-			result = append(result, e)
-		}
-	}
-	return result
+	idx := searchCutoffRL(s.events, cutoff)
+	n := len(s.events) - idx
+	cp := make([]RateLimitEvent, n)
+	copy(cp, s.events[idx:])
+	return cp
 }
 
 // snapshotRange returns a copy of events within [start, end].
+// Uses binary search for both bounds.
 func (s *AccessLogStore) snapshotRange(start, end time.Time) []RateLimitEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []RateLimitEvent
-	for _, e := range s.events {
-		if !e.Timestamp.Before(start) && !e.Timestamp.After(end) {
-			result = append(result, e)
-		}
+	startIdx := searchCutoffRL(s.events, start)
+	endIdx := searchEndRL(s.events, end)
+	if startIdx >= endIdx {
+		return nil
 	}
-	return result
+	n := endIdx - startIdx
+	cp := make([]RateLimitEvent, n)
+	copy(cp, s.events[startIdx:endIdx])
+	return cp
 }
 
 // ─── Converter: RateLimitEvent → Event ──────────────────────────────
+
+// ephemeralCounter generates fast sequential IDs for ephemeral RL→Event conversions.
+// These IDs only exist in JSON responses and are never persisted.
+var ephemeralCounter atomic.Int64
+
+// ephemeralID returns a fast unique ID without crypto/rand overhead.
+func ephemeralID() string {
+	n := ephemeralCounter.Add(1)
+	return fmt.Sprintf("rl-%d-%d", time.Now().UnixMilli(), n)
+}
 
 // RateLimitEventToEvent converts a RateLimitEvent into the unified Event type
 // so that 429s can be merged into the shared event stream.
@@ -532,7 +597,7 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		status = 403
 	}
 	return Event{
-		ID:             generateUUIDv7(),
+		ID:             ephemeralID(),
 		Timestamp:      rle.Timestamp,
 		ClientIP:       rle.ClientIP,
 		Country:        rle.Country,
@@ -867,7 +932,7 @@ func matchRLCondition(evt RateLimitEvent, c Condition) bool {
 		}
 		return false
 	case "regex":
-		re, err := regexp.Compile(c.Value)
+		re, err := cachedRegexp(c.Value)
 		if err != nil {
 			return false
 		}

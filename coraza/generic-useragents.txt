@@ -1,0 +1,19 @@
+# Generic HTTP library User-Agent substrings.
+# Matched via @pmFromFile (case-insensitive substring match).
+# Rule ID: 9100035 in pre-crs.conf
+#
+# These are default UAs for common HTTP libraries. Legitimate services
+# (webhooks, monitoring, CI/CD) often use them. Instead of dropping,
+# we add +5 anomaly score. Combined with other heuristic signals
+# (missing Accept, empty Referer, etc.), automated tools still get
+# blocked via CRS anomaly threshold — but legitimate single-signal
+# requests pass through.
+#
+python-requests
+go-http-client
+libwww-perl
+lwp-trivial
+wget
+curl/
+mechanize
+scrapy

@@ -255,6 +255,25 @@ type BlocklistRefreshResponse struct {
 	Reloaded    bool   `json:"reloaded"`
 }
 
+// CFProxyStatsResponse is returned by the CF proxy stats endpoint.
+type CFProxyStatsResponse struct {
+	CIDRCount   int    `json:"cidr_count"`
+	LastUpdated string `json:"last_updated"`
+	Source      string `json:"source"`
+	FilePath    string `json:"file_path"`
+}
+
+// CFProxyRefreshResponse is returned by the CF proxy refresh endpoint.
+type CFProxyRefreshResponse struct {
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	CIDRCount   int    `json:"cidr_count"`
+	IPv4Count   int    `json:"ipv4_count"`
+	IPv6Count   int    `json:"ipv6_count"`
+	LastUpdated string `json:"last_updated"`
+	Reloaded    bool   `json:"reloaded"`
+}
+
 type URICount struct {
 	URI   string `json:"uri"`
 	Count int    `json:"count"`

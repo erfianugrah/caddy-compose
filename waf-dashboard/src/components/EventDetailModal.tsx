@@ -47,7 +47,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <EventTypeBadge eventType={event.event_type} blocked={event.blocked} />
-                <DialogTitle className="text-sm font-mono truncate">
+                <DialogTitle className="text-sm font-mono truncate" title={`${event.method} ${event.uri}`}>
                   {event.method} {event.uri}
                 </DialogTitle>
               </div>
@@ -77,7 +77,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
               </Button>
             </a>
             <a
-              href={`/analytics?q=${encodeURIComponent(event.client_ip)}`}
+              href={`/analytics?tab=ip&q=${encodeURIComponent(event.client_ip)}`}
               className="inline-flex"
             >
               <Button variant="outline" size="xs" className="text-xs">
@@ -121,7 +121,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
 
         {/* Detail panel body */}
         <div className="px-2 pb-4">
-          <EventDetailPanel event={event} />
+          <EventDetailPanel event={event} hideActions />
         </div>
       </DialogContent>
     </Dialog>

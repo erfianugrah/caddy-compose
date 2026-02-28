@@ -492,17 +492,18 @@ export default function PolicyEngine() {
       }
     : undefined;
 
-  // Determine the editing tab — always route to advanced tab for edits (it supports all types now)
+  // Determine the editing tab — route to the correct tab based on exclusion type.
   const isEditingRaw = exclusionToEdit?.type === "raw";
+  const isEditingHoneypot = exclusionToEdit?.type === "honeypot";
 
   // Controlled tab state — switches automatically when editing starts.
   const [activeTab, setActiveTab] = useState<string>("quick");
   useEffect(() => {
     if (editingId) {
-      setActiveTab(isEditingRaw ? "raw" : "advanced");
+      setActiveTab(isEditingHoneypot ? "honeypot" : isEditingRaw ? "raw" : "advanced");
       setDialogOpen(true);
     }
-  }, [editingId, isEditingRaw]);
+  }, [editingId, isEditingRaw, isEditingHoneypot]);
 
   // Open create dialog
   const openCreateDialog = () => {
@@ -788,7 +789,7 @@ export default function PolicyEngine() {
                 <Code2 className="h-3.5 w-3.5" />
                 Advanced
               </TabsTrigger>
-              <TabsTrigger value="honeypot" className="gap-1.5" disabled={!!editingId}>
+              <TabsTrigger value="honeypot" className="gap-1.5" disabled={!!editingId && !isEditingHoneypot}>
                 <Crosshair className="h-3.5 w-3.5" />
                 Honeypot
               </TabsTrigger>
@@ -814,7 +815,7 @@ export default function PolicyEngine() {
             </TabsContent>
 
             <TabsContent value="advanced">
-              {editingId && editFormState && !isEditingRaw ? (
+              {editingId && editFormState && !isEditingRaw && !isEditingHoneypot ? (
                 <AdvancedBuilderForm
                   key={editingId}
                   initial={editFormState}
@@ -833,7 +834,22 @@ export default function PolicyEngine() {
             </TabsContent>
 
             <TabsContent value="honeypot">
-              <HoneypotForm onSubmit={(data) => { handleCreate(data); closeDialog(); }} />
+              {editingId && exclusionToEdit && isEditingHoneypot ? (
+                <HoneypotForm
+                  key={editingId}
+                  initial={{
+                    name: exclusionToEdit.name,
+                    description: exclusionToEdit.description,
+                    conditions: exclusionToEdit.conditions ?? [],
+                    enabled: exclusionToEdit.enabled,
+                  }}
+                  onSubmit={(data) => { handleUpdate(editingId!, data); closeDialog(); }}
+                  onCancel={closeDialog}
+                  submitLabel="Save Changes"
+                />
+              ) : (
+                <HoneypotForm onSubmit={(data) => { handleCreate(data); closeDialog(); }} />
+              )}
             </TabsContent>
 
             <TabsContent value="raw">

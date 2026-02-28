@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-
 // --- CRS Catalog endpoint tests ---
 
 func TestCRSRulesEndpoint(t *testing.T) {
@@ -52,8 +51,6 @@ func TestCRSRulesEndpoint(t *testing.T) {
 	}
 }
 
-
-
 func TestCRSAutocompleteEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/crs/autocomplete", handleCRSAutocomplete)
@@ -89,8 +86,6 @@ func TestCRSAutocompleteEndpoint(t *testing.T) {
 
 // --- Rule match (messages) parsing tests ---
 
-
-
 // --- Rule match (messages) parsing tests ---
 
 func TestParseEventWithMessages(t *testing.T) {
@@ -124,8 +119,6 @@ func TestParseEventWithMessages(t *testing.T) {
 		t.Error("expected non-empty rule_tags")
 	}
 }
-
-
 
 func TestParseEventWithoutMessages(t *testing.T) {
 	// Original format without messages — should still work with zero values

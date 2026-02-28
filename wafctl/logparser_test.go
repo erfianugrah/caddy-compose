@@ -206,12 +206,12 @@ func TestStoreEventFilePersistence(t *testing.T) {
 	}
 }
 
-func TestStoreEventFileStripsLargeFields(t *testing.T) {
+func TestStoreEventFilePreservesAllFields(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "audit.log")
 	eventPath := filepath.Join(dir, "events.jsonl")
 
-	// Write a log line that would produce an event with request headers.
+	// Write a log line that would produce an event with request headers/args.
 	f, _ := os.Create(logPath)
 	f.WriteString(sampleLines[0] + "\n")
 	f.Close()
@@ -220,21 +220,27 @@ func TestStoreEventFileStripsLargeFields(t *testing.T) {
 	store.SetEventFile(eventPath)
 	store.Load()
 
-	// Read the JSONL file and verify large fields are stripped.
+	// Read the JSONL file and verify all fields are preserved.
 	data, err := os.ReadFile(eventPath)
 	if err != nil {
 		t.Fatalf("read event file: %v", err)
 	}
 
-	// The JSONL should NOT contain request_headers (they're stripped).
-	if strings.Contains(string(data), "request_headers") {
-		t.Error("JSONL should not contain request_headers (stripped)")
+	// Events with request context should have those fields persisted.
+	events := store.Snapshot()
+	if len(events) == 0 {
+		t.Fatal("expected at least one event")
 	}
-	if strings.Contains(string(data), "request_body") {
-		t.Error("JSONL should not contain request_body (stripped)")
+	ev := events[0]
+	if ev.RequestHeaders != nil {
+		if !strings.Contains(string(data), "request_headers") {
+			t.Error("JSONL should contain request_headers when present")
+		}
 	}
-	if strings.Contains(string(data), "request_args") {
-		t.Error("JSONL should not contain request_args (stripped)")
+	if ev.RequestArgs != nil {
+		if !strings.Contains(string(data), "request_args") {
+			t.Error("JSONL should contain request_args when present")
+		}
 	}
 }
 
@@ -409,16 +415,11 @@ func TestStoreEventFileDataIntegrity(t *testing.T) {
 	if ev.ResponseStatus != 403 {
 		t.Errorf("ResponseStatus: want 403, got %d", ev.ResponseStatus)
 	}
-	// Large fields should be nil/empty after restore from JSONL.
-	if ev.RequestHeaders != nil {
-		t.Error("RequestHeaders should be nil after JSONL restore")
-	}
-	if ev.RequestBody != "" {
-		t.Error("RequestBody should be empty after JSONL restore")
-	}
-	if ev.RequestArgs != nil {
-		t.Error("RequestArgs should be nil after JSONL restore")
-	}
+	// All fields should survive JSONL round-trip (no stripping).
+	// (RequestHeaders/Body/Args may be nil/empty for this particular
+	// test event depending on the sample data, so we just verify the
+	// other fields are intact — the PreservesAllFields test above
+	// verifies payload fields are not stripped.)
 }
 
 func TestStoreEventFileMalformedLines(t *testing.T) {
@@ -740,12 +741,9 @@ func TestRateLimitEventToEvent(t *testing.T) {
 	if ev.ID == "" {
 		t.Error("ID should not be empty")
 	}
-	// UUIDv7 format: 8-4-4-4-12 hex chars, version nibble = 7
-	parts := strings.Split(ev.ID, "-")
-	if len(parts) != 5 {
-		t.Errorf("ID should be UUIDv7 format (5 parts), got %s", ev.ID)
-	} else if len(parts[2]) >= 1 && parts[2][0] != '7' {
-		t.Errorf("ID should be UUIDv7 (version nibble 7), got %s", ev.ID)
+	// Ephemeral IDs use "rl-<millis>-<counter>" format for fast generation.
+	if !strings.HasPrefix(ev.ID, "rl-") {
+		t.Errorf("ID should have rl- prefix, got %s", ev.ID)
 	}
 }
 

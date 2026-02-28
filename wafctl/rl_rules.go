@@ -139,6 +139,11 @@ func (s *RateLimitRuleStore) save() error {
 func (s *RateLimitRuleStore) List() []RateLimitRule {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.listLocked()
+}
+
+// listLocked returns a shallow copy of rules. Caller must hold s.mu (read or write).
+func (s *RateLimitRuleStore) listLocked() []RateLimitRule {
 	cp := make([]RateLimitRule, len(s.config.Rules))
 	copy(cp, s.config.Rules)
 	return cp
@@ -324,7 +329,7 @@ func (s *RateLimitRuleStore) Export() RateLimitRuleExport {
 	return RateLimitRuleExport{
 		Version:    1,
 		ExportedAt: time.Now().UTC(),
-		Rules:      s.List(),
+		Rules:      s.listLocked(),
 		Global:     s.config.Global,
 	}
 }

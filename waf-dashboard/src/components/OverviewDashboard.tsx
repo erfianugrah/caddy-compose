@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -30,6 +30,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ChevronLeft,
+  ChevronsDownUp,
 } from "lucide-react";
 import {
   Card,
@@ -55,13 +56,12 @@ import {
   getExclusions,
   type SummaryData,
   type WAFEvent,
-  type EventsResponse,
   type TimeRangeParams,
   type SummaryParams,
 } from "@/lib/api";
 import { formatNumber, formatTime, formatDate, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
-import { EventDetailModal } from "./EventDetailModal";
+import { EventDetailPanel } from "./EventsTable";
 import DashboardFilterBar, {
   parseFiltersFromURL,
   filtersToSummaryParams,
@@ -131,6 +131,24 @@ function LinkTickRenderer({
       </text>
     </a>
   );
+}
+
+/** Build a deep-link URL that opens the Events tab with a narrow time window
+ *  centered on the event and comprehensive filters to find the exact row. */
+function buildViewInEventsHref(evt: WAFEvent): string {
+  const ts = new Date(evt.timestamp);
+  const start = new Date(ts.getTime() - 5 * 60_000).toISOString();
+  const end = new Date(ts.getTime() + 5 * 60_000).toISOString();
+  const params = new URLSearchParams();
+  params.set("event_id", evt.id);
+  params.set("start", start);
+  params.set("end", end);
+  if (evt.service) params.set("service", evt.service);
+  if (evt.event_type) params.set("type", evt.event_type);
+  if (evt.client_ip) params.set("ip", evt.client_ip);
+  if (evt.method) params.set("method", evt.method);
+  if (evt.rule_id) params.set("rule_id", String(evt.rule_id));
+  return `/events?${params.toString()}`;
 }
 
 // ─── Count-up animation hook ────────────────────────────────────────
@@ -286,9 +304,8 @@ export default function OverviewDashboard() {
   const [eventsPage, setEventsPage] = useState(1);
   const eventsPerPage = 20;
 
-  // ── Event detail modal state ──
-  const [selectedEvent, setSelectedEvent] = useState<WAFEvent | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  // ── Inline expand state (same as Events tab) ──
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // ── Click-drag zoom state ──
   // User clicks and drags on the chart to select a time window.
@@ -817,21 +834,35 @@ export default function OverviewDashboard() {
                   : `${eventsTotal.toLocaleString()} events — click a row to inspect`}
               </CardDescription>
             </div>
-            <a href="/events">
-              <Button variant="ghost" size="xs" className="text-xs text-muted-foreground hover:text-foreground">
-                Open Event Log
-              </Button>
-            </a>
+            <div className="flex items-center gap-2">
+              {expanded.size > 0 && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setExpanded(new Set())}
+                >
+                  <ChevronsDownUp className="h-3 w-3 mr-1" />
+                  Collapse ({expanded.size})
+                </Button>
+              )}
+              <a href="/events">
+                <Button variant="ghost" size="xs" className="text-xs text-muted-foreground hover:text-foreground">
+                  Open Event Log
+                </Button>
+              </a>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                <TableHead className="w-8" />
                 <TableHead>Time</TableHead>
                 <TableHead>Service</TableHead>
                 <TableHead>Method</TableHead>
-                <TableHead className="max-w-[250px]">URI</TableHead>
+                <TableHead className="max-w-[200px]">URI</TableHead>
                 <TableHead>Client IP</TableHead>
                 <TableHead>Country</TableHead>
                 <TableHead>Type</TableHead>
@@ -841,6 +872,7 @@ export default function OverviewDashboard() {
               {(loading || eventsLoading) &&
                 [...Array(8)].map((_, i) => (
                   <TableRow key={i}>
+                    <TableCell />
                     {[...Array(7)].map((_, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
@@ -851,47 +883,74 @@ export default function OverviewDashboard() {
 
               {!loading && !eventsLoading && events.length > 0 &&
                 events.map((evt) => (
-                  <TableRow
-                    key={evt.id}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setSelectedEvent(evt);
-                      setModalOpen(true);
-                    }}
-                  >
-                    <TableCell className="whitespace-nowrap text-xs">
-                      <div className="text-foreground">{formatTime(evt.timestamp)}</div>
-                      <div className="text-muted-foreground">{formatDate(evt.timestamp)}</div>
-                    </TableCell>
-                    <TableCell className="text-xs">{evt.service}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={T.badgeMono}>
-                        {evt.method}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[250px] truncate text-xs font-mono">
-                      {evt.uri}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">{evt.client_ip}</TableCell>
-                    <TableCell className="text-xs">
-                      {evt.country && evt.country !== "XX" ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span>{countryFlag(evt.country)}</span>
-                          <span className="font-mono">{evt.country}</span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
-                    </TableCell>
-                  </TableRow>
+                  <Fragment key={evt.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setExpanded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(evt.id)) next.delete(evt.id);
+                          else next.add(evt.id);
+                          return next;
+                        });
+                      }}
+                    >
+                      <TableCell className="w-8">
+                        {expanded.has(evt.id) ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        <div className="text-foreground">{formatTime(evt.timestamp)}</div>
+                        <div className="text-muted-foreground">{formatDate(evt.timestamp)}</div>
+                      </TableCell>
+                      <TableCell className="text-xs">{evt.service}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={T.badgeMono}>
+                          {evt.method}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate text-xs font-mono" title={evt.uri}>
+                        {evt.uri}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        <a
+                          href={`/analytics?q=${encodeURIComponent(evt.client_ip)}`}
+                          className="text-neon-cyan hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {evt.client_ip}
+                        </a>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {evt.country && evt.country !== "XX" ? (
+                          <span className="inline-flex items-center gap-1">
+                            <span>{countryFlag(evt.country)}</span>
+                            <span className="font-mono">{evt.country}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
+                      </TableCell>
+                    </TableRow>
+                    {expanded.has(evt.id) && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={8} className="bg-navy-950/50 p-0">
+                          <EventDetailPanel event={evt} viewInEventsHref={buildViewInEventsHref(evt)} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 ))}
 
               {!loading && !eventsLoading && events.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     No events in this time range
                   </TableCell>
                 </TableRow>
@@ -923,9 +982,6 @@ export default function OverviewDashboard() {
           </div>
         )}
       </Card>
-
-      {/* ── Event Detail Modal ── */}
-      <EventDetailModal event={selectedEvent} open={modalOpen} onOpenChange={setModalOpen} />
     </div>
   );
 }

@@ -56,7 +56,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
               key={u.uri}
               className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
             >
-              <code className="max-w-[200px] truncate text-foreground">
+              <code className="max-w-[200px] truncate text-foreground" title={u.uri}>
                 {u.uri}
               </code>
               <div className="flex items-center gap-2">

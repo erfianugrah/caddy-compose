@@ -9,6 +9,7 @@ import {
   Download,
   ShieldPlus,
   ExternalLink,
+  Search,
 } from "lucide-react";
 import {
   Card,
@@ -106,7 +107,7 @@ function isPolicyRuleEvent(event: WAFEvent): boolean {
   return event.rule_id >= 9500000 && event.rule_id <= 9599999;
 }
 
-export function EventDetailPanel({ event }: { event: WAFEvent }) {
+export function EventDetailPanel({ event, hideActions = false, viewInEventsHref }: { event: WAFEvent; hideActions?: boolean; viewInEventsHref?: string }) {
   // Only show "Create Exception" for WAF events (not ipsum/rate-limited/policy-managed/honeypot/scanner)
   const isWafEvent = event.event_type !== "ipsum_blocked"
     && event.event_type !== "rate_limited"
@@ -116,46 +117,84 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
 
   return (
     <div className="space-y-3 p-4">
-      <div className="flex justify-end gap-1.5">
-        {isWafEvent && (
+      {!hideActions && (
+        <div className="flex justify-end gap-1.5">
+          {viewInEventsHref && (
+            <a
+              href={viewInEventsHref}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex"
+            >
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                View in Events
+              </Button>
+            </a>
+          )}
+          {isWafEvent && (
+            <a
+              href="/policy?from_event=1"
+              onClick={(e) => {
+                e.stopPropagation();
+                sessionStorage.setItem("waf:prefill-event", JSON.stringify(event));
+              }}
+              className="inline-flex"
+            >
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-neon-cyan hover:text-neon-green"
+                tabIndex={-1}
+              >
+                <ShieldPlus className="h-3 w-3 mr-1" />
+                Create Exception
+              </Button>
+            </a>
+          )}
           <a
-            href="/policy?from_event=1"
-            onClick={(e) => {
-              e.stopPropagation();
-              sessionStorage.setItem("waf:prefill-event", JSON.stringify(event));
-            }}
+            href={`/analytics?tab=ip&q=${encodeURIComponent(event.client_ip)}`}
+            onClick={(e) => e.stopPropagation()}
             className="inline-flex"
           >
             <Button
               variant="ghost"
               size="xs"
-              className="text-neon-cyan hover:text-neon-green"
+              className="text-muted-foreground hover:text-foreground"
               tabIndex={-1}
             >
-              <ShieldPlus className="h-3 w-3 mr-1" />
-              Create Exception
+              <Search className="h-3 w-3 mr-1" />
+              IP Lookup
             </Button>
           </a>
-        )}
-        <Button
-          variant="ghost"
-          size="xs"
-          className="text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            downloadJSON(event, `event-${event.id}.json`);
-          }}
-        >
-          <Download className="h-3 w-3 mr-1" />
-          Export JSON
-        </Button>
-      </div>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              downloadJSON(event, `event-${event.id}.json`);
+            }}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Export JSON
+          </Button>
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
             Request Details
           </h4>
           <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
+            <div className="flex gap-2">
+              <span className="text-muted-foreground">Event ID:</span>
+              <code className="text-muted-foreground/70 font-mono select-all">{event.id}</code>
+            </div>
             <div className="flex gap-2">
               <span className="text-muted-foreground">Method:</span>
               <span className="font-medium text-neon-cyan">{event.method}</span>
@@ -166,7 +205,12 @@ export function EventDetailPanel({ event }: { event: WAFEvent }) {
             </div>
             <div className="flex gap-2">
               <span className="text-muted-foreground">Client:</span>
-              <span className="text-foreground">{event.client_ip}</span>
+              <a
+                href={`/analytics?q=${encodeURIComponent(event.client_ip)}`}
+                className="text-neon-cyan hover:underline"
+              >
+                {event.client_ip}
+              </a>
               {event.country && event.country !== "XX" && (
                 <span className="text-muted-foreground">
                   ({countryFlag(event.country)} {event.country})
@@ -572,6 +616,15 @@ export default function EventsTable() {
   const [filters, setFilters] = useState<DashboardFilter[]>([]);
   const filtersInitRef = useRef(false);
 
+  // Track event_id to auto-expand once events load.
+  // fallbackParamsRef holds filter+time params for RL/ipsum events whose
+  // ephemeral IDs won't match the fast-path ID lookup.
+  const pendingExpandRef = useRef<string | null>(null);
+  const fallbackParamsRef = useRef<{ filters: DashboardFilter[]; timeRange: TimeRange } | null>(null);
+  // Skip the next loadEvents cycle (used after ID fast-path to avoid double fetch
+  // when setFilters/setTimeRange trigger a re-render).
+  const skipNextLoadRef = useRef(false);
+
   // Read URL params on mount (client-only to avoid hydration mismatch)
   useEffect(() => {
     if (filtersInitRef.current) return;
@@ -579,11 +632,28 @@ export default function EventsTable() {
     if (typeof window === "undefined") return;
     const search = window.location.search;
     if (!search) return;
+
+    const params = new URLSearchParams(search);
+    const eventId = params.get("event_id");
+    const start = params.get("start");
+    const end = params.get("end");
+
+    // Deep-link to a specific event: try ID lookup first, keep filters as fallback only
+    if (eventId && start && end) {
+      pendingExpandRef.current = eventId;
+      const deepLinkRange: TimeRange = { type: "absolute", start, end };
+      const deepLinkFilters = parseFiltersFromURL(search);
+      // Store filters + time range as fallback (not in state — no chips shown)
+      fallbackParamsRef.current = { filters: deepLinkFilters, timeRange: deepLinkRange };
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
     const parsed = parseFiltersFromURL(search);
     if (parsed.length > 0) {
       setFilters(parsed);
-      window.history.replaceState({}, "", window.location.pathname);
     }
+    window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
   const [page, setPage] = useState(1);
@@ -600,9 +670,46 @@ export default function EventsTable() {
   const [exportingAll, setExportingAll] = useState(false);
 
   const loadEvents = useCallback(() => {
+    // Skip this cycle if flagged (e.g. after ID fast-path set filters/timeRange).
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
+      return;
+    }
+
     setLoading(true);
     const timeParams = rangeToParams(timeRange);
     const filterParams = filtersToEventsParams(filters);
+
+    // If we have a pending event ID, try fast-path lookup first.
+    const pendingId = pendingExpandRef.current;
+    const fb = fallbackParamsRef.current;
+    if (pendingId && fb && page === 1) {
+      // Consume the fallback so we don't loop.
+      fallbackParamsRef.current = null;
+      fetchEvents({ id: pendingId })
+        .then((resp) => {
+          if (resp.total > 0) {
+            // Found via ID — show the event_id chip + absolute time range.
+            setResponse(resp);
+            // Set state so the filter bar shows "Event ID = ..." chip and
+            // the time picker shows the narrow deep-link window.
+            // Skip the next loadEvents cycle that these state changes trigger.
+            skipNextLoadRef.current = true;
+            setFilters([{ field: "event_id", operator: "eq", value: pendingId }]);
+            setTimeRange(fb.timeRange);
+            return;
+          }
+          // Not found by ID (e.g. ephemeral RL event) — apply fallback
+          // filters+time to state. This triggers a re-render that fetches
+          // via the normal path below (fb is now null so we won't loop).
+          setFilters(fb.filters);
+          setTimeRange(fb.timeRange);
+        })
+        .catch((err) => setError(err.message))
+        .finally(() => setLoading(false));
+      return;
+    }
+
     fetchEvents({
       page,
       per_page: perPage,
@@ -626,6 +733,22 @@ export default function EventsTable() {
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
+
+  // Auto-expand a specific event when deep-linked from Overview Dashboard
+  useEffect(() => {
+    if (!pendingExpandRef.current || loading || !response || response.events.length === 0) return;
+    const id = pendingExpandRef.current;
+    // Try exact ID match first; for ephemeral RL/ipsum IDs, expand the first result
+    // (the narrow time window + filters should isolate the exact event).
+    const match = response.events.find((e) => e.id === id) ?? response.events[0];
+    const expandId = match.id;
+    setExpanded(new Set([expandId]));
+    pendingExpandRef.current = null;
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-event-id="${expandId}"]`);
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [loading, response]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -784,6 +907,7 @@ export default function EventsTable() {
                   <Fragment key={evt.id}>
                     <TableRow
                       className="cursor-pointer"
+                      data-event-id={evt.id}
                       onClick={() => toggleExpand(evt.id)}
                     >
                       <TableCell className="w-8">
@@ -810,11 +934,17 @@ export default function EventsTable() {
                           {evt.method}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-xs font-mono">
+                      <TableCell className="max-w-[200px] truncate text-xs font-mono" title={evt.uri}>
                         {evt.uri}
                       </TableCell>
                       <TableCell className="text-xs font-mono">
-                        {evt.client_ip}
+                        <a
+                          href={`/analytics?tab=ip&q=${encodeURIComponent(evt.client_ip)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:text-neon-green transition-colors"
+                        >
+                          {evt.client_ip}
+                        </a>
                       </TableCell>
                       <TableCell className="text-xs">
                         {evt.country && evt.country !== "XX" ? (

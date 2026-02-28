@@ -2,7 +2,7 @@
 # Matched via @pmFromFile (case-insensitive substring match).
 # Rule ID: 9100032 in pre-crs.conf
 #
-# Any client identifying as one of these tools is not a false positive.
+# These are purpose-built attack/recon tools — never legitimate traffic.
 # Action: drop (connection reset — no response sent).
 #
 # SQL injection / exploitation
@@ -42,12 +42,3 @@ httprobe
 subfinder
 amass
 httpx
-# Generic bot frameworks
-python-requests
-go-http-client
-libwww-perl
-lwp-trivial
-wget
-curl/
-mechanize
-scrapy
