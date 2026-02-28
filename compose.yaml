@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:2.4.3-2.11.1
+    image: erfianugrah/caddy:2.6.0-2.11.1
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -50,6 +50,8 @@ services:
       - /mnt/user/data/caddy/coraza:/data/coraza
       # Dynamic rate limit zone files — written by wafctl Rate Limit Engine
       - /mnt/user/data/caddy/rl:/data/caddy/rl
+      # Dynamic CSP header files — written by wafctl CSP Engine
+      - /mnt/user/data/caddy/csp:/data/caddy/csp
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
       - tmpfs_caddy:/var/run
@@ -114,7 +116,7 @@ services:
     build:
       context: wafctl
       dockerfile: Dockerfile
-    image: erfianugrah/wafctl:1.4.2
+    image: erfianugrah/wafctl:1.6.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
@@ -157,6 +159,8 @@ services:
       - /mnt/user/data/caddy/coraza:/data/coraza
       # Dynamic rate limit zone files — shared with Caddy
       - /mnt/user/data/caddy/rl:/data/rl
+      # Dynamic CSP header files — shared with Caddy
+      - /mnt/user/data/caddy/csp:/data/csp
       # Caddyfile — read-only, needed for reload via admin API
       - /mnt/user/data/caddy/Caddyfile:/data/Caddyfile:ro
       # GeoIP MMDB database (DB-IP Lite or MaxMind GeoLite2)

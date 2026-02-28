@@ -810,18 +810,22 @@ func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
 	os.MkdirAll(corazaDir, 0755)
 	rlDir := filepath.Join(dir, "rl")
 	os.MkdirAll(rlDir, 0755)
+	cspDir := filepath.Join(dir, "csp")
+	os.MkdirAll(cspDir, 0755)
 
 	cs := NewConfigStore(filepath.Join(dir, "config.json"))
 	es := NewExclusionStore(filepath.Join(dir, "excl.json"))
 	rs := NewRateLimitRuleStore(filepath.Join(dir, "rl.json"))
+	cspS := NewCSPStore(filepath.Join(dir, "csp.json"))
 
 	deployCfg := DeployConfig{
 		CorazaDir:     corazaDir,
 		RateLimitDir:  rlDir,
+		CSPDir:        cspDir,
 		CaddyfilePath: caddyfile,
 	}
 
-	generateOnBoot(cs, es, rs, deployCfg)
+	generateOnBoot(cs, es, rs, cspS, deployCfg)
 
 	// The sonarr service should be auto-discovered.
 	rules := rs.List()

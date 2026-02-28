@@ -23,6 +23,11 @@ type DeployConfig struct {
 	// by each site block via glob patterns.
 	RateLimitDir string
 
+	// CSPDir is the directory for per-service CSP header .caddy files.
+	// These files are volume-mounted into the Caddy container and imported
+	// by each site block via glob patterns.
+	CSPDir string
+
 	// CaddyfilePath is the path to the Caddyfile (read-only mount from Caddy).
 	// Used to POST to Caddy's admin API for reload.
 	CaddyfilePath string
@@ -75,7 +80,7 @@ func ensureCorazaDir(dir string) error {
 // This ensures a stack restart always picks up the latest generator output
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, deployCfg DeployConfig) {
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, deployCfg DeployConfig) {
 	// WAF config: generate exclusion rules + WAF settings.
 	cfg := cs.Get()
 	exclusions := es.EnabledExclusions()
@@ -109,6 +114,17 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 			log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
 		} else {
 			log.Printf("[boot] regenerated %d rate limit files", len(written))
+		}
+	}
+
+	// CSP headers: generate per-service CSP .caddy files.
+	cspFiles := GenerateCSPConfigs(cspStore, deployCfg.CaddyfilePath)
+	if len(cspFiles) > 0 {
+		written, err := writeCSPFiles(deployCfg.CSPDir, cspFiles)
+		if err != nil {
+			log.Printf("[boot] warning: failed to generate CSP configs: %v", err)
+		} else {
+			log.Printf("[boot] regenerated %d CSP files", len(written))
 		}
 	}
 }

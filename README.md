@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:2.4.3-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.4.2
+CADDY_IMAGE   ?= <your-registry>/caddy:2.6.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.6.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.4.2-2.11.1`), wafctl is plain semver (e.g. `1.4.2`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.6.0-2.11.1`), wafctl is plain semver (e.g. `1.6.0`).
 
 ## WAF configuration
 
@@ -252,6 +252,11 @@ wafctl ratelimit delete <id>
 wafctl ratelimit deploy     # deploy rate limit configs to Caddy
 wafctl ratelimit global     # show global rate limit settings
 
+wafctl csp get              # show CSP configuration
+wafctl csp set              # update config (JSON on stdin or --file)
+wafctl csp deploy           # deploy CSP configs to Caddy
+wafctl csp preview          # preview rendered CSP headers per service
+
 wafctl blocklist stats
 wafctl blocklist check <ip>
 wafctl blocklist refresh
@@ -274,6 +279,7 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
+| CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ### Environment variables
@@ -302,6 +308,8 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_AUDIT_OFFSET_FILE` | `/data/.audit-log-offset` | Persists audit log read offset across restarts |
 | `WAF_ACCESS_OFFSET_FILE` | `/data/.access-log-offset` | Persists access log read offset across restarts |
 | `WAF_CADDYFILE_PATH` | `/data/Caddyfile` | Path to Caddyfile for RL auto-discovery |
+| `WAF_CSP_FILE` | `/data/csp.json` | CSP configuration store path |
+| `WAF_CSP_DIR` | `/data/csp/` | Output dir for generated CSP config files |
 
 ## Site block patterns
 
@@ -425,7 +433,7 @@ Rate limit rules are managed by wafctl. On boot it creates placeholder `.caddy` 
 
 - **IPsum blocklist** — ~20k known-malicious IPs, baked in at build time, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
 - **Cloudflare trusted proxies** — IP ranges fetched at build time so Caddy resolves the real client IP from `X-Forwarded-For`.
-- **Security headers** — HSTS (2yr, preload), nosniff, SAMEORIGIN, strict referrer, permissions-policy, COOP, CORP, baseline CSP.
+- **Security headers** — HSTS (2yr, preload), nosniff, SAMEORIGIN, strict referrer, permissions-policy, COOP, CORP. Per-service CSP headers managed via wafctl CSP system (global defaults + per-service overrides with set/default/none modes, report-only, and global enable/disable).
 - **ECH** (Encrypted Client Hello) — hides SNI from network observers.
 - **Admin API** locked to localhost.
 - **Strict SNI** host checking.

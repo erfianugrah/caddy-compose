@@ -273,6 +273,8 @@
 caddy.erfi.io {
 	import cors
 	import security_headers_strict
+	import /data/caddy/csp/caddy_csp*.caddy
+	import /data/caddy/csp/caddy.erfi.io_csp*.caddy
 	import ipsum_blocklist
 	import /data/caddy/rl/caddy_rl*.caddy
 	import /data/caddy/rl/caddy.erfi.io_rl*.caddy
@@ -286,6 +288,8 @@ caddy.erfi.io {
 waf.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/waf_csp*.caddy
+	import /data/caddy/csp/waf.erfi.io_csp*.caddy
 	import forward_auth
 	import ipsum_blocklist
 	import /data/caddy/rl/waf_rl*.caddy
@@ -313,6 +317,8 @@ waf.erfi.io {
 
 authelia.erfi.io {
 	import security_headers
+	import /data/caddy/csp/authelia_csp*.caddy
+	import /data/caddy/csp/authelia.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -330,6 +336,8 @@ authelia.erfi.io {
 servarr.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/servarr_csp*.caddy
+	import /data/caddy/csp/servarr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -361,6 +369,8 @@ servarr.erfi.io {
 sonarr.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/sonarr_csp*.caddy
+	import /data/caddy/csp/sonarr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -378,6 +388,8 @@ sonarr.erfi.io {
 radarr.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/radarr_csp*.caddy
+	import /data/caddy/csp/radarr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -395,6 +407,8 @@ radarr.erfi.io {
 bazarr.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/bazarr_csp*.caddy
+	import /data/caddy/csp/bazarr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -412,6 +426,8 @@ bazarr.erfi.io {
 tracearr.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/tracearr_csp*.caddy
+	import /data/caddy/csp/tracearr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -429,6 +445,8 @@ tracearr.erfi.io {
 vault.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/vault_csp*.caddy
+	import /data/caddy/csp/vault.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -447,6 +465,8 @@ vault.erfi.io {
 prowlarr.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/prowlarr_csp*.caddy
+	import /data/caddy/csp/prowlarr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -464,6 +484,8 @@ prowlarr.erfi.io {
 jellyfin.erfi.io {
 	import cors
 	import security_headers_base
+	import /data/caddy/csp/jellyfin_csp*.caddy
+	import /data/caddy/csp/jellyfin.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -481,6 +503,8 @@ jellyfin.erfi.io {
 qbit.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/qbit_csp*.caddy
+	import /data/caddy/csp/qbit.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -498,6 +522,8 @@ qbit.erfi.io {
 change.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/change_csp*.caddy
+	import /data/caddy/csp/change.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -516,6 +542,8 @@ change.erfi.io {
 seerr.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/seerr_csp*.caddy
+	import /data/caddy/csp/seerr.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -533,6 +561,8 @@ seerr.erfi.io {
 keycloak.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/keycloak_csp*.caddy
+	import /data/caddy/csp/keycloak.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -550,6 +580,8 @@ keycloak.erfi.io {
 joplin.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/joplin_csp*.caddy
+	import /data/caddy/csp/joplin.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -567,6 +599,8 @@ joplin.erfi.io {
 navidrome.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/navidrome_csp*.caddy
+	import /data/caddy/csp/navidrome.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -584,6 +618,8 @@ navidrome.erfi.io {
 sabnzbd.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/sabnzbd_csp*.caddy
+	import /data/caddy/csp/sabnzbd.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -601,6 +637,8 @@ sabnzbd.erfi.io {
 immich.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/immich_csp*.caddy
+	import /data/caddy/csp/immich.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -618,6 +656,8 @@ immich.erfi.io {
 caddy-prometheus.erfi.io {
 	import cors
 	import security_headers_strict
+	import /data/caddy/csp/caddy-prometheus_csp*.caddy
+	import /data/caddy/csp/caddy-prometheus.erfi.io_csp*.caddy
 	import waf_off
 	import ipsum_blocklist
 	import /data/caddy/rl/caddy-prometheus_rl*.caddy
@@ -635,6 +675,8 @@ caddy-prometheus.erfi.io {
 copyparty.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/copyparty_csp*.caddy
+	import /data/caddy/csp/copyparty.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -652,6 +694,8 @@ copyparty.erfi.io {
 dockge.erfi.io {
 	import cors
 	import security_headers_relaxed
+	import /data/caddy/csp/dockge_csp*.caddy
+	import /data/caddy/csp/dockge.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -669,6 +713,8 @@ dockge.erfi.io {
 httpbun.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/httpbun_csp*.caddy
+	import /data/caddy/csp/httpbun.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -686,6 +732,8 @@ httpbun.erfi.io {
 httpbin.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/httpbin_csp*.caddy
+	import /data/caddy/csp/httpbin.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
@@ -703,6 +751,8 @@ httpbin.erfi.io {
 cdn.erfi.io {
 	import cors
 	import security_headers
+	import /data/caddy/csp/cdn_csp*.caddy
+	import /data/caddy/csp/cdn.erfi.io_csp*.caddy
 	import static_cache
 	import ipsum_blocklist
 	import waf
