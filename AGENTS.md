@@ -69,8 +69,8 @@ Image tags live in **five places** that must stay in sync:
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.6.0-2.11.1`).
-wafctl tag format: simple semver (e.g. `1.6.0`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.6.1-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.6.1`).
 
 ## Secrets and Encryption
 
@@ -668,6 +668,9 @@ for conditional content (different messages per status code). `file_server` insi
 - The wafctl sidecar reads Coraza audit logs and Caddy access logs incrementally
 - SecRule `.conf` files are generated and deployed to Caddy via its admin API
 - Deploy pipeline: generate config → SHA-256 fingerprint → POST to Caddy admin → reload
+- Caddy reload uses `Cache-Control: must-revalidate` header to force re-provision even
+  when the Caddyfile-adapted JSON is byte-identical (Caddy strips comments during
+  adaptation, so the fingerprint comment alone cannot force a reload)
 - `.env` contains secrets (`CF_API_TOKEN`, `EMAIL`) — never commit this file unencrypted
 - Makefile supports `.env.mk` overrides and `REMOTE=host` inline overrides
 - Two deploy modes in Makefile: `dockge` (via dockge container) or `compose` (direct)

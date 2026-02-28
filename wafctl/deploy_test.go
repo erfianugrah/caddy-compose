@@ -295,11 +295,13 @@ func TestReloadCaddyInjectsFingerprint(t *testing.T) {
 	confFile := filepath.Join(confDir, "custom-waf-settings.conf")
 	os.WriteFile(confFile, []byte("SecAction \"id:9700001\""), 0644)
 
-	// Mock Caddy admin API that captures the POST body.
+	// Mock Caddy admin API that captures the POST body and headers.
 	var receivedBody []byte
+	var receivedHeaders http.Header
 	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/load" && r.Method == "POST" {
 			receivedBody, _ = io.ReadAll(r.Body)
+			receivedHeaders = r.Header.Clone()
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -331,6 +333,12 @@ func TestReloadCaddyInjectsFingerprint(t *testing.T) {
 	diskContent, _ := os.ReadFile(caddyfilePath)
 	if string(diskContent) != caddyfileContent {
 		t.Error("Caddyfile on disk should not be modified")
+	}
+
+	// Verify Cache-Control: must-revalidate header is sent to force Caddy
+	// to reload even when the adapted JSON is byte-identical.
+	if cc := receivedHeaders.Get("Cache-Control"); cc != "must-revalidate" {
+		t.Errorf("expected Cache-Control: must-revalidate, got %q", cc)
 	}
 }
 
