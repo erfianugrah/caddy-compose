@@ -37,6 +37,10 @@ Commands:
   ratelimit delete   Delete a rate limit rule by ID
   ratelimit deploy   Deploy rate limit configs to Caddy
   ratelimit global   Show global rate limit settings
+  csp get            Show CSP configuration
+  csp set            Update CSP configuration (JSON on stdin or --file)
+  csp deploy         Deploy CSP configs to Caddy
+  csp preview        Preview rendered CSP headers per service
   blocklist stats    Show IPsum blocklist statistics
   blocklist check    Check if an IP is blocklisted
   blocklist refresh  Refresh the blocklist from upstream
@@ -179,6 +183,24 @@ func runCLI(args []string) int {
 			return cliRateLimitGlobal(flags)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown ratelimit subcommand: %s\n", command[1])
+			return 1
+		}
+	case "csp":
+		if len(command) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wafctl csp <get|set|deploy|preview>\n")
+			return 1
+		}
+		switch command[1] {
+		case "get":
+			return cliCSPGet(flags)
+		case "set":
+			return cliCSPSet(flags)
+		case "deploy":
+			return cliCSPDeploy(flags)
+		case "preview":
+			return cliCSPPreview(flags)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown csp subcommand: %s\n", command[1])
 			return 1
 		}
 	case "blocklist":
@@ -870,5 +892,62 @@ func cliBlocklistRefresh(flags cliFlags) int {
 	if json.Unmarshal(data, &result) == nil && result.TotalIPs > 0 {
 		fmt.Printf("Blocklist refreshed: %d IPs loaded\n", result.TotalIPs)
 	}
+	return 0
+}
+
+// ─── CSP CLI ────────────────────────────────────────────────────────────────
+
+func cliCSPGet(flags cliFlags) int {
+	data, err := cliGet(flags, "/api/csp")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	printJSON(data)
+	return 0
+}
+
+func cliCSPSet(flags cliFlags) int {
+	body, err := readInput(flags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	data, err := cliPut(flags, "/api/csp", body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	printJSON(data)
+	return 0
+}
+
+func cliCSPDeploy(flags cliFlags) int {
+	fmt.Print("Deploying CSP configs... ")
+	data, err := cliPost(flags, "/api/csp/deploy", nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+		return 1
+	}
+	if flags.asJSON {
+		fmt.Println()
+		printJSON(data)
+		return 0
+	}
+	fmt.Println("done")
+	var result CSPDeployResponse
+	if json.Unmarshal(data, &result) == nil {
+		fmt.Printf("Generated %d files, reloaded: %v\n", len(result.Files), result.Reloaded)
+	}
+	return 0
+}
+
+func cliCSPPreview(flags cliFlags) int {
+	data, err := cliGet(flags, "/api/csp/preview")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	printJSON(data)
 	return 0
 }

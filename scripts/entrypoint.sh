@@ -33,6 +33,12 @@ if [ ! -f "${CF_RUNTIME}" ] && [ -f "${CF_SEED}" ]; then
     echo "[entrypoint] Seeded CF trusted proxies from build-time snapshot"
 fi
 
+# Ensure CSP config directory is writable by caddy.
+# Docker may create bind-mount dirs as root before the container starts.
+CSP_DIR="/data/caddy/csp"
+mkdir -p "${CSP_DIR}"
+chmod 777 "${CSP_DIR}" 2>/dev/null || true
+
 # Start crond in the background for audit log rotation.
 if crond -b -l 2; then
     echo "[entrypoint] crond started (audit log rotation)"

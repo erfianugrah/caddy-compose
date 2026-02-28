@@ -16,6 +16,7 @@ const navItems = [
   { id: "policy", label: "Policy", href: "/policy", icon: "shield" },
   { id: "blocklist", label: "Blocklist", href: "/blocklist", icon: "ban" },
   { id: "rate-limits", label: "Rate Limits", href: "/rate-limits", icon: "gauge" },
+  { id: "csp", label: "CSP", href: "/csp", icon: "lock" },
   { id: "settings", label: "Settings", href: "/settings", icon: "settings" },
 ];
 ---
@@ -175,6 +176,19 @@ const navItems = [
                       <circle cx="12" cy="12" r="10" />
                       <path d="m4.93 4.93 4.24 4.24" />
                       <path d="m14.83 9.17 4.24-4.24" />
+                    </svg>
+                  )}
+                  {/* Lock / CSP */}
+                  {item.icon === "lock" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   )}
                   {/* Settings / Gear */}

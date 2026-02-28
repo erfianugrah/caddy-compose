@@ -39,9 +39,12 @@ func runServe() int {
 	rateLimitFile := envOr("WAF_RATELIMIT_FILE", "/data/rate-limits.json")
 	combinedAccessLog := envOr("WAF_COMBINED_ACCESS_LOG", "/var/log/combined-access.log")
 
+	cspFile := envOr("WAF_CSP_FILE", "/data/csp-config.json")
+
 	deployCfg := DeployConfig{
 		CorazaDir:     envOr("WAF_CORAZA_DIR", "/data/coraza"),
 		RateLimitDir:  envOr("WAF_RATELIMIT_DIR", "/data/rl"),
+		CSPDir:        envOr("WAF_CSP_DIR", "/data/csp"),
 		CaddyfilePath: envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
 		CaddyAdminURL: envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
 	}
@@ -54,6 +57,11 @@ func runServe() int {
 	// Ensure rate limit directory exists.
 	if err := ensureRateLimitDir(deployCfg.RateLimitDir); err != nil {
 		log.Printf("warning: could not initialize rate limit dir: %v", err)
+	}
+
+	// Ensure CSP directory exists.
+	if err := ensureCSPDir(deployCfg.CSPDir); err != nil {
+		log.Printf("warning: could not initialize CSP dir: %v", err)
 	}
 
 	// Event retention: maximum age for in-memory events (default 2160h = 90 days).
@@ -102,11 +110,12 @@ func runServe() int {
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	configStore := NewConfigStore(configFile)
 	rlRuleStore := NewRateLimitRuleStore(rateLimitFile)
+	cspStore := NewCSPStore(cspFile)
 
-	// Generate-on-boot: regenerate WAF and rate limit config files from stored
-	// state so a stack restart always picks up the latest generator output.
+	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
+	// stored state so a stack restart always picks up the latest generator output.
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
-	generateOnBoot(configStore, exclusionStore, rlRuleStore, deployCfg)
+	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, deployCfg)
 
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
@@ -133,7 +142,7 @@ func runServe() int {
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
@@ -192,6 +201,12 @@ func runServe() int {
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
 	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rlRuleStore, deployCfg))
+
+	// CSP (Content Security Policy)
+	mux.HandleFunc("GET /api/csp", handleGetCSP(cspStore))
+	mux.HandleFunc("PUT /api/csp", handleUpdateCSP(cspStore))
+	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, deployCfg))
+	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(cspStore, deployCfg))
 
 	// Cloudflare trusted proxies
 	mux.HandleFunc("GET /api/cfproxy/stats", handleCFProxyStats(cfProxyStore))
@@ -360,7 +375,7 @@ func getRLEvents(als *AccessLogStore, tr timeRange, hours int) []Event {
 
 // --- Handlers: Event endpoints ---
 
-func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore) http.HandlerFunc {
+func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
@@ -376,6 +391,7 @@ func handleHealth(store *Store, als *AccessLogStore, geoStore *GeoIPStore, exclu
 			},
 			"blocklist": blocklistStore.Stats(),
 			"cfproxy":   cfProxyStore.Stats(),
+			"csp":       cspStore.StoreInfo(),
 		}
 
 		writeJSON(w, http.StatusOK, HealthResponse{

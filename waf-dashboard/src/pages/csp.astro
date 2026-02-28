@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import CSPPanel from "../components/CSPPanel";
+---
+
+<DashboardLayout title="wafctl — Content Security Policy" active="csp">
+  <CSPPanel client:load />
+</DashboardLayout>

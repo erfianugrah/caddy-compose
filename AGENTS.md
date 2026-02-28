@@ -69,8 +69,8 @@ Image tags live in **five places** that must stay in sync:
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.2.2-2.11.1`).
-wafctl tag format: simple semver (e.g. `1.2.2`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.6.0-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.6.0`).
 
 ## Secrets and Encryption
 
@@ -162,6 +162,8 @@ wafctl tag format: simple semver (e.g. `1.2.2`).
 - `rl_generator.go` — Rate limit Caddy config generator, condition→matcher translation, file writer
 - `rl_analytics.go` — Rate limit analytics, condition-based rule attribution for 429 events
 - `rl_advisor.go` — Rate limit advisor: traffic analysis, statistical anomaly detection (MAD, Fano factor, IQR), client classification, time-of-day baselines, 30s TTL caching
+- `csp.go` — CSP data model, store, validation, header builder, merge logic, HTTP handlers
+- `csp_generator.go` — CSP Caddy config generator, FQDN propagation, file writer
 - `validate.go` — Config validation engine (`ValidateGeneratedConfig`): checks quote balance, self-referencing `ctl:ruleRemoveById`, commas in `msg:` fields, long action lines
 
 ## Coraza Rule ID Namespaces
@@ -428,7 +430,96 @@ and generates one-click rule creation from recommendations.
 
 ### Dashboard Pages (file-based routing)
 
-`/` · `/analytics` · `/blocklist` · `/events` · `/policy` · `/rate-limits` · `/services` · `/settings`
+`/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/policy` · `/rate-limits` · `/services` · `/settings`
+
+## Content Security Policy (CSP) Management
+
+Per-service CSP header management system. Follows the same pattern as rate limiting:
+JSON store → Caddy config generator → file deploy → Caddy reload.
+
+### Architecture
+
+- **Store**: `csp.go` — `CSPStore` with `sync.RWMutex`, CRUD, validation, header builder, merge logic
+- **Generator**: `csp_generator.go` — translates config into per-service `header` directives in `.caddy` files
+- **Handlers**: 4 HTTP endpoints under `/api/csp` (get, update, deploy, preview)
+- **CLI**: `wafctl csp` subcommands (get, set, deploy, preview)
+- **Frontend**: `CSPPanel.tsx` (~1130 lines) with directive editor, source picker, preview panel, service overrides
+
+### Data Model
+
+```
+CSPConfig {
+  enabled *bool           // nil = true; global kill switch
+  global_defaults CSPPolicy
+  services map[string]CSPServiceConfig
+}
+
+CSPServiceConfig {
+  mode string             // "set", "default", "none"
+  report_only bool        // Content-Security-Policy-Report-Only
+  inherit bool            // merge on top of global_defaults
+  policy CSPPolicy
+}
+
+CSPPolicy {
+  default_src, script_src, style_src, img_src, font_src, connect_src,
+  media_src, frame_src, worker_src, object_src, child_src, manifest_src,
+  base_uri, form_action, frame_ancestors []string
+  upgrade_insecure_requests bool
+  raw_directives string   // verbatim escape hatch
+}
+```
+
+### CSP Modes
+
+| Mode | Caddy Syntax | Behavior |
+|------|-------------|----------|
+| `set` | `header Content-Security-Policy "..."` | Always set (overwrite upstream) |
+| `default` | `header ?Content-Security-Policy "..."` | Only set if upstream didn't send one |
+| `none` | Comment-only file | No CSP header emitted for this service |
+
+### Global Enable/Disable
+
+`CSPConfig.Enabled` is a `*bool` (nil = true for backward compatibility). When `false`:
+- Generator writes comment-only placeholder files for all services
+- Preview endpoint returns empty services map
+- Config is preserved — re-enabling restores all policies
+- Does NOT affect CSP headers set by upstream applications themselves
+
+### FQDN Propagation
+
+Each Caddyfile service block has two CSP import lines (short name + FQDN):
+```
+import /data/caddy/csp/httpbun_csp*.caddy
+import /data/caddy/csp/httpbun.erfi.io_csp*.caddy
+```
+
+When a service has an explicit override (e.g., `httpbun`), the generator propagates
+it to the FQDN variant (`httpbun.erfi.io`) via `findParentServiceConfig()`. Without
+this, the FQDN file would get global defaults and overwrite the short-name override
+(Caddy processes imports sequentially).
+
+### Merge Behavior (inherit: true)
+
+Non-empty override directive slices replace the base; empty slices keep the base.
+`upgrade_insecure_requests` is sticky (true in base or override → true in result).
+
+### Directory Layout
+
+| Aspect | Pattern |
+|--------|---------|
+| Store file | `/data/csp.json` (`WAF_CSP_FILE`) |
+| Output dir (wafctl) | `/data/csp/` (`WAF_CSP_DIR`) |
+| Output dir (Caddy) | `/data/caddy/csp/` |
+| File naming | `<service>_csp.caddy` |
+| Caddyfile import | `import /data/caddy/csp/<svc>_csp*.caddy` |
+| Import position | After `security_headers`, before `ipsum_blocklist` |
+
+### Nonce Limitations
+
+Nonces are not supported — Caddy reverse proxy doesn't control HTML body. `style-src 'unsafe-inline'`
+is unavoidable (Radix UI injects `<style>` tags). `script-src 'unsafe-inline'` needed for most
+proxied apps and Astro hydration.
 
 ## API Endpoints (wafctl)
 
@@ -445,6 +536,7 @@ and generates one-click rule creation from recommendations.
 | RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
+| CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ## Caddy Body Matcher Plugin (github.com/erfianugrah/caddy-body-matcher)
@@ -521,8 +613,8 @@ directive. The handler must run first so placeholders are populated for bucket k
 
 ## Test Patterns
 
-### Go (817 tests across 16 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `handlers_test.go`, `cli_test.go`, `testhelpers_test.go`
+### Go (445 tests across 19 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -593,11 +685,12 @@ Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
 - `ipsum_block.caddy` — updated daily at 06:00 UTC by wafctl scheduled refresh, or on-demand via `POST /api/blocklist/refresh`
 - `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
+- `<service>_csp.caddy` — CSP header configs (per-service)
 
 ### Startup Behavior (generate-on-boot)
 
 On startup, wafctl calls `generateOnBoot()` which regenerates all config files
-from stored JSON state (WAF config, exclusions, rate limit rules). This ensures a
+from stored JSON state (WAF config, exclusions, rate limit rules, CSP). This ensures a
 stack restart always picks up the latest generator output without requiring a
 manual `POST /api/config/deploy`. No Caddy reload is performed — Caddy reads
 the files fresh on its own startup.
@@ -651,6 +744,8 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
 - `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for RL auto-discovery
+- `WAF_CSP_FILE` (default `/data/csp.json`) — CSP configuration store path
+- `WAF_CSP_DIR` (default `/data/csp/`) — output directory for generated CSP config files
 - `WAF_BLOCKLIST_REFRESH_HOUR` (default `6`) — UTC hour (0–23) for daily IPsum blocklist refresh
 
 ### CLI Subcommands
@@ -678,6 +773,10 @@ wafctl ratelimit create     # Create rule (JSON on stdin or --file)
 wafctl ratelimit delete ID  # Delete a rate limit rule
 wafctl ratelimit deploy     # Deploy rate limit configs to Caddy
 wafctl ratelimit global     # Show global rate limit settings
+wafctl csp get              # Show CSP configuration
+wafctl csp set              # Update config (JSON on stdin or --file)
+wafctl csp deploy           # Deploy CSP configs to Caddy
+wafctl csp preview          # Preview rendered CSP headers per service
 wafctl blocklist stats
 wafctl blocklist check IP
 wafctl blocklist refresh
