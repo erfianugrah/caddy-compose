@@ -1006,20 +1006,19 @@ export default function CSPPanel() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <div>
-              <h2 className={T.pageTitle}>Content Security Policy</h2>
-              <p className={T.pageDescription}>
-                Configure CSP headers per service. Inherit from global defaults or override individually.
-              </p>
-            </div>
+          <div>
+            <h2 className={T.pageTitle}>Content Security Policy</h2>
+            <p className={T.pageDescription}>
+              Configure CSP headers per service. Inherit from global defaults or override individually.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant={enabled ? "outline" : "destructive"}
                   size="sm"
                   onClick={() => { setEnabled(!enabled); markDirty(); }}
-                  className="shrink-0"
                 >
                   {enabled ? (
                     <><Shield className="h-3.5 w-3.5" /> Enabled</>
@@ -1034,8 +1033,7 @@ export default function CSPPanel() {
                   : "CSP is disabled. All services will have no CSP headers. Click to re-enable."}
               </TooltipContent>
             </Tooltip>
-          </div>
-          <div className="flex items-center gap-2">
+            <Separator orientation="vertical" className="h-6" />
             <Button variant="outline" size="sm" onClick={handleExport}>
               <Download className="h-3.5 w-3.5" />
               Export
