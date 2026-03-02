@@ -308,7 +308,7 @@ waf.erfi.io {
 		# Hashed assets are immutable — only reached after forward_auth succeeds
 		@waf_hashed path /_astro/*
 		header @waf_hashed Cache-Control "public, max-age=31536000, immutable"
-		try_files {path} {path}/index.html /index.html
+		try_files {path} {path}/index.html
 		file_server
 	}
 	import error_pages

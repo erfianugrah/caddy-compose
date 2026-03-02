@@ -1,0 +1,68 @@
+---
+import "../styles/globals.css";
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 — Not Found</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="h-screen overflow-hidden bg-background text-foreground antialiased">
+    <div class="flex h-screen items-center justify-center">
+      <div class="flex flex-col items-center gap-8 px-6 text-center">
+        <!-- Glitched shield icon -->
+        <div class="relative">
+          <div class="flex h-20 w-20 items-center justify-center rounded-2xl border border-border bg-navy-950">
+            <svg
+              class="h-10 w-10 text-neon-pink"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <line x1="4" y1="4" x2="20" y2="20" stroke-width="2" />
+            </svg>
+          </div>
+          <div class="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-neon-pink shadow-[0_0_8px_rgba(255,0,110,0.6)]"></div>
+        </div>
+
+        <!-- Status code -->
+        <div>
+          <h1 class="text-6xl font-bold tracking-tighter text-neon-pink glow-pink">404</h1>
+          <p class="mt-2 text-sm text-muted-foreground">ROUTE_NOT_FOUND</p>
+        </div>
+
+        <!-- Message -->
+        <div class="max-w-sm space-y-2">
+          <p class="text-sm text-foreground">
+            The requested path does not match any known route.
+          </p>
+          <p class="font-mono text-xs text-muted-foreground">
+            <span class="text-neon-pink">ERR</span> No matching file or directory
+          </p>
+        </div>
+
+        <!-- Back link -->
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 rounded-lg border border-border bg-navy-950 px-4 py-2 text-sm text-neon-green transition-colors hover:bg-accent"
+        >
+          <svg
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Back to Overview
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

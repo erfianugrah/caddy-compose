@@ -432,6 +432,22 @@ and generates one-click rule creation from recommendations.
 
 `/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/policy` · `/rate-limits` · `/services` · `/settings`
 
+### Static MPA Routing
+
+The dashboard is an Astro `output: "static"` multi-page application (MPA), **not** an SPA.
+Each page is a pre-rendered HTML file (`<route>/index.html`). Caddy serves these via:
+
+```
+try_files {path} {path}/index.html
+```
+
+There is intentionally **no** `/index.html` catch-all fallback — that is an SPA pattern
+and would cause Web Cache Deception vulnerabilities (e.g., `/blocklist;test.png` would
+serve authenticated HTML with `.png` cache headers). Unknown paths fall through to
+Caddy's `handle_errors` which serves the custom `404.html` page.
+
+A custom `src/pages/404.astro` generates `dist/404.html` for proper 404 responses.
+
 ## Content Security Policy (CSP) Management
 
 Per-service CSP header management system. Follows the same pattern as rate limiting:
