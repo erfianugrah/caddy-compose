@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import {
   AreaChart,
   Area,
@@ -432,7 +434,17 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
     );
   }
 
-  const { items: pageData, totalPages } = paginateArray(data, page, ANALYTICS_PAGE_SIZE);
+  const ipSortComparators = useMemo(() => ({
+    ip: (a: TopBlockedIP, b: TopBlockedIP) => a.client_ip.localeCompare(b.client_ip),
+    country: (a: TopBlockedIP, b: TopBlockedIP) => (a.country ?? "").localeCompare(b.country ?? ""),
+    events: (a: TopBlockedIP, b: TopBlockedIP) => a.total - b.total,
+    blocked: (a: TopBlockedIP, b: TopBlockedIP) => a.blocked - b.blocked,
+    block_rate: (a: TopBlockedIP, b: TopBlockedIP) => a.block_rate - b.block_rate,
+    first_seen: (a: TopBlockedIP, b: TopBlockedIP) => a.first_seen.localeCompare(b.first_seen),
+    last_seen: (a: TopBlockedIP, b: TopBlockedIP) => a.last_seen.localeCompare(b.last_seen),
+  }), []);
+  const ipSort = useTableSort(data, ipSortComparators);
+  const { items: pageData, totalPages } = paginateArray(ipSort.sortedData, page, ANALYTICS_PAGE_SIZE);
 
   return (
     <Card>
@@ -455,13 +467,13 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>IP Address</TableHead>
-                <TableHead>Country</TableHead>
-                <TableHead className="text-right">Events</TableHead>
-                <TableHead className="text-right">Blocked</TableHead>
-                <TableHead>Block Rate</TableHead>
-                <TableHead>First Seen</TableHead>
-                <TableHead>Last Seen</TableHead>
+                <SortableTableHead sortKey="ip" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>IP Address</SortableTableHead>
+                <SortableTableHead sortKey="country" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>Country</SortableTableHead>
+                <SortableTableHead sortKey="events" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort} className="text-right">Events</SortableTableHead>
+                <SortableTableHead sortKey="blocked" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="block_rate" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>Block Rate</SortableTableHead>
+                <SortableTableHead sortKey="first_seen" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>First Seen</SortableTableHead>
+                <SortableTableHead sortKey="last_seen" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>Last Seen</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -547,7 +559,13 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
     );
   }
 
-  const { items: pageData, totalPages } = paginateArray(data, page, ANALYTICS_PAGE_SIZE);
+  const uriSortComparators = useMemo(() => ({
+    uri: (a: TopTargetedURI, b: TopTargetedURI) => a.uri.localeCompare(b.uri),
+    total: (a: TopTargetedURI, b: TopTargetedURI) => a.total - b.total,
+    blocked: (a: TopTargetedURI, b: TopTargetedURI) => a.blocked - b.blocked,
+  }), []);
+  const uriSort = useTableSort(data, uriSortComparators);
+  const { items: pageData, totalPages } = paginateArray(uriSort.sortedData, page, ANALYTICS_PAGE_SIZE);
 
   return (
     <Card>
@@ -570,9 +588,9 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="max-w-[300px]">URI</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Blocked</TableHead>
+                <SortableTableHead sortKey="uri" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="max-w-[300px]">URI</SortableTableHead>
+                <SortableTableHead sortKey="total" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="text-right">Total</SortableTableHead>
+                <SortableTableHead sortKey="blocked" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="text-right">Blocked</SortableTableHead>
                 <TableHead>Services</TableHead>
               </TableRow>
             </TableHeader>
@@ -645,8 +663,19 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
     );
   }
 
-  const maxCount = data.length > 0 ? data[0].count : 1;
-  const { items: pageData, totalPages } = paginateArray(data, page, ANALYTICS_PAGE_SIZE);
+  const maxCount = data.length > 0 ? Math.max(...data.map((c) => c.count)) : 1;
+  const countrySortComparators = useMemo(() => ({
+    country: (a: CountryCount, b: CountryCount) => a.country.localeCompare(b.country),
+    total: (a: CountryCount, b: CountryCount) => a.count - b.count,
+    blocked: (a: CountryCount, b: CountryCount) => a.blocked - b.blocked,
+    block_rate: (a: CountryCount, b: CountryCount) => {
+      const rateA = a.count > 0 ? a.blocked / a.count : 0;
+      const rateB = b.count > 0 ? b.blocked / b.count : 0;
+      return rateA - rateB;
+    },
+  }), []);
+  const countrySort = useTableSort(data, countrySortComparators);
+  const { items: pageData, totalPages } = paginateArray(countrySort.sortedData, page, ANALYTICS_PAGE_SIZE);
 
   return (
     <Card>
@@ -669,11 +698,11 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Country</TableHead>
+                <SortableTableHead sortKey="country" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort}>Country</SortableTableHead>
                 <TableHead>Requests</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Blocked</TableHead>
-                <TableHead className="text-right">Block Rate</TableHead>
+                <SortableTableHead sortKey="total" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Total</SortableTableHead>
+                <SortableTableHead sortKey="blocked" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="block_rate" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Block Rate</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

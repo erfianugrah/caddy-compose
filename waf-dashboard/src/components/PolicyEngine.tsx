@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
 import {
   DndContext,
@@ -243,7 +245,7 @@ export default function PolicyEngine() {
   }, []);
 
   // Drag-and-drop reorder state
-  const isFiltered = searchQuery.trim() !== "" || typeFilter !== "all";
+  const isFilteredBase = searchQuery.trim() !== "" || typeFilter !== "all";
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -344,7 +346,18 @@ export default function PolicyEngine() {
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [searchQuery, typeFilter]);
 
-  const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(filteredExclusions, rulesPage, RULES_PAGE_SIZE);
+  const exclSortComparators = useMemo(() => ({
+    name: (a: Exclusion, b: Exclusion) => a.name.localeCompare(b.name),
+    type: (a: Exclusion, b: Exclusion) => a.type.localeCompare(b.type),
+    hits: (a: Exclusion, b: Exclusion) => (hitsData?.hits?.[a.name]?.total ?? 0) - (hitsData?.hits?.[b.name]?.total ?? 0),
+    enabled: (a: Exclusion, b: Exclusion) => Number(a.enabled) - Number(b.enabled),
+  }), [hitsData]);
+  const exclSort = useTableSort(filteredExclusions, exclSortComparators);
+  const sortedFilteredExclusions = exclSort.sortedData;
+
+  const isSorted = exclSort.sortState.key !== null;
+  const isFiltered = isFilteredBase || isSorted;
+  const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(sortedFilteredExclusions, rulesPage, RULES_PAGE_SIZE);
 
   // All possible exclusion types for the filter dropdown (ordered logically)
   const allExclusionTypes: ExclusionType[] = [
@@ -639,11 +652,11 @@ export default function PolicyEngine() {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[52px] px-1">#</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
+                  <SortableTableHead sortKey="name" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Name</SortableTableHead>
+                  <SortableTableHead sortKey="type" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Type</SortableTableHead>
                   <TableHead>Target / Conditions</TableHead>
-                  <TableHead>Hits (24h)</TableHead>
-                  <TableHead>Enabled</TableHead>
+                  <SortableTableHead sortKey="hits" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Hits (24h)</SortableTableHead>
+                  <SortableTableHead sortKey="enabled" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Enabled</SortableTableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>

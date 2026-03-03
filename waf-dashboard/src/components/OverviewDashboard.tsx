@@ -1,4 +1,6 @@
 import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import {
   AreaChart,
   Area,
@@ -394,6 +396,18 @@ export default function OverviewDashboard() {
   }, [zoomTimeParams]);
 
   const totalEventsPages = Math.max(1, Math.ceil(eventsTotal / eventsPerPage));
+
+  const overviewEvtSortComparators = useMemo(() => ({
+    time: (a: WAFEvent, b: WAFEvent) => a.timestamp.localeCompare(b.timestamp),
+    service: (a: WAFEvent, b: WAFEvent) => a.service.localeCompare(b.service),
+    method: (a: WAFEvent, b: WAFEvent) => a.method.localeCompare(b.method),
+    uri: (a: WAFEvent, b: WAFEvent) => a.uri.localeCompare(b.uri),
+    client_ip: (a: WAFEvent, b: WAFEvent) => a.client_ip.localeCompare(b.client_ip),
+    country: (a: WAFEvent, b: WAFEvent) => (a.country ?? "").localeCompare(b.country ?? ""),
+    type: (a: WAFEvent, b: WAFEvent) => a.event_type.localeCompare(b.event_type),
+  }), []);
+  const overviewEvtSort = useTableSort(events, overviewEvtSortComparators);
+  const sortedOverviewEvents = overviewEvtSort.sortedData;
 
   // ── Click-drag zoom handlers ──
   const handleMouseDown = useCallback(
@@ -859,13 +873,13 @@ export default function OverviewDashboard() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-8" />
-                <TableHead>Time</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead className="max-w-[200px]">URI</TableHead>
-                <TableHead>Client IP</TableHead>
-                <TableHead>Country</TableHead>
-                <TableHead>Type</TableHead>
+                <SortableTableHead sortKey="time" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort}>Time</SortableTableHead>
+                <SortableTableHead sortKey="service" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort}>Service</SortableTableHead>
+                <SortableTableHead sortKey="method" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort}>Method</SortableTableHead>
+                <SortableTableHead sortKey="uri" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort} className="max-w-[200px]">URI</SortableTableHead>
+                <SortableTableHead sortKey="client_ip" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort}>Client IP</SortableTableHead>
+                <SortableTableHead sortKey="country" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort}>Country</SortableTableHead>
+                <SortableTableHead sortKey="type" activeKey={overviewEvtSort.sortState.key} direction={overviewEvtSort.sortState.direction} onSort={overviewEvtSort.toggleSort}>Type</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -882,7 +896,7 @@ export default function OverviewDashboard() {
                 ))}
 
               {!loading && !eventsLoading && events.length > 0 &&
-                events.map((evt) => (
+                sortedOverviewEvents.map((evt) => (
                   <Fragment key={evt.id}>
                     <TableRow
                       className="cursor-pointer"

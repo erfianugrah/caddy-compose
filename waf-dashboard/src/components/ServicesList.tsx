@@ -1,5 +1,7 @@
-import { Fragment, useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import {
   Card,
   CardContent,
@@ -130,6 +132,16 @@ export default function ServicesList() {
     });
   };
 
+  const svcSortComparators = useMemo(() => ({
+    service: (a: ServiceDetail, b: ServiceDetail) => a.service.localeCompare(b.service),
+    total: (a: ServiceDetail, b: ServiceDetail) => a.total_events - b.total_events,
+    blocked: (a: ServiceDetail, b: ServiceDetail) => a.blocked - b.blocked,
+    logged: (a: ServiceDetail, b: ServiceDetail) => a.logged - b.logged,
+    block_rate: (a: ServiceDetail, b: ServiceDetail) => a.block_rate - b.block_rate,
+  }), []);
+  const svcSort = useTableSort(services, svcSortComparators);
+  const sortedServices = svcSort.sortedData;
+
   if (error) {
     return (
       <Card className="max-w-md">
@@ -158,11 +170,11 @@ export default function ServicesList() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-8" />
-                <TableHead>Service</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Blocked</TableHead>
-                <TableHead className="text-right">Logged</TableHead>
-                <TableHead>Block Rate</TableHead>
+                <SortableTableHead sortKey="service" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort}>Service</SortableTableHead>
+                <SortableTableHead sortKey="total" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Total</SortableTableHead>
+                <SortableTableHead sortKey="blocked" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="logged" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Logged</SortableTableHead>
+                <SortableTableHead sortKey="block_rate" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort}>Block Rate</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -189,7 +201,7 @@ export default function ServicesList() {
                 ))}
 
               {!loading &&
-                services.map((svc) => (
+                sortedServices.map((svc) => (
                   <Fragment key={svc.service}>
                     <TableRow
                       className="cursor-pointer"

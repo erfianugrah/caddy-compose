@@ -11,6 +11,8 @@ import {
   ExternalLink,
   Search,
 } from "lucide-react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import {
   Card,
   CardContent,
@@ -767,6 +769,20 @@ export default function EventsTable() {
   const events = response?.events ?? [];
   const totalPages = response?.total_pages ?? 1;
 
+  const evtSortComparators = useMemo(() => ({
+    time: (a: WAFEvent, b: WAFEvent) => a.timestamp.localeCompare(b.timestamp),
+    service: (a: WAFEvent, b: WAFEvent) => a.service.localeCompare(b.service),
+    method: (a: WAFEvent, b: WAFEvent) => a.method.localeCompare(b.method),
+    uri: (a: WAFEvent, b: WAFEvent) => a.uri.localeCompare(b.uri),
+    client_ip: (a: WAFEvent, b: WAFEvent) => a.client_ip.localeCompare(b.client_ip),
+    country: (a: WAFEvent, b: WAFEvent) => (a.country ?? "").localeCompare(b.country ?? ""),
+    rule: (a: WAFEvent, b: WAFEvent) => (a.rule_id ?? 0) - (b.rule_id ?? 0),
+    score: (a: WAFEvent, b: WAFEvent) => a.anomaly_score - b.anomaly_score,
+    type: (a: WAFEvent, b: WAFEvent) => a.event_type.localeCompare(b.event_type),
+  }), []);
+  const evtSort = useTableSort(events, evtSortComparators);
+  const sortedEvents = evtSort.sortedData;
+
   if (error) {
     return (
       <Card className="max-w-md">
@@ -878,15 +894,15 @@ export default function EventsTable() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-8" />
-                <TableHead>Time</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead className="max-w-[200px]">URI</TableHead>
-                <TableHead>Client IP</TableHead>
-                <TableHead>Country</TableHead>
-                <TableHead>Rule</TableHead>
-                <TableHead title="Inbound / Outbound anomaly score">Score</TableHead>
-                <TableHead>Type</TableHead>
+                <SortableTableHead sortKey="time" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Time</SortableTableHead>
+                <SortableTableHead sortKey="service" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Service</SortableTableHead>
+                <SortableTableHead sortKey="method" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Method</SortableTableHead>
+                <SortableTableHead sortKey="uri" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort} className="max-w-[200px]">URI</SortableTableHead>
+                <SortableTableHead sortKey="client_ip" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Client IP</SortableTableHead>
+                <SortableTableHead sortKey="country" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Country</SortableTableHead>
+                <SortableTableHead sortKey="rule" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Rule</SortableTableHead>
+                <SortableTableHead sortKey="score" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort} title="Inbound / Outbound anomaly score">Score</SortableTableHead>
+                <SortableTableHead sortKey="type" activeKey={evtSort.sortState.key} direction={evtSort.sortState.direction} onSort={evtSort.toggleSort}>Type</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -903,7 +919,7 @@ export default function EventsTable() {
                 ))}
 
               {!loading &&
-                events.map((evt) => (
+                sortedEvents.map((evt) => (
                   <Fragment key={evt.id}>
                     <TableRow
                       className="cursor-pointer"

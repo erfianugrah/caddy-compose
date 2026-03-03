@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
 import {
   DndContext,
@@ -761,7 +763,7 @@ export default function RateLimitsPanel() {
   const [rulesPage, setRulesPage] = useState(1);
 
   // Drag-and-drop reorder
-  const isFiltered = searchQuery.trim() !== "" || actionFilter !== "all";
+  const isFilteredBase = searchQuery.trim() !== "" || actionFilter !== "all";
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -845,7 +847,21 @@ export default function RateLimitsPanel() {
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [searchQuery, actionFilter]);
 
-  const { items: pagedRules, totalPages: rulesTotalPages } = paginateArray(filteredRules, rulesPage, RL_RULES_PAGE_SIZE);
+  const rlSortComparators = useMemo(() => ({
+    name: (a: RateLimitRule, b: RateLimitRule) => a.name.localeCompare(b.name),
+    service: (a: RateLimitRule, b: RateLimitRule) => a.service.localeCompare(b.service),
+    rate: (a: RateLimitRule, b: RateLimitRule) => a.events - b.events,
+    key: (a: RateLimitRule, b: RateLimitRule) => a.key.localeCompare(b.key),
+    action: (a: RateLimitRule, b: RateLimitRule) => a.action.localeCompare(b.action),
+    hits: (a: RateLimitRule, b: RateLimitRule) => (hitsData?.[a.id]?.total ?? 0) - (hitsData?.[b.id]?.total ?? 0),
+    enabled: (a: RateLimitRule, b: RateLimitRule) => Number(a.enabled) - Number(b.enabled),
+  }), [hitsData]);
+  const rlSort = useTableSort(filteredRules, rlSortComparators);
+  const sortedFilteredRules = rlSort.sortedData;
+
+  const isSorted = rlSort.sortState.key !== null;
+  const isFiltered = isFilteredBase || isSorted;
+  const { items: pagedRules, totalPages: rulesTotalPages } = paginateArray(sortedFilteredRules, rulesPage, RL_RULES_PAGE_SIZE);
 
   // Success toast
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1212,14 +1228,14 @@ export default function RateLimitsPanel() {
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="w-[52px] px-1">#</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Service</TableHead>
+                        <SortableTableHead sortKey="name" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Name</SortableTableHead>
+                        <SortableTableHead sortKey="service" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Service</SortableTableHead>
                         <TableHead>Conditions / Target</TableHead>
-                        <TableHead>Rate</TableHead>
-                        <TableHead>Key</TableHead>
-                        <TableHead>Action</TableHead>
-                        <TableHead>Hits (24h)</TableHead>
-                        <TableHead>Enabled</TableHead>
+                        <SortableTableHead sortKey="rate" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Rate</SortableTableHead>
+                        <SortableTableHead sortKey="key" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Key</SortableTableHead>
+                        <SortableTableHead sortKey="action" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Action</SortableTableHead>
+                        <SortableTableHead sortKey="hits" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Hits (24h)</SortableTableHead>
+                        <SortableTableHead sortKey="enabled" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Enabled</SortableTableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
