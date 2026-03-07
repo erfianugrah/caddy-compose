@@ -507,7 +507,7 @@ export default function EventsTable() {
                     className="py-8 text-center text-muted-foreground"
                   >
                     {filters.some((f) => f.field === "request_id")
-                      ? "No correlated security events found for this request. The request passed through the WAF without triggering any rules."
+                      ? "No correlated security events found for this request ID. The request may have passed through without triggering any security rules, or the event may not yet be indexed."
                       : "No events found matching the current filters."}
                   </TableCell>
                 </TableRow>

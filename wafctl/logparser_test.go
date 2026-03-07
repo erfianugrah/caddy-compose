@@ -1056,6 +1056,40 @@ func TestRateLimitEventToEventIpsum(t *testing.T) {
 	}
 }
 
+func TestRateLimitEventToEvent_RequestID(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 1, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.5",
+		Service:   "sonarr.erfi.io",
+		Method:    "GET",
+		URI:       "/api/v3/queue",
+		UserAgent: "curl/7.68",
+		RequestID: "caddy-uuid-test-123",
+	}
+
+	ev := RateLimitEventToEvent(rle)
+
+	if ev.RequestID != "caddy-uuid-test-123" {
+		t.Errorf("request_id: want caddy-uuid-test-123, got %q", ev.RequestID)
+	}
+}
+
+func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 1, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.5",
+		Service:   "sonarr.erfi.io",
+		Method:    "GET",
+		URI:       "/api/v3/queue",
+	}
+
+	ev := RateLimitEventToEvent(rle)
+
+	if ev.RequestID != "" {
+		t.Errorf("request_id should be empty for events without it, got %q", ev.RequestID)
+	}
+}
+
 func TestSummaryMergesIpsumEvents(t *testing.T) {
 	wafPath := writeTempLog(t, sampleLines)
 	store := NewStore(wafPath)

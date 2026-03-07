@@ -423,6 +423,150 @@ func TestAccessLogStoreEventFields(t *testing.T) {
 	}
 }
 
+// ─── RequestID Propagation Tests ────────────────────────────────────
+
+func TestAccessLogStoreRequestID(t *testing.T) {
+	// 429 with top-level request_id field (modern Caddy log_append format).
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/rate-limited","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001,"request_id":"top-level-uuid-456"}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].RequestID != "top-level-uuid-456" {
+		t.Errorf("request_id: want %q, got %q", "top-level-uuid-456", events[0].RequestID)
+	}
+}
+
+func TestAccessLogStoreRequestID_HeaderFallback(t *testing.T) {
+	// 429 without top-level request_id but with X-Request-Id header.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/rate-limited","headers":{"User-Agent":["curl/7.68"],"X-Request-Id":["header-fallback-uuid-789"]}},"status":429,"size":0,"duration":0.001}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].RequestID != "header-fallback-uuid-789" {
+		t.Errorf("request_id: want %q (header fallback), got %q", "header-fallback-uuid-789", events[0].RequestID)
+	}
+}
+
+func TestAccessLogStoreRequestID_TopLevelPreference(t *testing.T) {
+	// Both top-level and header present — top-level wins.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/rate-limited","headers":{"User-Agent":["curl/7.68"],"X-Request-Id":["old-header-id"]}},"status":429,"size":0,"duration":0.001,"request_id":"new-top-level-id"}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].RequestID != "new-top-level-id" {
+		t.Errorf("request_id: want %q (top-level preferred), got %q", "new-top-level-id", events[0].RequestID)
+	}
+}
+
+func TestAccessLogStoreRequestID_Missing(t *testing.T) {
+	// No request_id at all — should be empty string.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/rate-limited","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].RequestID != "" {
+		t.Errorf("request_id should be empty when absent, got %q", events[0].RequestID)
+	}
+}
+
+func TestAccessLogStoreRequestID_PropagatedToEvent(t *testing.T) {
+	// Verify request_id flows through SnapshotAsEvents (RateLimitEventToEvent).
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/rate-limited","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001,"request_id":"e2e-uuid-abc"}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].RequestID != "e2e-uuid-abc" {
+		t.Errorf("Event.RequestID: want %q, got %q", "e2e-uuid-abc", events[0].RequestID)
+	}
+}
+
+func TestAccessLogStoreRequestID_IpsumEvent(t *testing.T) {
+	// ipsum-blocked event should also carry request_id.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:02:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001,"request_id":"ipsum-uuid-def"}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "ipsum_blocked" {
+		t.Errorf("event_type: want ipsum_blocked, got %s", events[0].EventType)
+	}
+	if events[0].RequestID != "ipsum-uuid-def" {
+		t.Errorf("Event.RequestID: want %q, got %q", "ipsum-uuid-def", events[0].RequestID)
+	}
+}
+
+func TestAccessLogStoreRequestID_JSONL_RoundTrip(t *testing.T) {
+	// Verify request_id survives JSONL persistence and restore.
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"test.erfi.io","uri":"/","headers":{}},"status":429,"size":0,"duration":0.001,"request_id":"persist-uuid-ghi"}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	dir := t.TempDir()
+	eventFile := filepath.Join(dir, "access-events.jsonl")
+
+	// Load and persist.
+	store := NewAccessLogStore(path)
+	store.SetEventFile(eventFile)
+	store.Load()
+
+	if got := store.EventCount(); got != 1 {
+		t.Fatalf("expected 1 event after load, got %d", got)
+	}
+
+	// Create a new store and restore from JSONL.
+	store2 := NewAccessLogStore(path)
+	store2.SetEventFile(eventFile)
+
+	events := store2.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event after JSONL restore, got %d", len(events))
+	}
+	if events[0].RequestID != "persist-uuid-ghi" {
+		t.Errorf("request_id after JSONL round-trip: want %q, got %q", "persist-uuid-ghi", events[0].RequestID)
+	}
+}
+
 func TestAccessLogStoreSummary(t *testing.T) {
 	path := writeTempAccessLog(t, sampleAccessLogLines)
 	store := NewAccessLogStore(path)

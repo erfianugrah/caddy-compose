@@ -64,7 +64,8 @@ type RateLimitEvent struct {
 	Method    string    `json:"method"`
 	URI       string    `json:"uri"`
 	UserAgent string    `json:"user_agent"`
-	Source    string    `json:"source,omitempty"` // "" = rate_limited, "ipsum" = ipsum_blocked
+	Source    string    `json:"source,omitempty"`     // "" = rate_limited, "ipsum" = ipsum_blocked
+	RequestID string    `json:"request_id,omitempty"` // Caddy UUID for cross-log correlation
 }
 
 // isIpsumBlocked checks if the response headers contain X-Blocked-By: ipsum.
@@ -345,6 +346,7 @@ func (s *AccessLogStore) Load() {
 						Method:    entry.Request.Method,
 						URI:       entry.Request.URI,
 						UserAgent: ua,
+						RequestID: accessLogRequestID(entry),
 					}
 					if isIpsum {
 						evt.Source = "ipsum"
@@ -566,6 +568,7 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,
 		EventType:      eventType,
+		RequestID:      rle.RequestID,
 	}
 }
 
