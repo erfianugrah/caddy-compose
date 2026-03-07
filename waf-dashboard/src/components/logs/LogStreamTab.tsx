@@ -24,7 +24,7 @@ import { statusBadge, formatDuration, formatBytes, DetailRow, HeaderRow } from "
 export interface LogStreamTabProps {
   response: GeneralLogsResponse | null;
   loading: boolean;
-  sortState: { key: string | null; direction: "asc" | "desc" | null };
+  sortState: { key: SortKey | null; direction: "asc" | "desc" | null };
   toggleSort: (key: SortKey) => void;
   sortedData: GeneralLogEvent[];
   page: number;
@@ -153,13 +153,13 @@ export default function LogStreamTab({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <SortableTableHead sortKey="time" label="Time" sortState={sortState} onSort={toggleSort} className="w-[130px]" />
-                <SortableTableHead sortKey="status" label="Status" sortState={sortState} onSort={toggleSort} className="w-[70px]" />
-                <SortableTableHead sortKey="method" label="Method" sortState={sortState} onSort={toggleSort} className="w-[70px]" />
-                <SortableTableHead sortKey="service" label="Service" sortState={sortState} onSort={toggleSort} />
+                <SortableTableHead sortKey="time" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[130px]">Time</SortableTableHead>
+                <SortableTableHead sortKey="status" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Status</SortableTableHead>
+                <SortableTableHead sortKey="method" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Method</SortableTableHead>
+                <SortableTableHead sortKey="service" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort}>Service</SortableTableHead>
                 <TableHead className="text-xs">URI</TableHead>
-                <SortableTableHead sortKey="duration" label="Latency" sortState={sortState} onSort={toggleSort} className="w-[80px]" />
-                <SortableTableHead sortKey="size" label="Size" sortState={sortState} onSort={toggleSort} className="w-[70px]" />
+                <SortableTableHead sortKey="duration" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[80px]">Latency</SortableTableHead>
+                <SortableTableHead sortKey="size" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Size</SortableTableHead>
                 <TableHead className="text-xs w-[60px]">Headers</TableHead>
               </TableRow>
             </TableHeader>

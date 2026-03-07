@@ -3,15 +3,15 @@ import { TableHead } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { SortDirection } from "@/hooks/useTableSort";
 
-interface SortableTableHeadProps {
+interface SortableTableHeadProps<K extends string = string> {
   /** Column sort key */
-  sortKey: string;
+  sortKey: K;
   /** Current active sort key */
-  activeKey: string | null;
+  activeKey: K | null;
   /** Current sort direction */
   direction: SortDirection;
   /** Called when header is clicked */
-  onSort: (key: string) => void;
+  onSort: (key: K) => void;
   /** Additional className for the <th> */
   className?: string;
   /** Optional title tooltip */
@@ -23,7 +23,7 @@ interface SortableTableHeadProps {
  * A table header cell that is clickable and shows sort direction indicators.
  * Renders a subtle arrow icon: up for asc, down for desc, up-down for unsorted.
  */
-export function SortableTableHead({
+export function SortableTableHead<K extends string = string>({
   sortKey,
   activeKey,
   direction,
@@ -31,7 +31,7 @@ export function SortableTableHead({
   className,
   title,
   children,
-}: SortableTableHeadProps) {
+}: SortableTableHeadProps<K>) {
   const isActive = activeKey === sortKey && direction !== null;
 
   return (

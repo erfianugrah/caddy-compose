@@ -37,7 +37,7 @@ export default function LogViewer() {
   const [tab, setTab] = useState<ViewTab>("logs");
 
   // Filters
-  const [timeRange, setTimeRange] = useState<TimeRange>({ mode: "quick", quickRange: "1h" });
+  const [timeRange, setTimeRange] = useState<TimeRange>({ type: "relative", hours: 1, label: "Last 1 hour" });
   const [serviceFilter, setServiceFilter] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -157,7 +157,7 @@ export default function LogViewer() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <TimeRangePicker value={timeRange} onChange={(tr) => { setTimeRange(tr); setPage(1); }} />
+          <TimeRangePicker value={timeRange} onChange={(tr) => { setTimeRange(tr); setPage(1); }} onRefresh={loadLogs} />
           <Button variant="outline" size="sm" onClick={loadLogs} disabled={loading}>
             <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
