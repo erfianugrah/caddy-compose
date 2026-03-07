@@ -20,6 +20,15 @@ export interface SecurityHeaderInfo {
   permissions_policy?: string;
 }
 
+export interface TLSInfo {
+  version: string;       // e.g. "TLS 1.3"
+  cipher_suite: string;  // e.g. "TLS_AES_128_GCM_SHA256"
+  proto: string;         // ALPN: "h2", "http/1.1"
+  ech: boolean;          // Encrypted Client Hello
+  resumed: boolean;      // TLS session resumed
+  server_name: string;   // SNI
+}
+
 export interface GeneralLogEvent {
   timestamp: string;
   client_ip: string;
@@ -30,10 +39,13 @@ export interface GeneralLogEvent {
   protocol: string;
   status: number;
   size: number;
+  bytes_read: number;
   duration: number;
   user_agent: string;
   logger?: string;
   level?: string;
+  request_id?: string;
+  tls?: TLSInfo | null;
   security_headers: SecurityHeaderInfo;
 }
 

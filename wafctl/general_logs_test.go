@@ -827,3 +827,207 @@ func TestHandleGeneralLogsSummary_ServiceFilter(t *testing.T) {
 		t.Errorf("filtered total: want 4, got %d", summary.TotalRequests)
 	}
 }
+
+// ─── TLS, BytesRead, RequestID Parsing ──────────────────────────────
+
+// sampleTLSAccessLogLines generates access log entries with TLS metadata,
+// bytes_read, and X-Request-Id header for enrichment tests.
+var sampleTLSAccessLogLines = func() []string {
+	now := time.Now()
+	ts := func(offset time.Duration) string { return now.Add(offset).UTC().Format("2006/01/02 15:04:05") }
+	return []string{
+		// TLS 1.3 with ECH, h2, bytes_read, X-Request-Id
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.svc1","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"POST","host":"app.example.com","uri":"/api/upload","headers":{"User-Agent":["Mozilla/5.0"],"X-Request-Id":["abc-123-def"]},"tls":{"version":772,"cipher_suite":4865,"proto":"h2","ech":true,"resumed":false,"server_name":"app.example.com"}},"resp_headers":{},"status":200,"size":500,"duration":0.100,"bytes_read":4096}`, ts(-10*time.Minute)),
+		// TLS 1.2, no ECH, resumed session, HTTP/1.1
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.svc2","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/1.1","method":"GET","host":"api.example.com","uri":"/health","headers":{"User-Agent":["curl/8.0"]},"tls":{"version":771,"cipher_suite":49199,"proto":"http/1.1","ech":false,"resumed":true,"server_name":"api.example.com"}},"resp_headers":{},"status":200,"size":50,"duration":0.005,"bytes_read":0}`, ts(-5*time.Minute)),
+		// No TLS (plain HTTP — edge case for testing)
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.svc1","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/1.1","method":"GET","host":"app.example.com","uri":"/","headers":{}},"resp_headers":{},"status":200,"size":100,"duration":0.001,"bytes_read":0}`, ts(-2*time.Minute)),
+	}
+}()
+
+func TestGeneralLogStore_TLSFields(t *testing.T) {
+	path := writeGeneralAccessLog(t, sampleTLSAccessLogLines)
+	store := NewGeneralLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+
+	// First event: TLS 1.3 + ECH + h2
+	first := events[0]
+	if first.TLS == nil {
+		t.Fatal("first event TLS should not be nil")
+	}
+	if first.TLS.Version != "TLS 1.3" {
+		t.Errorf("TLS version: got %q, want %q", first.TLS.Version, "TLS 1.3")
+	}
+	if first.TLS.CipherSuite != "TLS_AES_128_GCM_SHA256" {
+		t.Errorf("cipher suite: got %q, want %q", first.TLS.CipherSuite, "TLS_AES_128_GCM_SHA256")
+	}
+	if first.TLS.Proto != "h2" {
+		t.Errorf("ALPN proto: got %q, want %q", first.TLS.Proto, "h2")
+	}
+	if !first.TLS.ECH {
+		t.Error("ECH should be true")
+	}
+	if first.TLS.Resumed {
+		t.Error("Resumed should be false")
+	}
+	if first.TLS.ServerName != "app.example.com" {
+		t.Errorf("server_name: got %q", first.TLS.ServerName)
+	}
+
+	// Second event: TLS 1.2 + resumed
+	second := events[1]
+	if second.TLS == nil {
+		t.Fatal("second event TLS should not be nil")
+	}
+	if second.TLS.Version != "TLS 1.2" {
+		t.Errorf("TLS version: got %q, want %q", second.TLS.Version, "TLS 1.2")
+	}
+	if second.TLS.CipherSuite != "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256" {
+		t.Errorf("cipher suite: got %q, want %q", second.TLS.CipherSuite, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+	}
+	if second.TLS.Proto != "http/1.1" {
+		t.Errorf("ALPN proto: got %q", second.TLS.Proto)
+	}
+	if second.TLS.ECH {
+		t.Error("ECH should be false")
+	}
+	if !second.TLS.Resumed {
+		t.Error("Resumed should be true")
+	}
+
+	// Third event: no TLS (plain HTTP)
+	third := events[2]
+	if third.TLS != nil {
+		t.Error("third event (plain HTTP) should have nil TLS")
+	}
+}
+
+func TestGeneralLogStore_BytesRead(t *testing.T) {
+	path := writeGeneralAccessLog(t, sampleTLSAccessLogLines)
+	store := NewGeneralLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+
+	// First event: POST with 4096 bytes_read
+	if events[0].BytesRead != 4096 {
+		t.Errorf("bytes_read: got %d, want 4096", events[0].BytesRead)
+	}
+	// Second event: GET with 0 bytes_read
+	if events[1].BytesRead != 0 {
+		t.Errorf("bytes_read: got %d, want 0", events[1].BytesRead)
+	}
+}
+
+func TestGeneralLogStore_RequestID(t *testing.T) {
+	path := writeGeneralAccessLog(t, sampleTLSAccessLogLines)
+	store := NewGeneralLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+
+	// First event has X-Request-Id header
+	if events[0].RequestID != "abc-123-def" {
+		t.Errorf("request_id: got %q, want %q", events[0].RequestID, "abc-123-def")
+	}
+	// Second event has no X-Request-Id
+	if events[1].RequestID != "" {
+		t.Errorf("request_id should be empty, got %q", events[1].RequestID)
+	}
+	// Third event has no X-Request-Id
+	if events[2].RequestID != "" {
+		t.Errorf("request_id should be empty, got %q", events[2].RequestID)
+	}
+}
+
+func TestAccessLogRequestID_TopLevelPreference(t *testing.T) {
+	// Top-level request_id (from log_append) takes priority over header
+	now := time.Now()
+	ts := now.Add(-1 * time.Minute).UTC().Format("2006/01/02 15:04:05")
+
+	// Entry with BOTH top-level request_id AND X-Request-Id header
+	line := fmt.Sprintf(`{"level":"info","ts":"%s","logger":"test","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"app.example.com","uri":"/","headers":{"X-Request-Id":["header-id-old"]}},"resp_headers":{},"status":200,"size":100,"duration":0.01,"request_id":"log-append-id-new"}`, ts)
+
+	path := writeGeneralAccessLog(t, []string{line})
+	store := NewGeneralLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	// Should prefer top-level request_id over header
+	if events[0].RequestID != "log-append-id-new" {
+		t.Errorf("request_id: got %q, want %q (should prefer top-level over header)", events[0].RequestID, "log-append-id-new")
+	}
+}
+
+func TestAccessLogRequestID_HeaderFallback(t *testing.T) {
+	// When no top-level request_id, falls back to X-Request-Id header
+	now := time.Now()
+	ts := now.Add(-1 * time.Minute).UTC().Format("2006/01/02 15:04:05")
+
+	// Entry with only X-Request-Id header (no top-level field — older logs)
+	line := fmt.Sprintf(`{"level":"info","ts":"%s","logger":"test","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"app.example.com","uri":"/","headers":{"X-Request-Id":["header-fallback-id"]}},"resp_headers":{},"status":200,"size":100,"duration":0.01}`, ts)
+
+	path := writeGeneralAccessLog(t, []string{line})
+	store := NewGeneralLogStore(path)
+	store.Load()
+
+	events := store.snapshotSince(0)
+	if events[0].RequestID != "header-fallback-id" {
+		t.Errorf("request_id: got %q, want %q (should fall back to header)", events[0].RequestID, "header-fallback-id")
+	}
+}
+
+func TestGeneralLogStore_TLSFieldsInJSONResponse(t *testing.T) {
+	path := writeGeneralAccessLog(t, sampleTLSAccessLogLines)
+	store := NewGeneralLogStore(path)
+	store.Load()
+
+	handler := handleGeneralLogs(store)
+	req := httptest.NewRequest("GET", "/api/logs?limit=10", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+
+	var resp GeneralLogsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp.Total != 3 {
+		t.Fatalf("total: got %d, want 3", resp.Total)
+	}
+
+	// API returns newest first — first in response is the no-TLS event
+	// (most recent), last is the TLS 1.3 event (oldest of the 3).
+	tlsEvent := resp.Events[len(resp.Events)-1]
+	if tlsEvent.TLS == nil {
+		t.Fatal("TLS 1.3 event should have TLS info in JSON response")
+	}
+	if tlsEvent.TLS.Version != "TLS 1.3" {
+		t.Errorf("JSON TLS version: got %q", tlsEvent.TLS.Version)
+	}
+	if tlsEvent.BytesRead != 4096 {
+		t.Errorf("JSON bytes_read: got %d", tlsEvent.BytesRead)
+	}
+	if tlsEvent.RequestID != "abc-123-def" {
+		t.Errorf("JSON request_id: got %q", tlsEvent.RequestID)
+	}
+
+	// No-TLS event should have nil TLS
+	noTLSEvent := resp.Events[0]
+	if noTLSEvent.TLS != nil {
+		t.Error("plain HTTP event should have null TLS in JSON response")
+	}
+}

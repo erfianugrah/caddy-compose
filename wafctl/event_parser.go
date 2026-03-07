@@ -198,6 +198,11 @@ func parseEvent(entry AuditLogEntry) Event {
 		}
 	}
 
+	// Extract Caddy-generated request ID for cross-log correlation.
+	if rid := headerValue(tx.Request.Headers, "X-Request-Id"); rid != "" {
+		ev.RequestID = rid
+	}
+
 	// Attach request context for full payload inspection.
 	if len(tx.Request.Headers) > 0 {
 		ev.RequestHeaders = tx.Request.Headers

@@ -18,11 +18,24 @@ type GeneralLogEvent struct {
 	Protocol        string             `json:"protocol"`
 	Status          int                `json:"status"`
 	Size            int                `json:"size"`
-	Duration        float64            `json:"duration"` // seconds
+	BytesRead       int                `json:"bytes_read"` // request body bytes consumed
+	Duration        float64            `json:"duration"`   // seconds
 	UserAgent       string             `json:"user_agent"`
 	Logger          string             `json:"logger,omitempty"`
-	Level           string             `json:"level,omitempty"` // "info", "error"
+	Level           string             `json:"level,omitempty"`      // "info", "error"
+	RequestID       string             `json:"request_id,omitempty"` // Caddy UUID for cross-log correlation
+	TLS             *TLSInfo           `json:"tls,omitempty"`        // TLS connection metadata
 	SecurityHeaders SecurityHeaderInfo `json:"security_headers"`
+}
+
+// TLSInfo contains human-readable TLS connection metadata for the frontend.
+type TLSInfo struct {
+	Version     string `json:"version"`      // e.g. "TLS 1.3"
+	CipherSuite string `json:"cipher_suite"` // e.g. "TLS_AES_128_GCM_SHA256"
+	Proto       string `json:"proto"`        // ALPN: "h2", "http/1.1"
+	ECH         bool   `json:"ech"`          // Encrypted Client Hello
+	Resumed     bool   `json:"resumed"`      // TLS session resumed
+	ServerName  string `json:"server_name"`  // SNI
 }
 
 // SecurityHeaderInfo tracks the presence and values of security-relevant

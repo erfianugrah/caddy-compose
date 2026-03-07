@@ -420,6 +420,16 @@ func extractSecurityHeaders(respHeaders map[string][]string) SecurityHeaderInfo 
 	return info
 }
 
+// accessLogRequestID extracts the request ID from an access log entry.
+// Prefers the top-level request_id field (set by Caddy log_append) over the
+// X-Request-Id request header (fallback for older log entries without log_append).
+func accessLogRequestID(entry AccessLogEntry) string {
+	if entry.RequestID != "" {
+		return entry.RequestID
+	}
+	return headerValue(entry.Request.Headers, "X-Request-Id")
+}
+
 // parseGeneralLogEvent converts an AccessLogEntry into a GeneralLogEvent.
 func parseGeneralLogEvent(entry AccessLogEntry, geoIP *GeoIPStore) GeneralLogEvent {
 	ts := parseTimestamp(entry.Ts)
@@ -437,11 +447,25 @@ func parseGeneralLogEvent(entry AccessLogEntry, geoIP *GeoIPStore) GeneralLogEve
 		Protocol:        entry.Request.Proto,
 		Status:          entry.Status,
 		Size:            entry.Size,
+		BytesRead:       entry.BytesRead,
 		Duration:        entry.Duration,
 		UserAgent:       ua,
 		Logger:          entry.Logger,
 		Level:           entry.Level,
+		RequestID:       accessLogRequestID(entry),
 		SecurityHeaders: extractSecurityHeaders(entry.RespHeaders),
+	}
+
+	// Convert raw TLS numeric codes to human-readable names.
+	if entry.Request.TLS != nil {
+		evt.TLS = &TLSInfo{
+			Version:     tlsVersionName(entry.Request.TLS.Version),
+			CipherSuite: tlsCipherSuiteName(entry.Request.TLS.CipherSuite),
+			Proto:       entry.Request.TLS.Proto,
+			ECH:         entry.Request.TLS.ECH,
+			Resumed:     entry.Request.TLS.Resumed,
+			ServerName:  entry.Request.TLS.ServerName,
+		}
 	}
 
 	if geoIP != nil {

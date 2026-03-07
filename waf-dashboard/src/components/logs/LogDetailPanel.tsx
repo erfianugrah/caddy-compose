@@ -1,4 +1,4 @@
-import { Download, Search, ExternalLink } from "lucide-react";
+import { Download, Search, ExternalLink, Lock, ShieldCheck, Zap, Globe, KeyRound, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { GeneralLogEvent } from "@/lib/api";
 import { countryFlag } from "@/lib/format";
@@ -183,6 +183,19 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
                 <code className="break-all text-foreground">{evt.user_agent}</code>
               </Field>
             )}
+            {evt.request_id && (
+              <Field label="Request ID">
+                <code className="font-mono text-foreground break-all">{evt.request_id}</code>
+                <a
+                  href={`/events?request_id=${encodeURIComponent(evt.request_id)}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="ml-1.5 inline-flex items-center text-neon-cyan hover:underline"
+                  title="Find correlated security events"
+                >
+                  <Link2 className="h-3 w-3" />
+                </a>
+              </Field>
+            )}
           </div>
         </div>
 
@@ -195,9 +208,14 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
                 {evt.status}
               </span>
             </Field>
-            <Field label="Size">
+            <Field label="Response Size">
               <span className="text-foreground font-mono">{formatBytes(evt.size)}</span>
             </Field>
+            {evt.bytes_read > 0 && (
+              <Field label="Request Body">
+                <span className="text-foreground font-mono">{formatBytes(evt.bytes_read)}</span>
+              </Field>
+            )}
             <Field label="Latency">
               <span className={
                 evt.duration >= 1 ? "text-red-400 font-medium" :
@@ -220,6 +238,52 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
           </div>
         </div>
       </div>
+
+      {/* TLS Connection */}
+      {evt.tls && (
+        <div className="space-y-2">
+          <h4 className={T.sectionLabel}>TLS Connection</h4>
+          <div className="rounded-md bg-navy-950 p-3 text-xs">
+            <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              <Field label="Version">
+                <span className="font-mono text-foreground flex items-center gap-1">
+                  <Lock className="h-3 w-3 text-neon-green" />
+                  {evt.tls.version}
+                </span>
+              </Field>
+              <Field label="ALPN Protocol">
+                <span className="font-mono text-foreground flex items-center gap-1">
+                  <Zap className="h-3 w-3 text-neon-cyan" />
+                  {evt.tls.proto || "none"}
+                </span>
+              </Field>
+              <Field label="Cipher Suite">
+                <code className="text-foreground break-all flex items-center gap-1">
+                  <KeyRound className="h-3 w-3 text-muted-foreground shrink-0" />
+                  {evt.tls.cipher_suite}
+                </code>
+              </Field>
+              <Field label="SNI">
+                <span className="font-mono text-foreground flex items-center gap-1">
+                  <Globe className="h-3 w-3 text-muted-foreground" />
+                  {evt.tls.server_name || "none"}
+                </span>
+              </Field>
+              <Field label="ECH">
+                <span className={evt.tls.ech ? "text-neon-green flex items-center gap-1" : "text-muted-foreground flex items-center gap-1"}>
+                  <ShieldCheck className="h-3 w-3" />
+                  {evt.tls.ech ? "Accepted" : "Not used"}
+                </span>
+              </Field>
+              <Field label="Session Resumed">
+                <span className={evt.tls.resumed ? "text-neon-cyan" : "text-muted-foreground"}>
+                  {evt.tls.resumed ? "Yes (0-RTT)" : "No (full handshake)"}
+                </span>
+              </Field>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Security Headers */}
       <div className="space-y-2">

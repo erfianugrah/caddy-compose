@@ -28,6 +28,8 @@ type AccessLogEntry struct {
 	Status      int                 `json:"status"`
 	Size        int                 `json:"size"`
 	Duration    float64             `json:"duration"`
+	BytesRead   int                 `json:"bytes_read"`           // request body bytes consumed
+	RequestID   string              `json:"request_id,omitempty"` // Caddy UUID via log_append
 }
 
 type AccessLogReq struct {
@@ -38,6 +40,18 @@ type AccessLogReq struct {
 	Host     string              `json:"host"`
 	URI      string              `json:"uri"`
 	Headers  map[string][]string `json:"headers"`
+	TLS      *AccessLogTLS       `json:"tls,omitempty"` // present for HTTPS requests
+}
+
+// AccessLogTLS is the TLS connection info Caddy writes in request.tls.
+// Version and CipherSuite are numeric codes from Go's crypto/tls package.
+type AccessLogTLS struct {
+	Version     uint16 `json:"version"`      // e.g. 772 = TLS 1.3, 771 = TLS 1.2
+	CipherSuite uint16 `json:"cipher_suite"` // e.g. 4865 = TLS_AES_128_GCM_SHA256
+	Proto       string `json:"proto"`        // ALPN negotiated protocol: "h2", "http/1.1"
+	ECH         bool   `json:"ech"`          // Encrypted Client Hello accepted
+	Resumed     bool   `json:"resumed"`      // TLS session resumed
+	ServerName  string `json:"server_name"`  // SNI server name
 }
 
 // ─── Rate Limit Event (parsed 429) ─────────────────────────────────

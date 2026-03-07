@@ -1859,4 +1859,56 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	}
 }
 
+// --- RequestID Extraction Tests ---
+
+func TestParseEvent_RequestID(t *testing.T) {
+	// Event with X-Request-Id header
+	entry := AuditLogEntry{
+		Transaction: Transaction{
+			Timestamp:     "2026/03/07 12:00:00",
+			ID:            "reqid-test",
+			ClientIP:      "10.0.0.1",
+			HostIP:        "127.0.0.1",
+			IsInterrupted: false,
+			Request: Request{
+				Method:   "GET",
+				Protocol: "HTTP/2.0",
+				URI:      "/test",
+				Headers: map[string][]string{
+					"User-Agent":   {"TestBot/1.0"},
+					"X-Request-Id": {"caddy-uuid-abc123"},
+				},
+			},
+			Response: Response{Status: 200},
+		},
+	}
+	ev := parseEvent(entry)
+	if ev.RequestID != "caddy-uuid-abc123" {
+		t.Errorf("request_id: got %q, want %q", ev.RequestID, "caddy-uuid-abc123")
+	}
+}
+
+func TestParseEvent_RequestID_Missing(t *testing.T) {
+	entry := AuditLogEntry{
+		Transaction: Transaction{
+			Timestamp:     "2026/03/07 12:00:00",
+			ID:            "no-reqid",
+			ClientIP:      "10.0.0.1",
+			HostIP:        "127.0.0.1",
+			IsInterrupted: false,
+			Request: Request{
+				Method:   "GET",
+				Protocol: "HTTP/2.0",
+				URI:      "/test",
+				Headers:  map[string][]string{"User-Agent": {"TestBot/1.0"}},
+			},
+			Response: Response{Status: 200},
+		},
+	}
+	ev := parseEvent(entry)
+	if ev.RequestID != "" {
+		t.Errorf("request_id should be empty, got %q", ev.RequestID)
+	}
+}
+
 // --- GeoIP Online API Fallback Tests ---

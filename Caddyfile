@@ -146,6 +146,9 @@
 		not header Connection *Upgrade*
 	}
 	route @not_websocket {
+		# Inject Caddy-generated request UUID before WAF so it appears in
+		# Coraza audit log headers for cross-log correlation with access logs.
+		request_header X-Request-Id {http.request.uuid}
 		coraza_waf {
 			load_owasp_crs
 			directives `
@@ -200,7 +203,10 @@
 }
 
 # Standard log config — INFO level, per-site log file + combined log
+# log_append adds a request_id field (Caddy UUID) to every access log entry
+# for correlating with Coraza audit logs (which receive it via X-Request-Id header).
 (site_log) {
+	log_append request_id {http.request.uuid}
 	log {
 		level INFO
 		output file /var/log/{args[0]}-access.log {

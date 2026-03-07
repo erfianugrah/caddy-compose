@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { formatNumber, formatTime, formatDate, countryFlag } from "@/lib/format";
 import { downloadJSON } from "@/lib/download";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -24,11 +25,57 @@ import {
   ChevronsRight,
   ChevronsDownUp,
   Download,
+  Columns3,
+  Check,
 } from "lucide-react";
 
 import type { SortKey } from "./helpers";
 import { statusBadge, formatDuration, formatBytes } from "./helpers";
 import { LogDetailPanel } from "./LogDetailPanel";
+
+// ─── Column Definitions ─────────────────────────────────────────────
+
+type ColumnId = "time" | "status" | "method" | "service" | "uri" | "latency" | "size" | "country" | "protocol" | "tls" | "headers";
+
+interface ColumnDef {
+  id: ColumnId;
+  label: string;
+  defaultVisible: boolean;
+}
+
+const ALL_COLUMNS: ColumnDef[] = [
+  { id: "time",     label: "Time",     defaultVisible: true },
+  { id: "status",   label: "Status",   defaultVisible: true },
+  { id: "method",   label: "Method",   defaultVisible: true },
+  { id: "service",  label: "Service",  defaultVisible: true },
+  { id: "uri",      label: "URI",      defaultVisible: true },
+  { id: "latency",  label: "Latency",  defaultVisible: true },
+  { id: "size",     label: "Size",     defaultVisible: true },
+  { id: "country",  label: "Country",  defaultVisible: false },
+  { id: "protocol", label: "Protocol", defaultVisible: false },
+  { id: "tls",      label: "TLS",      defaultVisible: false },
+  { id: "headers",  label: "Headers",  defaultVisible: true },
+];
+
+const STORAGE_KEY = "waf-log-columns";
+const DEFAULT_VISIBLE = new Set(ALL_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id));
+
+function loadColumnVisibility(): Set<ColumnId> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw) as ColumnId[];
+      if (Array.isArray(arr) && arr.length > 0) return new Set(arr);
+    }
+  } catch { /* ignore */ }
+  return new Set(DEFAULT_VISIBLE);
+}
+
+function saveColumnVisibility(visible: Set<ColumnId>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...visible]));
+  } catch { /* ignore */ }
+}
 
 // ─── Stable key for a log event ─────────────────────────────────────
 
@@ -80,6 +127,33 @@ export default function LogStreamTab({
   uriFilter, setUriFilter,
   hasFilters, clearFilters,
 }: LogStreamTabProps) {
+  const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(DEFAULT_VISIBLE);
+
+  // Load from localStorage on mount (client-only to avoid SSR mismatch)
+  useEffect(() => {
+    setVisibleCols(loadColumnVisibility());
+  }, []);
+
+  const toggleColumn = useCallback((id: ColumnId) => {
+    setVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        // Don't allow hiding all columns — keep at least 2
+        if (next.size <= 2) return prev;
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      saveColumnVisibility(next);
+      return next;
+    });
+  }, []);
+
+  const isVisible = useCallback((id: ColumnId) => visibleCols.has(id), [visibleCols]);
+
+  // Total visible columns + 1 for expand chevron
+  const colSpan = visibleCols.size + 1;
+
   return (
     <div className="space-y-3">
       {/* Filters */}
@@ -165,6 +239,33 @@ export default function LogStreamTab({
               {formatNumber(response.total)} results
             </span>
             <div className="flex gap-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Toggle columns"
+                  >
+                    <Columns3 className="h-3 w-3 mr-1" />
+                    Columns
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-44 p-1">
+                  {ALL_COLUMNS.map((col) => (
+                    <button
+                      key={col.id}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50 transition-colors"
+                      onClick={() => toggleColumn(col.id)}
+                    >
+                      <span className="w-4 h-4 flex items-center justify-center">
+                        {isVisible(col.id) && <Check className="h-3 w-3 text-neon-cyan" />}
+                      </span>
+                      {col.label}
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
               <Button
                 variant="ghost"
                 size="xs"
@@ -199,14 +300,17 @@ export default function LogStreamTab({
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-8" />
-                <SortableTableHead sortKey="time" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[130px]">Time</SortableTableHead>
-                <SortableTableHead sortKey="status" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Status</SortableTableHead>
-                <SortableTableHead sortKey="method" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Method</SortableTableHead>
-                <SortableTableHead sortKey="service" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort}>Service</SortableTableHead>
-                <TableHead className="text-xs">URI</TableHead>
-                <SortableTableHead sortKey="duration" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[80px]">Latency</SortableTableHead>
-                <SortableTableHead sortKey="size" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Size</SortableTableHead>
-                <TableHead className="text-xs w-[60px]">Headers</TableHead>
+                {isVisible("time") && <SortableTableHead sortKey="time" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[130px]">Time</SortableTableHead>}
+                {isVisible("status") && <SortableTableHead sortKey="status" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Status</SortableTableHead>}
+                {isVisible("method") && <SortableTableHead sortKey="method" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Method</SortableTableHead>}
+                {isVisible("service") && <SortableTableHead sortKey="service" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort}>Service</SortableTableHead>}
+                {isVisible("uri") && <TableHead className="text-xs">URI</TableHead>}
+                {isVisible("latency") && <SortableTableHead sortKey="duration" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[80px]">Latency</SortableTableHead>}
+                {isVisible("size") && <SortableTableHead sortKey="size" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Size</SortableTableHead>}
+                {isVisible("country") && <TableHead className="text-xs w-[60px]">Country</TableHead>}
+                {isVisible("protocol") && <TableHead className="text-xs w-[80px]">Protocol</TableHead>}
+                {isVisible("tls") && <TableHead className="text-xs w-[70px]">TLS</TableHead>}
+                {isVisible("headers") && <TableHead className="text-xs w-[60px]">Headers</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -214,14 +318,14 @@ export default function LogStreamTab({
                 Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
                     <TableCell />
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: visibleCols.size }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={colSpan} className="py-8 text-center text-sm text-muted-foreground">
                     No log entries found
                   </TableCell>
                 </TableRow>
@@ -242,34 +346,73 @@ export default function LogStreamTab({
                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
                         </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDate(evt.timestamp)} {formatTime(evt.timestamp)}
-                        </TableCell>
-                        <TableCell>{statusBadge(evt.status)}</TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs">{evt.method}</span>
-                        </TableCell>
-                        <TableCell className="text-xs max-w-[200px] truncate" title={evt.service}>
-                          {evt.service}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs max-w-[300px] truncate text-muted-foreground" title={evt.uri}>
-                          {evt.uri}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          <span className={evt.duration >= 1 ? "text-red-400" : evt.duration >= 0.1 ? "text-amber-400" : "text-muted-foreground"}>
-                            {formatDuration(evt.duration)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {formatBytes(evt.size)}
-                        </TableCell>
-                        <TableCell>
-                          <HeaderDots headers={evt.security_headers} />
-                        </TableCell>
+                        {isVisible("time") && (
+                          <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                            {formatDate(evt.timestamp)} {formatTime(evt.timestamp)}
+                          </TableCell>
+                        )}
+                        {isVisible("status") && <TableCell>{statusBadge(evt.status)}</TableCell>}
+                        {isVisible("method") && (
+                          <TableCell>
+                            <span className="font-mono text-xs">{evt.method}</span>
+                          </TableCell>
+                        )}
+                        {isVisible("service") && (
+                          <TableCell className="text-xs max-w-[200px] truncate" title={evt.service}>
+                            {evt.service}
+                          </TableCell>
+                        )}
+                        {isVisible("uri") && (
+                          <TableCell className="font-mono text-xs max-w-[300px] truncate text-muted-foreground" title={evt.uri}>
+                            {evt.uri}
+                          </TableCell>
+                        )}
+                        {isVisible("latency") && (
+                          <TableCell className="font-mono text-xs">
+                            <span className={evt.duration >= 1 ? "text-red-400" : evt.duration >= 0.1 ? "text-amber-400" : "text-muted-foreground"}>
+                              {formatDuration(evt.duration)}
+                            </span>
+                          </TableCell>
+                        )}
+                        {isVisible("size") && (
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {formatBytes(evt.size)}
+                          </TableCell>
+                        )}
+                        {isVisible("country") && (
+                          <TableCell className="text-xs">
+                            {evt.country ? (
+                              <span title={evt.country}>{countryFlag(evt.country)} {evt.country}</span>
+                            ) : (
+                              <span className="text-muted-foreground">--</span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isVisible("protocol") && (
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {evt.protocol}
+                          </TableCell>
+                        )}
+                        {isVisible("tls") && (
+                          <TableCell className="text-xs">
+                            {evt.tls ? (
+                              <span className="text-neon-green" title={`${evt.tls.version} / ${evt.tls.proto}`}>
+                                {evt.tls.version.replace("TLS ", "")}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">--</span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isVisible("headers") && (
+                          <TableCell>
+                            <HeaderDots headers={evt.security_headers} />
+                          </TableCell>
+                        )}
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={9} className="bg-navy-950/50 p-0">
+                          <TableCell colSpan={colSpan} className="bg-navy-950/50 p-0">
                             <LogDetailPanel event={evt} />
                           </TableCell>
                         </TableRow>

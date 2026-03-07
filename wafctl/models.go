@@ -154,6 +154,8 @@ type Event struct {
 	RuleTags             []string `json:"rule_tags,omitempty"`
 	// All matched rules (not just the primary/best one)
 	MatchedRules []MatchedRule `json:"matched_rules,omitempty"`
+	// Caddy-generated UUID for correlating access log ↔ audit log entries
+	RequestID string `json:"request_id,omitempty"`
 	// Request context for full payload inspection
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"`
 	RequestBody    string              `json:"request_body,omitempty"`
