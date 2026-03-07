@@ -53,7 +53,7 @@ COPY wafctl/*.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o wafctl .
 
 FROM caddy:${VERSION}-alpine
-RUN apk add --no-cache curl
+RUN apk upgrade --no-cache && apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=ipsum /tmp/ipsum_block.caddy /etc/caddy/ipsum_block.caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
