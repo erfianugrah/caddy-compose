@@ -371,14 +371,28 @@ func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
 		}
 	}
 
-	// ASN — IPinfo uses "org" field with "AS12345 Org Name" format.
-	// ip-api uses separate "as" and "org" fields.
-	if v, ok := raw["as"]; ok {
-		if s, ok := v.(string); ok && s != "" {
-			info.ASN = s
+	// ASN — try dedicated fields first, then composite "org" field.
+	// IPinfo Lite: "asn": "AS15169"
+	// ip-api: "as": "AS15169 Google LLC"
+	// IPinfo standard: "org": "AS13335 Cloudflare, Inc."
+	for _, f := range []string{"asn", "as"} {
+		if v, ok := raw[f]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				if strings.HasPrefix(s, "AS") {
+					// May contain org name after space (ip-api format)
+					parts := strings.SplitN(s, " ", 2)
+					info.ASN = parts[0]
+					if len(parts) > 1 && info.Org == "" {
+						info.Org = parts[1]
+					}
+				} else {
+					info.ASN = s
+				}
+				break
+			}
 		}
 	}
-	// IPinfo.io format: "org": "AS13335 Cloudflare, Inc."
+	// IPinfo standard format: "org": "AS13335 Cloudflare, Inc."
 	if info.ASN == "" {
 		if v, ok := raw["org"]; ok {
 			if s, ok := v.(string); ok && strings.HasPrefix(s, "AS") {
@@ -391,23 +405,17 @@ func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
 		}
 	}
 
-	// Organization — ip-api uses "isp" or "org"
+	// Organization — try provider-specific fields.
+	// IPinfo Lite: "as_name": "Google LLC"
+	// ip-api: "isp" or "org"
+	// ip-api: "asname"
 	if info.Org == "" {
-		for _, f := range []string{"org", "isp", "organization"} {
+		for _, f := range []string{"as_name", "org", "isp", "organization", "asname"} {
 			if v, ok := raw[f]; ok {
 				if s, ok := v.(string); ok && s != "" && !strings.HasPrefix(s, "AS") {
 					info.Org = s
 					break
 				}
-			}
-		}
-	}
-
-	// ip-api also has "asname" which is cleaner
-	if info.Org == "" {
-		if v, ok := raw["asname"]; ok {
-			if s, ok := v.(string); ok && s != "" {
-				info.Org = s
 			}
 		}
 	}
@@ -419,6 +427,20 @@ func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
 				info.Network = s
 				break
 			}
+		}
+	}
+
+	// AS domain — IPinfo Lite provides this.
+	if v, ok := raw["as_domain"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			info.ASDomain = s
+		}
+	}
+
+	// Continent — IPinfo Lite provides this.
+	if v, ok := raw["continent"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			info.Continent = s
 		}
 	}
 

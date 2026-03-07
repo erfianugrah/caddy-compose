@@ -90,7 +90,7 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 
 // --- Handler: IP Lookup ---
 
-func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore) http.HandlerFunc {
+func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *IPIntelStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := r.PathValue("ip")
 		if ip == "" {
@@ -121,6 +121,11 @@ func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore) http.Han
 		// Enrich with GeoIP information.
 		if geo != nil {
 			result.GeoIP = geo.LookupFull(ip, "")
+		}
+
+		// Enrich with IP intelligence (routing, reputation, Shodan).
+		if intel != nil {
+			result.Intelligence = intel.Lookup(ip)
 		}
 
 		writeJSON(w, http.StatusOK, result)

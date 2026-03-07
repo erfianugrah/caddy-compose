@@ -6,6 +6,7 @@ import {
   fetchTopCountries,
   type IPLookupData,
   type CountryCount,
+  type IPIntelligence,
 } from "@/lib/api";
 import { mockFetchResponse, setupMockFetch } from "./__test-helpers";
 
@@ -165,6 +166,143 @@ describe("fetchTopCountries", () => {
   it("throws on error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fail")));
     await expect(fetchTopCountries()).rejects.toThrow("fail");
+  });
+});
+
+// ─── lookupIP intelligence passthrough ──────────────────────────────
+
+describe("lookupIP intelligence", () => {
+  it("passes through intelligence data from API", async () => {
+    const goResponse = {
+      ip: "1.1.1.1",
+      geoip: {
+        country: "AU",
+        asn: "AS13335",
+        org: "Cloudflare, Inc.",
+        as_domain: "cloudflare.com",
+        continent: "Oceania",
+        source: "api",
+      },
+      intelligence: {
+        routing: {
+          is_announced: true,
+          as_number: "13335",
+          as_name: "CLOUDFLARENET - Cloudflare, Inc., US",
+          route: "1.1.1.0/24",
+          roa_count: 1,
+          roa_validity: "valid",
+          rir: "apnic",
+          alloc_date: "2011-08-11",
+        },
+        network_type: {
+          is_anycast: true,
+          is_dc: false,
+          org_type: "business",
+        },
+        reputation: {
+          status: "known_good",
+          sources: [
+            {
+              source: "greynoise",
+              status: "benign",
+              classification: "benign",
+              name: "Cloudflare Public DNS",
+              last_seen: "2026-03-07",
+            },
+            { source: "stopforumspam", status: "clean" },
+          ],
+          ipsum_listed: false,
+        },
+        shodan: {
+          ports: [53, 80, 443],
+          hostnames: ["one.one.one.one"],
+          cpes: ["cpe:/a:cloudflare:cloudflare"],
+          tags: [],
+          vulns: [],
+        },
+      },
+      total: 10,
+      blocked: 2,
+      first_seen: "2026-03-01T00:00:00Z",
+      last_seen: "2026-03-07T12:00:00Z",
+      services: [],
+      events: [],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await lookupIP("1.1.1.1");
+
+    // GeoIP enriched fields
+    expect(result.geoip?.as_domain).toBe("cloudflare.com");
+    expect(result.geoip?.continent).toBe("Oceania");
+
+    // Intelligence passthrough
+    expect(result.intelligence).toBeDefined();
+    const intel = result.intelligence!;
+
+    // Routing
+    expect(intel.routing?.is_announced).toBe(true);
+    expect(intel.routing?.as_number).toBe("13335");
+    expect(intel.routing?.roa_validity).toBe("valid");
+    expect(intel.routing?.rir).toBe("apnic");
+
+    // Network type
+    expect(intel.network_type?.is_anycast).toBe(true);
+    expect(intel.network_type?.org_type).toBe("business");
+
+    // Reputation
+    expect(intel.reputation?.status).toBe("known_good");
+    expect(intel.reputation?.sources).toHaveLength(2);
+    expect(intel.reputation?.sources?.[0].name).toBe("Cloudflare Public DNS");
+    expect(intel.reputation?.ipsum_listed).toBe(false);
+
+    // Shodan
+    expect(intel.shodan?.ports).toEqual([53, 80, 443]);
+    expect(intel.shodan?.hostnames).toEqual(["one.one.one.one"]);
+  });
+
+  it("handles missing intelligence field gracefully", async () => {
+    const goResponse = {
+      ip: "192.168.1.1",
+      total: 0,
+      blocked: 0,
+      first_seen: null,
+      last_seen: null,
+      services: [],
+      events: [],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await lookupIP("192.168.1.1");
+    expect(result.intelligence).toBeUndefined();
+    expect(result.geoip).toBeUndefined();
+  });
+
+  it("handles intelligence with partial data", async () => {
+    const goResponse = {
+      ip: "10.0.0.1",
+      intelligence: {
+        routing: {
+          is_announced: false,
+        },
+        reputation: {
+          status: "clean",
+          sources: [],
+        },
+      },
+      total: 5,
+      blocked: 0,
+      first_seen: "2026-03-07T00:00:00Z",
+      last_seen: "2026-03-07T00:00:00Z",
+      services: [],
+      events: [],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result = await lookupIP("10.0.0.1");
+    expect(result.intelligence?.routing?.is_announced).toBe(false);
+    expect(result.intelligence?.shodan).toBeUndefined();
+    expect(result.intelligence?.network_type).toBeUndefined();
   });
 });
 

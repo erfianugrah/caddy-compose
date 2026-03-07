@@ -8,7 +8,27 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Search, Globe, AlertTriangle, MapPin, Building2, Network, Clock3 } from "lucide-react";
+import {
+  Search,
+  Globe,
+  AlertTriangle,
+  MapPin,
+  Building2,
+  Network,
+  Clock3,
+  Shield,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
+  Radio,
+  Server,
+  Bug,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  HelpCircle,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -29,7 +49,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { lookupIP, type IPLookupData, type GeoIPInfo } from "@/lib/api";
+import {
+  lookupIP,
+  type IPLookupData,
+  type GeoIPInfo,
+  type IPIntelligence,
+  type RoutingInfo,
+  type ReputationInfo,
+  type ReputationEntry,
+  type ShodanInfo,
+  type NetworkType,
+} from "@/lib/api";
 import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 import { T } from "@/lib/typography";
 import { formatDateTime, countryFlag } from "@/lib/format";
@@ -171,6 +201,10 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                       {countryFlag(data.geoip.country)} {data.geoip.country}
                     </span>
                   )}
+                  {/* Overall reputation badge */}
+                  {data.intelligence?.reputation && (
+                    <ReputationStatusBadge status={data.intelligence.reputation.status} />
+                  )}
                 </div>
                 <CardDescription>IP intelligence and event summary</CardDescription>
               </CardHeader>
@@ -277,6 +311,26 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
               </CardContent>
             </Card>
           </div>
+
+          {/* Intelligence Sections */}
+          {data.intelligence && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {/* Routing / BGP Section */}
+              {data.intelligence.routing && (
+                <RoutingSection routing={data.intelligence.routing} netType={data.intelligence.network_type} />
+              )}
+
+              {/* Reputation Section */}
+              {data.intelligence.reputation && (
+                <ReputationSection reputation={data.intelligence.reputation} />
+              )}
+
+              {/* Shodan Section */}
+              {data.intelligence.shodan && (
+                <ShodanSection shodan={data.intelligence.shodan} ip={data.ip} />
+              )}
+            </div>
+          )}
 
           {/* Recent Events for this IP */}
           {data.events_total > 0 && (
@@ -412,6 +466,15 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
                 </div>
               </div>
             )}
+            {geoip.continent && (
+              <div className="flex items-start gap-1.5">
+                <Globe className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Continent</p>
+                  <p className="text-xs font-medium">{geoip.continent}</p>
+                </div>
+              </div>
+            )}
             {geoip.timezone && (
               <div className="flex items-start gap-1.5">
                 <Clock3 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
@@ -439,6 +502,9 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
             <div>
               <p className="text-[10px] text-muted-foreground">Organization</p>
               <p className="text-xs font-medium">{geoip.org}</p>
+              {geoip.as_domain && (
+                <p className="text-[10px] text-muted-foreground font-mono">{geoip.as_domain}</p>
+              )}
             </div>
           </div>
         )}
@@ -453,5 +519,352 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Routing / BGP Section ──────────────────────────────────────────
+
+function RoutingSection({ routing, netType }: { routing: RoutingInfo; netType?: NetworkType }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Radio className="h-4 w-4 text-neon-cyan" />
+          <CardTitle className={T.cardTitle}>BGP Routing</CardTitle>
+          {routing.roa_validity && <ROABadge validity={routing.roa_validity} />}
+        </div>
+        <CardDescription>
+          {routing.is_announced ? "Prefix is BGP-announced" : "Prefix is not announced"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {routing.is_announced ? (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            {routing.as_number && (
+              <div>
+                <p className="text-[10px] text-muted-foreground">AS Number</p>
+                <p className="text-xs font-mono font-medium">AS{routing.as_number}</p>
+              </div>
+            )}
+            {routing.as_name && (
+              <div className="col-span-2">
+                <p className="text-[10px] text-muted-foreground">AS Name</p>
+                <p className="text-xs font-medium">{routing.as_name}</p>
+              </div>
+            )}
+            {routing.route && (
+              <div>
+                <p className="text-[10px] text-muted-foreground">Route Prefix</p>
+                <p className="text-xs font-mono font-medium">{routing.route}</p>
+              </div>
+            )}
+            {routing.rir && (
+              <div>
+                <p className="text-[10px] text-muted-foreground">RIR</p>
+                <p className="text-xs font-mono font-medium uppercase">{routing.rir}</p>
+              </div>
+            )}
+            {routing.alloc_date && (
+              <div>
+                <p className="text-[10px] text-muted-foreground">Allocation Date</p>
+                <p className="text-xs font-mono font-medium">{routing.alloc_date}</p>
+              </div>
+            )}
+            {routing.roa_validity && (
+              <div>
+                <p className="text-[10px] text-muted-foreground">RPKI/ROA</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-mono font-medium">{routing.roa_validity}</p>
+                  {(routing.roa_count ?? 0) > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      ({routing.roa_count} ROA{(routing.roa_count ?? 0) > 1 ? "s" : ""})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Network type badges */}
+            {netType && (
+              <div className="col-span-2 flex flex-wrap gap-1.5 pt-1">
+                {netType.org_type && <OrgTypeBadge type={netType.org_type} />}
+                {netType.is_anycast && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-500/50 text-yellow-400">
+                    Anycast
+                  </Badge>
+                )}
+                {netType.is_dc && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/50 text-purple-400">
+                    Datacenter
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground py-2">
+            This IP is not currently announced in BGP routing tables.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Reputation Section ─────────────────────────────────────────────
+
+function ReputationSection({ reputation }: { reputation: ReputationInfo }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Shield className="h-4 w-4 text-neon-cyan" />
+          <CardTitle className={T.cardTitle}>Reputation</CardTitle>
+          <ReputationStatusBadge status={reputation.status} />
+        </div>
+        <CardDescription>
+          Aggregated from {reputation.sources?.length ?? 0} source{(reputation.sources?.length ?? 0) !== 1 ? "s" : ""}
+          {reputation.ipsum_listed && " + IPsum blocklist"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {reputation.ipsum_listed && (
+          <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/30 px-3 py-2">
+            <ShieldX className="h-4 w-4 text-red-400 shrink-0" />
+            <div>
+              <p className="text-xs font-medium text-red-400">IPsum Blocklisted</p>
+              <p className="text-[10px] text-muted-foreground">This IP is on the active IPsum blocklist</p>
+            </div>
+          </div>
+        )}
+
+        {reputation.sources && reputation.sources.length > 0 && (
+          <div className="space-y-2">
+            {reputation.sources.map((entry, idx) => (
+              <ReputationSourceRow key={idx} entry={entry} />
+            ))}
+          </div>
+        )}
+
+        {(!reputation.sources || reputation.sources.length === 0) && !reputation.ipsum_listed && (
+          <p className="text-xs text-muted-foreground py-2">
+            No reputation data available from external sources.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReputationSourceRow({ entry }: { entry: ReputationEntry }) {
+  const sourceLabels: Record<string, string> = {
+    greynoise: "GreyNoise",
+    stopforumspam: "StopForumSpam",
+  };
+
+  const StatusIcon = entry.status === "benign" ? ShieldCheck
+    : entry.status === "malicious" ? ShieldX
+    : entry.status === "noisy" ? ShieldAlert
+    : Shield;
+
+  const statusColor = entry.status === "benign" ? "text-green-400"
+    : entry.status === "malicious" ? "text-red-400"
+    : entry.status === "noisy" ? "text-yellow-400"
+    : "text-muted-foreground";
+
+  return (
+    <div className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <StatusIcon className={`h-3.5 w-3.5 shrink-0 ${statusColor}`} />
+        <div>
+          <p className="text-xs font-medium">{sourceLabels[entry.source] ?? entry.source}</p>
+          {entry.name && (
+            <p className="text-[10px] text-muted-foreground">
+              Known as: {entry.name}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Badge
+          variant="outline"
+          className={`text-[10px] px-1.5 py-0 ${
+            entry.status === "benign" ? "border-green-500/50 text-green-400"
+            : entry.status === "malicious" ? "border-red-500/50 text-red-400"
+            : entry.status === "noisy" ? "border-yellow-500/50 text-yellow-400"
+            : ""
+          }`}
+        >
+          {entry.status}
+        </Badge>
+        {entry.last_seen && (
+          <span className="text-[10px] text-muted-foreground">{entry.last_seen}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Shodan Section ─────────────────────────────────────────────────
+
+function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
+  const hasVulns = shodan.vulns && shodan.vulns.length > 0;
+  return (
+    <Card className={hasVulns ? "border-red-500/30" : ""}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Server className="h-4 w-4 text-neon-cyan" />
+            <CardTitle className={T.cardTitle}>Shodan InternetDB</CardTitle>
+            {hasVulns && (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                {shodan.vulns!.length} CVE{shodan.vulns!.length > 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+          <a
+            href={`https://internetdb.shodan.io/${ip}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+        <CardDescription>Open ports, services, and known vulnerabilities</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Hostnames */}
+        {shodan.hostnames && shodan.hostnames.length > 0 && (
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">Hostnames</p>
+            <div className="flex flex-wrap gap-1">
+              {shodan.hostnames.map((h) => (
+                <Badge key={h} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                  {h}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Ports */}
+        {shodan.ports && shodan.ports.length > 0 && (
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Open Ports ({shodan.ports.length})
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {shodan.ports.map((p) => (
+                <Badge key={p} variant="secondary" className="text-[10px] px-1.5 py-0 font-mono tabular-nums">
+                  {p}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tags */}
+        {shodan.tags && shodan.tags.length > 0 && (
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">Tags</p>
+            <div className="flex flex-wrap gap-1">
+              {shodan.tags.map((t) => (
+                <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CPEs */}
+        {shodan.cpes && shodan.cpes.length > 0 && (
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">CPEs</p>
+            <div className="flex flex-wrap gap-1">
+              {shodan.cpes.map((c) => (
+                <Badge key={c} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                  {c.replace("cpe:/", "")}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Vulnerabilities */}
+        {hasVulns && (
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+              <Bug className="h-3 w-3 text-red-400" />
+              Known Vulnerabilities
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {shodan.vulns!.map((v) => (
+                <a
+                  key={v}
+                  href={`https://nvd.nist.gov/vuln/detail/${v}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex"
+                >
+                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0 font-mono hover:bg-red-600">
+                    {v}
+                  </Badge>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Shared Badge Components ────────────────────────────────────────
+
+function ROABadge({ validity }: { validity: string }) {
+  const config: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
+    valid: { icon: CheckCircle2, color: "border-green-500/50 text-green-400", label: "ROA Valid" },
+    invalid: { icon: XCircle, color: "border-red-500/50 text-red-400", label: "ROA Invalid" },
+    unknown: { icon: HelpCircle, color: "border-yellow-500/50 text-yellow-400", label: "ROA Unknown" },
+    not_found: { icon: AlertCircle, color: "border-muted-foreground/50 text-muted-foreground", label: "No ROA" },
+  };
+  const c = config[validity] ?? config.unknown;
+  const Icon = c.icon;
+  return (
+    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 gap-0.5 ${c.color}`}>
+      <Icon className="h-2.5 w-2.5" />
+      {c.label}
+    </Badge>
+  );
+}
+
+function ReputationStatusBadge({ status }: { status: string }) {
+  const config: Record<string, { color: string; label: string }> = {
+    clean: { color: "border-green-500/50 text-green-400", label: "Clean" },
+    known_good: { color: "border-emerald-500/50 text-emerald-400", label: "Known Good" },
+    suspicious: { color: "border-yellow-500/50 text-yellow-400", label: "Suspicious" },
+    malicious: { color: "border-red-500/50 text-red-400", label: "Malicious" },
+  };
+  const c = config[status] ?? { color: "", label: status };
+  return (
+    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.color}`}>
+      {c.label}
+    </Badge>
+  );
+}
+
+function OrgTypeBadge({ type }: { type: string }) {
+  const labels: Record<string, string> = {
+    isp: "ISP",
+    hosting: "Hosting",
+    education: "Education",
+    government: "Government",
+    business: "Business",
+  };
+  return (
+    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+      {labels[type] ?? type}
+    </Badge>
   );
 }

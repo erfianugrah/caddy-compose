@@ -142,6 +142,9 @@ func runServe() int {
 	}
 	blocklistStore.StartScheduledRefresh(refreshHour, deployCfg, rlRuleStore)
 
+	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
+	intelStore := NewIPIntelStore(blocklistStore)
+
 	// Cloudflare trusted proxy store — refreshes CF IP ranges at runtime.
 	cfProxyPath := filepath.Join(deployCfg.CorazaDir, "cf_trusted_proxies.caddy")
 	cfProxyStore := NewCFProxyStore(cfProxyPath)
@@ -163,7 +166,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/analytics/top-countries", handleTopCountries(store, accessLogStore))
 
 	// IP Lookup
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, accessLogStore, geoStore))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, accessLogStore, geoStore, intelStore))
 
 	// Exclusion CRUD
 	mux.HandleFunc("GET /api/exclusions", handleListExclusions(exclusionStore))

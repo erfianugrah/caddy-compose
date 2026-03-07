@@ -228,7 +228,7 @@ func TestIPLookupEndpoint(t *testing.T) {
 	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil, nil))
 
 	req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1", nil)
 	w := httptest.NewRecorder()
@@ -252,7 +252,7 @@ func TestIPLookupEndpointInvalidIP(t *testing.T) {
 	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil, nil))
 
 	req := httptest.NewRequest("GET", "/api/lookup/not-an-ip", nil)
 	w := httptest.NewRecorder()
@@ -313,7 +313,7 @@ func TestIPLookupPagination(t *testing.T) {
 	t.Run("endpoint with limit/offset params", func(t *testing.T) {
 		als := emptyAccessLogStore(t)
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil))
+		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil, nil))
 		req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1?limit=1&offset=0", nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)

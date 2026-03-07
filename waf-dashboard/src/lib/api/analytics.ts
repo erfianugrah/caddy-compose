@@ -11,13 +11,63 @@ export interface GeoIPInfo {
   timezone?: string;
   asn?: string;
   org?: string;
+  as_domain?: string;
   network?: string;
+  continent?: string;
   source?: string;  // "cf_header" | "mmdb" | "api"
+}
+
+export interface RoutingInfo {
+  is_announced: boolean;
+  as_number?: string;
+  as_name?: string;
+  route?: string;
+  roa_count?: number;
+  roa_validity?: string;  // "valid" | "invalid" | "unknown" | "not_found"
+  rir?: string;
+  alloc_date?: string;
+}
+
+export interface NetworkType {
+  is_anycast?: boolean;
+  is_dc?: boolean;
+  org_type?: string;  // "isp" | "hosting" | "education" | "government" | "business"
+}
+
+export interface ReputationEntry {
+  source: string;         // "greynoise" | "stopforumspam" | "shodan"
+  status: string;         // "clean" | "malicious" | "benign" | "noisy"
+  classification?: string;
+  name?: string;
+  last_seen?: string;
+}
+
+export interface ReputationInfo {
+  status: string;          // "clean" | "suspicious" | "malicious" | "known_good"
+  sources?: ReputationEntry[];
+  ipsum_listed?: boolean;
+}
+
+export interface ShodanInfo {
+  ports?: number[];
+  hostnames?: string[];
+  tags?: string[];
+  cpes?: string[];
+  vulns?: string[];
+}
+
+export interface IPIntelligence {
+  geoip?: GeoIPInfo;
+  routing?: RoutingInfo;
+  network_type?: NetworkType;
+  reputation?: ReputationInfo;
+  shodan?: ShodanInfo;
 }
 
 export interface IPLookupData {
   ip: string;
   geoip?: GeoIPInfo;
+  intelligence?: IPIntelligence;
   first_seen: string;
   last_seen: string;
   total_events: number;
@@ -47,10 +97,11 @@ export interface TopTargetedURI {
 
 // ─── Raw types ──────────────────────────────────────────────────────
 
-// Go API returns {ip, geoip?, total, blocked, first_seen, last_seen, services:[ServiceDetail], events:[RawEvent]}
+// Go API returns {ip, geoip?, intelligence?, total, blocked, first_seen, last_seen, services:[ServiceDetail], events:[RawEvent]}
 interface RawIPLookup {
   ip: string;
   geoip?: GeoIPInfo;
+  intelligence?: IPIntelligence;
   total: number;
   blocked: number;
   events_total: number;
@@ -94,6 +145,7 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
   return {
     ip: raw.ip,
     geoip: raw.geoip,
+    intelligence: raw.intelligence,
     first_seen: raw.first_seen ?? "",
     last_seen: raw.last_seen ?? "",
     total_events: raw.total ?? 0,

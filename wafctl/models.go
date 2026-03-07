@@ -327,26 +327,82 @@ type HealthResponse struct {
 // IP Lookup response
 
 type GeoIPInfo struct {
-	Country  string `json:"country,omitempty"`  // ISO 3166-1 alpha-2 (e.g., "US")
-	City     string `json:"city,omitempty"`     // City name
-	Region   string `json:"region,omitempty"`   // Region/state name
-	Timezone string `json:"timezone,omitempty"` // IANA timezone (e.g., "America/New_York")
-	ASN      string `json:"asn,omitempty"`      // AS number (e.g., "AS13335")
-	Org      string `json:"org,omitempty"`      // Organization/ISP name
-	Network  string `json:"network,omitempty"`  // CIDR network (e.g., "1.0.0.0/24")
-	Source   string `json:"source,omitempty"`   // Resolution source: "cf_header", "mmdb", "api"
+	Country   string `json:"country,omitempty"`   // ISO 3166-1 alpha-2 (e.g., "US")
+	City      string `json:"city,omitempty"`      // City name
+	Region    string `json:"region,omitempty"`    // Region/state name
+	Timezone  string `json:"timezone,omitempty"`  // IANA timezone (e.g., "America/New_York")
+	ASN       string `json:"asn,omitempty"`       // AS number (e.g., "AS13335")
+	Org       string `json:"org,omitempty"`       // Organization/ISP name
+	ASDomain  string `json:"as_domain,omitempty"` // AS domain (e.g., "cloudflare.com")
+	Network   string `json:"network,omitempty"`   // CIDR network (e.g., "1.0.0.0/24")
+	Continent string `json:"continent,omitempty"` // Continent name (e.g., "Europe")
+	Source    string `json:"source,omitempty"`    // Resolution source: "cf_header", "mmdb", "api"
+}
+
+// RoutingInfo holds BGP routing intelligence from Team Cymru DNS and RIPE.
+type RoutingInfo struct {
+	IsAnnounced bool   `json:"is_announced"`           // Whether the prefix is BGP-announced
+	ASNumber    string `json:"as_number,omitempty"`    // AS number without "AS" prefix (e.g., "13335")
+	ASName      string `json:"as_name,omitempty"`      // AS holder name (e.g., "CLOUDFLARENET - Cloudflare, Inc., US")
+	Route       string `json:"route,omitempty"`        // BGP route/prefix (e.g., "1.1.1.0/24")
+	ROACount    int    `json:"roa_count,omitempty"`    // Number of validating ROAs
+	ROAValidity string `json:"roa_validity,omitempty"` // RPKI status: "valid", "invalid", "unknown", "not_found"
+	RIR         string `json:"rir,omitempty"`          // Regional Internet Registry (e.g., "apnic", "arin", "ripe")
+	AllocDate   string `json:"alloc_date,omitempty"`   // IP allocation date (e.g., "2011-08-11")
+}
+
+// NetworkType holds IP classification flags.
+type NetworkType struct {
+	IsAnycast bool   `json:"is_anycast,omitempty"` // Anycast IP (inferred from known anycast ASNs)
+	IsDC      bool   `json:"is_dc,omitempty"`      // Datacenter/hosting provider
+	OrgType   string `json:"org_type,omitempty"`   // "isp", "hosting", "education", "government", "business"
+}
+
+// ReputationInfo holds IP reputation data from multiple sources.
+type ReputationInfo struct {
+	Status      string            `json:"status"`                 // "clean", "suspicious", "malicious", "known_good"
+	Sources     []ReputationEntry `json:"sources,omitempty"`      // Per-source breakdown
+	IpsumListed bool              `json:"ipsum_listed,omitempty"` // On our IPsum blocklist
+}
+
+// ReputationEntry is a single reputation source result.
+type ReputationEntry struct {
+	Source         string `json:"source"`                   // "greynoise", "stopforumspam", "shodan"
+	Status         string `json:"status"`                   // "clean", "malicious", "benign", "noisy"
+	Classification string `json:"classification,omitempty"` // GreyNoise: "benign", "malicious", "unknown"
+	Name           string `json:"name,omitempty"`           // GreyNoise: known identity (e.g., "Cloudflare Public DNS")
+	LastSeen       string `json:"last_seen,omitempty"`      // When the source last observed this IP
+}
+
+// ShodanInfo holds Shodan InternetDB data (free, no API key).
+type ShodanInfo struct {
+	Ports     []int    `json:"ports,omitempty"`     // Open ports
+	Hostnames []string `json:"hostnames,omitempty"` // Reverse DNS hostnames
+	Tags      []string `json:"tags,omitempty"`      // Shodan tags (e.g., "cloud", "vpn")
+	CPEs      []string `json:"cpes,omitempty"`      // CPE identifiers (e.g., "cpe:/a:cloudflare:cloudflare")
+	Vulns     []string `json:"vulns,omitempty"`     // Known CVEs
+}
+
+// IPIntelligence is the enriched IP intelligence response that wraps all data sources.
+type IPIntelligence struct {
+	GeoIP      *GeoIPInfo      `json:"geoip,omitempty"`
+	Routing    *RoutingInfo    `json:"routing,omitempty"`
+	NetType    *NetworkType    `json:"network_type,omitempty"`
+	Reputation *ReputationInfo `json:"reputation,omitempty"`
+	Shodan     *ShodanInfo     `json:"shodan,omitempty"`
 }
 
 type IPLookupResponse struct {
-	IP          string          `json:"ip"`
-	GeoIP       *GeoIPInfo      `json:"geoip,omitempty"`
-	Total       int             `json:"total"`
-	Blocked     int             `json:"blocked"`
-	FirstSeen   *time.Time      `json:"first_seen"`
-	LastSeen    *time.Time      `json:"last_seen"`
-	Services    []ServiceDetail `json:"services"`
-	Events      []Event         `json:"events"`
-	EventsTotal int             `json:"events_total"`
+	IP           string          `json:"ip"`
+	GeoIP        *GeoIPInfo      `json:"geoip,omitempty"`
+	Intelligence *IPIntelligence `json:"intelligence,omitempty"`
+	Total        int             `json:"total"`
+	Blocked      int             `json:"blocked"`
+	FirstSeen    *time.Time      `json:"first_seen"`
+	LastSeen     *time.Time      `json:"last_seen"`
+	Services     []ServiceDetail `json:"services"`
+	Events       []Event         `json:"events"`
+	EventsTotal  int             `json:"events_total"`
 }
 
 // Config generation response
