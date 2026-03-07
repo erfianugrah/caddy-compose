@@ -482,8 +482,8 @@ prowlarr.erfi.io {
 }
 
 jellyfin.erfi.io {
-	import cors
-	import security_headers_base
+	# import cors
+	# import security_headers_base
 	import /data/caddy/csp/jellyfin_csp*.caddy
 	import /data/caddy/csp/jellyfin.erfi.io_csp*.caddy
 	import static_cache

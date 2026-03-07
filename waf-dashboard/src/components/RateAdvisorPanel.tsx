@@ -1,53 +1,27 @@
-import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  Zap,
   BarChart3,
   Loader2,
-  ArrowRight,
   Filter,
   Plus,
   X,
   ChevronRight,
-  ChevronDown,
   Search,
-  Info,
 } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
 import {
-  Tooltip,
-  TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
   getRateAdvisor,
@@ -58,63 +32,18 @@ import {
   type ConditionField,
   type RLRuleAction,
 } from "@/lib/api";
-import {
-  ClassificationBadge,
-  ConfidenceBadge,
-  DistributionHistogram,
-  ImpactCurve,
-  TimeOfDayChart,
-} from "./AdvisorCharts";
 import { isValidWindow } from "@/lib/format";
 import { T } from "@/lib/typography";
-
-// ─── Stat Tooltip Helper ────────────────────────────────────────────
-
-function StatTip({ tip }: { tip: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Info className="ml-1 inline h-3 w-3 shrink-0 cursor-help text-muted-foreground/40 hover:text-muted-foreground" />
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
-        <p>{tip}</p>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ─── Advisor Filter Constants ───────────────────────────────────────
-
-const WINDOW_OPTIONS = [
-  { value: "30s", label: "30 sec" },
-  { value: "1m", label: "1 min" },
-  { value: "2m", label: "2 min" },
-  { value: "5m", label: "5 min" },
-  { value: "10m", label: "10 min" },
-  { value: "30m", label: "30 min" },
-  { value: "1h", label: "1 hour" },
-  { value: "6h", label: "6 hours" },
-  { value: "24h", label: "24 hours" },
-] as const;
-
-const WINDOW_LABELS: Record<string, string> = Object.fromEntries(
-  WINDOW_OPTIONS.map((o) => [o.value, o.label])
-);
-
-/** Format a window value for display */
-function windowLabel(v: string): string {
-  return WINDOW_LABELS[v] || v;
-}
-
-const METHOD_OPTIONS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-
-type AdvisorField = "service" | "method" | "path";
-
-const ADVISOR_FIELD_META: { field: AdvisorField; label: string; placeholder: string }[] = [
-  { field: "service", label: "Service", placeholder: "Search services..." },
-  { field: "method", label: "Method", placeholder: "Select method" },
-  { field: "path", label: "Path", placeholder: "/api/..." },
-];
+import {
+  StatTip,
+  ADVISOR_WINDOW_OPTIONS,
+  windowLabel,
+  METHOD_OPTIONS,
+  ADVISOR_FIELD_META,
+  type AdvisorField,
+} from "./ratelimits/advisorConstants";
+import { AdvisorClientTable } from "./ratelimits/AdvisorClientTable";
+import { AdvisorRecommendations } from "./ratelimits/AdvisorRecommendations";
 
 // ─── Rate Advisor Panel ─────────────────────────────────────────────
 
@@ -133,17 +62,6 @@ export function RateAdvisorPanel({
   const [method, setMethod] = useState("");
   const [threshold, setThreshold] = useState<number>(0);
   const [maxRate, setMaxRate] = useState(100);
-  const [clientSort, setClientSort] = useState<"requests" | "anomaly_score" | "error_rate">("requests");
-  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
-
-  const toggleClientExpand = (ip: string) => {
-    setExpandedClients((prev) => {
-      const next = new Set(prev);
-      if (next.has(ip)) next.delete(ip);
-      else next.add(ip);
-      return next;
-    });
-  };
 
   // Filter bar state
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
@@ -196,19 +114,6 @@ export function RateAdvisorPanel({
     () => affectedClients.reduce((sum, c) => sum + c.requests, 0),
     [affectedClients]
   );
-
-  const sortedClients = useMemo(() => {
-    if (!data) return [];
-    const sorted = [...data.clients];
-    if (clientSort === "anomaly_score") {
-      sorted.sort((a, b) => b.anomaly_score - a.anomaly_score);
-    } else if (clientSort === "error_rate") {
-      sorted.sort((a, b) => b.error_rate - a.error_rate);
-    } else {
-      sorted.sort((a, b) => b.requests - a.requests);
-    }
-    return sorted;
-  }, [data, clientSort]);
 
   const classifications = useMemo(() => {
     if (!data) return { normal: 0, elevated: 0, suspicious: 0, abusive: 0 };
@@ -479,7 +384,7 @@ export function RateAdvisorPanel({
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-48 p-2" align="start">
-              {WINDOW_OPTIONS.map((opt) => (
+              {ADVISOR_WINDOW_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   className={`flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors cursor-pointer ${
@@ -560,59 +465,18 @@ export function RateAdvisorPanel({
 
       {data && !loading && data.total_requests > 0 && (
         <>
-          {/* Recommendation banner */}
-          {rec && (
-            <div className="flex items-center justify-between rounded-lg border border-neon-cyan/30 bg-neon-cyan/5 px-5 py-4">
-              <div className="flex items-center gap-3">
-                <Zap className="h-5 w-5 text-neon-cyan shrink-0" />
-                <div>
-                  <div className="text-sm">
-                    <span className="text-muted-foreground">Recommended threshold: </span>
-                    <span className="font-mono font-semibold text-neon-cyan text-base">{rec.threshold}</span>
-                    <span className="text-muted-foreground"> req/{window} </span>
-                    <ConfidenceBadge confidence={rec.confidence} />
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {rec.method.toUpperCase()}-based — would affect{" "}
-                    <span className="font-mono">{rec.affected_clients}</span> client{rec.affected_clients !== 1 ? "s" : ""},{" "}
-                    <span className="font-mono">{rec.affected_requests.toLocaleString()}</span> requests
-                  </div>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => setThreshold(rec.threshold)}
-              >
-                Apply
-              </Button>
-            </div>
-          )}
-
-          {/* Create Rule action — top of page for visibility */}
-          {threshold > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-neon-green/30 bg-neon-green/5 px-5 py-4">
-              <div className="text-sm">
-                <span className="text-muted-foreground">Create a rule that limits clients to </span>
-                <span className="font-mono font-medium text-neon-cyan">{threshold}</span>
-                <span className="text-muted-foreground"> requests per </span>
-                <span className="font-mono font-medium text-neon-cyan">{window}</span>
-                {service && (
-                  <>
-                    <span className="text-muted-foreground"> on </span>
-                    <span className="font-mono font-medium text-neon-cyan">{service}</span>
-                  </>
-                )}
-                <span className="text-muted-foreground">
-                  ? Starts in <span className="text-neon-yellow">monitor mode</span> — switch to deny when confident.
-                </span>
-              </div>
-              <Button size="sm" onClick={handleCreateRule} className="gap-1.5 shrink-0 ml-4">
-                Create Rule <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+          {/* Recommendations: banner + create rule + threshold/charts */}
+          <AdvisorRecommendations
+            data={data}
+            threshold={threshold}
+            maxRate={maxRate}
+            window={window}
+            service={service}
+            affectedClients={affectedClients.length}
+            affectedRequests={affectedRequests}
+            onThresholdChange={setThreshold}
+            onCreateRule={handleCreateRule}
+          />
 
           {/* Stats */}
           <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -683,298 +547,11 @@ export function RateAdvisorPanel({
             </Card>
           </div>
 
-          {/* Threshold + Histogram + Impact Curve */}
-          <div className="grid gap-5 lg:grid-cols-2">
-          <Card>
-              <CardContent className="p-5 space-y-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Rate Limit Threshold</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={maxRate}
-                        value={threshold}
-                        onChange={(e) => setThreshold(Number(e.target.value) || 1)}
-                        className="w-24 tabular-nums"
-                      />
-                      <span className="text-sm text-muted-foreground">req / {window}</span>
-                    </div>
-                  </div>
-                  {/* Percentile display — high contrast */}
-                  <div className="flex items-center gap-4 tabular-nums font-mono">
-                    {([
-                      { label: "P50", value: data.percentiles.p50, highlight: false },
-                      { label: "P75", value: data.percentiles.p75, highlight: false },
-                      { label: "P90", value: data.percentiles.p90, highlight: false },
-                      { label: "P95", value: data.percentiles.p95, highlight: true },
-                      { label: "P99", value: data.percentiles.p99, highlight: false },
-                    ] as const).map(({ label, value, highlight }) => (
-                      <span key={label} className={highlight ? "text-neon-yellow" : ""}>
-                        <span className={`text-xs mr-1 ${highlight ? "text-neon-yellow/70" : "text-muted-foreground"}`}>{label}</span>
-                        <span className={`text-sm font-medium ${highlight ? "font-semibold" : "text-foreground"}`}>{value}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <Slider
-                  min={1}
-                  max={maxRate}
-                  step={1}
-                  value={[threshold]}
-                  onValueChange={([v]) => setThreshold(v)}
-                  className="py-1"
-                />
-                {/* Distribution histogram */}
-                {data.histogram && data.histogram.length > 0 && (
-                  <div className="pt-3">
-                    <div className="text-xs text-muted-foreground mb-2">
-                      Client rate distribution <span className="text-neon-yellow">(yellow line = threshold</span>, <span className="text-red-400">red = above)</span>
-                    </div>
-                    <DistributionHistogram histogram={data.histogram} threshold={threshold} />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-          {/* Impact curve */}
-          <Card>
-            <CardContent className="p-5 space-y-3">
-              <div>
-                <div className="text-xs font-medium mb-0.5">Impact Sensitivity</div>
-                <p className="text-xs text-muted-foreground">
-                  % of clients/requests affected as threshold changes
-                </p>
-              </div>
-              {data.impact_curve && data.impact_curve.length >= 2 ? (
-                <ImpactCurve curve={data.impact_curve} threshold={threshold} />
-              ) : (
-                <div className="text-xs text-muted-foreground/50 py-8 text-center">Not enough data</div>
-              )}
-              <div className="flex items-center gap-4 text-xs pt-2 border-t border-border">
-                <div>
-                  <span className="text-muted-foreground">Clients: </span>
-                  <span className="font-mono text-neon-cyan">{affectedClients.length}/{data.unique_clients}</span>
-                  <span className="text-muted-foreground"> ({data.unique_clients > 0 ? ((affectedClients.length / data.unique_clients) * 100).toFixed(1) : 0}%)</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Reqs: </span>
-                  <span className="font-mono text-pink-400">{affectedRequests.toLocaleString()}/{data.total_requests.toLocaleString()}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          </div>
-
-          {/* Time-of-Day Baselines */}
-          {data.time_of_day_baselines && data.time_of_day_baselines.length >= 2 && (
-            <Card>
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-medium mb-0.5">Traffic by Hour of Day</div>
-                    <p className="text-xs text-muted-foreground">
-                      Median &amp; P95 request rates per client, per hour
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(34,211,238,0.5)" }} />
-                      Median
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(34,211,238,0.15)" }} />
-                      P95
-                    </span>
-                  </div>
-                </div>
-                <TimeOfDayChart baselines={data.time_of_day_baselines} />
-              </CardContent>
-            </Card>
-          )}
-
           {/* Client table */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className={T.cardTitle}>
-                  Top {data.clients.length} Clients
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs text-muted-foreground">Sort by</Label>
-                  <Select value={clientSort} onValueChange={(v) => setClientSort(v as typeof clientSort)}>
-                    <SelectTrigger className="h-7 text-xs w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="requests">Requests</SelectItem>
-                      <SelectItem value="anomaly_score">Anomaly Score</SelectItem>
-                      <SelectItem value="error_rate">Error Rate</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                     <TableHead className="w-8" />
-                     <TableHead>Client IP</TableHead>
-                     <TableHead>Country</TableHead>
-                     <TableHead className="text-right">
-                       <span className="inline-flex items-center gap-1 justify-end">Requests
-                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
-                       <TooltipContent side="top" className="max-w-xs text-xs">Total requests from this client in the selected window.</TooltipContent></Tooltip></span>
-                     </TableHead>
-                     <TableHead className="text-right">
-                       <span className="inline-flex items-center gap-1 justify-end">Req/s
-                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
-                       <TooltipContent side="top" className="max-w-xs text-xs">Requests per second — normalized rate for cross-window comparison.</TooltipContent></Tooltip></span>
-                     </TableHead>
-                     <TableHead className="text-right">
-                       <span className="inline-flex items-center gap-1 justify-end">Error %
-                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
-                       <TooltipContent side="top" className="max-w-xs text-xs">Percentage of 4xx/5xx responses. High error rates may indicate scanning or brute-force attempts.</TooltipContent></Tooltip></span>
-                     </TableHead>
-                     <TableHead className="text-right">
-                       <span className="inline-flex items-center gap-1 justify-end">Diversity
-                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
-                       <TooltipContent side="top" className="max-w-xs text-xs">Path diversity — unique paths / total requests. Low values (near 0) mean the client hammers one endpoint; high values (near 1) mean varied browsing.</TooltipContent></Tooltip></span>
-                     </TableHead>
-                     <TableHead className="text-right">
-                       <span className="inline-flex items-center gap-1 justify-end">Burstiness
-                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
-                       <TooltipContent side="top" className="max-w-xs text-xs">Fano factor over 10-second sub-windows. 1.0 = evenly spread (Poisson). Values well above 1 indicate bursty, bot-like request patterns.</TooltipContent></Tooltip></span>
-                     </TableHead>
-                     <TableHead className="text-right">
-                       <span className="inline-flex items-center gap-1 justify-end">Score
-                       <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/40 cursor-help" /></TooltipTrigger>
-                       <TooltipContent side="top" className="max-w-xs text-xs">Composite anomaly score (0–100). Weighted: 40% volume deviation, 30% burstiness, 30% path concentration. Higher = more anomalous.</TooltipContent></Tooltip></span>
-                     </TableHead>
-                     <TableHead>Class</TableHead>
-                     <TableHead>Top Paths</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedClients.map((client) => {
-                    const isAbove = client.requests >= threshold;
-                    const isExpanded = expandedClients.has(client.client_ip);
-                    return (
-                      <Fragment key={client.client_ip}>
-                      <TableRow
-                        className={`cursor-pointer ${isAbove ? "bg-red-500/5" : ""}`}
-                        onClick={() => toggleClientExpand(client.client_ip)}
-                      >
-                        <TableCell className="w-8">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{client.client_ip}</TableCell>
-                        <TableCell className="text-xs">{client.country || "—"}</TableCell>
-                        <TableCell className={`text-xs font-mono tabular-nums text-right ${isAbove ? "text-red-400 font-medium" : ""}`}>
-                          {client.requests.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono tabular-nums text-right text-neon-cyan">
-                          {client.requests_per_sec > 0 ? client.requests_per_sec.toFixed(2) : "—"}
-                        </TableCell>
-                        <TableCell className={`text-xs font-mono tabular-nums text-right ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
-                          {(client.error_rate * 100).toFixed(0)}%
-                        </TableCell>
-                        <TableCell className={`text-xs font-mono tabular-nums text-right ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
-                          {client.path_diversity.toFixed(2)}
-                        </TableCell>
-                        <TableCell className={`text-xs font-mono tabular-nums text-right ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
-                          {client.burstiness.toFixed(1)}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono tabular-nums text-right">
-                          {client.anomaly_score.toFixed(0)}
-                        </TableCell>
-                        <TableCell>
-                          <ClassificationBadge classification={client.classification} />
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {client.top_paths && client.top_paths.length > 0
-                            ? `${client.top_paths.length} path${client.top_paths.length !== 1 ? "s" : ""}`
-                            : "—"}
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && (
-                        <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={11} className="bg-navy-950/50 p-4">
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              {/* Left: all paths with bars */}
-                              <div className="space-y-1.5">
-                                <div className={T.sectionLabel}>Request Paths</div>
-                                {client.top_paths && client.top_paths.length > 0 ? (
-                                  <div className="space-y-1">
-                                    {client.top_paths.map((p, i) => {
-                                      const maxCount = client.top_paths![0].count;
-                                      const pct = maxCount > 0 ? (p.count / maxCount) * 100 : 0;
-                                      return (
-                                        <div key={i} className="relative">
-                                          <div
-                                            className="absolute inset-y-0 left-0 rounded-sm bg-neon-cyan/10"
-                                            style={{ width: `${pct}%` }}
-                                          />
-                                          <div className="relative flex items-center justify-between gap-3 px-2 py-0.5 text-xs">
-                                            <span className="font-mono text-muted-foreground truncate" title={p.path}>
-                                              {p.path}
-                                            </span>
-                                            <span className="font-mono tabular-nums text-foreground shrink-0">
-                                              {p.count.toLocaleString()}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground/50">No path data</span>
-                                )}
-                              </div>
-                              {/* Right: metrics summary */}
-                              <div className="space-y-1.5">
-                                <div className={T.sectionLabel}>Anomaly Metrics</div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                                  <div className="text-muted-foreground">Classification</div>
-                                  <div><ClassificationBadge classification={client.classification} /></div>
-                                  <div className="text-muted-foreground">Anomaly Score</div>
-                                  <div className="font-mono tabular-nums">{client.anomaly_score.toFixed(1)} / 100</div>
-                                  <div className="text-muted-foreground">Requests</div>
-                                  <div className="font-mono tabular-nums">{client.requests.toLocaleString()} total ({client.requests_per_sec > 0 ? `${client.requests_per_sec.toFixed(2)} req/s` : "—"})</div>
-                                  <div className="text-muted-foreground">Error Rate</div>
-                                  <div className={`font-mono tabular-nums ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
-                                    {(client.error_rate * 100).toFixed(1)}%
-                                  </div>
-                                  <div className="text-muted-foreground">Path Diversity</div>
-                                  <div className={`font-mono tabular-nums ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
-                                    {client.path_diversity.toFixed(3)} <span className="text-muted-foreground font-normal">({client.path_diversity < 0.05 ? "very focused" : client.path_diversity < 0.2 ? "focused" : client.path_diversity < 0.5 ? "moderate" : "varied"})</span>
-                                  </div>
-                                  <div className="text-muted-foreground">Burstiness (Fano)</div>
-                                  <div className={`font-mono tabular-nums ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
-                                    {client.burstiness.toFixed(2)} <span className="text-muted-foreground font-normal">({client.burstiness <= 1.2 ? "even" : client.burstiness <= 3 ? "moderate" : "bursty"})</span>
-                                  </div>
-                                  <div className="text-muted-foreground">Country</div>
-                                  <div>{client.country || "Unknown"}</div>
-                                </div>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      </Fragment>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
+          <AdvisorClientTable
+            clients={data.clients}
+            threshold={threshold}
+          />
         </>
       )}
 

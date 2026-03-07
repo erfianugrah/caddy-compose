@@ -154,17 +154,18 @@ wafctl tag format: simple semver (e.g. `1.6.1`).
 - Atomic writes via `atomicWriteFile()` — write to temp, fsync, rename
 - Incremental file reading with offset tracking and rotation detection
 - Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
-- One cohesive module per `.go` file (logparser, generator, deploy, config, exclusions, geoip, blocklist, etc.)
-- All data models in `models.go`; most HTTP handlers in `main.go`, domain-specific handlers co-located with their store (e.g. `blocklist.go` has `handleBlocklistStats`, `handleBlocklistRefresh`)
-- `geoip.go` — pure-Go MMDB reader (ported from k3s Sentinel), GeoIP store with in-memory cache, CF header parser, online API fallback (configurable via `WAF_GEOIP_API_URL`)
-- `blocklist.go` — IPsum blocklist file parser with `# Updated:` comment extraction and mtime fallback, cached stats/check, on-demand refresh (download + filter + atomic write + Caddy reload)
-- `rl_rules.go` — Rate limit rule store with CRUD, validation, v1 migration, Caddyfile auto-discovery
-- `rl_generator.go` — Rate limit Caddy config generator, condition→matcher translation, file writer
-- `rl_analytics.go` — Rate limit analytics, condition-based rule attribution for 429 events
-- `rl_advisor.go` — Rate limit advisor: traffic analysis, statistical anomaly detection (MAD, Fano factor, IQR), client classification, time-of-day baselines, 30s TTL caching
-- `csp.go` — CSP data model, store, validation, header builder, merge logic, HTTP handlers
-- `csp_generator.go` — CSP Caddy config generator, FQDN propagation, file writer
-- `validate.go` — Config validation engine (`ValidateGeneratedConfig`): checks quote balance, self-referencing `ctl:ruleRemoveById`, commas in `msg:` fields, long action lines
+- One cohesive module per `.go` file, split by domain responsibility
+- **Entry point & routing**: `main.go` (~302 lines) — server setup, CORS middleware, `envOr()`, route registration
+- **JSON/query helpers**: `json_helpers.go` — `writeJSON`, `decodeJSON`, `queryInt`; `query_helpers.go` — `parseHours`, `parseTimeRange`, `fieldFilter`, `matchField`
+- **Handler files** (split from main.go): `handlers_events.go` (health/summary/events/services), `handlers_analytics.go` (top IPs/URIs/countries, IP lookup), `handlers_exclusions.go` (exclusion CRUD), `handlers_config.go` (CRS catalog, WAF config, deploy), `handlers_ratelimit.go` (RL rule CRUD + analytics)
+- **Log parser**: `logparser.go` (~564 lines) — Store struct, offset/JSONL persistence, Load, eviction, tailing; `event_parser.go` — `parseEvent`, anomaly score extraction; `waf_summary.go` — `summarizeEvents`; `waf_analytics.go` — services/IP/top-N analytics
+- **Models** (split by domain): `models.go` (~384 lines) — CRS scoring, audit log types, summary/analytics types; `models_exclusions.go` — Condition, RuleExclusion, WAFConfig; `models_ratelimit.go` — rate limit types; `models_general_logs.go` — general log types
+- **Config generation**: `generator.go` (~637 lines) — SecRule exclusion generation; `waf_settings_generator.go` — WAF settings generation
+- **Access log store**: `access_log_store.go` (~576 lines) — AccessLogStore struct, persistence, Load, snapshots (split from rl_analytics.go)
+- **Rate limit analytics**: `rl_analytics.go` (~373 lines) — regex cache, summary, filtered events, rule hits, condition matching
+- **Rate limit advisor**: `rl_advisor.go` (~807 lines) — algorithm/computation; `rl_advisor_types.go` — types, models, cache
+- **General logs**: `general_logs.go` (~453 lines) — store code; `general_logs_handlers.go` (~515 lines) — handlers + aggregation
+- **Domain stores** (unchanged): `exclusions.go` (550), `rl_rules.go` (561), `geoip.go` (686), `csp.go` (541), `csp_generator.go`, `rl_generator.go` (616), `blocklist.go` (375), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cli.go` (953), `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
 
@@ -288,6 +289,7 @@ fine-grained per-path, per-method, or per-header rate limiting.
 - **Handlers**: 12 HTTP endpoints under `/api/rate-rules` (CRUD, deploy, global config, export/import, hits, advisor)
 - **CLI**: `wafctl ratelimit` / `wafctl rl` subcommands (list, get, create, delete, deploy, global)
 - **Frontend**: `RateLimitsPanel.tsx` (rules CRUD + global settings), `RateAdvisorPanel.tsx` (advisor UI), `AdvisorCharts.tsx` (visualization components)
+- **Frontend subdir**: `ratelimits/` — `constants`, `helpers`, `RuleForm`, `GlobalSettingsPanel`, `advisorConstants`, `AdvisorClientTable`, `AdvisorRecommendations`
 
 ### Rule Model
 
@@ -373,7 +375,7 @@ and generates one-click rule creation from recommendations.
 
 **Query params**: `window` (`1m`/`5m`/`10m`/`1h`), `service`, `path`, `method`, `limit` (max clients, default 100)
 
-**Frontend**: `RateAdvisorPanel.tsx` handles the form, client table with req/s columns, and recommendation cards. `AdvisorCharts.tsx` contains `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, and `TimeOfDayChart` visualization components.
+**Frontend**: `RateAdvisorPanel.tsx` handles the form, client table with req/s columns, and recommendation cards. `AdvisorCharts.tsx` contains `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, and `TimeOfDayChart` visualization components. Subcomponents: `ratelimits/AdvisorClientTable.tsx` (sortable client table with expandable rows), `ratelimits/AdvisorRecommendations.tsx` (recommendation cards with threshold slider).
 
 ## Code Style — TypeScript/React (waf-dashboard/)
 
@@ -391,9 +393,20 @@ and generates one-click rule creation from recommendations.
 
 ### API Layer
 
-- Go returns `snake_case` JSON; the frontend `api.ts` maps it to `camelCase`
+- API client split into domain modules under `src/lib/api/`:
+  - `shared.ts` — HTTP helpers (`fetchJSON`, `postJSON`, `putJSON`, `deleteJSON`), `FilterOp`, `SummaryParams`, `applyFilterParams`
+  - `waf-events.ts` — Summary/overview types, WAFEvent, EventsParams, fetchSummary, fetchEvents, fetchServices
+  - `analytics.ts` — IP lookup, top IPs/URIs/countries
+  - `exclusions.ts` — Exclusion types, CRS types, type mapping (frontend ModSecurity names ↔ Go internal), CRUD
+  - `config.ts` — WAFConfig, WAFServiceSettings, presets
+  - `rate-limits.ts` — Rate limit rule types, CRUD, global config, analytics, advisor
+  - `blocklist.ts` — Blocklist types and functions
+  - `csp.ts` — CSP types and functions
+  - `general-logs.ts` — General log types and functions
+  - `index.ts` — barrel re-export (all components import from `@/lib/api`)
+- Go returns `snake_case` JSON; the api modules map to `camelCase`
 - Type-safe interfaces for all API responses
-- When adding API endpoints, update both Go handler (`main.go`) and frontend client (`api.ts`)
+- When adding API endpoints, update the relevant Go handler and the matching api module
 - `FilterOp` type: `"eq" | "neq" | "contains" | "in" | "regex"` — maps to backend `_op` query params
 - `SummaryParams` and `EventsParams` include `_op` variants for all filter fields
 
@@ -416,6 +429,23 @@ and generates one-click rule creation from recommendations.
 - `DashboardFilterBar` — CF-style filter bar with wide 3-step popover (Field→Operator→Value, `w-96`), service and rule_name `in` multi-select with checkbox list + search + custom text entry, filter chips with operator symbols, `in` operator renders individual pills per value with `×` buttons. Dynamic searchable dropdowns for `service` (from API) and `rule_name` (from exclusions). Exports: `parseFiltersFromURL`, `filtersToSummaryParams`, `filtersToEventsParams`, `filterDisplayValue`, `operatorChip`, `FILTER_FIELDS`, `DashboardFilter`, `FilterField`
 - `RateAdvisorPanel` — rate limit advisor UI: service/path/method/window form, client table with anomaly scores and req/s, recommendation cards with one-click rule creation
 - `AdvisorCharts` — visualization components for the advisor: `ClassificationBadge`, `ConfidenceBadge`, `DistributionHistogram`, `ImpactCurve`, `TimeOfDayChart`
+- `Sparkline` — shared SVG sparkline chart (used by PolicyEngine, RateLimitsPanel)
+- `SortableTableRow` — dnd-kit sortable table row (used by PolicyEngine, RateLimitsPanel)
+- `StatCard` — animated stat card with `useCountUp` hook (used by OverviewDashboard)
+
+### Component Subdirectories
+
+Components over ~500 lines are split into feature subdirectories following the `policy/` pattern:
+
+- `analytics/` — `CountryLabel`, `IPLookupPanel`, `TopBlockedIPsPanel`, `TopTargetedURIsPanel`, `TopCountriesPanel`
+- `csp/` — `constants`, `CSPSourceInput`, `DirectiveEditor`, `PreviewPanel`
+- `events/` — `helpers`, `EventDetailPanel`
+- `filters/` — `types`, `constants`, `filterUtils`
+- `logs/` — `helpers`, `LogStreamTab`, `SummaryTab`, `HeaderComplianceTab`
+- `overview/` — `helpers` (chart formatting, tick renderers, deep-link builders)
+- `policy/` — `ConditionBuilder`, `CRSRulePicker`, `PolicyForms`, `TagInputs`, `constants`, `eventPrefill`, `exclusionHelpers`
+- `ratelimits/` — `constants`, `helpers`, `RuleForm`, `GlobalSettingsPanel`, `advisorConstants`, `AdvisorClientTable`, `AdvisorRecommendations`
+- `settings/` — `constants`, `SettingsFormSections`, `AdvancedSettings`, `ServiceSettingsCard`
 
 ### Cross-Page Navigation
 
@@ -430,7 +460,7 @@ and generates one-click rule creation from recommendations.
 
 ### Dashboard Pages (file-based routing)
 
-`/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/policy` · `/rate-limits` · `/services` · `/settings`
+`/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
 
 ### Static MPA Routing
 
@@ -459,7 +489,7 @@ JSON store → Caddy config generator → file deploy → Caddy reload.
 - **Generator**: `csp_generator.go` — translates config into per-service `header` directives in `.caddy` files
 - **Handlers**: 4 HTTP endpoints under `/api/csp` (get, update, deploy, preview)
 - **CLI**: `wafctl csp` subcommands (get, set, deploy, preview)
-- **Frontend**: `CSPPanel.tsx` (~1130 lines) with directive editor, source picker, preview panel, service overrides
+- **Frontend**: `CSPPanel.tsx` (~420 lines) orchestrator + `csp/` subdir (constants, CSPSourceInput, DirectiveEditor, PreviewPanel)
 
 ### Data Model
 
@@ -553,6 +583,7 @@ proxied apps and Astro hydration.
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
+| General Logs | `GET /api/logs`, `GET /api/logs/summary` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ## Caddy Body Matcher Plugin (github.com/erfianugrah/caddy-body-matcher)
@@ -629,8 +660,8 @@ directive. The handler must run first so placeholders are populated for bucket k
 
 ## Test Patterns
 
-### Go (445 tests across 19 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `testhelpers_test.go`
+### Go (950 tests across 20 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -638,11 +669,12 @@ directive. The handler must run first so placeholders are populated for bucket k
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (279 tests across 6 files)
+### Frontend (292 tests across 13 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- Tests live alongside source: `api.test.ts` next to `api.ts`, `DashboardFilterBar.test.ts` next to component
-- Policy sub-module tests in `components/policy/`: `constants.test.ts`, `eventPrefill.test.ts`, `exclusionHelpers.test.ts`, `TagInputs.test.ts`
+- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (11), `analytics.test.ts` (10), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
+- Component tests: `DashboardFilterBar.test.ts` (63)
+- Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (34), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
 
 ## Coraza-Caddy Fork
 
@@ -765,6 +797,9 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for RL auto-discovery
 - `WAF_CSP_FILE` (default `/data/csp.json`) — CSP configuration store path
 - `WAF_CSP_DIR` (default `/data/csp/`) — output directory for generated CSP config files
+- `WAF_GENERAL_LOG_FILE` (default `/data/general-events.jsonl`) — JSONL persistence for general log events
+- `WAF_GENERAL_LOG_OFFSET_FILE` (default `/data/.general-log-offset`) — persists general log read offset across restarts
+- `WAF_GENERAL_LOG_MAX_AGE` (default `168h`) — retention period for general log events (shorter than WAF events due to higher volume)
 - `WAF_BLOCKLIST_REFRESH_HOUR` (default `6`) — UTC hour (0–23) for daily IPsum blocklist refresh
 
 ### CLI Subcommands

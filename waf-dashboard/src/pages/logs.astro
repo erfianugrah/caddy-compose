@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import LogViewer from "../components/LogViewer";
+---
+
+<DashboardLayout title="wafctl — Access Logs" active="logs">
+  <LogViewer client:load />
+</DashboardLayout>

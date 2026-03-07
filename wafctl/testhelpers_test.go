@@ -49,12 +49,13 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	t.Helper()
 	store := NewStore(filepath.Join(t.TempDir(), "audit.log"))
 	als := NewAccessLogStore(filepath.Join(t.TempDir(), "access.log"))
+	gls := NewGeneralLogStore(filepath.Join(t.TempDir(), "access.log"))
 	geoStore := NewGeoIPStore(filepath.Join(t.TempDir(), "nonexistent.mmdb"), nil)
 	exclStore := NewExclusionStore(filepath.Join(t.TempDir(), "excl.json"))
 	blStore := NewBlocklistStore(filepath.Join(t.TempDir(), "ipsum.caddy"))
 	cfStore := NewCFProxyStore(filepath.Join(t.TempDir(), "cf.caddy"))
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
-	return handleHealth(store, als, geoStore, exclStore, blStore, cfStore, cspStore)
+	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore)
 }
 
 // emptyAccessLogStore returns an AccessLogStore with no events for tests that

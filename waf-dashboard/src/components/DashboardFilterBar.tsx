@@ -8,191 +8,30 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { SummaryParams, EventsParams, EventType, FilterOp } from "@/lib/api";
+import type { FilterOp } from "@/lib/api";
 
-// ─── Types ──────────────────────────────────────────────────────────
+// ─── Re-exports (barrel) for backward-compatible imports ────────────
+export type { FilterField, DashboardFilter } from "./filters/types";
+export {
+  FILTER_FIELDS,
+  FIELD_OPERATORS,
+  FIELD_ORDER,
+  OP_META,
+  EVENT_TYPE_OPTIONS,
+  METHOD_OPTIONS,
+} from "./filters/constants";
+export {
+  parseFiltersFromURL,
+  filtersToSummaryParams,
+  filtersToEventsParams,
+  filterDisplayValue,
+  operatorChip,
+} from "./filters/filterUtils";
 
-export type FilterField = "service" | "client" | "event_type" | "method" | "rule_name" | "uri" | "status_code" | "country" | "event_id";
-
-export interface DashboardFilter {
-  field: FilterField;
-  operator: FilterOp;
-  value: string;
-}
-
-// ─── Operator metadata ──────────────────────────────────────────────
-
-interface OpMeta {
-  label: string;
-  /** Short display label for chips */
-  chip: string;
-}
-
-const OP_META: Record<FilterOp, OpMeta> = {
-  eq:       { label: "equals",          chip: "=" },
-  neq:      { label: "not equals",      chip: "≠" },
-  contains: { label: "contains",        chip: "~" },
-  in:       { label: "is in",           chip: "in" },
-  regex:    { label: "matches regex",   chip: "re" },
-};
-
-/** Operators available per field. Order matters — first is default. */
-const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
-  service:     ["eq", "neq", "contains", "in", "regex"],
-  client:      ["eq", "neq", "in"],
-  event_type:  ["eq", "in"],
-  method:      ["eq", "in"],
-  rule_name:   ["eq", "contains", "regex"],
-  uri:         ["eq", "neq", "contains", "regex"],
-  status_code: ["eq", "neq", "in", "regex"],
-  country:     ["eq", "neq", "in"],
-  event_id:    ["eq"],
-};
-
-// ─── Field metadata ─────────────────────────────────────────────────
-
-interface FieldMeta {
-  label: string;
-  placeholder: string;
-  /** If present, show a selection list instead of free text */
-  options?: { value: string; label: string }[];
-  /** If true, the field supports dynamic options (e.g. services from API) + free text */
-  dynamic?: boolean;
-}
-
-const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "blocked", label: "CRS Blocked" },
-  { value: "logged", label: "Logged" },
-  { value: "rate_limited", label: "Rate Limited" },
-  { value: "ipsum_blocked", label: "IPsum Blocked" },
-  { value: "honeypot", label: "Honeypot" },
-  { value: "scanner", label: "Scanner" },
-  { value: "policy_skip", label: "Policy Skip" },
-  { value: "policy_allow", label: "Policy Allow" },
-  { value: "policy_block", label: "Policy Block" },
-];
-
-const METHOD_OPTIONS: { value: string; label: string }[] = [
-  { value: "GET", label: "GET" },
-  { value: "POST", label: "POST" },
-  { value: "PUT", label: "PUT" },
-  { value: "DELETE", label: "DELETE" },
-  { value: "PATCH", label: "PATCH" },
-  { value: "HEAD", label: "HEAD" },
-  { value: "OPTIONS", label: "OPTIONS" },
-];
-
-export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
-  service: { label: "Service", placeholder: "Search services...", dynamic: true },
-  client: { label: "Client IP", placeholder: "e.g. 192.168.1.100" },
-  event_type: { label: "Event Type", placeholder: "Select type", options: EVENT_TYPE_OPTIONS },
-  method: { label: "Method", placeholder: "Select method", options: METHOD_OPTIONS },
-  rule_name: { label: "Policy Rule", placeholder: "Search rules...", dynamic: true },
-  uri: { label: "Path", placeholder: "e.g. /api/v1/users" },
-  status_code: { label: "Status Code", placeholder: "e.g. 403 or 4\\d\\d" },
-  country: { label: "Country", placeholder: "e.g. US, DE, CN" },
-  event_id: { label: "Event ID", placeholder: "e.g. abc123..." },
-};
-
-const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "method", "rule_name", "uri", "status_code", "country"];
-
-// ─── Pure logic functions (exported for testing) ────────────────────
-
-/**
- * Parse filter state from URL search params.
- * Recognized params: service, client (also ip), event_type (also type),
- * method, rule_name. Each can have a companion _op param.
- */
-export function parseFiltersFromURL(search: string): DashboardFilter[] {
-  const params = new URLSearchParams(search);
-  const filters: DashboardFilter[] = [];
-
-  const fieldMap: { key: string; alias?: string; field: FilterField }[] = [
-    { key: "service", field: "service" },
-    { key: "client", alias: "ip", field: "client" },
-    { key: "event_type", alias: "type", field: "event_type" },
-    { key: "method", field: "method" },
-    { key: "rule_name", field: "rule_name" },
-    { key: "uri", alias: "path", field: "uri" },
-    { key: "status_code", alias: "status", field: "status_code" },
-    { key: "country", field: "country" },
-    { key: "event_id", field: "event_id" },
-  ];
-
-  for (const { key, alias, field } of fieldMap) {
-    const value = params.get(key) || (alias ? params.get(alias) : null);
-    if (value) {
-      const op = (params.get(`${key}_op`) || "eq") as FilterOp;
-      const validOps = FIELD_OPERATORS[field];
-      filters.push({
-        field,
-        operator: validOps.includes(op) ? op : validOps[0],
-        value,
-      });
-    }
-  }
-
-  return filters;
-}
-
-/** Convert filter array to SummaryParams (excluding time range). */
-export function filtersToSummaryParams(filters: DashboardFilter[]): Partial<SummaryParams> {
-  const params: Partial<SummaryParams> = {};
-  for (const f of filters) {
-    switch (f.field) {
-      case "service":     params.service = f.value;     params.service_op = f.operator;     break;
-      case "client":      params.client = f.value;      params.client_op = f.operator;      break;
-      case "event_type":  params.event_type = f.value;  params.event_type_op = f.operator;  break;
-      case "method":      params.method = f.value;      params.method_op = f.operator;      break;
-      case "rule_name":   params.rule_name = f.value;   params.rule_name_op = f.operator;   break;
-      case "uri":         params.uri = f.value;         params.uri_op = f.operator;         break;
-      case "status_code": params.status_code = f.value; params.status_code_op = f.operator; break;
-      case "country":     params.country = f.value;     params.country_op = f.operator;     break;
-    }
-  }
-  return params;
-}
-
-/** Convert filter array to EventsParams (excluding pagination and time range). */
-export function filtersToEventsParams(filters: DashboardFilter[]): Partial<EventsParams> {
-  const params: Partial<EventsParams> = {};
-  for (const f of filters) {
-    switch (f.field) {
-      case "service":     params.service = f.value;                          params.service_op = f.operator;     break;
-      case "client":      params.client = f.value;                          params.client_op = f.operator;      break;
-      case "event_type":  params.event_type = f.value as EventType;         params.event_type_op = f.operator;  break;
-      case "method":      params.method = f.value;                          params.method_op = f.operator;      break;
-      case "rule_name":   params.rule_name = f.value;                       params.rule_name_op = f.operator;   break;
-      case "uri":         params.uri = f.value;                             params.uri_op = f.operator;         break;
-      case "status_code": params.status_code = f.value;                     params.status_code_op = f.operator; break;
-      case "country":     params.country = f.value;                         params.country_op = f.operator;     break;
-      case "event_id":    params.id = f.value;                                                                break;
-    }
-  }
-  return params;
-}
-
-/** Get a display label for a filter value. */
-export function filterDisplayValue(field: FilterField, value: string): string {
-  const meta = FILTER_FIELDS[field];
-  if (meta.options) {
-    // For "in" operator, resolve each comma-separated value
-    if (value.includes(",")) {
-      return value.split(",").map((v) => {
-        const opt = meta.options!.find((o) => o.value === v.trim());
-        return opt ? opt.label : v.trim();
-      }).join(", ");
-    }
-    const opt = meta.options.find((o) => o.value === value);
-    if (opt) return opt.label;
-  }
-  return value;
-}
-
-/** Get the operator chip label. */
-export function operatorChip(op: FilterOp): string {
-  return OP_META[op]?.chip ?? "=";
-}
+// ─── Internal imports ───────────────────────────────────────────────
+import type { DashboardFilter, FilterField } from "./filters/types";
+import { OP_META, FIELD_OPERATORS, FILTER_FIELDS, FIELD_ORDER } from "./filters/constants";
+import { filterDisplayValue, operatorChip } from "./filters/filterUtils";
 
 // ─── Component ──────────────────────────────────────────────────────
 

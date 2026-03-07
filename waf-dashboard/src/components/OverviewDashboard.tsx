@@ -63,7 +63,7 @@ import {
 } from "@/lib/api";
 import { formatNumber, formatTime, formatDate, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "./EventTypeBadge";
-import { EventDetailPanel } from "./EventsTable";
+import { EventDetailPanel } from "./events/EventDetailPanel";
 import DashboardFilterBar, {
   parseFiltersFromURL,
   filtersToSummaryParams,
@@ -71,198 +71,18 @@ import DashboardFilterBar, {
   type DashboardFilter,
 } from "./DashboardFilterBar";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
-import { ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { ACTION_COLORS } from "@/lib/utils";
 import { T } from "@/lib/typography";
+import { StatCard } from "./StatCard";
 import { TopBlockedIPsPanel, TopTargetedURIsPanel, TopCountriesPanel } from "./AnalyticsDashboard";
-
-// ─── Helpers ────────────────────────────────────────────────────────
-
-function formatHourTick(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return ts;
-  }
-}
-
-function formatTooltipLabel(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return ts;
-  }
-}
-
-/** Custom Y-axis tick renderer that wraps the label in a clickable link. */
-function LinkTickRenderer({
-  x,
-  y,
-  payload,
-  buildHref,
-}: {
-  x: number;
-  y: number;
-  payload: { value: string };
-  buildHref: (value: string) => string;
-}) {
-  return (
-    <a href={buildHref(payload.value)}>
-      <text
-        x={x}
-        y={y}
-        dy={4}
-        textAnchor="end"
-        fill="#7a8baa"
-        fontSize={T.chartLabel}
-        className="hover:fill-neon-green cursor-pointer"
-        style={{ textDecoration: "none" }}
-      >
-        {payload.value}
-      </text>
-    </a>
-  );
-}
-
-/** Build a deep-link URL that opens the Events tab with a narrow time window
- *  centered on the event and comprehensive filters to find the exact row. */
-function buildViewInEventsHref(evt: WAFEvent): string {
-  const ts = new Date(evt.timestamp);
-  const start = new Date(ts.getTime() - 5 * 60_000).toISOString();
-  const end = new Date(ts.getTime() + 5 * 60_000).toISOString();
-  const params = new URLSearchParams();
-  params.set("event_id", evt.id);
-  params.set("start", start);
-  params.set("end", end);
-  if (evt.service) params.set("service", evt.service);
-  if (evt.event_type) params.set("type", evt.event_type);
-  if (evt.client_ip) params.set("ip", evt.client_ip);
-  if (evt.method) params.set("method", evt.method);
-  if (evt.rule_id) params.set("rule_id", String(evt.rule_id));
-  return `/events?${params.toString()}`;
-}
-
-// ─── Count-up animation hook ────────────────────────────────────────
-
-function useCountUp(target: number, duration = 800): number {
-  const [current, setCurrent] = useState(0);
-  const rafRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (target === 0) {
-      setCurrent(0);
-      return;
-    }
-    const startTime = performance.now();
-    const startVal = 0;
-
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCurrent(Math.round(startVal + (target - startVal) * eased));
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [target, duration]);
-
-  return current;
-}
-
-// ─── Stat Card ──────────────────────────────────────────────────────
-
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  color,
-  loading,
-  href,
-}: {
-  title: string;
-  value: number;
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  loading: boolean;
-  href?: string;
-}) {
-  const animatedValue = useCountUp(loading ? 0 : value);
-
-  const colorMap: Record<string, string> = {
-    green: "text-neon-green bg-neon-green/10",
-    pink: "text-neon-pink bg-neon-pink/10",
-    cyan: "text-neon-cyan bg-neon-cyan/10",
-    yellow: "text-yellow-400 bg-yellow-400/10",
-    purple: "text-purple-400 bg-purple-400/10",
-    orange: "text-orange-400 bg-orange-400/10",
-    red: "text-red-400 bg-red-400/10",
-  };
-  const textColorMap: Record<string, string> = {
-    green: "text-neon-green",
-    pink: "text-neon-pink",
-    cyan: "text-neon-cyan",
-    yellow: "text-yellow-400",
-    purple: "text-purple-400",
-    orange: "text-orange-400",
-    red: "text-red-400",
-  };
-
-  const card = (
-    <Card className={href ? "cursor-pointer hover:ring-1 hover:ring-neon-green/30 transition-all" : undefined}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardDescription className={T.statLabelUpper}>
-          {title}
-        </CardDescription>
-        <div className={`rounded-md p-2 ${colorMap[color]}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <Skeleton className="h-8 w-24" />
-        ) : (
-          <div className={`${T.statValue} ${textColorMap[color]}`}>
-            {formatNumber(animatedValue)}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-
-  if (href) {
-    return <a href={href} className="block no-underline">{card}</a>;
-  }
-  return card;
-}
-
-// ─── Chart config ───────────────────────────────────────────────────
-
-const chartTooltipStyle = CHART_TOOLTIP_STYLE;
-
-const DONUT_COLOR_MAP: Record<string, string> = {
-  [ACTION_LABELS.blocked]:      ACTION_COLORS.blocked,
-  [ACTION_LABELS.logged]:       ACTION_COLORS.logged,
-  [ACTION_LABELS.rate_limited]: ACTION_COLORS.rate_limited,
-  [ACTION_LABELS.ipsum]:        ACTION_COLORS.ipsum,
-  [ACTION_LABELS.honeypot]:     ACTION_COLORS.honeypot,
-  [ACTION_LABELS.scanner]:      ACTION_COLORS.scanner,
-  [ACTION_LABELS.policy]:       ACTION_COLORS.policy,
-};
+import {
+  formatHourTick,
+  formatTooltipLabel,
+  LinkTickRenderer,
+  buildViewInEventsHref,
+  chartTooltipStyle,
+  DONUT_COLOR_MAP,
+} from "./overview/helpers";
 
 // ─── Main Component ─────────────────────────────────────────────────
 

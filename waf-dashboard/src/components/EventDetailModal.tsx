@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ShieldPlus, Download, ExternalLink, Search } from "lucide-react";
-import { EventDetailPanel } from "@/components/EventsTable";
+import { EventDetailPanel } from "@/components/events/EventDetailPanel";
 import { EventTypeBadge } from "@/components/EventTypeBadge";
 import { formatTime, formatDate } from "@/lib/format";
 import type { WAFEvent } from "@/lib/api";

@@ -15,10 +15,10 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { Sparkline } from "./Sparkline";
+import { SortableTableRow } from "./SortableTableRow";
 import {
   Shield,
   Plus,
@@ -35,7 +35,6 @@ import {
   Crosshair,
   Search,
   X,
-  GripVertical,
 } from "lucide-react";
 import {
   Card,
@@ -102,115 +101,6 @@ import type { EventPrefill } from "./policy/eventPrefill";
 import { consumePrefillEvent } from "./policy/eventPrefill";
 import { conditionsSummary, exclusionTypeLabel, exclusionTypeBadgeVariant } from "./policy/exclusionHelpers";
 import { QuickActionsForm, AdvancedBuilderForm, RawEditorForm, HoneypotForm } from "./policy/PolicyForms";
-
-// ─── Inline SVG Sparkline ────────────────────────────────────────────
-
-function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
-  data: number[];
-  width?: number;
-  height?: number;
-  color?: string;
-}) {
-  if (!data || data.length === 0 || data.every((v) => v === 0)) {
-    return (
-      <span className="text-xs text-muted-foreground/50">—</span>
-    );
-  }
-  const max = Math.max(...data, 1);
-  const padding = 1;
-  const innerW = width - padding * 2;
-  const innerH = height - padding * 2;
-  const step = innerW / Math.max(data.length - 1, 1);
-
-  const points = data.map((v, i) => {
-    const x = padding + i * step;
-    const y = padding + innerH - (v / max) * innerH;
-    return `${x},${y}`;
-  });
-
-  // Fill area path (close at bottom)
-  const firstX = padding;
-  const lastX = padding + (data.length - 1) * step;
-  const fillPath = `M${firstX},${padding + innerH} L${points.join(" L")} L${lastX},${padding + innerH} Z`;
-
-  return (
-    <svg width={width} height={height} className="inline-block">
-      <path d={fillPath} fill={color} fillOpacity={0.15} />
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-// ─── Sortable Table Row ─────────────────────────────────────────────
-
-function SortableTableRow({
-  id,
-  disabled,
-  children,
-  className,
-  rowRef,
-}: {
-  id: string;
-  disabled?: boolean;
-  children: React.ReactNode;
-  className?: string;
-  rowRef?: React.Ref<HTMLTableRowElement>;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id, disabled });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : undefined,
-    position: "relative",
-    zIndex: isDragging ? 10 : undefined,
-  };
-
-  // Merge refs if rowRef is provided
-  const mergedRef = useCallback(
-    (node: HTMLTableRowElement | null) => {
-      setNodeRef(node);
-      if (typeof rowRef === "function") rowRef(node);
-      else if (rowRef && "current" in rowRef) (rowRef as React.MutableRefObject<HTMLTableRowElement | null>).current = node;
-    },
-    [setNodeRef, rowRef],
-  );
-
-  return (
-    <TableRow ref={mergedRef} style={style} className={className} {...attributes}>
-      <TableCell className="w-[52px] px-1">
-        <div className="flex items-center gap-0.5">
-          {!disabled ? (
-            <button
-              className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/50 hover:text-muted-foreground touch-none"
-              {...listeners}
-              tabIndex={-1}
-            >
-              <GripVertical className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <span className="p-0.5 w-[18px]" />
-          )}
-        </div>
-      </TableCell>
-      {children}
-    </TableRow>
-  );
-}
 
 const RULES_PAGE_SIZE = 15;
 
