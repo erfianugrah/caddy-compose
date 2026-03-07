@@ -11,42 +11,80 @@ import {
 import type { FilterOp } from "@/lib/api";
 
 // ─── Re-exports (barrel) for backward-compatible imports ────────────
-export type { FilterField, DashboardFilter } from "./filters/types";
+export type { FilterField, LogFilterField, DashboardFilter, FilterConfig } from "./filters/types";
 export {
   FILTER_FIELDS,
   FIELD_OPERATORS,
   FIELD_ORDER,
+  WAF_FILTER_CONFIG,
+  LOG_FILTER_FIELDS,
+  LOG_FIELD_OPERATORS,
+  LOG_FIELD_ORDER,
+  LOG_FILTER_CONFIG,
   OP_META,
   EVENT_TYPE_OPTIONS,
   METHOD_OPTIONS,
+  LEVEL_OPTIONS,
+  STATUS_BUCKET_OPTIONS,
+  MISSING_HEADER_OPTIONS,
 } from "./filters/constants";
 export {
   parseFiltersFromURL,
+  parseLogFiltersFromURL,
   filtersToSummaryParams,
   filtersToEventsParams,
+  filtersToGeneralLogsParams,
   filterDisplayValue,
+  logFilterDisplayValue,
   operatorChip,
 } from "./filters/filterUtils";
 
 // ─── Internal imports ───────────────────────────────────────────────
-import type { DashboardFilter, FilterField } from "./filters/types";
-import { OP_META, FIELD_OPERATORS, FILTER_FIELDS, FIELD_ORDER } from "./filters/constants";
-import { filterDisplayValue, operatorChip } from "./filters/filterUtils";
+import type { DashboardFilter, FilterConfig, FieldMeta } from "./filters/types";
+import { OP_META, WAF_FILTER_CONFIG } from "./filters/constants";
 
 // ─── Component ──────────────────────────────────────────────────────
 
-interface DashboardFilterBarProps {
-  filters: DashboardFilter[];
-  onChange: (filters: DashboardFilter[]) => void;
-  /** Known service names for autocomplete (from fetchServices or summary data). */
+interface DashboardFilterBarProps<F extends string = string> {
+  filters: DashboardFilter<F>[];
+  onChange: (filters: DashboardFilter<F>[]) => void;
+  /** Filter configuration (fields, operators, field order). Defaults to WAF config. */
+  config?: FilterConfig<F>;
+  /**
+   * Dynamic option lists keyed by name. Matches FieldMeta.dynamicKey.
+   * e.g. { services: ["svc1", "svc2"], ruleNames: ["rule1"] }
+   */
+  dynamicOptions?: Record<string, string[]>;
+  /** @deprecated Use dynamicOptions={{ services: [...] }} instead. */
   services?: string[];
-  /** Known policy rule names for autocomplete (from getExclusions). */
+  /** @deprecated Use dynamicOptions={{ ruleNames: [...] }} instead. */
   ruleNames?: string[];
 }
 
-export default function DashboardFilterBar({ filters, onChange, services, ruleNames }: DashboardFilterBarProps) {
+export default function DashboardFilterBar<F extends string = string>({
+  filters,
+  onChange,
+  config,
+  dynamicOptions: dynamicOptionsProp,
+  services,
+  ruleNames,
+}: DashboardFilterBarProps<F>) {
+  // Resolve config — default to WAF config for backward compat
+  const cfg = (config ?? WAF_FILTER_CONFIG) as FilterConfig<F>;
+  const FIELDS = cfg.fields as Record<F, FieldMeta>;
+  const OPERATORS = cfg.operators as Record<F, FilterOp[]>;
+  const ORDER = cfg.fieldOrder as F[];
+
+  // Merge legacy props into dynamicOptions
+  const dynamicOptions = useMemo(() => {
+    const opts: Record<string, string[]> = { ...dynamicOptionsProp };
+    if (services && services.length > 0 && !opts.services) opts.services = services;
+    if (ruleNames && ruleNames.length > 0 && !opts.ruleNames) opts.ruleNames = ruleNames;
+    return opts;
+  }, [dynamicOptionsProp, services, ruleNames]);
+
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [selectedField, setSelectedField] = useState<FilterField | null>(null);
+  const [selectedField, setSelectedField] = useState<F | null>(null);
   const [selectedOp, setSelectedOp] = useState<FilterOp | null>(null);
   const [inputValue, setInputValue] = useState("");
   // For "in" operator with fixed options, track selected values
@@ -56,29 +94,27 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
   // Focus input when we reach the value step
   useEffect(() => {
     if (selectedField && selectedOp) {
-      const meta = FILTER_FIELDS[selectedField];
+      const meta = FIELDS[selectedField];
       // Focus for free text or dynamic fields
       if (!meta.options || meta.dynamic || selectedOp === "in" || selectedOp === "regex" || selectedOp === "contains") {
         const t = setTimeout(() => inputRef.current?.focus(), 50);
         return () => clearTimeout(t);
       }
     }
-  }, [selectedField, selectedOp]);
+  }, [selectedField, selectedOp, FIELDS]);
 
-  // Build dynamic options from props
-  const serviceOptions = useMemo(() => {
-    if (!services || services.length === 0) return [];
-    return services.map((s) => ({ value: s, label: s }));
-  }, [services]);
-
-  const ruleNameOptions = useMemo(() => {
-    if (!ruleNames || ruleNames.length === 0) return [];
-    return ruleNames.map((n) => ({ value: n, label: n }));
-  }, [ruleNames]);
+  // Resolve dynamic options for a field
+  const getDynamicOpts = useCallback((field: F): { value: string; label: string }[] => {
+    const meta = FIELDS[field];
+    if (!meta.dynamicKey) return [];
+    const list = dynamicOptions[meta.dynamicKey];
+    if (!list || list.length === 0) return [];
+    return list.map((s) => ({ value: s, label: s }));
+  }, [FIELDS, dynamicOptions]);
 
   // Fields already in use (only allow one filter per field)
   const usedFields = new Set(filters.map((f) => f.field));
-  const availableFields = FIELD_ORDER.filter((f) => !usedFields.has(f));
+  const availableFields = ORDER.filter((f) => !usedFields.has(f));
 
   const resetPopover = useCallback(() => {
     setSelectedField(null);
@@ -88,7 +124,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
   }, []);
 
   const addFilter = useCallback(
-    (field: FilterField, op: FilterOp, value: string) => {
+    (field: F, op: FilterOp, value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
       const updated = filters.filter((f) => f.field !== field);
@@ -101,7 +137,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
   );
 
   const removeFilter = useCallback(
-    (field: FilterField) => {
+    (field: F) => {
       onChange(filters.filter((f) => f.field !== field));
     },
     [filters, onChange],
@@ -125,6 +161,22 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
     [selectedField, selectedOp, inputValue, addFilter, resetPopover],
   );
 
+  /** Resolve display label for a filter value (checks options list). */
+  const displayValue = useCallback((field: F, value: string): string => {
+    const meta = FIELDS[field];
+    if (meta.options) {
+      if (value.includes(",")) {
+        return value.split(",").map((v) => {
+          const opt = meta.options!.find((o) => o.value === v.trim());
+          return opt ? opt.label : v.trim();
+        }).join(", ");
+      }
+      const opt = meta.options.find((o) => o.value === value);
+      if (opt) return opt.label;
+    }
+    return value;
+  }, [FIELDS]);
+
   function renderPopoverContent() {
     // Step 1: Pick a field
     if (!selectedField) {
@@ -138,11 +190,11 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
               onClick={() => {
                 setSelectedField(field);
                 // If only one operator available, skip step 2
-                const ops = FIELD_OPERATORS[field];
+                const ops = OPERATORS[field];
                 if (ops.length === 1) setSelectedOp(ops[0]);
               }}
             >
-              <span>{FILTER_FIELDS[field].label}</span>
+              <span>{FIELDS[field].label}</span>
               <ChevronRight className="h-3 w-3 text-muted-foreground" />
             </button>
           ))}
@@ -155,7 +207,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
 
     // Step 2: Pick an operator
     if (!selectedOp) {
-      const ops = FIELD_OPERATORS[selectedField];
+      const ops = OPERATORS[selectedField];
       return (
         <div className="space-y-1">
           <button
@@ -165,7 +217,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
             &larr; Back
           </button>
           <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
-            {FILTER_FIELDS[selectedField].label} &mdash; operator
+            {FIELDS[selectedField].label} &mdash; operator
           </p>
           {ops.map((op) => (
             <button
@@ -181,15 +233,13 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
       );
     }
 
-    const meta = FILTER_FIELDS[selectedField];
+    const meta = FIELDS[selectedField];
 
     // Step 3: Enter value
 
     // For "in" operator with options (fixed or dynamic) — multi-select checkboxes + custom text
-    const dynamicOptions = selectedField === "service" ? serviceOptions
-      : selectedField === "rule_name" ? ruleNameOptions
-      : [];
-    const inOptions = meta.options ? meta.options : (meta.dynamic ? dynamicOptions : []);
+    const dynOpts = getDynamicOpts(selectedField);
+    const inOptions = meta.options ? meta.options : (meta.dynamic ? dynOpts : []);
 
     if (selectedOp === "in" && inOptions.length > 0) {
       const filteredInOptions = inputValue
@@ -202,7 +252,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
             className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             onClick={() => { setSelectedOp(null); setInValues([]); setInputValue(""); }}
           >
-            &larr; {FILTER_FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
+            &larr; {FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
           </button>
           {/* Search box for dynamic fields */}
           {meta.dynamic && (
@@ -269,7 +319,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
                   <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center text-xs ${
                     checked ? "border-neon-cyan bg-neon-cyan/20 text-neon-cyan" : "border-muted-foreground"
                   }`}>
-                    {checked && "✓"}
+                    {checked && "\u2713"}
                   </div>
                   <span className={meta.dynamic ? "font-mono" : ""}>{opt.label}</span>
                 </button>
@@ -308,7 +358,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
             className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             onClick={() => setSelectedOp(null)}
           >
-            &larr; {FILTER_FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
+            &larr; {FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
           </button>
           {meta.options.map((opt) => (
             <button
@@ -325,7 +375,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
 
     // Dynamic field (searchable list + free text, e.g. service, rule_name) — for eq/neq
     if (meta.dynamic && (selectedOp === "eq" || selectedOp === "neq")) {
-      const options = dynamicOptions;
+      const options = dynOpts;
       const filtered = inputValue
         ? options.filter((o) => o.label.toLowerCase().includes(inputValue.toLowerCase()))
         : options;
@@ -336,7 +386,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
             className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             onClick={() => { setSelectedOp(null); setInputValue(""); }}
           >
-            &larr; {FILTER_FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
+            &larr; {FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
           </button>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -388,7 +438,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
           className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
           onClick={() => { setSelectedOp(null); setInputValue(""); }}
         >
-          &larr; {FILTER_FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
+          &larr; {FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
         </button>
         {selectedOp === "regex" && (
           <p className="px-1 text-xs text-neon-cyan/60 font-mono">
@@ -420,7 +470,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
     );
   }
 
-  if (filters.length === 0 && availableFields.length === FIELD_ORDER.length) {
+  if (filters.length === 0 && availableFields.length === ORDER.length) {
     // No filters active — just show a minimal "Add filter" button
     return (
       <div className="flex items-center gap-2">
@@ -447,10 +497,12 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
       <Filter className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
       <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
         {filters.map((f) => {
+          const meta = FIELDS[f.field];
+          if (!meta) return null;
+
           // For "in" operator with multiple values, render each as a separate pill
           if (f.operator === "in" && f.value.includes(",")) {
             const values = f.value.split(",").map((v) => v.trim()).filter(Boolean);
-            const meta = FILTER_FIELDS[f.field];
             return (
               <div key={f.field} className="flex items-center gap-1">
                 <Badge
@@ -458,7 +510,7 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
                   className="gap-1 pl-2 pr-2 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20"
                 >
                   <span className="text-muted-foreground font-medium">{meta.label}</span>
-                  <span className="text-neon-cyan/70 font-mono text-xs">{operatorChip(f.operator)}</span>
+                  <span className="text-neon-cyan/70 font-mono text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
                 </Badge>
                 {values.map((v) => {
                   const label = meta.options?.find((o) => o.value === v)?.label ?? v;
@@ -512,13 +564,13 @@ export default function DashboardFilterBar({ filters, onChange, services, ruleNa
               variant="secondary"
               className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
             >
-              <span className="text-muted-foreground font-medium">{FILTER_FIELDS[f.field].label}</span>
-              <span className="text-neon-cyan/70 font-mono text-xs">{operatorChip(f.operator)}</span>
-              <span className="font-mono">{filterDisplayValue(f.field, f.value)}</span>
+              <span className="text-muted-foreground font-medium">{meta.label}</span>
+              <span className="text-neon-cyan/70 font-mono text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
+              <span className="font-mono">{displayValue(f.field, f.value)}</span>
               <button
                 className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
                 onClick={() => removeFilter(f.field)}
-                title={`Remove ${FILTER_FIELDS[f.field].label} filter`}
+                title={`Remove ${meta.label} filter`}
               >
                 <X className="h-3 w-3" />
               </button>

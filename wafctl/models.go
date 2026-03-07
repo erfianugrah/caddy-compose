@@ -326,8 +326,20 @@ type HealthResponse struct {
 
 // IP Lookup response
 
+type GeoIPInfo struct {
+	Country  string `json:"country,omitempty"`  // ISO 3166-1 alpha-2 (e.g., "US")
+	City     string `json:"city,omitempty"`     // City name
+	Region   string `json:"region,omitempty"`   // Region/state name
+	Timezone string `json:"timezone,omitempty"` // IANA timezone (e.g., "America/New_York")
+	ASN      string `json:"asn,omitempty"`      // AS number (e.g., "AS13335")
+	Org      string `json:"org,omitempty"`      // Organization/ISP name
+	Network  string `json:"network,omitempty"`  // CIDR network (e.g., "1.0.0.0/24")
+	Source   string `json:"source,omitempty"`   // Resolution source: "cf_header", "mmdb", "api"
+}
+
 type IPLookupResponse struct {
 	IP          string          `json:"ip"`
+	GeoIP       *GeoIPInfo      `json:"geoip,omitempty"`
 	Total       int             `json:"total"`
 	Blocked     int             `json:"blocked"`
 	FirstSeen   *time.Time      `json:"first_seen"`

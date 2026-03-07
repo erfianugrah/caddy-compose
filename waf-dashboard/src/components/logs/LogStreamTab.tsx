@@ -5,8 +5,6 @@ import { downloadJSON } from "@/lib/download";
 import type { GeneralLogEvent, GeneralLogsResponse } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -97,20 +95,6 @@ export interface LogStreamTabProps {
   expanded: Set<string>;
   toggleExpand: (key: string) => void;
   collapseAll: () => void;
-  serviceFilter: string;
-  setServiceFilter: (v: string) => void;
-  methodFilter: string;
-  setMethodFilter: (v: string) => void;
-  statusFilter: string;
-  setStatusFilter: (v: string) => void;
-  levelFilter: string;
-  setLevelFilter: (v: string) => void;
-  missingHeaderFilter: string;
-  setMissingHeaderFilter: (v: string) => void;
-  uriFilter: string;
-  setUriFilter: (v: string) => void;
-  hasFilters: boolean;
-  clearFilters: () => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -119,13 +103,6 @@ export default function LogStreamTab({
   response, loading, sortState, toggleSort, sortedData,
   page, totalPages, setPage,
   expanded, toggleExpand, collapseAll,
-  serviceFilter, setServiceFilter,
-  methodFilter, setMethodFilter,
-  statusFilter, setStatusFilter,
-  levelFilter, setLevelFilter,
-  missingHeaderFilter, setMissingHeaderFilter,
-  uriFilter, setUriFilter,
-  hasFilters, clearFilters,
 }: LogStreamTabProps) {
   const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(DEFAULT_VISIBLE);
 
@@ -156,142 +133,65 @@ export default function LogStreamTab({
 
   return (
     <div className="space-y-3">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Service..."
-          value={serviceFilter}
-          onChange={(e) => setServiceFilter(e.target.value)}
-          className="h-8 w-40 text-xs"
-        />
-        <Select value={methodFilter || "__all__"} onValueChange={(v) => setMethodFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="h-8 w-28 text-xs">
-            <SelectValue placeholder="Method" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All</SelectItem>
-            {["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"].map((m) => (
-              <SelectItem key={m} value={m}>{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter || "__all__"} onValueChange={(v) => setStatusFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="h-8 w-28 text-xs">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All</SelectItem>
-            <SelectItem value="2xx">2xx</SelectItem>
-            <SelectItem value="3xx">3xx</SelectItem>
-            <SelectItem value="4xx">4xx</SelectItem>
-            <SelectItem value="5xx">5xx</SelectItem>
-            <SelectItem value="200">200</SelectItem>
-            <SelectItem value="301">301</SelectItem>
-            <SelectItem value="302">302</SelectItem>
-            <SelectItem value="304">304</SelectItem>
-            <SelectItem value="400">400</SelectItem>
-            <SelectItem value="403">403</SelectItem>
-            <SelectItem value="404">404</SelectItem>
-            <SelectItem value="429">429</SelectItem>
-            <SelectItem value="500">500</SelectItem>
-            <SelectItem value="502">502</SelectItem>
-            <SelectItem value="503">503</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={levelFilter || "__all__"} onValueChange={(v) => setLevelFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="h-8 w-24 text-xs">
-            <SelectValue placeholder="Level" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All</SelectItem>
-            <SelectItem value="info">info</SelectItem>
-            <SelectItem value="error">error</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={missingHeaderFilter || "__all__"} onValueChange={(v) => setMissingHeaderFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="h-8 w-36 text-xs">
-            <SelectValue placeholder="Missing Header" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">None</SelectItem>
-            <SelectItem value="csp">Missing CSP</SelectItem>
-            <SelectItem value="hsts">Missing HSTS</SelectItem>
-            <SelectItem value="xcto">Missing X-Content-Type-Options</SelectItem>
-            <SelectItem value="xfo">Missing X-Frame-Options</SelectItem>
-            <SelectItem value="referrer-policy">Missing Referrer-Policy</SelectItem>
-            <SelectItem value="permissions-policy">Missing Permissions-Policy</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input
-          placeholder="URI contains..."
-          value={uriFilter}
-          onChange={(e) => setUriFilter(e.target.value)}
-          className="h-8 w-40 text-xs"
-        />
-        {hasFilters && (
-          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={clearFilters}>
-            Clear
-          </Button>
-        )}
-        {response && (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              {formatNumber(response.total)} results
-            </span>
-            <div className="flex gap-1">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-muted-foreground hover:text-foreground"
-                    title="Toggle columns"
-                  >
-                    <Columns3 className="h-3 w-3 mr-1" />
-                    Columns
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-44 p-1">
-                  {ALL_COLUMNS.map((col) => (
-                    <button
-                      key={col.id}
-                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50 transition-colors"
-                      onClick={() => toggleColumn(col.id)}
-                    >
-                      <span className="w-4 h-4 flex items-center justify-center">
-                        {isVisible(col.id) && <Check className="h-3 w-3 text-neon-cyan" />}
-                      </span>
-                      {col.label}
-                    </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-              <Button
-                variant="ghost"
-                size="xs"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => downloadJSON(sortedData, `logs-page-${page}.json`)}
-                title="Export current page as JSON"
-              >
-                <Download className="h-3 w-3 mr-1" />
-                Page
-              </Button>
-              {expanded.size > 0 && (
+      {/* Toolbar */}
+      {response && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {formatNumber(response.total)} results
+          </span>
+          <div className="flex gap-1">
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
                   size="xs"
                   className="text-muted-foreground hover:text-foreground"
-                  onClick={collapseAll}
-                  title="Collapse all expanded rows"
+                  title="Toggle columns"
                 >
-                  <ChevronsDownUp className="h-3 w-3 mr-1" />
-                  Collapse ({expanded.size})
+                  <Columns3 className="h-3 w-3 mr-1" />
+                  Columns
                 </Button>
-              )}
-            </div>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-44 p-1">
+                {ALL_COLUMNS.map((col) => (
+                  <button
+                    key={col.id}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50 transition-colors"
+                    onClick={() => toggleColumn(col.id)}
+                  >
+                    <span className="w-4 h-4 flex items-center justify-center">
+                      {isVisible(col.id) && <Check className="h-3 w-3 text-neon-cyan" />}
+                    </span>
+                    {col.label}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => downloadJSON(sortedData, `logs-page-${page}.json`)}
+              title="Export current page as JSON"
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Page
+            </Button>
+            {expanded.size > 0 && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={collapseAll}
+                title="Collapse all expanded rows"
+              >
+                <ChevronsDownUp className="h-3 w-3 mr-1" />
+                Collapse ({expanded.size})
+              </Button>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-lg border border-border overflow-hidden">

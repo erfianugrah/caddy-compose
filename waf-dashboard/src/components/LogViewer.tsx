@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
+import DashboardFilterBar from "@/components/DashboardFilterBar";
 import { useTableSort } from "@/hooks/useTableSort";
 import { formatNumber } from "@/lib/format";
 import {
@@ -21,6 +22,10 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
+import type { LogFilterField, DashboardFilter } from "@/components/filters/types";
+import { LOG_FILTER_CONFIG } from "@/components/filters/constants";
+import { parseLogFiltersFromURL, filtersToGeneralLogsParams } from "@/components/filters/filterUtils";
+
 import type { SortKey, ViewTab } from "./logs/helpers";
 import { formatDuration, StatCard } from "./logs/helpers";
 import LogStreamTab from "./logs/LogStreamTab";
@@ -36,14 +41,12 @@ export default function LogViewer() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ViewTab>("logs");
 
-  // Filters
+  // Filters — now managed as structured DashboardFilter array
   const [timeRange, setTimeRange] = useState<TimeRange>({ type: "relative", hours: 1, label: "Last 1 hour" });
-  const [serviceFilter, setServiceFilter] = useState("");
-  const [methodFilter, setMethodFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [levelFilter, setLevelFilter] = useState("");
-  const [missingHeaderFilter, setMissingHeaderFilter] = useState("");
-  const [uriFilter, setUriFilter] = useState("");
+  const [filters, setFilters] = useState<DashboardFilter<LogFilterField>[]>([]);
+
+  // Service list for dynamic autocomplete in filter bar
+  const [knownServices, setKnownServices] = useState<string[]>([]);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -66,17 +69,12 @@ export default function LogViewer() {
   const buildParams = useCallback((): GeneralLogsParams => {
     const params: GeneralLogsParams = {
       ...rangeToParams(timeRange),
+      ...filtersToGeneralLogsParams(filters),
       page,
       per_page: perPage,
     };
-    if (serviceFilter) params.service = serviceFilter;
-    if (methodFilter) params.method = methodFilter;
-    if (statusFilter) params.status = statusFilter;
-    if (levelFilter) params.level = levelFilter;
-    if (missingHeaderFilter) params.missing_header = missingHeaderFilter;
-    if (uriFilter) { params.uri = uriFilter; params.uri_op = "contains"; }
     return params;
-  }, [timeRange, page, serviceFilter, methodFilter, statusFilter, levelFilter, missingHeaderFilter, uriFilter]);
+  }, [timeRange, page, filters]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -89,6 +87,10 @@ export default function LogViewer() {
       ]);
       setResponse(logsResp);
       setSummary(summaryResp);
+      // Collect known services for autocomplete
+      if (summaryResp?.top_services) {
+        setKnownServices(summaryResp.top_services.map((s: { service: string }) => s.service));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load logs");
     } finally {
@@ -98,14 +100,13 @@ export default function LogViewer() {
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  // URL params on mount
+  // URL params on mount (client-only)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("status")) setStatusFilter(params.get("status")!);
-    if (params.get("service")) setServiceFilter(params.get("service")!);
-    if (params.get("missing_header")) setMissingHeaderFilter(params.get("missing_header")!);
-    if (params.get("level")) setLevelFilter(params.get("level")!);
-    if (params.has("status") || params.has("service") || params.has("missing_header") || params.has("level")) {
+    const search = window.location.search;
+    if (!search) return;
+    const parsed = parseLogFiltersFromURL(search);
+    if (parsed.length > 0) {
+      setFilters(parsed);
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -128,17 +129,10 @@ export default function LogViewer() {
 
   const totalPages = response ? Math.ceil(response.total / perPage) : 0;
 
-  const clearFilters = () => {
-    setServiceFilter("");
-    setMethodFilter("");
-    setStatusFilter("");
-    setLevelFilter("");
-    setMissingHeaderFilter("");
-    setUriFilter("");
+  const handleFiltersChange = useCallback((newFilters: DashboardFilter<LogFilterField>[]) => {
+    setFilters(newFilters);
     setPage(1);
-  };
-
-  const hasFilters = !!(serviceFilter || methodFilter || statusFilter || levelFilter || missingHeaderFilter || uriFilter);
+  }, []);
 
   // ─── Render ──────────────────────────────────────────────────────
 
@@ -172,6 +166,14 @@ export default function LogViewer() {
           </Button>
         </div>
       </div>
+
+      {/* Filter bar */}
+      <DashboardFilterBar<LogFilterField>
+        filters={filters}
+        onChange={handleFiltersChange}
+        config={LOG_FILTER_CONFIG}
+        dynamicOptions={{ services: knownServices }}
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-lg bg-muted/50 p-1">
@@ -241,20 +243,6 @@ export default function LogViewer() {
           expanded={expanded}
           toggleExpand={toggleExpand}
           collapseAll={collapseAll}
-          serviceFilter={serviceFilter}
-          setServiceFilter={(v) => { setServiceFilter(v); setPage(1); }}
-          methodFilter={methodFilter}
-          setMethodFilter={(v) => { setMethodFilter(v); setPage(1); }}
-          statusFilter={statusFilter}
-          setStatusFilter={(v) => { setStatusFilter(v); setPage(1); }}
-          levelFilter={levelFilter}
-          setLevelFilter={(v) => { setLevelFilter(v); setPage(1); }}
-          missingHeaderFilter={missingHeaderFilter}
-          setMissingHeaderFilter={(v) => { setMissingHeaderFilter(v); setPage(1); }}
-          uriFilter={uriFilter}
-          setUriFilter={(v) => { setUriFilter(v); setPage(1); }}
-          hasFilters={hasFilters}
-          clearFilters={clearFilters}
         />
       )}
       {tab === "summary" && summary && <SummaryTab summary={summary} />}

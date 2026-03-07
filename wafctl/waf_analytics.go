@@ -126,9 +126,10 @@ func computeServices(events []Event) ServicesResponse {
 // --- IP Lookup ---
 
 // IPLookup returns all events and stats for a specific IP address.
-func (s *Store) IPLookup(ip string, hours, limit, offset int) IPLookupResponse {
+func (s *Store) IPLookup(ip string, hours, limit, offset int, extraEvents []Event) IPLookupResponse {
 	events := s.SnapshotSince(hours)
 
+	// Collect WAF events matching this IP (newest-first).
 	var matched []Event
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].ClientIP == ip {
@@ -136,25 +137,46 @@ func (s *Store) IPLookup(ip string, hours, limit, offset int) IPLookupResponse {
 		}
 	}
 
+	// Collect access log events (rate_limited, ipsum_blocked) matching this IP.
+	var rlMatched []Event
+	for i := len(extraEvents) - 1; i >= 0; i-- {
+		if extraEvents[i].ClientIP == ip {
+			rlMatched = append(rlMatched, extraEvents[i])
+		}
+	}
+
+	// Reverse-merge into newest-first combined list.
+	combined := make([]Event, 0, len(matched)+len(rlMatched))
+	wi, ri := 0, 0
+	for wi < len(matched) || ri < len(rlMatched) {
+		if wi < len(matched) && (ri >= len(rlMatched) || !matched[wi].Timestamp.Before(rlMatched[ri].Timestamp)) {
+			combined = append(combined, matched[wi])
+			wi++
+		} else {
+			combined = append(combined, rlMatched[ri])
+			ri++
+		}
+	}
+
 	resp := IPLookupResponse{
 		IP:          ip,
-		Total:       len(matched),
-		EventsTotal: len(matched),
+		Total:       len(combined),
+		EventsTotal: len(combined),
 	}
 
 	// Compute per-service breakdown, first/last seen, blocked count.
 	type counts struct {
-		total, blocked, honeypot, scanner, policy int
+		total, blocked, logged, honeypot, scanner, policy, rateLimited, ipsumBlocked int
 	}
 	svcMap := make(map[string]*counts)
 
-	for i := range matched {
-		ev := &matched[i]
+	for i := range combined {
+		ev := &combined[i]
 		if ev.IsBlocked {
 			resp.Blocked++
 		}
 
-		// First/last seen (matched is newest-first).
+		// First/last seen (combined is newest-first).
 		if resp.LastSeen == nil {
 			ts := ev.Timestamp
 			resp.LastSeen = &ts
@@ -178,30 +200,38 @@ func (s *Store) IPLookup(ip string, hours, limit, offset int) IPLookupResponse {
 			c.scanner++
 		case "policy_skip", "policy_allow", "policy_block":
 			c.policy++
+		case "rate_limited":
+			c.rateLimited++
+		case "ipsum_blocked":
+			c.ipsumBlocked++
+		case "logged":
+			c.logged++
 		}
 	}
 
-	// Apply limit/offset pagination to the events slice.
-	if offset >= len(matched) {
+	// Apply limit/offset pagination to the combined events slice.
+	if offset >= len(combined) {
 		resp.Events = []Event{}
 	} else {
 		end := offset + limit
-		if end > len(matched) {
-			end = len(matched)
+		if end > len(combined) {
+			end = len(combined)
 		}
-		resp.Events = matched[offset:end]
+		resp.Events = combined[offset:end]
 	}
 
 	svcList := make([]ServiceDetail, 0, len(svcMap))
 	for svc, c := range svcMap {
 		svcList = append(svcList, ServiceDetail{
-			Service:  svc,
-			Total:    c.total,
-			Blocked:  c.blocked,
-			Logged:   c.total - c.blocked,
-			Honeypot: c.honeypot,
-			Scanner:  c.scanner,
-			Policy:   c.policy,
+			Service:      svc,
+			Total:        c.total,
+			Blocked:      c.blocked,
+			Logged:       c.logged,
+			Honeypot:     c.honeypot,
+			Scanner:      c.scanner,
+			Policy:       c.policy,
+			RateLimited:  c.rateLimited,
+			IpsumBlocked: c.ipsumBlocked,
 		})
 	}
 	sort.Slice(svcList, func(i, j int) bool {

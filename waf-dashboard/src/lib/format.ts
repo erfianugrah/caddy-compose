@@ -15,9 +15,11 @@ export function formatNumberLocale(n: number): string {
 }
 
 /** "14:32:07" — 24-hour time with seconds. */
-export function formatTime(ts: string): string {
+export function formatTime(ts: string | null | undefined): string {
+  if (!ts) return "—";
   try {
     const d = new Date(ts);
+    if (isNaN(d.getTime())) return "—";
     return d.toLocaleTimeString("en-US", {
       hour12: false,
       hour: "2-digit",
@@ -30,9 +32,11 @@ export function formatTime(ts: string): string {
 }
 
 /** "Feb 25" — short month + day. */
-export function formatDate(ts: string): string {
+export function formatDate(ts: string | null | undefined): string {
+  if (!ts) return "";
   try {
     const d = new Date(ts);
+    if (isNaN(d.getTime())) return "";
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   } catch {
     return "";
@@ -40,9 +44,11 @@ export function formatDate(ts: string): string {
 }
 
 /** "Feb 25, 14:32" — date + time without seconds. */
-export function formatDateTime(ts: string): string {
+export function formatDateTime(ts: string | null | undefined): string {
+  if (!ts) return "—";
   try {
     const d = new Date(ts);
+    if (isNaN(d.getTime())) return "—";
     return d.toLocaleString("en-US", {
       month: "short",
       day: "numeric",

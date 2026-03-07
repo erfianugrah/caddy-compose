@@ -64,6 +64,8 @@ export interface FilterableParams extends TimeRangeParams {
   status_code_op?: FilterOp;
   country?: string;
   country_op?: FilterOp;
+  request_id?: string;
+  request_id_op?: FilterOp;
 }
 
 /** Apply shared filter and time-range params to URLSearchParams. */
@@ -84,6 +86,7 @@ export function applyFilterParams(sp: URLSearchParams, params?: FilterableParams
     ["uri", params.uri, params.uri_op],
     ["status_code", params.status_code, params.status_code_op],
     ["country", params.country, params.country_op],
+    ["request_id", params.request_id, params.request_id_op],
   ];
   for (const [field, value, op] of filters) {
     if (value) sp.set(field, value);

@@ -79,6 +79,10 @@ export default function EventsTable() {
   // Skip the next loadEvents cycle (used after ID fast-path to avoid double fetch
   // when setFilters/setTimeRange trigger a re-render).
   const skipNextLoadRef = useRef(false);
+  // Request generation counter — prevents stale responses from overwriting newer ones.
+  // When filters change, a new loadEvents fires with a higher generation; if the old
+  // unfiltered response arrives after the new filtered one, it's discarded.
+  const requestGenRef = useRef(0);
 
   // Read URL params on mount (client-only to avoid hydration mismatch)
   useEffect(() => {
@@ -131,6 +135,7 @@ export default function EventsTable() {
       return;
     }
 
+    const gen = ++requestGenRef.current;
     setLoading(true);
     const timeParams = rangeToParams(timeRange);
     const filterParams = filtersToEventsParams(filters);
@@ -143,6 +148,7 @@ export default function EventsTable() {
       fallbackParamsRef.current = null;
       fetchEvents({ id: pendingId })
         .then((resp) => {
+          if (requestGenRef.current !== gen) return; // stale
           if (resp.total > 0) {
             // Found via ID — show the event_id chip + absolute time range.
             setResponse(resp);
@@ -160,8 +166,12 @@ export default function EventsTable() {
           setFilters(fb.filters);
           setTimeRange(fb.timeRange);
         })
-        .catch((err) => setError(err.message))
-        .finally(() => setLoading(false));
+        .catch((err) => {
+          if (requestGenRef.current === gen) setError(err.message);
+        })
+        .finally(() => {
+          if (requestGenRef.current === gen) setLoading(false);
+        });
       return;
     }
 
@@ -171,9 +181,15 @@ export default function EventsTable() {
       ...filterParams,
       ...timeParams,
     })
-      .then(setResponse)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .then((resp) => {
+        if (requestGenRef.current === gen) setResponse(resp);
+      })
+      .catch((err) => {
+        if (requestGenRef.current === gen) setError(err.message);
+      })
+      .finally(() => {
+        if (requestGenRef.current === gen) setLoading(false);
+      });
   }, [page, filters, timeRange]);
 
   useEffect(() => {
@@ -490,7 +506,9 @@ export default function EventsTable() {
                     colSpan={10}
                     className="py-8 text-center text-muted-foreground"
                   >
-                    No events found matching the current filters.
+                    {filters.some((f) => f.field === "request_id")
+                      ? "No correlated security events found for this request. The request passed through the WAF without triggering any rules."
+                      : "No events found matching the current filters."}
                   </TableCell>
                 </TableRow>
               )}

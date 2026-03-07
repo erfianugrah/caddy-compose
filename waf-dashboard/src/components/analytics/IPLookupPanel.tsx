@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Search, Globe, AlertTriangle } from "lucide-react";
+import { Search, Globe, AlertTriangle, MapPin, Building2, Network, Clock3 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -29,10 +29,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { lookupIP, type IPLookupData } from "@/lib/api";
+import { lookupIP, type IPLookupData, type GeoIPInfo } from "@/lib/api";
 import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 import { T } from "@/lib/typography";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, countryFlag } from "@/lib/format";
 import { EventTypeBadge } from "../EventTypeBadge";
 import { EventDetailModal } from "../EventDetailModal";
 import { TablePagination } from "../TablePagination";
@@ -166,39 +166,40 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                 <div className="flex items-center gap-2">
                   <Globe className="h-4 w-4 text-neon-cyan" />
                   <CardTitle className="text-sm font-mono">{data.ip}</CardTitle>
+                  {data.geoip?.country && (
+                    <span className="text-sm" title={data.geoip.country}>
+                      {countryFlag(data.geoip.country)} {data.geoip.country}
+                    </span>
+                  )}
                 </div>
-                <CardDescription>IP address details</CardDescription>
+                <CardDescription>IP intelligence and event summary</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* GeoIP Intelligence */}
+                {data.geoip && <GeoIPSection geoip={data.geoip} />}
+
+                {/* Event stats */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <p className={T.formLabel}>
-                      First Seen
-                    </p>
+                    <p className={T.formLabel}>First Seen</p>
                     <p className="text-sm font-medium">
                       {formatDateTime(data.first_seen)}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className={T.formLabel}>
-                      Last Seen
-                    </p>
+                    <p className={T.formLabel}>Last Seen</p>
                     <p className="text-sm font-medium">
                       {formatDateTime(data.last_seen)}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className={T.formLabel}>
-                      Total Security Events
-                    </p>
+                    <p className={T.formLabel}>Total Security Events</p>
                     <p className="text-sm font-bold text-neon-cyan">
                       {data.total_events.toLocaleString()}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className={T.formLabel}>
-                      Blocked
-                    </p>
+                    <p className={T.formLabel}>Blocked</p>
                     <p className="text-sm font-bold text-neon-pink">
                       {data.blocked_count.toLocaleString()}
                     </p>
@@ -207,10 +208,8 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
 
                 {/* Per-service breakdown */}
                 {data.services.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className={T.formLabel}>
-                      Per-Service Breakdown
-                    </p>
+                  <div className="space-y-2">
+                    <p className={T.formLabel}>Per-Service Breakdown</p>
                     <div className="space-y-1">
                       {data.services.map((svc) => (
                         <div
@@ -371,6 +370,88 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ─── GeoIP Intelligence Section ─────────────────────────────────────
+
+const SOURCE_LABELS: Record<string, string> = {
+  cf_header: "Cloudflare",
+  mmdb: "MMDB",
+  api: "API",
+};
+
+function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
+  const hasLocation = geoip.city || geoip.region || geoip.country;
+  const hasNetwork = geoip.asn || geoip.org || geoip.network;
+  if (!hasLocation && !hasNetwork) return null;
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-navy-950/50 p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground">GeoIP Intelligence</p>
+        {geoip.source && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+            {SOURCE_LABELS[geoip.source] ?? geoip.source}
+          </Badge>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        {/* Location */}
+        {hasLocation && (
+          <>
+            {(geoip.city || geoip.region) && (
+              <div className="flex items-start gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Location</p>
+                  <p className="text-xs font-medium">
+                    {[geoip.city, geoip.region].filter(Boolean).join(", ")}
+                  </p>
+                </div>
+              </div>
+            )}
+            {geoip.timezone && (
+              <div className="flex items-start gap-1.5">
+                <Clock3 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Timezone</p>
+                  <p className="text-xs font-medium font-mono">{geoip.timezone}</p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {/* Network */}
+        {geoip.asn && (
+          <div className="flex items-start gap-1.5">
+            <Network className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground">ASN</p>
+              <p className="text-xs font-medium font-mono">{geoip.asn}</p>
+            </div>
+          </div>
+        )}
+        {geoip.org && (
+          <div className="flex items-start gap-1.5">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground">Organization</p>
+              <p className="text-xs font-medium">{geoip.org}</p>
+            </div>
+          </div>
+        )}
+        {geoip.network && (
+          <div className="flex items-start gap-1.5">
+            <Globe className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground">Network</p>
+              <p className="text-xs font-medium font-mono">{geoip.network}</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -65,9 +65,10 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		uriF := parseFieldFilter(q.Get("uri"), q.Get("uri_op"))
 		statusCodeF := parseFieldFilter(q.Get("status_code"), q.Get("status_code_op"))
 		countryF := parseFieldFilter(q.Get("country"), q.Get("country_op"))
+		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
 
 		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil ||
-			uriF != nil || statusCodeF != nil || countryF != nil
+			uriF != nil || statusCodeF != nil || countryF != nil || requestIDF != nil
 
 		// When any filter is active, collect all events, apply filters, then
 		// summarize — this is the general-purpose filtered path.
@@ -132,6 +133,9 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 					continue
 				}
 				if !countryF.matchField(ev.Country) {
+					continue
+				}
+				if !requestIDF.matchField(ev.RequestID) {
 					continue
 				}
 				filtered = append(filtered, *ev)
@@ -379,6 +383,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		uriF := parseFieldFilter(q.Get("uri"), q.Get("uri_op"))
 		statusCodeF := parseFieldFilter(q.Get("status_code"), q.Get("status_code_op"))
 		countryF := parseFieldFilter(q.Get("country"), q.Get("country_op"))
+		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -464,6 +469,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				return false
 			}
 			if !countryF.matchField(ev.Country) {
+				return false
+			}
+			if !requestIDF.matchField(ev.RequestID) {
 				return false
 			}
 			return true

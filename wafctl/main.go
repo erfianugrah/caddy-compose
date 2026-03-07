@@ -158,12 +158,12 @@ func runServe() int {
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
 
 	// Analytics
-	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store))
-	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store))
+	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, accessLogStore))
+	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store, accessLogStore))
 	mux.HandleFunc("GET /api/analytics/top-countries", handleTopCountries(store, accessLogStore))
 
 	// IP Lookup
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, accessLogStore, geoStore))
 
 	// Exclusion CRUD
 	mux.HandleFunc("GET /api/exclusions", handleListExclusions(exclusionStore))

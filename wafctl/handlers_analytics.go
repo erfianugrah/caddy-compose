@@ -9,10 +9,10 @@ import (
 
 // --- Handlers: Analytics ---
 
-func handleTopBlockedIPs(store *Store) http.HandlerFunc {
+func handleTopBlockedIPs(store *Store, als *AccessLogStore) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
-		gen := store.generation.Load()
+		gen := combinedGeneration(&store.generation, &als.generation)
 		cacheKey := r.URL.RawQuery
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
@@ -24,17 +24,21 @@ func handleTopBlockedIPs(store *Store) http.HandlerFunc {
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
-		events := getWAFEvents(store, tr, hours)
-		result := topBlockedIPs(events, limit)
+		wafEvents := getWAFEvents(store, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours)
+		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
+		all = append(all, wafEvents...)
+		all = append(all, rlEvents...)
+		result := topBlockedIPs(all, limit)
 		cache.set(cacheKey, result, gen, 3*time.Second)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
 
-func handleTopTargetedURIs(store *Store) http.HandlerFunc {
+func handleTopTargetedURIs(store *Store, als *AccessLogStore) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
-		gen := store.generation.Load()
+		gen := combinedGeneration(&store.generation, &als.generation)
 		cacheKey := r.URL.RawQuery
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
@@ -46,8 +50,12 @@ func handleTopTargetedURIs(store *Store) http.HandlerFunc {
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
-		events := getWAFEvents(store, tr, hours)
-		result := topTargetedURIs(events, limit)
+		wafEvents := getWAFEvents(store, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours)
+		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
+		all = append(all, wafEvents...)
+		all = append(all, rlEvents...)
+		result := topTargetedURIs(all, limit)
 		cache.set(cacheKey, result, gen, 3*time.Second)
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -82,7 +90,7 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 
 // --- Handler: IP Lookup ---
 
-func handleIPLookup(store *Store) http.HandlerFunc {
+func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := r.PathValue("ip")
 		if ip == "" {
@@ -95,6 +103,7 @@ func handleIPLookup(store *Store) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
+		tr := parseTimeRange(r)
 		hours := parseHours(r)
 		limit := queryInt(q.Get("limit"), 50)
 		if limit <= 0 || limit > 1000 {
@@ -104,7 +113,16 @@ func handleIPLookup(store *Store) http.HandlerFunc {
 		if offset < 0 {
 			offset = 0
 		}
-		result := store.IPLookup(ip, hours, limit, offset)
+
+		// Merge WAF events + access log events (rate_limited, ipsum_blocked).
+		rlEvents := getRLEvents(als, tr, hours)
+		result := store.IPLookup(ip, hours, limit, offset, rlEvents)
+
+		// Enrich with GeoIP information.
+		if geo != nil {
+			result.GeoIP = geo.LookupFull(ip, "")
+		}
+
 		writeJSON(w, http.StatusOK, result)
 	}
 }

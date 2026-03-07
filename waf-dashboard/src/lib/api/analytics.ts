@@ -4,8 +4,20 @@ import { mapEvent } from "./waf-events";
 
 // ─── IP Lookup / Analytics ──────────────────────────────────────────
 
+export interface GeoIPInfo {
+  country?: string;
+  city?: string;
+  region?: string;
+  timezone?: string;
+  asn?: string;
+  org?: string;
+  network?: string;
+  source?: string;  // "cf_header" | "mmdb" | "api"
+}
+
 export interface IPLookupData {
   ip: string;
+  geoip?: GeoIPInfo;
   first_seen: string;
   last_seen: string;
   total_events: number;
@@ -35,9 +47,10 @@ export interface TopTargetedURI {
 
 // ─── Raw types ──────────────────────────────────────────────────────
 
-// Go API returns {ip, total, blocked, first_seen, last_seen, services:[ServiceDetail], events:[RawEvent]}
+// Go API returns {ip, geoip?, total, blocked, first_seen, last_seen, services:[ServiceDetail], events:[RawEvent]}
 interface RawIPLookup {
   ip: string;
+  geoip?: GeoIPInfo;
   total: number;
   blocked: number;
   events_total: number;
@@ -80,6 +93,7 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
   );
   return {
     ip: raw.ip,
+    geoip: raw.geoip,
     first_seen: raw.first_seen ?? "",
     last_seen: raw.last_seen ?? "",
     total_events: raw.total ?? 0,

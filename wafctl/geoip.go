@@ -148,6 +148,58 @@ func (s *GeoIPStore) HasAPI() bool {
 	return s.api != nil
 }
 
+// LookupFull returns enriched GeoIP information for an IP address.
+// Uses all available sources: CF header (country only), MMDB (country only),
+// and online API (full enrichment: ASN, org, city, region, timezone, network).
+func (s *GeoIPStore) LookupFull(ip, cfCountry string) *GeoIPInfo {
+	if ip == "" {
+		return nil
+	}
+	info := &GeoIPInfo{}
+
+	// Priority 1: Cloudflare header (country only).
+	if cfCountry != "" && cfCountry != "XX" && cfCountry != "T1" {
+		info.Country = strings.ToUpper(cfCountry)
+		info.Source = "cf_header"
+	}
+
+	// Priority 2: MMDB lookup (country only).
+	if info.Country == "" {
+		if country := s.LookupIP(ip); country != "" {
+			info.Country = country
+			info.Source = "mmdb"
+		}
+	}
+
+	// Priority 3: Online API (full enrichment).
+	if s.api != nil {
+		full := s.lookupOnlineFull(ip)
+		if full != nil {
+			// If we didn't have country yet, use API country.
+			if info.Country == "" && full.Country != "" {
+				info.Country = full.Country
+				info.Source = "api"
+			}
+			// Always overlay enrichment fields from API.
+			info.City = full.City
+			info.Region = full.Region
+			info.Timezone = full.Timezone
+			info.ASN = full.ASN
+			info.Org = full.Org
+			info.Network = full.Network
+			if info.Source != "cf_header" && info.Source != "mmdb" {
+				info.Source = "api"
+			}
+		}
+	}
+
+	// If we have no data at all, return nil.
+	if info.Country == "" && info.ASN == "" {
+		return nil
+	}
+	return info
+}
+
 // lookupOnline queries the configured online GeoIP API for a country code.
 // Results are cached in the shared cache. Returns "" on error.
 func (s *GeoIPStore) lookupOnline(ip string) string {
@@ -228,6 +280,149 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 	s.mu.Unlock()
 
 	return country
+}
+
+// lookupOnlineFull queries the configured online GeoIP API and returns enriched
+// info (ASN, org, city, region, timezone, network) in addition to country.
+// Returns nil on error. Results are NOT cached in the country cache since this
+// returns richer data that we don't persist.
+func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
+	if ip == "" {
+		return nil
+	}
+
+	// Build URL — support %s placeholder for IP, or append as path segment.
+	url := s.api.URL
+	if strings.Contains(url, "%s") {
+		url = fmt.Sprintf(url, ip)
+	} else {
+		url = strings.TrimRight(url, "/") + "/" + ip
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil
+	}
+	if s.api.Key != "" {
+		req.Header.Set("Authorization", "Bearer "+s.api.Key)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log.Printf("geoip: online full lookup failed for %s: %v", ip, err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if err != nil {
+		return nil
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil
+	}
+
+	info := &GeoIPInfo{Source: "api"}
+
+	// Country — common field names across providers.
+	for _, f := range []string{"country", "countryCode", "country_code"} {
+		if v, ok := raw[f]; ok {
+			if s, ok := v.(string); ok && len(s) == 2 {
+				info.Country = strings.ToUpper(s)
+				break
+			}
+		}
+	}
+
+	// City
+	for _, f := range []string{"city"} {
+		if v, ok := raw[f]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				info.City = s
+				break
+			}
+		}
+	}
+
+	// Region — IPinfo uses "region", ip-api uses "regionName"
+	for _, f := range []string{"region", "regionName", "region_name"} {
+		if v, ok := raw[f]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				info.Region = s
+				break
+			}
+		}
+	}
+
+	// Timezone
+	for _, f := range []string{"timezone"} {
+		if v, ok := raw[f]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				info.Timezone = s
+				break
+			}
+		}
+	}
+
+	// ASN — IPinfo uses "org" field with "AS12345 Org Name" format.
+	// ip-api uses separate "as" and "org" fields.
+	if v, ok := raw["as"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			info.ASN = s
+		}
+	}
+	// IPinfo.io format: "org": "AS13335 Cloudflare, Inc."
+	if info.ASN == "" {
+		if v, ok := raw["org"]; ok {
+			if s, ok := v.(string); ok && strings.HasPrefix(s, "AS") {
+				parts := strings.SplitN(s, " ", 2)
+				info.ASN = parts[0]
+				if len(parts) > 1 {
+					info.Org = parts[1]
+				}
+			}
+		}
+	}
+
+	// Organization — ip-api uses "isp" or "org"
+	if info.Org == "" {
+		for _, f := range []string{"org", "isp", "organization"} {
+			if v, ok := raw[f]; ok {
+				if s, ok := v.(string); ok && s != "" && !strings.HasPrefix(s, "AS") {
+					info.Org = s
+					break
+				}
+			}
+		}
+	}
+
+	// ip-api also has "asname" which is cleaner
+	if info.Org == "" {
+		if v, ok := raw["asname"]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				info.Org = s
+			}
+		}
+	}
+
+	// Network — ip-api uses no network field, but we can try common ones
+	for _, f := range []string{"network", "net"} {
+		if v, ok := raw[f]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				info.Network = s
+				break
+			}
+		}
+	}
+
+	return info
 }
 
 // evictRandom removes ~25% of cache entries. Map iteration order is random in Go,

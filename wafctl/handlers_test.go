@@ -206,7 +206,7 @@ func TestIPLookup(t *testing.T) {
 	store := NewStore(path)
 	store.Load()
 
-	result := store.IPLookup("10.0.0.1", 0, 50, 0)
+	result := store.IPLookup("10.0.0.1", 0, 50, 0, nil)
 	if result.Total != 2 {
 		t.Errorf("want 2 events for 10.0.0.1, got %d", result.Total)
 	}
@@ -225,9 +225,10 @@ func TestIPLookupEndpoint(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
 	store.Load()
+	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil))
 
 	req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1", nil)
 	w := httptest.NewRecorder()
@@ -248,9 +249,10 @@ func TestIPLookupEndpointInvalidIP(t *testing.T) {
 	path := writeTempLog(t, sampleLines)
 	store := NewStore(path)
 	store.Load()
+	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil))
 
 	req := httptest.NewRequest("GET", "/api/lookup/not-an-ip", nil)
 	w := httptest.NewRecorder()
@@ -266,7 +268,7 @@ func TestIPLookupNoResults(t *testing.T) {
 	store := NewStore(path)
 	store.Load()
 
-	result := store.IPLookup("192.168.1.1", 0, 50, 0)
+	result := store.IPLookup("192.168.1.1", 0, 50, 0, nil)
 	if result.Total != 0 {
 		t.Errorf("want 0 events for unknown IP, got %d", result.Total)
 	}
@@ -282,7 +284,7 @@ func TestIPLookupPagination(t *testing.T) {
 
 	// 10.0.0.1 has 2 events total
 	t.Run("limit 1 offset 0", func(t *testing.T) {
-		result := store.IPLookup("10.0.0.1", 0, 1, 0)
+		result := store.IPLookup("10.0.0.1", 0, 1, 0, nil)
 		if result.EventsTotal != 2 {
 			t.Errorf("EventsTotal = %d, want 2", result.EventsTotal)
 		}
@@ -291,7 +293,7 @@ func TestIPLookupPagination(t *testing.T) {
 		}
 	})
 	t.Run("limit 1 offset 1", func(t *testing.T) {
-		result := store.IPLookup("10.0.0.1", 0, 1, 1)
+		result := store.IPLookup("10.0.0.1", 0, 1, 1, nil)
 		if result.EventsTotal != 2 {
 			t.Errorf("EventsTotal = %d, want 2", result.EventsTotal)
 		}
@@ -300,7 +302,7 @@ func TestIPLookupPagination(t *testing.T) {
 		}
 	})
 	t.Run("offset beyond total", func(t *testing.T) {
-		result := store.IPLookup("10.0.0.1", 0, 10, 100)
+		result := store.IPLookup("10.0.0.1", 0, 10, 100, nil)
 		if result.EventsTotal != 2 {
 			t.Errorf("EventsTotal = %d, want 2", result.EventsTotal)
 		}
@@ -309,8 +311,9 @@ func TestIPLookupPagination(t *testing.T) {
 		}
 	})
 	t.Run("endpoint with limit/offset params", func(t *testing.T) {
+		als := emptyAccessLogStore(t)
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store))
+		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil))
 		req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1?limit=1&offset=0", nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
@@ -507,8 +510,8 @@ func TestAnalyticsEndpoints(t *testing.T) {
 	store.Load()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store))
-	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store))
+	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, emptyAccessLogStore(t)))
+	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store, emptyAccessLogStore(t)))
 
 	// Test top-ips endpoint
 	req := httptest.NewRequest("GET", "/api/analytics/top-ips", nil)
