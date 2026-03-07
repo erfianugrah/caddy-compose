@@ -35,40 +35,10 @@ export function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-export function pctClass(rate: number): string {
-  if (rate >= 0.9) return "text-emerald-400";
-  if (rate >= 0.5) return "text-amber-400";
-  return "text-red-400";
-}
-
 export function headerCheckIcon(present: boolean) {
   return present
     ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
     : <XCircle className="h-3.5 w-3.5 text-red-400/60" />;
-}
-
-// ─── Shared Sub-components ──────────────────────────────────────────
-
-export function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex gap-2">
-      <dt className="w-24 shrink-0 text-muted-foreground">{label}</dt>
-      <dd className={`break-all ${mono ? "font-mono" : ""}`}>{value || "-"}</dd>
-    </div>
-  );
-}
-
-export function HeaderRow({ label, present, value }: { label: string; present: boolean; value?: string }) {
-  return (
-    <div className="flex items-start gap-2">
-      <dt className="w-44 shrink-0 flex items-center gap-1.5 text-muted-foreground">
-        {headerCheckIcon(present)} {label}
-      </dt>
-      <dd className="font-mono break-all text-muted-foreground">
-        {present ? (value || "present") : <span className="text-red-400/60">missing</span>}
-      </dd>
-    </div>
-  );
 }
 
 // ─── Stat Card ──────────────────────────────────────────────────────

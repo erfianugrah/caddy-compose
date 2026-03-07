@@ -4,7 +4,7 @@ import type { GeneralLogEvent } from "@/lib/api";
 import { countryFlag } from "@/lib/format";
 import { T } from "@/lib/typography";
 import { downloadJSON } from "@/lib/download";
-import { formatDuration, formatBytes, statusColor, headerCheckIcon } from "./helpers";
+import { formatDuration, formatBytes, headerCheckIcon } from "./helpers";
 
 // ─── RFC / Spec References ──────────────────────────────────────────
 

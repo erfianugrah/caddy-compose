@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Globe2, Server, ArrowRight, Link2 } from "lucide-react";
 
-import { statusBadge, formatDuration, statusColor } from "./helpers";
+import { statusBadge, formatDuration } from "./helpers";
 
 // ─── Props ──────────────────────────────────────────────────────────
 
@@ -30,6 +30,60 @@ function bucketColor(bucket: string): { bar: string; text: string; bg: string } 
 function LatencyBadge({ seconds }: { seconds: number }) {
   const cls = seconds >= 1 ? "text-red-400" : seconds >= 0.1 ? "text-amber-400" : "text-emerald-400";
   return <span className={`font-mono text-xs ${cls}`}>{formatDuration(seconds)}</span>;
+}
+
+// ─── Latency Percentiles ────────────────────────────────────────────
+
+function latencyColor(seconds: number): string {
+  if (seconds >= 2) return "text-red-400";
+  if (seconds >= 1) return "text-red-400/80";
+  if (seconds >= 0.5) return "text-amber-400";
+  if (seconds >= 0.1) return "text-amber-400/70";
+  return "text-emerald-400";
+}
+
+function latencyBarColor(seconds: number): string {
+  if (seconds >= 1) return "bg-red-500";
+  if (seconds >= 0.5) return "bg-amber-500";
+  if (seconds >= 0.1) return "bg-amber-500/70";
+  return "bg-emerald-500";
+}
+
+function LatencyPercentiles({ summary }: { summary: GeneralLogsSummary }) {
+  const percentiles = [
+    { label: "P50", value: summary.p50_duration, description: "Median" },
+    { label: "Avg", value: summary.avg_duration, description: "Mean" },
+    { label: "P95", value: summary.p95_duration, description: "95th pct" },
+    { label: "P99", value: summary.p99_duration, description: "99th pct" },
+  ];
+  const maxVal = Math.max(...percentiles.map((p) => p.value), 0.001);
+
+  return (
+    <div className="space-y-3">
+      {percentiles.map((p) => {
+        const barWidth = (p.value / maxVal) * 100;
+        return (
+          <div key={p.label} className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-medium w-8">{p.label}</span>
+                <span className="text-xs text-muted-foreground">{p.description}</span>
+              </div>
+              <span className={`font-mono text-xs font-medium ${latencyColor(p.value)}`}>
+                {formatDuration(p.value)}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${latencyBarColor(p.value)}`}
+                style={{ width: `${Math.max(barWidth, 1)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -82,6 +136,19 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
               );
             })}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Latency Percentiles */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Latency Percentiles</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Response time distribution across {formatNumber(summary.total_requests)} requests
+          </p>
+        </CardHeader>
+        <CardContent>
+          <LatencyPercentiles summary={summary} />
         </CardContent>
       </Card>
 

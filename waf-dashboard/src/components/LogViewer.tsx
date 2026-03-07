@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import { useTableSort } from "@/hooks/useTableSort";
 import { formatNumber } from "@/lib/format";
@@ -62,9 +62,6 @@ export default function LogViewer() {
   }, []);
 
   const collapseAll = useCallback(() => setExpanded(new Set()), []);
-
-  // Auto-refresh
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const buildParams = useCallback((): GeneralLogsParams => {
     const params: GeneralLogsParams = {
