@@ -73,7 +73,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
             >
               <Button variant="outline" size="xs" className="text-xs">
                 <ExternalLink className="h-3 w-3 mr-1" />
-                View in Events
+                View in Security Events
               </Button>
             </a>
             <a

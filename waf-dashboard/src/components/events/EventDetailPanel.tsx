@@ -63,7 +63,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 tabIndex={-1}
               >
                 <ExternalLink className="h-3 w-3 mr-1" />
-                View in Events
+                View in Security Events
               </Button>
             </a>
           )}

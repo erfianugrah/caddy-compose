@@ -335,7 +335,7 @@ export default function OverviewDashboard() {
 
       {/* ── Stat Cards ── */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
-        <StatCard title="Total Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
+        <StatCard title="Security Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
         <StatCard title="Blocked" value={data?.blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=blocked" />
         <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
         <StatCard title="IPsum Blocked" value={data?.ipsum_blocked ?? 0} icon={Ban} color="purple" loading={loading} href="/events?type=ipsum_blocked" />
@@ -661,7 +661,7 @@ export default function OverviewDashboard() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className={T.cardTitle}>Events</CardTitle>
+              <CardTitle className={T.cardTitle}>Security Events</CardTitle>
               <CardDescription>
                 {zoomTimeParams
                   ? `Showing ${eventsTotal.toLocaleString()} events in selected time window`
@@ -682,7 +682,7 @@ export default function OverviewDashboard() {
               )}
               <a href="/events">
                 <Button variant="ghost" size="xs" className="text-xs text-muted-foreground hover:text-foreground">
-                  Open Event Log
+                  Open Security Event Log
                 </Button>
               </a>
             </div>

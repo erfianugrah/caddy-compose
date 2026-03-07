@@ -189,7 +189,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                   </div>
                   <div className="space-y-1">
                     <p className={T.formLabel}>
-                      Total Events
+                      Total Security Events
                     </p>
                     <p className="text-sm font-bold text-neon-cyan">
                       {data.total_events.toLocaleString()}
@@ -283,7 +283,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
           {data.events_total > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className={T.cardTitle}>Events</CardTitle>
+                <CardTitle className={T.cardTitle}>Security Events</CardTitle>
                 <CardDescription>
                   {data.events_total.toLocaleString()} events from {data.ip} — click a row to inspect
                 </CardDescription>

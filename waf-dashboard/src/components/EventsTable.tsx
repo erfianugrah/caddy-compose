@@ -251,9 +251,9 @@ export default function EventsTable() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className={T.pageTitle}>Event Log</h2>
+          <h2 className={T.pageTitle}>Security Event Log</h2>
           <p className={T.pageDescription}>
-            All WAF and rate limit events with filtering and detail view.
+            WAF, rate limit, and policy events with filtering and detail view.
           </p>
         </div>
         <TimeRangePicker

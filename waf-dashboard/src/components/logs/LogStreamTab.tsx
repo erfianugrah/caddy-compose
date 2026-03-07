@@ -71,23 +71,23 @@ export default function LogStreamTab({
           onChange={(e) => setServiceFilter(e.target.value)}
           className="h-8 w-40 text-xs"
         />
-        <Select value={methodFilter} onValueChange={setMethodFilter}>
+        <Select value={methodFilter || "__all__"} onValueChange={(v) => setMethodFilter(v === "__all__" ? "" : v)}>
           <SelectTrigger className="h-8 w-28 text-xs">
             <SelectValue placeholder="Method" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All</SelectItem>
+            <SelectItem value="__all__">All</SelectItem>
             {["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"].map((m) => (
               <SelectItem key={m} value={m}>{m}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter || "__all__"} onValueChange={(v) => setStatusFilter(v === "__all__" ? "" : v)}>
           <SelectTrigger className="h-8 w-28 text-xs">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All</SelectItem>
+            <SelectItem value="__all__">All</SelectItem>
             <SelectItem value="2xx">2xx</SelectItem>
             <SelectItem value="3xx">3xx</SelectItem>
             <SelectItem value="4xx">4xx</SelectItem>
@@ -105,22 +105,22 @@ export default function LogStreamTab({
             <SelectItem value="503">503</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={levelFilter} onValueChange={setLevelFilter}>
+        <Select value={levelFilter || "__all__"} onValueChange={(v) => setLevelFilter(v === "__all__" ? "" : v)}>
           <SelectTrigger className="h-8 w-24 text-xs">
             <SelectValue placeholder="Level" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All</SelectItem>
+            <SelectItem value="__all__">All</SelectItem>
             <SelectItem value="info">info</SelectItem>
             <SelectItem value="error">error</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={missingHeaderFilter} onValueChange={setMissingHeaderFilter}>
+        <Select value={missingHeaderFilter || "__all__"} onValueChange={(v) => setMissingHeaderFilter(v === "__all__" ? "" : v)}>
           <SelectTrigger className="h-8 w-36 text-xs">
             <SelectValue placeholder="Missing Header" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">None</SelectItem>
+            <SelectItem value="__all__">None</SelectItem>
             <SelectItem value="csp">Missing CSP</SelectItem>
             <SelectItem value="hsts">Missing HSTS</SelectItem>
             <SelectItem value="xcto">Missing X-Content-Type-Options</SelectItem>

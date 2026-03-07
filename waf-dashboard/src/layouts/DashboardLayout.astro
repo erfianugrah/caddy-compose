@@ -10,13 +10,13 @@ const { title = "wafctl", active = "overview" } = Astro.props;
 
 const navItems = [
   { id: "overview", label: "Overview", href: "/", icon: "grid" },
+  { id: "events", label: "Security Events", href: "/events", icon: "list" },
+  { id: "logs", label: "Logs", href: "/logs", icon: "file-text" },
   { id: "investigate", label: "IP Lookup", href: "/analytics", icon: "search" },
   { id: "services", label: "Services", href: "/services", icon: "server" },
-  { id: "events", label: "Events", href: "/events", icon: "list" },
-  { id: "logs", label: "Logs", href: "/logs", icon: "file-text" },
   { id: "policy", label: "Policy", href: "/policy", icon: "shield" },
-  { id: "blocklist", label: "Blocklist", href: "/blocklist", icon: "ban" },
   { id: "rate-limits", label: "Rate Limits", href: "/rate-limits", icon: "gauge" },
+  { id: "blocklist", label: "Blocklist", href: "/blocklist", icon: "ban" },
   { id: "csp", label: "CSP", href: "/csp", icon: "lock" },
   { id: "settings", label: "Settings", href: "/settings", icon: "settings" },
 ];
