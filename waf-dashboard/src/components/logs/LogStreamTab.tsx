@@ -1,5 +1,7 @@
+import { Fragment } from "react";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { formatNumber, formatTime, formatDate, countryFlag } from "@/lib/format";
+import { downloadJSON } from "@/lib/download";
 import type { GeneralLogEvent, GeneralLogsResponse } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
@@ -14,10 +16,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronsDownUp,
+  Download,
+} from "lucide-react";
 
 import type { SortKey } from "./helpers";
-import { statusBadge, formatDuration, formatBytes, DetailRow, HeaderRow } from "./helpers";
+import { statusBadge, formatDuration, formatBytes } from "./helpers";
+import { LogDetailPanel } from "./LogDetailPanel";
+
+// ─── Stable key for a log event ─────────────────────────────────────
+
+function eventKey(evt: GeneralLogEvent, idx: number): string {
+  return `${evt.timestamp}-${evt.status}-${idx}`;
+}
 
 // ─── Props ──────────────────────────────────────────────────────────
 
@@ -30,8 +47,9 @@ export interface LogStreamTabProps {
   page: number;
   totalPages: number;
   setPage: (p: number) => void;
-  expandedIdx: number | null;
-  setExpandedIdx: (i: number | null) => void;
+  expanded: Set<string>;
+  toggleExpand: (key: string) => void;
+  collapseAll: () => void;
   serviceFilter: string;
   setServiceFilter: (v: string) => void;
   methodFilter: string;
@@ -52,7 +70,8 @@ export interface LogStreamTabProps {
 
 export default function LogStreamTab({
   response, loading, sortState, toggleSort, sortedData,
-  page, totalPages, setPage, expandedIdx, setExpandedIdx,
+  page, totalPages, setPage,
+  expanded, toggleExpand, collapseAll,
   serviceFilter, setServiceFilter,
   methodFilter, setMethodFilter,
   statusFilter, setStatusFilter,
@@ -141,9 +160,35 @@ export default function LogStreamTab({
           </Button>
         )}
         {response && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {formatNumber(response.total)} results
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {formatNumber(response.total)} results
+            </span>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => downloadJSON(sortedData, `logs-page-${page}.json`)}
+                title="Export current page as JSON"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Page
+              </Button>
+              {expanded.size > 0 && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={collapseAll}
+                  title="Collapse all expanded rows"
+                >
+                  <ChevronsDownUp className="h-3 w-3 mr-1" />
+                  Collapse ({expanded.size})
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -153,6 +198,7 @@ export default function LogStreamTab({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                <TableHead className="w-8" />
                 <SortableTableHead sortKey="time" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[130px]">Time</SortableTableHead>
                 <SortableTableHead sortKey="status" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Status</SortableTableHead>
                 <SortableTableHead sortKey="method" activeKey={sortState.key} direction={sortState.direction} onSort={toggleSort} className="w-[70px]">Method</SortableTableHead>
@@ -167,6 +213,7 @@ export default function LogStreamTab({
               {loading && !response ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
+                    <TableCell />
                     {Array.from({ length: 8 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
@@ -174,52 +221,62 @@ export default function LogStreamTab({
                 ))
               ) : sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
                     No log entries found
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedData.map((evt, i) => (
-                  <>
-                    <TableRow
-                      key={i}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
-                    >
-                      <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                        {formatDate(evt.timestamp)} {formatTime(evt.timestamp)}
-                      </TableCell>
-                      <TableCell>{statusBadge(evt.status)}</TableCell>
-                      <TableCell>
-                        <span className="font-mono text-xs">{evt.method}</span>
-                      </TableCell>
-                      <TableCell className="text-xs max-w-[200px] truncate" title={evt.service}>
-                        {evt.service}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs max-w-[300px] truncate text-muted-foreground" title={evt.uri}>
-                        {evt.uri}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        <span className={evt.duration >= 1 ? "text-red-400" : evt.duration >= 0.1 ? "text-amber-400" : "text-muted-foreground"}>
-                          {formatDuration(evt.duration)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {formatBytes(evt.size)}
-                      </TableCell>
-                      <TableCell>
-                        <HeaderDots headers={evt.security_headers} />
-                      </TableCell>
-                    </TableRow>
-                    {expandedIdx === i && (
-                      <TableRow key={`${i}-detail`}>
-                        <TableCell colSpan={8} className="bg-muted/30 p-4">
-                          <LogDetail event={evt} />
+                sortedData.map((evt, i) => {
+                  const key = eventKey(evt, i);
+                  const isExpanded = expanded.has(key);
+                  return (
+                    <Fragment key={key}>
+                      <TableRow
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => toggleExpand(key)}
+                      >
+                        <TableCell className="w-8">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDate(evt.timestamp)} {formatTime(evt.timestamp)}
+                        </TableCell>
+                        <TableCell>{statusBadge(evt.status)}</TableCell>
+                        <TableCell>
+                          <span className="font-mono text-xs">{evt.method}</span>
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[200px] truncate" title={evt.service}>
+                          {evt.service}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs max-w-[300px] truncate text-muted-foreground" title={evt.uri}>
+                          {evt.uri}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          <span className={evt.duration >= 1 ? "text-red-400" : evt.duration >= 0.1 ? "text-amber-400" : "text-muted-foreground"}>
+                            {formatDuration(evt.duration)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {formatBytes(evt.size)}
+                        </TableCell>
+                        <TableCell>
+                          <HeaderDots headers={evt.security_headers} />
                         </TableCell>
                       </TableRow>
-                    )}
-                  </>
-                ))
+                      {isExpanded && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={9} className="bg-navy-950/50 p-0">
+                            <LogDetailPanel event={evt} />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -232,18 +289,42 @@ export default function LogStreamTab({
           <span className="text-xs text-muted-foreground">
             Page {page} of {totalPages}
           </span>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1">
             <Button
-              variant="outline" size="sm" disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
+              variant="outline"
+              size="icon"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              title="First page"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ChevronsLeft className="h-4 w-4" />
             </Button>
             <Button
-              variant="outline" size="sm" disabled={page >= totalPages}
-              onClick={() => setPage(page + 1)}
+              variant="outline"
+              size="icon"
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page <= 1}
+              title="Previous page"
             >
-              <ArrowRight className="h-3.5 w-3.5" />
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page >= totalPages}
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              title="Last page"
+            >
+              <ChevronsRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -273,46 +354,6 @@ function HeaderDots({ headers }: { headers: GeneralLogEvent["security_headers"] 
           className={`h-1.5 w-1.5 rounded-full ${p ? "bg-emerald-400" : "bg-red-400/40"}`}
         />
       ))}
-    </div>
-  );
-}
-
-// ─── Log Detail (expanded row) ──────────────────────────────────────
-
-function LogDetail({ event: evt }: { event: GeneralLogEvent }) {
-  return (
-    <div className="grid gap-4 text-xs sm:grid-cols-2">
-      <div className="space-y-2">
-        <h4 className="font-medium text-foreground">Request</h4>
-        <dl className="space-y-1">
-          <DetailRow label="Client IP" value={`${evt.client_ip}${evt.country ? ` ${countryFlag(evt.country)} ${evt.country}` : ""}`} />
-          <DetailRow label="Method" value={evt.method} />
-          <DetailRow label="URI" value={evt.uri} mono />
-          <DetailRow label="Protocol" value={evt.protocol} />
-          <DetailRow label="Service" value={evt.service} />
-          <DetailRow label="User-Agent" value={evt.user_agent} mono />
-        </dl>
-      </div>
-      <div className="space-y-2">
-        <h4 className="font-medium text-foreground">Response</h4>
-        <dl className="space-y-1">
-          <DetailRow label="Status" value={String(evt.status)} />
-          <DetailRow label="Size" value={formatBytes(evt.size)} />
-          <DetailRow label="Duration" value={formatDuration(evt.duration)} />
-          <DetailRow label="Level" value={evt.level || "info"} />
-          <DetailRow label="Logger" value={evt.logger || ""} mono />
-        </dl>
-        <h4 className="font-medium text-foreground mt-3">Security Headers</h4>
-        <dl className="space-y-1">
-          <HeaderRow label="CSP" present={evt.security_headers.has_csp} value={evt.security_headers.csp} />
-          <HeaderRow label="HSTS" present={evt.security_headers.has_hsts} value={evt.security_headers.hsts} />
-          <HeaderRow label="X-Content-Type-Options" present={evt.security_headers.has_x_content_type_options} value={evt.security_headers.x_content_type_options} />
-          <HeaderRow label="X-Frame-Options" present={evt.security_headers.has_x_frame_options} value={evt.security_headers.x_frame_options} />
-          <HeaderRow label="Referrer-Policy" present={evt.security_headers.has_referrer_policy} value={evt.security_headers.referrer_policy} />
-          <HeaderRow label="CORS Origin" present={evt.security_headers.has_cors_origin} value={evt.security_headers.cors_origin} />
-          <HeaderRow label="Permissions-Policy" present={evt.security_headers.has_permissions_policy} value={evt.security_headers.permissions_policy} />
-        </dl>
-      </div>
     </div>
   );
 }

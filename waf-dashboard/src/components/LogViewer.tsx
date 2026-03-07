@@ -49,8 +49,19 @@ export default function LogViewer() {
   const [page, setPage] = useState(1);
   const perPage = 50;
 
-  // Expanded row
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  // Expanded rows (keyed by timestamp+index for stable identity)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = useCallback((key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const collapseAll = useCallback(() => setExpanded(new Set()), []);
 
   // Auto-refresh
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -230,8 +241,9 @@ export default function LogViewer() {
           page={page}
           totalPages={totalPages}
           setPage={setPage}
-          expandedIdx={expandedIdx}
-          setExpandedIdx={setExpandedIdx}
+          expanded={expanded}
+          toggleExpand={toggleExpand}
+          collapseAll={collapseAll}
           serviceFilter={serviceFilter}
           setServiceFilter={(v) => { setServiceFilter(v); setPage(1); }}
           methodFilter={methodFilter}
