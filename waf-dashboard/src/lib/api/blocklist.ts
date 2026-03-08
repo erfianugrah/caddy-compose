@@ -1,4 +1,4 @@
-import { API_BASE, fetchJSON } from "./shared";
+import { API_BASE, fetchJSON, postJSON } from "./shared";
 
 // ─── Blocklist (IPsum) ──────────────────────────────────────────────
 
@@ -36,10 +36,5 @@ export async function checkBlocklistIP(ip: string): Promise<BlocklistCheckResult
 }
 
 export async function refreshBlocklist(): Promise<BlocklistRefreshResult> {
-  const res = await fetch(`${API_BASE}/blocklist/refresh`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(body.message || body.error || `HTTP ${res.status}`);
-  }
-  return res.json();
+  return postJSON<BlocklistRefreshResult>(`${API_BASE}/blocklist/refresh`, {});
 }

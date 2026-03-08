@@ -209,10 +209,14 @@ export default function CSPPanel() {
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text) as CSPConfig;
-        if (data.enabled !== undefined) setEnabled(data.enabled !== false);
-        if (data.global_defaults) setGlobalDefaults(data.global_defaults);
-        if (data.services) setServiceConfigs(data.services);
+        const data = JSON.parse(text);
+        if (!data || typeof data !== "object") {
+          throw new Error("Invalid CSP config: must be a JSON object");
+        }
+        const typed = data as CSPConfig;
+        if (typed.enabled !== undefined) setEnabled(typed.enabled !== false);
+        if (typed.global_defaults) setGlobalDefaults(typed.global_defaults);
+        if (typed.services) setServiceConfigs(typed.services);
         setDirty(true);
         showSuccess("CSP config imported — save or deploy to apply");
       } catch (err: unknown) {

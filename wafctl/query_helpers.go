@@ -12,16 +12,15 @@ import (
 
 // parseHours extracts and validates the ?hours= query parameter.
 // Returns 0 (meaning "all time") if not provided or invalid.
+// Accepts any positive integer; the validHours allowlist is only used
+// by the frontend to populate quick-range pickers.
 func parseHours(r *http.Request) int {
 	s := r.URL.Query().Get("hours")
 	if s == "" {
 		return 0
 	}
 	h, err := strconv.Atoi(s)
-	if err != nil {
-		return 0
-	}
-	if !validHours[h] {
+	if err != nil || h < 0 {
 		return 0
 	}
 	return h
@@ -50,7 +49,6 @@ func parseTimeRange(r *http.Request) timeRange {
 		time.RFC3339Nano,
 		"2006-01-02T15:04:05",
 		"2006-01-02 15:04:05",
-		"2006-01-02T15:04:05Z",
 	}
 
 	var start, end time.Time

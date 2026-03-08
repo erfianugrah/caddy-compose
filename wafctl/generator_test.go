@@ -13,7 +13,6 @@ import (
 // --- Generator tests ---
 
 func TestGenerateConfigBasic(t *testing.T) {
-	ResetRuleIDCounter()
 
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8},
@@ -70,7 +69,6 @@ func TestGenerateConfigBasic(t *testing.T) {
 }
 
 func TestGenerateConfigEmpty(t *testing.T) {
-	ResetRuleIDCounter()
 
 	cfg := defaultConfig()
 	result := GenerateConfigs(cfg, nil)
@@ -521,7 +519,6 @@ func TestGenerateUUID(t *testing.T) {
 // --- Enhanced generator tests (method chaining, path operators) ---
 
 func TestGenerateWithMethodFilter(t *testing.T) {
-	ResetRuleIDCounter()
 
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
@@ -552,7 +549,6 @@ func TestGenerateWithMethodFilter(t *testing.T) {
 }
 
 func TestGenerateWithMultiMethodFilter(t *testing.T) {
-	ResetRuleIDCounter()
 
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
@@ -580,7 +576,6 @@ func TestGenerateWithMultiMethodFilter(t *testing.T) {
 }
 
 func TestGenerateWithPathOperator(t *testing.T) {
-	ResetRuleIDCounter()
 
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
@@ -611,7 +606,6 @@ func TestGenerateWithPathOperator(t *testing.T) {
 }
 
 func TestGenerateWithMethodAndOperator(t *testing.T) {
-	ResetRuleIDCounter()
 
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
@@ -871,7 +865,6 @@ func TestValidateRawAction(t *testing.T) {
 // --- Quick Action generator tests ---
 
 func TestGenerateAllowByIP(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Allow my IP", Type: "allow", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "195.240.81.42"}}, Enabled: true},
@@ -887,7 +880,6 @@ func TestGenerateAllowByIP(t *testing.T) {
 }
 
 func TestGenerateAllowByIPAndPath(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Allow my IP on API", Type: "allow", Conditions: []Condition{
@@ -911,7 +903,6 @@ func TestGenerateAllowByIPAndPath(t *testing.T) {
 // TestGenerateMultiConditionSkipRuleUsesChain verifies that multi-condition
 // skip_rule exclusions generate chained SecRules.
 func TestGenerateMultiConditionSkipRuleUsesChain(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Skip SQLi for gpustat", Type: "skip_rule", RuleID: "942200 942330", Conditions: []Condition{
@@ -943,7 +934,6 @@ func TestGenerateMultiConditionSkipRuleUsesChain(t *testing.T) {
 }
 
 func TestCTLActionsOnLastChainRule(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	// Test allow type (ctl:ruleEngine=Off) with chain.
 	exclusions := []RuleExclusion{
@@ -981,7 +971,6 @@ func TestCTLActionsOnLastChainRule(t *testing.T) {
 
 // TestGenerateBlockMultiConditionUsesChain verifies that block rules also chain.
 func TestGenerateBlockMultiConditionUsesChain(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block bad bot on API", Type: "block", Conditions: []Condition{
@@ -1000,7 +989,6 @@ func TestGenerateBlockMultiConditionUsesChain(t *testing.T) {
 }
 
 func TestGenerateBlockByIP(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block bad actor", Type: "block", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "192.168.1.100"}}, Enabled: true},
@@ -1016,7 +1004,6 @@ func TestGenerateBlockByIP(t *testing.T) {
 }
 
 func TestGenerateBlockByUA(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block bad bot", Type: "block", Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "BadBot.*"}}, Enabled: true},
@@ -1032,7 +1019,6 @@ func TestGenerateBlockByUA(t *testing.T) {
 }
 
 func TestGenerateAnomalyByUA(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Generic HTTP library", Type: "anomaly", AnomalyScore: 5, Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "python-requests|go-http-client"}}, Enabled: true},
@@ -1054,7 +1040,6 @@ func TestGenerateAnomalyByUA(t *testing.T) {
 }
 
 func TestGenerateAnomalyWithParanoiaLevel(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "HTTP/1.0 signal", Type: "anomaly", AnomalyScore: 2, AnomalyParanoiaLevel: 2, Conditions: []Condition{{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"}}, Enabled: true},
@@ -1067,7 +1052,6 @@ func TestGenerateAnomalyWithParanoiaLevel(t *testing.T) {
 }
 
 func TestGenerateAnomalyDefaultParanoiaLevel(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Test", Type: "anomaly", AnomalyScore: 3, AnomalyParanoiaLevel: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}, Enabled: true},
@@ -1081,7 +1065,6 @@ func TestGenerateAnomalyDefaultParanoiaLevel(t *testing.T) {
 }
 
 func TestGenerateAnomalyMultiConditionChain(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Bot signal", Type: "anomaly", AnomalyScore: 3, Conditions: []Condition{
@@ -1100,7 +1083,6 @@ func TestGenerateAnomalyMultiConditionChain(t *testing.T) {
 }
 
 func TestGenerateSkipRule(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Skip 920420 for socket.io", Type: "skip_rule", RuleID: "920420", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/socket.io/"}}, Enabled: true},
@@ -1116,7 +1098,6 @@ func TestGenerateSkipRule(t *testing.T) {
 }
 
 func TestGenerateSkipRuleByTag(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Skip SQLi for API", Type: "skip_rule", RuleTag: "attack-sqli", Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api/v3/"}}, Enabled: true},
@@ -1129,7 +1110,6 @@ func TestGenerateSkipRuleByTag(t *testing.T) {
 }
 
 func TestGenerateRawRule(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	rawDirective := "SecRule REQUEST_URI \"@streq /admin\" \"id:10001,phase:1,deny,status:403,t:none,log\""
 	exclusions := []RuleExclusion{
@@ -1185,7 +1165,6 @@ func TestValidateCountryCondition(t *testing.T) {
 }
 
 func TestGenerateBlockByCountry(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block CN", Type: "block", Conditions: []Condition{
@@ -1206,7 +1185,6 @@ func TestGenerateBlockByCountry(t *testing.T) {
 }
 
 func TestGenerateBlockByCountryList(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block sanctioned countries", Type: "block", Conditions: []Condition{
@@ -1224,7 +1202,6 @@ func TestGenerateBlockByCountryList(t *testing.T) {
 }
 
 func TestGenerateAllowByCountry(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Allow US traffic", Type: "allow", Conditions: []Condition{
@@ -1242,7 +1219,6 @@ func TestGenerateAllowByCountry(t *testing.T) {
 }
 
 func TestGenerateBlockByCountryAndPath(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block CN on API", Type: "block", Conditions: []Condition{
@@ -1264,7 +1240,6 @@ func TestGenerateBlockByCountryAndPath(t *testing.T) {
 }
 
 func TestGenerateSkipRuleByCountry(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Skip 920420 for DE", Type: "skip_rule", RuleID: "920420", Conditions: []Condition{
@@ -1367,7 +1342,6 @@ func TestValidateNewConditionFields(t *testing.T) {
 }
 
 func TestGenerateBlockByCookie(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block bad cookie", Type: "block", Conditions: []Condition{
@@ -1388,7 +1362,6 @@ func TestGenerateBlockByCookie(t *testing.T) {
 }
 
 func TestGenerateSkipRuleByCookie(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Skip RCE for authelia cookie", Type: "skip_rule", RuleID: "932240 942290", Conditions: []Condition{
@@ -1409,7 +1382,6 @@ func TestGenerateSkipRuleByCookie(t *testing.T) {
 }
 
 func TestGenerateBlockByBody(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block script in body", Type: "block", Conditions: []Condition{
@@ -1427,7 +1399,6 @@ func TestGenerateBlockByBody(t *testing.T) {
 }
 
 func TestGenerateBlockByArgs(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block delete action", Type: "block", Conditions: []Condition{
@@ -1445,7 +1416,6 @@ func TestGenerateBlockByArgs(t *testing.T) {
 }
 
 func TestGenerateAllowByURIPath(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Allow uploads", Type: "allow", Conditions: []Condition{
@@ -1463,7 +1433,6 @@ func TestGenerateAllowByURIPath(t *testing.T) {
 }
 
 func TestGenerateBlockByReferer(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block spam referer", Type: "block", Conditions: []Condition{
@@ -1481,7 +1450,6 @@ func TestGenerateBlockByReferer(t *testing.T) {
 }
 
 func TestGenerateBlockByResponseStatus(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block on 500", Type: "block", Conditions: []Condition{
@@ -1499,7 +1467,6 @@ func TestGenerateBlockByResponseStatus(t *testing.T) {
 }
 
 func TestGenerateBlockByHTTPVersion(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block HTTP/1.0", Type: "block", Conditions: []Condition{
@@ -1517,7 +1484,6 @@ func TestGenerateBlockByHTTPVersion(t *testing.T) {
 }
 
 func TestGenerateBlockByResponseHeader(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block by server header", Type: "block", Conditions: []Condition{
@@ -1536,7 +1502,6 @@ func TestGenerateBlockByResponseHeader(t *testing.T) {
 
 func TestGenerateCookieWithoutColon(t *testing.T) {
 	// Cookie without colon should match all cookies
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Block by any cookie", Type: "block", Conditions: []Condition{
@@ -1555,7 +1520,6 @@ func TestGenerateCookieWithoutColon(t *testing.T) {
 
 func TestGenerateMultiConditionWithNewFields(t *testing.T) {
 	// Combine new fields with existing fields
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Skip rule for specific cookie on specific host", Type: "skip_rule", RuleID: "932240", Conditions: []Condition{
@@ -1581,7 +1545,6 @@ func TestGenerateMultiConditionWithNewFields(t *testing.T) {
 // --- Runtime surgical exclusion (ctl:ruleRemoveTargetByTag) ---
 
 func TestGenerateRuntimeRemoveTargetByTag(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{
@@ -1603,7 +1566,6 @@ func TestGenerateRuntimeRemoveTargetByTag(t *testing.T) {
 }
 
 func TestGenerateRuntimeRemoveTargetByTagConditional(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{
@@ -1707,7 +1669,6 @@ func TestValidateHoneypotExclusion(t *testing.T) {
 }
 
 func TestGenerateHoneypotSingle(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "WP paths", Type: "honeypot", Conditions: []Condition{
@@ -1734,7 +1695,6 @@ func TestGenerateHoneypotSingle(t *testing.T) {
 }
 
 func TestGenerateHoneypotMultipleGroups(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "WP paths", Type: "honeypot", Conditions: []Condition{
@@ -1767,7 +1727,6 @@ func TestGenerateHoneypotMultipleGroups(t *testing.T) {
 }
 
 func TestGenerateHoneypotDedup(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Group A", Type: "honeypot", Conditions: []Condition{
@@ -1787,7 +1746,6 @@ func TestGenerateHoneypotDedup(t *testing.T) {
 }
 
 func TestGenerateHoneypotDisabledSkipped(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	// In production, EnabledExclusions() filters before calling GenerateConfigs.
 	// Simulate: pass no enabled honeypots.
@@ -1800,7 +1758,6 @@ func TestGenerateHoneypotDisabledSkipped(t *testing.T) {
 }
 
 func TestGenerateHoneypotWithEqOperator(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Single path", Type: "honeypot", Conditions: []Condition{
@@ -1815,7 +1772,6 @@ func TestGenerateHoneypotWithEqOperator(t *testing.T) {
 }
 
 func TestGenerateHoneypotMixedWithQuickActions(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{Name: "Allow trusted IP", Type: "allow", Conditions: []Condition{

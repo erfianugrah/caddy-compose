@@ -366,13 +366,20 @@ func (s *CSPStore) ResolvePolicy(service string) (CSPPolicy, CSPServiceConfig) {
 }
 
 func (s *CSPStore) deepCopy() CSPConfig {
-	data, _ := json.Marshal(s.cfg)
-	var copy CSPConfig
-	json.Unmarshal(data, &copy)
-	if copy.Services == nil {
-		copy.Services = make(map[string]CSPServiceConfig)
+	data, err := json.Marshal(s.cfg)
+	if err != nil {
+		log.Printf("warning: CSP deepCopy marshal failed: %v", err)
+		return CSPConfig{Services: make(map[string]CSPServiceConfig)}
 	}
-	return copy
+	var cp CSPConfig
+	if err := json.Unmarshal(data, &cp); err != nil {
+		log.Printf("warning: CSP deepCopy unmarshal failed: %v", err)
+		return CSPConfig{Services: make(map[string]CSPServiceConfig)}
+	}
+	if cp.Services == nil {
+		cp.Services = make(map[string]CSPServiceConfig)
+	}
+	return cp
 }
 
 func (s *CSPStore) saveLocked() error {

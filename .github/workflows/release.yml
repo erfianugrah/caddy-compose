@@ -21,7 +21,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           # Find the previous tag (if any)
-          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -1)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | grep -v "^${TAG}$" | head -1)
           if [ -n "$PREV_TAG" ]; then
             RANGE="${PREV_TAG}..${TAG}"
             echo "Generating notes for ${RANGE}"

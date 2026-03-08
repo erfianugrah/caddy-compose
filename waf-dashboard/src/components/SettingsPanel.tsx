@@ -200,9 +200,13 @@ export default function SettingsPanel() {
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text) as WAFConfig;
-        if (data.defaults) setDefaults(data.defaults);
-        if (data.services) setServiceOverrides(data.services);
+        const data = JSON.parse(text);
+        if (!data || typeof data !== "object" || (!data.defaults && !data.services)) {
+          throw new Error("Invalid config: must contain 'defaults' or 'services'");
+        }
+        const typed = data as WAFConfig;
+        if (typed.defaults) setDefaults(typed.defaults);
+        if (typed.services) setServiceOverrides(typed.services);
         setDirty(true);
         showSuccess("Configuration imported — save or deploy to apply");
       } catch (err: unknown) {

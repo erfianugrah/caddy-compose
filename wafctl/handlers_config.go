@@ -50,7 +50,6 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		exclusions := es.EnabledExclusions()
-		ResetRuleIDCounter()
 		result := GenerateConfigs(cfg, exclusions)
 		// Include WAF settings in the response.
 		wafSettings := GenerateWAFSettings(cfg)
@@ -68,7 +67,6 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := cs.Get()
 		exclusions := es.EnabledExclusions()
-		ResetRuleIDCounter()
 		result := GenerateConfigs(cfg, exclusions)
 		wafSettings := GenerateWAFSettings(cfg)
 
@@ -77,8 +75,8 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 		// Also check for self-referencing rule IDs.
 		selfRefWarnings := validateGeneratedRuleIDs(exclusions)
 		vr.Warnings = append(vr.Warnings, selfRefWarnings...)
-		for _, w := range selfRefWarnings {
-			if w.Level == "error" {
+		for _, warn := range selfRefWarnings {
+			if warn.Level == "error" {
 				vr.Valid = false
 			}
 		}
@@ -103,7 +101,6 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, d
 		defer deployMu.Unlock()
 		cfg := cs.Get()
 		exclusions := es.EnabledExclusions()
-		ResetRuleIDCounter()
 		result := GenerateConfigs(cfg, exclusions)
 		wafSettings := GenerateWAFSettings(cfg)
 

@@ -89,7 +89,6 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	// WAF config: generate exclusion rules + WAF settings.
 	cfg := cs.Get()
 	exclusions := es.EnabledExclusions()
-	ResetRuleIDCounter()
 	result := GenerateConfigs(cfg, exclusions)
 	wafSettings := GenerateWAFSettings(cfg)
 

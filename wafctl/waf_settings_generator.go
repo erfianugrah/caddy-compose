@@ -88,7 +88,7 @@ func GenerateWAFSettings(cfg WAFConfig) string {
 	// Default disabled groups.
 	for _, tag := range d.DisabledGroups {
 		b.WriteString(fmt.Sprintf("SecAction \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleRemoveByTag=%s\"\n",
-			idGen.next(), tag))
+			idGen.next(), escapeSecRuleValue(tag)))
 	}
 	if len(d.DisabledGroups) > 0 {
 		b.WriteString("\n")
@@ -297,7 +297,7 @@ func writeServiceOverride(b *strings.Builder, host string, ss, defaults WAFServi
 
 	for _, tag := range extraGroups {
 		b.WriteString(fmt.Sprintf("SecRule SERVER_NAME \"@streq %s\" \"id:%s,phase:1,pass,t:none,nolog,ctl:ruleRemoveByTag=%s\"\n",
-			escapedHost, idGen.next(), tag))
+			escapedHost, idGen.next(), escapeSecRuleValue(tag)))
 	}
 
 	b.WriteString("\n")

@@ -637,9 +637,3 @@ func (g *ruleIDGen) next() string {
 func (g *ruleIDGen) peek() string {
 	return fmt.Sprintf("95%05d", g.counter+1)
 }
-
-// ResetRuleIDCounter is kept for backward compatibility in tests.
-// It is now a no-op since rule IDs are generated per-invocation.
-func ResetRuleIDCounter() {
-	// no-op: rule IDs are now per-invocation via ruleIDGen
-}

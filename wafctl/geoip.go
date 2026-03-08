@@ -452,16 +452,8 @@ func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
 // where re-derivation is cheap. Caller must hold s.mu write lock.
 func (s *GeoIPStore) evictRandom() {
 	target := geoCacheMaxSize / 4
-	type aged struct {
-		key string
-		ts  time.Time
-	}
-	oldest := make([]aged, 0, len(s.cache))
-	for k, v := range s.cache {
-		oldest = append(oldest, aged{k, v.ts})
-	}
-	// Simple approach: delete entries older than median. For simplicity, just
-	// delete the first `target` entries we find (map iteration is random).
+	// Map iteration order is random in Go, so deleting the first N entries
+	// we encounter is effectively random eviction.
 	deleted := 0
 	for k := range s.cache {
 		if deleted >= target {

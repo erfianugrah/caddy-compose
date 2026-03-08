@@ -63,6 +63,7 @@ type RateLimitEvent struct {
 	Service   string    `json:"service"`
 	Method    string    `json:"method"`
 	URI       string    `json:"uri"`
+	Protocol  string    `json:"protocol,omitempty"` // e.g. "HTTP/2.0"
 	UserAgent string    `json:"user_agent"`
 	Source    string    `json:"source,omitempty"`     // "" = rate_limited, "ipsum" = ipsum_blocked
 	RequestID string    `json:"request_id,omitempty"` // Caddy UUID for cross-log correlation
@@ -373,6 +374,7 @@ func (s *AccessLogStore) Load() {
 						Service:   entry.Request.Host,
 						Method:    entry.Request.Method,
 						URI:       entry.Request.URI,
+						Protocol:  entry.Request.Proto,
 						UserAgent: ua,
 						RequestID: accessLogRequestID(entry),
 					}
@@ -591,7 +593,7 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		Service:        rle.Service,
 		Method:         rle.Method,
 		URI:            rle.URI,
-		Protocol:       "HTTP/2.0", // access log doesn't differentiate per-request; default
+		Protocol:       rle.Protocol,
 		IsBlocked:      true,
 		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,

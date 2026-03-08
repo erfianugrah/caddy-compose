@@ -318,12 +318,13 @@ func extractRuleIDs(content string) ([]string, int) {
 	return ids, len(ids)
 }
 
-// truncate shortens a string to maxLen, appending "..." if truncated.
+// truncate shortens a string to maxLen runes, appending "..." if truncated.
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // ─── Deploy-time Validation Logging ────────────────────────────────

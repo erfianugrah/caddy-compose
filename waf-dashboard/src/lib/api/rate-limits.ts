@@ -4,7 +4,16 @@ import type { Condition, GroupOperator } from "./exclusions";
 // ─── Rate Limit Rules (Policy Engine) ───────────────────────────────
 
 export type RLRuleAction = "deny" | "log_only";
-export type RLRuleKey = "client_ip" | string; // "client_ip", "header:X-API-Key", etc.
+export type RLRuleKey =
+  | "client_ip"
+  | "path"
+  | "static"
+  | "client_ip+path"
+  | "client_ip+method"
+  | `header:${string}`
+  | `cookie:${string}`
+  | `body_json:${string}`
+  | `body_form:${string}`;
 
 export interface RateLimitRule {
   id: string;

@@ -122,13 +122,15 @@ func (bs *BlocklistStore) parseFile() {
 }
 
 // ensureLoaded re-parses the file if the cache has expired.
+// Uses CompareAndSwap to prevent thundering-herd redundant parses.
 func (bs *BlocklistStore) ensureLoaded() {
 	bs.mu.RLock()
 	stale := time.Since(bs.lastLoad) > bs.cacheTTL
 	bs.mu.RUnlock()
 
-	if stale {
+	if stale && bs.refreshing.CompareAndSwap(false, true) {
 		bs.parseFile()
+		bs.refreshing.Store(false)
 	}
 }
 

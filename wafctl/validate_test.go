@@ -387,7 +387,6 @@ func TestHandleValidateConfig_WithConfigs(t *testing.T) {
 // --- Integration: generated config with commas now uses semicolons ---
 
 func TestGenerateConfig_CommasInNameSanitized(t *testing.T) {
-	ResetRuleIDCounter()
 	cfg := defaultConfig()
 	exclusions := []RuleExclusion{
 		{
