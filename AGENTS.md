@@ -64,7 +64,7 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 
 Image tags live in **five places** that must stay in sync:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
-- `compose.yaml` (lines 3 and 117: image fields)
+- `compose.yaml` (lines 3 and 119: image fields)
 - `README.md` (badge/reference)
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
@@ -155,17 +155,18 @@ wafctl tag format: simple semver (e.g. `1.10.0`).
 - Incremental file reading with offset tracking and rotation detection
 - Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
 - One cohesive module per `.go` file, split by domain responsibility
-- **Entry point & routing**: `main.go` (~302 lines) — server setup, CORS middleware, `envOr()`, route registration
+- **Entry point & routing**: `main.go` (~305 lines) — server setup, CORS middleware, `envOr()`, route registration
 - **JSON/query helpers**: `json_helpers.go` — `writeJSON`, `decodeJSON`, `queryInt`; `query_helpers.go` — `parseHours`, `parseTimeRange`, `fieldFilter`, `matchField`
 - **Handler files** (split from main.go): `handlers_events.go` (health/summary/events/services), `handlers_analytics.go` (top IPs/URIs/countries, IP lookup), `handlers_exclusions.go` (exclusion CRUD), `handlers_config.go` (CRS catalog, WAF config, deploy), `handlers_ratelimit.go` (RL rule CRUD + analytics)
 - **Log parser**: `logparser.go` (~564 lines) — Store struct, offset/JSONL persistence, Load, eviction, tailing; `event_parser.go` — `parseEvent`, anomaly score extraction; `waf_summary.go` — `summarizeEvents`; `waf_analytics.go` — services/IP/top-N analytics
-- **Models** (split by domain): `models.go` (~384 lines) — CRS scoring, audit log types, summary/analytics types; `models_exclusions.go` — Condition, RuleExclusion, WAFConfig; `models_ratelimit.go` — rate limit types; `models_general_logs.go` — general log types
+- **Models** (split by domain): `models.go` (~454 lines) — CRS scoring, audit log types, summary/analytics types; `models_exclusions.go` — Condition, RuleExclusion, WAFConfig; `models_ratelimit.go` — rate limit types; `models_general_logs.go` — general log types
 - **Config generation**: `generator.go` (~637 lines) — SecRule exclusion generation; `waf_settings_generator.go` — WAF settings generation
-- **Access log store**: `access_log_store.go` (~576 lines) — AccessLogStore struct, persistence, Load, snapshots (split from rl_analytics.go)
+- **Access log store**: `access_log_store.go` (~593 lines) — AccessLogStore struct, persistence, Load, snapshots (split from rl_analytics.go)
 - **Rate limit analytics**: `rl_analytics.go` (~373 lines) — regex cache, summary, filtered events, rule hits, condition matching
 - **Rate limit advisor**: `rl_advisor.go` (~807 lines) — algorithm/computation; `rl_advisor_types.go` — types, models, cache
-- **General logs**: `general_logs.go` (~453 lines) — store code; `general_logs_handlers.go` (~515 lines) — handlers + aggregation
-- **Domain stores** (unchanged): `exclusions.go` (550), `rl_rules.go` (561), `geoip.go` (686), `csp.go` (541), `csp_generator.go`, `rl_generator.go` (616), `blocklist.go` (375), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cli.go` (953), `cfproxy.go`, `crs_rules.go`
+- **General logs**: `general_logs.go` (~477 lines) — store code; `general_logs_handlers.go` (~515 lines) — handlers + aggregation
+- **IP intelligence**: `ip_intel.go` (~642 lines) — BGP routing, RPKI validation, reputation, Shodan enrichment; `tls_helpers.go` (38 lines) — TLS version/cipher suite name helpers
+- **Domain stores**: `exclusions.go` (550), `rl_rules.go` (561), `geoip.go` (903), `csp.go` (541), `csp_generator.go`, `rl_generator.go` (616), `blocklist.go` (370), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cli.go` (949), `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
 
@@ -441,7 +442,7 @@ Components over ~500 lines are split into feature subdirectories following the `
 - `csp/` — `constants`, `CSPSourceInput`, `DirectiveEditor`, `PreviewPanel`
 - `events/` — `helpers`, `EventDetailPanel`
 - `filters/` — `types`, `constants`, `filterUtils`
-- `logs/` — `helpers`, `LogStreamTab`, `SummaryTab`, `HeaderComplianceTab`
+- `logs/` — `helpers`, `LogDetailPanel`, `LogStreamTab`, `SummaryTab`, `HeaderComplianceTab`
 - `overview/` — `helpers` (chart formatting, tick renderers, deep-link builders)
 - `policy/` — `ConditionBuilder`, `CRSRulePicker`, `PolicyForms`, `TagInputs`, `constants`, `eventPrefill`, `exclusionHelpers`
 - `ratelimits/` — `constants`, `helpers`, `RuleForm`, `GlobalSettingsPanel`, `advisorConstants`, `AdvisorClientTable`, `AdvisorRecommendations`
@@ -554,7 +555,7 @@ Non-empty override directive slices replace the base; empty slices keep the base
 
 | Aspect | Pattern |
 |--------|---------|
-| Store file | `/data/csp.json` (`WAF_CSP_FILE`) |
+| Store file | `/data/csp-config.json` (`WAF_CSP_FILE`) |
 | Output dir (wafctl) | `/data/csp/` (`WAF_CSP_DIR`) |
 | Output dir (Caddy) | `/data/caddy/csp/` |
 | File naming | `<service>_csp.caddy` |
@@ -575,15 +576,16 @@ proxied apps and Astro hydration.
 | Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris`, `GET /api/analytics/top-countries` |
 | IP Lookup | `GET /api/lookup/{ip}` |
 | Exclusions | `GET\|POST /api/exclusions`, `GET\|PUT\|DELETE /api/exclusions/{id}` |
-| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits` |
+| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits`, `PUT /api/exclusions/reorder` |
 | CRS | `GET /api/crs/rules`, `GET /api/crs/autocomplete` |
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/validate`, `POST /api/config/deploy` |
 | RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
-| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
+| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits`, `PUT /api/rate-rules/reorder` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
+| CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ## Caddy Body Matcher Plugin (github.com/erfianugrah/caddy-body-matcher)
@@ -660,8 +662,8 @@ directive. The handler must run first so placeholders are populated for bucket k
 
 ## Test Patterns
 
-### Go (950 tests across 20 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `testhelpers_test.go`
+### Go (1055 tests across 22 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -669,10 +671,10 @@ directive. The handler must run first so placeholders are populated for bucket k
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (292 tests across 13 files)
+### Frontend (295 tests across 13 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (11), `analytics.test.ts` (10), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
+- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (11), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
 - Component tests: `DashboardFilterBar.test.ts` (63)
 - Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (34), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
 
@@ -795,7 +797,7 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
 - `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for RL auto-discovery
-- `WAF_CSP_FILE` (default `/data/csp.json`) — CSP configuration store path
+- `WAF_CSP_FILE` (default `/data/csp-config.json`) — CSP configuration store path
 - `WAF_CSP_DIR` (default `/data/csp/`) — output directory for generated CSP config files
 - `WAF_GENERAL_LOG_FILE` (default `/data/general-events.jsonl`) — JSONL persistence for general log events
 - `WAF_GENERAL_LOG_OFFSET_FILE` (default `/data/.general-log-offset`) — persists general log read offset across restarts

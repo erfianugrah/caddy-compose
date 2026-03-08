@@ -826,21 +826,17 @@ func cliBlocklistStats(flags cliFlags) int {
 		return 0
 	}
 
-	var stats struct {
-		TotalIPs int    `json:"total_ips"`
-		Updated  string `json:"updated"`
-		FilePath string `json:"file_path"`
-		FileSize int64  `json:"file_size"`
-	}
+	var stats BlocklistStatsResponse
 	if err := json.Unmarshal(data, &stats); err != nil {
 		printJSON(data)
 		return 0
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(tw, "Total IPs:\t%d\n", stats.TotalIPs)
-	fmt.Fprintf(tw, "Updated:\t%s\n", stats.Updated)
+	fmt.Fprintf(tw, "Blocked IPs:\t%d\n", stats.BlockedIPs)
+	fmt.Fprintf(tw, "Min Score:\t%d\n", stats.MinScore)
+	fmt.Fprintf(tw, "Source:\t%s\n", stats.Source)
+	fmt.Fprintf(tw, "Updated:\t%s\n", stats.LastUpdated)
 	fmt.Fprintf(tw, "File:\t%s\n", stats.FilePath)
-	fmt.Fprintf(tw, "File Size:\t%d bytes\n", stats.FileSize)
 	tw.Flush()
 	return 0
 }

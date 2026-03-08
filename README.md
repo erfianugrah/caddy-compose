@@ -153,7 +153,7 @@ The `.env` file and `authelia/users_database.yml` are SOPS-encrypted with age. A
 Image tags must stay in sync across five files:
 
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
-- `compose.yaml` (lines 3 and 117: image fields)
+- `compose.yaml` (lines 3 and 119: image fields)
 - `test/docker-compose.test.yml` (line 3: caddy image)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
@@ -214,6 +214,8 @@ The dashboard is an Astro 5 + React 19 static site served by Caddy, protected by
 - **Policy Engine** — CRUD for WAF exclusions (allow, block, skip, honeypot, raw SecRule, and various CRS removal types). Condition builder with AND/OR logic. CRS rule catalog picker. Sparkline hit charts per rule.
 - **Rate Limits** — condition-based rate limiting policy engine with per-path/method/header matching, flexible rate keys, auto-deploy, sparkline hit charts, import/export. Includes a **Rate Advisor** tab with statistical anomaly detection (MAD, Fano factor, IQR) that analyzes real traffic patterns and recommends rules with one-click creation. Global settings panel for jitter, sweep interval, and distributed rate limiting.
 - **Blocklist** — IPsum threat intelligence stats, per-IP lookup, on-demand refresh.
+- **CSP** — per-service Content Security Policy management with directive editor, source input, live preview, set/default/none modes, report-only, global enable/disable.
+- **Logs** — general Caddy log viewer with stream tab, summary aggregation, and header compliance analysis.
 - **Services** — per-service stats, top URIs, top triggered rules.
 - **Investigate** — top blocked IPs, top URIs, top countries, IP lookup with GeoIP resolution.
 - **Settings** — global and per-service WAF settings including full CRS v4 coverage (paranoia levels, anomaly thresholds, mode, allowed methods, content types, argument limits, file limits, blocked extensions, HTTP versions, restricted headers, CRS exclusion profiles). All fields have tooltips explaining their purpose. Deploy button with step-by-step progress.
@@ -272,14 +274,16 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris`, `GET /api/analytics/top-countries` |
 | IP Lookup | `GET /api/lookup/{ip}` |
 | Exclusions | `GET\|POST /api/exclusions`, `GET\|PUT\|DELETE /api/exclusions/{id}` |
-| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits` |
+| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits`, `PUT /api/exclusions/reorder` |
 | CRS | `GET /api/crs/rules`, `GET /api/crs/autocomplete` |
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/validate`, `POST /api/config/deploy` |
 | RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
-| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits` |
+| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits`, `PUT /api/rate-rules/reorder` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
+| General Logs | `GET /api/logs`, `GET /api/logs/summary` |
+| CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ### Environment variables
@@ -308,8 +312,12 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_AUDIT_OFFSET_FILE` | `/data/.audit-log-offset` | Persists audit log read offset across restarts |
 | `WAF_ACCESS_OFFSET_FILE` | `/data/.access-log-offset` | Persists access log read offset across restarts |
 | `WAF_CADDYFILE_PATH` | `/data/Caddyfile` | Path to Caddyfile for RL auto-discovery |
-| `WAF_CSP_FILE` | `/data/csp.json` | CSP configuration store path |
+| `WAF_CSP_FILE` | `/data/csp-config.json` | CSP configuration store path |
 | `WAF_CSP_DIR` | `/data/csp/` | Output dir for generated CSP config files |
+| `WAF_GENERAL_LOG_FILE` | `/data/general-events.jsonl` | JSONL persistence for general log events |
+| `WAF_GENERAL_LOG_OFFSET_FILE` | `/data/.general-log-offset` | Persists general log read offset across restarts |
+| `WAF_GENERAL_LOG_MAX_AGE` | `168h` (7 days) | Retention period for general log events |
+| `WAF_BLOCKLIST_REFRESH_HOUR` | `6` | UTC hour (0–23) for daily IPsum blocklist refresh |
 
 ## Site block patterns
 
@@ -449,8 +457,8 @@ The CI pipeline (GitHub Actions) includes:
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (817 tests across 16 files)
-make test-frontend     # Vitest frontend tests (279 tests across 6 files)
+make test-go           # Go tests only (1055 tests across 22 files)
+make test-frontend     # Vitest frontend tests (295 tests across 13 files)
 ```
 
 Run a single test:
@@ -485,23 +493,47 @@ caddy-compose/
     rotate-audit-log.sh  # Hourly audit log rotation (256 MB copytruncate)
     update-geoip.sh      # GeoIP database updater (manual)
   wafctl/                # Go sidecar (zero external dependencies)
-    main.go              # HTTP handlers, routes, filter system
+    main.go              # Server setup, CORS middleware, route registration
     cli.go               # CLI subcommand framework
-    models.go            # Data models (WAF, RL, exclusion, event types)
+    models.go            # Core data models (CRS scoring, audit log, summary types)
+    models_exclusions.go # Condition, RuleExclusion, WAFConfig types
+    models_ratelimit.go  # Rate limit types
+    models_general_logs.go # General log types
     config.go            # WAF config store (CRS v4 extended settings)
     exclusions.go        # Policy engine exclusion store + shared condition validation
     generator.go         # SecRule generation (chained rules, ctl: placement, CRS v4 setvar)
+    waf_settings_generator.go # WAF settings config generation
     validate.go          # Config validation engine (quote balance, self-ref, msg commas)
-    logparser.go         # Audit log parser, event summarization
+    logparser.go         # Audit log parser, offset/JSONL persistence, eviction
+    event_parser.go      # parseEvent, anomaly score extraction
+    waf_summary.go       # summarizeEvents
+    waf_analytics.go     # Services/IP/top-N analytics
+    access_log_store.go  # AccessLogStore struct, persistence, snapshots
+    handlers_events.go   # Health/summary/events/services handlers
+    handlers_analytics.go # Top IPs/URIs/countries, IP lookup handlers
+    handlers_exclusions.go # Exclusion CRUD handlers
+    handlers_config.go   # CRS catalog, WAF config, deploy handlers
+    handlers_ratelimit.go # RL rule CRUD + analytics handlers
+    json_helpers.go      # writeJSON, decodeJSON, queryInt
+    query_helpers.go     # parseHours, parseTimeRange, fieldFilter
     rl_rules.go          # Rate limit rule store (CRUD, validation, v1 migration)
     rl_generator.go      # Rate limit Caddy config generator (matchers, keys)
-    rl_analytics.go      # Access log parser, condition-based 429 attribution
+    rl_analytics.go      # Rate limit analytics, condition-based 429 attribution
     rl_advisor.go        # Rate advisor (anomaly detection, caching, baselines)
+    rl_advisor_types.go  # Rate advisor types, models, cache
     deploy.go            # Deploy pipeline (write + fingerprint + reload)
     blocklist.go         # IPsum blocklist management
     geoip.go             # Pure-Go MMDB reader, GeoIP resolution
+    ip_intel.go          # BGP routing, RPKI validation, reputation, Shodan enrichment
+    tls_helpers.go       # TLS version/cipher suite name helpers
     crs_rules.go         # CRS rule catalog (141 rules, 11 categories)
-    *_test.go            # 16 test files (817 tests)
+    csp.go               # CSP store (CRUD, validation, header builder)
+    csp_generator.go     # CSP Caddy config generator
+    general_logs.go      # General log store
+    general_logs_handlers.go # General log handlers + aggregation
+    cfproxy.go           # Cloudflare proxy stats/refresh
+    cache.go             # In-memory cache (24h/100k entries)
+    *_test.go            # 22 test files (1055 tests)
     Dockerfile           # Standalone wafctl image
     go.mod
   waf-dashboard/         # Astro 5 + React 19 + shadcn/ui frontend
@@ -514,8 +546,18 @@ caddy-compose/
         policy/          # Policy engine sub-modules
         ui/              # shadcn/ui primitives
       lib/
-        api.ts           # API client with snake_case -> camelCase mapping
-      pages/             # Astro file-based routing (8 pages)
+        api/             # API client modules (split by domain)
+          shared.ts      # HTTP helpers (fetchJSON, postJSON, etc.), FilterOp, SummaryParams
+          waf-events.ts  # Summary, WAFEvent, fetchSummary, fetchEvents
+          analytics.ts   # IP lookup, top IPs/URIs/countries
+          exclusions.ts  # Exclusion types, CRS types, CRUD
+          config.ts      # WAFConfig, presets
+          rate-limits.ts # Rate limit rule types, CRUD, advisor
+          blocklist.ts   # Blocklist types and functions
+          csp.ts         # CSP types and functions
+          general-logs.ts # General log types and functions
+          index.ts       # Barrel re-export
+      pages/             # Astro file-based routing (10 pages)
     package.json
     astro.config.mjs
     vitest.config.ts
