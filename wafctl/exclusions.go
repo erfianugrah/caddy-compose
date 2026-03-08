@@ -122,10 +122,23 @@ func generateUUIDv7() string {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+// currentStoreVersion is the latest store schema version.
+// Increment this and add a migration function when changing the store format
+// or adding default seed rules.
+const currentStoreVersion = 1
+
+// storeFile is the versioned on-disk format for the exclusions store.
+// Legacy stores (bare JSON arrays) are detected and migrated on load.
+type storeFile struct {
+	Version    int             `json:"version"`
+	Exclusions []RuleExclusion `json:"exclusions"`
+}
+
 // ExclusionStore manages rule exclusions with file-backed persistence.
 type ExclusionStore struct {
 	mu         sync.RWMutex
 	exclusions []RuleExclusion
+	version    int
 	filePath   string
 }
 
@@ -136,34 +149,90 @@ func NewExclusionStore(filePath string) *ExclusionStore {
 	return s
 }
 
-// load reads exclusions from the JSON file on disk.
+// storeMigration defines a single version migration step.
+type storeMigration struct {
+	toVersion int
+	name      string
+	migrate   func(exclusions []RuleExclusion) []RuleExclusion
+}
+
+// storeMigrations is the ordered list of migrations. Each runs once when the
+// store version is below its toVersion.
+var storeMigrations = []storeMigration{
+	{toVersion: 1, name: "seed heuristic bot rules", migrate: migrateV0toV1},
+}
+
+// load reads exclusions from the JSON file on disk. Handles both legacy
+// bare-array format (v0) and versioned storeFile format.
 func (s *ExclusionStore) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("exclusions file not found at %s, starting empty", s.filePath)
+			log.Printf("exclusions file not found at %s, seeding defaults", s.filePath)
 			s.exclusions = []RuleExclusion{}
+			s.version = 0
+			s.runMigrations()
 			return
 		}
 		log.Printf("error reading exclusions file: %v", err)
 		s.exclusions = []RuleExclusion{}
+		s.version = currentStoreVersion
 		return
 	}
 
+	// Try versioned format first.
+	var sf storeFile
+	if err := json.Unmarshal(data, &sf); err == nil && sf.Version > 0 {
+		s.exclusions = sf.Exclusions
+		s.version = sf.Version
+		log.Printf("loaded %d exclusions from %s (store v%d)", len(sf.Exclusions), s.filePath, sf.Version)
+		s.runMigrations()
+		return
+	}
+
+	// Fall back to legacy bare-array format (v0).
 	var exclusions []RuleExclusion
 	if err := json.Unmarshal(data, &exclusions); err != nil {
 		log.Printf("error parsing exclusions file: %v", err)
 		s.exclusions = []RuleExclusion{}
+		s.version = currentStoreVersion
 		return
 	}
 
 	s.exclusions = exclusions
-	log.Printf("loaded %d exclusions from %s", len(exclusions), s.filePath)
+	s.version = 0
+	log.Printf("loaded %d exclusions from %s (legacy format, migrating)", len(exclusions), s.filePath)
+	s.runMigrations()
 }
 
-// save writes the current exclusions to the JSON file atomically.
+// runMigrations applies any pending migrations and saves if changes were made.
+func (s *ExclusionStore) runMigrations() {
+	if s.version >= currentStoreVersion {
+		return
+	}
+	for _, m := range storeMigrations {
+		if s.version < m.toVersion {
+			before := len(s.exclusions)
+			s.exclusions = m.migrate(s.exclusions)
+			after := len(s.exclusions)
+			s.version = m.toVersion
+			log.Printf("migration v%d (%s): %d → %d exclusions", m.toVersion, m.name, before, after)
+		}
+	}
+	s.version = currentStoreVersion
+	if err := s.save(); err != nil {
+		log.Printf("error saving after migration: %v", err)
+	}
+}
+
+// save writes the current exclusions to the JSON file atomically
+// using the versioned storeFile format.
 func (s *ExclusionStore) save() error {
-	data, err := json.MarshalIndent(s.exclusions, "", "  ")
+	sf := storeFile{
+		Version:    currentStoreVersion,
+		Exclusions: s.exclusions,
+	}
+	data, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling exclusions: %w", err)
 	}
@@ -171,6 +240,73 @@ func (s *ExclusionStore) save() error {
 		return fmt.Errorf("error writing exclusions file: %w", err)
 	}
 	return nil
+}
+
+// ─── Store Migrations ──────────────────────────────────────────────
+
+// migrateV0toV1 seeds the default heuristic bot detection rules that were
+// previously baked into coraza/pre-crs.conf. These become dynamic policy
+// engine rules so they can be tuned, disabled, or extended at runtime.
+func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
+	now := time.Now().UTC()
+
+	// Scanner UA block — hard block known attack tools.
+	// Equivalent to old rule 9100032 (@pmFromFile scanner-useragents.txt).
+	scannerUAs := "sqlmap havij nikto nuclei acunetix nessus qualys arachni whatweb wapiti " +
+		"skipfish gobuster dirbuster dirb ffuf wfuzz feroxbuster nmap masscan zgrab censys " +
+		"shodan netcraft burpsuite burp zaproxy zap httprobe subfinder amass httpx"
+
+	// Generic UA anomaly — default library UAs get +5 anomaly.
+	// Equivalent to old rule 9100035 (@pmFromFile generic-useragents.txt).
+	genericUAs := "python-requests go-http-client libwww-perl lwp-trivial wget curl/ mechanize scrapy"
+
+	seeds := []RuleExclusion{
+		{
+			ID:          generateUUIDv7(),
+			Name:        "Scanner UA Block",
+			Description: "Block known scanner/attack tool User-Agents (sqlmap, nikto, nuclei, etc.)",
+			Type:        "block",
+			Conditions: []Condition{
+				{Field: "user_agent", Operator: "in", Value: scannerUAs},
+			},
+			GroupOp:   "and",
+			Enabled:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:          generateUUIDv7(),
+			Name:        "HTTP/1.0 Anomaly",
+			Description: "+2 anomaly for HTTP/1.0 — modern clients use HTTP/1.1 or HTTP/2",
+			Type:        "anomaly",
+			Conditions: []Condition{
+				{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
+			},
+			GroupOp:              "and",
+			AnomalyScore:         2,
+			AnomalyParanoiaLevel: 1,
+			Enabled:              true,
+			CreatedAt:            now,
+			UpdatedAt:            now,
+		},
+		{
+			ID:          generateUUIDv7(),
+			Name:        "Generic UA Anomaly",
+			Description: "+5 anomaly for generic HTTP library User-Agents (python-requests, curl/, etc.)",
+			Type:        "anomaly",
+			Conditions: []Condition{
+				{Field: "user_agent", Operator: "in", Value: genericUAs},
+			},
+			GroupOp:              "and",
+			AnomalyScore:         5,
+			AnomalyParanoiaLevel: 1,
+			Enabled:              true,
+			CreatedAt:            now,
+			UpdatedAt:            now,
+		},
+	}
+
+	return append(exclusions, seeds...)
 }
 
 // List returns all exclusions.

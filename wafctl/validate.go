@@ -362,7 +362,7 @@ func validateGeneratedRuleIDs(exclusions []RuleExclusion) []RuleWarning {
 
 	for _, e := range filterExclusions(exclusions, true) {
 		switch e.Type {
-		case "allow", "block", "skip_rule":
+		case "allow", "block", "skip_rule", "anomaly":
 			// These types consume one ID per condition group.
 			if len(e.Conditions) == 0 {
 				continue

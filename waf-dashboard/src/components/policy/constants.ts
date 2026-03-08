@@ -99,6 +99,7 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "eq", label: "equals" },
       { value: "contains", label: "contains" },
       { value: "regex", label: "matches regex" },
+      { value: "in", label: "is in (substring match)" },
     ],
     placeholder: "e.g., BadBot.*, curl/.*",
   },

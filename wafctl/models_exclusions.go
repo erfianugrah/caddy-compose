@@ -201,7 +201,7 @@ var validOperatorsForField = map[string]map[string]bool{
 		"eq": true, "neq": true, "in": true,
 	},
 	"user_agent": {
-		"eq": true, "contains": true, "regex": true,
+		"eq": true, "contains": true, "regex": true, "in": true,
 	},
 	"header": {
 		"eq": true, "contains": true, "regex": true,

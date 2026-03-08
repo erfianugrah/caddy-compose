@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -96,6 +97,9 @@ func TestExclusionStoreDeleteNotFound(t *testing.T) {
 func TestExclusionStorePersistence(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
+
+	// Pre-write versioned empty store to skip seed migrations.
+	os.WriteFile(path, []byte(`{"version":1,"exclusions":[]}`), 0644)
 
 	es1 := NewExclusionStore(path)
 	_, err := es1.Create(RuleExclusion{
@@ -992,5 +996,191 @@ func TestMatchesPolicyRuleNameFilter_MultiplePolicy(t *testing.T) {
 	f2 := parseFieldFilter("Block bad bots,Other rule", "in")
 	if !matchesPolicyRuleNameFilter(&ev, f2) {
 		t.Error("expected in match for 'Block bad bots'")
+	}
+}
+
+// ─── Store Migration Tests ─────────────────────────────────────────
+
+func TestStoreMigrationFromEmptyFile(t *testing.T) {
+	// No file on disk → should seed heuristic rules via migration v1.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	es := NewExclusionStore(path)
+	rules := es.List()
+
+	if len(rules) != 3 {
+		t.Fatalf("expected 3 seed rules, got %d", len(rules))
+	}
+
+	// Verify the seed rules by name.
+	names := map[string]bool{}
+	for _, r := range rules {
+		names[r.Name] = true
+	}
+	for _, expected := range []string{"Scanner UA Block", "HTTP/1.0 Anomaly", "Generic UA Anomaly"} {
+		if !names[expected] {
+			t.Errorf("missing seed rule %q", expected)
+		}
+	}
+
+	// Verify Scanner UA Block is a block type with user_agent in condition.
+	for _, r := range rules {
+		if r.Name == "Scanner UA Block" {
+			if r.Type != "block" {
+				t.Errorf("Scanner UA Block: want type block, got %s", r.Type)
+			}
+			if len(r.Conditions) != 1 || r.Conditions[0].Field != "user_agent" || r.Conditions[0].Operator != "in" {
+				t.Errorf("Scanner UA Block: unexpected conditions: %+v", r.Conditions)
+			}
+			if !strings.Contains(r.Conditions[0].Value, "sqlmap") {
+				t.Error("Scanner UA Block: condition value should contain sqlmap")
+			}
+		}
+	}
+
+	// Verify file was saved in versioned format.
+	data, _ := os.ReadFile(path)
+	var sf storeFile
+	if err := json.Unmarshal(data, &sf); err != nil {
+		t.Fatalf("saved file is not valid versioned format: %v", err)
+	}
+	if sf.Version != currentStoreVersion {
+		t.Errorf("saved version: want %d, got %d", currentStoreVersion, sf.Version)
+	}
+	if len(sf.Exclusions) != 3 {
+		t.Errorf("saved exclusions: want 3, got %d", len(sf.Exclusions))
+	}
+}
+
+func TestStoreMigrationFromLegacyArray(t *testing.T) {
+	// Legacy bare-array format → should migrate to versioned + add seed rules.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	// Write a legacy bare-array with one existing rule.
+	legacy := []RuleExclusion{{
+		ID:      "existing-1",
+		Name:    "Existing rule",
+		Type:    "remove_by_id",
+		RuleID:  "920420",
+		Enabled: true,
+	}}
+	data, _ := json.Marshal(legacy)
+	os.WriteFile(path, data, 0644)
+
+	es := NewExclusionStore(path)
+	rules := es.List()
+
+	// Should have 1 existing + 3 seeded = 4 rules.
+	if len(rules) != 4 {
+		t.Fatalf("expected 4 rules (1 existing + 3 seeded), got %d", len(rules))
+	}
+
+	// Existing rule should be preserved.
+	if rules[0].ID != "existing-1" || rules[0].Name != "Existing rule" {
+		t.Errorf("existing rule not preserved: got %+v", rules[0])
+	}
+
+	// File should now be versioned format.
+	saved, _ := os.ReadFile(path)
+	var sf storeFile
+	json.Unmarshal(saved, &sf)
+	if sf.Version != currentStoreVersion {
+		t.Errorf("saved version after migration: want %d, got %d", currentStoreVersion, sf.Version)
+	}
+}
+
+func TestStoreMigrationSkipsWhenCurrent(t *testing.T) {
+	// Already at current version → no migration, no seed rules added.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	sf := storeFile{Version: currentStoreVersion, Exclusions: []RuleExclusion{}}
+	data, _ := json.MarshalIndent(sf, "", "  ")
+	os.WriteFile(path, data, 0644)
+
+	es := NewExclusionStore(path)
+	rules := es.List()
+
+	if len(rules) != 0 {
+		t.Fatalf("expected 0 rules for current-version empty store, got %d", len(rules))
+	}
+}
+
+func TestStoreMigrationIdempotent(t *testing.T) {
+	// Load twice — second load should not re-add seed rules.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	// First load: seeds rules.
+	es1 := NewExclusionStore(path)
+	count1 := len(es1.List())
+	if count1 != 3 {
+		t.Fatalf("first load: expected 3 seed rules, got %d", count1)
+	}
+
+	// Second load: reads versioned file, no migration.
+	es2 := NewExclusionStore(path)
+	count2 := len(es2.List())
+	if count2 != 3 {
+		t.Fatalf("second load: expected 3 rules (no re-seeding), got %d", count2)
+	}
+}
+
+func TestMigrateV0toV1SeedRules(t *testing.T) {
+	// Unit test the migration function directly.
+	existing := []RuleExclusion{
+		{ID: "x1", Name: "Existing", Type: "allow", Enabled: true},
+	}
+	result := migrateV0toV1(existing)
+
+	if len(result) != 4 {
+		t.Fatalf("expected 4 rules (1 existing + 3 seeds), got %d", len(result))
+	}
+
+	// First rule should be the existing one.
+	if result[0].ID != "x1" {
+		t.Error("existing rule should be preserved at index 0")
+	}
+
+	// Verify seed rule types.
+	types := map[string]string{}
+	for _, r := range result[1:] {
+		types[r.Name] = r.Type
+	}
+	if types["Scanner UA Block"] != "block" {
+		t.Errorf("Scanner UA Block: want type block, got %s", types["Scanner UA Block"])
+	}
+	if types["HTTP/1.0 Anomaly"] != "anomaly" {
+		t.Errorf("HTTP/1.0 Anomaly: want type anomaly, got %s", types["HTTP/1.0 Anomaly"])
+	}
+	if types["Generic UA Anomaly"] != "anomaly" {
+		t.Errorf("Generic UA Anomaly: want type anomaly, got %s", types["Generic UA Anomaly"])
+	}
+
+	// Verify anomaly scores.
+	for _, r := range result[1:] {
+		if r.Name == "HTTP/1.0 Anomaly" && r.AnomalyScore != 2 {
+			t.Errorf("HTTP/1.0 Anomaly: want score 2, got %d", r.AnomalyScore)
+		}
+		if r.Name == "Generic UA Anomaly" && r.AnomalyScore != 5 {
+			t.Errorf("Generic UA Anomaly: want score 5, got %d", r.AnomalyScore)
+		}
+	}
+}
+
+func TestValidateExclusionUserAgentIn(t *testing.T) {
+	// The "in" operator should now be valid for user_agent field.
+	e := RuleExclusion{
+		Name: "Scanner UA Block",
+		Type: "block",
+		Conditions: []Condition{
+			{Field: "user_agent", Operator: "in", Value: "sqlmap nikto curl"},
+		},
+		Enabled: true,
+	}
+	if err := validateExclusion(e); err != nil {
+		t.Errorf("user_agent with in operator should be valid: %v", err)
 	}
 }

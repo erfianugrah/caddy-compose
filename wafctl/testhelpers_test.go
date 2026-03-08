@@ -74,6 +74,8 @@ func newTestExclusionStore(t *testing.T) *ExclusionStore {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
+	// Write a current-version empty store to skip seed migrations.
+	os.WriteFile(path, []byte(`{"version":1,"exclusions":[]}`), 0644)
 	return NewExclusionStore(path)
 }
 
