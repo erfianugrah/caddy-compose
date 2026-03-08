@@ -639,3 +639,385 @@ an empty rules file (no-op).
    compilation time and memory matter. IP lists should use a radix tree or sorted
    slice with binary search rather than linear scan of `[]net.IPNet`. String sets
    are already O(1) via `map[string]bool`.
+
+---
+
+## Phase 3: Event Tags — Dynamic Classification
+
+### Problem Statement
+
+Event classification uses a fixed enum (`honeypot`, `scanner`, `ipsum_blocked`, etc.)
+with dedicated counter fields baked into every layer of the stack. Adding or removing
+a category requires changes across ~160 touch points in 13+ files:
+
+- **Go models**: 5 structs × 3 fields each (`Honeypot`, `Scanner`, `IpsumBlocked`)
+- **Go summary**: 3 local struct types, 3 top-level accumulators, 4 switch blocks
+  (each with 3 hardcoded cases), 4 residual calculations, 4 struct literal groups
+- **Go analytics**: 2 local struct types, 2 switch blocks, 2 struct literal groups
+- **Go event parser**: hardcoded rule ID ranges → fixed event type strings
+- **Go handlers**: 4 type-partition maps, 12+ ipsum splitting/merge sites
+- **Frontend types**: 7+ interfaces with `honeypot: number`, `scanner: number`, etc.
+- **Frontend components**: stat cards, chart series, gradients, badges, detail panels
+
+This doesn't scale. When IPsum moves to managed lists, when new blocklist sources
+arrive (AbuseIPDB, Spamhaus), when users create custom categories — each requires
+the same multi-file surgery.
+
+### Solution: Rule Tags → Event Tags → Dynamic Aggregation
+
+Replace the fixed event type sub-classifications with a tag-based system where:
+1. Policy engine rules carry arbitrary tags
+2. Events inherit tags from the rule(s) that matched
+3. Summary/analytics aggregate by tag dynamically
+4. Frontend renders tag breakdowns without hardcoded fields
+
+### Design
+
+#### 3.1 Rule-Level Tags
+
+```go
+type RuleExclusion struct {
+    // ... existing fields ...
+    Tags []string `json:"tags,omitempty"`
+}
+```
+
+Tags are free-form strings. Convention: lowercase, hyphen-separated.
+Examples: `scanner`, `bot-detection`, `honeypot`, `blocklist`, `ipsum`, `generic-ua`.
+
+The seeded heuristic rules get tags:
+- Scanner UA Block → `["scanner", "bot-detection"]`
+- HTTP/1.0 Anomaly → `["bot-signal", "protocol"]`
+- Generic UA Anomaly → `["bot-signal", "generic-ua"]`
+
+Future managed list rules:
+- IPsum blocklist → `["blocklist", "ipsum"]`
+- AbuseIPDB → `["blocklist", "abuseipdb"]`
+- Custom user list → `["blocklist", "my-list-name"]`
+
+#### 3.2 Tags Embedded in SecRule Output
+
+The generator embeds rule tags into SecRule `tag:` actions (Coraza's native tag
+mechanism, already used for CRS tags like `tag:'heuristic'`):
+
+```
+SecRule REQUEST_HEADERS:User-Agent "@pm sqlmap nikto ..." \
+    "id:9500001, ..., \
+    tag:'policy:scanner', \
+    tag:'policy:bot-detection', \
+    ..."
+```
+
+Prefix `policy:` distinguishes user-defined tags from CRS tags. The event parser
+reads `policy:*` tags from `matched_rules[].tags` in the audit log JSON.
+
+For event types sourced from access logs (rate_limited, ipsum_blocked), tags are
+inferred at parse time from the event source rather than from SecRule tags.
+
+#### 3.3 Event-Level Tags
+
+```go
+type WAFEvent struct {
+    // ... existing fields ...
+    Tags []string `json:"tags,omitempty"`
+}
+```
+
+The `EventType` field remains but becomes purely action-based:
+
+| Old EventType | New EventType | Tags |
+|---------------|---------------|------|
+| `honeypot` | `policy_block` | `["honeypot"]` |
+| `scanner` | `policy_block` | `["scanner", "bot-detection"]` |
+| `ipsum_blocked` | `policy_block` (future) | `["blocklist", "ipsum"]` |
+| `policy_block` | `policy_block` | (from rule tags) |
+| `policy_allow` | `policy_allow` | (from rule tags) |
+| `policy_skip` | `policy_skip` | (from rule tags) |
+| `policy_anomaly` | `policy_anomaly` | (from rule tags) |
+| `blocked` | `blocked` | `[]` (CRS blocking, no policy tags) |
+| `logged` | `logged` | `[]` |
+| `rate_limited` | `rate_limited` | (from RL rule tags, future) |
+
+#### 3.4 Dynamic Summary Counters
+
+Replace fixed counter fields with a tag counts map:
+
+```go
+// Before:
+type SummaryResponse struct {
+    TotalEvents    int `json:"total_events"`
+    Blocked        int `json:"blocked"`
+    Logged         int `json:"logged"`
+    IpsumBlocked   int `json:"ipsum_blocked"`
+    HoneypotEvents int `json:"honeypot_events"`
+    ScannerEvents  int `json:"scanner_events"`
+    // ...
+}
+
+// After:
+type SummaryResponse struct {
+    TotalEvents int            `json:"total_events"`
+    Blocked     int            `json:"blocked"`
+    Logged      int            `json:"logged"`
+    TagCounts   map[string]int `json:"tag_counts"`
+    // ...
+}
+```
+
+The summary loop replaces hardcoded switches with:
+
+```go
+for _, tag := range ev.Tags {
+    tagCounts[tag]++
+}
+```
+
+Same pattern for per-hour, per-service, per-client breakdowns:
+
+```go
+// Before:
+type HourCount struct {
+    Hour         string `json:"hour"`
+    Total        int    `json:"total"`
+    Blocked      int    `json:"blocked"`
+    Honeypot     int    `json:"honeypot"`     // gone
+    Scanner      int    `json:"scanner"`      // gone
+    IpsumBlocked int    `json:"ipsum_blocked"` // gone
+    // ...
+}
+
+// After:
+type HourCount struct {
+    Hour      string         `json:"hour"`
+    Total     int            `json:"total"`
+    Blocked   int            `json:"blocked"`
+    TagCounts map[string]int `json:"tag_counts"`
+    // ...
+}
+```
+
+#### 3.5 Frontend Dynamic Rendering
+
+The frontend shifts from hardcoded fields to reading `tag_counts`:
+
+```typescript
+// Before:
+interface SummaryData {
+  honeypot_events: number;
+  scanner_events: number;
+  ipsum_blocked: number;
+}
+
+// After:
+interface SummaryData {
+  tag_counts: Record<string, number>;
+}
+```
+
+**Tag registry** — a frontend config object that maps known tags to display
+properties (color, label, icon). Unknown tags get a default color/label:
+
+```typescript
+const TAG_REGISTRY: Record<string, { label: string; color: string; icon?: Component }> = {
+  scanner:        { label: "Scanner",   color: "#ef4444", icon: Radar },
+  honeypot:       { label: "Honeypot",  color: "#ff6b35", icon: Bug },
+  ipsum:          { label: "IPsum",     color: "#a855f7", icon: Ban },
+  "bot-detection": { label: "Bot Detection", color: "#f59e0b" },
+  "bot-signal":   { label: "Bot Signal", color: "#eab308" },
+  blocklist:      { label: "Blocklist", color: "#a855f7", icon: ShieldBan },
+  // ... user-defined tags get auto-generated colors
+};
+
+function getTagMeta(tag: string) {
+  return TAG_REGISTRY[tag] ?? { label: tag, color: generateColorFromString(tag) };
+}
+```
+
+**Overview dashboard**: Stat cards, donut chart, timeline areas, and bar chart
+series are generated dynamically from `tag_counts` keys instead of hardcoded
+`<StatCard title="Honeypot" ...>` elements.
+
+**EventTypeBadge**: Renders the action-based event type as the primary badge.
+Tags render as secondary pills/chips below or beside the badge.
+
+**EventDetailPanel**: Replaces the three hardcoded detail blocks (honeypot,
+scanner, ipsum) with a generic "Policy Action Details" block that lists the
+matched rule name and its tags.
+
+**DashboardFilterBar**: The `event_type` filter dropdown loses `honeypot`,
+`scanner`, `ipsum_blocked` as options. A new `tag` filter field is added:
+`tag` / `eq` or `in` / `scanner,honeypot` — filters events by tag presence.
+
+#### 3.6 API Query Changes
+
+New query parameter for tag-based filtering:
+
+```
+GET /api/events?tag=scanner
+GET /api/events?tag=scanner,honeypot&tag_op=in
+GET /api/summary?tag=blocklist
+```
+
+The `tag` filter matches any event where `event.Tags` contains the value.
+The `in` operator matches events containing any of the comma-separated tags.
+
+#### 3.7 JSONL Backward Compatibility
+
+Old JSONL events on disk won't have `Tags`. On restore:
+- Events with `EventType == "honeypot"` get `Tags: ["honeypot"]` backfilled
+- Events with `EventType == "scanner"` get `Tags: ["scanner", "bot-detection"]`
+- Events with `EventType == "ipsum_blocked"` get `Tags: ["blocklist", "ipsum"]`
+- All other events get `Tags: []`
+
+This is a one-time migration in `SetEventFile()` / JSONL restore, similar to
+the existing `policy_skip` → `blocked` reclassification migration.
+
+#### 3.8 Rate Limit Rule Tags (Future Extension)
+
+The same `Tags []string` field can be added to `RateLimitRule`. Rate limit
+events (429s) currently have `EventType: "rate_limited"` with no sub-classification.
+With tags, a rate limit rule targeting API abuse could carry `tags: ["api-abuse"]`
+and the 429 events would inherit those tags for analytics filtering.
+
+### Scope of Changes
+
+#### Go Backend
+
+| File | Changes |
+|------|---------|
+| `models.go` | Add `Tags []string` to `WAFEvent`. Replace `Honeypot`/`Scanner`/`IpsumBlocked` fields in `SummaryResponse`, `HourCount`, `ServiceCount`, `ClientCount`, `ServiceDetail` with `TagCounts map[string]int`. Remove `honeypotRuleIDMin/Max`, `scannerDropRuleID` constants. |
+| `models_exclusions.go` | Add `Tags []string` to `RuleExclusion`. Remove `"honeypot"` from valid types. |
+| `event_parser.go` | Remove honeypot/scanner rule ID classification. Read `policy:*` tags from matched rule tags. Set `event.Tags` from SecRule tags. |
+| `waf_summary.go` | Replace 3 local struct types (drop `honeypot`/`scanner`/`ipsumBlocked` fields, add `tagCounts map[string]int`). Replace all switch cases with tag iteration loop. Replace residual `logged` calculation (subtract `blocked + rateLimited + policy` only; tags are informational, not exclusive categories). Remove `totalHoneypot`/`totalScanner` accumulators. |
+| `waf_analytics.go` | Same pattern: replace `svcData`/`counts` structs, replace switch cases with tag loops, replace struct literal assignments. |
+| `handlers_events.go` | Remove `honeypot`/`scanner` from `wafTypes` maps. Remove `ipsum_blocked` from `rlTypes` maps. Remove all ipsum splitting/merge logic (12+ sites). Add `tag` query parameter handling. |
+| `generator.go` | Emit `tag:'policy:<tag>'` actions from `rule.Tags`. Remove `writeHoneypotRule()` and all honeypot consolidation logic. |
+| `exclusions.go` | Remove honeypot validation. Add `Tags` validation (alphanumeric + hyphens, max length). Add store migration v2: convert existing honeypot rules to block rules, backfill Tags on seeded rules. |
+| `validate.go` | Remove `case "honeypot"` from `validateGeneratedRuleIDs`. |
+| `logparser.go` | Backfill tags on JSONL restore for old events. |
+| `access_log_store.go` | Tag ipsum events with `["blocklist", "ipsum"]` at parse time. |
+
+#### Frontend
+
+| File | Changes |
+|------|---------|
+| `waf-events.ts` | Replace fixed `honeypot`/`scanner`/`ipsum_blocked` fields in all interfaces with `tag_counts: Record<string, number>`. Update `EventType` union (remove `honeypot`, `scanner`, `ipsum_blocked`). Update all mapper functions. |
+| `analytics.ts` | Replace fixed fields in `IPLookupData`/`ServiceDetail` interfaces. |
+| `utils.ts` | Replace `ACTION_COLORS`/`ACTION_LABELS`/`ACTION_BADGE_CLASSES` honeypot/scanner/ipsum entries with `TAG_REGISTRY`. Keep action-level colors for `blocked`, `logged`, etc. |
+| `EventTypeBadge.tsx` | Remove `honeypot`/`scanner`/`ipsum_blocked` from label map. Add tag pill rendering. |
+| `EventDetailPanel.tsx` | Replace 3 hardcoded detail blocks with generic tag-aware block. |
+| `EventDetailModal.tsx` | Remove `event.event_type !== "honeypot"` check. |
+| `OverviewDashboard.tsx` | Replace 3 hardcoded stat cards + 3 gradient defs + 3 Area series + 6 Bar series with dynamic rendering from `tag_counts`. Tag registry provides colors/labels. |
+| `filters/constants.ts` | Remove `honeypot`/`scanner`/`ipsum_blocked` from event_type options. Add `tag` field to `FILTER_FIELDS`. |
+| `overview/helpers.tsx` | Remove hardcoded honeypot/scanner color mappings. |
+| `policy/PolicyForms.tsx` | Remove `HoneypotForm` component entirely. Add `Tags` input to `AdvancedBuilderForm` (tag chips, free-text entry). |
+| `policy/PolicyEngine.tsx` | Remove honeypot tab, `isEditingHoneypot` logic. Remove `"honeypot"` from type filter. |
+| `policy/exclusionHelpers.ts` | Remove `case "honeypot"` from label/badge/conditionsSummary helpers. |
+| `policy/constants.ts` | Remove honeypot from `ALL_EXCLUSION_TYPES`, `QUICK_ACTIONS`. |
+
+#### Tests
+
+| File | Changes |
+|------|---------|
+| `logparser_test.go` | Replace 42 honeypot test references. Update event type assertions to `policy_block` + tags. |
+| `generator_test.go` | Remove 38 honeypot test references (7 test functions). Add tag emission tests. |
+| `validate_test.go` | Remove 4 honeypot validation test references. |
+| `handlers_test.go` | Update summary/event filter tests for tag-based system. |
+| `exclusions_test.go` | Add v1→v2 migration test (honeypot → block conversion). Update seeded rule assertions. |
+| `waf-events.test.ts` | Replace 11 honeypot references, update interface assertions. |
+| `analytics.test.ts` | Replace 2 honeypot references. |
+| `DashboardFilterBar.test.ts` | Replace 5 honeypot filter test references. |
+| `exclusionHelpers.test.ts` | Replace 8 honeypot helper test references. |
+| `constants.test.ts` | Replace 2 honeypot constant test references. |
+
+### Implementation Order
+
+#### Phase 3a: Add Tags field (additive, no breaking changes)
+
+1. Add `Tags []string` to `RuleExclusion` model, validation, API
+2. Add `Tags []string` to `WAFEvent` model
+3. Generator emits `tag:'policy:<tag>'` SecRule actions for rules with tags
+4. Event parser reads `policy:*` tags from audit log into `event.Tags`
+5. Store migration v1→v2: add tags to seeded rules, convert honeypot rules to
+   block + `["honeypot"]` tag
+6. Frontend: add Tags chip input to AdvancedBuilderForm
+7. Frontend: render tags as secondary pills on event rows
+8. All existing code continues to work — tags are `omitempty` and additive
+
+#### Phase 3b: Add tag_counts alongside existing fields (additive)
+
+1. Add `TagCounts map[string]int` to `SummaryResponse`, `HourCount`,
+   `ServiceCount`, `ClientCount`, `ServiceDetail`
+2. Summary/analytics loops populate `TagCounts` from `event.Tags` in addition
+   to existing hardcoded counters
+3. Add `tag` query parameter to `/api/events` and `/api/summary`
+4. Frontend: add TAG_REGISTRY config
+5. Frontend: OverviewDashboard renders tag-based stat cards/chart series
+   alongside existing hardcoded ones (dual rendering during transition)
+6. Frontend: DashboardFilterBar gets `tag` filter field
+
+#### Phase 3c: Remove hardcoded counters (breaking, behind the dual rendering)
+
+1. Remove `Honeypot`/`Scanner`/`IpsumBlocked` fields from all Go model structs
+2. Remove `honeypot`/`scanner`/`ipsum_blocked` event types from parser
+3. Remove honeypot rule ID constants, scanner drop rule ID constant
+4. Remove all hardcoded switch cases in `waf_summary.go`, `waf_analytics.go`
+5. Remove ipsum splitting/merge logic in `handlers_events.go`
+6. Remove `HoneypotForm`, honeypot tab, honeypot type from frontend
+7. Remove `"honeypot"` from exclusion valid types, QUICK_ACTIONS, etc.
+8. Remove hardcoded stat cards, chart series, gradient defs from OverviewDashboard
+9. Update EventDetailPanel: replace 3 hardcoded blocks with generic tag-aware block
+10. Update EventTypeBadge: remove hardcoded labels, add tag pills
+11. Update all filter constants: remove old event types, tag filter is primary
+12. JSONL restore backfills tags from old event types for backward compat
+13. Update all tests (~100 test references across 10 files)
+
+#### Phase 3d: Rate limit rule tags (future extension)
+
+1. Add `Tags []string` to `RateLimitRule`
+2. Access log parser reads tags from RL rule store when classifying 429 events
+3. RL events inherit tags for analytics filtering
+
+### Relationship to Other Phases
+
+- **Phase 1 (caddy-policy-engine)**: The plugin's `PolicyRule` struct should
+  include `Tags []string` from the start. When the plugin handles `block` actions
+  (replacing SecRule generation for those types), it sets response headers or Caddy
+  variables that include the tags, so the access log captures them.
+
+- **Phase 2 (managed lists)**: When IPsum moves to a managed list referenced by
+  a policy rule, that rule carries `tags: ["blocklist", "ipsum"]`. The event
+  gets classified as `policy_block` + tags instead of `ipsum_blocked`. This is
+  the specific migration that makes the `ipsum_blocked` event type obsolete.
+
+- **Phase 3a is independent** of Phases 1 and 2 and can be implemented first.
+  It's purely additive and sets the foundation. Phases 3b-3c can happen before
+  or after the plugin migration.
+
+### Open Questions
+
+1. **Tag namespace**: Flat strings (`scanner`, `honeypot`) vs hierarchical
+   (`bot:scanner`, `list:ipsum`). Flat is simpler and sufficient — hierarchical
+   can be added later by convention without schema changes.
+
+2. **Tag cardinality**: Should we limit the number of distinct tags per rule?
+   Probably cap at 10 per rule to prevent abuse. No global limit on distinct
+   tags across rules.
+
+3. **Tag-based access log format**: The Caddy access log template currently
+   doesn't include tags. If the policy engine plugin sets tags as Caddy
+   variables, the log template can include them. For SecRule-based events,
+   tags are in the audit log. Need a unified way to get tags into both
+   log formats.
+
+4. **Donut chart behavior**: Currently the donut shows a fixed set of slices
+   (WAF Blocked, Rate Limited, IPsum, Honeypot, Scanner, Policy, Logged).
+   With dynamic tags, should it show top-N tags by count? Or group by action
+   type (blocked, logged, etc.) with tag breakdown on hover?
+
+5. **"Logged" residual calculation**: Currently `logged = total - blocked -
+   rateLimited - ipsumBlocked - honeypot - scanner - policy`. With tags,
+   the residual is simpler: `logged = total - blocked - rateLimited - policy`.
+   Tags are metadata, not mutually exclusive categories. An event can be
+   `policy_block` AND tagged `scanner` — the `blocked` count covers it,
+   and `scanner` appears in `tag_counts`.
