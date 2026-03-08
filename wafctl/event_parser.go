@@ -59,6 +59,14 @@ func parseEvent(entry AuditLogEntry) Event {
 				// default "blocked" classification from line 378 is preserved.
 			} else if strings.HasPrefix(msg, "Policy Block:") {
 				candidateType = "policy_block"
+			} else if strings.HasPrefix(msg, "Policy Anomaly:") {
+				// Anomaly rules add score but don't block by themselves.
+				// Only classify as "policy_anomaly" if the request was not
+				// interrupted — if it was blocked, the score contribution
+				// pushed it over threshold and "blocked" is more accurate.
+				if !tx.IsInterrupted {
+					candidateType = "policy_anomaly"
+				}
 			}
 			break // policy classification takes absolute priority
 		}

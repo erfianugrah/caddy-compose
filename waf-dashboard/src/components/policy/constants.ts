@@ -2,12 +2,13 @@ import type { ExclusionType, ConditionField, ConditionOperator } from "@/lib/api
 
 // ─── Quick Action Types ─────────────────────────────────────────────
 
-export type QuickActionType = "allow" | "block" | "skip_rule";
+export type QuickActionType = "allow" | "block" | "skip_rule" | "anomaly";
 
-export const QUICK_ACTIONS: { value: QuickActionType; label: string; description: string; iconName: "ShieldCheck" | "ShieldBan" | "SkipForward" }[] = [
+export const QUICK_ACTIONS: { value: QuickActionType; label: string; description: string; iconName: "ShieldCheck" | "ShieldBan" | "SkipForward" | "ShieldAlert" }[] = [
   { value: "allow", label: "Allow", description: "Whitelist IP, path, or service — bypass WAF checks", iconName: "ShieldCheck" },
   { value: "block", label: "Block", description: "Deny requests by IP, path, or user agent", iconName: "ShieldBan" },
   { value: "skip_rule", label: "Skip / Bypass", description: "Skip specific CRS rules for a path or service", iconName: "SkipForward" },
+  { value: "anomaly", label: "Anomaly Score", description: "Add anomaly score points — heuristic bot/threat signals", iconName: "ShieldAlert" },
 ];
 
 // ─── All Exclusion Types ────────────────────────────────────────────
@@ -17,6 +18,7 @@ export const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; descrip
   { value: "allow", label: "Allow", description: "Whitelist — bypass WAF checks", group: "quick" },
   { value: "block", label: "Block", description: "Deny matching requests", group: "quick" },
   { value: "skip_rule", label: "Skip / Bypass", description: "Skip specific CRS rules", group: "quick" },
+  { value: "anomaly", label: "Anomaly Score", description: "Add anomaly score points for heuristic signals", group: "quick" },
   // Configure-time advanced types
   { value: "SecRuleRemoveById", label: "Remove entire rule", description: "SecRuleRemoveById — removes a rule globally", group: "advanced" },
   { value: "SecRuleRemoveByTag", label: "Remove rule category", description: "SecRuleRemoveByTag — removes all rules in a tag category", group: "advanced" },
@@ -262,6 +264,8 @@ export interface AdvancedFormState {
   rule_id: string;
   rule_tag: string;
   variable: string;
+  anomaly_score: number;
+  anomaly_paranoia_level: number;
   conditions: import("@/lib/api").Condition[];
   group_operator: import("@/lib/api").GroupOperator;
   enabled: boolean;
@@ -274,6 +278,8 @@ export const emptyAdvancedForm: AdvancedFormState = {
   rule_id: "",
   rule_tag: "",
   variable: "",
+  anomaly_score: 3,
+  anomaly_paranoia_level: 1,
   conditions: [],
   group_operator: "and",
   enabled: true,

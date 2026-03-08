@@ -251,7 +251,7 @@ export default function PolicyEngine() {
 
   // All possible exclusion types for the filter dropdown (ordered logically)
   const allExclusionTypes: ExclusionType[] = [
-    "allow", "block", "skip_rule", "honeypot", "raw",
+    "allow", "block", "skip_rule", "anomaly", "honeypot", "raw",
     "SecRuleRemoveById", "SecRuleRemoveByTag",
     "SecRuleUpdateTargetById", "SecRuleUpdateTargetByTag",
     "ctl:ruleRemoveById", "ctl:ruleRemoveByTag",
@@ -389,6 +389,8 @@ export default function PolicyEngine() {
         rule_id: exclusionToEdit.rule_id ?? "",
         rule_tag: exclusionToEdit.rule_tag ?? "",
         variable: exclusionToEdit.variable ?? "",
+        anomaly_score: exclusionToEdit.anomaly_score ?? 3,
+        anomaly_paranoia_level: exclusionToEdit.anomaly_paranoia_level ?? 1,
         conditions: exclusionToEdit.conditions ?? [],
         group_operator: exclusionToEdit.group_operator ?? "and",
         enabled: exclusionToEdit.enabled,

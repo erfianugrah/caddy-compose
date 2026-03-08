@@ -1031,6 +1031,74 @@ func TestGenerateBlockByUA(t *testing.T) {
 	}
 }
 
+func TestGenerateAnomalyByUA(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Generic HTTP library", Type: "anomaly", AnomalyScore: 5, Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "python-requests|go-http-client"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:User-Agent") {
+		t.Error("expected User-Agent check in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "setvar:'tx.anomaly_score_pl1=+5'") {
+		t.Error("expected setvar with anomaly score in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "Policy Anomaly: Generic HTTP library") {
+		t.Error("expected policy anomaly msg in pre-CRS output")
+	}
+	if !strings.Contains(result.PreCRS, "pass,") {
+		t.Error("anomaly rules should use pass action, not deny")
+	}
+}
+
+func TestGenerateAnomalyWithParanoiaLevel(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "HTTP/1.0 signal", Type: "anomaly", AnomalyScore: 2, AnomalyParanoiaLevel: 2, Conditions: []Condition{{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "setvar:'tx.anomaly_score_pl2=+2'") {
+		t.Errorf("expected setvar with PL2 anomaly score, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateAnomalyDefaultParanoiaLevel(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Test", Type: "anomaly", AnomalyScore: 3, AnomalyParanoiaLevel: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	// PL 0 should default to PL 1
+	if !strings.Contains(result.PreCRS, "setvar:'tx.anomaly_score_pl1=+3'") {
+		t.Errorf("expected setvar with PL1 (default) anomaly score, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateAnomalyMultiConditionChain(t *testing.T) {
+	ResetRuleIDCounter()
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Bot signal", Type: "anomaly", AnomalyScore: 3, Conditions: []Condition{
+			{Field: "user_agent", Operator: "contains", Value: "curl/"},
+			{Field: "method", Operator: "eq", Value: "GET"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions)
+
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Error("expected chained rule for multi-condition anomaly")
+	}
+	if !strings.Contains(result.PreCRS, "setvar:'tx.anomaly_score_pl1=+3'") {
+		t.Error("expected setvar in chained anomaly rule")
+	}
+}
+
 func TestGenerateSkipRule(t *testing.T) {
 	ResetRuleIDCounter()
 	cfg := defaultConfig()

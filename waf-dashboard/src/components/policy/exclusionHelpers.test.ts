@@ -115,6 +115,33 @@ describe("conditionsSummary", () => {
     expect(summary.length).toBeLessThanOrEqual(103); // 100 + "..."
   });
 
+  // Anomaly rules
+  it("shows anomaly score and paranoia level for anomaly type", () => {
+    const excl = makeExclusion({
+      type: "anomaly",
+      anomaly_score: 5,
+      anomaly_paranoia_level: 2,
+      conditions: [
+        { field: "user_agent", operator: "contains", value: "curl" },
+      ],
+    });
+    const summary = conditionsSummary(excl);
+    expect(summary).toContain("+5 PL2");
+    expect(summary).toContain("curl");
+  });
+
+  it("defaults anomaly paranoia level to 1 when not set", () => {
+    const excl = makeExclusion({
+      type: "anomaly",
+      anomaly_score: 3,
+      conditions: [
+        { field: "method", operator: "eq", value: "GET" },
+      ],
+    });
+    const summary = conditionsSummary(excl);
+    expect(summary).toContain("+3 PL1");
+  });
+
   // Honeypot rules
   it("shows path count for honeypot rules", () => {
     const excl = makeExclusion({
@@ -170,6 +197,7 @@ describe("exclusionTypeLabel", () => {
     allow: "Allow",
     block: "Block",
     skip_rule: "Skip",
+    anomaly: "Anomaly",
     honeypot: "Honeypot",
     raw: "Raw",
     SecRuleRemoveById: "Remove Rule",
@@ -205,8 +233,9 @@ describe("exclusionTypeBadgeVariant", () => {
     expect(exclusionTypeBadgeVariant("honeypot")).toBe("destructive");
   });
 
-  it("returns 'secondary' for skip_rule", () => {
+  it("returns 'secondary' for skip_rule and anomaly", () => {
     expect(exclusionTypeBadgeVariant("skip_rule")).toBe("secondary");
+    expect(exclusionTypeBadgeVariant("anomaly")).toBe("secondary");
   });
 
   it("returns 'outline' for configure-time types", () => {

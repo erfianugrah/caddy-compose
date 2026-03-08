@@ -15,12 +15,16 @@ export function conditionsSummary(excl: Exclusion): string {
     return excl.raw_rule.length > 50 ? excl.raw_rule.slice(0, 50) + "..." : excl.raw_rule;
   }
 
-  // Build composite summary: rule scope + variable + conditions
+  // Build composite summary: rule scope + variable + anomaly + conditions
   const segments: string[] = [];
 
   if (excl.rule_id) segments.push(`Rule ${excl.rule_id}`);
   if (excl.rule_tag) segments.push(`Tag: ${excl.rule_tag}`);
   if (excl.variable) segments.push(`Var: ${excl.variable}`);
+  if (excl.type === "anomaly" && excl.anomaly_score) {
+    const pl = excl.anomaly_paranoia_level ?? 1;
+    segments.push(`+${excl.anomaly_score} PL${pl}`);
+  }
 
   if (excl.conditions && excl.conditions.length > 0) {
     const parts = excl.conditions.map((c) => {
@@ -44,6 +48,7 @@ export function exclusionTypeLabel(type: ExclusionType): string {
     case "allow": return "Allow";
     case "block": return "Block";
     case "skip_rule": return "Skip";
+    case "anomaly": return "Anomaly";
     case "honeypot": return "Honeypot";
     case "raw": return "Raw";
     // Configure-time
@@ -64,6 +69,7 @@ export function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "out
   switch (type) {
     case "allow": return "default";
     case "block": return "destructive";
+    case "anomaly": return "secondary";
     case "honeypot": return "destructive";
     case "skip_rule": return "secondary";
     // Configure-time types

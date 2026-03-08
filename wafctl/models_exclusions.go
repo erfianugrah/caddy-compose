@@ -11,21 +11,23 @@ type Condition struct {
 	Value    string `json:"value"`
 }
 
-// RuleExclusion is a single WAF policy engine rule (allow, block, skip_rule, honeypot, raw, etc.).
+// RuleExclusion is a single WAF policy engine rule (allow, block, skip_rule, anomaly, honeypot, raw, etc.).
 type RuleExclusion struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Type        string      `json:"type"`
-	Conditions  []Condition `json:"conditions,omitempty"`     // Dynamic conditions (field/operator/value)
-	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
-	RuleID      string      `json:"rule_id,omitempty"`        // For skip_rule + advanced types
-	RuleTag     string      `json:"rule_tag,omitempty"`       // For skip_rule + advanced types
-	Variable    string      `json:"variable,omitempty"`       // For advanced target types
-	RawRule     string      `json:"raw_rule,omitempty"`       // Raw SecRule directive for raw editor
-	Enabled     bool        `json:"enabled"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID                   string      `json:"id"`
+	Name                 string      `json:"name"`
+	Description          string      `json:"description"`
+	Type                 string      `json:"type"`
+	Conditions           []Condition `json:"conditions,omitempty"`             // Dynamic conditions (field/operator/value)
+	GroupOp              string      `json:"group_operator,omitempty"`         // "and" (default) or "or"
+	RuleID               string      `json:"rule_id,omitempty"`                // For skip_rule + advanced types
+	RuleTag              string      `json:"rule_tag,omitempty"`               // For skip_rule + advanced types
+	Variable             string      `json:"variable,omitempty"`               // For advanced target types
+	RawRule              string      `json:"raw_rule,omitempty"`               // Raw SecRule directive for raw editor
+	AnomalyScore         int         `json:"anomaly_score,omitempty"`          // For anomaly type: score points to add (1-10)
+	AnomalyParanoiaLevel int         `json:"anomaly_paranoia_level,omitempty"` // For anomaly type: paranoia level 1-4 (default 1)
+	Enabled              bool        `json:"enabled"`
+	CreatedAt            time.Time   `json:"created_at"`
+	UpdatedAt            time.Time   `json:"updated_at"`
 }
 
 // ─── WAF Configuration ──────────────────────────────────────────────────────
@@ -154,6 +156,7 @@ var validExclusionTypes = map[string]bool{
 	"allow":     true, // Whitelist — bypass WAF checks
 	"block":     true, // Deny requests
 	"skip_rule": true, // Skip specific CRS rules
+	"anomaly":   true, // Add anomaly score points (heuristic signal)
 	// Honeypot (dynamic path groups)
 	"honeypot": true, // Known-bad path traps — instant deny
 	// Raw editor

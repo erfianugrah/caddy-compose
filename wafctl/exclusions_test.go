@@ -273,6 +273,42 @@ func TestValidateExclusion(t *testing.T) {
 			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_by_id", RuleID: "920420"},
 			wantErr: true,
 		},
+		// Anomaly type validation
+		{
+			name:    "valid anomaly",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 5, Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "BadBot.*"}}},
+			wantErr: false,
+		},
+		{
+			name:    "valid anomaly with paranoia level",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 3, AnomalyParanoiaLevel: 2, Conditions: []Condition{{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"}}},
+			wantErr: false,
+		},
+		{
+			name:    "anomaly missing conditions",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 5},
+			wantErr: true,
+		},
+		{
+			name:    "anomaly score too low",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: true,
+		},
+		{
+			name:    "anomaly score too high",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 11, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: true,
+		},
+		{
+			name:    "anomaly invalid paranoia level",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 5, AnomalyParanoiaLevel: 5, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: true,
+		},
+		{
+			name:    "anomaly paranoia level zero uses default",
+			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 2, AnomalyParanoiaLevel: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

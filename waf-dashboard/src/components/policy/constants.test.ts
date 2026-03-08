@@ -17,10 +17,10 @@ import {
 // ─── QUICK_ACTIONS ──────────────────────────────────────────────────
 
 describe("QUICK_ACTIONS", () => {
-  it("has exactly 3 actions: allow, block, skip_rule", () => {
-    expect(QUICK_ACTIONS).toHaveLength(3);
+  it("has exactly 4 actions: allow, block, skip_rule, anomaly", () => {
+    expect(QUICK_ACTIONS).toHaveLength(4);
     const values = QUICK_ACTIONS.map((a) => a.value);
-    expect(values).toEqual(["allow", "block", "skip_rule"]);
+    expect(values).toEqual(["allow", "block", "skip_rule", "anomaly"]);
   });
 
   it("each action has label, description, and iconName", () => {
@@ -40,6 +40,7 @@ describe("ALL_EXCLUSION_TYPES", () => {
     expect(values).toContain("allow");
     expect(values).toContain("block");
     expect(values).toContain("skip_rule");
+    expect(values).toContain("anomaly");
     expect(values).toContain("SecRuleRemoveById");
     expect(values).toContain("SecRuleRemoveByTag");
     expect(values).toContain("SecRuleUpdateTargetById");
@@ -55,11 +56,11 @@ describe("ALL_EXCLUSION_TYPES", () => {
     expect(groups).toEqual(new Set(["quick", "advanced", "runtime"]));
   });
 
-  it("quick group has 3 items, advanced has 4, runtime has 4", () => {
+  it("quick group has 4 items, advanced has 4, runtime has 4", () => {
     const quick = ALL_EXCLUSION_TYPES.filter((t) => t.group === "quick");
     const advanced = ALL_EXCLUSION_TYPES.filter((t) => t.group === "advanced");
     const runtime = ALL_EXCLUSION_TYPES.filter((t) => t.group === "runtime");
-    expect(quick).toHaveLength(3);
+    expect(quick).toHaveLength(4);
     expect(advanced).toHaveLength(4);
     expect(runtime).toHaveLength(4);
   });
@@ -201,6 +202,7 @@ describe("isById", () => {
     expect(isById("allow")).toBe(false);
     expect(isById("block")).toBe(false);
     expect(isById("skip_rule")).toBe(false);
+    expect(isById("anomaly")).toBe(false);
   });
 });
 
@@ -264,6 +266,7 @@ describe("isRuntimeType", () => {
     expect(isRuntimeType("allow")).toBe(false);
     expect(isRuntimeType("block")).toBe(false);
     expect(isRuntimeType("skip_rule")).toBe(false);
+    expect(isRuntimeType("anomaly")).toBe(false);
   });
 
   it("returns false for honeypot and raw", () => {
@@ -282,6 +285,8 @@ describe("emptyAdvancedForm", () => {
     expect(emptyAdvancedForm.rule_id).toBe("");
     expect(emptyAdvancedForm.rule_tag).toBe("");
     expect(emptyAdvancedForm.variable).toBe("");
+    expect(emptyAdvancedForm.anomaly_score).toBe(3);
+    expect(emptyAdvancedForm.anomaly_paranoia_level).toBe(1);
     expect(emptyAdvancedForm.conditions).toEqual([]);
     expect(emptyAdvancedForm.group_operator).toBe("and");
     expect(emptyAdvancedForm.enabled).toBe(true);

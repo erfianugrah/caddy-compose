@@ -112,6 +112,86 @@ describe("createExclusion", () => {
   });
 });
 
+describe("createExclusion (anomaly type)", () => {
+  it("sends anomaly_score and anomaly_paranoia_level in payload", async () => {
+    const goCreated = {
+      id: "exc-anomaly",
+      name: "HTTP/1.0 penalty",
+      description: "+2 anomaly for HTTP/1.0",
+      type: "anomaly",
+      conditions: [
+        { field: "http_version", operator: "eq", value: "HTTP/1.0" },
+      ],
+      group_operator: "and",
+      anomaly_score: 2,
+      anomaly_paranoia_level: 1,
+      enabled: true,
+      created_at: "2026-03-08T10:00:00Z",
+      updated_at: "2026-03-08T10:00:00Z",
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(goCreated, 201));
+
+    const { createExclusion } = await import("@/lib/api");
+    const result = await createExclusion({
+      name: "HTTP/1.0 penalty",
+      description: "+2 anomaly for HTTP/1.0",
+      type: "anomaly",
+      conditions: [
+        { field: "http_version", operator: "eq", value: "HTTP/1.0" },
+      ],
+      group_operator: "and",
+      anomaly_score: 2,
+      anomaly_paranoia_level: 1,
+      enabled: true,
+    });
+
+    // Response is mapped back correctly
+    expect(result.type).toBe("anomaly");
+    expect(result.anomaly_score).toBe(2);
+    expect(result.anomaly_paranoia_level).toBe(1);
+
+    // Verify the POST payload includes anomaly fields
+    const postCall = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse(postCall[1]?.body as string);
+    expect(body.type).toBe("anomaly");
+    expect(body.anomaly_score).toBe(2);
+    expect(body.anomaly_paranoia_level).toBe(1);
+  });
+});
+
+describe("getExclusions (anomaly type mapping)", () => {
+  it("maps Go anomaly type and preserves score fields", async () => {
+    const goExclusions = [
+      {
+        id: "exc-anomaly-1",
+        name: "Generic UA penalty",
+        description: "",
+        type: "anomaly",
+        conditions: [
+          { field: "user_agent", operator: "contains", value: "python-requests" },
+        ],
+        group_operator: "and",
+        anomaly_score: 5,
+        anomaly_paranoia_level: 1,
+        enabled: true,
+        created_at: "2026-03-08T10:00:00Z",
+        updated_at: "2026-03-08T10:00:00Z",
+      },
+    ];
+
+    vi.stubGlobal("fetch", mockFetchResponse(goExclusions));
+
+    const { getExclusions } = await import("@/lib/api");
+    const result = await getExclusions();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("anomaly");
+    expect(result[0].anomaly_score).toBe(5);
+    expect(result[0].anomaly_paranoia_level).toBe(1);
+  });
+});
+
 // ─── generateConfig ─────────────────────────────────────────────────
 
 describe("generateConfig", () => {

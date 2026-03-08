@@ -3,6 +3,7 @@ import {
   Shield,
   ShieldCheck,
   ShieldBan,
+  ShieldAlert,
   SkipForward,
   Plus,
   X,
@@ -56,6 +57,7 @@ import { T } from "@/lib/typography";
 const QUICK_ACTION_ICONS: Record<string, typeof Shield> = {
   ShieldCheck,
   ShieldBan,
+  ShieldAlert,
   SkipForward,
 };
 
@@ -86,6 +88,8 @@ export function QuickActionsForm({
   const [ruleId, setRuleId] = useState("");
   const [ruleTag, setRuleTag] = useState("");
   const [skipMode, setSkipMode] = useState<"id" | "tag">("id");
+  const [anomalyScore, setAnomalyScore] = useState(3);
+  const [anomalyPL, setAnomalyPL] = useState(1);
   const [enabled, setEnabled] = useState(true);
   const [showPrefillBanner, setShowPrefillBanner] = useState(false);
 
@@ -113,6 +117,8 @@ export function QuickActionsForm({
     setRuleId("");
     setRuleTag("");
     setSkipMode("id");
+    setAnomalyScore(3);
+    setAnomalyPL(1);
     setEnabled(true);
     setShowPrefillBanner(false);
     onPrefillConsumed?.();
@@ -144,6 +150,11 @@ export function QuickActionsForm({
     if (actionType === "skip_rule") {
       if (skipMode === "id" && ruleId) data.rule_id = ruleId;
       if (skipMode === "tag" && ruleTag) data.rule_tag = ruleTag;
+    }
+
+    if (actionType === "anomaly") {
+      data.anomaly_score = anomalyScore;
+      data.anomaly_paranoia_level = anomalyPL;
     }
 
     onSubmit(data);
@@ -343,11 +354,52 @@ export function QuickActionsForm({
         </div>
       )}
 
+      {/* Anomaly: Score and Paranoia Level */}
+      {actionType === "anomaly" && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">Anomaly Scoring</p>
+            <p className="mt-1">
+              Adds anomaly score points to matching requests instead of blocking outright. Multiple heuristic
+              signals stack — a request that triggers several low-score rules may cross the blocking threshold.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className={T.formLabel}>Score Points (1-10)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={anomalyScore}
+                onChange={(e) => setAnomalyScore(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+              />
+              <p className="text-xs text-muted-foreground">+1 minor signal, +3 moderate, +5 strong, +10 critical</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className={T.formLabel}>Paranoia Level</Label>
+              <Select value={String(anomalyPL)} onValueChange={(v) => setAnomalyPL(parseInt(v))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">PL 1 (default)</SelectItem>
+                  <SelectItem value="2">PL 2</SelectItem>
+                  <SelectItem value="3">PL 3</SelectItem>
+                  <SelectItem value="4">PL 4</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Which paranoia level score bucket to increment</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Enabled + Submit */}
       <div className="flex items-center gap-4 pt-2">
         <Button onClick={handleSubmit} disabled={!isValid}>
           <SelectedIcon className="h-4 w-4" />
-          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : "Add Skip Rule"}
+          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : actionType === "anomaly" ? "Add Anomaly Rule" : "Add Skip Rule"}
         </Button>
         <div className="flex items-center gap-2">
           <Switch checked={enabled} onCheckedChange={setEnabled} id="qa-enabled" />
@@ -377,15 +429,16 @@ export function AdvancedBuilderForm({
 }) {
   const [form, setForm] = useState<AdvancedFormState>(initial ?? emptyAdvancedForm);
 
-  const update = (field: keyof AdvancedFormState, value: string | boolean | Condition[] | GroupOperator) => {
+  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const isQuickAction = ["allow", "block", "skip_rule"].includes(form.type);
+  const isQuickAction = ["allow", "block", "skip_rule", "anomaly"].includes(form.type);
   const needsRuleId = isById(form.type) || form.type === "skip_rule";
   const needsRuleTag = isByTag(form.type) || form.type === "skip_rule";
   const needsVariable = isTargetType(form.type);
   const needsConditions = isRuntimeType(form.type) || isQuickAction;
+  const needsAnomalyFields = form.type === "anomaly";
 
   // Condition management for runtime types
   const updateCondition = (index: number, condition: Condition) => {
@@ -404,7 +457,7 @@ export function AdvancedBuilderForm({
   // When switching to a type that needs conditions, ensure at least one exists
   const handleTypeChange = (v: string) => {
     const newType = v as ExclusionType;
-    const willNeedConditions = isRuntimeType(newType) || ["allow", "block", "skip_rule"].includes(newType);
+    const willNeedConditions = isRuntimeType(newType) || ["allow", "block", "skip_rule", "anomaly"].includes(newType);
     const willNeedRuleId = isById(newType) || newType === "skip_rule";
     const willNeedRuleTag = isByTag(newType) || newType === "skip_rule";
     const willNeedVariable = isTargetType(newType);
@@ -433,6 +486,10 @@ export function AdvancedBuilderForm({
     if (needsRuleId && form.rule_id) data.rule_id = form.rule_id;
     if (needsRuleTag && form.rule_tag) data.rule_tag = form.rule_tag;
     if (needsVariable && form.variable) data.variable = form.variable;
+    if (needsAnomalyFields) {
+      data.anomaly_score = form.anomaly_score;
+      data.anomaly_paranoia_level = form.anomaly_paranoia_level;
+    }
     if (needsConditions && validConditions.length > 0) {
       data.conditions = validConditions;
       data.group_operator = form.group_operator;
@@ -539,6 +596,36 @@ export function AdvancedBuilderForm({
           </div>
         )}
       </div>
+
+      {/* Anomaly score fields */}
+      {needsAnomalyFields && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className={T.formLabel}>Score Points (1-10)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={form.anomaly_score}
+              onChange={(e) => update("anomaly_score", Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className={T.formLabel}>Paranoia Level</Label>
+            <Select value={String(form.anomaly_paranoia_level)} onValueChange={(v) => update("anomaly_paranoia_level", parseInt(v))}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">PL 1 (default)</SelectItem>
+                <SelectItem value="2">PL 2</SelectItem>
+                <SelectItem value="3">PL 3</SelectItem>
+                <SelectItem value="4">PL 4</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       {/* Condition builder for runtime ctl: types */}
       {needsConditions && (

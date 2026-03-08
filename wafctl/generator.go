@@ -40,7 +40,7 @@ func generatePreCRS(cfg WAFConfig, exclusions []RuleExclusion, idGen *ruleIDGen)
 		var quickActions, runtimeExcl, rawRules, honeypotRules []RuleExclusion
 		for _, e := range preCRSExclusions {
 			switch e.Type {
-			case "allow", "block", "skip_rule":
+			case "allow", "block", "skip_rule", "anomaly":
 				quickActions = append(quickActions, e)
 			case "honeypot":
 				honeypotRules = append(honeypotRules, e)
@@ -136,6 +136,7 @@ var preCRSTypes = map[string]bool{
 	"allow":                        true,
 	"block":                        true,
 	"skip_rule":                    true,
+	"anomaly":                      true,
 	"honeypot":                     true,
 	"raw":                          true,
 }
@@ -341,6 +342,13 @@ func conditionAction(e RuleExclusion, selfID string) string {
 		return fmt.Sprintf("pass,t:none,log,msg:'Policy Allow: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleEngine=Off", escapeSecRuleMsgValue(e.Name))
 	case "block":
 		return fmt.Sprintf("deny,status:403,t:none,log,msg:'Policy Block: %s',logdata:'%%{MATCHED_VAR}'", escapeSecRuleMsgValue(e.Name))
+	case "anomaly":
+		pl := e.AnomalyParanoiaLevel
+		if pl < 1 || pl > 4 {
+			pl = 1
+		}
+		return fmt.Sprintf("pass,t:none,log,msg:'Policy Anomaly: %s',logdata:'%%{MATCHED_VAR}',setvar:'tx.anomaly_score_pl%d=+%d'",
+			escapeSecRuleMsgValue(e.Name), pl, e.AnomalyScore)
 	case "skip_rule":
 		escapedName := escapeSecRuleMsgValue(e.Name)
 		if e.RuleID != "" {

@@ -424,6 +424,16 @@ func validateExclusion(e RuleExclusion) error {
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("%s requires at least one condition", e.Type)
 		}
+	case "anomaly":
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("anomaly requires at least one condition")
+		}
+		if e.AnomalyScore < 1 || e.AnomalyScore > 10 {
+			return fmt.Errorf("anomaly_score must be between 1 and 10, got %d", e.AnomalyScore)
+		}
+		if e.AnomalyParanoiaLevel != 0 && (e.AnomalyParanoiaLevel < 1 || e.AnomalyParanoiaLevel > 4) {
+			return fmt.Errorf("anomaly_paranoia_level must be between 1 and 4, got %d", e.AnomalyParanoiaLevel)
+		}
 	case "honeypot":
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("honeypot requires at least one path condition")

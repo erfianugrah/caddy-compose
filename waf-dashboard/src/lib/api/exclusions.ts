@@ -54,6 +54,7 @@ export type ExclusionType =
   | "allow"
   | "block"
   | "skip_rule"
+  | "anomaly"
   // Honeypot
   | "honeypot"
   // Raw editor
@@ -81,6 +82,8 @@ export interface Exclusion {
   rule_tag?: string;
   variable?: string;
   raw_rule?: string;
+  anomaly_score?: number;
+  anomaly_paranoia_level?: number;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -96,6 +99,8 @@ export interface ExclusionCreateData {
   rule_tag?: string;
   variable?: string;
   raw_rule?: string;
+  anomaly_score?: number;
+  anomaly_paranoia_level?: number;
   enabled: boolean;
 }
 
@@ -141,6 +146,7 @@ const typeToGo: Record<ExclusionType, string> = {
   "allow": "allow",
   "block": "block",
   "skip_rule": "skip_rule",
+  "anomaly": "anomaly",
   "honeypot": "honeypot",
   "raw": "raw",
 };
@@ -161,6 +167,8 @@ interface RawExclusion {
   rule_tag?: string;
   variable?: string;
   raw_rule?: string;
+  anomaly_score?: number;
+  anomaly_paranoia_level?: number;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -178,6 +186,8 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     rule_tag: raw.rule_tag || undefined,
     variable: raw.variable || undefined,
     raw_rule: raw.raw_rule || undefined,
+    anomaly_score: raw.anomaly_score || undefined,
+    anomaly_paranoia_level: raw.anomaly_paranoia_level || undefined,
     enabled: raw.enabled,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
@@ -195,6 +205,8 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.rule_tag !== undefined) result.rule_tag = data.rule_tag;
   if (data.variable !== undefined) result.variable = data.variable;
   if (data.raw_rule !== undefined) result.raw_rule = data.raw_rule;
+  if (data.anomaly_score !== undefined) result.anomaly_score = data.anomaly_score;
+  if (data.anomaly_paranoia_level !== undefined) result.anomaly_paranoia_level = data.anomaly_paranoia_level;
   if (data.enabled !== undefined) result.enabled = data.enabled;
   return result;
 }
