@@ -242,7 +242,7 @@ export default function BlocklistPanel() {
         <BlocklistStat
           title="Blocked IPs"
           value={stats ? formatNumber(stats.blocked_ips) : "0"}
-          subtitle={`IPsum score \u2265 ${stats?.min_score ?? 3}`}
+          subtitle={`IPsum score \u2265 ${stats?.min_score ?? 1}`}
           color="pink"
           loading={loading}
         />
@@ -393,7 +393,7 @@ export default function BlocklistPanel() {
             <div className="flex items-center gap-1.5">
               <Shield className="h-3.5 w-3.5" />
               <span>
-                Minimum score: {stats?.min_score ?? 3} (appears on {stats?.min_score ?? 3}+ blocklists)
+                Minimum score: {stats?.min_score ?? 1} (appears on {stats?.min_score ?? 1}+ blocklists)
               </span>
             </div>
             <a
