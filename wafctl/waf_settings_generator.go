@@ -118,7 +118,7 @@ func collectExtendedSetvars(ss WAFServiceSettings) []string {
 	if ss.EarlyBlocking != nil && *ss.EarlyBlocking {
 		vars = append(vars, "setvar:tx.early_blocking=1")
 	}
-	if ss.SamplingPercentage > 0 && ss.SamplingPercentage != 100 {
+	if ss.SamplingPercentage > 0 {
 		vars = append(vars, fmt.Sprintf("setvar:tx.sampling_percentage=%d", ss.SamplingPercentage))
 	}
 	if ss.ReportingLevel > 0 {

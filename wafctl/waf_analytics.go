@@ -126,8 +126,26 @@ func computeServices(events []Event) ServicesResponse {
 // --- IP Lookup ---
 
 // IPLookup returns all events and stats for a specific IP address.
+// IPLookupRange is a time-range-aware wrapper around IPLookup.
+// When tr is valid, WAF events are filtered by absolute range; otherwise by hours.
+func (s *Store) IPLookupRange(ip string, tr timeRange, hours, limit, offset int, extraEvents []Event) IPLookupResponse {
+	var events []Event
+	if tr.Valid {
+		events = s.SnapshotRange(tr.Start, tr.End)
+	} else {
+		events = s.SnapshotSince(hours)
+	}
+	return s.ipLookupFromEvents(ip, events, limit, offset, extraEvents)
+}
+
+// IPLookup returns an IP lookup response using events from the last N hours.
+// Retained for backward compatibility (CLI, tests).
 func (s *Store) IPLookup(ip string, hours, limit, offset int, extraEvents []Event) IPLookupResponse {
 	events := s.SnapshotSince(hours)
+	return s.ipLookupFromEvents(ip, events, limit, offset, extraEvents)
+}
+
+func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int, extraEvents []Event) IPLookupResponse {
 
 	// Collect WAF events matching this IP (newest-first).
 	var matched []Event

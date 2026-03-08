@@ -37,7 +37,18 @@ fi
 # Docker may create bind-mount dirs as root before the container starts.
 CSP_DIR="/data/caddy/csp"
 mkdir -p "${CSP_DIR}"
-chmod 777 "${CSP_DIR}" 2>/dev/null || true
+chmod 755 "${CSP_DIR}" 2>/dev/null || true
+
+# Seed placeholder Coraza config files so Caddy's Include directives
+# don't fail on a fresh deploy (wafctl's generateOnBoot populates them).
+for f in custom-pre-crs.conf custom-waf-settings.conf custom-post-crs.conf; do
+    target="/data/coraza/$f"
+    if [ ! -f "$target" ]; then
+        mkdir -p "$(dirname "$target")"
+        echo "# Placeholder - will be populated by wafctl" > "$target"
+        echo "[entrypoint] Created placeholder $target"
+    fi
+done
 
 # Start crond in the background for audit log rotation.
 if crond -b -l 2; then

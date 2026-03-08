@@ -123,8 +123,10 @@ func parseFieldFilter(value, op string) *fieldFilter {
 	f := &fieldFilter{value: value, op: op}
 	switch op {
 	case "regex":
-		re, err := regexp.Compile(value)
-		if err != nil {
+		if len(value) > 1024 {
+			// Reject excessively large patterns — fall back to contains.
+			f.op = "contains"
+		} else if re, err := regexp.Compile(value); err != nil {
 			// Fall back to literal contains on bad regex.
 			f.op = "contains"
 		} else {

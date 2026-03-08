@@ -618,6 +618,7 @@ export default function PolicyEngine() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button
+                          aria-label={`Edit rule ${excl.name}`}
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => setEditingId(excl.id)}
@@ -625,6 +626,7 @@ export default function PolicyEngine() {
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
+                          aria-label={`Delete rule ${excl.name}`}
                           variant="ghost"
                           size="icon-sm"
                           className="text-muted-foreground hover:text-neon-pink"

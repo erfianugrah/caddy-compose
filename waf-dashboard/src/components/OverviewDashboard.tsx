@@ -142,7 +142,10 @@ export default function OverviewDashboard() {
   const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0);
 
   // ── Data loading ──
+  // Guard against stale responses when rapid filter/time changes fire concurrent requests.
+  const requestGenRef = useRef(0);
   const loadData = useCallback(() => {
+    const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
     const summaryParams: SummaryParams = {
@@ -150,9 +153,18 @@ export default function OverviewDashboard() {
       ...filtersToSummaryParams(filters),
     };
     fetchSummary(summaryParams)
-      .then(setData)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .then((d) => {
+        if (requestGenRef.current !== gen) return;
+        setData(d);
+      })
+      .catch((err) => {
+        if (requestGenRef.current !== gen) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (requestGenRef.current !== gen) return;
+        setLoading(false);
+      });
   }, [timeRange, filters]);
 
   useEffect(() => {
@@ -720,6 +732,9 @@ export default function OverviewDashboard() {
                   <Fragment key={evt.id}>
                     <TableRow
                       className="cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={expanded.has(evt.id)}
                       onClick={() => {
                         setExpanded((prev) => {
                           const next = new Set(prev);
@@ -727,6 +742,17 @@ export default function OverviewDashboard() {
                           else next.add(evt.id);
                           return next;
                         });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setExpanded((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(evt.id)) next.delete(evt.id);
+                            else next.add(evt.id);
+                            return next;
+                          });
+                        }
                       }}
                     >
                       <TableCell className="w-8">

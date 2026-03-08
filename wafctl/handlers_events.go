@@ -394,7 +394,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		exportAll := strings.EqualFold(q.Get("export"), "true")
 		limit := queryInt(q.Get("limit"), 50)
 		if exportAll {
-			limit = 50000 // export mode: capped to prevent OOM on small containers
+			if limit <= 0 || limit > 10000 {
+				limit = 10000 // export mode: capped to prevent OOM on small containers
+			}
 		} else if limit <= 0 || limit > 1000 {
 			limit = 50
 		}

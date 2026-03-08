@@ -1,5 +1,9 @@
 name: Build, Scan, Push, Sign
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -108,7 +112,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@1bd062560b422f5944df1de50abd05162bea079e  # master
+        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a4  # v0.30.0
         with:
           image-ref: ${{ steps.meta.outputs.full }}
           format: table
@@ -162,7 +166,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@1bd062560b422f5944df1de50abd05162bea079e  # master
+        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a4  # v0.30.0
         with:
           image-ref: ${{ steps.meta.outputs.full }}
           format: table

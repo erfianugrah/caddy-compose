@@ -116,7 +116,7 @@ func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *I
 
 		// Merge WAF events + access log events (rate_limited, ipsum_blocked).
 		rlEvents := getRLEvents(als, tr, hours)
-		result := store.IPLookup(ip, hours, limit, offset, rlEvents)
+		result := store.IPLookupRange(ip, tr, hours, limit, offset, rlEvents)
 
 		// Enrich with GeoIP information.
 		if geo != nil {
