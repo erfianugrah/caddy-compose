@@ -4,7 +4,7 @@ Comprehensive code review performed 2026-03-08. Each finding has been verified a
 actual codebase with exact line references. Findings marked **INVALIDATED** were disproven
 during verification and are included for transparency.
 
-**Tally: 55 verified findings (5 critical, 7 high, 14 medium, 23 low), 6 invalidated.**
+**Tally: 55 verified findings (5 critical, 7 high, 13 medium, 24 low), 6 invalidated.**
 
 ---
 
@@ -872,7 +872,7 @@ s.saveOffset()                     // then advance offset
 | Field | Value |
 |-------|-------|
 | **File** | `compose.yaml:2-13`, `Dockerfile:55-70` |
-| **Severity** | Medium |
+| **Severity** | Low (architectural requirement) |
 | **Category** | Security — container hardening |
 
 #### Code
@@ -894,31 +894,40 @@ No `user:` directive. No `USER` in the final Dockerfile stage. Caddy runs as roo
 
 #### Analysis
 
-**network_mode: host** — Caddy has access to every port on every interface of the host,
-including localhost-only services (databases, admin APIs, Docker socket proxies). An SSRF in
-any proxied backend can reach host services.
+**`network_mode: host` is required.** Caddy proxies to backends across 10+ distinct Docker
+networks (`172.19.1.x` media stack, `172.19.98.x` WAF, `172.19.99.x` Authelia, `172.17.0.x`
+default bridge for Dockge, `172.20.1.x`, `172.70.0.x` MinIO, etc.) **plus** `localhost:90`
+(Unraid WebUI) on the host itself. A container attached to specific Docker networks can only
+reach containers on those same networks. To reach all of these plus host-local services,
+`network_mode: host` is the only practical option. The alternative — attaching Caddy to every
+single Docker network — would be fragile, require compose changes every time a new network is
+added, and still wouldn't solve the `localhost:90` routing.
 
-**Root + DAC_OVERRIDE** — combined with host networking, a container escape gives full host
-network + root privilege access.
+**Root is required** because:
+- Binding ports 80/443 requires `NET_BIND_SERVICE` (or root on older kernels)
+- `DAC_OVERRIDE` is needed for bind-mounted directories with restrictive host ownership
+- The crond job (`rotate-audit-log.sh`) requires root for crontab access
 
-**Mitigations already in place** (these significantly reduce severity):
+**Mitigations already in place** (these significantly reduce the blast radius):
 - `cap_drop: ALL` + selective `cap_add` (only `NET_BIND_SERVICE` + `DAC_OVERRIDE`)
 - `read_only: true` — root filesystem is immutable
 - `security_opt: no-new-privileges:true` — prevents setuid escalation
 - Resource limits (8 CPU, 2GB RAM)
 - `tmpfs` volumes for `/tmp` and `/var/run`
 
-The `network_mode: host` is a deliberate architecture choice for direct port binding and
-real client IP visibility. The `DAC_OVERRIDE` is needed because bind-mounted directories may
-have restrictive ownership. The crond job requires root.
+This is a well-hardened configuration given the architectural constraints. The combination of
+`cap_drop: ALL`, `read_only: true`, and `no-new-privileges` means even with root UID, the
+container has minimal kernel capabilities.
 
-#### Fix (Hardening)
+#### Fix (Optional hardening — low priority)
 
 Long-term: replace crond with an in-process Go ticker in wafctl, fix directory ownership at
-image build time, and add `USER caddy` to the Dockerfile. This would allow dropping both
-`DAC_OVERRIDE` and running as non-root.
+image build time, and add `USER caddy` to the Dockerfile. This would allow dropping
+`DAC_OVERRIDE` and running as non-root. Use `sysctl net.ipv4.ip_unprivileged_port_start=0`
+to drop `NET_BIND_SERVICE` as well.
 
-Short-term: document the root requirement and the mitigations in place.
+These are incremental improvements, not urgent fixes — the current setup is sound for its
+constraints.
 
 ---
 
