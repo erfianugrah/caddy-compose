@@ -520,6 +520,9 @@ func validateRateLimitRule(rule RateLimitRule) error {
 	if !validGroupOperators[rule.GroupOp] {
 		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", rule.GroupOp)
 	}
+	if rule.GroupOp == "or" && len(rule.Conditions) > 1 {
+		return fmt.Errorf("group_operator \"or\" is not yet supported for rate limit rules with multiple conditions")
+	}
 
 	// Conditions — only request-phase fields allowed.
 	if err := validateConditions(rule.Conditions, validRLConditionFields); err != nil {

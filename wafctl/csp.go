@@ -422,6 +422,8 @@ type CSPDeployResponse struct {
 // handleDeployCSP generates CSP config files and reloads Caddy.
 func handleDeployCSP(store *CSPStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		deployMu.Lock()
+		defer deployMu.Unlock()
 		files := GenerateCSPConfigs(store, deployCfg.CaddyfilePath)
 
 		written, err := writeCSPFiles(deployCfg.CSPDir, files)

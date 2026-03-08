@@ -469,9 +469,9 @@ func rlKeyToPlaceholder(key string) string {
 	case "static":
 		return "static"
 	case "client_ip+path":
-		return "{http.request.remote.host}{http.request.uri.path}"
+		return "{http.request.remote.host}_{http.request.uri.path}"
 	case "client_ip+method":
-		return "{http.request.remote.host}{http.request.method}"
+		return "{http.request.remote.host}_{http.request.method}"
 	}
 	// header:X-API-Key → {http.request.header.X-API-Key}
 	if strings.HasPrefix(key, "header:") {

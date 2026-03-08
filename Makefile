@@ -130,9 +130,16 @@ sign-caddy: ## Sign Caddy image with cosign (keyless, by digest)
 sign-wafctl: ## Sign wafctl image with cosign (keyless, by digest)
 	cosign sign $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE))
 
+COSIGN_IDENTITY ?= https://github.com/erfianugrah/caddy-compose/.github/workflows/build.yml@refs/heads/main
+COSIGN_ISSUER   ?= https://token.actions.githubusercontent.com
+
 verify: ## Verify signatures on both images
-	cosign verify $$(docker inspect --format='{{index .RepoDigests 0}}' $(CADDY_IMAGE)) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
-	cosign verify $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE)) --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'
+	cosign verify $$(docker inspect --format='{{index .RepoDigests 0}}' $(CADDY_IMAGE)) \
+		--certificate-identity='$(COSIGN_IDENTITY)' \
+		--certificate-oidc-issuer='$(COSIGN_ISSUER)'
+	cosign verify $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE)) \
+		--certificate-identity='$(COSIGN_IDENTITY)' \
+		--certificate-oidc-issuer='$(COSIGN_ISSUER)'
 
 sbom: sbom-caddy sbom-wafctl ## Generate SBOMs for both images
 

@@ -203,7 +203,7 @@ func (s *GeoIPStore) LookupFull(ip, cfCountry string) *GeoIPInfo {
 // lookupOnline queries the configured online GeoIP API for a country code.
 // Results are cached in the shared cache. Returns "" on error.
 func (s *GeoIPStore) lookupOnline(ip string) string {
-	if ip == "" {
+	if ip == "" || net.ParseIP(ip) == nil {
 		return ""
 	}
 
@@ -287,7 +287,7 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 // Returns nil on error. Results are NOT cached in the country cache since this
 // returns richer data that we don't persist.
 func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
-	if ip == "" {
+	if ip == "" || net.ParseIP(ip) == nil {
 		return nil
 	}
 

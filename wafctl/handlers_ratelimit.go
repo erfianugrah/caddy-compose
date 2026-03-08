@@ -88,6 +88,8 @@ func handleDeleteRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 
 func handleDeployRLRules(rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		deployMu.Lock()
+		defer deployMu.Unlock()
 		// Discover any new services from the Caddyfile.
 		rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
 

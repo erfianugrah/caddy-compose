@@ -9,8 +9,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+// deployMu serializes all deploy operations (WAF, RL, CSP) to prevent
+// interleaved file writes and Caddy reloads from concurrent requests.
+var deployMu sync.Mutex
 
 // DeployConfig holds paths and settings for the deploy pipeline.
 type DeployConfig struct {

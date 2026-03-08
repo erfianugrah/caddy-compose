@@ -99,6 +99,8 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc 
 
 func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		deployMu.Lock()
+		defer deployMu.Unlock()
 		cfg := cs.Get()
 		exclusions := es.EnabledExclusions()
 		ResetRuleIDCounter()
@@ -109,7 +111,22 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, d
 		vr := ValidateGeneratedConfig(result.PreCRS, result.PostCRS, wafSettings)
 		selfRefWarnings := validateGeneratedRuleIDs(exclusions)
 		vr.Warnings = append(vr.Warnings, selfRefWarnings...)
+		for _, sw := range selfRefWarnings {
+			if sw.Level == "error" {
+				vr.Valid = false
+			}
+		}
 		logValidationResult(vr)
+
+		// Abort deploy if validation found errors.
+		if !vr.Valid {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"error":    "validation failed — deploy aborted",
+				"warnings": vr.Warnings,
+				"valid":    false,
+			})
+			return
+		}
 
 		// Write config files to the shared volume.
 		if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
