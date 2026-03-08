@@ -160,13 +160,18 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - **Handler files** (split from main.go): `handlers_events.go` (health/summary/events/services), `handlers_analytics.go` (top IPs/URIs/countries, IP lookup), `handlers_exclusions.go` (exclusion CRUD), `handlers_config.go` (CRS catalog, WAF config, deploy), `handlers_ratelimit.go` (RL rule CRUD + analytics)
 - **Log parser**: `logparser.go` (~564 lines) — Store struct, offset/JSONL persistence, Load, eviction, tailing; `event_parser.go` — `parseEvent`, anomaly score extraction; `waf_summary.go` — `summarizeEvents`; `waf_analytics.go` — services/IP/top-N analytics
 - **Models** (split by domain): `models.go` (~454 lines) — CRS scoring, audit log types, summary/analytics types; `models_exclusions.go` — Condition, RuleExclusion, WAFConfig; `models_ratelimit.go` — rate limit types; `models_general_logs.go` — general log types
-- **Config generation**: `generator.go` (~637 lines) — SecRule exclusion generation; `waf_settings_generator.go` — WAF settings generation
+- **Config generation**: `generator.go` (~458 lines) — SecRule exclusion generation; `generator_helpers.go` (~187 lines) — condition-to-SecRule mapping, escape utilities; `waf_settings_generator.go` — WAF settings generation
 - **Access log store**: `access_log_store.go` (~593 lines) — AccessLogStore struct, persistence, Load, snapshots (split from rl_analytics.go)
 - **Rate limit analytics**: `rl_analytics.go` (~373 lines) — regex cache, summary, filtered events, rule hits, condition matching
-- **Rate limit advisor**: `rl_advisor.go` (~807 lines) — algorithm/computation; `rl_advisor_types.go` — types, models, cache
+- **Rate limit advisor**: `rl_advisor.go` (~364 lines) — algorithm/computation, recommendations; `rl_advisor_stats.go` (~449 lines) — MAD/IQR/Fano statistical functions, distribution analysis; `rl_advisor_types.go` — types, models, cache
+- **Rate limit generator**: `rl_generator.go` (~321 lines) — Caddyfile generation for RL rules; `rl_matchers.go` (~301 lines) — Caddy matcher syntax generation from conditions
 - **General logs**: `general_logs.go` (~477 lines) — store code; `general_logs_handlers.go` (~515 lines) — handlers + aggregation
-- **IP intelligence**: `ip_intel.go` (~642 lines) — BGP routing, RPKI validation, reputation, Shodan enrichment; `tls_helpers.go` (38 lines) — TLS version/cipher suite name helpers
-- **Domain stores**: `exclusions.go` (550), `rl_rules.go` (561), `geoip.go` (903), `csp.go` (541), `csp_generator.go`, `rl_generator.go` (616), `blocklist.go` (370), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cli.go` (949), `cfproxy.go`, `crs_rules.go`
+- **IP intelligence**: `ip_intel.go` (~247 lines) — BGP routing, RPKI validation, orchestration; `ip_intel_sources.go` (~403 lines) — external API clients (Shodan, reputation, BGP); `tls_helpers.go` (38 lines) — TLS version/cipher suite name helpers
+- **GeoIP**: `geoip.go` (~499 lines) — GeoIPStore, API/header/cache resolution; `geoip_mmdb.go` (~403 lines) — pure MMDB binary reader (zero-dependency)
+- **Exclusions**: `exclusions.go` (~366 lines) — ExclusionStore CRUD, persistence; `exclusions_validate.go` (~257 lines) — validation, condition checks, regex patterns
+- **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands
+- **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
+- **Domain stores**: `rl_rules.go` (561), `csp.go` (541), `csp_generator.go`, `blocklist.go` (370), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
 
