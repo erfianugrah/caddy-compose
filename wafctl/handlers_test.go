@@ -346,7 +346,7 @@ func TestParseHours(t *testing.T) {
 		{"hours=6", 6},
 		{"hours=72", 72},
 		{"hours=168", 168},
-		{"hours=12", 0},  // invalid value
+		{"hours=12", 12}, // any positive integer is valid
 		{"hours=abc", 0}, // not a number
 		{"hours=-1", 0},  // negative
 	}

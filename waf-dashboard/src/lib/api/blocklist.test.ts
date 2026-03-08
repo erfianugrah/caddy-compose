@@ -72,17 +72,18 @@ describe("refreshBlocklist", () => {
   });
 
   it("throws on HTTP error", async () => {
+    const errorBody = JSON.stringify({ message: "download failed: connection refused" });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
         statusText: "Internal Server Error",
-        json: () => Promise.resolve({ message: "download failed: connection refused" }),
+        text: () => Promise.resolve(errorBody),
       })
     );
 
-    await expect(refreshBlocklist()).rejects.toThrow("download failed: connection refused");
+    await expect(refreshBlocklist()).rejects.toThrow("API error: 500 Internal Server Error");
   });
 
   it("handles partial status (Caddy reload failed)", async () => {
