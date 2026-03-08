@@ -22,6 +22,7 @@ import type {
   Condition,
   GroupOperator,
   RLRuleAction,
+  RLRuleKey,
 } from "@/lib/api";
 
 // ─── Rule Form (Create / Edit) ──────────────────────────────────────
@@ -62,7 +63,7 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
   const isParameterizedKey = paramPrefixes.some((p) => p === keyBase);
 
   const handleKeyChange = (v: string) => {
-    setKey(v);
+    setKey(v as RLRuleKey);
     if (!paramPrefixes.some((p) => p === v)) {
       setCustomKeyParam("");
     }
@@ -97,7 +98,7 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
       return;
     }
 
-    const resolvedKey = isParameterizedKey ? `${keyBase}${customKeyParam.trim()}` : key;
+    const resolvedKey = (isParameterizedKey ? `${keyBase}${customKeyParam.trim()}` : key) as RLRuleKey;
 
     onSubmit({
       name: name.trim(),

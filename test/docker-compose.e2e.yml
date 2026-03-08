@@ -1,0 +1,88 @@
+# E2E smoke test stack — Caddy + wafctl + httpbun
+# Usage: make test-e2e
+# Or manually:
+#   docker compose -f test/docker-compose.e2e.yml up -d --wait
+#   cd test/e2e && go test -v -count=1 -timeout 300s ./...
+#   docker compose -f test/docker-compose.e2e.yml down -v
+services:
+  caddy:
+    image: erfianugrah/caddy:2.10.2-2.11.1
+    container_name: caddy-e2e
+    ports:
+      - "18080:8080"   # HTTP proxy (test site)
+      - "18081:8081"   # waf-dashboard UI
+      - "12019:2019"   # Caddy admin API
+    volumes:
+      - ./Caddyfile.e2e:/etc/caddy/Caddyfile:ro
+      - ./ipsum_block.caddy:/etc/caddy/ipsum_block.caddy:ro
+      # Shared writable volumes for dynamic configs
+      - coraza_data:/data/coraza
+      - rl_data:/data/caddy/rl
+      - csp_data:/data/caddy/csp
+      - wafctl_data:/data
+      - caddy_log:/var/log
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      httpbun:
+        condition: service_started
+
+  wafctl:
+    image: erfianugrah/wafctl:1.10.2
+    container_name: wafctl-e2e
+    user: "0:0"  # Run as root in test (production uses volumes with correct ownership)
+    ports:
+      - "18082:8080"   # wafctl API
+    environment:
+      WAFCTL_PORT: "8080"
+      WAF_AUDIT_LOG: /data/logs/coraza-audit.log
+      WAF_COMBINED_ACCESS_LOG: /data/logs/combined-access.log
+      WAF_EXCLUSIONS_FILE: /data/exclusions.json
+      WAF_CONFIG_FILE: /data/waf-config.json
+      WAF_RATELIMIT_FILE: /data/ratelimit.json
+      WAF_CORAZA_DIR: /data/coraza
+      WAF_RATELIMIT_DIR: /data/caddy/rl
+      WAF_CSP_FILE: /data/csp-config.json
+      WAF_CSP_DIR: /data/caddy/csp
+      WAF_CADDY_ADMIN_URL: http://caddy:2019
+      WAF_CADDYFILE_PATH: /data/Caddyfile
+      WAF_EVENT_FILE: /data/events.jsonl
+      WAF_ACCESS_EVENT_FILE: /data/access-events.jsonl
+      WAF_AUDIT_OFFSET_FILE: /data/.audit-log-offset
+      WAF_ACCESS_OFFSET_FILE: /data/.access-log-offset
+      WAF_GENERAL_LOG_FILE: /data/general-events.jsonl
+      WAF_GENERAL_LOG_OFFSET_FILE: /data/.general-log-offset
+      WAF_EVENT_MAX_AGE: 24h
+      WAF_TAIL_INTERVAL: 2s
+      WAF_CORS_ORIGINS: "*"
+    volumes:
+      - coraza_data:/data/coraza
+      - rl_data:/data/caddy/rl
+      - csp_data:/data/caddy/csp
+      - wafctl_data:/data
+      - caddy_log:/data/logs:ro
+      - ./Caddyfile.e2e:/data/Caddyfile:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      caddy:
+        condition: service_healthy
+
+  httpbun:
+    image: mccutchen/go-httpbin
+    container_name: httpbun-e2e
+
+volumes:
+  coraza_data:
+  rl_data:
+  csp_data:
+  wafctl_data:
+  caddy_log:

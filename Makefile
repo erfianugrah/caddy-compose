@@ -53,7 +53,7 @@ endif
 
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
         deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
-        test test-go test-frontend check status logs logs-caddy logs-wafctl \
+        test test-go test-frontend test-e2e check status logs logs-caddy logs-wafctl \
          health version waf-deploy waf-config waf-events caddy-reload caddy-quick-reload config clean \
         scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
 
@@ -105,6 +105,12 @@ test-go: ## Run Go tests
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
+
+test-e2e: ## Run e2e smoke tests (requires Docker)
+	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
+	cd test/e2e && go test -v -count=1 -timeout 300s ./...; rc=$$?; \
+	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
+	exit $$rc
 
 check: test ## Run tests + type check + build (pre-push validation)
 	cd waf-dashboard && npx tsc --noEmit

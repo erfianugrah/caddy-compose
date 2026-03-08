@@ -1,0 +1,150 @@
+# E2E test Caddyfile — mirrors production config loading order
+# with dynamic wafctl-managed configs included.
+{
+	admin :2019
+	order coraza_waf first
+	log {
+		level INFO
+		output stdout
+		format json
+	}
+	servers {
+		strict_sni_host insecure_off
+	}
+}
+
+(cors) {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://{http.request.host}"
+		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
+		header Access-Control-Allow-Headers "Content-Type"
+		header Access-Control-Max-Age "3600"
+		respond "" 204
+	}
+	header Access-Control-Allow-Origin "https://{http.request.host}"
+	header Vary Origin
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+		-X-Powered-By
+	}
+}
+
+# WAF with dynamic config includes — matches production loading order
+(waf) {
+	@not_websocket {
+		not header Connection *Upgrade*
+	}
+	route @not_websocket {
+		coraza_waf {
+			load_owasp_crs
+			directives `
+			Include /etc/caddy/coraza/pre-crs.conf
+			Include /data/coraza/custom-pre-crs.conf
+			Include @crs-setup.conf.example
+			Include /data/coraza/custom-waf-settings.conf
+			Include @owasp_crs/*.conf
+			Include /etc/caddy/coraza/post-crs.conf
+			Include /data/coraza/custom-post-crs.conf
+			SecAuditEngine RelevantOnly
+			SecAuditLog /var/log/coraza-audit.log
+			SecAuditLogFormat json
+			SecAuditLogParts ABCFHKZ
+			`
+		}
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(ipsum_blocklist) {
+	import /etc/caddy/ipsum_block.caddy
+}
+
+(static_cache) {
+	@fonts path *.woff *.woff2 *.ttf *.eot *.otf
+	header @fonts ?Cache-Control "public, max-age=31536000, immutable"
+	@scripts path *.js
+	header @scripts ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+	@styles path *.css
+	header @styles ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+}
+
+(proxy_headers) {
+	header_up X-Forwarded-For {remote_host}
+}
+
+(error_pages) {
+	handle_errors {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(site_log) {
+	log {
+		level INFO
+		output file /var/log/{args[0]}-access.log {
+			roll_size 256mb
+			roll_keep 2
+			roll_keep_for 24h
+		}
+		format json {
+			time_format wall
+		}
+	}
+	log combined {
+		level INFO
+		output file /var/log/combined-access.log {
+			mode 0644
+			roll_size 256mb
+			roll_keep 2
+			roll_keep_for 24h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+# Test site — reverse proxy to httpbun with WAF + dynamic RL + CSP
+:8080 {
+	import cors
+	import security_headers
+	import static_cache
+	import waf
+	import ipsum_blocklist
+
+	# Dynamic rate limit and CSP configs from wafctl
+	import /data/caddy/rl/httpbun_rl*.caddy
+	import /data/caddy/csp/httpbun_csp*.caddy
+
+	encode zstd gzip
+	reverse_proxy httpbun:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log httpbun
+}
+
+# WAF dashboard UI
+:8081 {
+	root * /etc/caddy/waf-ui
+	try_files {path} {path}/index.html
+	file_server
+	import error_pages
+}
