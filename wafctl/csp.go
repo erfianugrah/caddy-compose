@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -86,12 +87,19 @@ var validCSPModes = map[string]bool{
 	"none":    true,
 }
 
+// cspServiceNameRe validates CSP service names — alphanumeric, hyphens, dots, underscores.
+// Prevents path traversal (e.g. "../etc/passwd") and Caddyfile injection via service names.
+var cspServiceNameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
 // validateCSPConfig checks the config for invalid values.
 func validateCSPConfig(cfg CSPConfig) error {
 	if err := validateCSPPolicy(cfg.GlobalDefaults); err != nil {
 		return fmt.Errorf("global_defaults: %w", err)
 	}
 	for svc, sc := range cfg.Services {
+		if !cspServiceNameRe.MatchString(svc) {
+			return fmt.Errorf("service %q: invalid service name (must match %s)", svc, cspServiceNameRe.String())
+		}
 		if !validCSPModes[sc.Mode] {
 			return fmt.Errorf("service %q: invalid mode %q (must be set, default, or none)", svc, sc.Mode)
 		}

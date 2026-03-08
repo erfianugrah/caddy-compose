@@ -191,10 +191,14 @@ func (s *ConfigStore) Get() WAFConfig {
 	cp := s.config
 	cp.Defaults.DisabledGroups = copyStringSlice(s.config.Defaults.DisabledGroups)
 	cp.Defaults.CRSExclusions = copyStringSlice(s.config.Defaults.CRSExclusions)
+	cp.Defaults.EarlyBlocking = copyBoolPtr(s.config.Defaults.EarlyBlocking)
+	cp.Defaults.EnforceBodyprocURLEncoded = copyBoolPtr(s.config.Defaults.EnforceBodyprocURLEncoded)
 	cp.Services = make(map[string]WAFServiceSettings, len(s.config.Services))
 	for k, v := range s.config.Services {
 		v.DisabledGroups = copyStringSlice(v.DisabledGroups)
 		v.CRSExclusions = copyStringSlice(v.CRSExclusions)
+		v.EarlyBlocking = copyBoolPtr(v.EarlyBlocking)
+		v.EnforceBodyprocURLEncoded = copyBoolPtr(v.EnforceBodyprocURLEncoded)
 		cp.Services[k] = v
 	}
 	return cp
@@ -226,6 +230,15 @@ func copyStringSlice(s []string) []string {
 	cp := make([]string, len(s))
 	copy(cp, s)
 	return cp
+}
+
+// copyBoolPtr returns a copy of a *bool pointer (nil-safe).
+func copyBoolPtr(p *bool) *bool {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 // validateConfig checks that the config has valid values.

@@ -123,8 +123,17 @@ func (s *Store) appendEventsToJSONL(events []Event) {
 			log.Printf("error marshaling event for persistence: %v", err)
 			continue
 		}
-		f.Write(data)
-		f.Write([]byte{'\n'})
+		if _, err := f.Write(data); err != nil {
+			log.Printf("error writing event to JSONL: %v", err)
+			return
+		}
+		if _, err := f.Write([]byte{'\n'}); err != nil {
+			log.Printf("error writing newline to JSONL: %v", err)
+			return
+		}
+	}
+	if err := f.Sync(); err != nil {
+		log.Printf("error syncing event file: %v", err)
 	}
 }
 
@@ -155,16 +164,35 @@ func (s *Store) compactEventFileLocked() {
 	}
 
 	count := len(s.events)
+	var writeErr error
 	for i := range s.events {
 		data, err := json.Marshal(s.events[i])
 		if err != nil {
 			continue
 		}
-		f.Write(data)
-		f.Write([]byte{'\n'})
+		if _, err := f.Write(data); err != nil {
+			writeErr = err
+			break
+		}
+		if _, err := f.Write([]byte{'\n'}); err != nil {
+			writeErr = err
+			break
+		}
 	}
 
-	f.Sync()
+	if writeErr != nil {
+		f.Close()
+		os.Remove(tmp)
+		log.Printf("error writing compacted event file: %v", writeErr)
+		return
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		log.Printf("error syncing compacted event file: %v", err)
+		return
+	}
 	f.Close()
 	if err := os.Rename(tmp, s.eventFile); err != nil {
 		log.Printf("error renaming compacted event file: %v", err)
