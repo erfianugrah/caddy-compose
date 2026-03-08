@@ -667,7 +667,7 @@ directive. The handler must run first so placeholders are populated for bucket k
 
 ## Test Patterns
 
-### Go (1055 tests across 22 files)
+### Go (1072 tests across 22 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
@@ -676,7 +676,7 @@ directive. The handler must run first so placeholders are populated for bucket k
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (295 tests across 13 files)
+### Frontend (300 tests across 13 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
 - API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (11), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)

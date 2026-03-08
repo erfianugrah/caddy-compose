@@ -457,8 +457,9 @@ The CI pipeline (GitHub Actions) includes:
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (1055 tests across 22 files)
-make test-frontend     # Vitest frontend tests (295 tests across 13 files)
+make test-go           # Go tests only (1072 tests across 22 files)
+make test-frontend     # Vitest frontend tests (300 tests across 13 files)
+make test-e2e          # Docker-based e2e smoke tests (79 tests)
 ```
 
 Run a single test:
@@ -494,14 +495,18 @@ caddy-compose/
     update-geoip.sh      # GeoIP database updater (manual)
   wafctl/                # Go sidecar (zero external dependencies)
     main.go              # Server setup, CORS middleware, route registration
-    cli.go               # CLI subcommand framework
+    cli.go               # CLI framework, serve/config/deploy commands
+    cli_rules.go         # CLI rules/exclusions subcommands
+    cli_extras.go        # CLI ratelimit/csp/blocklist/events subcommands
     models.go            # Core data models (CRS scoring, audit log, summary types)
     models_exclusions.go # Condition, RuleExclusion, WAFConfig types
     models_ratelimit.go  # Rate limit types
     models_general_logs.go # General log types
     config.go            # WAF config store (CRS v4 extended settings)
-    exclusions.go        # Policy engine exclusion store + shared condition validation
+    exclusions.go        # Policy engine exclusion store CRUD, persistence
+    exclusions_validate.go # Exclusion/condition validation, regex patterns
     generator.go         # SecRule generation (chained rules, ctl: placement, CRS v4 setvar)
+    generator_helpers.go # Condition-to-SecRule mapping, escape utilities
     waf_settings_generator.go # WAF settings config generation
     validate.go          # Config validation engine (quote balance, self-ref, msg commas)
     logparser.go         # Audit log parser, offset/JSONL persistence, eviction
@@ -517,14 +522,18 @@ caddy-compose/
     json_helpers.go      # writeJSON, decodeJSON, queryInt
     query_helpers.go     # parseHours, parseTimeRange, fieldFilter
     rl_rules.go          # Rate limit rule store (CRUD, validation, v1 migration)
-    rl_generator.go      # Rate limit Caddy config generator (matchers, keys)
+    rl_generator.go      # Rate limit Caddyfile generation
+    rl_matchers.go       # Caddy matcher syntax generation from conditions
     rl_analytics.go      # Rate limit analytics, condition-based 429 attribution
-    rl_advisor.go        # Rate advisor (anomaly detection, caching, baselines)
+    rl_advisor.go        # Rate advisor (anomaly detection, recommendations)
+    rl_advisor_stats.go  # MAD/IQR/Fano statistical functions, distribution analysis
     rl_advisor_types.go  # Rate advisor types, models, cache
     deploy.go            # Deploy pipeline (write + fingerprint + reload)
     blocklist.go         # IPsum blocklist management
-    geoip.go             # Pure-Go MMDB reader, GeoIP resolution
-    ip_intel.go          # BGP routing, RPKI validation, reputation, Shodan enrichment
+    geoip.go             # GeoIPStore, API/header/cache resolution
+    geoip_mmdb.go        # Pure-Go MMDB binary reader (zero-dependency)
+    ip_intel.go          # BGP routing, RPKI validation, orchestration
+    ip_intel_sources.go  # External API clients (Shodan, reputation, BGP)
     tls_helpers.go       # TLS version/cipher suite name helpers
     crs_rules.go         # CRS rule catalog (141 rules, 11 categories)
     csp.go               # CSP store (CRUD, validation, header builder)
@@ -533,7 +542,8 @@ caddy-compose/
     general_logs_handlers.go # General log handlers + aggregation
     cfproxy.go           # Cloudflare proxy stats/refresh
     cache.go             # In-memory cache (24h/100k entries)
-    *_test.go            # 22 test files (1055 tests)
+    util.go              # Shared utilities (envOr, atomicWriteFile)
+    *_test.go            # 22 test files (1072 tests)
     Dockerfile           # Standalone wafctl image
     go.mod
   waf-dashboard/         # Astro 5 + React 19 + shadcn/ui frontend
@@ -563,7 +573,14 @@ caddy-compose/
     vitest.config.ts
   test/
     docker-compose.test.yml
+    docker-compose.e2e.yml  # E2e smoke test stack (Caddy + wafctl + httpbun)
     Caddyfile.test
+    Caddyfile.e2e           # Test Caddyfile for e2e tests
+    ipsum_block.caddy       # Stub blocklist for tests
+    e2e/                    # Go e2e smoke tests
+      smoke_test.go         # 79 tests covering all API endpoints
+      helpers_test.go       # HTTP/JSON/assertion helpers
+      go.mod
   .github/
     workflows/
       build.yml          # CI: build, scan, push, sign, SBOM
