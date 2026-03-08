@@ -11,7 +11,7 @@ RUN xcaddy build \
 # Fetch IPsum blocklist at build time so it's never empty on first boot.
 # wafctl's scheduled refresh overwrites this at runtime.
 FROM alpine:3.21 AS ipsum
-ARG IPSUM_MIN_SCORE=3
+ARG IPSUM_MIN_SCORE=1
 RUN apk add --no-cache curl \
 	&& curl -fsSL --retry 3 --max-time 60 \
 	   https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt \

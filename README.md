@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:2.8.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.8.0
+CADDY_IMAGE   ?= <your-registry>/caddy:2.10.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.10.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.8.0-2.11.1`), wafctl is plain semver (e.g. `1.8.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.10.0-2.11.1`), wafctl is plain semver (e.g. `1.10.0`).
 
 ## WAF configuration
 
@@ -431,7 +431,7 @@ Rate limit rules are managed by wafctl. On boot it creates placeholder `.caddy` 
 
 ### Additional layers
 
-- **IPsum blocklist** — ~20k known-malicious IPs, baked in at build time, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
+- **IPsum blocklist** — ~200k+ known-malicious IPs (all 8 IPsum threat levels, min_score=1), baked in at build time, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
 - **Cloudflare trusted proxies** — IP ranges fetched at build time so Caddy resolves the real client IP from `X-Forwarded-For`.
 - **Security headers** — HSTS (2yr, preload), nosniff, SAMEORIGIN, strict referrer, permissions-policy, COOP, CORP. Per-service CSP headers managed via wafctl CSP system (global defaults + per-service overrides with set/default/none modes, report-only, and global enable/disable).
 - **ECH** (Encrypted Client Hello) — hides SNI from network observers.

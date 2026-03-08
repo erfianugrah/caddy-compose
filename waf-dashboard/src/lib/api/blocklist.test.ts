@@ -17,7 +17,7 @@ describe("getBlocklistStats", () => {
       blocked_ips: 19823,
       last_updated: "2026-02-22T06:00:01Z",
       source: "IPsum",
-      min_score: 3,
+      min_score: 1,
       file_path: "/data/coraza/ipsum_block.caddy",
     };
     vi.stubGlobal("fetch", mockFetchResponse(mockStats));
@@ -26,7 +26,7 @@ describe("getBlocklistStats", () => {
     expect(result.blocked_ips).toBe(19823);
     expect(result.last_updated).toBe("2026-02-22T06:00:01Z");
     expect(result.source).toBe("IPsum");
-    expect(result.min_score).toBe(3);
+    expect(result.min_score).toBe(1);
   });
 });
 
@@ -57,7 +57,7 @@ describe("refreshBlocklist", () => {
       status: "updated",
       message: "Downloaded 19823 IPs and updated blocklist",
       blocked_ips: 19823,
-      min_score: 3,
+      min_score: 1,
       last_updated: "2026-02-23T12:00:00Z",
       reloaded: true,
     };
@@ -66,7 +66,7 @@ describe("refreshBlocklist", () => {
     const result = await refreshBlocklist();
     expect(result.status).toBe("updated");
     expect(result.blocked_ips).toBe(19823);
-    expect(result.min_score).toBe(3);
+    expect(result.min_score).toBe(1);
     expect(result.last_updated).toBe("2026-02-23T12:00:00Z");
     expect(result.reloaded).toBe(true);
   });
@@ -90,7 +90,7 @@ describe("refreshBlocklist", () => {
       status: "partial",
       message: "Downloaded 19823 IPs and updated blocklist (Caddy reload failed)",
       blocked_ips: 19823,
-      min_score: 3,
+      min_score: 1,
       last_updated: "2026-02-23T12:00:00Z",
       reloaded: false,
     };
