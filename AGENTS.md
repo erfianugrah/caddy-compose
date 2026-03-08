@@ -69,8 +69,8 @@ Image tags live in **five places** that must stay in sync:
 - `test/docker-compose.test.yml` (line 3: caddy image field)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
-Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.10.0-2.11.1`).
-wafctl tag format: simple semver (e.g. `1.10.0`).
+Caddy tag format: `<project-version>-<caddy-version>` (e.g. `2.10.1-2.11.1`).
+wafctl tag format: simple semver (e.g. `1.10.1`).
 
 ## Secrets and Encryption
 
