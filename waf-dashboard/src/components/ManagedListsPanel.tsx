@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   List, Plus, RefreshCw, Trash2, Pencil, Download, Upload,
   Globe, Database, ExternalLink, Copy, Check, Search, Shield,
+  Network, Server, Type, Hash, Loader2, AlertTriangle,
 } from "lucide-react";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
@@ -17,6 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import {
   fetchManagedLists, getManagedList, createManagedList, updateManagedList,
   deleteManagedList, refreshManagedList, exportManagedLists, importManagedLists,
@@ -121,6 +123,29 @@ const emptyForm: FormState = {
   name: "", description: "", kind: "ip", source: "manual", url: "", itemsText: "",
 };
 
+const KIND_META: Record<ManagedList["kind"], { icon: typeof Network; label: string; desc: string; hint: string; placeholder: string }> = {
+  ip:       { icon: Network, label: "IP Addresses", desc: "IPv4/IPv6 addresses and CIDR ranges", hint: "Enter IPs or CIDR ranges (e.g. 10.0.0.0/8, 2001:db8::1)", placeholder: "10.0.0.1\n192.168.0.0/24\n2001:db8::/32" },
+  hostname: { icon: Server,  label: "Hostnames",    desc: "Domain names and subdomains",         hint: "Enter fully qualified domain names",                      placeholder: "evil.com\nmalware.example.net" },
+  string:   { icon: Type,    label: "Strings",      desc: "Free-form text values (paths, countries, etc.)", hint: "Enter one value per line",                      placeholder: "/admin\n/wp-login.php\nblocked-value" },
+  asn:      { icon: Hash,    label: "ASN Numbers",  desc: "Autonomous System Numbers",           hint: "Enter ASNs in AS##### format",                            placeholder: "AS13335\nAS15169\nAS32934" },
+};
+
+/** Simple line-level validation for item entries. */
+function validateItems(kind: ManagedList["kind"], text: string): string[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const errors: string[] = [];
+  for (const line of lines) {
+    if (kind === "ip") {
+      // Basic IPv4/v6 + optional CIDR — reject obvious junk
+      if (!/^[\d.:a-fA-F/]+$/.test(line)) errors.push(line);
+    } else if (kind === "asn") {
+      if (!/^AS\d+$/i.test(line)) errors.push(line);
+    }
+    // hostname and string are too freeform to validate strictly
+  }
+  return errors;
+}
+
 function ListFormDialog({
   open,
   onOpenChange,
@@ -153,12 +178,22 @@ function ListFormDialog({
 
   const isEdit = !!editing;
   const nameValid = /^[a-z0-9][a-z0-9_-]*$/.test(form.name);
+  const itemLines = form.itemsText.split("\n").filter((l) => l.trim());
+  const itemErrors = validateItems(form.kind, form.itemsText);
+  const kindMeta = KIND_META[form.kind];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit List" : "Create List"}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {isEdit ? "Edit List" : "Create List"}
+            {isEdit && (
+              <Badge variant="outline" className={`ml-1 text-[10px] ${KIND_COLORS[form.kind] || ""}`}>
+                {KIND_META[form.kind].label}
+              </Badge>
+            )}
+          </DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Update the list name, description, or items."
@@ -167,32 +202,35 @@ function ListFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Name */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">Name</label>
-            <Input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g., bad-ips, blocked-countries"
-              disabled={isEdit}
-              className="font-mono"
-            />
-            {form.name && !nameValid && (
-              <p className="text-[11px] text-neon-pink">Lowercase letters, numbers, hyphens, underscores only. Must start with letter or number.</p>
-            )}
+          {/* ── Metadata Section ─────────────────────────────── */}
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Name</label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g., bad-ips, blocked-countries"
+                disabled={isEdit}
+                className="font-mono"
+              />
+              {form.name && !nameValid && (
+                <p className="text-[11px] text-neon-pink">Lowercase alphanumeric, hyphens, underscores. Must start with letter/number.</p>
+              )}
+            </div>
+            {/* Description */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Description</label>
+              <Input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Optional description"
+              />
+            </div>
           </div>
 
-          {/* Description */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">Description</label>
-            <Input
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Optional description"
-            />
-          </div>
-
-          {/* Kind + Source row */}
+          {/* Kind + Source row (create only) */}
           {!isEdit && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -200,10 +238,20 @@ function ListFormDialog({
                 <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v as ManagedList["kind"] })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ip">IP (addresses + CIDRs)</SelectItem>
-                    <SelectItem value="hostname">Hostname</SelectItem>
-                    <SelectItem value="string">String</SelectItem>
-                    <SelectItem value="asn">ASN</SelectItem>
+                    {(Object.entries(KIND_META) as [ManagedList["kind"], typeof kindMeta][]).map(([k, m]) => {
+                      const Icon = m.icon;
+                      return (
+                        <SelectItem key={k} value={k}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <div>
+                              <span>{m.label}</span>
+                              <span className="ml-1.5 text-[10px] text-muted-foreground">{m.desc}</span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -212,8 +260,24 @@ function ListFormDialog({
                 <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as ManagedList["source"] })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="url">URL (remote fetch)</SelectItem>
+                    <SelectItem value="manual">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <div>
+                          <span>Manual</span>
+                          <span className="ml-1.5 text-[10px] text-muted-foreground">Enter items directly</span>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="url">
+                      <div className="flex items-center gap-2">
+                        <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <div>
+                          <span>URL</span>
+                          <span className="ml-1.5 text-[10px] text-muted-foreground">Fetch from remote source</span>
+                        </div>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -234,27 +298,36 @@ function ListFormDialog({
             </div>
           )}
 
-          {/* Items textarea */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">
-              Items
-              <span className="ml-2 font-normal text-muted-foreground">
-                ({form.itemsText.split("\n").filter((l) => l.trim()).length} entries)
-              </span>
-            </label>
-            <textarea
-              value={form.itemsText}
-              onChange={(e) => setForm({ ...form, itemsText: e.target.value })}
-              placeholder={
-                form.kind === "ip" ? "10.0.0.1\n192.168.0.0/24\n2001:db8::/32"
-                  : form.kind === "hostname" ? "evil.com\nmalware.net"
-                  : form.kind === "asn" ? "AS13335\nAS15169"
-                  : "/admin\n/secret\nblocked-value"
-              }
-              rows={8}
-              className="w-full rounded-md border border-border bg-navy-950 px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 resize-y"
-            />
-            <p className="text-[11px] text-muted-foreground">One item per line.</p>
+          <Separator />
+
+          {/* ── Items Section ────────────────────────────────── */}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium flex items-center gap-1.5">
+                Items
+                <Badge variant="outline" className="ml-1 text-[10px] font-normal tabular-nums">
+                  {itemLines.length}
+                </Badge>
+              </label>
+              {itemErrors.length > 0 && (
+                <span className="flex items-center gap-1 text-[11px] text-amber-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  {itemErrors.length} invalid {itemErrors.length === 1 ? "entry" : "entries"}
+                </span>
+              )}
+            </div>
+
+            <div className="rounded-md border border-border bg-navy-950/30 p-3 space-y-2">
+              <textarea
+                value={form.itemsText}
+                onChange={(e) => setForm({ ...form, itemsText: e.target.value })}
+                placeholder={kindMeta.placeholder}
+                rows={8}
+                className="w-full rounded-md border border-border bg-navy-950 px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 resize-y"
+              />
+              <p className="text-[11px] text-muted-foreground/70 px-1">{kindMeta.hint}</p>
+            </div>
           </div>
         </div>
 
@@ -265,7 +338,12 @@ function ListFormDialog({
             onClick={() => onSave(form)}
             disabled={saving || !form.name || (!isEdit && !nameValid)}
           >
-            {saving ? "Saving..." : isEdit ? "Update" : "Create"}
+            {saving ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                Saving...
+              </>
+            ) : isEdit ? "Update" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>
