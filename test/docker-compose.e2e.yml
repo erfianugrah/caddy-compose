@@ -6,7 +6,7 @@
 #   docker compose -f test/docker-compose.e2e.yml down -v
 services:
   caddy:
-    image: erfianugrah/caddy:2.10.2-2.11.1
+    image: caddy-e2e:local
     container_name: caddy-e2e
     ports:
       - "18080:8080"   # HTTP proxy (test site)
@@ -32,7 +32,7 @@ services:
         condition: service_started
 
   wafctl:
-    image: erfianugrah/wafctl:1.10.2
+    image: wafctl-e2e:local
     container_name: wafctl-e2e
     user: "0:0"  # Run as root in test (production uses volumes with correct ownership)
     ports:
@@ -59,6 +59,8 @@ services:
       WAF_EVENT_MAX_AGE: 24h
       WAF_TAIL_INTERVAL: 2s
       WAF_CORS_ORIGINS: "*"
+      WAF_POLICY_ENGINE_ENABLED: "true"
+      WAF_POLICY_RULES_FILE: /data/policy-rules.json
     volumes:
       - coraza_data:/data/coraza
       - rl_data:/data/caddy/rl

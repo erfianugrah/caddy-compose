@@ -642,7 +642,141 @@ func TestErrorHandling(t *testing.T) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 16. End-to-End: WAF Bypass via Exclusion
+// 16. Policy Engine — Block/Honeypot/Allow via Caddy Plugin
+// ════════════════════════════════════════════════════════════════════
+
+func TestPolicyEngineBlock(t *testing.T) {
+	// Create a block rule for a specific path.
+	payload := map[string]any{
+		"name":        "e2e-policy-block",
+		"type":        "block",
+		"description": "Block /e2e-blocked path",
+		"enabled":     true,
+		"conditions":  []map[string]string{{"field": "path", "operator": "begins_with", "value": "/e2e-blocked"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+	assertCode(t, "create block rule", 201, resp)
+	blockID := mustGetID(t, body)
+	// Don't deploy in cleanup — avoids mtime race with next test's deploy.
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+blockID) })
+
+	// Deploy — triggers policy-rules.json generation + Caddy reload.
+	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+
+	// Wait for plugin hot reload (polls every 5s, add buffer).
+	time.Sleep(8 * time.Second)
+
+	t.Run("blocked path returns 403 with policy-engine header", func(t *testing.T) {
+		resp, _ := httpGet(t, caddyURL+"/e2e-blocked")
+		assertCode(t, "block", 403, resp)
+		if !headerContains(resp, "X-Blocked-By", "policy-engine") {
+			t.Errorf("expected X-Blocked-By: policy-engine, got: %q", resp.Header.Get("X-Blocked-By"))
+		}
+	})
+
+	t.Run("unblocked path still works", func(t *testing.T) {
+		resp, _ := httpGet(t, caddyURL+"/get")
+		assertCode(t, "unblocked", 200, resp)
+	})
+}
+
+func TestPolicyEngineHoneypot(t *testing.T) {
+	// Create a honeypot rule with in operator — tests exact matching.
+	payload := map[string]any{
+		"name":        "e2e-honeypot",
+		"type":        "honeypot",
+		"description": "Honeypot paths",
+		"enabled":     true,
+		"conditions":  []map[string]string{{"field": "path", "operator": "in", "value": "/e2e-trap|/e2e-honeypot"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+	assertCode(t, "create honeypot", 201, resp)
+	hpID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+hpID) })
+
+	// Ensure mtime differs from any previous deploy by sleeping briefly.
+	time.Sleep(2 * time.Second)
+	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+	time.Sleep(8 * time.Second)
+
+	t.Run("honeypot path blocked", func(t *testing.T) {
+		resp, _ := httpGet(t, caddyURL+"/e2e-trap")
+		assertCode(t, "honeypot", 403, resp)
+		if !headerContains(resp, "X-Blocked-By", "policy-engine") {
+			t.Errorf("expected X-Blocked-By: policy-engine, got: %q", resp.Header.Get("X-Blocked-By"))
+		}
+	})
+
+	t.Run("in operator exact match — /e2e-trap-extended NOT blocked", func(t *testing.T) {
+		// This is the core security fix: @pm /e2e-trap would match /e2e-trap-extended,
+		// but the plugin's hash set does NOT. httpbun returns 404 for unknown paths,
+		// which proves the request passed through without being blocked.
+		code, err := httpGetCode(caddyURL + "/e2e-trap-extended")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if code == 403 {
+			t.Errorf("expected non-403 (not blocked), got 403 — in operator has substring match bug")
+		}
+	})
+
+	t.Run("second honeypot path also blocked", func(t *testing.T) {
+		resp, _ := httpGet(t, caddyURL+"/e2e-honeypot")
+		assertCode(t, "honeypot2", 403, resp)
+	})
+}
+
+func TestPolicyEngineAllow(t *testing.T) {
+	// Use /get (valid httpbun endpoint) with SQLi in query string.
+	sqliURL := caddyURL + "/get?id=1%27%20OR%20%271%27=%271"
+
+	// Verify the SQLi is blocked before the allow rule.
+	t.Run("pre-allow blocked", func(t *testing.T) {
+		code, err := httpGetCode(sqliURL)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if code != 403 {
+			t.Fatalf("expected 403 (WAF block), got %d — WAF not working", code)
+		}
+	})
+
+	// Create an allow rule that bypasses WAF for /get path.
+	payload := map[string]any{
+		"name":        "e2e-policy-allow",
+		"type":        "allow",
+		"description": "Allow /get path via policy engine",
+		"enabled":     true,
+		"conditions":  []map[string]string{{"field": "uri_path", "operator": "eq", "value": "/get"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+	assertCode(t, "create allow rule", 201, resp)
+	allowID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
+
+	time.Sleep(2 * time.Second)
+	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+	time.Sleep(8 * time.Second)
+
+	t.Run("post-allow SQLi passes through", func(t *testing.T) {
+		code, err := httpGetCode(sqliURL)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if code != 200 {
+			t.Errorf("expected 200 (WAF bypass via policy engine allow), got %d", code)
+		}
+	})
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 17. End-to-End: WAF Bypass via Exclusion (legacy SecRule path)
 // ════════════════════════════════════════════════════════════════════
 
 func TestE2EWAFBypass(t *testing.T) {
