@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -99,7 +100,7 @@ func TestExclusionStorePersistence(t *testing.T) {
 	path := filepath.Join(dir, "exclusions.json")
 
 	// Pre-write versioned empty store to skip seed migrations.
-	os.WriteFile(path, []byte(`{"version":1,"exclusions":[]}`), 0644)
+	os.WriteFile(path, []byte(fmt.Sprintf(`{"version":%d,"exclusions":[]}`, currentStoreVersion)), 0644)
 
 	es1 := NewExclusionStore(path)
 	_, err := es1.Create(RuleExclusion{
@@ -1009,8 +1010,9 @@ func TestStoreMigrationFromEmptyFile(t *testing.T) {
 	es := NewExclusionStore(path)
 	rules := es.List()
 
-	if len(rules) != 3 {
-		t.Fatalf("expected 3 seed rules, got %d", len(rules))
+	// 3 from v1 (heuristic bot rules) + 8 from v3 (ipsum block rules) = 11
+	if len(rules) != 11 {
+		t.Fatalf("expected 11 seed rules (3 heuristic + 8 ipsum), got %d", len(rules))
 	}
 
 	// Verify the seed rules by name.
@@ -1021,6 +1023,12 @@ func TestStoreMigrationFromEmptyFile(t *testing.T) {
 	for _, expected := range []string{"Scanner UA Block", "HTTP/1.0 Anomaly", "Generic UA Anomaly"} {
 		if !names[expected] {
 			t.Errorf("missing seed rule %q", expected)
+		}
+	}
+	for level := 1; level <= 8; level++ {
+		name := fmt.Sprintf("IPsum Block (Level %d)", level)
+		if !names[name] {
+			t.Errorf("missing ipsum seed rule %q", name)
 		}
 	}
 
@@ -1048,8 +1056,8 @@ func TestStoreMigrationFromEmptyFile(t *testing.T) {
 	if sf.Version != currentStoreVersion {
 		t.Errorf("saved version: want %d, got %d", currentStoreVersion, sf.Version)
 	}
-	if len(sf.Exclusions) != 3 {
-		t.Errorf("saved exclusions: want 3, got %d", len(sf.Exclusions))
+	if len(sf.Exclusions) != 11 {
+		t.Errorf("saved exclusions: want 11, got %d", len(sf.Exclusions))
 	}
 }
 
@@ -1072,9 +1080,9 @@ func TestStoreMigrationFromLegacyArray(t *testing.T) {
 	es := NewExclusionStore(path)
 	rules := es.List()
 
-	// Should have 1 existing + 3 seeded = 4 rules.
-	if len(rules) != 4 {
-		t.Fatalf("expected 4 rules (1 existing + 3 seeded), got %d", len(rules))
+	// Should have 1 existing + 3 seeded (v1) + 8 ipsum (v3) = 12 rules.
+	if len(rules) != 12 {
+		t.Fatalf("expected 12 rules (1 existing + 3 seeded + 8 ipsum), got %d", len(rules))
 	}
 
 	// Existing rule should be preserved.
@@ -1113,18 +1121,18 @@ func TestStoreMigrationIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
 
-	// First load: seeds rules.
+	// First load: seeds rules (3 heuristic + 8 ipsum = 11).
 	es1 := NewExclusionStore(path)
 	count1 := len(es1.List())
-	if count1 != 3 {
-		t.Fatalf("first load: expected 3 seed rules, got %d", count1)
+	if count1 != 11 {
+		t.Fatalf("first load: expected 11 seed rules, got %d", count1)
 	}
 
 	// Second load: reads versioned file, no migration.
 	es2 := NewExclusionStore(path)
 	count2 := len(es2.List())
-	if count2 != 3 {
-		t.Fatalf("second load: expected 3 rules (no re-seeding), got %d", count2)
+	if count2 != 11 {
+		t.Fatalf("second load: expected 11 rules (no re-seeding), got %d", count2)
 	}
 }
 
@@ -1387,12 +1395,12 @@ func TestStoreMigrationV2_FromFreshInstall(t *testing.T) {
 		t.Errorf("expected 3 seeded rules, found %d", found)
 	}
 
-	// Verify store version is persisted as v2.
+	// Verify store version is persisted as current.
 	data, _ := os.ReadFile(path)
 	var sf storeFile
 	json.Unmarshal(data, &sf)
-	if sf.Version != 2 {
-		t.Errorf("stored version = %d, want 2", sf.Version)
+	if sf.Version != currentStoreVersion {
+		t.Errorf("stored version = %d, want %d", sf.Version, currentStoreVersion)
 	}
 }
 
@@ -1415,7 +1423,12 @@ func TestStoreMigrationV2_FromV1(t *testing.T) {
 	es := NewExclusionStore(path)
 	exclusions := es.List()
 
-	// Scanner UA Block should have tags backfilled.
+	// 2 original + 8 ipsum seeded by v3 = 10
+	if len(exclusions) != 10 {
+		t.Fatalf("expected 10 rules (2 original + 8 ipsum), got %d", len(exclusions))
+	}
+
+	// Scanner UA Block should have tags backfilled (v2 migration).
 	for _, e := range exclusions {
 		if e.Name == "Scanner UA Block" {
 			if len(e.Tags) == 0 {
@@ -1427,6 +1440,60 @@ func TestStoreMigrationV2_FromV1(t *testing.T) {
 				t.Error("Custom Rule should not have tags after v2 migration")
 			}
 		}
+	}
+}
+
+func TestStoreMigrationV3_FromV2(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	// Write a v2 store with existing rules (no ipsum rules yet).
+	sf := storeFile{
+		Version: 2,
+		Exclusions: []RuleExclusion{
+			{ID: "a", Name: "Scanner UA Block", Type: "block", Tags: []string{"scanner", "bot-detection"}, Enabled: true},
+			{ID: "b", Name: "Custom Allow", Type: "allow", Enabled: true},
+		},
+	}
+	data, _ := json.Marshal(sf)
+	os.WriteFile(path, data, 0644)
+
+	es := NewExclusionStore(path)
+	exclusions := es.List()
+
+	// 2 original + 8 ipsum = 10
+	if len(exclusions) != 10 {
+		t.Fatalf("expected 10 rules (2 original + 8 ipsum), got %d", len(exclusions))
+	}
+
+	// Verify ipsum rules were added.
+	ipsumCount := 0
+	for _, e := range exclusions {
+		if containsTag(e.Tags, "ipsum") {
+			ipsumCount++
+			if e.Type != "block" {
+				t.Errorf("ipsum rule %q should be block type, got %s", e.Name, e.Type)
+			}
+			if len(e.Conditions) != 1 || e.Conditions[0].Operator != "in_list" {
+				t.Errorf("ipsum rule %q should have in_list condition", e.Name)
+			}
+		}
+	}
+	if ipsumCount != 8 {
+		t.Errorf("expected 8 ipsum rules, got %d", ipsumCount)
+	}
+}
+
+func TestStoreMigrationV3_IdempotentIfIpsumExists(t *testing.T) {
+	// If an ipsum block rule already exists (e.g., user created one manually),
+	// the v3 migration should not add duplicates.
+	existing := []RuleExclusion{
+		{ID: "a", Name: "Existing Rule", Type: "block", Tags: []string{"ipsum"}, Enabled: true},
+	}
+	result := migrateV2toV3(existing)
+	// Should not add 8 ipsum rules because an ipsum-tagged rule already exists.
+	if len(result) != 1 {
+		t.Errorf("expected 1 rule (idempotent), got %d", len(result))
 	}
 }
 

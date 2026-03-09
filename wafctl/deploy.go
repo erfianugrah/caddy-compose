@@ -166,6 +166,60 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	}
 }
 
+// deployAll regenerates all WAF and policy engine config files and reloads Caddy.
+// This is the programmatic equivalent of POST /api/config/deploy, used by
+// background processes (e.g. blocklist refresh) that need to trigger a full
+// regeneration + reload cycle after updating managed lists.
+func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) error {
+	deployMu.Lock()
+	defer deployMu.Unlock()
+
+	cfg := cs.Get()
+	allExclusions := es.EnabledExclusions()
+
+	// SecRule generation (excluding policy engine types).
+	exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
+	result := GenerateConfigs(cfg, exclusions, ls)
+	wafSettings := GenerateWAFSettings(cfg)
+
+	if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
+		return fmt.Errorf("writing WAF config files: %w", err)
+	}
+
+	// Policy engine: generate JSON rules file.
+	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
+		policyData, err := GeneratePolicyRules(allExclusions, ls)
+		if err != nil {
+			return fmt.Errorf("generating policy rules: %w", err)
+		}
+		if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+			return fmt.Errorf("writing policy rules file: %w", err)
+		}
+		policyCount := 0
+		for _, e := range allExclusions {
+			if IsPolicyEngineType(e.Type) {
+				policyCount++
+			}
+		}
+		log.Printf("[deploy] wrote policy rules (%d rules) → %s", policyCount, deployCfg.PolicyRulesFile)
+	}
+
+	// Sync rate limit files for any new services.
+	syncCaddyfileServices(rs, ls, deployCfg)
+
+	// Reload Caddy.
+	confFiles := []string{
+		filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
+		filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
+		filepath.Join(deployCfg.CorazaDir, "custom-waf-settings.conf"),
+	}
+	if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, confFiles...); err != nil {
+		return fmt.Errorf("Caddy reload: %w", err)
+	}
+
+	return nil
+}
+
 // writeConfFiles writes the generated pre-CRS, post-CRS, and WAF settings configs to disk atomically.
 func writeConfFiles(dir, preCRS, postCRS, wafSettings string) error {
 	files := map[string]string{

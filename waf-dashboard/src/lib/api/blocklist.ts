@@ -7,7 +7,6 @@ export interface BlocklistStats {
   last_updated: string;
   source: string;
   min_score: number;
-  file_path: string;
 }
 
 export interface BlocklistCheckResult {

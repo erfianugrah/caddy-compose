@@ -225,7 +225,6 @@ type BlocklistStatsResponse struct {
 	LastUpdated string `json:"last_updated"`
 	Source      string `json:"source"`
 	MinScore    int    `json:"min_score"`
-	FilePath    string `json:"file_path"`
 }
 
 type BlocklistCheckResponse struct {

@@ -9,7 +9,7 @@ Authelia 2FA forward auth, and a custom WAF management sidecar. Two codebases li
 
 - **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.24+)
 - **waf-dashboard/** — Astro 5 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
-- Root level: Caddyfile, Dockerfile (6-stage multi-stage), compose.yaml, Makefile
+- Root level: Caddyfile, Dockerfile (5-stage multi-stage), compose.yaml, Makefile
 
 ## Build Commands
 
@@ -474,7 +474,7 @@ Components over ~500 lines are split into feature subdirectories following the `
 
 ### Dashboard Pages (file-based routing)
 
-`/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/lists` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
+`/` · `/analytics` · `/csp` · `/events` · `/lists` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
 
 ### Static MPA Routing
 
@@ -573,7 +573,7 @@ Non-empty override directive slices replace the base; empty slices keep the base
 | Output dir (Caddy) | `/data/caddy/csp/` |
 | File naming | `<service>_csp.caddy` |
 | Caddyfile import | `import /data/caddy/csp/<svc>_csp*.caddy` |
-| Import position | After `security_headers`, before `ipsum_blocklist` |
+| Import position | After `security_headers`, before rate limit imports |
 
 ### Nonce Limitations
 
@@ -658,6 +658,9 @@ cards dynamically instead of hardcoded honeypot/scanner/ipsum counters.
 
 - **Exclusion store v1→v2**: Auto-migrates on load. Adds `tags` to seeded rules, converts
   `honeypot` type exclusions to `block` + `["honeypot"]` tag. Creates `.v1.bak` backup.
+- **Exclusion store v2→v3**: Seeds 8 per-level IPsum block rules (`type: "block"`,
+  condition `ip in_list ipsum-level-N`, tags `["blocklist", "ipsum", "ipsum-level-N"]`).
+  Idempotent — checks if any `block` rule with `ipsum` tag already exists before seeding.
 - **JSONL event backfill**: On load, remaps legacy event types:
   `honeypot`→`policy_block`, `scanner`→`policy_block`, `ipsum_blocked`→`rate_limited`.
   Backfills appropriate tags. Compacts JSONL file after migration.
@@ -854,13 +857,13 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1298 tests across 24 files)
+### Go (1329 tests across 24 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
 - `httptest.NewServer` to mock the Caddy admin API
-- Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
+- Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
 ### Frontend (312 tests across 14 files)
@@ -921,14 +924,12 @@ for conditional content (different messages per status code). `file_server` insi
 
 Files baked into the image at build time (in `/etc/caddy/`):
 - `coraza/pre-crs.conf`, `coraza/post-crs.conf` — static WAF rules
-- `ipsum_block.caddy` — IPsum blocklist snapshot (seeded to runtime volume on first boot or when `# Updated:` header is missing)
 - `cf_trusted_proxies.caddy` — Cloudflare IP ranges
 - `waf-ui/` — dashboard static files, `errors/error.html`
 
 Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `custom-waf-settings.conf` — SecRuleEngine mode, paranoia levels, thresholds
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
-- `ipsum_block.caddy` — updated daily at 06:00 UTC by wafctl scheduled refresh, or on-demand via `POST /api/blocklist/refresh`
 - `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 - `<service>_csp.caddy` — CSP header configs (per-service)
 - `<list-id>.list` — managed list files (one per list, newline-separated items)
@@ -942,9 +943,9 @@ stack restart always picks up the latest generator output without requiring a
 manual `POST /api/config/deploy`. No Caddy reload is performed — Caddy reads
 the files fresh on its own startup.
 
-The entrypoint (`scripts/entrypoint.sh`) also re-seeds the ipsum blocklist from
-the build-time snapshot if the runtime file is missing OR lacks the `# Updated:`
-header (which older builds didn't include).
+The blocklist store calls `loadFromLists()` on boot to populate its in-memory IP set
+from the ipsum managed lists. IPsum blocking is handled by the policy engine plugin
+via 8 per-level block rules (seeded by v2→v3 exclusion migration).
 
 ### Audit Log Rotation
 
@@ -969,10 +970,11 @@ restores events from JSONL before tailing begins.
 
 ### Blocklist Refresh
 
-`POST /api/blocklist/refresh` downloads a fresh IPsum list from GitHub, filters
-by min_score, generates the Caddy snippet, atomically writes it, reloads the
-in-memory cache, and reloads Caddy. The Go `BlocklistStore.parseFile()` uses
-the file's mtime as a fallback when the `# Updated:` comment is missing.
+`POST /api/blocklist/refresh` downloads a fresh IPsum list from GitHub, parses
+IPs by threat score, syncs 8 per-level managed lists (`ipsum-level-1` through
+`ipsum-level-8`) via the `onRefresh` callback, then calls `deployAll()` via the
+`onDeploy` callback to regenerate policy engine rules and reload Caddy. The
+in-memory IP set is rebuilt from the managed lists after sync.
 
 ### wafctl Environment Variables
 

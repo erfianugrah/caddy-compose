@@ -12,7 +12,7 @@ import (
 // currentStoreVersion is the latest store schema version.
 // Increment this and add a migration function when changing the store format
 // or adding default seed rules.
-const currentStoreVersion = 2
+const currentStoreVersion = 3
 
 // storeFile is the versioned on-disk format for the exclusions store.
 // Legacy stores (bare JSON arrays) are detected and migrated on load.
@@ -48,6 +48,7 @@ type storeMigration struct {
 var storeMigrations = []storeMigration{
 	{toVersion: 1, name: "seed heuristic bot rules", migrate: migrateV0toV1},
 	{toVersion: 2, name: "add event tags to rules", migrate: migrateV1toV2},
+	{toVersion: 3, name: "seed ipsum block rules", migrate: migrateV2toV3},
 }
 
 // load reads exclusions from the JSON file on disk. Handles both legacy
@@ -227,6 +228,46 @@ func migrateV1toV2(exclusions []RuleExclusion) []RuleExclusion {
 				e.Tags = append(e.Tags, "honeypot")
 			}
 		}
+	}
+
+	return exclusions
+}
+
+// migrateV2toV3 seeds per-level IPsum block rules that use the policy engine
+// plugin via in_list conditions against the ipsum-level-N managed lists.
+// This replaces the legacy Caddy ipsum_block.caddy snippet approach.
+func migrateV2toV3(exclusions []RuleExclusion) []RuleExclusion {
+	// Check if any ipsum block rules already exist (idempotent).
+	for _, e := range exclusions {
+		if e.Type == "block" && containsTag(e.Tags, "ipsum") {
+			return exclusions // already seeded
+		}
+	}
+
+	now := time.Now().UTC()
+
+	// Create one block rule per IPsum threat level (1–8).
+	// Higher levels are more malicious; they're all block rules so priority
+	// doesn't matter for behavior, but we order them level-8-first for clarity.
+	for level := 8; level >= 1; level-- {
+		name := fmt.Sprintf("IPsum Block (Level %d)", level)
+		listName := ipsumLevelName(level)
+		desc := fmt.Sprintf("Block IPs on IPsum threat level %d via managed list (auto-seeded, policy engine)", level)
+
+		exclusions = append(exclusions, RuleExclusion{
+			ID:          generateUUIDv7(),
+			Name:        name,
+			Description: desc,
+			Type:        "block",
+			Conditions: []Condition{
+				{Field: "ip", Operator: "in_list", Value: listName},
+			},
+			GroupOp:   "and",
+			Tags:      []string{"blocklist", "ipsum", listName},
+			Enabled:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
 	}
 
 	return exclusions

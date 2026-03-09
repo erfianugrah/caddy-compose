@@ -55,7 +55,7 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	gls := NewGeneralLogStore(filepath.Join(t.TempDir(), "access.log"))
 	geoStore := NewGeoIPStore(filepath.Join(t.TempDir(), "nonexistent.mmdb"), nil)
 	exclStore := NewExclusionStore(filepath.Join(t.TempDir(), "excl.json"))
-	blStore := NewBlocklistStore(filepath.Join(t.TempDir(), "ipsum.caddy"))
+	blStore := NewBlocklistStore()
 	cfStore := NewCFProxyStore(filepath.Join(t.TempDir(), "cf.caddy"))
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
 	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore)
@@ -82,7 +82,7 @@ func newTestExclusionStore(t *testing.T) *ExclusionStore {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
 	// Write a current-version empty store to skip seed migrations.
-	os.WriteFile(path, []byte(`{"version":1,"exclusions":[]}`), 0644)
+	os.WriteFile(path, []byte(fmt.Sprintf(`{"version":%d,"exclusions":[]}`, currentStoreVersion)), 0644)
 	return NewExclusionStore(path)
 }
 
@@ -129,16 +129,6 @@ func writeTempAccessLog(t *testing.T, lines []string) string {
 }
 
 // ─── Blocklist tests ────────────────────────────────────────────────
-
-func writeTempBlocklist(t *testing.T, content string) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "ipsum_block.caddy")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
 
 var sampleAccessLogLines = func() []string {
 	// Anchor to the start of the current hour to guarantee exactly 2 hour

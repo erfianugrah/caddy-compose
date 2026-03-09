@@ -9,21 +9,6 @@ RUN xcaddy build \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.0 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.4.0
 
-# Fetch IPsum blocklist at build time so it's never empty on first boot.
-# wafctl's scheduled refresh overwrites this at runtime.
-FROM alpine:3.21 AS ipsum
-ARG IPSUM_MIN_SCORE=1
-RUN apk add --no-cache curl \
-	&& curl -fsSL --retry 3 --max-time 60 \
-	   https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt \
-	   | awk -v min="${IPSUM_MIN_SCORE}" '/^#/{next} /^[[:space:]]*$/{next} {if($2+0>=min) printf "%s ",$1}' \
-	   > /tmp/ipsum_ips \
-	&& COUNT=$(wc -w < /tmp/ipsum_ips) \
-	&& { printf '# AUTO-GENERATED at build time\n# Updated: %s\n# IPs: %s (min_score=%s)\n@ipsum_blocked client_ip %s\n' \
-	   "$(date -Iseconds)" "$COUNT" "$IPSUM_MIN_SCORE" "$(cat /tmp/ipsum_ips)"; \
-	   printf 'route @ipsum_blocked {\n\theader X-Blocked-By ipsum\n\trespond 403 {\n\t\tbody "Blocked"\n\t\tclose\n\t}\n}\n'; \
-	   } > /tmp/ipsum_block.caddy
-
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
 FROM alpine:3.21 AS cloudflare-ips
@@ -56,7 +41,6 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o
 FROM caddy:${VERSION}-alpine
 RUN apk upgrade --no-cache && apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-COPY --from=ipsum /tmp/ipsum_block.caddy /etc/caddy/ipsum_block.caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY --from=waf-dashboard /build/dist/ /etc/caddy/waf-ui/
 COPY errors/ /etc/caddy/errors/

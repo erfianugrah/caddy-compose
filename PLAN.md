@@ -1,8 +1,9 @@
 # Plan: caddy-policy-engine + Managed Lists
 
-> **Status: COMPLETE** — All phases (1a–1c, 2a–2c, 3a–3d) implemented and merged to
-> main in v2.11.0/1.11.0. Plugin at v0.4.0. Policy engine behind
-> `WAF_POLICY_ENGINE_ENABLED` feature flag (default `false`).
+> **Status: COMPLETE** — All phases (1a–1c, 2a–2c, 3a–3d, 4) implemented and merged to
+> main. Plugin at v0.4.0. Policy engine enabled in production
+> (`WAF_POLICY_ENGINE_ENABLED=true`). Phase 4 migrated IPsum blocklist from Caddy
+> snippet to policy engine via per-level managed lists.
 
 ## Problem Statement
 
@@ -1510,3 +1511,67 @@ communicate the matched rule's tags to wafctl for event classification. The mech
 **The `X-Policy-Tags` header is stripped before proxying upstream** via Caddy's
 `header_down` directive in the reverse_proxy block (or by the plugin itself
 using a response interceptor). This prevents tag leakage to upstream applications.
+
+---
+
+## Phase 4: IPsum Blocklist → Policy Engine Migration
+
+> **Status: COMPLETE** — IPsum blocking migrated from Caddy snippet to policy engine.
+
+### Problem
+
+IPsum blocking used a Caddy snippet (`ipsum_block.caddy`) with a `remote_ip` matcher
+containing 227k+ IPs. This was:
+- Baked into the Docker image at build time (ipsum build stage in Dockerfile)
+- Seeded to runtime volume by `entrypoint.sh`
+- Updated by `BlocklistStore.Refresh()` which rewrote the file + reloaded Caddy
+- Imported by 26 service blocks via `import ipsum_blocklist`
+- Separate from the policy engine, with its own event detection path
+
+### Solution
+
+Migrate to 8 per-level managed lists + 8 policy engine block rules:
+
+1. **8 managed lists** (`ipsum-level-1` through `ipsum-level-8`): Created by
+   `ManagedListStore.SyncIPsum()`, each containing IPs at that specific threat level.
+   Source: `"ipsum"` (protected — read-only via API, excluded from export, preserved
+   during import).
+
+2. **8 exclusion rules** (seeded by v2→v3 migration): Each is `type: "block"` with
+   condition `ip in_list ipsum-level-N` and tags `["blocklist", "ipsum", "ipsum-level-N"]`.
+   The policy engine plugin evaluates these and returns 403 with
+   `X-Blocked-By: policy-engine` + `X-Blocked-Rule: IPsum Block (Level N)`.
+
+3. **Simplified BlocklistStore**: No longer reads/writes `ipsum_block.caddy`. Now
+   downloads IPsum, parses by score, calls `onRefresh` callback (syncs managed lists),
+   then calls `onDeploy` callback (regenerates policy rules + reloads Caddy).
+   `NewBlocklistStore()` takes no args. Still provides `Check(ip)` and `Stats()` APIs.
+
+4. **`deployAll()` function**: Extracted reusable function in `deploy.go` that
+   regenerates all WAF + policy engine configs and reloads Caddy. Used as the
+   `onDeploy` callback after blocklist refresh.
+
+### Changes
+
+| Area | Change |
+|------|--------|
+| `blocklist.go` | Removed file generation, `parseFile()`, `ensureLoaded()`, `ForceReload()`. No-args constructor. `Refresh()` calls callbacks. |
+| `exclusions.go` | v2→v3 migration seeds 8 ipsum block rules. `currentStoreVersion` = 3. |
+| `deploy.go` | Added `deployAll()` for reuse across deploy handler and blocklist refresh. |
+| `main.go` | Updated wiring: `NewBlocklistStore()`, `SetOnDeploy`, `loadFromLists()`, `StartScheduledRefresh`. |
+| `models.go` | Removed `FilePath` from `BlocklistStatsResponse`. |
+| `Caddyfile` | Removed `(ipsum_blocklist)` snippet (7 lines) and 26 `import ipsum_blocklist` lines. |
+| `Dockerfile` | Removed `ipsum` build stage (14 lines) and `COPY --from=ipsum`. |
+| `entrypoint.sh` | Removed ipsum seed logic (14 lines). |
+| `BlocklistPanel.tsx` | Deleted — functionality moved to `ManagedListsPanel.tsx`. |
+| `blocklist.astro` | Deleted — `/blocklist` page removed. |
+| `ManagedListsPanel.tsx` | Added `IpsumSection` with stats, Check IP, and "Update Now" refresh. |
+| `DashboardLayout.astro` | Removed `blocklist` nav entry. 11 pages (was 12). |
+
+### Backward Compatibility
+
+- Old `X-Blocked-By: ipsum` access log entries still detected by `isIpsumBlocked()`
+- New entries use `X-Blocked-By: policy-engine` (existing `isPolicyBlocked()` path)
+- Tags flow through `enrichAccessEvents()` matching rule name to exclusion store
+- Blocklist API endpoints (`/api/blocklist/stats`, `/api/blocklist/check/{ip}`) preserved
+- CLI `wafctl blocklist` subcommands still work

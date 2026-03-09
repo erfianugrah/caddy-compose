@@ -1,27 +1,9 @@
 #!/bin/sh
-# entrypoint.sh — Seed ipsum blocklist, start crond, then exec caddy.
+# entrypoint.sh — Seed configs, start crond, then exec caddy.
 # crond is needed for audit log rotation only; the IPsum blocklist refresh
 # is handled by wafctl's Go scheduler (StartScheduledRefresh).
+# IPsum blocking is done via the policy engine plugin (managed lists).
 set -eu
-
-# Seed IPsum blocklist from build-time snapshot to the writable volume.
-# Re-seed if the runtime file is missing OR lacks the "# Updated:" header
-# (which older builds didn't include). wafctl's scheduled refresh will
-# overwrite this daily.
-IPSUM_SEED="/etc/caddy/ipsum_block.caddy"
-IPSUM_RUNTIME="/data/coraza/ipsum_block.caddy"
-needs_seed=false
-if [ ! -f "${IPSUM_RUNTIME}" ]; then
-    needs_seed=true
-elif ! grep -q '^# Updated:' "${IPSUM_RUNTIME}" 2>/dev/null; then
-    needs_seed=true
-    echo "[entrypoint] Runtime ipsum blocklist missing '# Updated:' header, re-seeding"
-fi
-if [ "${needs_seed}" = true ] && [ -f "${IPSUM_SEED}" ]; then
-    mkdir -p "$(dirname "${IPSUM_RUNTIME}")"
-    cp "${IPSUM_SEED}" "${IPSUM_RUNTIME}"
-    echo "[entrypoint] Seeded ipsum blocklist from build-time snapshot"
-fi
 
 # Seed Cloudflare trusted proxies from build-time snapshot to the writable volume.
 # wafctl's scheduled refresh will keep this updated at runtime.

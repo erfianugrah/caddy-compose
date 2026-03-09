@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   List, Plus, RefreshCw, Trash2, Pencil, Download, Upload,
-  Globe, Database, ExternalLink, Copy, Check,
+  Globe, Database, ExternalLink, Copy, Check, Search, Shield,
 } from "lucide-react";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
@@ -21,6 +21,8 @@ import {
   fetchManagedLists, getManagedList, createManagedList, updateManagedList,
   deleteManagedList, refreshManagedList, exportManagedLists, importManagedLists,
   type ManagedList, type ManagedListCreate, type ManagedListUpdate,
+  getBlocklistStats, checkBlocklistIP, refreshBlocklist,
+  type BlocklistStats, type BlocklistCheckResult, type BlocklistRefreshResult,
 } from "@/lib/api";
 import { T } from "@/lib/typography";
 
@@ -307,6 +309,158 @@ function DeleteConfirmDialog({
   );
 }
 
+// ─── IPsum Blocklist Section ────────────────────────────────────────
+
+function IpsumSection({
+  lists,
+  onRefreshDone,
+}: {
+  lists: ManagedList[];
+  onRefreshDone: () => void;
+}) {
+  const [stats, setStats] = useState<BlocklistStats | null>(null);
+  const [checkIP, setCheckIP] = useState("");
+  const [checkResult, setCheckResult] = useState<BlocklistCheckResult | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<BlocklistRefreshResult | null>(null);
+
+  useEffect(() => {
+    getBlocklistStats().then(setStats).catch(() => {});
+  }, []);
+
+  // Clear refresh result after 10s
+  useEffect(() => {
+    if (!refreshResult) return;
+    const t = setTimeout(() => setRefreshResult(null), 10_000);
+    return () => clearTimeout(t);
+  }, [refreshResult]);
+
+  const ipsumLists = lists.filter((l) => l.source === "ipsum");
+  const totalIPs = ipsumLists.reduce((s, l) => s + l.item_count, 0);
+
+  const handleCheck = async () => {
+    const trimmed = checkIP.trim();
+    if (!trimmed) return;
+    // Basic IP validation
+    if (!/^[\d.:a-fA-F]+$/.test(trimmed)) return;
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const result = await checkBlocklistIP(trimmed);
+      setCheckResult(result);
+    } catch {
+      setCheckResult(null);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const result = await refreshBlocklist();
+      setRefreshResult(result);
+      // Reload stats and parent list
+      getBlocklistStats().then(setStats).catch(() => {});
+      onRefreshDone();
+    } catch {
+      setRefreshResult({ status: "error", message: "Refresh request failed", blocked_ips: 0, min_score: 1, last_updated: "", reloaded: false });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return (
+    <Card className="border-neon-pink/20">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-neon-pink" />
+            <CardTitle className={T.cardTitle}>IPsum Threat Intelligence</CardTitle>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Updating..." : "Update Now"}
+          </Button>
+        </div>
+        <CardDescription className="text-xs">
+          Aggregated threat intelligence from multiple public blocklists. Blocking via policy engine.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Stats row */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-md border border-border/50 bg-navy-950 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Blocked IPs</p>
+            <p className="text-lg font-semibold font-mono">{(stats?.blocked_ips ?? totalIPs).toLocaleString()}</p>
+          </div>
+          <div className="rounded-md border border-border/50 bg-navy-950 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Threat Levels</p>
+            <p className="text-lg font-semibold">{ipsumLists.length}</p>
+          </div>
+          <div className="rounded-md border border-border/50 bg-navy-950 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Last Updated</p>
+            <p className="text-sm font-mono text-muted-foreground">
+              {stats?.last_updated ? new Date(stats.last_updated).toLocaleDateString() : "—"}
+            </p>
+          </div>
+        </div>
+
+        {/* Refresh result */}
+        {refreshResult && (
+          <Alert
+            variant={refreshResult.status === "error" ? "destructive" : "default"}
+            className={refreshResult.status !== "error" ? "border-neon-green/30 bg-neon-green/5" : ""}
+          >
+            <AlertDescription className="text-xs">{refreshResult.message}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Check IP */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground">Check IP</label>
+          <div className="flex gap-2">
+            <Input
+              value={checkIP}
+              onChange={(e) => { setCheckIP(e.target.value); setCheckResult(null); }}
+              onKeyDown={(e) => e.key === "Enter" && handleCheck()}
+              placeholder="Enter IP address to check"
+              className="font-mono text-xs max-w-xs"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheck}
+              disabled={checking || !checkIP.trim()}
+            >
+              <Search className="mr-1.5 h-3 w-3" />
+              {checking ? "..." : "Check"}
+            </Button>
+          </div>
+          {checkResult && (
+            <div className={`flex items-center gap-2 text-xs ${checkResult.blocked ? "text-neon-pink" : "text-neon-green"}`}>
+              <Badge variant="outline" className={checkResult.blocked
+                ? "bg-neon-pink/10 text-neon-pink border-neon-pink/20"
+                : "bg-neon-green/10 text-neon-green border-neon-green/20"
+              }>
+                {checkResult.blocked ? "BLOCKED" : "CLEAN"}
+              </Badge>
+              <span className="font-mono">{checkResult.ip}</span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────
 
 export default function ManagedListsPanel() {
@@ -504,6 +658,11 @@ export default function ManagedListsPanel() {
           </AlertTitle>
           <AlertDescription className="text-xs">{feedback.message}</AlertDescription>
         </Alert>
+      )}
+
+      {/* IPsum section */}
+      {!loading && lists.some((l) => l.source === "ipsum") && (
+        <IpsumSection lists={lists} onRefreshDone={loadLists} />
       )}
 
       {/* Summary stats */}

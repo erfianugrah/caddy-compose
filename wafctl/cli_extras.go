@@ -197,7 +197,6 @@ func cliBlocklistStats(flags cliFlags) int {
 	fmt.Fprintf(tw, "Min Score:\t%d\n", stats.MinScore)
 	fmt.Fprintf(tw, "Source:\t%s\n", stats.Source)
 	fmt.Fprintf(tw, "Updated:\t%s\n", stats.LastUpdated)
-	fmt.Fprintf(tw, "File:\t%s\n", stats.FilePath)
 	tw.Flush()
 	return 0
 }

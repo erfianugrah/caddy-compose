@@ -572,7 +572,7 @@ func TestWAFDashboardUI(t *testing.T) {
 	})
 
 	pages := []string{
-		"analytics", "blocklist", "csp", "events", "lists",
+		"analytics", "csp", "events", "lists",
 		"logs", "policy", "rate-limits", "services", "settings",
 	}
 	for _, page := range pages {

@@ -139,13 +139,21 @@ func runServe() int {
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
 	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, managedListStore, deployCfg)
 
-	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
-	blocklistStore := NewBlocklistStore(blocklistPath)
+	blocklistStore := NewBlocklistStore()
 
 	// Sync IPsum IPs to per-level managed lists after each blocklist refresh.
 	blocklistStore.SetOnRefresh(func(ipsByScore map[int][]string) {
 		managedListStore.SyncIPsum(ipsByScore)
 	})
+
+	// After managed list sync, regenerate policy-rules.json so the plugin
+	// picks up updated IP lists, then reload Caddy.
+	blocklistStore.SetOnDeploy(func() error {
+		return deployAll(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg)
+	})
+
+	// Populate in-memory IP set from existing managed lists (for Check API).
+	blocklistStore.loadFromLists(managedListStore)
 
 	// Schedule daily blocklist refresh at the configured UTC hour (default 06:00).
 	// Replaces the old cron + shell script approach that ran in the caddy container.
@@ -157,7 +165,7 @@ func runServe() int {
 			log.Printf("warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
 		}
 	}
-	blocklistStore.StartScheduledRefresh(refreshHour, deployCfg, rlRuleStore, managedListStore)
+	blocklistStore.StartScheduledRefresh(refreshHour, rlRuleStore, managedListStore, deployCfg)
 
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)

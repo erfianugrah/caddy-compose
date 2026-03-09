@@ -948,8 +948,7 @@ func TestInListOperatorsAddedToAllFields(t *testing.T) {
 // ─── Blocklist OnRefresh callback ───────────────────────────────────
 
 func TestBlocklistStore_OnRefreshCallback(t *testing.T) {
-	path := writeTempBlocklist(t, "# empty\n")
-	bs := NewBlocklistStore(path)
+	bs := NewBlocklistStore()
 
 	var called bool
 	var receivedScores map[int][]string
