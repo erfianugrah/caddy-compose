@@ -756,7 +756,16 @@ func TestPolicyEngineAllow(t *testing.T) {
 	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
 	assertCode(t, "create allow rule", 201, resp)
 	allowID := mustGetID(t, body)
-	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+allowID)
+		// Redeploy to remove the allow rule from policy-rules.json,
+		// otherwise subsequent tests see a stale WAF bypass.
+		time.Sleep(2 * time.Second)
+		resp, body := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+		assertCode(t, "cleanup deploy", 200, resp)
+		assertField(t, "cleanup deploy", body, "status", "deployed")
+		time.Sleep(8 * time.Second)
+	})
 
 	time.Sleep(2 * time.Second)
 	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
