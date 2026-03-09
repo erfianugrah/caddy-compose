@@ -70,9 +70,6 @@ describe("fetchSummary", () => {
       blocked: 10,
       logged: 30,
       rate_limited: 0,
-      ipsum_blocked: 0,
-      honeypot: 0,
-      scanner: 0,
       policy: 0,
     });
 
@@ -89,11 +86,8 @@ describe("fetchSummary", () => {
     expect(result.top_clients[0].total).toBe(50);
     expect(result.top_clients[0].blocked).toBe(20);
 
-    // Top clients now include rate_limited, ipsum_blocked, honeypot, scanner, policy
+    // Top clients now include rate_limited, policy
     expect(result.top_clients[0].rate_limited).toBe(0);
-    expect(result.top_clients[0].ipsum_blocked).toBe(0);
-    expect(result.top_clients[0].honeypot).toBe(0);
-    expect(result.top_clients[0].scanner).toBe(0);
     expect(result.top_clients[0].policy).toBe(0);
 
     // Service breakdown from dedicated field
@@ -104,9 +98,6 @@ describe("fetchSummary", () => {
       blocked: 15,
       logged: 45,
       rate_limited: 0,
-      ipsum_blocked: 0,
-      honeypot: 0,
-      scanner: 0,
       policy: 0,
     });
 
@@ -565,8 +556,8 @@ describe("country field mapping", () => {
 
 describe("event_type mapping in fetchEvents", () => {
   const eventTypes = [
-    "blocked", "logged", "rate_limited", "ipsum_blocked",
-    "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner",
+    "blocked", "logged", "rate_limited",
+    "policy_skip", "policy_allow", "policy_block",
   ] as const;
 
   for (const eventType of eventTypes) {
@@ -657,7 +648,7 @@ describe("event_type mapping in fetchEvents", () => {
 // ─── fetchServices breakdown fields ─────────────────────────────────
 
 describe("fetchServices breakdown fields", () => {
-  it("maps honeypot/scanner/policy fields from Go API", async () => {
+  it("maps policy/rate_limited fields from Go API", async () => {
     const goResponse = {
       services: [{
         service: "web.erfi.io",
@@ -665,9 +656,6 @@ describe("fetchServices breakdown fields", () => {
         blocked: 40,
         logged: 60,
         rate_limited: 5,
-        ipsum_blocked: 3,
-        honeypot: 2,
-        scanner: 1,
         policy: 4,
       }],
     };
@@ -675,11 +663,8 @@ describe("fetchServices breakdown fields", () => {
 
     const result = await fetchServices(24);
     expect(result).toHaveLength(1);
-    expect(result[0].honeypot).toBe(2);
-    expect(result[0].scanner).toBe(1);
     expect(result[0].policy).toBe(4);
     expect(result[0].rate_limited).toBe(5);
-    expect(result[0].ipsum_blocked).toBe(3);
   });
 
   it("defaults new fields to 0 when missing", async () => {
@@ -694,10 +679,7 @@ describe("fetchServices breakdown fields", () => {
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await fetchServices(24);
-    expect(result[0].honeypot).toBe(0);
-    expect(result[0].scanner).toBe(0);
     expect(result[0].policy).toBe(0);
     expect(result[0].rate_limited).toBe(0);
-    expect(result[0].ipsum_blocked).toBe(0);
   });
 });

@@ -142,8 +142,8 @@ describe("conditionsSummary", () => {
     expect(summary).toContain("+3 PL1");
   });
 
-  // Honeypot rules
-  it("shows path count for honeypot rules", () => {
+  // Honeypot rules (now use generic condition display)
+  it("shows path condition for honeypot rules", () => {
     const excl = makeExclusion({
       type: "honeypot",
       conditions: [
@@ -152,7 +152,6 @@ describe("conditionsSummary", () => {
     });
     const summary = conditionsSummary(excl);
     expect(summary).toContain("/wp-login.php");
-    expect(summary).toContain("(+2 more)");
   });
 
   it("shows all honeypot paths if 3 or fewer", () => {
@@ -198,7 +197,7 @@ describe("exclusionTypeLabel", () => {
     block: "Block",
     skip_rule: "Skip",
     anomaly: "Anomaly",
-    honeypot: "Honeypot",
+    honeypot: "honeypot",
     raw: "Raw",
     SecRuleRemoveById: "Remove Rule",
     SecRuleRemoveByTag: "Remove Tag",
@@ -228,9 +227,12 @@ describe("exclusionTypeBadgeVariant", () => {
     expect(exclusionTypeBadgeVariant("allow")).toBe("default");
   });
 
-  it("returns 'destructive' for block and honeypot", () => {
+  it("returns 'destructive' for block", () => {
     expect(exclusionTypeBadgeVariant("block")).toBe("destructive");
-    expect(exclusionTypeBadgeVariant("honeypot")).toBe("destructive");
+  });
+
+  it("returns 'outline' for honeypot (no special case)", () => {
+    expect(exclusionTypeBadgeVariant("honeypot")).toBe("outline");
   });
 
   it("returns 'secondary' for skip_rule and anomaly", () => {

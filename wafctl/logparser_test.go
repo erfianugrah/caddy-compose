@@ -1006,29 +1006,29 @@ func TestIpsumEventSource(t *testing.T) {
 		t.Fatalf("expected 3 events, got %d", len(events))
 	}
 
-	var rlCount, ipsumCount int
+	// All access log events (429 rate limited and ipsum blocked) are now
+	// unified as "rate_limited". Ipsum events are distinguished by tags.
+	var rl429Count, rlIpsumCount int
 	for _, ev := range events {
-		switch ev.EventType {
-		case "rate_limited":
-			rlCount++
-			if ev.ResponseStatus != 429 {
-				t.Errorf("rate_limited event should have status 429, got %d", ev.ResponseStatus)
+		if ev.EventType != "rate_limited" {
+			t.Errorf("unexpected event type: %s (want rate_limited)", ev.EventType)
+		}
+		if ev.ResponseStatus == 429 {
+			rl429Count++
+		} else if ev.ResponseStatus == 403 {
+			rlIpsumCount++
+			// Ipsum events should have blocklist/ipsum tags.
+			if len(ev.Tags) < 2 || ev.Tags[0] != "blocklist" || ev.Tags[1] != "ipsum" {
+				t.Errorf("ipsum event should have [blocklist ipsum] tags, got %v", ev.Tags)
 			}
-		case "ipsum_blocked":
-			ipsumCount++
-			if ev.ResponseStatus != 403 {
-				t.Errorf("ipsum_blocked event should have status 403, got %d", ev.ResponseStatus)
-			}
-		default:
-			t.Errorf("unexpected event type: %s", ev.EventType)
 		}
 	}
 
-	if rlCount != 1 {
-		t.Errorf("expected 1 rate_limited event, got %d", rlCount)
+	if rl429Count != 1 {
+		t.Errorf("expected 1 rate_limited event with status 429, got %d", rl429Count)
 	}
-	if ipsumCount != 2 {
-		t.Errorf("expected 2 ipsum_blocked events, got %d", ipsumCount)
+	if rlIpsumCount != 2 {
+		t.Errorf("expected 2 rate_limited (ipsum) events with status 403, got %d", rlIpsumCount)
 	}
 }
 
@@ -1045,14 +1045,18 @@ func TestRateLimitEventToEventIpsum(t *testing.T) {
 
 	ev := RateLimitEventToEvent(rle)
 
-	if ev.EventType != "ipsum_blocked" {
-		t.Errorf("event_type: want ipsum_blocked, got %s", ev.EventType)
+	// Ipsum events are unified as "rate_limited" with blocklist/ipsum tags.
+	if ev.EventType != "rate_limited" {
+		t.Errorf("event_type: want rate_limited, got %s", ev.EventType)
 	}
 	if !ev.IsBlocked {
-		t.Error("ipsum_blocked events should have is_blocked=true")
+		t.Error("ipsum events should have is_blocked=true")
 	}
 	if ev.ResponseStatus != 403 {
 		t.Errorf("response_status: want 403, got %d", ev.ResponseStatus)
+	}
+	if len(ev.Tags) != 2 || ev.Tags[0] != "blocklist" || ev.Tags[1] != "ipsum" {
+		t.Errorf("tags: want [blocklist ipsum], got %v", ev.Tags)
 	}
 }
 
@@ -1110,31 +1114,29 @@ func TestSummaryMergesIpsumEvents(t *testing.T) {
 	var resp SummaryResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 3 WAF events + 1 RL + 2 ipsum = 6 total.
+	// 3 WAF events + 1 RL(429) + 2 ipsum(rate_limited) = 6 total.
 	if resp.TotalEvents != 6 {
 		t.Errorf("total_events: want 6 (3 WAF + 1 RL + 2 ipsum), got %d", resp.TotalEvents)
 	}
-	if resp.RateLimited != 1 {
-		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
-	}
-	if resp.IpsumBlocked != 2 {
-		t.Errorf("ipsum_blocked: want 2, got %d", resp.IpsumBlocked)
+	// All access log events (429 + ipsum) are now "rate_limited" = 3 total.
+	if resp.RateLimited != 3 {
+		t.Errorf("rate_limited: want 3 (1 RL + 2 ipsum), got %d", resp.RateLimited)
 	}
 	if resp.BlockedEvents != 2 {
 		t.Errorf("blocked_events: want 2 (WAF only), got %d", resp.BlockedEvents)
 	}
 
-	// Check hourly buckets have ipsum_blocked.
-	var totalIpsum int
+	// Check hourly buckets sum to 3 rate_limited.
+	var totalRL int
 	for _, hc := range resp.EventsByHour {
-		totalIpsum += hc.IpsumBlocked
+		totalRL += hc.RateLimited
 	}
-	if totalIpsum != 2 {
-		t.Errorf("hourly ipsum_blocked sum: want 2, got %d", totalIpsum)
+	if totalRL != 3 {
+		t.Errorf("hourly rate_limited sum: want 3, got %d", totalRL)
 	}
 }
 
-func TestEventsIpsumBlockedFilter(t *testing.T) {
+func TestEventsRateLimitedFilterIncludesIpsum(t *testing.T) {
 	wafPath := writeTempLog(t, sampleLines)
 	store := NewStore(wafPath)
 	store.Load()
@@ -1143,22 +1145,22 @@ func TestEventsIpsumBlockedFilter(t *testing.T) {
 	als := NewAccessLogStore(alsPath)
 	als.Load()
 
-	req := httptest.NewRequest("GET", "/api/events?event_type=ipsum_blocked&limit=100", nil)
+	// Ipsum events are now "rate_limited", so filtering by rate_limited
+	// should include both 429 RL events and ipsum (403) events.
+	req := httptest.NewRequest("GET", "/api/events?event_type=rate_limited&limit=100", nil)
 	w := httptest.NewRecorder()
 	handleEvents(store, als)(w, req)
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	if resp.Total != 2 {
-		t.Errorf("ipsum_blocked filter: want 2, got %d", resp.Total)
+	// 1 rate-limited (429) + 2 ipsum (403, rate_limited) = 3 total.
+	if resp.Total != 3 {
+		t.Errorf("rate_limited filter: want 3, got %d", resp.Total)
 	}
 	for _, ev := range resp.Events {
-		if ev.EventType != "ipsum_blocked" {
-			t.Errorf("event %s has type %s, want ipsum_blocked", ev.ID, ev.EventType)
-		}
-		if ev.ResponseStatus != 403 {
-			t.Errorf("event %s has status %d, want 403", ev.ID, ev.ResponseStatus)
+		if ev.EventType != "rate_limited" {
+			t.Errorf("event %s has type %s, want rate_limited", ev.ID, ev.EventType)
 		}
 	}
 }
@@ -1184,17 +1186,17 @@ func TestServicesMergesIpsumCounts(t *testing.T) {
 		svcMap[s.Service] = s
 	}
 
+	// Ipsum events are now "rate_limited", so they count as RateLimited.
+	// radarr: 2 WAF + 1 ipsum(rate_limited) = 3 total, 1 RateLimited
 	radarr := svcMap["radarr.erfi.io"]
-	if radarr.IpsumBlocked != 1 {
-		t.Errorf("radarr ipsum_blocked: want 1, got %d", radarr.IpsumBlocked)
+	if radarr.RateLimited != 1 {
+		t.Errorf("radarr rate_limited: want 1, got %d", radarr.RateLimited)
 	}
 
+	// sonarr: 1 RL(429) + 1 ipsum(rate_limited) = 2 RateLimited total
 	sonarr := svcMap["sonarr.erfi.io"]
-	if sonarr.RateLimited != 1 {
-		t.Errorf("sonarr rate_limited: want 1, got %d", sonarr.RateLimited)
-	}
-	if sonarr.IpsumBlocked != 1 {
-		t.Errorf("sonarr ipsum_blocked: want 1, got %d", sonarr.IpsumBlocked)
+	if sonarr.RateLimited != 2 {
+		t.Errorf("sonarr rate_limited: want 2 (1 RL + 1 ipsum), got %d", sonarr.RateLimited)
 	}
 }
 
@@ -1237,22 +1239,17 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 		clientMap[c.Client] = c
 	}
 
-	// 10.0.0.1 should have WAF blocked + RL + ipsum counts merged
+	// 10.0.0.1 should have WAF blocked + RL + ipsum counts merged.
+	// Ipsum events are now "rate_limited", so RL(429) + ipsum = 2 rate_limited.
 	c1 := clientMap["10.0.0.1"]
-	if c1.RateLimited != 1 {
-		t.Errorf("10.0.0.1 rate_limited: want 1, got %d", c1.RateLimited)
-	}
-	if c1.IpsumBlocked != 1 {
-		t.Errorf("10.0.0.1 ipsum_blocked: want 1, got %d", c1.IpsumBlocked)
+	if c1.RateLimited != 2 {
+		t.Errorf("10.0.0.1 rate_limited: want 2 (1 RL + 1 ipsum), got %d", c1.RateLimited)
 	}
 
 	// 99.99.99.99 should have only RL count
 	c2 := clientMap["99.99.99.99"]
 	if c2.RateLimited != 1 {
 		t.Errorf("99.99.99.99 rate_limited: want 1, got %d", c2.RateLimited)
-	}
-	if c2.IpsumBlocked != 0 {
-		t.Errorf("99.99.99.99 ipsum_blocked: want 0, got %d", c2.IpsumBlocked)
 	}
 }
 
@@ -1556,9 +1553,10 @@ func TestParseEvent_PolicyEventType(t *testing.T) {
 	}
 }
 
-func TestParseEvent_HoneypotEventType(t *testing.T) {
-	// Honeypot rule IDs are 9100020–9100029. When the audit log contains
-	// a match from this range, parseEvent should classify it as "honeypot".
+func TestParseEvent_HoneypotRuleIDsNoLongerSpecial(t *testing.T) {
+	// Honeypot rule IDs (9100020–9100029) are no longer special-cased by
+	// parseEvent. They are plain custom rules — blocked if IsInterrupted,
+	// logged otherwise.
 	tests := []struct {
 		name          string
 		ruleID        int
@@ -1566,10 +1564,10 @@ func TestParseEvent_HoneypotEventType(t *testing.T) {
 		isInterrupted bool
 		wantType      string
 	}{
-		{"honeypot path probe", 9100020, "Honeypot: known-bad path probe", true, "honeypot"},
-		{"honeypot high ID", 9100029, "Honeypot: some other path", true, "honeypot"},
-		{"not honeypot - below range", 9100019, "Post-CRS rule", true, "blocked"},
-		{"not honeypot - above range", 9100030, "Heuristic: missing Accept header", false, "logged"},
+		{"honeypot rule interrupted", 9100020, "Honeypot: known-bad path probe", true, "blocked"},
+		{"honeypot rule high ID interrupted", 9100029, "Honeypot: some other path", true, "blocked"},
+		{"below range interrupted", 9100019, "Post-CRS rule", true, "blocked"},
+		{"above range not interrupted", 9100030, "Heuristic: missing Accept header", false, "logged"},
 	}
 
 	for _, tt := range tests {
@@ -1592,9 +1590,9 @@ func TestParseEvent_HoneypotEventType(t *testing.T) {
 	}
 }
 
-func TestParseEvent_ScannerEventType(t *testing.T) {
-	// Scanner UA rule ID is 9100032. When the audit log contains a match
-	// from this specific rule, parseEvent should classify it as "scanner".
+func TestParseEvent_ScannerRuleIDNoLongerSpecial(t *testing.T) {
+	// Scanner UA rule ID 9100032 is no longer special-cased by parseEvent.
+	// These are plain custom rules — blocked if IsInterrupted, logged otherwise.
 	tests := []struct {
 		name          string
 		ruleID        int
@@ -1602,10 +1600,10 @@ func TestParseEvent_ScannerEventType(t *testing.T) {
 		isInterrupted bool
 		wantType      string
 	}{
-		{"scanner UA drop", 9100032, "Heuristic: known scanner User-Agent", true, "scanner"},
-		{"heuristic missing Accept (not scanner)", 9100030, "Heuristic: missing Accept header", false, "logged"},
-		{"heuristic HTTP/1.0 (not scanner)", 9100031, "Heuristic: HTTP/1.0 protocol", false, "logged"},
-		{"heuristic empty UA (not scanner)", 9100033, "Heuristic: empty or missing User-Agent", false, "logged"},
+		{"scanner UA drop (now blocked)", 9100032, "Heuristic: known scanner User-Agent", true, "blocked"},
+		{"heuristic missing Accept", 9100030, "Heuristic: missing Accept header", false, "logged"},
+		{"heuristic HTTP/1.0", 9100031, "Heuristic: HTTP/1.0 protocol", false, "logged"},
+		{"heuristic empty UA", 9100033, "Heuristic: empty or missing User-Agent", false, "logged"},
 	}
 
 	for _, tt := range tests {
@@ -1628,9 +1626,9 @@ func TestParseEvent_ScannerEventType(t *testing.T) {
 	}
 }
 
-func TestParseEvent_PolicyTakesPriorityOverHoneypot(t *testing.T) {
-	// If both a policy rule and a honeypot rule match (unlikely but possible
-	// in a chained scenario), policy classification should win.
+func TestParseEvent_PolicyTakesPriorityOverCustomRules(t *testing.T) {
+	// If both a policy rule and a custom rule match, policy classification
+	// should win (policy rules are in the 9500000-9599999 range).
 	entry := AuditLogEntry{
 		Transaction: Transaction{
 			Timestamp:     "2026-01-15T12:00:00Z",
@@ -1638,7 +1636,7 @@ func TestParseEvent_PolicyTakesPriorityOverHoneypot(t *testing.T) {
 			IsInterrupted: true,
 		},
 		Messages: []AuditMessage{
-			{Data: AuditMessageData{ID: 9100020, Msg: "Honeypot: known-bad path probe"}},
+			{Data: AuditMessageData{ID: 9100020, Msg: "Custom rule: known-bad path probe"}},
 			{Data: AuditMessageData{ID: 9500001, Msg: "Policy Block: Block bad paths"}},
 		},
 	}
@@ -1648,32 +1646,29 @@ func TestParseEvent_PolicyTakesPriorityOverHoneypot(t *testing.T) {
 	}
 }
 
-func TestSummarizeEvents_HoneypotAndScannerCounts(t *testing.T) {
+func TestSummarizeEvents_PolicyBlockAndRateLimitedCounts(t *testing.T) {
+	// Old honeypot/scanner events are now policy_block; ipsum is rate_limited.
 	events := []Event{
 		{ID: "1", EventType: "blocked", IsBlocked: true},
-		{ID: "2", EventType: "honeypot", IsBlocked: true},
-		{ID: "3", EventType: "honeypot", IsBlocked: true},
-		{ID: "4", EventType: "scanner", IsBlocked: true},
+		{ID: "2", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "3", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "4", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "5", EventType: "logged", IsBlocked: false},
 		{ID: "6", EventType: "policy_skip", IsBlocked: false},
 	}
 	summary := summarizeEvents(events)
 
-	if summary.HoneypotEvents != 2 {
-		t.Errorf("HoneypotEvents = %d, want 2", summary.HoneypotEvents)
+	// policy_block events count toward both PolicyEvents and BlockedEvents.
+	// PolicyEvents: policy_block(3) + policy_skip(1) = 4
+	if summary.PolicyEvents != 4 {
+		t.Errorf("PolicyEvents = %d, want 4", summary.PolicyEvents)
 	}
-	if summary.ScannerEvents != 1 {
-		t.Errorf("ScannerEvents = %d, want 1", summary.ScannerEvents)
-	}
-	// Honeypot (2) + scanner (1) + regular blocked (1) = 4 total blocked
+	// BlockedEvents: regular blocked(1) + policy_block(3) = 4
 	if summary.BlockedEvents != 4 {
 		t.Errorf("BlockedEvents = %d, want 4", summary.BlockedEvents)
 	}
 	if summary.LoggedEvents != 1 {
 		t.Errorf("LoggedEvents = %d, want 1", summary.LoggedEvents)
-	}
-	if summary.PolicyEvents != 1 {
-		t.Errorf("PolicyEvents = %d, want 1", summary.PolicyEvents)
 	}
 }
 
@@ -1685,8 +1680,8 @@ func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
 	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
 	events := []Event{
 		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "blocked", IsBlocked: true},
-		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "honeypot", IsBlocked: true},
-		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "scanner", IsBlocked: true},
+		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "policy_skip", IsBlocked: false},
 		{ID: "5", Timestamp: ts, Service: "a.io", ClientIP: "3.3.3.3", EventType: "policy_block", IsBlocked: true},
 		{ID: "6", Timestamp: ts, Service: "a.io", ClientIP: "3.3.3.3", EventType: "logged", IsBlocked: false},
@@ -1700,28 +1695,25 @@ func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
 	if h.Count != 6 {
 		t.Errorf("hour.Count = %d, want 6", h.Count)
 	}
-	if h.Blocked != 1 { // only plain "blocked" type (not honeypot/scanner/policy)
+	// Blocked = only plain "blocked" events (not policy_*).
+	if h.Blocked != 1 {
 		t.Errorf("hour.Blocked = %d, want 1", h.Blocked)
 	}
-	if h.Logged != 1 { // total - blocked - honeypot - scanner - policy
+	// Logged = total - blocked - rateLimited - policy = 6 - 1 - 0 - 4 = 1
+	if h.Logged != 1 {
 		t.Errorf("hour.Logged = %d, want 1", h.Logged)
 	}
-	if h.Honeypot != 1 {
-		t.Errorf("hour.Honeypot = %d, want 1", h.Honeypot)
-	}
-	if h.Scanner != 1 {
-		t.Errorf("hour.Scanner = %d, want 1", h.Scanner)
-	}
-	if h.Policy != 2 { // policy_skip + policy_block
-		t.Errorf("hour.Policy = %d, want 2", h.Policy)
+	// Policy = policy_skip(1) + policy_block(3) = 4
+	if h.Policy != 4 {
+		t.Errorf("hour.Policy = %d, want 4", h.Policy)
 	}
 }
 
 func TestSummarizeEvents_PerServiceBreakdown(t *testing.T) {
 	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
 	events := []Event{
-		{ID: "1", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "honeypot", IsBlocked: true},
-		{ID: "2", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "scanner", IsBlocked: true},
+		{ID: "1", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "2", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "3", Timestamp: ts, Service: "svc1.io", ClientIP: "1.1.1.1", EventType: "policy_allow", IsBlocked: false},
 		{ID: "4", Timestamp: ts, Service: "svc2.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true},
 		{ID: "5", Timestamp: ts, Service: "svc2.io", ClientIP: "2.2.2.2", EventType: "logged", IsBlocked: false},
@@ -1741,28 +1733,25 @@ func TestSummarizeEvents_PerServiceBreakdown(t *testing.T) {
 	if svc1 == nil || svc2 == nil {
 		t.Fatalf("missing services in breakdown: svc1=%v svc2=%v", svc1, svc2)
 	}
-	if svc1.Honeypot != 1 {
-		t.Errorf("svc1.Honeypot = %d, want 1", svc1.Honeypot)
+	// svc1: policy_block(2) + policy_allow(1) = 3 policy
+	if svc1.Policy != 3 {
+		t.Errorf("svc1.Policy = %d, want 3", svc1.Policy)
 	}
-	if svc1.Scanner != 1 {
-		t.Errorf("svc1.Scanner = %d, want 1", svc1.Scanner)
+	// svc1: blocked = 0 (policy_ events don't count as plain "blocked" in per-service)
+	if svc1.Blocked != 0 {
+		t.Errorf("svc1.Blocked = %d, want 0", svc1.Blocked)
 	}
-	if svc1.Policy != 1 { // policy_allow
-		t.Errorf("svc1.Policy = %d, want 1", svc1.Policy)
-	}
-	if svc2.Policy != 1 { // policy_block
+	// svc2: policy_block(1)
+	if svc2.Policy != 1 {
 		t.Errorf("svc2.Policy = %d, want 1", svc2.Policy)
-	}
-	if svc2.Honeypot != 0 {
-		t.Errorf("svc2.Honeypot = %d, want 0", svc2.Honeypot)
 	}
 }
 
 func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
 	events := []Event{
-		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "honeypot", IsBlocked: true},
-		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "scanner", IsBlocked: true},
+		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_skip", IsBlocked: false},
 		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.2", EventType: "blocked", IsBlocked: true},
 	}
@@ -1778,19 +1767,15 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 	if c1 == nil {
 		t.Fatal("client 10.0.0.1 not found in TopClients")
 	}
-	if c1.Honeypot != 1 {
-		t.Errorf("client.Honeypot = %d, want 1", c1.Honeypot)
-	}
-	if c1.Scanner != 1 {
-		t.Errorf("client.Scanner = %d, want 1", c1.Scanner)
-	}
-	if c1.Policy != 1 {
-		t.Errorf("client.Policy = %d, want 1", c1.Policy)
+	// policy_block(2) + policy_skip(1) = 3 policy
+	if c1.Policy != 3 {
+		t.Errorf("client.Policy = %d, want 3", c1.Policy)
 	}
 	if c1.Count != 3 {
 		t.Errorf("client.Count = %d, want 3", c1.Count)
 	}
-	if c1.Blocked != 0 { // Blocked only counts plain "blocked" type, not honeypot/scanner
+	// Blocked only counts plain "blocked" type, not policy_* events.
+	if c1.Blocked != 0 {
 		t.Errorf("client.Blocked = %d, want 0", c1.Blocked)
 	}
 }
@@ -1798,12 +1783,12 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 	events := []Event{
 		{Service: "web.io", EventType: "blocked", IsBlocked: true},
-		{Service: "web.io", EventType: "honeypot", IsBlocked: true},
-		{Service: "web.io", EventType: "scanner", IsBlocked: true},
+		{Service: "web.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{Service: "web.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{Service: "web.io", EventType: "policy_skip", IsBlocked: false},
 		{Service: "web.io", EventType: "policy_block", IsBlocked: true},
 		{Service: "web.io", EventType: "logged", IsBlocked: false},
-		{Service: "api.io", EventType: "honeypot", IsBlocked: true},
+		{Service: "api.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
 	}
 	resp := computeServices(events)
 
@@ -1823,26 +1808,24 @@ func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 	if web.Total != 6 {
 		t.Errorf("web.Total = %d, want 6", web.Total)
 	}
-	if web.Blocked != 4 { // blocked + honeypot + scanner + policy_block
+	// Blocked = all IsBlocked=true events: blocked(1) + policy_block(3) = 4
+	if web.Blocked != 4 {
 		t.Errorf("web.Blocked = %d, want 4", web.Blocked)
 	}
+	// Logged = Total - Blocked = 6 - 4 = 2
 	if web.Logged != 2 {
 		t.Errorf("web.Logged = %d, want 2", web.Logged)
 	}
-	if web.Honeypot != 1 {
-		t.Errorf("web.Honeypot = %d, want 1", web.Honeypot)
+	// Policy = policy_skip(1) + policy_block(3) = 4
+	if web.Policy != 4 {
+		t.Errorf("web.Policy = %d, want 4", web.Policy)
 	}
-	if web.Scanner != 1 {
-		t.Errorf("web.Scanner = %d, want 1", web.Scanner)
+	// api.io: 1 policy_block
+	if api.Policy != 1 {
+		t.Errorf("api.Policy = %d, want 1", api.Policy)
 	}
-	if web.Policy != 2 { // policy_skip + policy_block
-		t.Errorf("web.Policy = %d, want 2", web.Policy)
-	}
-	if api.Honeypot != 1 {
-		t.Errorf("api.Honeypot = %d, want 1", api.Honeypot)
-	}
-	if api.Scanner != 0 {
-		t.Errorf("api.Scanner = %d, want 0", api.Scanner)
+	if api.Blocked != 1 {
+		t.Errorf("api.Blocked = %d, want 1", api.Blocked)
 	}
 }
 
@@ -1850,8 +1833,8 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	s := NewStore("")
 	s.mu.Lock()
 	s.events = []Event{
-		{ID: "1", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "honeypot", IsBlocked: true},
-		{ID: "2", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "scanner", IsBlocked: true},
+		{ID: "1", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "2", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "3", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_allow", IsBlocked: false},
 		{ID: "4", Timestamp: time.Now(), Service: "api.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true},
 		{ID: "5", Timestamp: time.Now(), Service: "web.io", ClientIP: "99.99.99.99", EventType: "blocked", IsBlocked: true},
@@ -1863,7 +1846,8 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	if resp.Total != 4 {
 		t.Errorf("Total = %d, want 4", resp.Total)
 	}
-	if resp.Blocked != 3 { // honeypot + scanner + policy_block
+	// Blocked = all IsBlocked=true: policy_block(3) = 3
+	if resp.Blocked != 3 {
 		t.Errorf("Blocked = %d, want 3", resp.Blocked)
 	}
 
@@ -1879,14 +1863,9 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	if web == nil || api == nil {
 		t.Fatalf("missing service: web=%v api=%v", web, api)
 	}
-	if web.Honeypot != 1 {
-		t.Errorf("web.Honeypot = %d, want 1", web.Honeypot)
-	}
-	if web.Scanner != 1 {
-		t.Errorf("web.Scanner = %d, want 1", web.Scanner)
-	}
-	if web.Policy != 1 { // policy_allow
-		t.Errorf("web.Policy = %d, want 1", web.Policy)
+	// web: policy_block(2) + policy_allow(1) = 3 policy
+	if web.Policy != 3 {
+		t.Errorf("web.Policy = %d, want 3", web.Policy)
 	}
 	if api.Policy != 1 { // policy_block
 		t.Errorf("api.Policy = %d, want 1", api.Policy)
@@ -2057,16 +2036,16 @@ func TestParseEvent_DeduplicatesPolicyTags(t *testing.T) {
 
 // ─── JSONL Tag Backfill Tests ───────────────────────────────────────
 
-func TestSetEventFile_BackfillsTagsOnOldEvents(t *testing.T) {
+func TestSetEventFile_BackfillsTagsAndRemapsEventTypes(t *testing.T) {
 	dir := t.TempDir()
 	eventPath := filepath.Join(dir, "events.jsonl")
 
-	// Write old-format events without tags.
+	// Write old-format events with legacy event types (no tags).
 	events := []Event{
 		{ID: "1", EventType: "honeypot", Timestamp: time.Now()},
 		{ID: "2", EventType: "scanner", Timestamp: time.Now()},
 		{ID: "3", EventType: "ipsum_blocked", Timestamp: time.Now()},
-		{ID: "4", EventType: "blocked", Timestamp: time.Now()},
+		{ID: "4", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
 		{ID: "5", EventType: "logged", Timestamp: time.Now()},
 	}
 	f, _ := os.Create(eventPath)
@@ -2082,23 +2061,37 @@ func TestSetEventFile_BackfillsTagsOnOldEvents(t *testing.T) {
 
 	restored := store.SnapshotSince(24)
 
-	expected := map[string][]string{
+	// Expected event types after migration:
+	// honeypot → policy_block, scanner → policy_block, ipsum_blocked → rate_limited
+	expectedTypes := map[string]string{
+		"1": "policy_block",
+		"2": "policy_block",
+		"3": "rate_limited",
+		"4": "blocked",
+		"5": "logged",
+	}
+	expectedTags := map[string][]string{
 		"1": {"honeypot"},
 		"2": {"scanner", "bot-detection"},
 		"3": {"blocklist", "ipsum"},
-		"4": nil, // blocked events don't get tags
-		"5": nil, // logged events don't get tags
+		"4": nil,
+		"5": nil,
 	}
 
 	for _, ev := range restored {
-		want := expected[ev.ID]
-		if len(ev.Tags) != len(want) {
-			t.Errorf("event %s (%s): tags = %v, want %v", ev.ID, ev.EventType, ev.Tags, want)
+		wantType := expectedTypes[ev.ID]
+		if ev.EventType != wantType {
+			t.Errorf("event %s: event_type = %q, want %q", ev.ID, ev.EventType, wantType)
+		}
+
+		wantTags := expectedTags[ev.ID]
+		if len(ev.Tags) != len(wantTags) {
+			t.Errorf("event %s (%s): tags = %v, want %v", ev.ID, ev.EventType, ev.Tags, wantTags)
 			continue
 		}
 		for i, tag := range ev.Tags {
-			if tag != want[i] {
-				t.Errorf("event %s tag[%d] = %q, want %q", ev.ID, i, tag, want[i])
+			if tag != wantTags[i] {
+				t.Errorf("event %s tag[%d] = %q, want %q", ev.ID, i, tag, wantTags[i])
 			}
 		}
 	}
@@ -2108,7 +2101,9 @@ func TestSetEventFile_DoesNotOverwriteExistingTags(t *testing.T) {
 	dir := t.TempDir()
 	eventPath := filepath.Join(dir, "events.jsonl")
 
-	// Write event with existing tags.
+	// Write event with existing tags. The "honeypot" event type will be
+	// remapped to "policy_block", and the "honeypot" tag backfill should
+	// be added since it's not already present.
 	events := []Event{
 		{ID: "1", EventType: "honeypot", Tags: []string{"custom-tag"}, Timestamp: time.Now()},
 	}
@@ -2127,8 +2122,19 @@ func TestSetEventFile_DoesNotOverwriteExistingTags(t *testing.T) {
 	if len(restored) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(restored))
 	}
-	if len(restored[0].Tags) != 1 || restored[0].Tags[0] != "custom-tag" {
-		t.Errorf("should preserve existing tags, got %v", restored[0].Tags)
+	// Event type should be remapped from "honeypot" to "policy_block".
+	if restored[0].EventType != "policy_block" {
+		t.Errorf("event_type = %q, want policy_block", restored[0].EventType)
+	}
+	// Existing "custom-tag" should be preserved, and "honeypot" tag should be added.
+	if len(restored[0].Tags) != 2 {
+		t.Fatalf("expected 2 tags (custom-tag + honeypot), got %v", restored[0].Tags)
+	}
+	if restored[0].Tags[0] != "custom-tag" {
+		t.Errorf("tag[0] = %q, want custom-tag", restored[0].Tags[0])
+	}
+	if restored[0].Tags[1] != "honeypot" {
+		t.Errorf("tag[1] = %q, want honeypot", restored[0].Tags[1])
 	}
 }
 

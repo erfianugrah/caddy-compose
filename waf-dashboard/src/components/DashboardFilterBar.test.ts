@@ -274,9 +274,6 @@ describe("filterDisplayValue", () => {
   it("returns option label for event_type values", () => {
     expect(filterDisplayValue("event_type", "blocked")).toBe("CRS Blocked");
     expect(filterDisplayValue("event_type", "rate_limited")).toBe("Rate Limited");
-    expect(filterDisplayValue("event_type", "ipsum_blocked")).toBe("IPsum Blocked");
-    expect(filterDisplayValue("event_type", "honeypot")).toBe("Honeypot");
-    expect(filterDisplayValue("event_type", "scanner")).toBe("Scanner");
     expect(filterDisplayValue("event_type", "policy_skip")).toBe("Policy Skip");
     expect(filterDisplayValue("event_type", "policy_allow")).toBe("Policy Allow");
     expect(filterDisplayValue("event_type", "policy_block")).toBe("Policy Block");
@@ -347,8 +344,8 @@ describe("FILTER_FIELDS", () => {
     expect(fields).toContain("country");
   });
 
-  it("event_type has 9 options", () => {
-    expect(FILTER_FIELDS.event_type.options).toHaveLength(9);
+  it("event_type has 6 options", () => {
+    expect(FILTER_FIELDS.event_type.options).toHaveLength(6);
   });
 
   it("method has 7 options", () => {

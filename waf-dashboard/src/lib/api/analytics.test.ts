@@ -322,9 +322,6 @@ describe("lookupIP service breakdown fields", () => {
         blocked: 4,
         logged: 4,
         rate_limited: 1,
-        ipsum_blocked: 0,
-        honeypot: 1,
-        scanner: 1,
         policy: 2,
       }],
       events: [],
@@ -332,8 +329,6 @@ describe("lookupIP service breakdown fields", () => {
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await lookupIP("10.0.0.1");
-    expect(result.services[0].honeypot).toBe(1);
-    expect(result.services[0].scanner).toBe(1);
     expect(result.services[0].policy).toBe(2);
     expect(result.services[0].rate_limited).toBe(1);
   });

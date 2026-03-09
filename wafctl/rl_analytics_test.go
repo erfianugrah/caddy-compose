@@ -528,8 +528,8 @@ func TestAccessLogStoreRequestID_IpsumEvent(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].EventType != "ipsum_blocked" {
-		t.Errorf("event_type: want ipsum_blocked, got %s", events[0].EventType)
+	if events[0].EventType != "rate_limited" {
+		t.Errorf("event_type: want rate_limited, got %s", events[0].EventType)
 	}
 	if events[0].RequestID != "ipsum-uuid-def" {
 		t.Errorf("Event.RequestID: want %q, got %q", "ipsum-uuid-def", events[0].RequestID)

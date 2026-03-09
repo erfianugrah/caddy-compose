@@ -13,10 +13,7 @@ export interface SummaryData {
   blocked: number;
   logged: number;
   rate_limited: number;
-  ipsum_blocked: number;
   policy_events: number;
-  honeypot_events: number;
-  scanner_events: number;
   unique_clients: number;
   unique_services: number;
   tag_counts: TagCount[];
@@ -34,9 +31,6 @@ export interface TimelinePoint {
   blocked: number;
   logged: number;
   rate_limited: number;
-  ipsum_blocked: number;
-  honeypot: number;
-  scanner: number;
   policy: number;
 }
 
@@ -46,9 +40,6 @@ export interface ServiceStat {
   blocked: number;
   logged: number;
   rate_limited: number;
-  ipsum_blocked: number;
-  honeypot: number;
-  scanner: number;
   policy: number;
   block_rate: number;
 }
@@ -59,9 +50,6 @@ export interface ClientStat {
   total: number;
   blocked: number;
   rate_limited: number;
-  ipsum_blocked: number;
-  honeypot: number;
-  scanner: number;
   policy: number;
 }
 
@@ -71,15 +59,12 @@ export interface ServiceBreakdown {
   blocked: number;
   logged: number;
   rate_limited: number;
-  ipsum_blocked: number;
-  honeypot: number;
-  scanner: number;
   policy: number;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────
 
-export type EventType = "blocked" | "logged" | "rate_limited" | "ipsum_blocked" | "policy_skip" | "policy_allow" | "policy_block" | "honeypot" | "scanner";
+export type EventType = "blocked" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block";
 
 export interface WAFEvent {
   id: string;
@@ -144,9 +129,6 @@ export interface ServiceDetail {
   blocked: number;
   logged: number;
   rate_limited: number;
-  ipsum_blocked: number;
-  honeypot: number;
-  scanner: number;
   policy: number;
   block_rate: number;
   top_uris: { uri: string; count: number; blocked: number }[];
@@ -169,19 +151,16 @@ interface RawSummary {
   blocked_events: number;
   logged_events: number;
   rate_limited: number;
-  ipsum_blocked: number;
   policy_events: number;
-  honeypot_events: number;
-  scanner_events: number;
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
-  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
+  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
+  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
+  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; policy: number }[];
   top_countries: { country: string; count: number; blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
+  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
   recent_events: RawEvent[];
 }
 
@@ -216,7 +195,7 @@ interface RawEvent {
 export function mapEvent(raw: RawEvent): WAFEvent {
   // Derive event_type from the API field, falling back to is_blocked.
   let eventType: EventType = raw.is_blocked ? "blocked" : "logged";
-  const validEventTypes: string[] = ["blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner"];
+  const validEventTypes: string[] = ["blocked", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block"];
   if (raw.event_type && validEventTypes.includes(raw.event_type)) {
     eventType = raw.event_type as EventType;
   }
@@ -261,10 +240,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     blocked: raw.blocked_events ?? 0,
     logged: raw.logged_events ?? 0,
     rate_limited: raw.rate_limited ?? 0,
-    ipsum_blocked: raw.ipsum_blocked ?? 0,
     policy_events: raw.policy_events ?? 0,
-    honeypot_events: raw.honeypot_events ?? 0,
-    scanner_events: raw.scanner_events ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     tag_counts: (raw.tag_counts ?? []).map((tc) => ({ tag: tc.tag, count: tc.count ?? 0 })),
@@ -274,9 +250,6 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: h.blocked ?? 0,
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
-      ipsum_blocked: h.ipsum_blocked ?? 0,
-      honeypot: h.honeypot ?? 0,
-      scanner: h.scanner ?? 0,
       policy: h.policy ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
@@ -285,9 +258,6 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: s.blocked ?? 0,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
-      ipsum_blocked: s.ipsum_blocked ?? 0,
-      honeypot: s.honeypot ?? 0,
-      scanner: s.scanner ?? 0,
       policy: s.policy ?? 0,
       block_rate: s.count > 0 ? (s.blocked / s.count) * 100 : 0,
     })),
@@ -297,9 +267,6 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       total: c.count ?? 0,
       blocked: c.blocked ?? 0,
       rate_limited: c.rate_limited ?? 0,
-      ipsum_blocked: c.ipsum_blocked ?? 0,
-      honeypot: c.honeypot ?? 0,
-      scanner: c.scanner ?? 0,
       policy: c.policy ?? 0,
     })),
     top_countries: (raw.top_countries ?? []).map((c) => ({
@@ -314,9 +281,6 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: s.blocked ?? 0,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
-      ipsum_blocked: s.ipsum_blocked ?? 0,
-      honeypot: s.honeypot ?? 0,
-      scanner: s.scanner ?? 0,
       policy: s.policy ?? 0,
     })),
   };
@@ -371,7 +335,7 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 // Go API returns {"services":[{service, total, blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
   const qs = hours ? `?hours=${hours}` : "";
-  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
+  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
     `${API_BASE}/services${qs}`
   );
   return (raw.services ?? []).map((s) => ({
@@ -380,9 +344,6 @@ export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
     blocked: s.blocked,
     logged: s.logged,
     rate_limited: s.rate_limited ?? 0,
-    ipsum_blocked: s.ipsum_blocked ?? 0,
-    honeypot: s.honeypot ?? 0,
-    scanner: s.scanner ?? 0,
     policy: s.policy ?? 0,
     block_rate: s.total > 0 ? (s.blocked / s.total) * 100 : 0,
     top_uris: (s.top_uris ?? []).map((u) => ({ uri: u.uri, count: u.count, blocked: u.blocked })),

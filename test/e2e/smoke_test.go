@@ -684,16 +684,17 @@ func TestPolicyEngineBlock(t *testing.T) {
 }
 
 func TestPolicyEngineHoneypot(t *testing.T) {
-	// Create a honeypot rule with in operator — tests exact matching.
+	// Create a block rule with honeypot tag and in operator — tests exact matching.
 	payload := map[string]any{
 		"name":        "e2e-honeypot",
-		"type":        "honeypot",
+		"type":        "block",
 		"description": "Honeypot paths",
+		"tags":        []string{"honeypot"},
 		"enabled":     true,
 		"conditions":  []map[string]string{{"field": "path", "operator": "in", "value": "/e2e-trap|/e2e-honeypot"}},
 	}
 	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
-	assertCode(t, "create honeypot", 201, resp)
+	assertCode(t, "create honeypot block rule", 201, resp)
 	hpID := mustGetID(t, body)
 	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+hpID) })
 

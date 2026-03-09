@@ -4,12 +4,6 @@ import { CONDITION_FIELDS } from "./constants";
 // ─── Exclusion Display Helpers ──────────────────────────────────────
 
 export function conditionsSummary(excl: Exclusion): string {
-  // For honeypot rules, show path count
-  if (excl.type === "honeypot" && excl.conditions && excl.conditions.length > 0) {
-    const paths = excl.conditions.flatMap((c) => c.value.split(/\s+/).filter(Boolean));
-    const preview = paths.slice(0, 3).join(", ");
-    return paths.length > 3 ? `${preview} (+${paths.length - 3} more)` : preview;
-  }
   // For raw rules, show raw_rule snippet
   if (excl.type === "raw" && excl.raw_rule) {
     return excl.raw_rule.length > 50 ? excl.raw_rule.slice(0, 50) + "..." : excl.raw_rule;
@@ -49,7 +43,6 @@ export function exclusionTypeLabel(type: ExclusionType): string {
     case "block": return "Block";
     case "skip_rule": return "Skip";
     case "anomaly": return "Anomaly";
-    case "honeypot": return "Honeypot";
     case "raw": return "Raw";
     // Configure-time
     case "SecRuleRemoveById": return "Remove Rule";
@@ -70,7 +63,6 @@ export function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "out
     case "allow": return "default";
     case "block": return "destructive";
     case "anomaly": return "secondary";
-    case "honeypot": return "destructive";
     case "skip_rule": return "secondary";
     // Configure-time types
     case "SecRuleRemoveById":

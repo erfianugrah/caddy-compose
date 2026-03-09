@@ -128,7 +128,7 @@ func validateExclusion(e RuleExclusion) error {
 		}
 	}
 
-	// Validate conditions — policy engine types (allow/block/honeypot) only
+	// Validate conditions — policy engine types (allow/block) only
 	// support request-phase fields; SecRule types support all fields.
 	var allowedFields map[string]bool
 	if IsPolicyEngineType(e.Type) {
@@ -153,15 +153,6 @@ func validateExclusion(e RuleExclusion) error {
 		}
 		if e.AnomalyParanoiaLevel != 0 && (e.AnomalyParanoiaLevel < 1 || e.AnomalyParanoiaLevel > 4) {
 			return fmt.Errorf("anomaly_paranoia_level must be between 1 and 4, got %d", e.AnomalyParanoiaLevel)
-		}
-	case "honeypot":
-		if len(e.Conditions) == 0 {
-			return fmt.Errorf("honeypot requires at least one path condition")
-		}
-		for i, c := range e.Conditions {
-			if c.Field != "path" {
-				return fmt.Errorf("honeypot condition[%d]: only 'path' field is allowed, got %q", i, c.Field)
-			}
 		}
 	case "skip_rule":
 		if e.RuleID == "" && e.RuleTag == "" {

@@ -1095,7 +1095,8 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 
 	handler := handleSummary(store, als)
 
-	// event_type=rate_limited — should only see the RL event, not WAF or ipsum
+	// event_type=rate_limited — should see both RL events (429 + ipsum),
+	// since ipsum events are now unified as "rate_limited" with tags.
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&event_type=rate_limited", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1107,11 +1108,11 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}
-	if resp.TotalEvents != 1 {
-		t.Errorf("event_type=rate_limited filter: total_events = %d, want 1", resp.TotalEvents)
+	if resp.TotalEvents != 2 {
+		t.Errorf("event_type=rate_limited filter: total_events = %d, want 2 (1 RL + 1 ipsum)", resp.TotalEvents)
 	}
-	if resp.RateLimited != 1 {
-		t.Errorf("event_type=rate_limited filter: rate_limited = %d, want 1", resp.RateLimited)
+	if resp.RateLimited != 2 {
+		t.Errorf("event_type=rate_limited filter: rate_limited = %d, want 2 (1 RL + 1 ipsum)", resp.RateLimited)
 	}
 }
 

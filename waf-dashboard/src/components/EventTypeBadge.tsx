@@ -3,9 +3,6 @@ import { ACTION_BADGE_CLASSES } from "@/lib/utils";
 
 // ─── Event type → display label mapping ─────────────────────────────
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  honeypot: "HONEYPOT",
-  scanner: "SCANNER",
-  ipsum_blocked: "IPSUM",
   rate_limited: "RATE LIMITED",
   policy_skip: "SKIPPED",
   policy_allow: "ALLOWED",

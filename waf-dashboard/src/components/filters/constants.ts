@@ -17,9 +17,6 @@ export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "blocked", label: "CRS Blocked" },
   { value: "logged", label: "Logged" },
   { value: "rate_limited", label: "Rate Limited" },
-  { value: "ipsum_blocked", label: "IPsum Blocked" },
-  { value: "honeypot", label: "Honeypot" },
-  { value: "scanner", label: "Scanner" },
   { value: "policy_skip", label: "Policy Skip" },
   { value: "policy_allow", label: "Policy Allow" },
   { value: "policy_block", label: "Policy Block" },
@@ -84,7 +81,7 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   country: { label: "Country", placeholder: "e.g. US, DE, CN" },
   event_id: { label: "Event ID", placeholder: "e.g. abc123..." },
   request_id: { label: "Request ID", placeholder: "Caddy request UUID" },
-  tag: { label: "Tag", placeholder: "e.g. scanner, honeypot" },
+  tag: { label: "Tag", placeholder: "e.g. scanner, blocklist" },
 };
 
 export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "tag", "method", "rule_name", "uri", "status_code", "country"];

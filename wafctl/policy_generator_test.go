@@ -18,7 +18,7 @@ func TestIsPolicyEngineType(t *testing.T) {
 	}{
 		{"allow", true},
 		{"block", true},
-		{"honeypot", true},
+		{"honeypot", false},
 		{"skip_rule", false},
 		{"anomaly", false},
 		{"raw", false},
@@ -49,12 +49,11 @@ func TestFilterSecRuleExclusions(t *testing.T) {
 	allExclusions := []RuleExclusion{
 		{ID: "1", Name: "Allow all from office", Type: "allow"},
 		{ID: "2", Name: "Block bad IPs", Type: "block"},
-		{ID: "3", Name: "Honeypot /admin", Type: "honeypot"},
-		{ID: "4", Name: "Skip SQL injection", Type: "skip_rule"},
-		{ID: "5", Name: "Anomaly boost", Type: "anomaly"},
-		{ID: "6", Name: "Raw rule", Type: "raw"},
-		{ID: "7", Name: "Remove rule 942100", Type: "remove_by_id"},
-		{ID: "8", Name: "Runtime remove by tag", Type: "runtime_remove_by_tag"},
+		{ID: "3", Name: "Skip SQL injection", Type: "skip_rule"},
+		{ID: "4", Name: "Anomaly boost", Type: "anomaly"},
+		{ID: "5", Name: "Raw rule", Type: "raw"},
+		{ID: "6", Name: "Remove rule 942100", Type: "remove_by_id"},
+		{ID: "7", Name: "Runtime remove by tag", Type: "runtime_remove_by_tag"},
 	}
 
 	t.Run("disabled returns all", func(t *testing.T) {
@@ -64,7 +63,7 @@ func TestFilterSecRuleExclusions(t *testing.T) {
 		}
 	})
 
-	t.Run("enabled filters out allow/block/honeypot", func(t *testing.T) {
+	t.Run("enabled filters out allow/block", func(t *testing.T) {
 		result := FilterSecRuleExclusions(allExclusions, true)
 		// Should have: skip_rule, anomaly, raw, remove_by_id, runtime_remove_by_tag = 5
 		if len(result) != 5 {
@@ -129,8 +128,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "2", Name: "Skip", Type: "skip_rule", Enabled: true},
 			{ID: "3", Name: "Block", Type: "block", Enabled: true},
 			{ID: "4", Name: "Anomaly", Type: "anomaly", Enabled: true},
-			{ID: "5", Name: "Honeypot", Type: "honeypot", Enabled: true},
-			{ID: "6", Name: "Raw", Type: "raw", Enabled: true},
+			{ID: "5", Name: "Raw", Type: "raw", Enabled: true},
 		}
 		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
@@ -140,26 +138,25 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			t.Fatal(err)
 		}
-		// Only allow, block, honeypot should be included.
-		if len(file.Rules) != 3 {
-			t.Fatalf("expected 3 rules, got %d", len(file.Rules))
+		// Only allow, block should be included.
+		if len(file.Rules) != 2 {
+			t.Fatalf("expected 2 rules, got %d", len(file.Rules))
 		}
 		types := map[string]bool{}
 		for _, r := range file.Rules {
 			types[r.Type] = true
 		}
-		for _, want := range []string{"allow", "block", "honeypot"} {
+		for _, want := range []string{"allow", "block"} {
 			if !types[want] {
 				t.Errorf("missing type %q in output", want)
 			}
 		}
 	})
 
-	t.Run("priority ordering: honeypot < block < allow", func(t *testing.T) {
+	t.Run("priority ordering: block < allow", func(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "a1", Name: "Allow Office", Type: "allow", Enabled: true},
 			{ID: "b1", Name: "Block Scanners", Type: "block", Enabled: true},
-			{ID: "h1", Name: "Honeypot Admin", Type: "honeypot", Enabled: true},
 		}
 		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
@@ -169,28 +166,22 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			t.Fatal(err)
 		}
-		if len(file.Rules) != 3 {
-			t.Fatalf("expected 3 rules, got %d", len(file.Rules))
+		if len(file.Rules) != 2 {
+			t.Fatalf("expected 2 rules, got %d", len(file.Rules))
 		}
-		// Order should be: honeypot (100+), block (200+), allow (300+)
-		if file.Rules[0].Type != "honeypot" {
-			t.Errorf("rules[0].Type = %q, want honeypot", file.Rules[0].Type)
+		// Order should be: block (100+), allow (200+)
+		if file.Rules[0].Type != "block" {
+			t.Errorf("rules[0].Type = %q, want block", file.Rules[0].Type)
 		}
-		if file.Rules[1].Type != "block" {
-			t.Errorf("rules[1].Type = %q, want block", file.Rules[1].Type)
-		}
-		if file.Rules[2].Type != "allow" {
-			t.Errorf("rules[2].Type = %q, want allow", file.Rules[2].Type)
+		if file.Rules[1].Type != "allow" {
+			t.Errorf("rules[1].Type = %q, want allow", file.Rules[1].Type)
 		}
 		// Verify priority values.
 		if file.Rules[0].Priority < 100 || file.Rules[0].Priority >= 200 {
-			t.Errorf("honeypot priority = %d, want [100,200)", file.Rules[0].Priority)
+			t.Errorf("block priority = %d, want [100,200)", file.Rules[0].Priority)
 		}
 		if file.Rules[1].Priority < 200 || file.Rules[1].Priority >= 300 {
-			t.Errorf("block priority = %d, want [200,300)", file.Rules[1].Priority)
-		}
-		if file.Rules[2].Priority < 300 || file.Rules[2].Priority >= 400 {
-			t.Errorf("allow priority = %d, want [300,400)", file.Rules[2].Priority)
+			t.Errorf("allow priority = %d, want [200,300)", file.Rules[1].Priority)
 		}
 	})
 
@@ -213,15 +204,15 @@ func TestGeneratePolicyRules(t *testing.T) {
 			t.Errorf("expected b1,b2,b3 order, got %s,%s,%s",
 				file.Rules[0].ID, file.Rules[1].ID, file.Rules[2].ID)
 		}
-		// Priorities should be 200, 201, 202.
-		if file.Rules[0].Priority != 200 {
-			t.Errorf("b1 priority = %d, want 200", file.Rules[0].Priority)
+		// Priorities should be 100, 101, 102.
+		if file.Rules[0].Priority != 100 {
+			t.Errorf("b1 priority = %d, want 100", file.Rules[0].Priority)
 		}
-		if file.Rules[1].Priority != 201 {
-			t.Errorf("b2 priority = %d, want 201", file.Rules[1].Priority)
+		if file.Rules[1].Priority != 101 {
+			t.Errorf("b2 priority = %d, want 101", file.Rules[1].Priority)
 		}
-		if file.Rules[2].Priority != 202 {
-			t.Errorf("b3 priority = %d, want 202", file.Rules[2].Priority)
+		if file.Rules[2].Priority != 102 {
+			t.Errorf("b3 priority = %d, want 102", file.Rules[2].Priority)
 		}
 	})
 
@@ -242,15 +233,15 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			t.Fatal(err)
 		}
-		// The last two rules (index 99 and 100) should both have priority 299
-		// (200 + capped 99).
+		// The last two rules (index 99 and 100) should both have priority 199
+		// (100 + capped 99).
 		last := file.Rules[len(file.Rules)-1]
 		secondLast := file.Rules[len(file.Rules)-2]
-		if last.Priority != 299 {
-			t.Errorf("last rule priority = %d, want 299", last.Priority)
+		if last.Priority != 199 {
+			t.Errorf("last rule priority = %d, want 199", last.Priority)
 		}
-		if secondLast.Priority != 299 {
-			t.Errorf("second-to-last rule priority = %d, want 299", secondLast.Priority)
+		if secondLast.Priority != 199 {
+			t.Errorf("second-to-last rule priority = %d, want 199", secondLast.Priority)
 		}
 	})
 
@@ -395,10 +386,10 @@ func TestGeneratePolicyRules(t *testing.T) {
 
 	t.Run("JSON round-trip stability", func(t *testing.T) {
 		exclusions := []RuleExclusion{
-			{ID: "h1", Name: "Honeypot", Type: "honeypot", Enabled: true,
-				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/wp-admin"}}},
 			{ID: "b1", Name: "Block", Type: "block", Enabled: true,
 				Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "192.168.0.0/16"}}},
+			{ID: "b2", Name: "Block Path", Type: "block", Enabled: true,
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/wp-admin"}}},
 			{ID: "a1", Name: "Allow", Type: "allow", Enabled: true,
 				Conditions: []Condition{{Field: "host", Operator: "eq", Value: "trusted.example.com"}}},
 		}
@@ -443,7 +434,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 				Conditions: []Condition{
 					{Field: "user_agent", Operator: "contains", Value: "BadBot"},
 				}},
-			{ID: "h1", Name: "Honeypot Paths", Type: "honeypot", Enabled: true,
+			{ID: "b2", Name: "Block Paths", Type: "block", Enabled: true,
 				Conditions: []Condition{
 					{Field: "path", Operator: "in", Value: "/wp-admin /xmlrpc.php /wp-login.php"},
 				}},
@@ -464,107 +455,25 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if len(file.Rules) != 3 {
 			t.Fatalf("expected 3 rules, got %d", len(file.Rules))
 		}
-		// Verify ordering: honeypot, block, allow.
-		if file.Rules[0].ID != "h1" {
-			t.Errorf("first rule ID = %q, want h1", file.Rules[0].ID)
+		// Verify ordering: block (b1, b2), allow (a1).
+		if file.Rules[0].ID != "b1" {
+			t.Errorf("first rule ID = %q, want b1", file.Rules[0].ID)
 		}
-		if file.Rules[1].ID != "b1" {
-			t.Errorf("second rule ID = %q, want b1", file.Rules[1].ID)
+		if file.Rules[1].ID != "b2" {
+			t.Errorf("second rule ID = %q, want b2", file.Rules[1].ID)
 		}
 		if file.Rules[2].ID != "a1" {
 			t.Errorf("third rule ID = %q, want a1", file.Rules[2].ID)
 		}
-		// Verify honeypot conditions.
-		hp := file.Rules[0]
-		if len(hp.Conditions) != 1 {
-			t.Fatalf("honeypot conditions = %d, want 1", len(hp.Conditions))
+		// Verify block path conditions.
+		bp := file.Rules[1]
+		if len(bp.Conditions) != 1 {
+			t.Fatalf("block path conditions = %d, want 1", len(bp.Conditions))
 		}
-		if hp.Conditions[0].Operator != "in" {
-			t.Errorf("honeypot operator = %q, want in", hp.Conditions[0].Operator)
+		if bp.Conditions[0].Operator != "in" {
+			t.Errorf("block path operator = %q, want in", bp.Conditions[0].Operator)
 		}
 	})
-}
-
-// ─── splitHoneypotPaths ──────────────────────────────────────────────
-
-func TestSplitHoneypotPaths(t *testing.T) {
-	tests := []struct {
-		name       string
-		conditions []Condition
-		want       []string
-	}{
-		{
-			name:       "empty conditions",
-			conditions: nil,
-			want:       nil,
-		},
-		{
-			name: "single eq path",
-			conditions: []Condition{
-				{Field: "path", Operator: "eq", Value: "/admin"},
-			},
-			want: []string{"/admin"},
-		},
-		{
-			name: "in operator with multiple paths",
-			conditions: []Condition{
-				{Field: "path", Operator: "in", Value: "/wp-admin /xmlrpc.php /wp-login.php"},
-			},
-			want: []string{"/wp-admin", "/xmlrpc.php", "/wp-login.php"},
-		},
-		{
-			name: "non-path fields are ignored",
-			conditions: []Condition{
-				{Field: "ip", Operator: "eq", Value: "10.0.0.1"},
-				{Field: "path", Operator: "eq", Value: "/admin"},
-				{Field: "host", Operator: "eq", Value: "example.com"},
-			},
-			want: []string{"/admin"},
-		},
-		{
-			name: "multiple path conditions",
-			conditions: []Condition{
-				{Field: "path", Operator: "eq", Value: "/admin"},
-				{Field: "path", Operator: "in", Value: "/wp-login.php /xmlrpc.php"},
-			},
-			want: []string{"/admin", "/wp-login.php", "/xmlrpc.php"},
-		},
-		{
-			name: "empty value is skipped",
-			conditions: []Condition{
-				{Field: "path", Operator: "eq", Value: ""},
-			},
-			want: nil,
-		},
-		{
-			name: "in operator with extra spaces",
-			conditions: []Condition{
-				{Field: "path", Operator: "in", Value: "  /admin   /login  "},
-			},
-			want: []string{"/admin", "/login"},
-		},
-		{
-			name: "contains operator treated as single value",
-			conditions: []Condition{
-				{Field: "path", Operator: "contains", Value: "/admin"},
-			},
-			want: []string{"/admin"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := splitHoneypotPaths(tt.conditions)
-			if len(got) != len(tt.want) {
-				t.Fatalf("splitHoneypotPaths() returned %d paths, want %d: %v", len(got), len(tt.want), got)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("path[%d] = %q, want %q", i, got[i], tt.want[i])
-				}
-			}
-		})
-	}
 }
 
 // ─── GeneratePolicyRules: Generated timestamp ────────────────────────
@@ -839,11 +748,11 @@ func TestGeneratePolicyRules_TagsPassthrough(t *testing.T) {
 		}
 	})
 
-	t.Run("honeypot tags pass through", func(t *testing.T) {
+	t.Run("block with honeypot tags pass through", func(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{
-				ID: "3", Name: "Trap", Type: "honeypot",
-				Conditions: []Condition{{Field: "path", Operator: "in", Value: "/wp-login.php"}},
+				ID: "3", Name: "Trap", Type: "block",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/wp-login.php"}},
 				Tags:       []string{"honeypot", "trap"},
 				Enabled:    true,
 			},

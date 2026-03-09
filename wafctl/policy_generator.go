@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -45,25 +44,23 @@ type PolicyCondition struct {
 // policyEngineTypes are the exclusion types handled by the Caddy policy
 // engine plugin instead of Coraza SecRules.
 var policyEngineTypes = map[string]bool{
-	"allow":    true,
-	"block":    true,
-	"honeypot": true,
+	"allow": true,
+	"block": true,
 }
 
 // policyTypePriority assigns a base priority per exclusion type.
-// Lower values evaluate first. Honeypot (traps) → Block (deny) → Allow (bypass).
+// Lower values evaluate first. Block (deny) → Allow (bypass).
 // This ensures deny rules take precedence over allow rules.
 var policyTypePriority = map[string]int{
-	"honeypot": 100,
-	"block":    200,
-	"allow":    300,
+	"block": 100,
+	"allow": 200,
 }
 
 // GeneratePolicyRules converts exclusions into the plugin's JSON format.
-// Only allow/block/honeypot types are included. All other types remain
+// Only allow/block types are included. All other types remain
 // in SecRule generation (generator.go).
 //
-// Priority is assigned by type (honeypot < block < allow), with the
+// Priority is assigned by type (block < allow), with the
 // exclusion's store order as a stable tiebreaker within each type.
 //
 // When listStore is non-nil, in_list/not_in_list conditions are resolved
@@ -173,26 +170,4 @@ func resolveListItems(ls *ManagedListStore, listName string) ([]string, string) 
 	}
 	log.Printf("[policy] warning: managed list %q not found, condition will not match", listName)
 	return nil, ""
-}
-
-// splitHoneypotPaths extracts all path values from honeypot exclusion
-// conditions, handling both single-value and space-separated "in" values.
-// This is used for display/summary purposes.
-func splitHoneypotPaths(conditions []Condition) []string {
-	var paths []string
-	for _, c := range conditions {
-		if c.Field != "path" {
-			continue
-		}
-		if c.Operator == "in" {
-			for _, p := range strings.Fields(c.Value) {
-				if p != "" {
-					paths = append(paths, p)
-				}
-			}
-		} else if c.Value != "" {
-			paths = append(paths, c.Value)
-		}
-	}
-	return paths
 }

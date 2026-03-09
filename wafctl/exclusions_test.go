@@ -1308,6 +1308,10 @@ func TestMigrateV1toV2_HoneypotGetsTags(t *testing.T) {
 
 	result := migrateV1toV2(exclusions)
 
+	// honeypot type should be converted to block.
+	if result[0].Type != "block" {
+		t.Errorf("honeypot type should be migrated to block, got %q", result[0].Type)
+	}
 	if len(result[0].Tags) != 1 || result[0].Tags[0] != "honeypot" {
 		t.Errorf("honeypot should get [honeypot] tag, got %v", result[0].Tags)
 	}
@@ -1321,11 +1325,17 @@ func TestMigrateV1toV2_SkipsAlreadyTagged(t *testing.T) {
 
 	result := migrateV1toV2(exclusions)
 
+	// block rule with existing tags keeps them unchanged.
 	if len(result[0].Tags) != 1 || result[0].Tags[0] != "custom" {
 		t.Errorf("already-tagged rule should keep tags, got %v", result[0].Tags)
 	}
-	if len(result[1].Tags) != 1 || result[1].Tags[0] != "my-tag" {
-		t.Errorf("already-tagged honeypot should keep tags, got %v", result[1].Tags)
+	// honeypot type is migrated to block; "honeypot" tag is appended
+	// because existing tags don't contain "honeypot".
+	if result[1].Type != "block" {
+		t.Errorf("honeypot type should be migrated to block, got %q", result[1].Type)
+	}
+	if len(result[1].Tags) != 2 || result[1].Tags[0] != "my-tag" || result[1].Tags[1] != "honeypot" {
+		t.Errorf("honeypot should keep existing tags + append honeypot, got %v", result[1].Tags)
 	}
 }
 

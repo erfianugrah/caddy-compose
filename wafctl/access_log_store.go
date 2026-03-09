@@ -577,13 +577,13 @@ func ephemeralID() string {
 }
 
 // RateLimitEventToEvent converts a RateLimitEvent into the unified Event type
-// so that 429s can be merged into the shared event stream.
+// so that 429s and ipsum blocks can be merged into the shared event stream.
+// All access log events use "rate_limited" as the event type; ipsum blocks
+// are distinguished by their tags (["blocklist", "ipsum"]).
 func RateLimitEventToEvent(rle RateLimitEvent) Event {
-	eventType := "rate_limited"
 	status := 429
 	var tags []string
 	if rle.Source == "ipsum" {
-		eventType = "ipsum_blocked"
 		status = 403
 		tags = []string{"blocklist", "ipsum"}
 	}
@@ -599,7 +599,7 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		IsBlocked:      true,
 		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,
-		EventType:      eventType,
+		EventType:      "rate_limited",
 		Tags:           tags,
 		RequestID:      rle.RequestID,
 	}

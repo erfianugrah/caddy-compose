@@ -158,8 +158,6 @@ var validExclusionTypes = map[string]bool{
 	"block":     true, // Deny requests
 	"skip_rule": true, // Skip specific CRS rules
 	"anomaly":   true, // Add anomaly score points (heuristic signal)
-	// Honeypot (dynamic path groups)
-	"honeypot": true, // Known-bad path traps — instant deny
 	// Raw editor
 	"raw": true, // Raw SecRule directive
 }

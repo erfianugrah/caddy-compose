@@ -201,10 +201,7 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 }
 
 // migrateV1toV2 adds event classification tags to existing seeded rules and
-// backfills tags on honeypot-type rules that existed before the tag system.
-// Honeypot rules are converted to block type with ["honeypot"] tag — this
-// is purely additive; the "honeypot" exclusion type remains valid until
-// Phase 3c removes it.
+// converts honeypot-type rules to block type with ["honeypot"] tag.
 func migrateV1toV2(exclusions []RuleExclusion) []RuleExclusion {
 	// Well-known seeded rule names → tags to backfill.
 	seedTags := map[string][]string{
@@ -222,8 +219,13 @@ func migrateV1toV2(exclusions []RuleExclusion) []RuleExclusion {
 		}
 
 		// Convert honeypot-type exclusions to block + ["honeypot"] tag.
-		if e.Type == "honeypot" && len(e.Tags) == 0 {
-			e.Tags = []string{"honeypot"}
+		// The "honeypot" exclusion type is no longer valid; block + tag is
+		// the canonical representation.
+		if e.Type == "honeypot" {
+			e.Type = "block"
+			if !containsTag(e.Tags, "honeypot") {
+				e.Tags = append(e.Tags, "honeypot")
+			}
 		}
 	}
 

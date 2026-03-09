@@ -22,11 +22,9 @@ import {
   ShieldAlert,
   ShieldBan,
   ShieldCheck,
-  Ban,
+  Tag,
   Users,
   Server,
-  Bug,
-  Radar,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -279,21 +277,14 @@ export default function OverviewDashboard() {
     setZoomRight(null);
   }, []);
 
-  // ── Donut data ──
-  const wafBlocked = Math.max(
-    (data?.blocked ?? 0) - (data?.honeypot_events ?? 0) - (data?.scanner_events ?? 0),
-    0,
-  );
+  // ── Donut data (action-based slices only) ──
   const donutData =
-    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.ipsum_blocked > 0 || data.policy_events > 0)
+    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.policy_events > 0)
       ? [
-          ...(wafBlocked > 0 ? [{ name: "WAF Blocked", value: wafBlocked }] : []),
-          ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
+          ...(data.blocked > 0 ? [{ name: "WAF Blocked", value: data.blocked }] : []),
           ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
-          ...(data.ipsum_blocked > 0 ? [{ name: "IPsum", value: data.ipsum_blocked }] : []),
-          ...(data.honeypot_events > 0 ? [{ name: "Honeypot", value: data.honeypot_events }] : []),
-          ...(data.scanner_events > 0 ? [{ name: "Scanner", value: data.scanner_events }] : []),
           ...(data.policy_events > 0 ? [{ name: "Policy", value: data.policy_events }] : []),
+          ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
         ]
       : [];
 
@@ -350,10 +341,18 @@ export default function OverviewDashboard() {
         <StatCard title="Security Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
         <StatCard title="Blocked" value={data?.blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=blocked" />
         <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
-        <StatCard title="IPsum Blocked" value={data?.ipsum_blocked ?? 0} icon={Ban} color="purple" loading={loading} href="/events?type=ipsum_blocked" />
-        <StatCard title="Honeypot" value={data?.honeypot_events ?? 0} icon={Bug} color="orange" loading={loading} href="/events?type=honeypot" />
-        <StatCard title="Scanner" value={data?.scanner_events ?? 0} icon={Radar} color="red" loading={loading} href="/events?type=scanner" />
         <StatCard title="Policy" value={data?.policy_events ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=policy_skip" />
+        {(data?.tag_counts ?? []).map(tc => (
+          <StatCard
+            key={tc.tag}
+            title={tc.tag.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+            value={tc.count}
+            icon={Tag}
+            color="cyan"
+            loading={loading}
+            href={`/events?tag=${tc.tag}`}
+          />
+        ))}
       </div>
 
       {/* ── Tag Breakdown ── */}
@@ -422,18 +421,6 @@ export default function OverviewDashboard() {
                     <stop offset="5%" stopColor={ACTION_COLORS.rate_limited} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={ACTION_COLORS.rate_limited} stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="gradIpsumBlocked" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={ACTION_COLORS.ipsum} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={ACTION_COLORS.ipsum} stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gradHoneypot" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={ACTION_COLORS.honeypot} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={ACTION_COLORS.honeypot} stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gradScanner" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={ACTION_COLORS.scanner} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={ACTION_COLORS.scanner} stopOpacity={0} />
-                  </linearGradient>
                   <linearGradient id="gradPolicy" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={ACTION_COLORS.policy} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={ACTION_COLORS.policy} stopOpacity={0} />
@@ -464,11 +451,8 @@ export default function OverviewDashboard() {
                   wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }}
                 />
                 <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} />
-                <Area type="monotone" dataKey="ipsum_blocked" stroke={ACTION_COLORS.ipsum} fill="url(#gradIpsumBlocked)" strokeWidth={2} name="IPsum Blocked" />
                 <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} />
                 <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#gradBlocked)" strokeWidth={2} />
-                <Area type="monotone" dataKey="honeypot" stroke={ACTION_COLORS.honeypot} fill="url(#gradHoneypot)" strokeWidth={2} name="Honeypot" />
-                <Area type="monotone" dataKey="scanner" stroke={ACTION_COLORS.scanner} fill="url(#gradScanner)" strokeWidth={2} name="Scanner" />
                 <Area type="monotone" dataKey="policy" stroke={ACTION_COLORS.policy} fill="url(#gradPolicy)" strokeWidth={2} name="Policy" />
                 {/* Selection overlay while dragging */}
                 {refAreaLeft && refAreaRight && (
@@ -573,7 +557,7 @@ export default function OverviewDashboard() {
                         data={(data?.top_clients ?? []).slice(0, 8).map((c) => ({
                           ...c,
                           label: c.client_ip,
-                          logged: Math.max(c.total - c.blocked - c.rate_limited - c.ipsum_blocked - c.honeypot - c.scanner - c.policy, 0),
+                          logged: Math.max(c.total - c.blocked - c.rate_limited - c.policy, 0),
                         }))}
                         layout="vertical"
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
@@ -607,9 +591,6 @@ export default function OverviewDashboard() {
                         <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                         <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
-                        <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
-                        <Bar dataKey="honeypot" name="Honeypot" fill={ACTION_COLORS.honeypot} stackId="a" />
-                        <Bar dataKey="scanner" name="Scanner" fill={ACTION_COLORS.scanner} stackId="a" />
                         <Bar dataKey="policy" name="Policy" fill={ACTION_COLORS.policy} stackId="a" />
                         <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                       </BarChart>
@@ -662,9 +643,6 @@ export default function OverviewDashboard() {
                       <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                       <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                       <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
-                      <Bar dataKey="ipsum_blocked" name="IPsum" fill={ACTION_COLORS.ipsum} stackId="a" />
-                      <Bar dataKey="honeypot" name="Honeypot" fill={ACTION_COLORS.honeypot} stackId="a" />
-                      <Bar dataKey="scanner" name="Scanner" fill={ACTION_COLORS.scanner} stackId="a" />
                       <Bar dataKey="policy" name="Policy" fill={ACTION_COLORS.policy} stackId="a" />
                       <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                     </BarChart>

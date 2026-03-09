@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -25,9 +26,9 @@ func computeServices(events []Event) ServicesResponse {
 		msg string
 	}
 	type svcData struct {
-		total, blocked, honeypot, scanner, policy int
-		uris                                      map[string]*uriStats
-		rules                                     map[ruleKey]int
+		total, blocked, policy int
+		uris                   map[string]*uriStats
+		rules                  map[ruleKey]int
 	}
 	m := make(map[string]*svcData)
 
@@ -45,12 +46,7 @@ func computeServices(events []Event) ServicesResponse {
 		if ev.IsBlocked {
 			d.blocked++
 		}
-		switch ev.EventType {
-		case "honeypot":
-			d.honeypot++
-		case "scanner":
-			d.scanner++
-		case "policy_skip", "policy_allow", "policy_block":
+		if strings.HasPrefix(ev.EventType, "policy_") {
 			d.policy++
 		}
 
@@ -82,13 +78,11 @@ func computeServices(events []Event) ServicesResponse {
 	result := make([]ServiceDetail, 0, len(m))
 	for svc, d := range m {
 		sd := ServiceDetail{
-			Service:  svc,
-			Total:    d.total,
-			Blocked:  d.blocked,
-			Logged:   d.total - d.blocked,
-			Honeypot: d.honeypot,
-			Scanner:  d.scanner,
-			Policy:   d.policy,
+			Service: svc,
+			Total:   d.total,
+			Blocked: d.blocked,
+			Logged:  d.total - d.blocked,
+			Policy:  d.policy,
 		}
 
 		// Build top URIs.
@@ -184,7 +178,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 
 	// Compute per-service breakdown, first/last seen, blocked count.
 	type counts struct {
-		total, blocked, logged, honeypot, scanner, policy, rateLimited, ipsumBlocked int
+		total, blocked, logged, policy, rateLimited int
 	}
 	svcMap := make(map[string]*counts)
 
@@ -211,18 +205,12 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		if ev.IsBlocked {
 			c.blocked++
 		}
-		switch ev.EventType {
-		case "honeypot":
-			c.honeypot++
-		case "scanner":
-			c.scanner++
-		case "policy_skip", "policy_allow", "policy_block":
-			c.policy++
-		case "rate_limited":
+		switch {
+		case ev.EventType == "rate_limited":
 			c.rateLimited++
-		case "ipsum_blocked":
-			c.ipsumBlocked++
-		case "logged":
+		case strings.HasPrefix(ev.EventType, "policy_"):
+			c.policy++
+		case ev.EventType == "logged":
 			c.logged++
 		}
 	}
@@ -241,15 +229,12 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 	svcList := make([]ServiceDetail, 0, len(svcMap))
 	for svc, c := range svcMap {
 		svcList = append(svcList, ServiceDetail{
-			Service:      svc,
-			Total:        c.total,
-			Blocked:      c.blocked,
-			Logged:       c.logged,
-			Honeypot:     c.honeypot,
-			Scanner:      c.scanner,
-			Policy:       c.policy,
-			RateLimited:  c.rateLimited,
-			IpsumBlocked: c.ipsumBlocked,
+			Service:     svc,
+			Total:       c.total,
+			Blocked:     c.blocked,
+			Logged:      c.logged,
+			Policy:      c.policy,
+			RateLimited: c.rateLimited,
 		})
 	}
 	sort.Slice(svcList, func(i, j int) bool {

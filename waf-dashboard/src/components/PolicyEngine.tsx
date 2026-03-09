@@ -32,7 +32,6 @@ import {
   Loader2,
   Check,
   FileCode,
-  Crosshair,
   Search,
   X,
 } from "lucide-react";
@@ -100,7 +99,7 @@ import type { AdvancedFormState } from "./policy/constants";
 import type { EventPrefill } from "./policy/eventPrefill";
 import { consumePrefillEvent } from "./policy/eventPrefill";
 import { conditionsSummary, exclusionTypeLabel, exclusionTypeBadgeVariant } from "./policy/exclusionHelpers";
-import { QuickActionsForm, AdvancedBuilderForm, RawEditorForm, HoneypotForm } from "./policy/PolicyForms";
+import { QuickActionsForm, AdvancedBuilderForm, RawEditorForm } from "./policy/PolicyForms";
 
 const RULES_PAGE_SIZE = 15;
 
@@ -251,7 +250,7 @@ export default function PolicyEngine() {
 
   // All possible exclusion types for the filter dropdown (ordered logically)
   const allExclusionTypes: ExclusionType[] = [
-    "allow", "block", "skip_rule", "anomaly", "honeypot", "raw",
+    "allow", "block", "skip_rule", "anomaly", "raw",
     "SecRuleRemoveById", "SecRuleRemoveByTag",
     "SecRuleUpdateTargetById", "SecRuleUpdateTargetByTag",
     "ctl:ruleRemoveById", "ctl:ruleRemoveByTag",
@@ -400,16 +399,15 @@ export default function PolicyEngine() {
 
   // Determine the editing tab — route to the correct tab based on exclusion type.
   const isEditingRaw = exclusionToEdit?.type === "raw";
-  const isEditingHoneypot = exclusionToEdit?.type === "honeypot";
 
   // Controlled tab state — switches automatically when editing starts.
   const [activeTab, setActiveTab] = useState<string>("quick");
   useEffect(() => {
     if (editingId) {
-      setActiveTab(isEditingHoneypot ? "honeypot" : isEditingRaw ? "raw" : "advanced");
+      setActiveTab(isEditingRaw ? "raw" : "advanced");
       setDialogOpen(true);
     }
-  }, [editingId, isEditingRaw, isEditingHoneypot]);
+  }, [editingId, isEditingRaw]);
 
   // Open create dialog
   const openCreateDialog = () => {
@@ -697,10 +695,6 @@ export default function PolicyEngine() {
                 <Code2 className="h-3.5 w-3.5" />
                 Advanced
               </TabsTrigger>
-              <TabsTrigger value="honeypot" className="gap-1.5" disabled={!!editingId && !isEditingHoneypot}>
-                <Crosshair className="h-3.5 w-3.5" />
-                Honeypot
-              </TabsTrigger>
               <TabsTrigger value="raw" className="gap-1.5" disabled={!!editingId && !isEditingRaw}>
                 <FileCode className="h-3.5 w-3.5" />
                 Raw Editor
@@ -723,7 +717,7 @@ export default function PolicyEngine() {
             </TabsContent>
 
             <TabsContent value="advanced">
-              {editingId && editFormState && !isEditingRaw && !isEditingHoneypot ? (
+              {editingId && editFormState && !isEditingRaw ? (
                 <AdvancedBuilderForm
                   key={editingId}
                   initial={editFormState}
@@ -738,25 +732,6 @@ export default function PolicyEngine() {
                   onSubmit={(data) => { handleCreate(data); closeDialog(); }}
                   submitLabel="Add Exclusion"
                 />
-              )}
-            </TabsContent>
-
-            <TabsContent value="honeypot">
-              {editingId && exclusionToEdit && isEditingHoneypot ? (
-                <HoneypotForm
-                  key={editingId}
-                  initial={{
-                    name: exclusionToEdit.name,
-                    description: exclusionToEdit.description,
-                    conditions: exclusionToEdit.conditions ?? [],
-                    enabled: exclusionToEdit.enabled,
-                  }}
-                  onSubmit={(data) => { handleUpdate(editingId!, data); closeDialog(); }}
-                  onCancel={closeDialog}
-                  submitLabel="Save Changes"
-                />
-              ) : (
-                <HoneypotForm onSubmit={(data) => { handleCreate(data); closeDialog(); }} />
               )}
             </TabsContent>
 

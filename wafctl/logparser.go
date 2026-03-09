@@ -97,22 +97,36 @@ func (s *Store) SetEventFile(path string) {
 		}
 	}
 
-	// Migrate: backfill tags on old events that predate the tag system.
-	// Events with known event types get their corresponding tags.
+	// Migrate: remap removed event types to their canonical replacements
+	// and backfill tags on old events that predate the tag system.
 	tagsMigrated := 0
 	for i := range events {
-		if len(events[i].Tags) > 0 {
-			continue // already has tags
-		}
 		switch events[i].EventType {
 		case "honeypot":
-			events[i].Tags = []string{"honeypot"}
+			events[i].EventType = "policy_block"
+			events[i].IsBlocked = true
+			if !containsTag(events[i].Tags, "honeypot") {
+				events[i].Tags = append(events[i].Tags, "honeypot")
+			}
 			tagsMigrated++
 		case "scanner":
-			events[i].Tags = []string{"scanner", "bot-detection"}
+			events[i].EventType = "policy_block"
+			events[i].IsBlocked = true
+			if !containsTag(events[i].Tags, "scanner") {
+				events[i].Tags = append(events[i].Tags, "scanner")
+			}
+			if !containsTag(events[i].Tags, "bot-detection") {
+				events[i].Tags = append(events[i].Tags, "bot-detection")
+			}
 			tagsMigrated++
 		case "ipsum_blocked":
-			events[i].Tags = []string{"blocklist", "ipsum"}
+			events[i].EventType = "rate_limited"
+			if !containsTag(events[i].Tags, "blocklist") {
+				events[i].Tags = append(events[i].Tags, "blocklist")
+			}
+			if !containsTag(events[i].Tags, "ipsum") {
+				events[i].Tags = append(events[i].Tags, "ipsum")
+			}
 			tagsMigrated++
 		}
 	}
@@ -591,6 +605,16 @@ func formatBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
+}
+
+// containsTag checks if a tag is present in a slice.
+func containsTag(tags []string, tag string) bool {
+	for _, t := range tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }
 
 // topN is a generic helper that converts a map into a sorted top-N slice.

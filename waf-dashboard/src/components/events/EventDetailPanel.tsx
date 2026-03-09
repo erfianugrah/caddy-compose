@@ -39,11 +39,8 @@ function ExpandableSection({ title, children }: { title: string; children: React
 }
 
 export function EventDetailPanel({ event, hideActions = false, viewInEventsHref }: { event: WAFEvent; hideActions?: boolean; viewInEventsHref?: string }) {
-  // Only show "Create Exception" for WAF events (not ipsum/rate-limited/policy-managed/honeypot/scanner)
-  const isWafEvent = event.event_type !== "ipsum_blocked"
-    && event.event_type !== "rate_limited"
-    && event.event_type !== "honeypot"
-    && event.event_type !== "scanner"
+  // Only show "Create Exception" for CRS WAF events (not rate-limited or policy-engine-managed)
+  const isWafEvent = event.event_type !== "rate_limited"
     && !event.event_type?.startsWith("policy_");
 
   return (
@@ -163,93 +160,71 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
 
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
-            {event.event_type === "ipsum_blocked" ? "IPsum Blocklist Details"
-              : event.event_type === "rate_limited" ? "Rate Limit Details"
-              : event.event_type === "honeypot" ? "Honeypot Trap Details"
-              : event.event_type === "scanner" ? "Scanner Detection Details"
+            {event.event_type === "rate_limited" ? "Rate Limit Details"
               : event.event_type?.startsWith("policy_") ? "Policy Engine Match"
               : event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound"
                 ? "Anomaly Score Block"
                 : "Rule Match"}
           </h4>
           <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
-            {event.event_type === "honeypot" ? (
+            {event.event_type === "rate_limited" ? (
               <>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className="text-orange-400 font-medium">Honeypot Trap (403)</span>
+                  <span className="text-yellow-400 font-medium">Rate Limited ({event.status || 429})</span>
                 </div>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Response:</span>
-                  <span className="text-neon-pink">403 Forbidden</span>
+                  <span className="text-neon-pink">{event.status || 429} Too Many Requests</span>
                 </div>
+                {event.tags && event.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="text-muted-foreground">Tags:</span>
+                    {event.tags.map((tag) => (
+                      <span key={tag} className="inline-flex items-center rounded bg-neon-cyan/10 border border-neon-cyan/30 px-2 py-0.5 text-xs font-mono text-neon-cyan">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {event.user_agent && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">User-Agent:</span>
+                    <code className="break-all text-foreground">{event.user_agent}</code>
+                  </div>
+                )}
+              </>
+            ) : event.event_type?.startsWith("policy_") ? (
+              <>
+                {/* Policy engine event — tag-aware display */}
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Action:</span>
+                  <span className="text-neon-pink font-medium">
+                    Policy {event.event_type.replace("policy_", "").replace(/^\w/, (c) => c.toUpperCase())} ({event.status || 403})
+                  </span>
+                </div>
+                {event.tags && event.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="text-muted-foreground">Tags:</span>
+                    {event.tags.map((tag) => (
+                      <span key={tag} className="inline-flex items-center rounded bg-neon-cyan/10 border border-neon-cyan/30 px-2 py-0.5 text-xs font-mono text-neon-cyan">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {event.rule_msg && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">Rule:</span>
-                    <span className="text-orange-400">{event.rule_id} — {event.rule_msg}</span>
+                    {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
+                      <a href={policyRuleLink(event.rule_msg)!} className="text-emerald-400 hover:text-emerald-300 hover:underline transition-colors" onClick={(e) => e.stopPropagation()}>
+                        {event.rule_id ? `${event.rule_id} — ` : ""}{event.rule_msg}
+                      </a>
+                    ) : (
+                      <span className="text-foreground">{event.rule_id ? `${event.rule_id} — ` : ""}{event.rule_msg}</span>
+                    )}
                   </div>
                 )}
-                {event.user_agent && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">User-Agent:</span>
-                    <code className="break-all text-foreground">{event.user_agent}</code>
-                  </div>
-                )}
-              </>
-            ) : event.event_type === "scanner" ? (
-              <>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Action:</span>
-                  <span className="text-red-400 font-medium">Scanner Detection (403)</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Response:</span>
-                  <span className="text-neon-pink">403 Forbidden</span>
-                </div>
-                {event.rule_msg && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">Rule:</span>
-                    <span className="text-red-400">{event.rule_id} — {event.rule_msg}</span>
-                  </div>
-                )}
-                {event.user_agent && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">User-Agent:</span>
-                    <code className="break-all text-foreground">{event.user_agent}</code>
-                  </div>
-                )}
-              </>
-            ) : event.event_type === "ipsum_blocked" ? (
-              <>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Action:</span>
-                  <span className="text-purple-400 font-medium">IPsum Blocklist (403)</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Response:</span>
-                  <span className="text-neon-pink">403 Forbidden</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Source:</span>
-                  <span className="text-purple-400">IPsum threat intelligence blocklist</span>
-                </div>
-                {event.user_agent && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">User-Agent:</span>
-                    <code className="break-all text-foreground">{event.user_agent}</code>
-                  </div>
-                )}
-              </>
-            ) : event.event_type === "rate_limited" ? (
-              <>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Action:</span>
-                  <span className="text-yellow-400 font-medium">Rate Limited (429)</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground">Response:</span>
-                  <span className="text-neon-pink">429 Too Many Requests</span>
-                </div>
                 {event.user_agent && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">User-Agent:</span>

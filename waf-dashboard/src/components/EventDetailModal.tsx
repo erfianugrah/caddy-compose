@@ -32,10 +32,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
   if (!event) return null;
 
   const isWafEvent =
-    event.event_type !== "ipsum_blocked" &&
     event.event_type !== "rate_limited" &&
-    event.event_type !== "honeypot" &&
-    event.event_type !== "scanner" &&
     !event.event_type?.startsWith("policy_");
 
   return (

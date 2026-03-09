@@ -37,7 +37,7 @@ func parseEvent(entry AuditLogEntry) Event {
 
 	// Classify events by checking rule IDs from custom rule ranges.
 	// Scan all messages to find the highest-priority classification.
-	// Priority: policy engine > honeypot > scanner > default (blocked/logged).
+	// Priority: policy engine > default (blocked/logged).
 	var candidateType string
 	for _, m := range entry.Messages {
 		rid := m.Data.ID
@@ -56,7 +56,7 @@ func parseEvent(entry AuditLogEntry) Event {
 					candidateType = "policy_skip"
 				}
 				// If still interrupted, leave candidateType empty so the
-				// default "blocked" classification from line 378 is preserved.
+				// default "blocked" classification is preserved.
 			} else if strings.HasPrefix(msg, "Policy Block:") {
 				candidateType = "policy_block"
 			} else if strings.HasPrefix(msg, "Policy Anomaly:") {
@@ -69,21 +69,6 @@ func parseEvent(entry AuditLogEntry) Event {
 				}
 			}
 			break // policy classification takes absolute priority
-		}
-
-		// Honeypot path rules — known-bad path probes.
-		if rid >= honeypotRuleIDMin && rid <= honeypotRuleIDMax && candidateType == "" {
-			candidateType = "honeypot"
-			// Don't break — keep scanning for policy rules.
-		}
-
-		// Heuristic bot signal rules (9100030–9100049).
-		// Scanner UA rule uses drop — classify as scanner.
-		// Other heuristic rules just adjust anomaly scores and don't
-		// change the event type.
-		if rid == scannerDropRuleID && candidateType == "" {
-			candidateType = "scanner"
-			// Don't break — keep scanning for policy rules.
 		}
 	}
 	if candidateType != "" {

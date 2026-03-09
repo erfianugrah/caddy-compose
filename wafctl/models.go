@@ -25,13 +25,6 @@ const (
 	policyRuleIDMin = 9500000
 	policyRuleIDMax = 9599999
 
-	// Honeypot path rules.
-	honeypotRuleIDMin = 9100020
-	honeypotRuleIDMax = 9100029
-
-	// Scanner UA drop rule.
-	scannerDropRuleID = 9100032
-
 	// CRS outbound rule range.
 	crsOutboundMin = 950000
 	crsOutboundMax = 979999
@@ -141,7 +134,7 @@ type Event struct {
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
 	Country        string    `json:"country,omitempty"` // ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
-	EventType      string    `json:"event_type"`        // "blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner"
+	EventType      string    `json:"event_type"`        // "blocked", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block"
 	Tags           []string  `json:"tags,omitempty"`    // Event classification tags from matched policy rules (e.g., "scanner", "honeypot", "blocklist")
 	// How the request was blocked: "anomaly_inbound", "anomaly_outbound", "direct", or ""
 	BlockedBy string `json:"blocked_by,omitempty"`
@@ -185,10 +178,7 @@ type SummaryResponse struct {
 	BlockedEvents    int             `json:"blocked_events"`
 	LoggedEvents     int             `json:"logged_events"`
 	RateLimited      int             `json:"rate_limited"`
-	IpsumBlocked     int             `json:"ipsum_blocked"`
 	PolicyEvents     int             `json:"policy_events"`
-	HoneypotEvents   int             `json:"honeypot_events"`
-	ScannerEvents    int             `json:"scanner_events"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
 	TagCounts        []TagCount      `json:"tag_counts,omitempty"`
@@ -202,39 +192,30 @@ type SummaryResponse struct {
 }
 
 type HourCount struct {
-	Hour         string `json:"hour"`
-	Count        int    `json:"count"`
-	Blocked      int    `json:"blocked"`
-	Logged       int    `json:"logged"`
-	RateLimited  int    `json:"rate_limited"`
-	IpsumBlocked int    `json:"ipsum_blocked"`
-	Honeypot     int    `json:"honeypot"`
-	Scanner      int    `json:"scanner"`
-	Policy       int    `json:"policy"`
+	Hour        string `json:"hour"`
+	Count       int    `json:"count"`
+	Blocked     int    `json:"blocked"`
+	Logged      int    `json:"logged"`
+	RateLimited int    `json:"rate_limited"`
+	Policy      int    `json:"policy"`
 }
 
 type ServiceCount struct {
-	Service      string `json:"service"`
-	Count        int    `json:"count"`
-	Blocked      int    `json:"blocked"`
-	Logged       int    `json:"logged"`
-	RateLimited  int    `json:"rate_limited"`
-	IpsumBlocked int    `json:"ipsum_blocked"`
-	Honeypot     int    `json:"honeypot"`
-	Scanner      int    `json:"scanner"`
-	Policy       int    `json:"policy"`
+	Service     string `json:"service"`
+	Count       int    `json:"count"`
+	Blocked     int    `json:"blocked"`
+	Logged      int    `json:"logged"`
+	RateLimited int    `json:"rate_limited"`
+	Policy      int    `json:"policy"`
 }
 
 type ClientCount struct {
-	Client       string `json:"client"`
-	Country      string `json:"country,omitempty"`
-	Count        int    `json:"count"`
-	Blocked      int    `json:"blocked"`
-	RateLimited  int    `json:"rate_limited"`
-	IpsumBlocked int    `json:"ipsum_blocked"`
-	Honeypot     int    `json:"honeypot"`
-	Scanner      int    `json:"scanner"`
-	Policy       int    `json:"policy"`
+	Client      string `json:"client"`
+	Country     string `json:"country,omitempty"`
+	Count       int    `json:"count"`
+	Blocked     int    `json:"blocked"`
+	RateLimited int    `json:"rate_limited"`
+	Policy      int    `json:"policy"`
 }
 
 // Blocklist API response types
@@ -306,17 +287,14 @@ type ServiceRule struct {
 }
 
 type ServiceDetail struct {
-	Service      string        `json:"service"`
-	Total        int           `json:"total"`
-	Blocked      int           `json:"blocked"`
-	Logged       int           `json:"logged"`
-	RateLimited  int           `json:"rate_limited"`
-	IpsumBlocked int           `json:"ipsum_blocked"`
-	Honeypot     int           `json:"honeypot"`
-	Scanner      int           `json:"scanner"`
-	Policy       int           `json:"policy"`
-	TopURIs      []ServiceURI  `json:"top_uris,omitempty"`
-	TopRules     []ServiceRule `json:"top_rules,omitempty"`
+	Service     string        `json:"service"`
+	Total       int           `json:"total"`
+	Blocked     int           `json:"blocked"`
+	Logged      int           `json:"logged"`
+	RateLimited int           `json:"rate_limited"`
+	Policy      int           `json:"policy"`
+	TopURIs     []ServiceURI  `json:"top_uris,omitempty"`
+	TopRules    []ServiceRule `json:"top_rules,omitempty"`
 }
 
 type ServicesResponse struct {
