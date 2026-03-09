@@ -12,7 +12,7 @@ import (
 // currentStoreVersion is the latest store schema version.
 // Increment this and add a migration function when changing the store format
 // or adding default seed rules.
-const currentStoreVersion = 1
+const currentStoreVersion = 2
 
 // storeFile is the versioned on-disk format for the exclusions store.
 // Legacy stores (bare JSON arrays) are detected and migrated on load.
@@ -47,6 +47,7 @@ type storeMigration struct {
 // store version is below its toVersion.
 var storeMigrations = []storeMigration{
 	{toVersion: 1, name: "seed heuristic bot rules", migrate: migrateV0toV1},
+	{toVersion: 2, name: "add event tags to rules", migrate: migrateV1toV2},
 }
 
 // load reads exclusions from the JSON file on disk. Handles both legacy
@@ -157,6 +158,7 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 				{Field: "user_agent", Operator: "in", Value: scannerUAs},
 			},
 			GroupOp:   "and",
+			Tags:      []string{"scanner", "bot-detection"},
 			Enabled:   true,
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -170,6 +172,7 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 				{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
 			},
 			GroupOp:              "and",
+			Tags:                 []string{"bot-signal", "protocol"},
 			AnomalyScore:         2,
 			AnomalyParanoiaLevel: 1,
 			Enabled:              true,
@@ -185,6 +188,7 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 				{Field: "user_agent", Operator: "in", Value: genericUAs},
 			},
 			GroupOp:              "and",
+			Tags:                 []string{"bot-signal", "generic-ua"},
 			AnomalyScore:         5,
 			AnomalyParanoiaLevel: 1,
 			Enabled:              true,
@@ -194,6 +198,36 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 	}
 
 	return append(exclusions, seeds...)
+}
+
+// migrateV1toV2 adds event classification tags to existing seeded rules and
+// backfills tags on honeypot-type rules that existed before the tag system.
+// Honeypot rules are converted to block type with ["honeypot"] tag — this
+// is purely additive; the "honeypot" exclusion type remains valid until
+// Phase 3c removes it.
+func migrateV1toV2(exclusions []RuleExclusion) []RuleExclusion {
+	// Well-known seeded rule names → tags to backfill.
+	seedTags := map[string][]string{
+		"Scanner UA Block":   {"scanner", "bot-detection"},
+		"HTTP/1.0 Anomaly":   {"bot-signal", "protocol"},
+		"Generic UA Anomaly": {"bot-signal", "generic-ua"},
+	}
+
+	for i := range exclusions {
+		e := &exclusions[i]
+
+		// Backfill tags on known seeded rules (idempotent — skip if already tagged).
+		if tags, ok := seedTags[e.Name]; ok && len(e.Tags) == 0 {
+			e.Tags = tags
+		}
+
+		// Convert honeypot-type exclusions to block + ["honeypot"] tag.
+		if e.Type == "honeypot" && len(e.Tags) == 0 {
+			e.Tags = []string{"honeypot"}
+		}
+	}
+
+	return exclusions
 }
 
 // List returns all exclusions.

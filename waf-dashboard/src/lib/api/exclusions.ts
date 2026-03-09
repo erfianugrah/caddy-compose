@@ -84,6 +84,7 @@ export interface Exclusion {
   raw_rule?: string;
   anomaly_score?: number;
   anomaly_paranoia_level?: number;
+  tags?: string[];
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -101,6 +102,7 @@ export interface ExclusionCreateData {
   raw_rule?: string;
   anomaly_score?: number;
   anomaly_paranoia_level?: number;
+  tags?: string[];
   enabled: boolean;
 }
 
@@ -169,6 +171,7 @@ interface RawExclusion {
   raw_rule?: string;
   anomaly_score?: number;
   anomaly_paranoia_level?: number;
+  tags?: string[];
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -188,6 +191,7 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     raw_rule: raw.raw_rule || undefined,
     anomaly_score: raw.anomaly_score ?? undefined,
     anomaly_paranoia_level: raw.anomaly_paranoia_level ?? undefined,
+    tags: raw.tags,
     enabled: raw.enabled,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
@@ -207,6 +211,7 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.raw_rule !== undefined) result.raw_rule = data.raw_rule;
   if (data.anomaly_score !== undefined) result.anomaly_score = data.anomaly_score;
   if (data.anomaly_paranoia_level !== undefined) result.anomaly_paranoia_level = data.anomaly_paranoia_level;
+  if (data.tags !== undefined) result.tags = data.tags;
   if (data.enabled !== undefined) result.enabled = data.enabled;
   return result;
 }
@@ -277,6 +282,7 @@ export async function importExclusions(data: Exclusion[]): Promise<{ imported: n
     rule_tag: e.rule_tag,
     variable: e.variable,
     raw_rule: e.raw_rule,
+    tags: e.tags,
     enabled: e.enabled,
   }));
   return postJSON<{ imported: number }>(`${API_BASE}/exclusions/import`, {

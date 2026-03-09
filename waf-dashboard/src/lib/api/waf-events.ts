@@ -101,6 +101,7 @@ export interface WAFEvent {
   request_headers?: Record<string, string[]>;
   request_body?: string;
   request_args?: Record<string, string>;
+  tags?: string[];
 }
 
 export interface MatchedRuleInfo {
@@ -202,6 +203,7 @@ interface RawEvent {
   request_headers?: Record<string, string[]>;
   request_body?: string;
   request_args?: Record<string, string>;
+  tags?: string[];
 }
 
 export function mapEvent(raw: RawEvent): WAFEvent {
@@ -236,6 +238,7 @@ export function mapEvent(raw: RawEvent): WAFEvent {
     request_headers: raw.request_headers,
     request_body: raw.request_body,
     request_args: raw.request_args,
+    tags: raw.tags,
   };
 }
 

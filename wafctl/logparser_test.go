@@ -1945,4 +1945,191 @@ func TestParseEvent_RequestID_Missing(t *testing.T) {
 	}
 }
 
+// ─── Event Tags Extraction Tests ────────────────────────────────────
+
+func TestParseEvent_ExtractsPolicyTags(t *testing.T) {
+	entry := AuditLogEntry{
+		Transaction: Transaction{
+			ID:            "tag-test-1",
+			Timestamp:     "01/Jan/2025:00:00:00 +0000",
+			ClientIP:      "1.2.3.4",
+			IsInterrupted: true,
+			Request: Request{
+				Method:   "GET",
+				URI:      "/test",
+				Protocol: "HTTP/1.1",
+			},
+		},
+		Messages: []AuditMessage{
+			{
+				Data: AuditMessageData{
+					ID:       9500001,
+					Msg:      "Policy Block: Scanner Block",
+					Severity: 2,
+					Tags:     []string{"policy:scanner", "policy:bot-detection", "custom-rules"},
+				},
+			},
+		},
+	}
+	ev := parseEvent(entry)
+	if ev.EventType != "policy_block" {
+		t.Errorf("event_type = %q, want policy_block", ev.EventType)
+	}
+	// Should extract policy:* tags, strip prefix, and skip non-policy tags.
+	if len(ev.Tags) != 2 {
+		t.Fatalf("expected 2 tags, got %v", ev.Tags)
+	}
+	if ev.Tags[0] != "scanner" || ev.Tags[1] != "bot-detection" {
+		t.Errorf("tags = %v, want [scanner bot-detection]", ev.Tags)
+	}
+}
+
+func TestParseEvent_NoTagsWhenNoPolicyPrefix(t *testing.T) {
+	entry := AuditLogEntry{
+		Transaction: Transaction{
+			ID:            "tag-test-2",
+			Timestamp:     "01/Jan/2025:00:00:00 +0000",
+			ClientIP:      "1.2.3.4",
+			IsInterrupted: true,
+			Request: Request{
+				Method:   "GET",
+				URI:      "/test",
+				Protocol: "HTTP/1.1",
+			},
+		},
+		Messages: []AuditMessage{
+			{
+				Data: AuditMessageData{
+					ID:       920420,
+					Msg:      "Some CRS Rule",
+					Severity: 3,
+					Tags:     []string{"OWASP_CRS", "attack-sqli", "PCI/6.5.2"},
+				},
+			},
+		},
+	}
+	ev := parseEvent(entry)
+	if len(ev.Tags) != 0 {
+		t.Errorf("expected no tags for CRS-only rules, got %v", ev.Tags)
+	}
+}
+
+func TestParseEvent_DeduplicatesPolicyTags(t *testing.T) {
+	entry := AuditLogEntry{
+		Transaction: Transaction{
+			ID:            "tag-test-3",
+			Timestamp:     "01/Jan/2025:00:00:00 +0000",
+			ClientIP:      "1.2.3.4",
+			IsInterrupted: true,
+			Request: Request{
+				Method:   "GET",
+				URI:      "/test",
+				Protocol: "HTTP/1.1",
+			},
+		},
+		Messages: []AuditMessage{
+			{
+				Data: AuditMessageData{
+					ID:   9500001,
+					Msg:  "Policy Block: First",
+					Tags: []string{"policy:scanner", "policy:bot"},
+				},
+			},
+			{
+				Data: AuditMessageData{
+					ID:   9500002,
+					Msg:  "Policy Block: Second",
+					Tags: []string{"policy:scanner", "policy:custom"},
+				},
+			},
+		},
+	}
+	ev := parseEvent(entry)
+	// Should deduplicate "scanner" from two rules.
+	seen := make(map[string]int)
+	for _, tag := range ev.Tags {
+		seen[tag]++
+	}
+	if seen["scanner"] != 1 {
+		t.Errorf("scanner tag should appear once, got %d times in %v", seen["scanner"], ev.Tags)
+	}
+}
+
+// ─── JSONL Tag Backfill Tests ───────────────────────────────────────
+
+func TestSetEventFile_BackfillsTagsOnOldEvents(t *testing.T) {
+	dir := t.TempDir()
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Write old-format events without tags.
+	events := []Event{
+		{ID: "1", EventType: "honeypot", Timestamp: time.Now()},
+		{ID: "2", EventType: "scanner", Timestamp: time.Now()},
+		{ID: "3", EventType: "ipsum_blocked", Timestamp: time.Now()},
+		{ID: "4", EventType: "blocked", Timestamp: time.Now()},
+		{ID: "5", EventType: "logged", Timestamp: time.Now()},
+	}
+	f, _ := os.Create(eventPath)
+	for _, ev := range events {
+		data, _ := json.Marshal(ev)
+		f.Write(data)
+		f.Write([]byte{'\n'})
+	}
+	f.Close()
+
+	store := &Store{events: nil, maxAge: 24 * time.Hour}
+	store.SetEventFile(eventPath)
+
+	restored := store.SnapshotSince(24)
+
+	expected := map[string][]string{
+		"1": {"honeypot"},
+		"2": {"scanner", "bot-detection"},
+		"3": {"blocklist", "ipsum"},
+		"4": nil, // blocked events don't get tags
+		"5": nil, // logged events don't get tags
+	}
+
+	for _, ev := range restored {
+		want := expected[ev.ID]
+		if len(ev.Tags) != len(want) {
+			t.Errorf("event %s (%s): tags = %v, want %v", ev.ID, ev.EventType, ev.Tags, want)
+			continue
+		}
+		for i, tag := range ev.Tags {
+			if tag != want[i] {
+				t.Errorf("event %s tag[%d] = %q, want %q", ev.ID, i, tag, want[i])
+			}
+		}
+	}
+}
+
+func TestSetEventFile_DoesNotOverwriteExistingTags(t *testing.T) {
+	dir := t.TempDir()
+	eventPath := filepath.Join(dir, "events.jsonl")
+
+	// Write event with existing tags.
+	events := []Event{
+		{ID: "1", EventType: "honeypot", Tags: []string{"custom-tag"}, Timestamp: time.Now()},
+	}
+	f, _ := os.Create(eventPath)
+	for _, ev := range events {
+		data, _ := json.Marshal(ev)
+		f.Write(data)
+		f.Write([]byte{'\n'})
+	}
+	f.Close()
+
+	store := &Store{events: nil, maxAge: 24 * time.Hour}
+	store.SetEventFile(eventPath)
+
+	restored := store.SnapshotSince(24)
+	if len(restored) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(restored))
+	}
+	if len(restored[0].Tags) != 1 || restored[0].Tags[0] != "custom-tag" {
+		t.Errorf("should preserve existing tags, got %v", restored[0].Tags)
+	}
+}
+
 // --- GeoIP Online API Fallback Tests ---

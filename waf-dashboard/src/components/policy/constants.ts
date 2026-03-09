@@ -305,6 +305,7 @@ export interface AdvancedFormState {
   anomaly_paranoia_level: number;
   conditions: import("@/lib/api").Condition[];
   group_operator: import("@/lib/api").GroupOperator;
+  tags: string[];
   enabled: boolean;
 }
 
@@ -319,5 +320,6 @@ export const emptyAdvancedForm: AdvancedFormState = {
   anomaly_paranoia_level: 1,
   conditions: [],
   group_operator: "and",
+  tags: [],
   enabled: true,
 };

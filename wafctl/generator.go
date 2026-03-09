@@ -222,34 +222,55 @@ func writeConditionRule(b *strings.Builder, e RuleExclusion, idGen *ruleIDGen) {
 // captures what the condition actually matched (IP, path, hostname, etc.),
 // giving events the same level of detail as CRS blocked/logged events.
 func conditionAction(e RuleExclusion, selfID string) string {
+	var base string
 	switch e.Type {
 	case "allow":
 		// ctl:ruleEngine=Off disables the WAF for the entire transaction.
 		// Bare "allow" only stops evaluation for the current phase, which
 		// can let later-phase rules still fire. This is the canonical
 		// ModSecurity/Coraza pattern for a full WAF bypass.
-		return fmt.Sprintf("pass,t:none,log,msg:'Policy Allow: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleEngine=Off", escapeSecRuleMsgValue(e.Name))
+		base = fmt.Sprintf("pass,t:none,log,msg:'Policy Allow: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleEngine=Off", escapeSecRuleMsgValue(e.Name))
 	case "block":
-		return fmt.Sprintf("deny,status:403,t:none,log,msg:'Policy Block: %s',logdata:'%%{MATCHED_VAR}'", escapeSecRuleMsgValue(e.Name))
+		base = fmt.Sprintf("deny,status:403,t:none,log,msg:'Policy Block: %s',logdata:'%%{MATCHED_VAR}'", escapeSecRuleMsgValue(e.Name))
 	case "anomaly":
 		pl := e.AnomalyParanoiaLevel
 		if pl < 1 || pl > 4 {
 			pl = 1
 		}
-		return fmt.Sprintf("pass,t:none,log,msg:'Policy Anomaly: %s',logdata:'%%{MATCHED_VAR}',setvar:'tx.anomaly_score_pl%d=+%d'",
+		base = fmt.Sprintf("pass,t:none,log,msg:'Policy Anomaly: %s',logdata:'%%{MATCHED_VAR}',setvar:'tx.anomaly_score_pl%d=+%d'",
 			escapeSecRuleMsgValue(e.Name), pl, e.AnomalyScore)
 	case "skip_rule":
 		escapedName := escapeSecRuleMsgValue(e.Name)
 		if e.RuleID != "" {
-			return buildSkipRuleAction(e.RuleID, escapedName, selfID)
+			base = buildSkipRuleAction(e.RuleID, escapedName, selfID)
+		} else if e.RuleTag != "" {
+			base = fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleRemoveByTag=%s", escapedName, e.RuleTag)
+		} else {
+			base = fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}'", escapedName)
 		}
-		if e.RuleTag != "" {
-			return fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}',ctl:ruleRemoveByTag=%s", escapedName, e.RuleTag)
-		}
-		return fmt.Sprintf("pass,t:none,log,msg:'Policy Skip: %s',logdata:'%%{MATCHED_VAR}'", escapedName)
 	default:
-		return "pass,t:none,log"
+		base = "pass,t:none,log"
 	}
+
+	// Append policy tags so they appear in the audit log's matched_rules[].tags.
+	// Convention: prefix with "policy:" to distinguish from CRS tags.
+	base += formatPolicyTags(e.Tags)
+	return base
+}
+
+// formatPolicyTags returns SecRule tag actions for the given tags.
+// Each tag is emitted as tag:'policy:<tag>'. Returns empty string if no tags.
+func formatPolicyTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, tag := range tags {
+		b.WriteString(",tag:'policy:")
+		b.WriteString(escapeSecRuleValue(tag))
+		b.WriteString("'")
+	}
+	return b.String()
 }
 
 // buildSkipRuleAction builds a SecRule action string that removes one or more
@@ -397,11 +418,13 @@ func writeAdvancedRuntimeRule(b *strings.Builder, e RuleExclusion, idGen *ruleID
 // (within the 9100020-9100029 honeypot range) so the logparser classifies
 // matches as honeypot events.
 func writeHoneypotRule(b *strings.Builder, honeypots []RuleExclusion) {
-	// Collect all paths from all honeypot exclusions.
+	// Collect all paths and tags from all honeypot exclusions.
 	var allPaths []string
 	var names []string
+	var allTags []string
 	for _, e := range honeypots {
 		names = append(names, e.Name)
+		allTags = append(allTags, e.Tags...)
 		for _, c := range e.Conditions {
 			if c.Field != "path" {
 				continue
@@ -455,6 +478,14 @@ func writeHoneypotRule(b *strings.Builder, honeypots []RuleExclusion) {
 	b.WriteString("    logdata:'%{REQUEST_URI}',\\\n")
 	b.WriteString("    tag:'honeypot',\\\n")
 	b.WriteString("    tag:'custom-rules',\\\n")
+	// Emit merged policy tags from all honeypot exclusions.
+	for _, tag := range dedupeTags(allTags) {
+		// Skip tags already emitted as hardcoded above.
+		if tag == "honeypot" || tag == "custom-rules" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("    tag:'policy:%s',\\\n", escapeSecRuleValue(tag)))
+	}
 	b.WriteString("    severity:'CRITICAL'\"\n\n")
 }
 

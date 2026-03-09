@@ -142,6 +142,7 @@ type Event struct {
 	UserAgent      string    `json:"user_agent"`
 	Country        string    `json:"country,omitempty"` // ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
 	EventType      string    `json:"event_type"`        // "blocked", "logged", "rate_limited", "ipsum_blocked", "policy_skip", "policy_allow", "policy_block", "honeypot", "scanner"
+	Tags           []string  `json:"tags,omitempty"`    // Event classification tags from matched policy rules (e.g., "scanner", "honeypot", "blocklist")
 	// How the request was blocked: "anomaly_inbound", "anomaly_outbound", "direct", or ""
 	BlockedBy string `json:"blocked_by,omitempty"`
 	// Rule match data (from audit log messages/part H)

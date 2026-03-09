@@ -28,6 +28,7 @@ type PolicyRule struct {
 	Type       string            `json:"type"`
 	Conditions []PolicyCondition `json:"conditions"`
 	GroupOp    string            `json:"group_op"`
+	Tags       []string          `json:"tags,omitempty"`
 	Enabled    bool              `json:"enabled"`
 	Priority   int               `json:"priority"`
 }
@@ -109,6 +110,7 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 			Type:       e.Type,
 			Conditions: conditions,
 			GroupOp:    groupOp,
+			Tags:       e.Tags,
 			Enabled:    e.Enabled,
 			Priority:   basePriority + tiebreaker,
 		})

@@ -385,6 +385,16 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     ))}
                   </div>
                 )}
+                {event.tags && event.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="text-muted-foreground">Labels:</span>
+                    {event.tags.map((tag) => (
+                      <span key={tag} className="inline-flex items-center rounded bg-neon-cyan/10 border border-neon-cyan/30 px-2 py-0.5 text-xs font-mono text-neon-cyan">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>

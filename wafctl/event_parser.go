@@ -90,6 +90,19 @@ func parseEvent(entry AuditLogEntry) Event {
 		eventType = candidateType
 	}
 
+	// Extract policy tags from matched rules. Tags prefixed with "policy:"
+	// are user-defined classification tags emitted by the generator.
+	var policyTags []string
+	for _, m := range entry.Messages {
+		for _, t := range m.Data.Tags {
+			if strings.HasPrefix(t, "policy:") {
+				policyTags = append(policyTags, strings.TrimPrefix(t, "policy:"))
+			}
+		}
+	}
+	// Deduplicate tags (multiple rules may carry the same tag).
+	policyTags = dedupeTags(policyTags)
+
 	// When Coraza blocks a request (is_interrupted), the backend never responds,
 	// so response.status is 0 in the audit log. Show 403 since that's what the
 	// client actually receives.
@@ -110,6 +123,7 @@ func parseEvent(entry AuditLogEntry) Event {
 		ResponseStatus: status,
 		UserAgent:      ua,
 		EventType:      eventType,
+		Tags:           policyTags,
 	}
 
 	// Extract rule match data from the messages array (audit log part H).

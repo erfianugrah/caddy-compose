@@ -1184,3 +1184,324 @@ func TestValidateExclusionUserAgentIn(t *testing.T) {
 		t.Errorf("user_agent with in operator should be valid: %v", err)
 	}
 }
+
+// ─── Tag Validation Tests ───────────────────────────────────────────
+
+func TestTagValidation(t *testing.T) {
+	base := RuleExclusion{
+		Name: "Test",
+		Type: "block",
+		Conditions: []Condition{
+			{Field: "path", Operator: "eq", Value: "/test"},
+		},
+		Enabled: true,
+	}
+
+	t.Run("valid tags", func(t *testing.T) {
+		e := base
+		e.Tags = []string{"scanner", "bot-detection", "blocklist-ipsum"}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("valid tags should pass: %v", err)
+		}
+	})
+
+	t.Run("empty tags ok", func(t *testing.T) {
+		e := base
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("no tags should pass: %v", err)
+		}
+	})
+
+	t.Run("too many tags", func(t *testing.T) {
+		e := base
+		e.Tags = make([]string, 11)
+		for i := range e.Tags {
+			e.Tags[i] = "tag"
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("11 tags should fail")
+		}
+	})
+
+	t.Run("tag too long", func(t *testing.T) {
+		e := base
+		e.Tags = []string{strings.Repeat("a", 51)}
+		if err := validateExclusion(e); err == nil {
+			t.Error("51-char tag should fail")
+		}
+	})
+
+	t.Run("uppercase rejected", func(t *testing.T) {
+		e := base
+		e.Tags = []string{"Scanner"}
+		if err := validateExclusion(e); err == nil {
+			t.Error("uppercase tag should fail")
+		}
+	})
+
+	t.Run("spaces rejected", func(t *testing.T) {
+		e := base
+		e.Tags = []string{"bot detection"}
+		if err := validateExclusion(e); err == nil {
+			t.Error("tag with spaces should fail")
+		}
+	})
+
+	t.Run("special chars rejected", func(t *testing.T) {
+		e := base
+		e.Tags = []string{"bot_detection"}
+		if err := validateExclusion(e); err == nil {
+			t.Error("underscores should fail (hyphens only)")
+		}
+	})
+
+	t.Run("max 10 tags ok", func(t *testing.T) {
+		e := base
+		e.Tags = make([]string, 10)
+		for i := range e.Tags {
+			e.Tags[i] = "tag" + strings.Repeat("x", i)
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("10 tags should pass: %v", err)
+		}
+	})
+}
+
+// ─── Tag Migration Tests ────────────────────────────────────────────
+
+func TestMigrateV1toV2_BackfillsSeededRuleTags(t *testing.T) {
+	exclusions := []RuleExclusion{
+		{ID: "1", Name: "Scanner UA Block", Type: "block", Enabled: true},
+		{ID: "2", Name: "HTTP/1.0 Anomaly", Type: "anomaly", Enabled: true},
+		{ID: "3", Name: "Generic UA Anomaly", Type: "anomaly", Enabled: true},
+	}
+
+	result := migrateV1toV2(exclusions)
+
+	expected := map[string][]string{
+		"Scanner UA Block":   {"scanner", "bot-detection"},
+		"HTTP/1.0 Anomaly":   {"bot-signal", "protocol"},
+		"Generic UA Anomaly": {"bot-signal", "generic-ua"},
+	}
+
+	for _, e := range result {
+		want, ok := expected[e.Name]
+		if !ok {
+			continue
+		}
+		if len(e.Tags) != len(want) {
+			t.Errorf("%s: got %d tags, want %d", e.Name, len(e.Tags), len(want))
+			continue
+		}
+		for i, tag := range e.Tags {
+			if tag != want[i] {
+				t.Errorf("%s tag[%d] = %q, want %q", e.Name, i, tag, want[i])
+			}
+		}
+	}
+}
+
+func TestMigrateV1toV2_HoneypotGetsTags(t *testing.T) {
+	exclusions := []RuleExclusion{
+		{ID: "hp1", Name: "My Honeypot", Type: "honeypot", Enabled: true},
+	}
+
+	result := migrateV1toV2(exclusions)
+
+	if len(result[0].Tags) != 1 || result[0].Tags[0] != "honeypot" {
+		t.Errorf("honeypot should get [honeypot] tag, got %v", result[0].Tags)
+	}
+}
+
+func TestMigrateV1toV2_SkipsAlreadyTagged(t *testing.T) {
+	exclusions := []RuleExclusion{
+		{ID: "1", Name: "Scanner UA Block", Type: "block", Tags: []string{"custom"}},
+		{ID: "hp1", Name: "Trap", Type: "honeypot", Tags: []string{"my-tag"}},
+	}
+
+	result := migrateV1toV2(exclusions)
+
+	if len(result[0].Tags) != 1 || result[0].Tags[0] != "custom" {
+		t.Errorf("already-tagged rule should keep tags, got %v", result[0].Tags)
+	}
+	if len(result[1].Tags) != 1 || result[1].Tags[0] != "my-tag" {
+		t.Errorf("already-tagged honeypot should keep tags, got %v", result[1].Tags)
+	}
+}
+
+func TestMigrateV1toV2_Idempotent(t *testing.T) {
+	exclusions := []RuleExclusion{
+		{ID: "1", Name: "Scanner UA Block", Type: "block"},
+	}
+
+	result := migrateV1toV2(exclusions)
+	result2 := migrateV1toV2(result)
+
+	if len(result2[0].Tags) != 2 {
+		t.Errorf("second migration should be idempotent, got %v", result2[0].Tags)
+	}
+}
+
+// ─── Store Migration v2 Integration Test ────────────────────────────
+
+func TestStoreMigrationV2_FromFreshInstall(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	// Create a fresh store — should seed v1 rules then apply v2 migration.
+	es := NewExclusionStore(path)
+	exclusions := es.List()
+
+	// Verify seeded rules have tags from v0→v1→v2 migration chain.
+	found := 0
+	for _, e := range exclusions {
+		switch e.Name {
+		case "Scanner UA Block":
+			found++
+			if len(e.Tags) < 2 {
+				t.Errorf("Scanner UA Block should have tags, got %v", e.Tags)
+			}
+		case "HTTP/1.0 Anomaly":
+			found++
+			if len(e.Tags) < 2 {
+				t.Errorf("HTTP/1.0 Anomaly should have tags, got %v", e.Tags)
+			}
+		case "Generic UA Anomaly":
+			found++
+			if len(e.Tags) < 2 {
+				t.Errorf("Generic UA Anomaly should have tags, got %v", e.Tags)
+			}
+		}
+	}
+	if found != 3 {
+		t.Errorf("expected 3 seeded rules, found %d", found)
+	}
+
+	// Verify store version is persisted as v2.
+	data, _ := os.ReadFile(path)
+	var sf storeFile
+	json.Unmarshal(data, &sf)
+	if sf.Version != 2 {
+		t.Errorf("stored version = %d, want 2", sf.Version)
+	}
+}
+
+func TestStoreMigrationV2_FromV1(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	// Write a v1 store file with seeded rules but no tags.
+	sf := storeFile{
+		Version: 1,
+		Exclusions: []RuleExclusion{
+			{ID: "a", Name: "Scanner UA Block", Type: "block", Enabled: true},
+			{ID: "b", Name: "Custom Rule", Type: "allow", Enabled: true,
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api"}}},
+		},
+	}
+	data, _ := json.Marshal(sf)
+	os.WriteFile(path, data, 0644)
+
+	es := NewExclusionStore(path)
+	exclusions := es.List()
+
+	// Scanner UA Block should have tags backfilled.
+	for _, e := range exclusions {
+		if e.Name == "Scanner UA Block" {
+			if len(e.Tags) == 0 {
+				t.Error("Scanner UA Block should have tags after v2 migration")
+			}
+		}
+		if e.Name == "Custom Rule" {
+			if len(e.Tags) != 0 {
+				t.Error("Custom Rule should not have tags after v2 migration")
+			}
+		}
+	}
+}
+
+// ─── Tags in CRUD ───────────────────────────────────────────────────
+
+func TestExclusionStore_TagsCRUD(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	// Create with tags.
+	exc := RuleExclusion{
+		Name: "Tagged Rule",
+		Type: "block",
+		Conditions: []Condition{
+			{Field: "path", Operator: "eq", Value: "/admin"},
+		},
+		Tags:    []string{"scanner", "bot-detection"},
+		Enabled: true,
+	}
+
+	created, err := es.Create(exc)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(created.Tags) != 2 || created.Tags[0] != "scanner" || created.Tags[1] != "bot-detection" {
+		t.Errorf("created tags = %v, want [scanner bot-detection]", created.Tags)
+	}
+
+	// Get preserves tags.
+	got, ok := es.Get(created.ID)
+	if !ok {
+		t.Fatal("get: not found")
+	}
+	if len(got.Tags) != 2 {
+		t.Errorf("get tags = %v, want 2 tags", got.Tags)
+	}
+
+	// Update tags.
+	got.Tags = []string{"new-tag"}
+	updated, found, err := es.Update(got.ID, got)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if !found {
+		t.Fatal("update: not found")
+	}
+	if len(updated.Tags) != 1 || updated.Tags[0] != "new-tag" {
+		t.Errorf("updated tags = %v, want [new-tag]", updated.Tags)
+	}
+}
+
+// ─── Tags in Export/Import ──────────────────────────────────────────
+
+func TestExclusionStore_TagsExportImport(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	exc := RuleExclusion{
+		Name: "Tagged Export",
+		Type: "block",
+		Conditions: []Condition{
+			{Field: "path", Operator: "eq", Value: "/test"},
+		},
+		Tags:    []string{"export-tag"},
+		Enabled: true,
+	}
+	es.Create(exc)
+
+	exported := es.Export()
+	if len(exported.Exclusions) == 0 {
+		t.Fatal("export should have exclusions")
+	}
+
+	// Import into new store.
+	es2 := newTestExclusionStore(t)
+	if err := es2.Import(exported.Exclusions); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	// Find the imported rule.
+	for _, e := range es2.List() {
+		if e.Name == "Tagged Export" {
+			if len(e.Tags) != 1 || e.Tags[0] != "export-tag" {
+				t.Errorf("imported tags = %v, want [export-tag]", e.Tags)
+			}
+			return
+		}
+	}
+	t.Error("imported rule not found")
+}

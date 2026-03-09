@@ -232,3 +232,19 @@ func (g *ruleIDGen) next() string {
 func (g *ruleIDGen) peek() string {
 	return fmt.Sprintf("95%05d", g.counter+1)
 }
+
+// dedupeTags returns unique tags preserving insertion order.
+func dedupeTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(tags))
+	result := make([]string, 0, len(tags))
+	for _, t := range tags {
+		if !seen[t] {
+			seen[t] = true
+			result = append(result, t)
+		}
+	}
+	return result
+}

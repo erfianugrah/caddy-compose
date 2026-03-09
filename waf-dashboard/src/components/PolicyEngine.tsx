@@ -393,6 +393,7 @@ export default function PolicyEngine() {
         anomaly_paranoia_level: exclusionToEdit.anomaly_paranoia_level ?? 1,
         conditions: exclusionToEdit.conditions ?? [],
         group_operator: exclusionToEdit.group_operator ?? "and",
+        tags: exclusionToEdit.tags ?? [],
         enabled: exclusionToEdit.enabled,
       }
     : undefined;

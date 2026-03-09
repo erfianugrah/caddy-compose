@@ -25,6 +25,7 @@ type RuleExclusion struct {
 	RawRule              string      `json:"raw_rule,omitempty"`               // Raw SecRule directive for raw editor
 	AnomalyScore         int         `json:"anomaly_score,omitempty"`          // For anomaly type: score points to add (1-10)
 	AnomalyParanoiaLevel int         `json:"anomaly_paranoia_level,omitempty"` // For anomaly type: paranoia level 1-4 (default 1)
+	Tags                 []string    `json:"tags,omitempty"`                   // Event classification tags (e.g., "scanner", "honeypot", "blocklist")
 	Enabled              bool        `json:"enabled"`
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`

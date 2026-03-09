@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -789,4 +790,72 @@ func TestGeneratePolicyRulesNilListStore(t *testing.T) {
 	if len(c.ListItems) != 0 {
 		t.Errorf("expected no list_items when store is nil, got %d", len(c.ListItems))
 	}
+}
+
+// ─── Tag Passthrough Tests ──────────────────────────────────────────
+
+func TestGeneratePolicyRules_TagsPassthrough(t *testing.T) {
+	t.Run("tags flow from exclusion to policy rule", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "1", Name: "Scanner Block", Type: "block",
+				Conditions: []Condition{{Field: "user_agent", Operator: "contains", Value: "sqlmap"}},
+				Tags:       []string{"scanner", "bot-detection"},
+				Enabled:    true,
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		if err := json.Unmarshal(data, &file); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if len(file.Rules) != 1 {
+			t.Fatalf("expected 1 rule, got %d", len(file.Rules))
+		}
+		r := file.Rules[0]
+		if len(r.Tags) != 2 || r.Tags[0] != "scanner" || r.Tags[1] != "bot-detection" {
+			t.Errorf("tags = %v, want [scanner bot-detection]", r.Tags)
+		}
+	})
+
+	t.Run("no tags produces empty omitempty", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "2", Name: "Simple Block", Type: "block",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/bad"}},
+				Enabled:    true,
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Tags should be omitted entirely from JSON output.
+		if strings.Contains(string(data), `"tags"`) {
+			t.Errorf("expected tags to be omitted, got:\n%s", data)
+		}
+	})
+
+	t.Run("honeypot tags pass through", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "3", Name: "Trap", Type: "honeypot",
+				Conditions: []Condition{{Field: "path", Operator: "in", Value: "/wp-login.php"}},
+				Tags:       []string{"honeypot", "trap"},
+				Enabled:    true,
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if len(file.Rules[0].Tags) != 2 {
+			t.Errorf("tags = %v, want [honeypot trap]", file.Rules[0].Tags)
+		}
+	})
 }

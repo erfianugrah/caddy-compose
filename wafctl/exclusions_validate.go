@@ -22,6 +22,11 @@ var (
 	// (header, cookie, args, response_header) — the part before ':' in the
 	// value. e.g. "User-Agent", "X-Forwarded-For", "__session"
 	namedFieldNameRe = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
+
+	// eventTagRe validates event classification tags: lowercase alphanumeric
+	// and hyphens, must start with a letter or digit. Max 50 chars enforced
+	// separately. Examples: "scanner", "bot-detection", "blocklist-ipsum".
+	eventTagRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 )
 
 // namedConditionFields are condition fields where the value has a "Name:value"
@@ -108,6 +113,19 @@ func validateExclusion(e RuleExclusion) error {
 	// Validate group operator.
 	if !validGroupOperators[e.GroupOp] {
 		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", e.GroupOp)
+	}
+
+	// Validate tags: max 10 tags, each lowercase alphanumeric + hyphens, max 50 chars.
+	if len(e.Tags) > 10 {
+		return fmt.Errorf("too many tags: %d (max 10)", len(e.Tags))
+	}
+	for i, tag := range e.Tags {
+		if len(tag) > 50 {
+			return fmt.Errorf("tag[%d] too long: %d chars (max 50)", i, len(tag))
+		}
+		if !eventTagRe.MatchString(tag) {
+			return fmt.Errorf("invalid tag[%d] %q (lowercase alphanumeric and hyphens only, must start with letter or digit)", i, tag)
+		}
 	}
 
 	// Validate conditions — policy engine types (allow/block/honeypot) only

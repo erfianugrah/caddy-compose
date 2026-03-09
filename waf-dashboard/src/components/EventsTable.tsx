@@ -487,7 +487,14 @@ export default function EventsTable() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
+                        <div className="flex flex-wrap items-center gap-1">
+                          <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
+                          {evt.tags && evt.tags.map((tag) => (
+                            <span key={tag} className="inline-flex items-center rounded bg-neon-cyan/10 border border-neon-cyan/30 px-1.5 py-0 text-[10px] font-mono text-neon-cyan">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       </TableCell>
                     </TableRow>
                     {expanded.has(evt.id) && (

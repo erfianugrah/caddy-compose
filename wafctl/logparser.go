@@ -97,10 +97,35 @@ func (s *Store) SetEventFile(path string) {
 		}
 	}
 
+	// Migrate: backfill tags on old events that predate the tag system.
+	// Events with known event types get their corresponding tags.
+	tagsMigrated := 0
+	for i := range events {
+		if len(events[i].Tags) > 0 {
+			continue // already has tags
+		}
+		switch events[i].EventType {
+		case "honeypot":
+			events[i].Tags = []string{"honeypot"}
+			tagsMigrated++
+		case "scanner":
+			events[i].Tags = []string{"scanner", "bot-detection"}
+			tagsMigrated++
+		case "ipsum_blocked":
+			events[i].Tags = []string{"blocklist", "ipsum"}
+			tagsMigrated++
+		}
+	}
+
 	s.events = events
 	log.Printf("restored %d events from %s", len(events), path)
 	if migrated > 0 {
 		log.Printf("migrated %d misclassified policy_skip→blocked events", migrated)
+	}
+	if tagsMigrated > 0 {
+		log.Printf("backfilled tags on %d events", tagsMigrated)
+	}
+	if migrated > 0 || tagsMigrated > 0 {
 		s.compactEventFileLocked()
 	}
 }

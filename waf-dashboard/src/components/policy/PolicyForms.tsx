@@ -47,7 +47,7 @@ import {
   emptyAdvancedForm,
 } from "./constants";
 import type { EventPrefill } from "./eventPrefill";
-import { RuleIdTagInput } from "./TagInputs";
+import { RuleIdTagInput, PipeTagInput } from "./TagInputs";
 import { ConditionRow } from "./ConditionBuilder";
 import { CRSRulePicker } from "./CRSRulePicker";
 import { T } from "@/lib/typography";
@@ -429,7 +429,7 @@ export function AdvancedBuilderForm({
 }) {
   const [form, setForm] = useState<AdvancedFormState>(initial ?? emptyAdvancedForm);
 
-  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator) => {
+  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator | string[]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -494,6 +494,7 @@ export function AdvancedBuilderForm({
       data.conditions = validConditions;
       data.group_operator = form.group_operator;
     }
+    if (form.tags && form.tags.length > 0) data.tags = form.tags;
     onSubmit(data);
   };
 
@@ -679,6 +680,19 @@ export function AdvancedBuilderForm({
           </div>
         </div>
       )}
+
+      {/* Tags */}
+      <div className="space-y-1.5">
+        <Label className={T.formLabel}>Tags</Label>
+        <PipeTagInput
+          value={form.tags.join("|")}
+          onChange={(v) => update("tags", v ? v.split("|").filter(Boolean) : [])}
+          placeholder="e.g., scanner, bot-detection, temporary (Enter to add)"
+        />
+        <p className="text-xs text-muted-foreground">
+          Optional labels for organizing rules and classifying events
+        </p>
+      </div>
 
       {/* Enabled */}
       <div className="flex items-center gap-2">

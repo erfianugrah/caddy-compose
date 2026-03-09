@@ -2549,3 +2549,167 @@ func TestGenerateConfigsMultiConditionWithList(t *testing.T) {
 		t.Errorf("expected @beginsWith for path condition, got:\n%s", result.PreCRS)
 	}
 }
+
+// ─── Policy Tag Emission Tests ──────────────────────────────────────
+
+func TestGenerateConfigs_TagsInSecRule(t *testing.T) {
+	t.Run("block with tags emits policy tag actions", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "1", Name: "Tagged Block", Type: "block",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/bad"}},
+				Tags:       []string{"scanner", "bot-detection"},
+				Enabled:    true,
+			},
+		}
+		result := GenerateConfigs(WAFConfig{}, exclusions, nil)
+		if !strings.Contains(result.PreCRS, "tag:'policy:scanner'") {
+			t.Errorf("expected tag:'policy:scanner' in output:\n%s", result.PreCRS)
+		}
+		if !strings.Contains(result.PreCRS, "tag:'policy:bot-detection'") {
+			t.Errorf("expected tag:'policy:bot-detection' in output:\n%s", result.PreCRS)
+		}
+	})
+
+	t.Run("block without tags emits no policy tags", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "2", Name: "No Tags", Type: "block",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/bad"}},
+				Enabled:    true,
+			},
+		}
+		result := GenerateConfigs(WAFConfig{}, exclusions, nil)
+		if strings.Contains(result.PreCRS, "tag:'policy:") {
+			t.Errorf("no policy tags expected, got:\n%s", result.PreCRS)
+		}
+	})
+
+	t.Run("allow with tags emits policy tag actions", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "3", Name: "Allow Internal", Type: "allow",
+				Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"}},
+				Tags:       []string{"trusted"},
+				Enabled:    true,
+			},
+		}
+		result := GenerateConfigs(WAFConfig{}, exclusions, nil)
+		if !strings.Contains(result.PreCRS, "tag:'policy:trusted'") {
+			t.Errorf("expected tag:'policy:trusted' in output:\n%s", result.PreCRS)
+		}
+	})
+
+	t.Run("anomaly with tags emits policy tag actions", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "4", Name: "Bot Signal", Type: "anomaly",
+				Conditions:           []Condition{{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"}},
+				Tags:                 []string{"bot-signal", "protocol"},
+				AnomalyScore:         2,
+				AnomalyParanoiaLevel: 1,
+				Enabled:              true,
+			},
+		}
+		result := GenerateConfigs(WAFConfig{}, exclusions, nil)
+		if !strings.Contains(result.PreCRS, "tag:'policy:bot-signal'") {
+			t.Errorf("expected tag:'policy:bot-signal' in output:\n%s", result.PreCRS)
+		}
+	})
+
+	t.Run("skip_rule with tags emits policy tag actions", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "5", Name: "Skip CRS", Type: "skip_rule",
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api"}},
+				RuleID:     "920420",
+				Tags:       []string{"api-exception"},
+				Enabled:    true,
+			},
+		}
+		result := GenerateConfigs(WAFConfig{}, exclusions, nil)
+		if !strings.Contains(result.PreCRS, "tag:'policy:api-exception'") {
+			t.Errorf("expected tag:'policy:api-exception' in output:\n%s", result.PreCRS)
+		}
+	})
+
+	t.Run("honeypot with custom tags emits merged policy tags", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "6", Name: "Trap 1", Type: "honeypot",
+				Conditions: []Condition{{Field: "path", Operator: "in", Value: "/wp-login.php /xmlrpc.php"}},
+				Tags:       []string{"trap", "wordpress"},
+				Enabled:    true,
+			},
+			{
+				ID: "7", Name: "Trap 2", Type: "honeypot",
+				Conditions: []Condition{{Field: "path", Operator: "in", Value: "/admin.php"}},
+				Tags:       []string{"trap", "admin-probe"},
+				Enabled:    true,
+			},
+		}
+		result := GenerateConfigs(WAFConfig{}, exclusions, nil)
+		// Should have hardcoded tag:'honeypot' plus merged custom tags.
+		if !strings.Contains(result.PreCRS, "tag:'honeypot'") {
+			t.Errorf("expected hardcoded honeypot tag:\n%s", result.PreCRS)
+		}
+		if !strings.Contains(result.PreCRS, "tag:'policy:trap'") {
+			t.Errorf("expected merged trap tag:\n%s", result.PreCRS)
+		}
+		if !strings.Contains(result.PreCRS, "tag:'policy:wordpress'") {
+			t.Errorf("expected wordpress tag:\n%s", result.PreCRS)
+		}
+		if !strings.Contains(result.PreCRS, "tag:'policy:admin-probe'") {
+			t.Errorf("expected admin-probe tag:\n%s", result.PreCRS)
+		}
+	})
+}
+
+func TestFormatPolicyTags(t *testing.T) {
+	tests := []struct {
+		name string
+		tags []string
+		want string
+	}{
+		{"nil tags", nil, ""},
+		{"empty tags", []string{}, ""},
+		{"single tag", []string{"scanner"}, ",tag:'policy:scanner'"},
+		{"multiple tags", []string{"scanner", "bot"}, ",tag:'policy:scanner',tag:'policy:bot'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatPolicyTags(tt.tags)
+			if got != tt.want {
+				t.Errorf("formatPolicyTags(%v) = %q, want %q", tt.tags, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDedupeTags(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"nil", nil, nil},
+		{"empty", []string{}, nil},
+		{"no dupes", []string{"a", "b"}, []string{"a", "b"}},
+		{"with dupes", []string{"a", "b", "a", "c", "b"}, []string{"a", "b", "c"}},
+		{"all same", []string{"x", "x", "x"}, []string{"x"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dedupeTags(tt.in)
+			if len(got) != len(tt.want) {
+				t.Errorf("dedupeTags(%v) = %v, want %v", tt.in, got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("dedupeTags(%v)[%d] = %q, want %q", tt.in, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}

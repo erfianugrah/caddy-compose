@@ -581,9 +581,11 @@ func ephemeralID() string {
 func RateLimitEventToEvent(rle RateLimitEvent) Event {
 	eventType := "rate_limited"
 	status := 429
+	var tags []string
 	if rle.Source == "ipsum" {
 		eventType = "ipsum_blocked"
 		status = 403
+		tags = []string{"blocklist", "ipsum"}
 	}
 	return Event{
 		ID:             ephemeralID(),
@@ -598,6 +600,7 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,
 		EventType:      eventType,
+		Tags:           tags,
 		RequestID:      rle.RequestID,
 	}
 }
