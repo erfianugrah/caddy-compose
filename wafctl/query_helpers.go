@@ -143,6 +143,30 @@ func parseFieldFilter(value, op string) *fieldFilter {
 	return f
 }
 
+// matchTags tests whether any tag in the slice matches the filter condition.
+// For neq, returns true only if NO tag equals the value (i.e., the tag is absent).
+func (f *fieldFilter) matchTags(tags []string) bool {
+	if f == nil {
+		return true // no filter = always match
+	}
+	if f.op == "neq" {
+		// neq semantics for tags: the specified tag must NOT be present.
+		for _, tag := range tags {
+			if strings.EqualFold(tag, f.value) {
+				return false
+			}
+		}
+		return true
+	}
+	// For all other operators, at least one tag must match.
+	for _, tag := range tags {
+		if f.matchField(tag) {
+			return true
+		}
+	}
+	return false
+}
+
 // matchField tests whether target matches the filter condition.
 // Case-insensitive for eq/neq/contains/in; regex uses the compiled pattern as-is.
 func (f *fieldFilter) matchField(target string) bool {

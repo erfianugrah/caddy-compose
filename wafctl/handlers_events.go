@@ -66,9 +66,10 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		statusCodeF := parseFieldFilter(q.Get("status_code"), q.Get("status_code_op"))
 		countryF := parseFieldFilter(q.Get("country"), q.Get("country_op"))
 		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
+		tagF := parseFieldFilter(q.Get("tag"), q.Get("tag_op"))
 
 		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil ||
-			uriF != nil || statusCodeF != nil || countryF != nil || requestIDF != nil
+			uriF != nil || statusCodeF != nil || countryF != nil || requestIDF != nil || tagF != nil
 
 		// When any filter is active, collect all events, apply filters, then
 		// summarize — this is the general-purpose filtered path.
@@ -138,6 +139,9 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 				if !requestIDF.matchField(ev.RequestID) {
 					continue
 				}
+				if !tagF.matchTags(ev.Tags) {
+					continue
+				}
 				filtered = append(filtered, *ev)
 			}
 
@@ -175,6 +179,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		rlClients := make(map[string]struct{})
 		rlServices := make(map[string]struct{})
 
+		rlTagMap := make(map[string]int)
 		for i := range rlEvents {
 			ev := &rlEvents[i]
 			hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
@@ -188,6 +193,9 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 				rlOnlyCount++
 				rlHourMap[hourKey]++
 				rlSvcMap[ev.Service]++
+			}
+			for _, tag := range ev.Tags {
+				rlTagMap[tag]++
 			}
 		}
 
@@ -353,6 +361,27 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			summary.RecentEvents = summary.RecentEvents[:topNSummary]
 		}
 
+		// Merge RL tag counts into the summary's TagCounts.
+		if len(rlTagMap) > 0 {
+			existingTags := make(map[string]int) // tag -> index in TagCounts
+			for i, tc := range summary.TagCounts {
+				existingTags[tc.Tag] = i
+			}
+			for tag, count := range rlTagMap {
+				if idx, ok := existingTags[tag]; ok {
+					summary.TagCounts[idx].Count += count
+				} else {
+					summary.TagCounts = append(summary.TagCounts, TagCount{Tag: tag, Count: count})
+				}
+			}
+			sort.Slice(summary.TagCounts, func(i, j int) bool {
+				if summary.TagCounts[i].Count != summary.TagCounts[j].Count {
+					return summary.TagCounts[i].Count > summary.TagCounts[j].Count
+				}
+				return summary.TagCounts[i].Tag < summary.TagCounts[j].Tag
+			})
+		}
+
 		cache.set(cacheKey, summary, gen, 3*time.Second)
 		writeJSON(w, http.StatusOK, summary)
 	}
@@ -384,6 +413,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		statusCodeF := parseFieldFilter(q.Get("status_code"), q.Get("status_code_op"))
 		countryF := parseFieldFilter(q.Get("country"), q.Get("country_op"))
 		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
+		tagF := parseFieldFilter(q.Get("tag"), q.Get("tag_op"))
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -474,6 +504,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				return false
 			}
 			if !requestIDF.matchField(ev.RequestID) {
+				return false
+			}
+			if !tagF.matchTags(ev.Tags) {
 				return false
 			}
 			return true

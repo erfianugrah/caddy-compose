@@ -3,6 +3,11 @@ import type { FilterOp, FilterableParams } from "./shared";
 
 // ─── Summary / Overview ─────────────────────────────────────────────
 
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
 export interface SummaryData {
   total_events: number;
   blocked: number;
@@ -14,6 +19,7 @@ export interface SummaryData {
   scanner_events: number;
   unique_clients: number;
   unique_services: number;
+  tag_counts: TagCount[];
   timeline: TimelinePoint[];
   top_services: ServiceStat[];
   top_clients: ClientStat[];
@@ -169,6 +175,7 @@ interface RawSummary {
   scanner_events: number;
   unique_clients: number;
   unique_services: number;
+  tag_counts?: { tag: string; count: number }[];
   events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
   top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; ipsum_blocked: number; honeypot: number; scanner: number; policy: number }[];
@@ -260,6 +267,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     scanner_events: raw.scanner_events ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
+    tag_counts: (raw.tag_counts ?? []).map((tc) => ({ tag: tc.tag, count: tc.count ?? 0 })),
     timeline: (raw.events_by_hour ?? []).map((h) => ({
       hour: h.hour,
       total: h.count ?? 0,

@@ -2132,4 +2132,40 @@ func TestSetEventFile_DoesNotOverwriteExistingTags(t *testing.T) {
 	}
 }
 
+func TestSummarizeEvents_TagCounts(t *testing.T) {
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	events := []Event{
+		{ID: "1", Timestamp: ts, Service: "a.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
+		{ID: "2", Timestamp: ts, Service: "a.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner"}},
+		{ID: "3", Timestamp: ts, Service: "a.io", EventType: "blocked", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "4", Timestamp: ts, Service: "a.io", EventType: "logged"},
+	}
+	summary := summarizeEvents(events)
+
+	if len(summary.TagCounts) != 3 {
+		t.Fatalf("TagCounts length = %d, want 3, got %v", len(summary.TagCounts), summary.TagCounts)
+	}
+	// scanner=2, bot-detection=1, honeypot=1 — sorted count desc then alpha
+	if summary.TagCounts[0].Tag != "scanner" || summary.TagCounts[0].Count != 2 {
+		t.Errorf("TagCounts[0] = %+v, want {scanner 2}", summary.TagCounts[0])
+	}
+	if summary.TagCounts[1].Tag != "bot-detection" || summary.TagCounts[1].Count != 1 {
+		t.Errorf("TagCounts[1] = %+v, want {bot-detection 1}", summary.TagCounts[1])
+	}
+	if summary.TagCounts[2].Tag != "honeypot" || summary.TagCounts[2].Count != 1 {
+		t.Errorf("TagCounts[2] = %+v, want {honeypot 1}", summary.TagCounts[2])
+	}
+}
+
+func TestSummarizeEvents_TagCountsEmpty(t *testing.T) {
+	events := []Event{
+		{ID: "1", EventType: "blocked", IsBlocked: true},
+		{ID: "2", EventType: "logged"},
+	}
+	summary := summarizeEvents(events)
+	if len(summary.TagCounts) != 0 {
+		t.Errorf("TagCounts should be empty for events without tags, got %v", summary.TagCounts)
+	}
+}
+
 // --- GeoIP Online API Fallback Tests ---

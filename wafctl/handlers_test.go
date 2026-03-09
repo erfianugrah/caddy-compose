@@ -1238,7 +1238,42 @@ func TestMatchField(t *testing.T) {
 	}
 }
 
-// --- Operator-aware handler tests ---
+func TestMatchTags(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		op    string
+		tags  []string
+		want  bool
+	}{
+		{"nil filter matches all", "", "", nil, true},
+		{"nil filter matches empty tags", "", "", []string{}, true},
+		{"eq match", "scanner", "eq", []string{"honeypot", "scanner"}, true},
+		{"eq no match", "scanner", "eq", []string{"honeypot", "blocklist"}, false},
+		{"eq empty tags", "scanner", "eq", []string{}, false},
+		{"neq tag absent", "scanner", "neq", []string{"honeypot", "blocklist"}, true},
+		{"neq tag present", "scanner", "neq", []string{"honeypot", "scanner"}, false},
+		{"neq empty tags", "scanner", "neq", []string{}, true},
+		{"contains match", "block", "contains", []string{"blocklist", "ipsum"}, true},
+		{"contains no match", "scan", "contains", []string{"honeypot"}, false},
+		{"in match", "scanner,honeypot", "in", []string{"blocklist", "honeypot"}, true},
+		{"in no match", "scanner,honeypot", "in", []string{"blocklist", "ipsum"}, false},
+		{"regex match", "^bot-", "regex", []string{"bot-detection", "scanner"}, true},
+		{"regex no match", "^bot-", "regex", []string{"scanner", "honeypot"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var f *fieldFilter
+			if tt.value != "" {
+				f = parseFieldFilter(tt.value, tt.op)
+			}
+			got := f.matchTags(tt.tags)
+			if got != tt.want {
+				t.Errorf("matchTags(%v) = %v, want %v (op=%s, value=%s)", tt.tags, got, tt.want, tt.op, tt.value)
+			}
+		})
+	}
+}
 
 // --- Operator-aware handler tests ---
 
@@ -1429,5 +1464,134 @@ func TestHandleEventsNoOpDefaultsToEq(t *testing.T) {
 	}
 	if resp.Total != 1 {
 		t.Errorf("events default eq filter: total = %d, want 1", resp.Total)
+	}
+}
+
+func TestHandleSummaryTagFilter(t *testing.T) {
+	store := &Store{}
+	now := time.Now().UTC()
+	store.mu.Lock()
+	store.events = []Event{
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
+		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", ClientIP: "3.3.3.3", EventType: "blocked", IsBlocked: true},
+	}
+	store.mu.Unlock()
+	als := NewAccessLogStore("")
+
+	handler := handleSummary(store, als)
+
+	tests := []struct {
+		name      string
+		query     string
+		wantTotal int
+	}{
+		{"tag eq scanner", "tag=scanner&tag_op=eq", 1},
+		{"tag eq honeypot", "tag=honeypot&tag_op=eq", 1},
+		{"tag in scanner,honeypot", "tag=scanner,honeypot&tag_op=in", 2},
+		{"tag neq scanner (excludes tagged events)", "tag=scanner&tag_op=neq", 2},
+		{"tag contains bot", "tag=bot&tag_op=contains", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/api/summary?hours=24&"+tt.query, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != 200 {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp SummaryResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.TotalEvents != tt.wantTotal {
+				t.Errorf("total = %d, want %d", resp.TotalEvents, tt.wantTotal)
+			}
+		})
+	}
+}
+
+func TestHandleSummaryTagCounts(t *testing.T) {
+	store := &Store{}
+	now := time.Now().UTC()
+	store.mu.Lock()
+	store.events = []Event{
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
+		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner"}},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", EventType: "blocked", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "e4", Timestamp: now.Add(-4 * time.Hour), Service: "cdn.erfi.io", EventType: "logged"},
+	}
+	store.mu.Unlock()
+	als := NewAccessLogStore("")
+
+	handler := handleSummary(store, als)
+	req := httptest.NewRequest("GET", "/api/summary?hours=24", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp SummaryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// Expected: scanner=2, bot-detection=1, honeypot=1 (sorted by count desc, then alpha)
+	if len(resp.TagCounts) != 3 {
+		t.Fatalf("TagCounts length = %d, want 3, got %v", len(resp.TagCounts), resp.TagCounts)
+	}
+	if resp.TagCounts[0].Tag != "scanner" || resp.TagCounts[0].Count != 2 {
+		t.Errorf("TagCounts[0] = %+v, want {scanner, 2}", resp.TagCounts[0])
+	}
+	// bot-detection and honeypot both have count 1, alpha order: bot-detection < honeypot
+	if resp.TagCounts[1].Tag != "bot-detection" || resp.TagCounts[1].Count != 1 {
+		t.Errorf("TagCounts[1] = %+v, want {bot-detection, 1}", resp.TagCounts[1])
+	}
+	if resp.TagCounts[2].Tag != "honeypot" || resp.TagCounts[2].Count != 1 {
+		t.Errorf("TagCounts[2] = %+v, want {honeypot, 1}", resp.TagCounts[2])
+	}
+}
+
+func TestHandleEventsTagFilter(t *testing.T) {
+	store := &Store{}
+	now := time.Now().UTC()
+	store.mu.Lock()
+	store.events = []Event{
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
+		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", ClientIP: "3.3.3.3", EventType: "blocked", IsBlocked: true},
+	}
+	store.mu.Unlock()
+	als := NewAccessLogStore("")
+
+	handler := handleEvents(store, als)
+
+	tests := []struct {
+		name      string
+		query     string
+		wantTotal int
+	}{
+		{"tag eq scanner", "tag=scanner&tag_op=eq", 1},
+		{"tag in scanner,honeypot", "tag=scanner,honeypot&tag_op=in", 2},
+		{"tag neq scanner", "tag=scanner&tag_op=neq", 2},
+		{"tag regex bot", "tag=bot-.*&tag_op=regex", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/api/events?hours=24&"+tt.query, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != 200 {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp EventsResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.Total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", resp.Total, tt.wantTotal)
+			}
+		})
 	}
 }

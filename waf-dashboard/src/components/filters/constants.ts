@@ -70,6 +70,7 @@ export const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
   country:     ["eq", "neq", "in"],
   event_id:    ["eq"],
   request_id:  ["eq"],
+  tag:         ["eq", "neq", "contains", "in", "regex"],
 };
 
 export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
@@ -83,9 +84,10 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   country: { label: "Country", placeholder: "e.g. US, DE, CN" },
   event_id: { label: "Event ID", placeholder: "e.g. abc123..." },
   request_id: { label: "Request ID", placeholder: "Caddy request UUID" },
+  tag: { label: "Tag", placeholder: "e.g. scanner, honeypot" },
 };
 
-export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "method", "rule_name", "uri", "status_code", "country"];
+export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "tag", "method", "rule_name", "uri", "status_code", "country"];
 
 export const WAF_FILTER_CONFIG: FilterConfig<FilterField> = {
   fields: FILTER_FIELDS,

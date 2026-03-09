@@ -175,6 +175,11 @@ type MatchedRule struct {
 
 // API response types
 
+type TagCount struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
 type SummaryResponse struct {
 	TotalEvents      int             `json:"total_events"`
 	BlockedEvents    int             `json:"blocked_events"`
@@ -186,6 +191,7 @@ type SummaryResponse struct {
 	ScannerEvents    int             `json:"scanner_events"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
+	TagCounts        []TagCount      `json:"tag_counts,omitempty"`
 	EventsByHour     []HourCount     `json:"events_by_hour"`
 	TopServices      []ServiceCount  `json:"top_services"`
 	TopClients       []ClientCount   `json:"top_clients"`

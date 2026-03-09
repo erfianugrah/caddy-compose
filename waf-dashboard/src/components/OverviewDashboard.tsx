@@ -356,6 +356,23 @@ export default function OverviewDashboard() {
         <StatCard title="Policy" value={data?.policy_events ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=policy_skip" />
       </div>
 
+      {/* ── Tag Breakdown ── */}
+      {(data?.tag_counts?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Tags:</span>
+          {data!.tag_counts.map((tc) => (
+            <a
+              key={tc.tag}
+              href={`/events?tag=${encodeURIComponent(tc.tag)}&tag_op=eq`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-cyan-950/40 border border-cyan-800/30 px-2.5 py-0.5 text-xs font-mono text-cyan-300 hover:bg-cyan-900/50 transition-colors"
+            >
+              {tc.tag}
+              <span className="text-cyan-400/70">{tc.count}</span>
+            </a>
+          ))}
+        </div>
+      )}
+
       {/* ── Timeline Chart with Click-Drag Zoom ── */}
       <Card>
         <CardHeader className="pb-2">

@@ -46,6 +46,9 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 
 	uris := make(map[string]int)
 
+	// Per-tag breakdown — counts how many events carry each tag.
+	tagMap := make(map[string]int)
+
 	// Per-country breakdown (folded into main loop to avoid second full scan).
 	countryMap := make(map[string]*CountryCount)
 
@@ -157,6 +160,11 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		}
 
 		uris[ev.URI]++
+
+		// Per-tag.
+		for _, tag := range ev.Tags {
+			tagMap[tag]++
+		}
 
 		// Per-country (avoids second full scan via TopCountries).
 		cc := ev.Country
@@ -282,6 +290,18 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		sSet[k] = struct{}{}
 	}
 
+	// Build sorted tag counts.
+	tagCounts := make([]TagCount, 0, len(tagMap))
+	for tag, count := range tagMap {
+		tagCounts = append(tagCounts, TagCount{Tag: tag, Count: count})
+	}
+	sort.Slice(tagCounts, func(i, j int) bool {
+		if tagCounts[i].Count != tagCounts[j].Count {
+			return tagCounts[i].Count > tagCounts[j].Count
+		}
+		return tagCounts[i].Tag < tagCounts[j].Tag
+	})
+
 	return summaryResult{
 		SummaryResponse: SummaryResponse{
 			TotalEvents:      len(events),
@@ -294,6 +314,7 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 			ScannerEvents:    totalScanner,
 			UniqueClients:    len(clientMap),
 			UniqueServices:   len(svcMap),
+			TagCounts:        tagCounts,
 			EventsByHour:     hourCounts,
 			TopServices:      svcCounts,
 			TopClients:       clientCounts,
