@@ -207,11 +207,16 @@ snippet checks this variable to skip the `coraza_waf` block:
         policy_engine {
             rules_file /data/policy-rules.json
         }
-        @waf_allowed vars {http.vars.policy_engine.action} allow
-        route @waf_allowed {
-            # Skip WAF entirely — policy engine already approved this request
+        # IMPORTANT: Use an inverted matcher for coraza_waf. Caddy route blocks
+        # are independent handlers — they don't have fallthrough semantics.
+        # Two sibling `route` blocks (one conditional, one unconditional) will
+        # BOTH execute. The correct pattern is a single route with a negated
+        # matcher so that coraza_waf only runs when the policy engine did NOT
+        # set the allow action.
+        @needs_waf {
+            not vars {http.vars.policy_engine.action} allow
         }
-        route {
+        route @needs_waf {
             coraza_waf { ... }
         }
     }
@@ -337,13 +342,23 @@ Individual rules are simpler and allow per-rule enable/disable.
 #### Modified: `generator.go`
 
 `GenerateConfigs()` skips exclusions where `Type` is `allow`, `block`, or `honeypot`.
-These are handled by the plugin. All other types (`skip_rule`, `raw`, `runtime_*`,
-`remove_*`, `update_*`) continue generating SecRules as before.
+These are handled by the plugin. All other types (`skip_rule`, `anomaly`, `raw`,
+`runtime_*`, `remove_*`, `update_*`) continue generating SecRules as before.
+
+**Note:** `anomaly` type MUST remain in SecRule generation — it uses `setvar:tx.anomaly_score`
+which is a Coraza-internal variable. It cannot move to the plugin.
+
+**Known limitation:** `skip_rule` and `anomaly` types using the `in` operator still
+generate `@pm` (Aho-Corasick substring match) in SecRules. The exact-match fix only
+applies to types handled by the plugin (`allow`, `block`, `honeypot`). Fixing `in`
+for Coraza-side types would require a different approach (e.g., generating multiple
+`@streq` rules or using `@rx` with anchored alternation).
 
 #### Modified: `deploy.go`
 
-`generateOnBoot()` and deploy handlers also call `GeneratePolicyRules()` and write
-the output to the policy rules file path. The deploy flow becomes:
+`generateOnBoot()` (in `deploy.go`) and `handleDeploy()` (in `handlers_config.go`)
+both call `GeneratePolicyRules()` and write the output to the policy rules file path.
+Both code paths must be updated. The deploy flow becomes:
 
 ```
 1. Generate SecRule .conf files (skip_rule, raw, runtime_*, remove_*, update_*)
@@ -957,6 +972,19 @@ and the 429 events would inherit those tags for analytics filtering.
 6. Frontend: DashboardFilterBar gets `tag` filter field
 
 #### Phase 3c: Remove hardcoded counters (breaking, behind the dual rendering)
+
+**CRITICAL ordering:** The exclusion store migration (honeypot → block + tags) from
+Phase 3a step 5 MUST have run on all deployed instances before removing `"honeypot"`
+from `validExclusionTypes`. If the type is removed first, stores with old honeypot
+rules will fail validation on load. The migration in `exclusions.go` should convert
+on load (like the existing v1 migration pattern in `rl_rules.go`), ensuring it
+happens transparently even if Phase 3a was never explicitly deployed.
+
+**API backward compatibility:** Removing `HoneypotEvents`/`ScannerEvents`/`IpsumBlocked`
+from `SummaryResponse` is a breaking change for any external `/api/summary` consumers.
+Phase 3b's dual-rendering period (both `tag_counts` and old fields present) serves as
+the deprecation window. Consider keeping the old fields as computed aliases from
+`tag_counts` for one release cycle before full removal.
 
 1. Remove `Honeypot`/`Scanner`/`IpsumBlocked` fields from all Go model structs
 2. Remove `honeypot`/`scanner`/`ipsum_blocked` event types from parser
