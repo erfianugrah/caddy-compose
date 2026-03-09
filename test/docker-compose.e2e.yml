@@ -61,6 +61,8 @@ services:
       WAF_CORS_ORIGINS: "*"
       WAF_POLICY_ENGINE_ENABLED: "true"
       WAF_POLICY_RULES_FILE: /data/policy-rules.json
+      WAF_MANAGED_LISTS_FILE: /data/lists.json
+      WAF_MANAGED_LISTS_DIR: /data/lists
     volumes:
       - coraza_data:/data/coraza
       - rl_data:/data/caddy/rl

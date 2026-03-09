@@ -35,6 +35,10 @@ type BlocklistStore struct {
 	lastLoad    time.Time
 
 	refreshing atomic.Bool // guard against concurrent Refresh calls
+
+	// onRefresh is called after a successful blocklist refresh with the
+	// filtered IP list. Used to sync managed lists (ipsum-ips).
+	onRefresh func(ips []string)
 }
 
 // NewBlocklistStore creates a store that reads from the given ipsum_block.caddy file.
@@ -161,6 +165,14 @@ func (bs *BlocklistStore) Check(ip string) BlocklistCheckResponse {
 	}
 }
 
+// SetOnRefresh sets a callback invoked after each successful blocklist refresh
+// with the filtered IP list. Used to sync the "ipsum-ips" managed list.
+func (bs *BlocklistStore) SetOnRefresh(fn func(ips []string)) {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	bs.onRefresh = fn
+}
+
 // ForceReload re-parses the blocklist file immediately, bypassing the cache TTL.
 func (bs *BlocklistStore) ForceReload() {
 	bs.parseFile()
@@ -275,6 +287,14 @@ route @ipsum_blocked {
 
 	// Force-reload the in-memory cache from the new file.
 	bs.ForceReload()
+
+	// Sync managed lists with the refreshed IPs.
+	bs.mu.RLock()
+	cb := bs.onRefresh
+	bs.mu.RUnlock()
+	if cb != nil {
+		cb(ips)
+	}
 
 	// Reload Caddy so the new blocklist takes effect.
 	reloaded := true

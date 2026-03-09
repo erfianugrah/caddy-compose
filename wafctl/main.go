@@ -36,6 +36,9 @@ func runServe() int {
 
 	cspFile := envOr("WAF_CSP_FILE", "/data/csp-config.json")
 
+	managedListsFile := envOr("WAF_MANAGED_LISTS_FILE", "/data/lists.json")
+	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
+
 	policyEngineEnabled := envOr("WAF_POLICY_ENGINE_ENABLED", "false") == "true"
 	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/policy-rules.json")
 
@@ -92,8 +95,8 @@ func runServe() int {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled)
+	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled)
 
 	var geoAPICfg *GeoIPAPIConfig
 	if geoAPIURL != "" {
@@ -126,6 +129,7 @@ func runServe() int {
 	configStore := NewConfigStore(configFile)
 	rlRuleStore := NewRateLimitRuleStore(rateLimitFile)
 	cspStore := NewCSPStore(cspFile)
+	managedListStore := NewManagedListStore(managedListsFile, managedListsDir)
 
 	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
 	// stored state so a stack restart always picks up the latest generator output.
@@ -134,6 +138,11 @@ func runServe() int {
 
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
+
+	// Sync IPsum IPs to managed list store after each blocklist refresh.
+	blocklistStore.SetOnRefresh(func(ips []string) {
+		managedListStore.SyncIPsum(ips)
+	})
 
 	// Schedule daily blocklist refresh at the configured UTC hour (default 06:00).
 	// Replaces the old cron + shell script approach that ran in the caddy container.
@@ -229,6 +238,16 @@ func runServe() int {
 	// Cloudflare trusted proxies
 	mux.HandleFunc("GET /api/cfproxy/stats", handleCFProxyStats(cfProxyStore))
 	mux.HandleFunc("POST /api/cfproxy/refresh", handleCFProxyRefresh(cfProxyStore, deployCfg))
+
+	// Managed Lists
+	mux.HandleFunc("GET /api/lists", handleListManagedLists(managedListStore))
+	mux.HandleFunc("POST /api/lists", handleCreateManagedList(managedListStore))
+	mux.HandleFunc("GET /api/lists/export", handleExportManagedLists(managedListStore))
+	mux.HandleFunc("POST /api/lists/import", handleImportManagedLists(managedListStore))
+	mux.HandleFunc("GET /api/lists/{id}", handleGetManagedList(managedListStore))
+	mux.HandleFunc("PUT /api/lists/{id}", handleUpdateManagedList(managedListStore))
+	mux.HandleFunc("DELETE /api/lists/{id}", handleDeleteManagedList(managedListStore))
+	mux.HandleFunc("POST /api/lists/{id}/refresh", handleRefreshManagedList(managedListStore))
 
 	// General Logs (all access log entries)
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))

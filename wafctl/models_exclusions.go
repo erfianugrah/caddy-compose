@@ -212,59 +212,77 @@ var validPolicyEngineFields = map[string]bool{
 var validOperatorsForField = map[string]map[string]bool{
 	"ip": {
 		"eq": true, "neq": true, "ip_match": true, "not_ip_match": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"path": {
 		"eq": true, "neq": true, "contains": true, "begins_with": true,
 		"ends_with": true, "regex": true, "in": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"host": {
 		"eq": true, "neq": true, "contains": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"method": {
 		"eq": true, "neq": true, "in": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"user_agent": {
 		"eq": true, "contains": true, "regex": true, "in": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"header": {
 		"eq": true, "contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"query": {
 		"contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"country": {
 		"eq": true, "neq": true, "in": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"cookie": {
 		"eq": true, "neq": true, "contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"body": {
 		"eq": true, "contains": true, "begins_with": true, "ends_with": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"body_json": {
 		"eq": true, "contains": true, "regex": true, "exists": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"body_form": {
 		"eq": true, "contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"args": {
 		"eq": true, "neq": true, "contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"uri_path": {
 		"eq": true, "neq": true, "contains": true, "begins_with": true,
 		"ends_with": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"referer": {
 		"eq": true, "neq": true, "contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"response_header": {
 		"eq": true, "contains": true, "regex": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"response_status": {
 		"eq": true, "neq": true, "in": true,
+		"in_list": true, "not_in_list": true,
 	},
 	"http_version": {
 		"eq": true, "neq": true,
+		"in_list": true, "not_in_list": true,
 	},
 }
 

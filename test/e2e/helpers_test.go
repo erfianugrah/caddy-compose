@@ -236,6 +236,22 @@ func generateLargeBody(size int) []byte {
 	)
 }
 
+// generateIPs produces n unique IP addresses in the 10.x.x.x range.
+func generateIPs(n int) []string {
+	ips := make([]string, n)
+	for i := 0; i < n; i++ {
+		// 10.a.b.c covering 10.0.0.1 through 10.255.255.254
+		a := (i / 65536) % 256
+		b := (i / 256) % 256
+		c := (i % 256) + 1
+		if c > 254 {
+			c = 254
+		}
+		ips[i] = fmt.Sprintf("10.%d.%d.%d", a, b, c)
+	}
+	return ips
+}
+
 func logBody(t *testing.T, label string, body []byte) {
 	t.Helper()
 	if len(body) > 500 {

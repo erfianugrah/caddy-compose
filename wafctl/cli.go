@@ -35,6 +35,11 @@ Commands:
   ratelimit delete   Delete a rate limit rule by ID
   ratelimit deploy   Deploy rate limit configs to Caddy
   ratelimit global   Show global rate limit settings
+  lists list         List all managed lists (alias: ls)
+  lists get <id>     Get a managed list by ID
+  lists create       Create a managed list (JSON on stdin or --file)
+  lists delete <id>  Delete a managed list by ID
+  lists refresh <id> Refresh a URL-sourced managed list
   csp get            Show CSP configuration
   csp set            Update CSP configuration (JSON on stdin or --file)
   csp deploy         Deploy CSP configs to Caddy
@@ -181,6 +186,38 @@ func runCLI(args []string) int {
 			return cliRateLimitGlobal(flags)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown ratelimit subcommand: %s\n", command[1])
+			return 1
+		}
+	case "lists", "ls":
+		if len(command) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wafctl lists <list|get|create|delete|refresh> [id]\n")
+			return 1
+		}
+		switch command[1] {
+		case "list", "ls":
+			return cliListManagedLists(flags)
+		case "get":
+			if len(command) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: wafctl lists get <id>\n")
+				return 1
+			}
+			return cliGetManagedList(flags, command[2])
+		case "create":
+			return cliCreateManagedList(flags)
+		case "delete", "rm":
+			if len(command) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: wafctl lists delete <id>\n")
+				return 1
+			}
+			return cliDeleteManagedList(flags, command[2])
+		case "refresh":
+			if len(command) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: wafctl lists refresh <id>\n")
+				return 1
+			}
+			return cliRefreshManagedList(flags, command[2])
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown lists subcommand: %s\n", command[1])
 			return 1
 		}
 	case "csp":
