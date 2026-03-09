@@ -2260,3 +2260,292 @@ func TestConditionAction_LogWithMsg(t *testing.T) {
 		})
 	}
 }
+
+// --- resolveSecRuleListConditions unit tests ---
+
+func TestResolveSecRuleListConditions(t *testing.T) {
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+
+	_, err := ls.Create(ManagedList{
+		Name: "bad-ips", Kind: "ip", Source: "manual",
+		Items: []string{"10.0.0.1", "10.0.0.2", "192.168.1.0/24"},
+	})
+	if err != nil {
+		t.Fatalf("creating IP list: %v", err)
+	}
+	_, err = ls.Create(ManagedList{
+		Name: "bad-countries", Kind: "string", Source: "manual",
+		Items: []string{"CN", "RU", "KP"},
+	})
+	if err != nil {
+		t.Fatalf("creating string list: %v", err)
+	}
+	_, err = ls.Create(ManagedList{
+		Name: "bad-hosts", Kind: "hostname", Source: "manual",
+		Items: []string{"evil.com", "malware.net"},
+	})
+	if err != nil {
+		t.Fatalf("creating hostname list: %v", err)
+	}
+
+	t.Run("ip in_list resolves to ip_match", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "ip", Operator: "in_list", Value: "bad-ips"},
+		}, ls)
+		if len(conds) != 1 {
+			t.Fatalf("expected 1 condition, got %d", len(conds))
+		}
+		if conds[0].Operator != "ip_match" {
+			t.Errorf("expected operator ip_match, got %s", conds[0].Operator)
+		}
+		if !strings.Contains(conds[0].Value, "10.0.0.1") || !strings.Contains(conds[0].Value, "192.168.1.0/24") {
+			t.Errorf("expected expanded IPs in value, got %s", conds[0].Value)
+		}
+	})
+
+	t.Run("ip not_in_list resolves to not_ip_match", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "ip", Operator: "not_in_list", Value: "bad-ips"},
+		}, ls)
+		if conds[0].Operator != "not_ip_match" {
+			t.Errorf("expected operator not_ip_match, got %s", conds[0].Operator)
+		}
+	})
+
+	t.Run("country in_list resolves to in with space-separated items", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "country", Operator: "in_list", Value: "bad-countries"},
+		}, ls)
+		if conds[0].Operator != "in" {
+			t.Errorf("expected operator in, got %s", conds[0].Operator)
+		}
+		if conds[0].Value != "CN RU KP" {
+			t.Errorf("expected 'CN RU KP', got %q", conds[0].Value)
+		}
+	})
+
+	t.Run("host not_in_list resolves to not_pm", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "host", Operator: "not_in_list", Value: "bad-hosts"},
+		}, ls)
+		if conds[0].Operator != "not_pm" {
+			t.Errorf("expected operator not_pm, got %s", conds[0].Operator)
+		}
+		if !strings.Contains(conds[0].Value, "evil.com") {
+			t.Errorf("expected expanded hostnames in value, got %s", conds[0].Value)
+		}
+	})
+
+	t.Run("non-list operators pass through unchanged", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "path", Operator: "eq", Value: "/admin"},
+			{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"},
+		}, ls)
+		if conds[0].Operator != "eq" || conds[0].Value != "/admin" {
+			t.Errorf("expected eq /admin unchanged, got %s %s", conds[0].Operator, conds[0].Value)
+		}
+		if conds[1].Operator != "ip_match" || conds[1].Value != "10.0.0.0/8" {
+			t.Errorf("expected ip_match unchanged, got %s %s", conds[1].Operator, conds[1].Value)
+		}
+	})
+
+	t.Run("missing list keeps original condition", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "ip", Operator: "in_list", Value: "nonexistent"},
+		}, ls)
+		if conds[0].Operator != "in_list" {
+			t.Errorf("expected original operator in_list for missing list, got %s", conds[0].Operator)
+		}
+		if conds[0].Value != "nonexistent" {
+			t.Errorf("expected original value nonexistent, got %s", conds[0].Value)
+		}
+	})
+
+	t.Run("nil store returns conditions unchanged", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "ip", Operator: "in_list", Value: "bad-ips"},
+		}, nil)
+		if conds[0].Operator != "in_list" {
+			t.Errorf("expected in_list with nil store, got %s", conds[0].Operator)
+		}
+	})
+
+	t.Run("mixed list and non-list conditions", func(t *testing.T) {
+		conds := resolveSecRuleListConditions([]Condition{
+			{Field: "path", Operator: "begins_with", Value: "/api/"},
+			{Field: "ip", Operator: "in_list", Value: "bad-ips"},
+			{Field: "country", Operator: "not_in_list", Value: "bad-countries"},
+		}, ls)
+		if conds[0].Operator != "begins_with" {
+			t.Errorf("condition[0]: expected begins_with, got %s", conds[0].Operator)
+		}
+		if conds[1].Operator != "ip_match" {
+			t.Errorf("condition[1]: expected ip_match, got %s", conds[1].Operator)
+		}
+		if conds[2].Operator != "not_pm" {
+			t.Errorf("condition[2]: expected not_pm, got %s", conds[2].Operator)
+		}
+		if conds[2].Value != "CN RU KP" {
+			t.Errorf("condition[2]: expected 'CN RU KP', got %q", conds[2].Value)
+		}
+	})
+}
+
+// --- SecRule generator end-to-end in_list tests ---
+
+func TestGenerateConfigsBlockByIPList(t *testing.T) {
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+	_, err := ls.Create(ManagedList{
+		Name: "bad-ips", Kind: "ip", Source: "manual",
+		Items: []string{"10.0.0.1", "10.0.0.2"},
+	})
+	if err != nil {
+		t.Fatalf("creating list: %v", err)
+	}
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad IPs", Type: "block", Conditions: []Condition{
+			{Field: "ip", Operator: "in_list", Value: "bad-ips"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions, ls)
+
+	if !strings.Contains(result.PreCRS, "@ipMatch 10.0.0.1 10.0.0.2") {
+		t.Errorf("expected @ipMatch with expanded IPs, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "deny") {
+		t.Errorf("expected deny action for block rule, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateConfigsAllowByIPList(t *testing.T) {
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+	_, err := ls.Create(ManagedList{
+		Name: "trusted-ips", Kind: "ip", Source: "manual",
+		Items: []string{"192.168.0.0/16", "10.0.0.0/8"},
+	})
+	if err != nil {
+		t.Fatalf("creating list: %v", err)
+	}
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Allow trusted", Type: "allow", Conditions: []Condition{
+			{Field: "ip", Operator: "in_list", Value: "trusted-ips"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions, ls)
+
+	if !strings.Contains(result.PreCRS, "@ipMatch 192.168.0.0/16 10.0.0.0/8") {
+		t.Errorf("expected @ipMatch with CIDRs, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "ctl:ruleEngine=Off") {
+		t.Errorf("expected ctl:ruleEngine=Off for allow, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateConfigsSkipRuleByCountryList(t *testing.T) {
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+	_, err := ls.Create(ManagedList{
+		Name: "target-countries", Kind: "string", Source: "manual",
+		Items: []string{"US", "CA", "GB"},
+	})
+	if err != nil {
+		t.Fatalf("creating list: %v", err)
+	}
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Skip SQLi for countries", Type: "skip_rule", RuleID: "942100",
+			Conditions: []Condition{
+				{Field: "country", Operator: "in_list", Value: "target-countries"},
+			}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions, ls)
+
+	if !strings.Contains(result.PreCRS, "@pm US CA GB") {
+		t.Errorf("expected @pm with expanded countries, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
+		t.Errorf("expected Cf-Ipcountry variable, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "ruleRemoveById=942100") {
+		t.Errorf("expected ruleRemoveById for skip_rule, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateConfigsBlockByHostList(t *testing.T) {
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+	_, err := ls.Create(ManagedList{
+		Name: "blocked-hosts", Kind: "hostname", Source: "manual",
+		Items: []string{"evil.com", "malware.org"},
+	})
+	if err != nil {
+		t.Fatalf("creating list: %v", err)
+	}
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad hosts", Type: "block", Conditions: []Condition{
+			{Field: "host", Operator: "not_in_list", Value: "blocked-hosts"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions, ls)
+
+	// not_in_list on non-IP field resolves to not_pm -> conditionOperator returns @pm with negate=true.
+	if !strings.Contains(result.PreCRS, "!@pm evil.com malware.org") {
+		t.Errorf("expected !@pm with expanded hostnames, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateConfigsNilListStoreNoChange(t *testing.T) {
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block by list", Type: "block", Conditions: []Condition{
+			{Field: "ip", Operator: "in_list", Value: "some-list"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions, nil)
+
+	// With nil store, in_list doesn't resolve -> conditionOperator falls through to @streq default.
+	if strings.Contains(result.PreCRS, "@ipMatch") {
+		t.Errorf("expected no @ipMatch with nil store, got:\n%s", result.PreCRS)
+	}
+}
+
+func TestGenerateConfigsMultiConditionWithList(t *testing.T) {
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+	_, err := ls.Create(ManagedList{
+		Name: "bad-ips", Kind: "ip", Source: "manual",
+		Items: []string{"10.0.0.1", "10.0.0.2"},
+	})
+	if err != nil {
+		t.Fatalf("creating list: %v", err)
+	}
+
+	cfg := defaultConfig()
+	exclusions := []RuleExclusion{
+		{Name: "Block bad IPs on API", Type: "block", Conditions: []Condition{
+			{Field: "ip", Operator: "in_list", Value: "bad-ips"},
+			{Field: "path", Operator: "begins_with", Value: "/api/"},
+		}, Enabled: true},
+	}
+	result := GenerateConfigs(cfg, exclusions, ls)
+
+	if !strings.Contains(result.PreCRS, "@ipMatch 10.0.0.1 10.0.0.2") {
+		t.Errorf("expected @ipMatch for list condition, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "chain") {
+		t.Errorf("expected chain for multi-condition rule, got:\n%s", result.PreCRS)
+	}
+	if !strings.Contains(result.PreCRS, "@beginsWith /api/") {
+		t.Errorf("expected @beginsWith for path condition, got:\n%s", result.PreCRS)
+	}
+}
