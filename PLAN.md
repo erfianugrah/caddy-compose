@@ -319,25 +319,134 @@ policy_engine {
 }
 ```
 
+### Request Flow Diagrams
+
+#### Block/Honeypot — Request Denied
+
+```
+Client → Caddy site block
+  → (security_headers)
+  → (ipsum_blocklist)         ← IP blocklist checked FIRST (cheap 403)
+  → route @not_websocket
+    → policy_engine           ← evaluates allow/block/honeypot rules
+      → rule matches (type=block) → return caddyhttp.Error(403)
+        → handle_errors 403   ← serves error.html with 403 status
+  → response: 403 Forbidden
+```
+
+#### Allow — WAF Bypass
+
+```
+Client → Caddy site block
+  → route @not_websocket
+    → policy_engine           ← evaluates rules
+      → rule matches (type=allow) → sets {http.vars.policy_engine.action}=allow
+      → return next.ServeHTTP (continues chain)
+    → @needs_waf matcher evaluates → {action}==allow → matcher FAILS
+    → coraza_waf SKIPPED
+  → reverse_proxy → upstream
+```
+
+#### No Match — Normal WAF Processing
+
+```
+Client → Caddy site block
+  → route @not_websocket
+    → policy_engine           ← evaluates rules, no match
+      → return next.ServeHTTP (continues chain, no vars set)
+    → @needs_waf matcher evaluates → {action}!="allow" → matcher PASSES
+    → route @needs_waf
+      → coraza_waf            ← full CRS evaluation
+  → reverse_proxy → upstream
+```
+
+### Handler Ordering and ipsum_blocklist Interaction
+
+The current site block composition order is:
+
+```
+1. security_headers        (response headers)
+2. CSP imports             (dynamic CSP headers)
+3. static_cache            (cache headers)
+4. ipsum_blocklist         (cheap IP block — before WAF/policy engine)
+5. waf                     (contains policy_engine + coraza_waf)
+6. RL imports              (rate limiting)
+7. tls_config, encode, reverse_proxy, error_pages, site_log
+```
+
+**Key consideration:** `ipsum_blocklist` is a `remote_ip` matcher + `respond 403`
+that runs BEFORE the `(waf)` snippet. This means IPsum-blocked IPs never reach
+the policy engine or Coraza. This is correct — IPsum is a ~200k IP list that
+should be handled by Caddy's native `client_ip` matcher for performance, not
+by the policy engine's sequential rule evaluation.
+
+The policy engine handles *authored* allow/block/honeypot rules (typically < 50),
+not bulk IP lists. In Phase 2, managed lists with `in_list` will still be
+evaluated by the plugin, but the IPsum `client_ip` matcher remains as-is for
+the fast-path bulk block.
+
+### Body Reading Concern
+
+If the policy engine reads `r.Body` for `body`/`body_json`/`body_form` conditions,
+it must re-wrap the body using `io.MultiReader` (same pattern as `caddy-body-matcher`)
+so that downstream handlers (Coraza, rate limiter, reverse_proxy) can still read it.
+
+**Optimization:** If no enabled rule uses body conditions, skip body reading entirely.
+Check at provision time (when rules are compiled) whether any rule has a body field,
+and set a `needsBody bool` flag on the engine.
+
 ### wafctl Changes (Phase 1)
 
 #### New File: `policy_generator.go`
 
 Generates the `policy-rules.json` file consumed by the Caddy plugin. Reads from the
 same `ExclusionStore` — just outputs a different format for the types that moved to
-the plugin.
+the plugin. Follows the same pattern as `GenerateRateLimitConfigs()` in
+`rl_generator.go`: takes store data → returns serializable output → caller writes file.
 
 ```go
+// PolicyRulesFile is the top-level JSON structure written to policy-rules.json.
+type PolicyRulesFile struct {
+    Rules     []PolicyRule `json:"rules"`
+    Generated string       `json:"generated"` // ISO 8601 timestamp
+    Version   int          `json:"version"`   // schema version, start at 1
+}
+
+// PolicyRule mirrors the plugin's PolicyRule struct.
+type PolicyRule struct {
+    ID         string            `json:"id"`
+    Name       string            `json:"name"`
+    Type       string            `json:"type"`
+    Conditions []PolicyCondition `json:"conditions"`
+    GroupOp    string            `json:"group_op"`
+    Enabled    bool              `json:"enabled"`
+    Priority   int               `json:"priority"`
+}
+
+// PolicyCondition mirrors the plugin's PolicyCondition struct.
+type PolicyCondition struct {
+    Field     string   `json:"field"`
+    Operator  string   `json:"operator"`
+    Value     string   `json:"value"`
+    ListItems []string `json:"list_items,omitempty"` // Phase 2: resolved list items
+    ListKind  string   `json:"list_kind,omitempty"`  // Phase 2: "ip", "string", etc.
+}
+
+// GeneratePolicyRules converts exclusions to the plugin's JSON format.
 func GeneratePolicyRules(exclusions []RuleExclusion) ([]byte, error)
 ```
 
 Filters exclusions to `allow`/`block`/`honeypot` types, converts to `PolicyRule`
-format, sorts by priority (honeypot first, then block, then allow), marshals to JSON.
+format, assigns priority by type (honeypot=100, block=200, allow=300 — with the
+exclusion's original store order as tiebreaker), marshals to JSON.
 
-**Honeypot consolidation:** Currently `writeHoneypotRule()` merges all honeypot paths
-into a single `@pm` rule (ID 9100021). The plugin version can keep honeypots as
-individual rules OR consolidate them into a single rule with an `in` string set.
-Individual rules are simpler and allow per-rule enable/disable.
+The `Condition` → `PolicyCondition` mapping is direct (same field/operator/value
+semantics). For honeypot rules, the `in` operator's pipe-separated value is split
+into individual paths and stored as a `PolicyCondition` with `operator: "in"` and
+the full value preserved — the plugin handles `in` via hash set lookup (exact match).
+
+**Honeypot consolidation:** Keep as individual rules. The plan's decision stands:
+< 20 honeypots, per-rule toggle is valuable, individual rules are simpler.
 
 #### Modified: `generator.go`
 
@@ -358,15 +467,42 @@ for Coraza-side types would require a different approach (e.g., generating multi
 
 `generateOnBoot()` (in `deploy.go`) and `handleDeploy()` (in `handlers_config.go`)
 both call `GeneratePolicyRules()` and write the output to the policy rules file path.
-Both code paths must be updated. The deploy flow becomes:
+Both code paths must be updated.
 
+**generateOnBoot changes** (deploy.go:84-134):
+```go
+// After existing WAF config generation (step 1):
+// 1.5. Generate policy engine rules (allow/block/honeypot)
+exclusions := es.EnabledExclusions()
+policyJSON, err := GeneratePolicyRules(exclusions)
+if err != nil {
+    log.Printf("warning: policy rules generation failed: %v", err)
+} else {
+    policyPath := envOr("WAF_POLICY_RULES_FILE", "/data/policy-rules.json")
+    if err := atomicWriteFile(policyPath, policyJSON, 0644); err != nil {
+        log.Printf("warning: writing policy rules: %v", err)
+    }
+}
 ```
-1. Generate SecRule .conf files (skip_rule, raw, runtime_*, remove_*, update_*)
-2. Generate policy-rules.json (allow, block, honeypot)
-3. Generate rate-limit .caddy files
-4. Generate CSP .caddy files
-5. Reload Caddy (picks up all changes)
+
+**handleDeploy changes** (handlers_config.go:98-173):
+Same pattern — after writing WAF config files, before syncing RL files. The
+policy rules JSON is NOT included in the `confFiles` slice passed to
+`reloadCaddy()` because the plugin hot-reloads via mtime polling, not Caddy
+config reload. However, if `reloadCaddy` is called for WAF config changes,
+the plugin will pick up new rules on its next poll cycle (< 5 seconds).
+
+The full deploy flow becomes:
 ```
+1. Generate SecRule .conf files (skip_rule, anomaly, raw, runtime_*, remove_*, update_*)
+2. Generate policy-rules.json (allow, block, honeypot) — written atomically
+3. Sync RL Caddyfile services
+4. Reload Caddy (picks up SecRule changes; plugin picks up policy-rules.json via mtime poll)
+```
+
+**Note:** Steps 1-2 use the same `ExclusionStore` snapshot (from `es.EnabledExclusions()`).
+The generator partition is: `policyEngineTypes` = `{allow, block, honeypot}`, everything
+else goes to SecRule generation. The `ExclusionStore` and `Condition` model are unchanged.
 
 #### New Environment Variables
 
@@ -384,10 +520,68 @@ order policy_engine first
 order coraza_waf after policy_engine
 ```
 
-The `(waf)` snippet gains the `policy_engine` handler alongside `coraza_waf`, plus
-the allow-bypass routing logic described above. Since Caddy's `order` directive
-controls execution order (not textual position), the policy engine always evaluates
-before Coraza regardless of where each directive appears in the snippet.
+The `(waf)` snippet changes from the current implementation:
+
+```caddyfile
+# BEFORE:
+(waf) {
+    request_header X-Request-Id {http.request.uuid}
+    @not_websocket {
+        not {
+            header Connection *Upgrade*
+            header Upgrade    websocket
+        }
+    }
+    route @not_websocket {
+        coraza_waf {
+            load_owasp_crs
+            directives `...`
+        }
+    }
+    handle_errors 400 403 429 { ... }
+}
+
+# AFTER:
+(waf) {
+    request_header X-Request-Id {http.request.uuid}
+    @not_websocket {
+        not {
+            header Connection *Upgrade*
+            header Upgrade    websocket
+        }
+    }
+    route @not_websocket {
+        policy_engine {
+            rules_file /data/policy-rules.json
+            reload_interval 5s
+        }
+        @needs_waf {
+            not vars {http.vars.policy_engine.action} allow
+        }
+        route @needs_waf {
+            coraza_waf {
+                load_owasp_crs
+                directives `...`
+            }
+        }
+    }
+    handle_errors 400 403 429 { ... }
+}
+```
+
+The `policy_engine` directive runs first due to `order policy_engine first`. When
+a block/honeypot rule matches, the plugin returns `caddyhttp.Error(403)` which
+falls through to the same `handle_errors 400 403 429` block — the error.html
+template renders correctly because it uses `{placeholder "http.error.status_code"}`
+for conditional messaging.
+
+Since Caddy's `order` directive controls execution order (not textual position),
+the policy engine always evaluates before Coraza regardless of where each
+directive appears in the snippet.
+
+**No changes needed to site blocks.** The `import waf` call in each site block
+continues to work identically — the snippet's internal structure changes but its
+external interface (a parameterless snippet) is the same.
 
 #### Modified: Dockerfile
 
@@ -405,21 +599,100 @@ Following caddy-body-matcher's test patterns (same-package, `httptest`):
 - **Unit tests for condition matching:** All 16 request-phase fields × all operators
   - `eq`, `neq` exact match semantics
   - `in` operator uses hash set (NOT substring) — test that `in "admin"` does NOT match `administrator`
-  - `ip_match` with CIDRs
-  - `regex` compilation and matching
+  - `in` with pipe-separated values: `"US|GB|DE"` matches `"US"` but not `"USA"`
+  - `ip_match` with CIDRs: `192.168.1.0/24` matches `192.168.1.50`
+  - `ip_match` with multiple CIDRs (comma-separated): `10.0.0.0/8,192.168.0.0/16`
+  - `regex` compilation and matching (RE2 syntax)
   - Named fields (`header`, `cookie`, `args`) with `Name:value` format
+  - Named field without `:` — matches entire collection (e.g., `header` with value `Authorization` checks if the header exists)
   - `body`, `body_json`, `body_form` with body reading + re-wrap
-- **Rule evaluation tests:** AND/OR group operators, priority ordering, enabled/disabled
-- **Action tests:** `block`→403, `honeypot`→403, `allow`→sets variable + continues
-- **Hot reload tests:** File change detection, atomic swap, concurrent access
+  - `body_json` dot-path: `.user.role:admin` extracts nested JSON field
+  - Verify body is re-wrapped: downstream handler can still read `r.Body`
+- **Rule evaluation tests:**
+  - AND group: all conditions must match
+  - OR group: any condition matches
+  - Priority ordering: lower priority number executes first
+  - Disabled rules: skipped entirely
+  - First match wins: once a rule matches, stop evaluating
+- **Action tests:**
+  - `block` → `caddyhttp.Error(403)`, response headers `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>`
+  - `honeypot` → same as block (both return 403)
+  - `allow` → sets `{http.vars.policy_engine.action}=allow`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, continues to `next.ServeHTTP`
+- **Hot reload tests:**
+  - File change detection via mtime comparison
+  - Concurrent reads during swap (RWMutex correctness)
+  - Invalid JSON in file → keep old rules, log warning
+  - File deleted → clear rules (empty set), log warning
 - **Caddyfile parsing tests:** Block syntax, inline syntax, invalid configs
-- **Edge cases:** Empty rules file, malformed JSON, missing file, no matching rules
+- **Edge cases:**
+  - Empty rules file (`{"rules": []}`) → no-op pass-through
+  - Malformed JSON → provision error or hot reload rejection
+  - Missing file → start empty, poll for creation
+  - No matching rules → pass-through to next handler
+  - Rule with no conditions → matches ALL requests (dangerous, test explicitly)
+  - Empty `Value` on condition → reject at compile time
+  - `regex` with invalid pattern → reject at compile time, log error
 
 #### Integration Tests (wafctl)
 
-- `policy_generator_test.go` — generates correct JSON from exclusion store
-- Modified `generator_test.go` — verify allow/block/honeypot are skipped
-- Modified `deploy_test.go` — verify policy-rules.json is written on boot/deploy
+- **`policy_generator_test.go`** (new file) — table-driven tests:
+  - Input: mixed exclusions (allow + block + honeypot + skip_rule + anomaly + raw)
+  - Output: only allow/block/honeypot appear in generated JSON
+  - Priority assignment: honeypot < block < allow
+  - Disabled rules: included in JSON with `enabled: false` (plugin skips them)
+  - Honeypot conditions: path+in value preserved as-is (not split)
+  - Empty exclusion list → valid JSON with empty `rules` array
+  - Round-trip: `GeneratePolicyRules()` output can be unmarshaled into `PolicyRulesFile`
+- **Modified `generator_test.go`** — verify allow/block/honeypot produce NO SecRule output.
+  Current tests that assert SecRule generation for these types must flip to assert absence.
+  Specifically: `writeHoneypotRule` tests become dead code (function removed from SecRule path).
+- **Modified `deploy_test.go`** — verify `generateOnBoot()` writes policy-rules.json alongside
+  the existing WAF config files. Mock file system via temp dirs (existing test pattern).
+
+### Edge Cases and Failure Modes
+
+#### Plugin hot reload race condition
+
+If wafctl writes `policy-rules.json` mid-poll, the plugin could read a partial file.
+Mitigation: wafctl uses `atomicWriteFile()` (write → fsync → rename), so the plugin
+always sees either the old file or the complete new file — never a partial write.
+
+#### allow rule + Coraza audit logging
+
+When a request is allowed (WAF bypassed), Coraza never sees it. This means:
+- No audit log entry for the request
+- No anomaly score calculation
+- The access log still records it (Caddy's access log is independent of Coraza)
+- wafctl's event parser won't see an event for this request in the audit log
+
+This is intentional — allow rules exist to bypass WAF for trusted traffic. If
+visibility is needed, the plugin's `zap.Info` log provides a record. For the access
+log, the policy engine can set additional Caddy vars that appear in the log template:
+
+```
+{http.vars.policy_engine.action}   → "allow"
+{http.vars.policy_engine.rule_name} → "Trusted API Client"
+```
+
+These can be added to the access log template in a future iteration.
+
+#### Validation: response-phase conditions on plugin types
+
+`response_header`, `response_status`, and `args` (ARGS is available at both phases in
+Coraza but is request-phase in Caddy) are not available to the plugin because it runs
+before the response exists. Validation in `exclusions_validate.go` should reject these
+fields when `Type` is `allow`, `block`, or `honeypot`. Currently validation uses the
+global `validConditionFields` map. A new `validPolicyEngineFields` map (same 15 fields
+as `validRLConditionFields` plus `args`) should be used for these types.
+
+#### Multiple body readers
+
+If a request hits both the policy engine (body condition) AND Coraza (body inspection)
+AND a rate limit rule (body matcher), the body is read three times. Each reader
+re-wraps `r.Body` with `io.MultiReader(bytes.NewReader(buf), originalBody)` so the
+next reader can re-read. This works correctly because each reader buffers the read
+bytes and replays them. Memory impact: one copy of the body per reader (up to 13 MB
+per the `max_size` default). This is acceptable for the expected request sizes.
 
 ---
 
@@ -477,29 +750,62 @@ type ManagedList struct {
 
 ```
 wafctl/
-  ├─ models_lists.go          # ManagedList type, validation maps
+  ├─ models_lists.go           # ManagedList type, kind/source validation maps
   ├─ managed_lists.go          # ManagedListStore: CRUD, validation, URL refresh, format parsers
   ├─ managed_lists_test.go     # Tests
   └─ handlers_lists.go         # HTTP handlers
 
-/data/lists/                   # List item files (one item per line)
-  ├─ ipsum-ips.txt            # Auto-synced from blocklist refresh
-  ├─ my-ip-allowlist.txt      # Manual list
-  └─ scanner-uas.txt          # URL-sourced list
-/data/lists.json               # List metadata store
+/data/lists/                   # List item files (one item per line, for large lists)
+  ├─ ipsum-ips.txt             # Auto-synced from blocklist refresh (~200k IPs)
+  ├─ my-ip-allowlist.txt       # Manual list
+  └─ scanner-uas.txt           # URL-sourced list
+/data/lists.json               # List metadata store (items stored inline for small lists)
 ```
+
+**Store follows the established pattern**: `sync.RWMutex`, JSON file persistence via
+`atomicWriteFile`, deep-copy getters (like `ExclusionStore`, `RateLimitRuleStore`).
+
+**Item storage strategy**:
+- **Small lists (< 1000 items)**: Items stored inline in `lists.json` as `[]string`
+- **Large lists (>= 1000 items)**: Items stored in a separate file in `/data/lists/`,
+  `lists.json` stores only the file path. This prevents the metadata JSON from becoming
+  unwieldy (IPsum alone would be ~4 MB inline).
+- The `ItemCount` field is always populated regardless of storage strategy.
+
+**URL-sourced lists**: `Source: "url"` lists have a `URL` field pointing to a remote
+resource (one item per line, `#` comments, blank lines ignored). `POST /api/lists/{id}/refresh`
+re-fetches, parses, and updates. The existing blocklist fetch pattern (`net/http` client
+with timeout, line-by-line parsing) is reused.
+
+**Validation per kind**:
+- `ip`: Each item must be `net.ParseIP()` or `net.ParseCIDR()` valid
+- `hostname`: Each item must be non-empty, no whitespace, no wildcard chars
+- `string`: Each item must be non-empty (arbitrary strings allowed)
+- `asn`: Each item must match `^AS\d+$` (e.g., `AS13335`)
 
 ### IPsum Coexistence
 
 The existing `BlocklistStore` + ipsum snippet remains as-is for the Caddy-native
-`@ipsum_blocked` matcher (200k+ IPs in a `client_ip` matcher). The managed lists
+`@ipsum_blocked` matcher (200k+ IPs in a `remote_ip` matcher). The managed lists
 system creates a parallel `ipsum-ips` list that auto-syncs after each blocklist
 refresh, enabling `in_list` references in policy rules.
 
 This means IPsum IPs are available in two forms:
-1. **Caddy `client_ip` matcher** — the existing `ipsum_blocklist` snippet (fast, no plugin needed)
+1. **Caddy `remote_ip` matcher** — the existing `ipsum_blocklist` snippet (fast, no plugin needed, runs before WAF)
 2. **`in_list` condition** — for policy rules that combine IPsum with other conditions
    (e.g., "block if IP is in ipsum AND path contains /api")
+
+**Sync mechanism**: After `BlocklistStore.Refresh()` completes (either scheduled daily
+or via `POST /api/blocklist/refresh`), a callback writes the filtered IP list to
+`/data/lists/ipsum-ips.txt` and updates the `ipsum-ips` ManagedList metadata. This
+is a one-way sync — the managed list is read-only (source: `"ipsum"`), edits must
+go through the blocklist system.
+
+**Performance concern for in_list with 200k IPs**: The plugin compiles IP lists into
+`[]net.IPNet` at provision time. For 200k CIDRs, linear scan would be O(n) per request.
+For Phase 2, a sorted slice with binary search on the network address is sufficient
+(O(log n)). If profiling shows this is a bottleneck, a radix tree can be added later
+without changing the JSON format — it's an internal compilation detail.
 
 ### API Endpoints
 
@@ -564,50 +870,115 @@ list items and uses appropriate Coraza operators:
 ## Implementation Order
 
 ### Phase 1a: Plugin skeleton + block/honeypot (simplest)
-1. Create `caddy-policy-engine/` Go module
-2. Implement `PolicyEngine` struct + module registration
+
+**Scope:** 1 new Go module, ~500-700 lines of code + ~400 lines of tests.
+
+1. Create `caddy-policy-engine/` Go module (separate GitHub repo)
+   - `go.mod` with `github.com/erfianugrah/caddy-policy-engine`
+   - Depend only on `github.com/caddyserver/caddy/v2` and stdlib
+2. Implement `PolicyEngine` struct + Caddy module registration
+   - `caddy.Module`, `caddy.Provisioner`, `caddy.Validator`, `caddy.CleanerUpper`
+   - `caddyhttp.MiddlewareHandler` (ServeHTTP)
+   - `caddyfile.Unmarshaler` (UnmarshalCaddyfile)
 3. Implement condition matching for common fields (ip, path, host, method, user_agent)
-4. Implement `block` and `honeypot` actions (respond 403)
+   - `compiledCondition` struct with pre-compiled matchers
+   - `matchCondition(r *http.Request) bool` per condition
+   - `in` operator via `map[string]bool` (exact match, NOT substring)
+4. Implement `block` and `honeypot` actions (both return `caddyhttp.Error(403)`)
+   - Set `X-Blocked-By: policy-engine` and `X-Blocked-Rule: <name>` response headers
 5. Implement hot reload from JSON file
-6. Write comprehensive tests
-7. Tag v0.1.0
+   - mtime polling goroutine with configurable interval (default 5s)
+   - `sync.RWMutex` for concurrent reads during swap
+   - Graceful degradation: invalid JSON → keep old rules + log warning
+6. Write comprehensive tests (~30-40 test cases)
+7. Tag `v0.1.0`
 
 ### Phase 1b: wafctl integration + allow bypass
-1. Create `policy_generator.go` in wafctl
-2. Modify `generator.go` to skip allow/block/honeypot
-3. Modify `deploy.go` to generate policy-rules.json
-4. Update Caddyfile: `order`, `(waf)` snippet with allow bypass routing
-5. Update Dockerfile xcaddy build
-6. Test end-to-end: create rule in UI → deploy → verify plugin handles it
+
+**Scope:** 1 new file + 4 modified files in wafctl, Caddyfile changes, Dockerfile change.
+
+1. Create `policy_generator.go` in wafctl (~150 lines)
+   - `PolicyRulesFile`, `PolicyRule`, `PolicyCondition` types
+   - `GeneratePolicyRules(exclusions []RuleExclusion) ([]byte, error)`
+   - Priority assignment: honeypot=100, block=200, allow=300
+2. Create `policy_generator_test.go` (~200 lines)
+   - Table-driven tests for type filtering, priority, round-trip
+3. Modify `generator.go` — add type filter at line ~40:
+   ```go
+   var policyEngineTypes = map[string]bool{"allow": true, "block": true, "honeypot": true}
+   // In the dispatch loop, skip exclusions where policyEngineTypes[e.Type]
+   ```
+4. Modify `deploy.go` (`generateOnBoot`) and `handlers_config.go` (`handleDeploy`)
+   - Add policy-rules.json generation + atomic write after WAF config generation
+5. Update `Caddyfile`:
+   - Line 19: Replace `order coraza_waf first` with two `order` directives
+   - Lines 144-178: Rewrite `(waf)` snippet with `policy_engine` + `@needs_waf` routing
+6. Update `Dockerfile` line 8: Add `--with github.com/erfianugrah/caddy-policy-engine@v0.1.0`
+7. Add `WAF_POLICY_RULES_FILE` to env var handling in `main.go`
+8. Test end-to-end: create rule in UI → deploy → verify plugin handles it
 
 ### Phase 1c: Complete field coverage
+
+**Scope:** ~200 additional lines in plugin, ~150 additional test lines.
+
 1. Add remaining fields: header, query, country, cookie, body, body_json, body_form,
    args, uri_path, referer, http_version
-2. Add body reading + re-wrap pattern (from caddy-body-matcher)
+2. Add body reading + re-wrap pattern (from caddy-body-matcher source code)
+   - `io.LimitReader(r.Body, maxBodySize)` → read → `io.MultiReader(buf, original)`
+   - `needsBody` flag set at compile time to skip body reading when not needed
 3. Add all operators including `in` with hash set semantics
-4. Verify parity with SecRule generation for all condition combinations
+4. Implement `allow` action: set Caddy vars, continue to next handler
+5. Add validation: reject `response_header`, `response_status` conditions
+   (not available at request time)
+6. Verify parity with SecRule generation for all condition combinations
+7. Update wafctl `exclusions_validate.go`: use `validPolicyEngineFields` for
+   allow/block/honeypot types (same 15 fields as RL + `args`)
 
 ### Phase 2a: Managed Lists backend
-1. Create `models_lists.go`, `managed_lists.go`, `handlers_lists.go`
-2. Implement store: CRUD, validation, URL refresh, format parsers
-3. Implement IPsum sync hook
-4. Add `in_list`/`not_in_list` to `validOperatorsForField`
-5. Wire up handlers and CLI
-6. Write tests
+
+**Scope:** 3 new Go files (~800 lines) + 1 test file (~400 lines) + CLI additions.
+
+1. Create `models_lists.go` (~80 lines) — `ManagedList` type, kind/source constants,
+   field-kind compatibility map
+2. Create `managed_lists.go` (~400 lines) — `ManagedListStore`: CRUD, `sync.RWMutex`,
+   JSON persistence, URL refresh (HTTP client with timeout), format parsers (one-per-line,
+   comment stripping), validation per kind
+3. Create `handlers_lists.go` (~250 lines) — 8 HTTP handlers following `handlers_exclusions.go` pattern
+4. Add `in_list`/`not_in_list` to `validOperatorsForField` for all 18 fields
+5. Wire up routes in `main.go`, add CLI subcommands in `cli_extras.go`
+6. Implement IPsum sync hook in `blocklist.go` → callback writes `/data/lists/ipsum-ips.txt`
+7. Write tests: CRUD, validation per kind, URL refresh, IPsum sync
 
 ### Phase 2b: Managed Lists in generators
-1. Update `policy_generator.go` to resolve list references
-2. Update `rl_generator.go` to resolve list references
-3. Update `generator.go` for skip_rule list references (Coraza-side)
-4. Test list resolution end-to-end
+
+**Scope:** ~150 lines across 3 files.
+
+1. Update `policy_generator.go` — resolve `in_list`/`not_in_list` conditions:
+   - Look up list by name from `ManagedListStore`
+   - Write `list_items` array + `list_kind` into `PolicyCondition`
+2. Update `rl_generator.go` + `rl_matchers.go` — resolve list references inline:
+   - IP lists: expand into `remote_ip 1.2.3.4 5.6.7.8/24 ...`
+   - String lists: expand into multiple matcher lines or CEL expression
+   - Large lists (> 50 items): emit with `# N items from list "name"` comment
+3. Update `generator.go` for `skip_rule` with `in_list`:
+   - IP lists → `@ipMatchFromFile /data/lists/<name>.txt`
+   - String lists → inline `@streq` per item (small) or `@pmFromFile` (large, with documented limitation)
+4. Test list resolution end-to-end for all three generators
 
 ### Phase 2c: Managed Lists frontend
-1. Create `lists.ts` API client
-2. Create `ListsPanel.tsx`
-3. Update `ConditionBuilder.tsx` with `ListNameSelect`
-4. Thread managed lists through PolicyEngine, RateLimitsPanel
-5. Replace `/blocklist` with `/lists` page
-6. Write tests
+
+**Scope:** 1 new API module + 1 new page component + modifications to ConditionBuilder.
+
+1. Create `src/lib/api/lists.ts` (~150 lines) — types + CRUD functions
+2. Create `src/pages/lists.astro` + `src/components/ListsPanel.tsx` (~400 lines)
+   - IPsum stats card (reuse existing blocklist API)
+   - Managed lists table with CRUD modal (follows PolicyEngine pattern)
+   - List detail view: item count, source, last refresh, item preview
+3. Update `ConditionBuilder.tsx` — when operator is `in_list`/`not_in_list`, replace
+   the value input with a `ListNameSelect` dropdown filtered by field-kind compatibility
+4. Thread managed lists through `PolicyEngine.tsx` and `RateLimitsPanel.tsx` condition forms
+5. Add `/lists` to navigation, redirect or alias `/blocklist` → `/lists`
+6. Write tests for API module and ListNameSelect component
 
 ---
 
@@ -615,45 +986,94 @@ list items and uses appropriate Coraza operators:
 
 The migration is **backward compatible**. Both systems can coexist during transition:
 
-1. **Deploy plugin** — initially with empty rules file, no rules execute in plugin
-2. **Flip generator** — modify wafctl to generate plugin rules for allow/block/honeypot
-   while simultaneously removing them from SecRule generation
-3. **Deploy** — both changes take effect on Caddy reload
-4. **Verify** — check that allow/block/honeypot rules execute correctly via plugin
-5. **Clean up** — remove dead SecRule generation code for migrated types
+### Deploy Sequence
 
-If the plugin has issues, the rollback is: revert the generator change so
-allow/block/honeypot go back to SecRules, and leave the plugin loaded but with
-an empty rules file (no-op).
+1. **Build and deploy image with plugin** — Caddy binary includes `caddy-policy-engine`
+   plugin. `policy-rules.json` does not exist yet → plugin starts with empty rule set
+   (no-op). The `(waf)` snippet has both `policy_engine` and `coraza_waf`.
+   All traffic still goes through Coraza as before. **Zero behavioral change.**
+
+2. **Deploy wafctl with policy generator** — `generateOnBoot()` now writes
+   `policy-rules.json` with allow/block/honeypot rules AND removes those types from
+   SecRule `.conf` files. Both changes happen atomically in the same boot sequence.
+   Plugin picks up rules within 5 seconds via mtime poll.
+
+3. **Verify** — check that:
+   - `curl -I https://site.example/honeypot-path` → 403 with `X-Blocked-By: policy-engine`
+   - Allow rules bypass WAF (check Coraza audit log — no entry for allowed requests)
+   - Block rules return 403 with correct error page
+   - Skip_rule/anomaly types still generate SecRules (unchanged behavior)
+
+4. **Monitor** — watch logs for 24-48 hours:
+   - Caddy access logs: policy engine blocks appear as 403 with `X-Blocked-By` header
+   - wafctl event store: honeypot/scanner events may shift to `policy_block` type
+     (access log based, not audit log based since plugin blocks before Coraza)
+   - Verify no false positives on allow rules (WAF not bypassed for wrong requests)
+
+### Rollback Procedure
+
+If the plugin has issues:
+
+**Quick rollback (< 1 minute):**
+1. Write an empty rules file: `echo '{"rules":[],"version":1}' > /data/policy-rules.json`
+2. Plugin picks up empty rules on next poll (< 5 seconds) → becomes no-op
+3. But allow/block/honeypot are also missing from SecRules (generator skips them)
+4. Run `POST /api/config/deploy` → regenerates SecRules (which now skip these types)
+5. **Gap:** Until the generator is reverted, migrated rules don't execute anywhere
+
+**Full rollback (requires image rebuild):**
+1. Revert the generator changes (remove `policyEngineTypes` filter)
+2. Revert `generateOnBoot` and `handleDeploy` changes
+3. Revert Caddyfile `(waf)` snippet to original (remove `policy_engine` block)
+4. Rebuild and deploy — all rules go back to SecRules, plugin is loaded but
+   processes an empty rules file (no-op)
+
+**Mitigation:** To enable the quick rollback without a gap, the generator could
+support a `WAF_POLICY_ENGINE_ENABLED` env var (default `true`). When set to `false`,
+all types go to SecRules as before, and the policy-rules.json is written empty.
+This is a one-line env var change to toggle between old and new behavior.
 
 ---
 
-## Open Questions
+## Open Questions — Decisions
 
-1. **Plugin repo location:** Separate GitHub repo (`erfianugrah/caddy-policy-engine`)
-   like `caddy-body-matcher`, or subdirectory of `caddy-compose`? Separate repo is
-   cleaner for xcaddy `--with` and independent versioning.
+1. **Plugin repo location:** **DECIDED — Separate repo** (`erfianugrah/caddy-policy-engine`).
+   xcaddy `--with` requires a Go module path. Independent versioning. Same pattern as
+   `caddy-body-matcher` which is proven to work. Tagged releases (`v0.1.0`, `v0.2.0`, etc.).
 
-2. **Honeypot consolidation:** Keep as individual rules (simpler, per-rule toggle) or
-   consolidate paths into a single rule with `in` set (fewer rules to evaluate)?
-   Individual rules are probably fine — honeypot count is typically < 20.
+2. **Honeypot consolidation:** **DECIDED — Individual rules.** < 20 honeypots expected.
+   Per-rule toggle is valuable. Simpler code. The plugin evaluates rules sequentially
+   — with 20 rules and hash set lookups, overhead is negligible.
 
-3. **`allow` bypass routing:** Need to verify that Caddy's `vars` matcher works
-   inside `route` blocks. If not, fall back to header injection + stripping.
+3. **`allow` bypass routing:** **DECIDED — Option A with `@needs_waf` inverted matcher.**
+   Caddy's `vars` matcher works in `route` blocks. The inverted matcher pattern
+   (`not vars {action} allow`) prevents the Coraza route from executing when the
+   policy engine approves a request. If `vars` matcher has issues in practice,
+   fallback to Option B (request header injection + stripping) with minimal changes.
 
-4. **Rule priority:** Currently all exclusions are unordered (processed in creation
-   order). The plugin should evaluate in a defined order: honeypot → block → allow.
-   This ensures deny rules take precedence over allow rules for the same request.
+4. **Rule priority:** **DECIDED — Type-based priority with stable tiebreaker.**
+   Priority values: honeypot=100, block=200, allow=300. Within the same priority,
+   rules are ordered by their position in the exclusion store (creation order).
+   The `Priority` field on `PolicyRule` is computed by `GeneratePolicyRules()`, not
+   stored on `RuleExclusion` — the exclusion store remains unordered.
 
-5. **Logging:** The plugin should log rule matches at `zap.InfoLevel` for the
-   first match (the one that determines the action) and `zap.DebugLevel` for
-   condition evaluation details. This feeds into Caddy's structured logging
-   which wafctl can parse from the access log.
+5. **Logging:** **DECIDED — `zap.Info` for action, `zap.Debug` for condition eval.**
+   The plugin logs at `Info` level when a rule matches (action taken), including:
+   rule ID, rule name, action type, client IP, request URI. At `Debug` level:
+   individual condition evaluations (field, operator, match result). This feeds
+   Caddy's structured JSON log. wafctl can parse these from the access log's
+   `extra_log_fields` if the log format is configured to include them.
 
-6. **Performance with large rule sets:** With ~50 rules and ~200k list items,
-   compilation time and memory matter. IP lists should use a radix tree or sorted
-   slice with binary search rather than linear scan of `[]net.IPNet`. String sets
-   are already O(1) via `map[string]bool`.
+6. **Performance with large rule sets:** **DECIDED — Sorted slice + binary search for Phase 2.**
+   For Phase 1 (no managed lists, < 50 rules): `[]net.IPNet` linear scan is fine.
+   For Phase 2 (200k IP list): sorted `[]netip.Prefix` with `sort.Search` for O(log n).
+   `map[string]bool` for string sets is O(1). If profiling shows issues, a radix tree
+   (`netip.Prefix`-based) can be swapped in without changing the JSON format.
+
+7. **Feature toggle:** **DECIDED — `WAF_POLICY_ENGINE_ENABLED` env var.**
+   Default `true`. When `false`, all exclusion types go to SecRule generation
+   (pre-migration behavior), and `policy-rules.json` is written empty. Enables
+   instant rollback without image rebuild.
 
 ---
 
@@ -1022,30 +1442,67 @@ the deprecation window. Consider keeping the old fields as computed aliases from
   It's purely additive and sets the foundation. Phases 3b-3c can happen before
   or after the plugin migration.
 
-### Open Questions
+### Open Questions — Decisions
 
-1. **Tag namespace**: Flat strings (`scanner`, `honeypot`) vs hierarchical
-   (`bot:scanner`, `list:ipsum`). Flat is simpler and sufficient — hierarchical
-   can be added later by convention without schema changes.
+1. **Tag namespace:** **DECIDED — Flat strings.** `scanner`, `honeypot`, `ipsum`.
+   Hierarchical (`bot:scanner`) adds complexity without benefit. Conventions can
+   emerge naturally (e.g., `blocklist-ipsum`, `blocklist-abuseipdb`). No schema change
+   needed to adopt a naming convention later.
 
-2. **Tag cardinality**: Should we limit the number of distinct tags per rule?
-   Probably cap at 10 per rule to prevent abuse. No global limit on distinct
-   tags across rules.
+2. **Tag cardinality:** **DECIDED — Max 10 tags per rule, validated in
+   `exclusions_validate.go`.** No global limit on distinct tags. Each tag max 50
+   characters, lowercase alphanumeric + hyphens, validated by regex `^[a-z0-9][a-z0-9-]*$`.
 
-3. **Tag-based access log format**: The Caddy access log template currently
-   doesn't include tags. If the policy engine plugin sets tags as Caddy
-   variables, the log template can include them. For SecRule-based events,
-   tags are in the audit log. Need a unified way to get tags into both
-   log formats.
+3. **Tag-based access log format:** **DECIDED — Two channels, unified in wafctl.**
+   - **Plugin-handled events** (allow/block/honeypot): Plugin sets Caddy variables
+     `{http.vars.policy_engine.tags}` = comma-joined tags (e.g., `scanner,bot-detection`).
+     The access log template can include this in `extra_log_fields`. wafctl's
+     `access_log_store.go` reads tags from this field when classifying events.
+   - **SecRule-handled events** (skip_rule/anomaly): Tags are in the audit log's
+     `matched_rules[].tags` array as `policy:scanner` etc. wafctl's `event_parser.go`
+     reads these and strips the `policy:` prefix.
+   - **Both converge** in `WAFEvent.Tags` — the event store is the single source of truth.
 
-4. **Donut chart behavior**: Currently the donut shows a fixed set of slices
-   (WAF Blocked, Rate Limited, IPsum, Honeypot, Scanner, Policy, Logged).
-   With dynamic tags, should it show top-N tags by count? Or group by action
-   type (blocked, logged, etc.) with tag breakdown on hover?
+4. **Donut chart behavior:** **DECIDED — Action-based donut + tag breakdown in tooltip.**
+   The donut slices represent action categories (WAF Blocked, Rate Limited, Policy, Logged)
+   which are mutually exclusive. Tags appear in tooltips on hover and in separate stat
+   cards below the donut. This avoids double-counting (a `policy_block` event tagged
+   `scanner` should count once in the donut, not twice). The stat cards are dynamically
+   generated from `tag_counts` keys — no hardcoded card components.
 
-5. **"Logged" residual calculation**: Currently `logged = total - blocked -
-   rateLimited - ipsumBlocked - honeypot - scanner - policy`. With tags,
-   the residual is simpler: `logged = total - blocked - rateLimited - policy`.
-   Tags are metadata, not mutually exclusive categories. An event can be
-   `policy_block` AND tagged `scanner` — the `blocked` count covers it,
-   and `scanner` appears in `tag_counts`.
+5. **"Logged" residual calculation:** **DECIDED — Simplified formula.**
+   `logged = total - blocked - rateLimited - policy`. Tags are metadata dimensions,
+   not exclusive categories. An event can be `policy_block` AND tagged `scanner` —
+   the `blocked` count covers it, and `scanner` appears in `tag_counts`. This
+   eliminates the fragile multi-term subtraction.
+
+### Phase 1 + Phase 3 Interaction: Plugin Tag Communication
+
+When the policy engine plugin handles a block/honeypot/allow action, it needs to
+communicate the matched rule's tags to wafctl for event classification. The mechanism:
+
+1. **Block/Honeypot** (403 response): The plugin sets response headers before
+   returning `caddyhttp.Error(403)`:
+   ```
+   X-Blocked-By: policy-engine
+   X-Blocked-Rule: <rule-name>
+   X-Policy-Tags: scanner,bot-detection
+   ```
+   These appear in the access log's response headers. `access_log_store.go`
+   reads `X-Policy-Tags` to populate `event.Tags`.
+
+2. **Allow** (WAF bypass): The plugin sets Caddy variables:
+   ```
+   {http.vars.policy_engine.action} = "allow"
+   {http.vars.policy_engine.rule_name} = "Trusted API"
+   {http.vars.policy_engine.tags} = "trusted,internal"
+   ```
+   Since allowed requests don't generate events (they pass through successfully),
+   tags are only relevant if the access log template includes them for observability.
+
+3. **No match** (pass-through): No headers or variables set. Request continues to
+   Coraza as normal. Tags come from SecRule `tag:'policy:*'` actions in the audit log.
+
+**The `X-Policy-Tags` header is stripped before proxying upstream** via Caddy's
+`header_down` directive in the reverse_proxy block (or by the plugin itself
+using a response interceptor). This prevents tag leakage to upstream applications.
