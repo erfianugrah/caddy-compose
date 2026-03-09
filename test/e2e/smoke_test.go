@@ -784,6 +784,63 @@ func TestPolicyEngineAllow(t *testing.T) {
 	})
 }
 
+func TestPolicyEngineBodyJSON(t *testing.T) {
+	// Create a block rule that matches a JSON body field: .action == "delete_all".
+	payload := map[string]any{
+		"name":        "e2e-body-json-block",
+		"type":        "block",
+		"description": "Block requests with dangerous action in JSON body",
+		"enabled":     true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "begins_with", "value": "/post"},
+			{"field": "body_json", "operator": "eq", "value": ".action:delete_all"},
+		},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+	assertCode(t, "create body_json block rule", 201, resp)
+	ruleID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+ruleID) })
+
+	time.Sleep(2 * time.Second)
+	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+	time.Sleep(8 * time.Second)
+
+	t.Run("matching JSON body blocked", func(t *testing.T) {
+		dangerousBody := []byte(`{"action":"delete_all","target":"users"}`)
+		code, err := httpPostRaw(caddyURL+"/post", dangerousBody)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if code != 403 {
+			t.Errorf("expected 403 (body_json block), got %d", code)
+		}
+	})
+
+	t.Run("non-matching JSON body passes", func(t *testing.T) {
+		safeBody := []byte(`{"action":"list","target":"users"}`)
+		code, err := httpPostRaw(caddyURL+"/post", safeBody)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if code == 403 {
+			t.Errorf("expected non-403 (safe body should pass), got 403")
+		}
+	})
+
+	t.Run("non-JSON body passes", func(t *testing.T) {
+		plainBody := []byte(`just some plain text`)
+		code, err := httpPostRaw(caddyURL+"/post", plainBody)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if code == 403 {
+			t.Errorf("expected non-403 (non-JSON body should pass), got 403")
+		}
+	})
+}
+
 // ════════════════════════════════════════════════════════════════════
 // 17. End-to-End: WAF Bypass via Exclusion (legacy SecRule path)
 // ════════════════════════════════════════════════════════════════════
