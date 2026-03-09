@@ -347,7 +347,7 @@ func TestHandleValidateConfig(t *testing.T) {
 		},
 	})
 
-	handler := handleValidateConfig(configStore, exclStore)
+	handler := handleValidateConfig(configStore, exclStore, DeployConfig{})
 	req := httptest.NewRequest("POST", "/api/config/validate", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -369,7 +369,7 @@ func TestHandleValidateConfig_WithConfigs(t *testing.T) {
 	configStore := newTestConfigStore(t)
 	exclStore := NewExclusionStore(newTestExclusionStorePath(t))
 
-	handler := handleValidateConfig(configStore, exclStore)
+	handler := handleValidateConfig(configStore, exclStore, DeployConfig{})
 	req := httptest.NewRequest("POST", "/api/config/validate?include_configs=true", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

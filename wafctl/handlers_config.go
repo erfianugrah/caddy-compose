@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -46,27 +47,39 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
-		exclusions := es.EnabledExclusions()
+		allExclusions := es.EnabledExclusions()
+		// Filter out policy engine types when enabled.
+		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
 		result := GenerateConfigs(cfg, exclusions)
 		// Include WAF settings in the response.
 		wafSettings := GenerateWAFSettings(cfg)
-		writeJSON(w, http.StatusOK, map[string]string{
-			"pre_crs_conf":  result.PreCRS,
-			"post_crs_conf": result.PostCRS,
-			"waf_settings":  wafSettings,
-		})
+		resp := map[string]interface{}{
+			"pre_crs_conf":          result.PreCRS,
+			"post_crs_conf":         result.PostCRS,
+			"waf_settings":          wafSettings,
+			"policy_engine_enabled": deployCfg.PolicyEngineEnabled,
+		}
+		// Include policy rules preview when enabled.
+		if deployCfg.PolicyEngineEnabled {
+			policyData, err := GeneratePolicyRules(allExclusions)
+			if err == nil {
+				resp["policy_rules"] = json.RawMessage(policyData)
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
 // --- Handler: Validate ---
 
-func handleValidateConfig(cs *ConfigStore, es *ExclusionStore) http.HandlerFunc {
+func handleValidateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := cs.Get()
-		exclusions := es.EnabledExclusions()
+		allExclusions := es.EnabledExclusions()
+		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
 		result := GenerateConfigs(cfg, exclusions)
 		wafSettings := GenerateWAFSettings(cfg)
 
@@ -100,7 +113,11 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, d
 		deployMu.Lock()
 		defer deployMu.Unlock()
 		cfg := cs.Get()
-		exclusions := es.EnabledExclusions()
+		allExclusions := es.EnabledExclusions()
+
+		// When policy engine is enabled, allow/block/honeypot go to the plugin's
+		// JSON file instead of Coraza SecRules. Filter them out before generation.
+		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
 		result := GenerateConfigs(cfg, exclusions)
 		wafSettings := GenerateWAFSettings(cfg)
 
@@ -132,6 +149,32 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, d
 				Details: err.Error(),
 			})
 			return
+		}
+
+		// Policy engine: generate JSON rules file for the Caddy plugin.
+		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
+			policyData, err := GeneratePolicyRules(allExclusions)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to generate policy rules",
+					Details: err.Error(),
+				})
+				return
+			}
+			if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to write policy rules file",
+					Details: err.Error(),
+				})
+				return
+			}
+			policyCount := 0
+			for _, e := range allExclusions {
+				if IsPolicyEngineType(e.Type) {
+					policyCount++
+				}
+			}
+			log.Printf("[deploy] wrote policy rules (%d rules) → %s", policyCount, deployCfg.PolicyRulesFile)
 		}
 
 		// Ensure any new Caddyfile services have rate limit files before reload.

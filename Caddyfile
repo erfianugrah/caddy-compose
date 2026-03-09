@@ -15,8 +15,11 @@
 	dns cloudflare {$CF_API_TOKEN}
 	ech ech.erfi.io
 
-	# Coraza WAF must run before other handlers
-	order coraza_waf first
+	# Policy engine runs first (allow/block/honeypot), Coraza WAF runs after.
+	# Caddy's order directive controls handler execution order globally —
+	# textual position in site blocks is irrelevant.
+	order policy_engine first
+	order coraza_waf after policy_engine
 
 	log {
 		level INFO
@@ -152,21 +155,37 @@
 		}
 	}
 	route @not_websocket {
-		coraza_waf {
-			load_owasp_crs
-			directives `
-			Include /etc/caddy/coraza/pre-crs.conf
-			Include /data/coraza/custom-pre-crs.conf
-			Include @crs-setup.conf.example
-			Include /data/coraza/custom-waf-settings.conf
-			Include @owasp_crs/*.conf
-			Include /etc/caddy/coraza/post-crs.conf
-			Include /data/coraza/custom-post-crs.conf
-			SecAuditEngine RelevantOnly
-			SecAuditLog /var/log/coraza-audit.log
-			SecAuditLogFormat json
-			SecAuditLogParts ABCFHKZ
-			`
+		# Policy engine evaluates allow/block/honeypot rules with exact
+		# matching semantics (no @pm substring issues). Runs before Coraza.
+		# Rules are hot-reloaded from JSON file written by wafctl.
+		policy_engine {
+			rules_file /data/policy-rules.json
+			reload_interval 5s
+		}
+		# Only run Coraza WAF when the policy engine did NOT allow the request.
+		# The policy engine sets {http.vars.policy_engine.action}=allow for
+		# approved requests. The @needs_waf inverted matcher ensures Coraza
+		# only processes requests that weren't explicitly allowed.
+		@needs_waf {
+			not vars {http.vars.policy_engine.action} allow
+		}
+		route @needs_waf {
+			coraza_waf {
+				load_owasp_crs
+				directives `
+				Include /etc/caddy/coraza/pre-crs.conf
+				Include /data/coraza/custom-pre-crs.conf
+				Include @crs-setup.conf.example
+				Include /data/coraza/custom-waf-settings.conf
+				Include @owasp_crs/*.conf
+				Include /etc/caddy/coraza/post-crs.conf
+				Include /data/coraza/custom-post-crs.conf
+				SecAuditEngine RelevantOnly
+				SecAuditLog /var/log/coraza-audit.log
+				SecAuditLogFormat json
+				SecAuditLogParts ABCFHKZ
+				`
+			}
 		}
 	}
 	handle_errors 400 403 429 {

@@ -171,6 +171,7 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - **Exclusions**: `exclusions.go` (~366 lines) — ExclusionStore CRUD, persistence; `exclusions_validate.go` (~257 lines) — validation, condition checks, regex patterns
 - **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands
 - **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
+- **Policy engine generator**: `policy_generator.go` (~164 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, `GeneratePolicyRules()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`
 - **Domain stores**: `rl_rules.go` (561), `csp.go` (541), `csp_generator.go`, `blocklist.go` (370), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
@@ -665,10 +666,89 @@ directive. The handler must run first so placeholders are populated for bucket k
   ```
 - **External GitHub repo** — fetched by xcaddy via `--with github.com/erfianugrah/caddy-body-matcher@v0.1.0`; tagged releases
 
+## Caddy Policy Engine Plugin (github.com/erfianugrah/caddy-policy-engine)
+
+Custom Caddy HTTP middleware that evaluates allow/block/honeypot rules with correct
+matching semantics. Fixes the core security bug where the `in` operator in Coraza
+SecRule generation uses `@pm` (Aho-Corasick substring match), causing `/admin` to
+match `/administrator`. The plugin uses `map[string]bool` hash sets for exact matching.
+
+Zero external dependencies beyond Caddy itself. Registered as `http.handlers.policy_engine`.
+
+### Architecture
+
+- **Rules file**: JSON file (`policy-rules.json`) containing an array of `PolicyRule` objects
+- **Hot reload**: Polls rules file mtime at configurable interval (default 5s); reloads on change
+- **Graceful degradation**: Missing file at startup = empty rules (pass-through); invalid JSON on reload keeps old rules; file deletion clears rules
+- **Concurrency**: `sync.RWMutex` for rule access; `*sync.RWMutex` stored as pointer to avoid `go vet` copy warning on `CaddyModule()` value receiver
+- **Caddy integration**: Implements `Module`, `Provisioner`, `Validator`, `CleanerUpper`, `MiddlewareHandler`, `Unmarshaler`
+
+### Actions
+
+| Action | Behavior | Caddy Variables/Headers |
+|--------|----------|------------------------|
+| `allow` | Set vars, pass to next handler | `{http.vars.policy_engine.action}=allow`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}` |
+| `block` | Return 403 via `caddyhttp.Error` | `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
+| `honeypot` | Return 403 via `caddyhttp.Error` | `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
+
+### Condition Matching
+
+Supports all request-phase fields: `ip`, `path`, `uri_path`, `host`, `method`, `user_agent`,
+`header`, `cookie`, `args`, `query`, `country`, `referer`, `http_version`.
+
+All operators: `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex`, `ip_match`,
+`not_ip_match`, `in`. Named fields use `Name:value` format (same as wafctl conventions).
+
+**Critical security fix**: `in` operator uses `map[string]bool` hash set for O(1) exact
+lookup instead of Coraza's `@pm` substring match.
+
+### Caddyfile Integration
+
+```
+order policy_engine first
+order coraza_waf after policy_engine
+```
+
+The `(waf)` snippet chains policy_engine before coraza_waf:
+```
+policy_engine {
+    rules_file /data/policy-rules.json
+    reload_interval 5s
+}
+@needs_waf {
+    not vars {http.vars.policy_engine.action} allow
+}
+route @needs_waf {
+    coraza_waf { ... }
+}
+```
+
+Allow action sets a Caddy var; the `@needs_waf` inverted matcher skips Coraza WAF
+for allowed requests. Block/honeypot return 403 before Coraza runs.
+
+### wafctl Integration
+
+- `policy_generator.go` generates `policy-rules.json` from exclusions with types `allow`, `block`, `honeypot`
+- `FilterSecRuleExclusions()` removes policy-engine types from the SecRule generator input
+- `IsPolicyEngineType()` checks if an exclusion type is handled by the plugin
+- `SplitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions
+- Behind `WAF_POLICY_ENGINE_ENABLED` env var (default `false`) — when disabled, all exclusions use Coraza SecRules as before
+- Both `generateOnBoot()` and `handleDeploy()` call the policy generator when enabled
+
+### Plugin Test Suite (50 tests)
+
+In the plugin repo (`/home/erfi/caddy-policy-engine`):
+- Condition matching tests for every operator and field type
+- `TestCondition_In_NotSubstring` — verifies the core security fix
+- Rule evaluation: AND/OR groups, disabled rules, priority ordering
+- Action tests: block headers, allow vars, honeypot behavior
+- Hot reload: file change detection, invalid JSON recovery, file deletion
+- Concurrent reads under `sync.RWMutex`
+
 ## Test Patterns
 
-### Go (1072 tests across 22 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `testhelpers_test.go`
+### Go (1118 tests across 23 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -744,6 +824,7 @@ Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `ipsum_block.caddy` — updated daily at 06:00 UTC by wafctl scheduled refresh, or on-demand via `POST /api/blocklist/refresh`
 - `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 - `<service>_csp.caddy` — CSP header configs (per-service)
+- `policy-rules.json` — policy engine plugin rules (when `WAF_POLICY_ENGINE_ENABLED=true`)
 
 ### Startup Behavior (generate-on-boot)
 
@@ -808,6 +889,8 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GENERAL_LOG_OFFSET_FILE` (default `/data/.general-log-offset`) — persists general log read offset across restarts
 - `WAF_GENERAL_LOG_MAX_AGE` (default `168h`) — retention period for general log events (shorter than WAF events due to higher volume)
 - `WAF_BLOCKLIST_REFRESH_HOUR` (default `6`) — UTC hour (0–23) for daily IPsum blocklist refresh
+- `WAF_POLICY_ENGINE_ENABLED` (default `false`) — enables policy engine plugin integration; when `true`, `allow`/`block`/`honeypot` exclusions are routed to the Caddy plugin instead of Coraza SecRules
+- `WAF_POLICY_RULES_FILE` (default `/data/policy-rules.json`) — output path for the policy engine plugin's rules JSON file
 
 ### CLI Subcommands
 

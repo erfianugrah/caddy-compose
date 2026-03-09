@@ -36,12 +36,17 @@ func runServe() int {
 
 	cspFile := envOr("WAF_CSP_FILE", "/data/csp-config.json")
 
+	policyEngineEnabled := envOr("WAF_POLICY_ENGINE_ENABLED", "false") == "true"
+	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/policy-rules.json")
+
 	deployCfg := DeployConfig{
-		CorazaDir:     envOr("WAF_CORAZA_DIR", "/data/coraza"),
-		RateLimitDir:  envOr("WAF_RATELIMIT_DIR", "/data/rl"),
-		CSPDir:        envOr("WAF_CSP_DIR", "/data/csp"),
-		CaddyfilePath: envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
-		CaddyAdminURL: envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
+		CorazaDir:           envOr("WAF_CORAZA_DIR", "/data/coraza"),
+		RateLimitDir:        envOr("WAF_RATELIMIT_DIR", "/data/rl"),
+		CSPDir:              envOr("WAF_CSP_DIR", "/data/csp"),
+		CaddyfilePath:       envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
+		CaddyAdminURL:       envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
+		PolicyRulesFile:     policyRulesFile,
+		PolicyEngineEnabled: policyEngineEnabled,
 	}
 
 	// Ensure custom coraza config directory and placeholder files exist.
@@ -87,8 +92,8 @@ func runServe() int {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL)
+	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled)
 
 	var geoAPICfg *GeoIPAPIConfig
 	if geoAPIURL != "" {
@@ -187,8 +192,8 @@ func runServe() int {
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore))
-	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, deployCfg))
+	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore, deployCfg))
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, deployCfg))
 
 	// Rate Limit Rules (policy engine)

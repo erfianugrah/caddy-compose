@@ -468,7 +468,7 @@ func TestGenerateConfigEndpoint(t *testing.T) {
 	})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(cs, es))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(cs, es, DeployConfig{}))
 
 	req := httptest.NewRequest("POST", "/api/config/generate", nil)
 	w := httptest.NewRecorder()
