@@ -27,6 +27,7 @@ export interface RateLimitRule {
   window: string;
   action: RLRuleAction;
   priority: number;
+  tags: string[];
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -43,6 +44,7 @@ export interface RateLimitRuleCreateData {
   window: string;
   action?: RLRuleAction;
   priority?: number;
+  tags?: string[];
   enabled: boolean;
 }
 
@@ -96,6 +98,7 @@ function mapRLRule(raw: RateLimitRule): RateLimitRule {
     window: raw.window ?? "1m",
     action: (raw.action as RLRuleAction) || "deny",
     priority: raw.priority ?? 0,
+    tags: raw.tags ?? [],
     enabled: raw.enabled ?? false,
     created_at: raw.created_at ?? "",
     updated_at: raw.updated_at ?? "",

@@ -524,6 +524,19 @@ func validateRateLimitRule(rule RateLimitRule) error {
 		return fmt.Errorf("group_operator \"or\" is not yet supported for rate limit rules with multiple conditions")
 	}
 
+	// Tags: same constraints as exclusion tags — max 10, lowercase alphanumeric + hyphens, max 50 chars.
+	if len(rule.Tags) > 10 {
+		return fmt.Errorf("too many tags: %d (max 10)", len(rule.Tags))
+	}
+	for i, tag := range rule.Tags {
+		if len(tag) > 50 {
+			return fmt.Errorf("tag[%d] too long: %d chars (max 50)", i, len(tag))
+		}
+		if !eventTagRe.MatchString(tag) {
+			return fmt.Errorf("invalid tag[%d] %q (lowercase alphanumeric and hyphens only, must start with letter or digit)", i, tag)
+		}
+	}
+
 	// Conditions — only request-phase fields allowed.
 	if err := validateConditions(rule.Conditions, validRLConditionFields); err != nil {
 		return err

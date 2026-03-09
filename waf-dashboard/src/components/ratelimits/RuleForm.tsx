@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConditionRow } from "../policy/ConditionBuilder";
+import { PipeTagInput } from "../policy/TagInputs";
 import { RL_FIELD_DEFS, RL_KEY_OPTIONS, WINDOW_OPTIONS, WINDOW_VALUES } from "./constants";
 import { isValidWindow } from "@/lib/format";
 import type {
@@ -54,6 +55,7 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
   const [window, setWindow] = useState(initial?.window ?? "1m");
   const [action, setAction] = useState<RLRuleAction>(initial?.action ?? "deny");
   const [priority, setPriority] = useState(initial?.priority ?? 0);
+  const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +113,7 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
       window,
       action,
       priority,
+      tags: tags.length > 0 ? tags : undefined,
       enabled,
     });
   };
@@ -301,6 +304,19 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
             <Label className="text-sm">{enabled ? "Enabled" : "Disabled"}</Label>
           </div>
         </div>
+      </div>
+
+      {/* Tags */}
+      <div className="space-y-1.5">
+        <Label className="text-sm">Tags <span className="text-muted-foreground text-xs">(optional)</span></Label>
+        <PipeTagInput
+          value={tags.join("|")}
+          onChange={(v) => setTags(v ? v.split("|").filter(Boolean) : [])}
+          placeholder="e.g., api, auth, brute-force (Enter to add)"
+        />
+        <p className="text-xs text-muted-foreground">
+          Optional labels for organizing rules and classifying rate-limited events
+        </p>
       </div>
 
       {/* Quick Presets */}

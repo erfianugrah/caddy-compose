@@ -694,6 +694,42 @@ func TestValidateRateLimitRule(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		// --- Tag validation ---
+		{
+			name:    "valid with tags",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{"api", "auth"}},
+			wantErr: false,
+		},
+		{
+			name:    "valid with hyphenated tag",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{"brute-force"}},
+			wantErr: false,
+		},
+		{
+			name:    "too many tags (>10)",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"}},
+			wantErr: true,
+		},
+		{
+			name:    "tag too long (>50 chars)",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+			wantErr: true,
+		},
+		{
+			name:    "invalid tag (uppercase)",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{"API"}},
+			wantErr: true,
+		},
+		{
+			name:    "invalid tag (spaces)",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{"bad tag"}},
+			wantErr: true,
+		},
+		{
+			name:    "empty tags slice is valid",
+			rule:    RateLimitRule{Name: "test", Service: "s", Key: "client_ip", Events: 100, Window: "1m", Tags: []string{}},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

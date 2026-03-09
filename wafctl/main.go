@@ -170,17 +170,17 @@ func runServe() int {
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
 	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore))
-	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
-	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
-	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
+	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore, rlRuleStore))
+	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore, rlRuleStore))
+	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore, rlRuleStore))
 
 	// Analytics
-	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, accessLogStore))
-	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store, accessLogStore))
-	mux.HandleFunc("GET /api/analytics/top-countries", handleTopCountries(store, accessLogStore))
+	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, accessLogStore, rlRuleStore))
+	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store, accessLogStore, rlRuleStore))
+	mux.HandleFunc("GET /api/analytics/top-countries", handleTopCountries(store, accessLogStore, rlRuleStore))
 
 	// IP Lookup
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, accessLogStore, geoStore, intelStore))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, accessLogStore, rlRuleStore, geoStore, intelStore))
 
 	// Exclusion CRUD
 	mux.HandleFunc("GET /api/exclusions", handleListExclusions(exclusionStore))

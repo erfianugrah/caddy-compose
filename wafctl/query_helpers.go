@@ -85,11 +85,12 @@ func getWAFEvents(store *Store, tr timeRange, hours int) []Event {
 }
 
 // getRLEvents returns rate-limited events filtered by either time range or hours.
-func getRLEvents(als *AccessLogStore, tr timeRange, hours int) []Event {
+// If rules are provided, events are enriched with tags from the first matching rule.
+func getRLEvents(als *AccessLogStore, tr timeRange, hours int, rules []RateLimitRule) []Event {
 	if tr.Valid {
-		return als.SnapshotAsEventsRange(tr.Start, tr.End)
+		return als.SnapshotAsEventsRange(tr.Start, tr.End, rules)
 	}
-	return als.SnapshotAsEvents(hours)
+	return als.SnapshotAsEvents(hours, rules)
 }
 
 // --- Field filter with operator support ---

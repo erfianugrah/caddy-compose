@@ -40,7 +40,7 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 	}
 }
 
-func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
 	cache := newResponseCache(50)
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr := parseTimeRange(r)
@@ -105,7 +105,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 				allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
 			}
 			if needRL {
-				allEvents = append(allEvents, getRLEvents(als, tr, hours)...)
+				allEvents = append(allEvents, getRLEvents(als, tr, hours, rs.List())...)
 			}
 
 			var filtered []Event
@@ -167,7 +167,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		summary := sr.SummaryResponse
 
 		// Merge access-log events (rate-limited, including ipsum blocks) into the summary.
-		rlEvents := getRLEvents(als, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours, rs.List())
 
 		rlCount := len(rlEvents)
 		rlHourMap := make(map[string]int)
@@ -317,7 +317,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 	}
 }
 
-func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
@@ -400,7 +400,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			wafEvents = getWAFEvents(store, tr, hours)
 		}
 		if needRL {
-			rlEvts = getRLEvents(als, tr, hours)
+			rlEvts = getRLEvents(als, tr, hours, rs.List())
 		}
 
 		// eventMatchesFilters checks if an event passes all active filters.
@@ -478,7 +478,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 	}
 }
 
-func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
@@ -498,7 +498,7 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 		}
 
 		// Merge access-log events (rate-limited, including ipsum blocks) into service breakdown.
-		rlEvents := getRLEvents(als, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours, rs.List())
 		rlSvcMap := make(map[string]int)
 		for i := range rlEvents {
 			rlSvcMap[rlEvents[i].Service]++

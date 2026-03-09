@@ -506,7 +506,7 @@ func TestAccessLogStoreRequestID_PropagatedToEvent(t *testing.T) {
 	store := NewAccessLogStore(path)
 	store.Load()
 
-	events := store.SnapshotAsEvents(0)
+	events := store.SnapshotAsEvents(0, nil)
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
@@ -524,7 +524,7 @@ func TestAccessLogStoreRequestID_IpsumEvent(t *testing.T) {
 	store := NewAccessLogStore(path)
 	store.Load()
 
-	events := store.SnapshotAsEvents(0)
+	events := store.SnapshotAsEvents(0, nil)
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
@@ -931,6 +931,177 @@ func TestAccessLogStoreEviction(t *testing.T) {
 	// Only the recent event should remain.
 	if got := store.EventCount(); got != 1 {
 		t.Errorf("expected 1 event after eviction, got %d", got)
+	}
+}
+
+// --- matchEventToRuleTags tests ---
+
+func TestMatchEventToRuleTags_MatchesFirstRule(t *testing.T) {
+	rules := []RateLimitRule{
+		{Name: "api-limit", Service: "api.erfi.io", Enabled: true, Tags: []string{"api", "auth"}},
+		{Name: "global-limit", Service: "*", Enabled: true, Tags: []string{"global"}},
+	}
+	evt := RateLimitEvent{Service: "api.erfi.io", Method: "GET", URI: "/api/v1/users"}
+	tags := matchEventToRuleTags(evt, rules)
+	if len(tags) != 2 || tags[0] != "api" || tags[1] != "auth" {
+		t.Errorf("expected [api auth], got %v", tags)
+	}
+}
+
+func TestMatchEventToRuleTags_WildcardFallback(t *testing.T) {
+	rules := []RateLimitRule{
+		{Name: "specific", Service: "other.erfi.io", Enabled: true, Tags: []string{"other"}},
+		{Name: "global", Service: "*", Enabled: true, Tags: []string{"global"}},
+	}
+	evt := RateLimitEvent{Service: "api.erfi.io"}
+	tags := matchEventToRuleTags(evt, rules)
+	if len(tags) != 1 || tags[0] != "global" {
+		t.Errorf("expected [global], got %v", tags)
+	}
+}
+
+func TestMatchEventToRuleTags_NoMatch(t *testing.T) {
+	rules := []RateLimitRule{
+		{Name: "specific", Service: "other.erfi.io", Enabled: true, Tags: []string{"other"}},
+	}
+	evt := RateLimitEvent{Service: "api.erfi.io"}
+	tags := matchEventToRuleTags(evt, rules)
+	if tags != nil {
+		t.Errorf("expected nil tags, got %v", tags)
+	}
+}
+
+func TestMatchEventToRuleTags_DisabledRuleSkipped(t *testing.T) {
+	rules := []RateLimitRule{
+		{Name: "disabled", Service: "*", Enabled: false, Tags: []string{"should-skip"}},
+		{Name: "enabled", Service: "*", Enabled: true, Tags: []string{"active"}},
+	}
+	evt := RateLimitEvent{Service: "any.erfi.io"}
+	tags := matchEventToRuleTags(evt, rules)
+	if len(tags) != 1 || tags[0] != "active" {
+		t.Errorf("expected [active], got %v", tags)
+	}
+}
+
+func TestMatchEventToRuleTags_NilTags(t *testing.T) {
+	rules := []RateLimitRule{
+		{Name: "no-tags", Service: "*", Enabled: true}, // Tags is nil
+	}
+	evt := RateLimitEvent{Service: "any.erfi.io"}
+	tags := matchEventToRuleTags(evt, rules)
+	if tags != nil {
+		t.Errorf("expected nil tags for rule with no tags, got %v", tags)
+	}
+}
+
+func TestMatchEventToRuleTags_WithConditions(t *testing.T) {
+	rules := []RateLimitRule{
+		{
+			Name: "api-only", Service: "api.erfi.io", Enabled: true,
+			Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api/"}},
+			Tags:       []string{"api-endpoint"},
+		},
+		{Name: "catch-all", Service: "api.erfi.io", Enabled: true, Tags: []string{"other"}},
+	}
+	// Matches the condition.
+	evt := RateLimitEvent{Service: "api.erfi.io", URI: "/api/v1/users"}
+	tags := matchEventToRuleTags(evt, rules)
+	if len(tags) != 1 || tags[0] != "api-endpoint" {
+		t.Errorf("expected [api-endpoint], got %v", tags)
+	}
+	// Doesn't match the condition, falls to catch-all.
+	evt2 := RateLimitEvent{Service: "api.erfi.io", URI: "/admin"}
+	tags2 := matchEventToRuleTags(evt2, rules)
+	if len(tags2) != 1 || tags2[0] != "other" {
+		t.Errorf("expected [other], got %v", tags2)
+	}
+}
+
+// --- RateLimitEventToEvent tag enrichment tests ---
+
+func TestRateLimitEventToEvent_ExtraTags(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Now(),
+		ClientIP:  "10.0.0.1",
+		Service:   "api.erfi.io",
+		Method:    "GET",
+		URI:       "/api/v1",
+	}
+	ev := RateLimitEventToEvent(rle, []string{"api", "brute-force"})
+	if len(ev.Tags) != 2 || ev.Tags[0] != "api" || ev.Tags[1] != "brute-force" {
+		t.Errorf("expected [api brute-force], got %v", ev.Tags)
+	}
+}
+
+func TestRateLimitEventToEvent_IpsumPlusTags(t *testing.T) {
+	// Ipsum events already get ["blocklist", "ipsum"] — extra tags are appended.
+	rle := RateLimitEvent{
+		Timestamp: time.Now(),
+		ClientIP:  "10.0.0.1",
+		Service:   "api.erfi.io",
+		Source:    "ipsum",
+	}
+	ev := RateLimitEventToEvent(rle, []string{"extra"})
+	expected := []string{"blocklist", "ipsum", "extra"}
+	if len(ev.Tags) != 3 {
+		t.Fatalf("expected 3 tags, got %v", ev.Tags)
+	}
+	for i, want := range expected {
+		if ev.Tags[i] != want {
+			t.Errorf("tag[%d]: want %q, got %q", i, want, ev.Tags[i])
+		}
+	}
+}
+
+func TestRateLimitEventToEvent_NilExtraTags(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Now(),
+		ClientIP:  "10.0.0.1",
+		Service:   "api.erfi.io",
+		Method:    "GET",
+	}
+	ev := RateLimitEventToEvent(rle, nil)
+	if ev.Tags != nil {
+		t.Errorf("expected nil tags, got %v", ev.Tags)
+	}
+}
+
+// --- SnapshotAsEvents with rule enrichment ---
+
+func TestSnapshotAsEvents_EnrichesWithRuleTags(t *testing.T) {
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"api.erfi.io","uri":"/api/v1/data","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	rules := []RateLimitRule{
+		{Name: "api-limit", Service: "api.erfi.io", Enabled: true, Tags: []string{"api", "throttled"}},
+	}
+	events := store.SnapshotAsEvents(0, rules)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if len(events[0].Tags) != 2 || events[0].Tags[0] != "api" || events[0].Tags[1] != "throttled" {
+		t.Errorf("expected tags [api throttled], got %v", events[0].Tags)
+	}
+}
+
+func TestSnapshotAsEvents_NoRulesNoTags(t *testing.T) {
+	lines := []string{
+		`{"level":"info","ts":"2026/02/22 12:01:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"api.erfi.io","uri":"/test","headers":{"User-Agent":["curl/7.68"]}},"status":429,"size":0,"duration":0.001}`,
+	}
+	path := writeTempAccessLog(t, lines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0, nil)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Tags != nil {
+		t.Errorf("expected nil tags with no rules, got %v", events[0].Tags)
 	}
 }
 

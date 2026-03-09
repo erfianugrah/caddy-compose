@@ -282,6 +282,26 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 	return result
 }
 
+// matchEventToRuleTags evaluates rules in priority order against a 429 event.
+// Returns the tags of the first matching rule, or nil if none match.
+func matchEventToRuleTags(evt RateLimitEvent, rules []RateLimitRule) []string {
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		if rule.Service != "*" && rule.Service != evt.Service {
+			continue
+		}
+		if len(rule.Conditions) == 0 {
+			return rule.Tags
+		}
+		if matchRLConditions(evt, rule.Conditions, rule.GroupOp) {
+			return rule.Tags
+		}
+	}
+	return nil
+}
+
 // matchEventToRule evaluates rules in priority order against a 429 event.
 // Returns the name of the first matching rule, or "" if none match.
 func matchEventToRule(evt RateLimitEvent, rules []RateLimitRule) string {

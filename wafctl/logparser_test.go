@@ -721,7 +721,7 @@ func TestRateLimitEventToEvent(t *testing.T) {
 		UserAgent: "curl/7.68",
 	}
 
-	ev := RateLimitEventToEvent(rle)
+	ev := RateLimitEventToEvent(rle, nil)
 
 	if ev.EventType != "rate_limited" {
 		t.Errorf("event_type: want rate_limited, got %s", ev.EventType)
@@ -752,7 +752,7 @@ func TestSnapshotAsEvents(t *testing.T) {
 	store := NewAccessLogStore(path)
 	store.Load()
 
-	events := store.SnapshotAsEvents(0)
+	events := store.SnapshotAsEvents(0, nil)
 	if len(events) != 3 {
 		t.Fatalf("expected 3 converted events, got %d", len(events))
 	}
@@ -780,7 +780,7 @@ func TestSummaryMergesRateLimitedEvents(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als)(w, req)
+	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -816,7 +816,7 @@ func TestEventsMergesRateLimitedEvents(t *testing.T) {
 	// All events (no filter).
 	req := httptest.NewRequest("GET", "/api/events?limit=100", nil)
 	w := httptest.NewRecorder()
-	handleEvents(store, als)(w, req)
+	handleEvents(store, als, emptyRLRuleStore(t))(w, req)
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -856,7 +856,7 @@ func TestEventsEventTypeFilter(t *testing.T) {
 	for _, tt := range tests {
 		req := httptest.NewRequest("GET", "/api/events?event_type="+tt.eventType+"&limit=100", nil)
 		w := httptest.NewRecorder()
-		handleEvents(store, als)(w, req)
+		handleEvents(store, als, emptyRLRuleStore(t))(w, req)
 
 		var resp EventsResponse
 		json.NewDecoder(w.Body).Decode(&resp)
@@ -922,7 +922,7 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/services", nil)
 	w := httptest.NewRecorder()
-	handleServices(store, als)(w, req)
+	handleServices(store, als, emptyRLRuleStore(t))(w, req)
 
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1001,7 +1001,7 @@ func TestIpsumEventSource(t *testing.T) {
 	store := NewAccessLogStore(path)
 	store.Load()
 
-	events := store.SnapshotAsEvents(0)
+	events := store.SnapshotAsEvents(0, nil)
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d", len(events))
 	}
@@ -1043,7 +1043,7 @@ func TestRateLimitEventToEventIpsum(t *testing.T) {
 		Source:    "ipsum",
 	}
 
-	ev := RateLimitEventToEvent(rle)
+	ev := RateLimitEventToEvent(rle, nil)
 
 	// Ipsum events are unified as "rate_limited" with blocklist/ipsum tags.
 	if ev.EventType != "rate_limited" {
@@ -1071,7 +1071,7 @@ func TestRateLimitEventToEvent_RequestID(t *testing.T) {
 		RequestID: "caddy-uuid-test-123",
 	}
 
-	ev := RateLimitEventToEvent(rle)
+	ev := RateLimitEventToEvent(rle, nil)
 
 	if ev.RequestID != "caddy-uuid-test-123" {
 		t.Errorf("request_id: want caddy-uuid-test-123, got %q", ev.RequestID)
@@ -1087,7 +1087,7 @@ func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
 		URI:       "/api/v3/queue",
 	}
 
-	ev := RateLimitEventToEvent(rle)
+	ev := RateLimitEventToEvent(rle, nil)
 
 	if ev.RequestID != "" {
 		t.Errorf("request_id should be empty for events without it, got %q", ev.RequestID)
@@ -1105,7 +1105,7 @@ func TestSummaryMergesIpsumEvents(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als)(w, req)
+	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -1149,7 +1149,7 @@ func TestEventsRateLimitedFilterIncludesIpsum(t *testing.T) {
 	// should include both 429 RL events and ipsum (403) events.
 	req := httptest.NewRequest("GET", "/api/events?event_type=rate_limited&limit=100", nil)
 	w := httptest.NewRecorder()
-	handleEvents(store, als)(w, req)
+	handleEvents(store, als, emptyRLRuleStore(t))(w, req)
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1176,7 +1176,7 @@ func TestServicesMergesIpsumCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/services", nil)
 	w := httptest.NewRecorder()
-	handleServices(store, als)(w, req)
+	handleServices(store, als, emptyRLRuleStore(t))(w, req)
 
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1222,7 +1222,7 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als)(w, req)
+	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("status: want 200, got %d", w.Code)

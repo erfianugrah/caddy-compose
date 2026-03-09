@@ -38,6 +38,7 @@ const mockRLRule: RateLimitRule = {
   window: "1m",
   action: "deny",
   priority: 10,
+  tags: ["api", "auth"],
   enabled: true,
   created_at: "2026-02-25T10:00:00Z",
   updated_at: "2026-02-25T10:00:00Z",
@@ -58,6 +59,7 @@ describe("getRLRules", () => {
     expect(result[0].events).toBe(100);
     expect(result[0].window).toBe("1m");
     expect(result[0].action).toBe("deny");
+    expect(result[0].tags).toEqual(["api", "auth"]);
     expect(result[0].enabled).toBe(true);
   });
 
@@ -95,6 +97,7 @@ describe("getRLRules", () => {
     expect(result[0].key).toBe("client_ip");
     expect(result[0].action).toBe("deny");
     expect(result[0].priority).toBe(0);
+    expect(result[0].tags).toEqual([]);
   });
 });
 

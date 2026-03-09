@@ -303,9 +303,15 @@ fine-grained per-path, per-method, or per-header rate limiting.
 ```
 RateLimitRule {
   id, name, description, service, conditions[], group_operator,
-  key, events, window, action, priority, enabled, created_at, updated_at
+  key, events, window, action, priority, tags[], enabled, created_at, updated_at
 }
 ```
+
+Tags follow the same constraints as exclusion tags: max 10 per rule, max 50 chars each,
+lowercase alphanumeric + hyphens only (`^[a-z0-9][a-z0-9-]*$`). When a 429 event is
+converted to the unified `Event` type, the matched rule's tags are propagated via
+`matchEventToRuleTags()` in `rl_analytics.go`. This enables tag-based filtering and
+`tag_counts` aggregation in the summary API for rate-limited events.
 
 ### Rate Limit Keys
 
@@ -765,7 +771,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1118 tests across 23 files)
+### Go (1298 tests across 24 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
@@ -774,7 +780,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`, `writeTempBlocklist`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (300 tests across 13 files)
+### Frontend (312 tests across 14 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
 - API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)

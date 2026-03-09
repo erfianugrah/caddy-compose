@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -580,12 +581,16 @@ func ephemeralID() string {
 // so that 429s and ipsum blocks can be merged into the shared event stream.
 // All access log events use "rate_limited" as the event type; ipsum blocks
 // are distinguished by their tags (["blocklist", "ipsum"]).
-func RateLimitEventToEvent(rle RateLimitEvent) Event {
+// extraTags from the matched rate limit rule are appended to the event tags.
+func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	status := 429
 	var tags []string
 	if rle.Source == "ipsum" {
 		status = 403
 		tags = []string{"blocklist", "ipsum"}
+	}
+	if len(extraTags) > 0 {
+		tags = append(tags, extraTags...)
 	}
 	return Event{
 		ID:             ephemeralID(),
@@ -606,21 +611,40 @@ func RateLimitEventToEvent(rle RateLimitEvent) Event {
 }
 
 // SnapshotAsEvents returns 429 events converted to the unified Event type.
-func (s *AccessLogStore) SnapshotAsEvents(hours int) []Event {
+// If rules are provided, events are enriched with tags from the first matching rule.
+func (s *AccessLogStore) SnapshotAsEvents(hours int, rules []RateLimitRule) []Event {
 	rlEvents := s.snapshotSince(hours)
+	sorted := sortRulesByPriority(rules)
 	events := make([]Event, len(rlEvents))
 	for i, rle := range rlEvents {
-		events[i] = RateLimitEventToEvent(rle)
+		tags := matchEventToRuleTags(rle, sorted)
+		events[i] = RateLimitEventToEvent(rle, tags)
 	}
 	return events
 }
 
 // SnapshotAsEventsRange returns 429 events within [start, end] as unified Events.
-func (s *AccessLogStore) SnapshotAsEventsRange(start, end time.Time) []Event {
+// If rules are provided, events are enriched with tags from the first matching rule.
+func (s *AccessLogStore) SnapshotAsEventsRange(start, end time.Time, rules []RateLimitRule) []Event {
 	rlEvents := s.snapshotRange(start, end)
+	sorted := sortRulesByPriority(rules)
 	events := make([]Event, len(rlEvents))
 	for i, rle := range rlEvents {
-		events[i] = RateLimitEventToEvent(rle)
+		tags := matchEventToRuleTags(rle, sorted)
+		events[i] = RateLimitEventToEvent(rle, tags)
 	}
 	return events
+}
+
+// sortRulesByPriority returns a priority-sorted copy of rules for evaluation.
+func sortRulesByPriority(rules []RateLimitRule) []RateLimitRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	sorted := make([]RateLimitRule, len(rules))
+	copy(sorted, rules)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Priority < sorted[j].Priority
+	})
+	return sorted
 }

@@ -18,6 +18,7 @@ type RateLimitRule struct {
 	Window      string      `json:"window"`                   // Duration string: "1m", "30s", "1h"
 	Action      string      `json:"action,omitempty"`         // "deny" (default 429) or "log_only"
 	Priority    int         `json:"priority,omitempty"`       // Lower = evaluated first (0 = default)
+	Tags        []string    `json:"tags,omitempty"`           // Event classification tags (e.g., "api", "auth", "brute-force")
 	Enabled     bool        `json:"enabled"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`

@@ -198,7 +198,8 @@ export default function RateLimitsPanel() {
         r.name.toLowerCase().includes(q) ||
         r.description.toLowerCase().includes(q) ||
         r.service.toLowerCase().includes(q) ||
-        (r.conditions && r.conditions.some((c) => c.value.toLowerCase().includes(q)))
+        (r.conditions && r.conditions.some((c) => c.value.toLowerCase().includes(q))) ||
+        (r.tags && r.tags.some((t) => t.toLowerCase().includes(q)))
       );
     }
     return result;
@@ -618,6 +619,15 @@ export default function RateLimitsPanel() {
                               <p className={T.tableRowName}>{rule.name}</p>
                               {rule.description && (
                                 <p className="text-xs text-muted-foreground truncate max-w-[200px]">{rule.description}</p>
+                              )}
+                              {rule.tags && rule.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {rule.tags.map((tag) => (
+                                    <span key={tag} className="inline-flex items-center rounded bg-navy-800 border border-border px-1.5 py-0 text-[10px] font-mono text-neon-cyan">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           </TableCell>

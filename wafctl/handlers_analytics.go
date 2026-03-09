@@ -9,7 +9,7 @@ import (
 
 // --- Handlers: Analytics ---
 
-func handleTopBlockedIPs(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleTopBlockedIPs(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
@@ -25,7 +25,7 @@ func handleTopBlockedIPs(store *Store, als *AccessLogStore) http.HandlerFunc {
 			limit = 50
 		}
 		wafEvents := getWAFEvents(store, tr, hours)
-		rlEvents := getRLEvents(als, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours, rs.List())
 		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
 		all = append(all, wafEvents...)
 		all = append(all, rlEvents...)
@@ -35,7 +35,7 @@ func handleTopBlockedIPs(store *Store, als *AccessLogStore) http.HandlerFunc {
 	}
 }
 
-func handleTopTargetedURIs(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleTopTargetedURIs(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
@@ -51,7 +51,7 @@ func handleTopTargetedURIs(store *Store, als *AccessLogStore) http.HandlerFunc {
 			limit = 50
 		}
 		wafEvents := getWAFEvents(store, tr, hours)
-		rlEvents := getRLEvents(als, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours, rs.List())
 		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
 		all = append(all, wafEvents...)
 		all = append(all, rlEvents...)
@@ -61,7 +61,7 @@ func handleTopTargetedURIs(store *Store, als *AccessLogStore) http.HandlerFunc {
 	}
 }
 
-func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleTopCountries(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
@@ -78,7 +78,7 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 		}
 		// Merge WAF events + rate-limit/ipsum events
 		wafEvents := getWAFEvents(store, tr, hours)
-		rlEvents := getRLEvents(als, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours, rs.List())
 		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
 		all = append(all, wafEvents...)
 		all = append(all, rlEvents...)
@@ -90,7 +90,7 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 
 // --- Handler: IP Lookup ---
 
-func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *IPIntelStore) http.HandlerFunc {
+func handleIPLookup(store *Store, als *AccessLogStore, rs *RateLimitRuleStore, geo *GeoIPStore, intel *IPIntelStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := r.PathValue("ip")
 		if ip == "" {
@@ -115,7 +115,7 @@ func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *I
 		}
 
 		// Merge WAF events + access log events (rate_limited, ipsum_blocked).
-		rlEvents := getRLEvents(als, tr, hours)
+		rlEvents := getRLEvents(als, tr, hours, rs.List())
 		result := store.IPLookupRange(ip, tr, hours, limit, offset, rlEvents)
 
 		// Enrich with GeoIP information.
