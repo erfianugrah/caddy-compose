@@ -297,7 +297,7 @@ func TestBlocklistRefreshEndpoint(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/blocklist/refresh", nil)
 	w := httptest.NewRecorder()
 	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
-	handleBlocklistRefresh(bs, rs, deployCfg)(w, req)
+	handleBlocklistRefresh(bs, rs, nil, deployCfg)(w, req)
 
 	// The handler calls the real IPsum URL, so in CI this might fail.
 	// We just verify the handler doesn't panic and returns valid JSON.

@@ -181,7 +181,7 @@ func handleGenerateExclusions(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		exclusions := es.EnabledExclusions()
 		// Generate with a default config — this endpoint is exclusion-only.
-		result := GenerateConfigs(defaultConfig(), exclusions)
+		result := GenerateConfigs(defaultConfig(), exclusions, nil)
 		writeJSON(w, http.StatusOK, result)
 	}
 }

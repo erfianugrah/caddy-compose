@@ -10,7 +10,20 @@ import (
 // GenerateConfigs produces pre-crs.conf and post-crs.conf text from the
 // current WAF config and enabled exclusions.
 // Each call uses its own rule ID counter, making it safe for concurrent use.
-func GenerateConfigs(cfg WAFConfig, exclusions []RuleExclusion) GenerateResponse {
+//
+// When listStore is non-nil, in_list/not_in_list conditions are resolved
+// by expanding managed list items inline. For IP lists this uses @ipMatch;
+// for string/hostname lists this uses @pm (known substring limitation for Coraza).
+func GenerateConfigs(cfg WAFConfig, exclusions []RuleExclusion, listStore *ManagedListStore) GenerateResponse {
+	// Pre-resolve in_list/not_in_list conditions for SecRule generation.
+	if listStore != nil {
+		resolved := make([]RuleExclusion, len(exclusions))
+		copy(resolved, exclusions)
+		for i := range resolved {
+			resolved[i].Conditions = resolveSecRuleListConditions(resolved[i].Conditions, listStore)
+		}
+		exclusions = resolved
+	}
 	idGen := newRuleIDGen()
 	pre := generatePreCRS(cfg, exclusions, idGen)
 	post := generatePostCRS(cfg, exclusions)

@@ -717,7 +717,7 @@ func TestGenerateConfigs_EscapesInjection(t *testing.T) {
 		},
 	}
 	cfg := WAFConfig{Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 10}}
-	resp := GenerateConfigs(cfg, exclusions)
+	resp := GenerateConfigs(cfg, exclusions, nil)
 
 	// The value /api/"malicious should be escaped to /api/\"malicious in the output.
 	// Verify the escaped form is present (backslash-quote before malicious).

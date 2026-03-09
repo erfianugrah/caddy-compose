@@ -154,7 +154,7 @@ func runServe() int {
 			log.Printf("warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
 		}
 	}
-	blocklistStore.StartScheduledRefresh(refreshHour, deployCfg, rlRuleStore)
+	blocklistStore.StartScheduledRefresh(refreshHour, deployCfg, rlRuleStore, managedListStore)
 
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
@@ -210,7 +210,7 @@ func runServe() int {
 	mux.HandleFunc("POST /api/rate-rules", handleCreateRLRule(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rlRuleStore))
-	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, managedListStore, deployCfg))
 	mux.HandleFunc("PUT /api/rate-rules/reorder", handleReorderRLRules(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))
@@ -227,7 +227,7 @@ func runServe() int {
 	// Blocklist (IPsum)
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
-	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rlRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rlRuleStore, managedListStore, deployCfg))
 
 	// CSP (Content Security Policy)
 	mux.HandleFunc("GET /api/csp", handleGetCSP(cspStore))

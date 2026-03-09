@@ -336,7 +336,7 @@ func nextRefreshTime(now time.Time, hour int) time.Time {
 // blocklist daily at the specified UTC hour. This replaces the cron-based
 // update-ipsum.sh approach, which was unreliable inside hardened containers
 // (BusyBox crond silently skips crontabs with wrong file permissions).
-func (bs *BlocklistStore) StartScheduledRefresh(hour int, deployCfg DeployConfig, rs *RateLimitRuleStore) {
+func (bs *BlocklistStore) StartScheduledRefresh(hour int, deployCfg DeployConfig, rs *RateLimitRuleStore, ls *ManagedListStore) {
 	go func() {
 		for {
 			now := time.Now().UTC()
@@ -347,7 +347,7 @@ func (bs *BlocklistStore) StartScheduledRefresh(hour int, deployCfg DeployConfig
 			time.Sleep(delay)
 
 			log.Printf("[blocklist] starting scheduled refresh")
-			syncCaddyfileServices(rs, deployCfg)
+			syncCaddyfileServices(rs, ls, deployCfg)
 			result := bs.Refresh(deployCfg)
 			log.Printf("[blocklist] scheduled refresh complete: status=%s message=%q ips=%d", result.Status, result.Message, result.BlockedIPs)
 		}
@@ -377,10 +377,10 @@ func handleBlocklistCheck(bs *BlocklistStore) http.HandlerFunc {
 	}
 }
 
-func handleBlocklistRefresh(bs *BlocklistStore, rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleBlocklistRefresh(bs *BlocklistStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		// Ensure any new Caddyfile services have rate limit files before Caddy reloads.
-		syncCaddyfileServices(rs, deployCfg)
+		syncCaddyfileServices(rs, ls, deployCfg)
 
 		result := bs.Refresh(deployCfg)
 		status := http.StatusOK

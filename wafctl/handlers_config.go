@@ -53,7 +53,7 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListSt
 		allExclusions := es.EnabledExclusions()
 		// Filter out policy engine types when enabled.
 		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
-		result := GenerateConfigs(cfg, exclusions)
+		result := GenerateConfigs(cfg, exclusions, ls)
 		// Include WAF settings in the response.
 		wafSettings := GenerateWAFSettings(cfg)
 		resp := map[string]interface{}{
@@ -80,7 +80,7 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployC
 		cfg := cs.Get()
 		allExclusions := es.EnabledExclusions()
 		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
-		result := GenerateConfigs(cfg, exclusions)
+		result := GenerateConfigs(cfg, exclusions, nil)
 		wafSettings := GenerateWAFSettings(cfg)
 
 		vr := ValidateGeneratedConfig(result.PreCRS, result.PostCRS, wafSettings)
@@ -118,7 +118,7 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		// When policy engine is enabled, allow/block/honeypot go to the plugin's
 		// JSON file instead of Coraza SecRules. Filter them out before generation.
 		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
-		result := GenerateConfigs(cfg, exclusions)
+		result := GenerateConfigs(cfg, exclusions, ls)
 		wafSettings := GenerateWAFSettings(cfg)
 
 		// Validate generated config before writing.
@@ -178,7 +178,7 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		}
 
 		// Ensure any new Caddyfile services have rate limit files before reload.
-		syncCaddyfileServices(rs, deployCfg)
+		syncCaddyfileServices(rs, ls, deployCfg)
 
 		// Reload Caddy via admin API.
 		// Pass the config file paths so reloadCaddy can fingerprint them and

@@ -103,7 +103,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	// When policy engine is enabled, allow/block/honeypot go to the plugin's
 	// JSON file instead of Coraza SecRules. Filter them out before generation.
 	exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, ls)
 	wafSettings := GenerateWAFSettings(cfg)
 
 	// Validate generated config at boot to catch issues early.
@@ -144,7 +144,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 
 	rules := rs.EnabledRules()
 	global := rs.GetGlobal()
-	rlFiles := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath)
+	rlFiles := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
 	if len(rlFiles) > 0 {
 		written, err := writeRLFiles(deployCfg.RateLimitDir, rlFiles)
 		if err != nil {

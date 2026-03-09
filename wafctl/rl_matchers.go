@@ -5,6 +5,63 @@ import (
 	"strings"
 )
 
+// resolveRLListConditions expands in_list/not_in_list conditions by looking
+// up managed list items and converting them to operators the Caddy matchers
+// understand natively (in, ip_match, not_ip_match, not_in) or keeping them
+// as in_list/not_in_list with pipe-separated items for expression-based matching.
+func resolveRLListConditions(conditions []Condition, ls *ManagedListStore) []Condition {
+	if ls == nil {
+		return conditions
+	}
+	resolved := make([]Condition, len(conditions))
+	for i, c := range conditions {
+		if c.Operator != "in_list" && c.Operator != "not_in_list" {
+			resolved[i] = c
+			continue
+		}
+
+		items, _ := resolveListItems(ls, c.Value)
+		if len(items) == 0 {
+			// Empty list or not found — keep original (matcher returns "" for unknown op).
+			resolved[i] = c
+			continue
+		}
+
+		negate := c.Operator == "not_in_list"
+		switch c.Field {
+		case "ip":
+			if negate {
+				resolved[i] = Condition{Field: "ip", Operator: "not_ip_match", Value: strings.Join(items, " ")}
+			} else {
+				resolved[i] = Condition{Field: "ip", Operator: "ip_match", Value: strings.Join(items, " ")}
+			}
+		case "path", "uri_path":
+			if negate {
+				resolved[i] = Condition{Field: c.Field, Operator: "not_in", Value: strings.Join(items, "|")}
+			} else {
+				resolved[i] = Condition{Field: c.Field, Operator: "in", Value: strings.Join(items, "|")}
+			}
+		case "method":
+			if negate {
+				resolved[i] = Condition{Field: "method", Operator: "not_in", Value: strings.Join(items, "|")}
+			} else {
+				resolved[i] = Condition{Field: "method", Operator: "in", Value: strings.Join(items, "|")}
+			}
+		case "country":
+			if negate {
+				resolved[i] = Condition{Field: "country", Operator: "not_in", Value: strings.Join(items, "|")}
+			} else {
+				resolved[i] = Condition{Field: "country", Operator: "in", Value: strings.Join(items, "|")}
+			}
+		default:
+			// For fields without native "in" support (user_agent, header, cookie, etc.),
+			// keep in_list/not_in_list operator with pipe-separated items for expression matching.
+			resolved[i] = Condition{Field: c.Field, Operator: c.Operator, Value: strings.Join(items, "|")}
+		}
+	}
+	return resolved
+}
+
 // writeConditionMatchers writes Caddy matcher directives for conditions.
 func writeConditionMatchers(b *strings.Builder, conditions []Condition, groupOp string) {
 	if len(conditions) == 0 {
@@ -84,6 +141,9 @@ func rlPathMatcher(c Condition) string {
 	case "in":
 		paths := strings.Join(splitPipe(c.Value), " ")
 		return fmt.Sprintf("path %s", paths)
+	case "not_in":
+		paths := strings.Join(splitPipe(c.Value), " ")
+		return fmt.Sprintf("not path %s", paths)
 	case "neq":
 		return fmt.Sprintf("not path %s", c.Value)
 	}
@@ -97,6 +157,9 @@ func rlMethodMatcher(c Condition) string {
 	case "in":
 		methods := strings.Join(splitPipe(c.Value), " ")
 		return fmt.Sprintf("method %s", methods)
+	case "not_in":
+		methods := strings.Join(splitPipe(c.Value), " ")
+		return fmt.Sprintf("not method %s", methods)
 	case "neq":
 		return fmt.Sprintf("not method %s", c.Value)
 	}
@@ -125,6 +188,11 @@ func rlHeaderMatcher(c Condition) string {
 		return fmt.Sprintf("header %s *%s*", name, value)
 	case "regex":
 		return fmt.Sprintf("header_regexp %s %s", name, value)
+	case "in_list":
+		// After resolution, value is "HeaderName:item1|item2|..." — items are in the value part.
+		return rlExpressionInList(fmt.Sprintf("{http.request.header.%s}", name), value, false)
+	case "not_in_list":
+		return rlExpressionInList(fmt.Sprintf("{http.request.header.%s}", name), value, true)
 	}
 	return ""
 }
@@ -137,6 +205,10 @@ func rlUserAgentMatcher(c Condition) string {
 		return fmt.Sprintf("header User-Agent *%s*", c.Value)
 	case "regex":
 		return fmt.Sprintf("header_regexp User-Agent %s", c.Value)
+	case "in_list":
+		return rlExpressionInList("{http.request.header.User-Agent}", c.Value, false)
+	case "not_in_list":
+		return rlExpressionInList("{http.request.header.User-Agent}", c.Value, true)
 	}
 	return ""
 }
@@ -178,6 +250,17 @@ func rlCountryMatcher(c Condition) string {
 			parts = append(parts, fmt.Sprintf("{http.request.header.Cf-Ipcountry} == %q", cc))
 		}
 		return fmt.Sprintf("expression (%s)", strings.Join(parts, " || "))
+	case "not_in":
+		// not_in: block if country is NOT in list → match if country != all values.
+		countries := splitPipe(c.Value)
+		if len(countries) == 1 {
+			return fmt.Sprintf("not header Cf-Ipcountry %s", countries[0])
+		}
+		var parts []string
+		for _, cc := range countries {
+			parts = append(parts, fmt.Sprintf("{http.request.header.Cf-Ipcountry} != %q", cc))
+		}
+		return fmt.Sprintf("expression (%s)", strings.Join(parts, " && "))
 	}
 	return ""
 }
@@ -211,6 +294,10 @@ func rlRefererMatcher(c Condition) string {
 		return fmt.Sprintf("header Referer *%s*", c.Value)
 	case "regex":
 		return fmt.Sprintf("header_regexp Referer %s", c.Value)
+	case "in_list":
+		return rlExpressionInList("{http.request.header.Referer}", c.Value, false)
+	case "not_in_list":
+		return rlExpressionInList("{http.request.header.Referer}", c.Value, true)
 	}
 	return ""
 }
@@ -298,4 +385,28 @@ func rlBodyFormMatcher(c Condition) string {
 		return fmt.Sprintf("body form_regex %s %q", name, value)
 	}
 	return ""
+}
+
+// ─── Expression-based List Matchers ─────────────────────────────────
+
+// rlExpressionInList generates a Caddy CEL expression matcher for fields
+// that lack native "in" support. The items string is pipe-separated.
+// When negate is true, generates a "not in" expression (all != with &&).
+func rlExpressionInList(placeholder, items string, negate bool) string {
+	vals := splitPipe(items)
+	if len(vals) == 0 {
+		return ""
+	}
+	if negate {
+		var parts []string
+		for _, v := range vals {
+			parts = append(parts, fmt.Sprintf("%s != %q", placeholder, v))
+		}
+		return fmt.Sprintf("expression (%s)", strings.Join(parts, " && "))
+	}
+	var parts []string
+	for _, v := range vals {
+		parts = append(parts, fmt.Sprintf("%s == %q", placeholder, v))
+	}
+	return fmt.Sprintf("expression (%s)", strings.Join(parts, " || "))
 }

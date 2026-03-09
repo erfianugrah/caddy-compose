@@ -402,7 +402,7 @@ func TestGenerateConfig_CommasInNameSanitized(t *testing.T) {
 		},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// The msg field should have semicolons instead of commas.
 	if strings.Contains(result.PreCRS, "msg:'Policy Skip: Skip 920271, 942430") {

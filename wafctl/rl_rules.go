@@ -447,12 +447,12 @@ func (s *RateLimitRuleStore) MergeCaddyfileServices(caddyfilePath string) int {
 
 // syncCaddyfileServices discovers new services from the Caddyfile and
 // writes RL files for any that were added. Called before every Caddy reload.
-func syncCaddyfileServices(rs *RateLimitRuleStore, deployCfg DeployConfig) int {
+func syncCaddyfileServices(rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) int {
 	added := rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
 	if added > 0 {
 		rules := rs.EnabledRules()
 		global := rs.GetGlobal()
-		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath)
+		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
 		if _, err := writeRLFiles(deployCfg.RateLimitDir, files); err != nil {
 			log.Printf("warning: failed to write RL files after Caddyfile sync: %v", err)
 		}

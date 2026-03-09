@@ -86,7 +86,7 @@ func handleDeleteRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 	}
 }
 
-func handleDeployRLRules(rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployRLRules(rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -95,7 +95,7 @@ func handleDeployRLRules(rs *RateLimitRuleStore, deployCfg DeployConfig) http.Ha
 
 		rules := rs.EnabledRules()
 		global := rs.GetGlobal()
-		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath)
+		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
 
 		written, err := writeRLFiles(deployCfg.RateLimitDir, files)
 		if err != nil {

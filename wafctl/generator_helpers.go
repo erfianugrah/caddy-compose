@@ -5,6 +5,51 @@ import (
 	"strings"
 )
 
+// ─── List Condition Resolution ──────────────────────────────────────
+
+// resolveSecRuleListConditions expands in_list/not_in_list conditions by
+// looking up managed list items and converting them to SecRule-compatible
+// operators: @ipMatch for IP lists, @pm for string/hostname lists.
+func resolveSecRuleListConditions(conditions []Condition, ls *ManagedListStore) []Condition {
+	if ls == nil {
+		return conditions
+	}
+	resolved := make([]Condition, len(conditions))
+	for i, c := range conditions {
+		if c.Operator != "in_list" && c.Operator != "not_in_list" {
+			resolved[i] = c
+			continue
+		}
+
+		items, kind := resolveListItems(ls, c.Value)
+		if len(items) == 0 {
+			// Empty list or not found — keep original (conditionOperator returns @streq for unknown).
+			resolved[i] = c
+			continue
+		}
+
+		negate := c.Operator == "not_in_list"
+		if c.Field == "ip" || kind == "ip" {
+			// IP lists use @ipMatch for proper CIDR-aware matching.
+			if negate {
+				resolved[i] = Condition{Field: c.Field, Operator: "not_ip_match", Value: strings.Join(items, " ")}
+			} else {
+				resolved[i] = Condition{Field: c.Field, Operator: "ip_match", Value: strings.Join(items, " ")}
+			}
+		} else {
+			// String/hostname/ASN lists use @pm (Aho-Corasick substring match).
+			// Known limitation: @pm does substring matching, not exact.
+			// For exact matching, use the policy engine plugin instead.
+			if negate {
+				resolved[i] = Condition{Field: c.Field, Operator: "not_pm", Value: strings.Join(items, " ")}
+			} else {
+				resolved[i] = Condition{Field: c.Field, Operator: "in", Value: strings.Join(items, " ")}
+			}
+		}
+	}
+	return resolved
+}
+
 // ─── Condition → SecRule mapping ────────────────────────────────────
 
 // conditionVariable maps a condition field to its SecRule variable.
@@ -96,6 +141,8 @@ func conditionOperator(c Condition) (string, bool) {
 		return "@ipMatch", true
 	case "in":
 		return "@pm", false
+	case "not_pm":
+		return "@pm", true
 	default:
 		return "@streq", false
 	}

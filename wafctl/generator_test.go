@@ -27,7 +27,7 @@ func TestGenerateConfigBasic(t *testing.T) {
 		{Name: "Runtime remove target", Type: "runtime_remove_target_by_id", RuleID: "943100", Variable: "ARGS:data", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/webhook"}}, Enabled: true},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// Pre-CRS should NOT contain CRS setup rules — those are in the Caddyfile WAF tiers.
 	if strings.Contains(result.PreCRS, "blocking_paranoia_level") {
@@ -71,7 +71,7 @@ func TestGenerateConfigBasic(t *testing.T) {
 func TestGenerateConfigEmpty(t *testing.T) {
 
 	cfg := defaultConfig()
-	result := GenerateConfigs(cfg, nil)
+	result := GenerateConfigs(cfg, nil, nil)
 
 	// Pre-CRS should NOT contain CRS setup — those are per-tier in the Caddyfile.
 	if strings.Contains(result.PreCRS, "blocking_paranoia_level") {
@@ -534,7 +534,7 @@ func TestGenerateWithMethodFilter(t *testing.T) {
 		},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// Should have a chained rule: METHOD match then URI match
 	if !strings.Contains(result.PreCRS, `REQUEST_METHOD "@streq POST"`) {
@@ -564,7 +564,7 @@ func TestGenerateWithMultiMethodFilter(t *testing.T) {
 		},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// Multiple methods should use @pm with space-separated values (not pipe-separated)
 	if !strings.Contains(result.PreCRS, `@pm POST PUT`) {
@@ -595,7 +595,7 @@ func TestGenerateWithPathOperator(t *testing.T) {
 		},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, `@rx ^/api/v[0-9]+/webhook`) {
 		t.Error("pre-crs should contain @rx operator")
@@ -622,7 +622,7 @@ func TestGenerateWithMethodAndOperator(t *testing.T) {
 		},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// Should have chained: METHOD then URI with @rx
 	if !strings.Contains(result.PreCRS, `REQUEST_METHOD "@streq POST"`) {
@@ -895,7 +895,7 @@ func TestGenerateAllowByIP(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Allow my IP", Type: "allow", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "195.240.81.42"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "@ipMatch 195.240.81.42") {
 		t.Error("expected @ipMatch in pre-CRS output")
@@ -913,7 +913,7 @@ func TestGenerateAllowByIPAndPath(t *testing.T) {
 			{Field: "path", Operator: "begins_with", Value: "/api/"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "@ipMatch 10.0.0.0/8") {
 		t.Error("expected @ipMatch in pre-CRS output")
@@ -936,7 +936,7 @@ func TestGenerateMultiConditionSkipRuleUsesChain(t *testing.T) {
 			{Field: "host", Operator: "eq", Value: "servarr.erfi.io"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "chain") {
 		t.Errorf("expected chain for multi-condition skip_rule, got:\n%s", result.PreCRS)
@@ -968,7 +968,7 @@ func TestCTLActionsOnLastChainRule(t *testing.T) {
 			{Field: "method", Operator: "in", Value: "POST|PUT"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	lines := strings.Split(result.PreCRS, "\n")
 	var firstLine, lastLine string
@@ -1004,7 +1004,7 @@ func TestGenerateBlockMultiConditionUsesChain(t *testing.T) {
 			{Field: "path", Operator: "begins_with", Value: "/api/"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "chain") {
 		t.Error("expected chain for multi-condition block rule")
@@ -1019,7 +1019,7 @@ func TestGenerateBlockByIP(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Block bad actor", Type: "block", Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "192.168.1.100"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "@ipMatch 192.168.1.100") {
 		t.Error("expected @ipMatch in pre-CRS output")
@@ -1034,7 +1034,7 @@ func TestGenerateBlockByUA(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Block bad bot", Type: "block", Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "BadBot.*"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:User-Agent") {
 		t.Error("expected User-Agent check in pre-CRS output")
@@ -1049,7 +1049,7 @@ func TestGenerateAnomalyByUA(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Generic HTTP library", Type: "anomaly", AnomalyScore: 5, Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "python-requests|go-http-client"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:User-Agent") {
 		t.Error("expected User-Agent check in pre-CRS output")
@@ -1070,7 +1070,7 @@ func TestGenerateAnomalyWithParanoiaLevel(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "HTTP/1.0 signal", Type: "anomaly", AnomalyScore: 2, AnomalyParanoiaLevel: 2, Conditions: []Condition{{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "setvar:'tx.anomaly_score_pl2=+2'") {
 		t.Errorf("expected setvar with PL2 anomaly score, got:\n%s", result.PreCRS)
@@ -1082,7 +1082,7 @@ func TestGenerateAnomalyDefaultParanoiaLevel(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Test", Type: "anomaly", AnomalyScore: 3, AnomalyParanoiaLevel: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// PL 0 should default to PL 1
 	if !strings.Contains(result.PreCRS, "setvar:'tx.anomaly_score_pl1=+3'") {
@@ -1098,7 +1098,7 @@ func TestGenerateAnomalyMultiConditionChain(t *testing.T) {
 			{Field: "method", Operator: "eq", Value: "GET"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "chain") {
 		t.Error("expected chained rule for multi-condition anomaly")
@@ -1113,7 +1113,7 @@ func TestGenerateSkipRule(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Skip 920420 for socket.io", Type: "skip_rule", RuleID: "920420", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/socket.io/"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveById=920420") {
 		t.Error("expected ctl:ruleRemoveById in pre-CRS output")
@@ -1128,7 +1128,7 @@ func TestGenerateSkipRuleByTag(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Skip SQLi for API", Type: "skip_rule", RuleTag: "attack-sqli", Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api/v3/"}}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveByTag=attack-sqli") {
 		t.Error("expected ctl:ruleRemoveByTag in pre-CRS output")
@@ -1141,7 +1141,7 @@ func TestGenerateRawRule(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{Name: "Custom block admin", Type: "raw", RawRule: rawDirective, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, rawDirective) {
 		t.Error("expected raw rule verbatim in pre-CRS output")
@@ -1197,7 +1197,7 @@ func TestGenerateBlockByCountry(t *testing.T) {
 			{Field: "country", Operator: "eq", Value: "CN"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
 		t.Error("expected REQUEST_HEADERS:Cf-Ipcountry variable in pre-CRS output")
@@ -1217,7 +1217,7 @@ func TestGenerateBlockByCountryList(t *testing.T) {
 			{Field: "country", Operator: "in", Value: "CN RU KP IR"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
 		t.Error("expected Cf-Ipcountry header variable")
@@ -1234,7 +1234,7 @@ func TestGenerateAllowByCountry(t *testing.T) {
 			{Field: "country", Operator: "eq", Value: "US"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
 		t.Error("expected Cf-Ipcountry variable for country allow")
@@ -1252,7 +1252,7 @@ func TestGenerateBlockByCountryAndPath(t *testing.T) {
 			{Field: "path", Operator: "begins_with", Value: "/api/"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
 		t.Error("expected Cf-Ipcountry variable")
@@ -1272,7 +1272,7 @@ func TestGenerateSkipRuleByCountry(t *testing.T) {
 			{Field: "country", Operator: "eq", Value: "DE"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Cf-Ipcountry") {
 		t.Error("expected Cf-Ipcountry variable for skip_rule")
@@ -1389,7 +1389,7 @@ func TestGenerateBlockByCookie(t *testing.T) {
 			{Field: "cookie", Operator: "contains", Value: "tracking:malicious"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES:tracking") {
 		t.Error("expected REQUEST_COOKIES:tracking variable")
@@ -1409,7 +1409,7 @@ func TestGenerateSkipRuleByCookie(t *testing.T) {
 			{Field: "cookie", Operator: "regex", Value: "authelia_session:.*"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES:authelia_session") {
 		t.Error("expected REQUEST_COOKIES:authelia_session variable")
@@ -1429,7 +1429,7 @@ func TestGenerateBlockByBody(t *testing.T) {
 			{Field: "body", Operator: "contains", Value: "<script>alert"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_BODY") {
 		t.Error("expected REQUEST_BODY variable")
@@ -1446,7 +1446,7 @@ func TestGenerateBlockByArgs(t *testing.T) {
 			{Field: "args", Operator: "eq", Value: "action:delete"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "ARGS:action") {
 		t.Error("expected ARGS:action variable")
@@ -1463,7 +1463,7 @@ func TestGenerateAllowByURIPath(t *testing.T) {
 			{Field: "uri_path", Operator: "begins_with", Value: "/uploads/"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_FILENAME") {
 		t.Error("expected REQUEST_FILENAME variable for uri_path")
@@ -1480,7 +1480,7 @@ func TestGenerateBlockByReferer(t *testing.T) {
 			{Field: "referer", Operator: "contains", Value: "spam-site.com"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_HEADERS:Referer") {
 		t.Error("expected REQUEST_HEADERS:Referer variable")
@@ -1497,7 +1497,7 @@ func TestGenerateBlockByResponseStatus(t *testing.T) {
 			{Field: "response_status", Operator: "eq", Value: "500"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "RESPONSE_STATUS") {
 		t.Error("expected RESPONSE_STATUS variable")
@@ -1514,7 +1514,7 @@ func TestGenerateBlockByHTTPVersion(t *testing.T) {
 			{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_PROTOCOL") {
 		t.Error("expected REQUEST_PROTOCOL variable")
@@ -1531,7 +1531,7 @@ func TestGenerateBlockByResponseHeader(t *testing.T) {
 			{Field: "response_header", Operator: "contains", Value: "Server:nginx"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "RESPONSE_HEADERS:Server") {
 		t.Error("expected RESPONSE_HEADERS:Server variable")
@@ -1549,7 +1549,7 @@ func TestGenerateCookieWithoutColon(t *testing.T) {
 			{Field: "cookie", Operator: "contains", Value: "malicious_value"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "REQUEST_COOKIES") {
 		t.Error("expected REQUEST_COOKIES variable (no specific cookie name)")
@@ -1568,7 +1568,7 @@ func TestGenerateMultiConditionWithNewFields(t *testing.T) {
 			{Field: "cookie", Operator: "regex", Value: "authelia_session:.*"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "SERVER_NAME") {
 		t.Error("expected SERVER_NAME for host condition")
@@ -1599,7 +1599,7 @@ func TestGenerateRuntimeRemoveTargetByTag(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveTargetByTag=OWASP_CRS;REQUEST_COOKIES:authelia_session") {
 		t.Errorf("expected ctl:ruleRemoveTargetByTag action, got:\n%s", result.PreCRS)
@@ -1620,7 +1620,7 @@ func TestGenerateRuntimeRemoveTargetByTagConditional(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "ctl:ruleRemoveTargetByTag=attack-rce;REQUEST_COOKIES:authelia_session") {
 		t.Errorf("expected ctl:ruleRemoveTargetByTag with attack-rce tag, got:\n%s", result.PreCRS)
@@ -1716,7 +1716,7 @@ func TestGenerateHoneypotSingle(t *testing.T) {
 			{Field: "path", Operator: "in", Value: "/wp-admin/ /wp-login.php /xmlrpc.php"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "id:9100021") {
 		t.Error("expected rule ID 9100021 for dynamic honeypot")
@@ -1745,7 +1745,7 @@ func TestGenerateHoneypotMultipleGroups(t *testing.T) {
 			{Field: "path", Operator: "in", Value: "/phpmyadmin /adminer"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// Should consolidate into ONE SecRule
 	if strings.Count(result.PreCRS, "id:9100021") != 1 {
@@ -1777,7 +1777,7 @@ func TestGenerateHoneypotDedup(t *testing.T) {
 			{Field: "path", Operator: "in", Value: "/.env /phpmyadmin"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// /.env should appear only once in the @pm pattern
 	count := strings.Count(result.PreCRS, "/.env")
@@ -1791,7 +1791,7 @@ func TestGenerateHoneypotDisabledSkipped(t *testing.T) {
 	// In production, EnabledExclusions() filters before calling GenerateConfigs.
 	// Simulate: pass no enabled honeypots.
 	exclusions := []RuleExclusion{}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if strings.Contains(result.PreCRS, "9100021") {
 		t.Error("no honeypot exclusions should not generate a rule")
@@ -1805,7 +1805,7 @@ func TestGenerateHoneypotWithEqOperator(t *testing.T) {
 			{Field: "path", Operator: "eq", Value: "/phpmyadmin"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	if !strings.Contains(result.PreCRS, "@pm /phpmyadmin") {
 		t.Error("expected @pm with single path from eq condition")
@@ -1825,7 +1825,7 @@ func TestGenerateHoneypotMixedWithQuickActions(t *testing.T) {
 			{Field: "user_agent", Operator: "contains", Value: "BadBot"},
 		}, Enabled: true},
 	}
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// All three should appear in pre-CRS
 	if !strings.Contains(result.PreCRS, "ctl:ruleEngine=Off") {
@@ -1954,7 +1954,7 @@ func TestGenerateConfigs_MultiRuleIDSkipRule(t *testing.T) {
 		},
 	}
 
-	result := GenerateConfigs(cfg, exclusions)
+	result := GenerateConfigs(cfg, exclusions, nil)
 
 	// The pre-CRS output should have separate ctl actions for each rule ID.
 	for _, id := range []string{"932235", "932300", "932236", "942430"} {

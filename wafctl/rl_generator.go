@@ -14,7 +14,21 @@ import (
 // Returns a map of filename → content (e.g. "sonarr_rl.caddy" → "rate_limit { ... }").
 // Also includes a cleanup list of filenames that SHOULD exist; writeRLFiles uses this
 // to remove stale files for deleted services.
-func GenerateRateLimitConfigs(rules []RateLimitRule, global RateLimitGlobalConfig, caddyfilePath string) map[string]string {
+//
+// When listStore is non-nil, in_list/not_in_list conditions are resolved by
+// looking up managed list items and expanding them inline into Caddy matcher syntax.
+func GenerateRateLimitConfigs(rules []RateLimitRule, global RateLimitGlobalConfig, caddyfilePath string, listStore *ManagedListStore) map[string]string {
+	// Pre-resolve in_list/not_in_list conditions before generating Caddy configs.
+	// Make a shallow copy to avoid mutating the caller's slice.
+	if listStore != nil {
+		resolved := make([]RateLimitRule, len(rules))
+		copy(resolved, rules)
+		for i := range resolved {
+			resolved[i].Conditions = resolveRLListConditions(resolved[i].Conditions, listStore)
+		}
+		rules = resolved
+	}
+
 	// Group enabled rules by service.
 	byService := make(map[string][]RateLimitRule)
 	for _, r := range rules {

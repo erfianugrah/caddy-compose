@@ -409,7 +409,7 @@ func TestRLConditionToMatcher(t *testing.T) {
 // ─── Full Generator ─────────────────────────────────────────────────
 
 func TestGenerateRateLimitConfigsEmpty(t *testing.T) {
-	files := GenerateRateLimitConfigs(nil, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(nil, RateLimitGlobalConfig{}, "", nil)
 	if len(files) != 0 {
 		t.Fatalf("want 0 files for nil rules, got %d", len(files))
 	}
@@ -424,7 +424,7 @@ func TestGenerateRateLimitConfigsBasicDeny(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	content, ok := files["sonarr_rl.caddy"]
 	if !ok {
 		t.Fatal("want sonarr_rl.caddy in output")
@@ -468,7 +468,7 @@ func TestGenerateRateLimitConfigsLogOnly(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	content := files["sonarr_rl.caddy"]
 
 	// log_only should NOT produce a rate_limit block.
@@ -498,7 +498,7 @@ func TestGenerateRateLimitConfigsMixed(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	content := files["sonarr_rl.caddy"]
 
 	// Should have both rate_limit block and monitor block.
@@ -519,7 +519,7 @@ func TestGenerateRateLimitConfigsDisabledSkipped(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	if len(files) != 0 {
 		t.Fatalf("want 0 files for disabled-only rules, got %d", len(files))
 	}
@@ -542,7 +542,7 @@ func TestGenerateRateLimitConfigsGlobalSettings(t *testing.T) {
 		PurgeAge:      "1m",
 	}
 
-	files := GenerateRateLimitConfigs(rules, global, "")
+	files := GenerateRateLimitConfigs(rules, global, "", nil)
 	content := files["sonarr_rl.caddy"]
 
 	if !strings.Contains(content, "jitter 0.50") {
@@ -578,7 +578,7 @@ func TestGenerateRateLimitConfigsWithConditions(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	content := files["sonarr_rl.caddy"]
 
 	if !strings.Contains(content, "path /api*") {
@@ -603,7 +603,7 @@ func TestGenerateRateLimitConfigsMultiService(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	if len(files) != 2 {
 		t.Fatalf("want 2 files, got %d", len(files))
 	}
@@ -622,7 +622,7 @@ func TestGenerateRateLimitConfigsCaddyfileDiscovery(t *testing.T) {
 	os.WriteFile(caddyfile, []byte(content), 0644)
 
 	// No rules for prowlarr — should still produce a placeholder file.
-	files := GenerateRateLimitConfigs(nil, RateLimitGlobalConfig{}, caddyfile)
+	files := GenerateRateLimitConfigs(nil, RateLimitGlobalConfig{}, caddyfile, nil)
 	fc, ok := files["prowlarr_rl.caddy"]
 	if !ok {
 		t.Fatal("want prowlarr_rl.caddy from Caddyfile discovery")
@@ -648,7 +648,7 @@ func TestGenerateRateLimitConfigsPrioritySorted(t *testing.T) {
 		},
 	}
 
-	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "")
+	files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
 	content := files["sonarr_rl.caddy"]
 
 	// "high" should appear before "low" in the output.
@@ -1035,6 +1035,165 @@ func TestWriteBodyVarsBlock(t *testing.T) {
 		rlIdx := strings.Index(got, "rate_limit {")
 		if bvIdx >= rlIdx {
 			t.Errorf("body_vars must come before rate_limit in output:\n%s", got)
+		}
+	})
+}
+
+// ─── in_list / not_in_list resolution ───────────────────────────────
+
+func TestGenerateRateLimitConfigsInList(t *testing.T) {
+	// Create a list store with test items.
+	dir := t.TempDir()
+	ls := NewManagedListStore(filepath.Join(dir, "lists.json"), dir)
+
+	// Create an IP list.
+	_, err := ls.Create(ManagedList{
+		Name:   "bad-ips",
+		Kind:   "ip",
+		Source: "manual",
+		Items:  []string{"10.0.0.1", "10.0.0.2", "192.168.1.0/24"},
+	})
+	if err != nil {
+		t.Fatalf("creating IP list: %v", err)
+	}
+
+	// Create a string list.
+	_, err = ls.Create(ManagedList{
+		Name:   "blocked-paths",
+		Kind:   "string",
+		Source: "manual",
+		Items:  []string{"/admin", "/secret", "/internal"},
+	})
+	if err != nil {
+		t.Fatalf("creating string list: %v", err)
+	}
+
+	// Create a string list for UAs.
+	_, err = ls.Create(ManagedList{
+		Name:   "bad-bots",
+		Kind:   "string",
+		Source: "manual",
+		Items:  []string{"EvilBot/1.0", "Scraper/2.0"},
+	})
+	if err != nil {
+		t.Fatalf("creating UA list: %v", err)
+	}
+
+	t.Run("ip in_list resolves to remote_ip", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r1", Name: "ip-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "bad-ips"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		if !strings.Contains(content, "remote_ip 10.0.0.1 10.0.0.2 192.168.1.0/24") {
+			t.Errorf("expected remote_ip with expanded IPs, got:\n%s", content)
+		}
+	})
+
+	t.Run("ip not_in_list resolves to not remote_ip", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r2", Name: "not-ip-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "ip", Operator: "not_in_list", Value: "bad-ips"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		if !strings.Contains(content, "not remote_ip 10.0.0.1 10.0.0.2 192.168.1.0/24") {
+			t.Errorf("expected not remote_ip with expanded IPs, got:\n%s", content)
+		}
+	})
+
+	t.Run("path in_list resolves to path matcher", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r3", Name: "path-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "path", Operator: "in_list", Value: "blocked-paths"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		if !strings.Contains(content, "path /admin /secret /internal") {
+			t.Errorf("expected path with expanded items, got:\n%s", content)
+		}
+	})
+
+	t.Run("path not_in_list resolves to not path", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r4", Name: "not-path-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "path", Operator: "not_in_list", Value: "blocked-paths"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		if !strings.Contains(content, "not path /admin /secret /internal") {
+			t.Errorf("expected not path with expanded items, got:\n%s", content)
+		}
+	})
+
+	t.Run("user_agent in_list resolves to expression", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r5", Name: "ua-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "user_agent", Operator: "in_list", Value: "bad-bots"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		if !strings.Contains(content, "expression") {
+			t.Errorf("expected expression matcher for UA in_list, got:\n%s", content)
+		}
+		if !strings.Contains(content, "EvilBot/1.0") || !strings.Contains(content, "Scraper/2.0") {
+			t.Errorf("expected expanded UA items in expression, got:\n%s", content)
+		}
+		if !strings.Contains(content, "||") {
+			t.Errorf("expected || (OR) in expression for in_list, got:\n%s", content)
+		}
+	})
+
+	t.Run("user_agent not_in_list resolves to negated expression", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r6", Name: "not-ua-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "user_agent", Operator: "not_in_list", Value: "bad-bots"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		if !strings.Contains(content, "expression") {
+			t.Errorf("expected expression matcher for UA not_in_list, got:\n%s", content)
+		}
+		if !strings.Contains(content, "&&") {
+			t.Errorf("expected && (AND) in expression for not_in_list, got:\n%s", content)
+		}
+		if !strings.Contains(content, "!=") {
+			t.Errorf("expected != in expression for not_in_list, got:\n%s", content)
+		}
+	})
+
+	t.Run("empty list produces no matcher", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r7", Name: "missing-list", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "nonexistent-list"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", ls)
+		content := files["test_rl.caddy"]
+		// With unresolved in_list, the matcher returns "" — only WebSocket exclusion remains.
+		if strings.Contains(content, "remote_ip") {
+			t.Errorf("expected no remote_ip for missing list, got:\n%s", content)
+		}
+	})
+
+	t.Run("nil store passes through unchanged", func(t *testing.T) {
+		rules := []RateLimitRule{{
+			ID: "r8", Name: "no-store", Service: "test", Key: "client_ip",
+			Events: 10, Window: "1m", Enabled: true,
+			Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "bad-ips"}},
+		}}
+		files := GenerateRateLimitConfigs(rules, RateLimitGlobalConfig{}, "", nil)
+		content := files["test_rl.caddy"]
+		// Without a store, in_list is not resolved — no remote_ip matcher.
+		if strings.Contains(content, "remote_ip") {
+			t.Errorf("expected no remote_ip without list store, got:\n%s", content)
 		}
 	})
 }
