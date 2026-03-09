@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, ChevronDown, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Condition, ConditionField, ConditionOperator, ServiceDetail } from "@/lib/api";
+import { fetchManagedLists, compatibleKinds, type ManagedList } from "@/lib/api";
 import { CONDITION_FIELDS, getFieldDef, type FieldDef } from "./constants";
 import { MethodMultiSelect, PipeTagInput } from "./TagInputs";
 
@@ -79,6 +80,73 @@ export function HostValueInput({
   );
 }
 
+// ─── List Value Select ──────────────────────────────────────────────
+
+/** Dropdown to pick a managed list name, filtered by field-kind compatibility. */
+export function ListValueSelect({
+  value,
+  field,
+  onChange,
+}: {
+  value: string;
+  field: ConditionField;
+  onChange: (value: string) => void;
+}) {
+  const [lists, setLists] = useState<ManagedList[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetchManagedLists()
+      .then(setLists)
+      .catch(() => setLists([]))
+      .finally(() => setLoaded(true));
+  }, []);
+
+  // Filter lists by field-kind compatibility.
+  const kinds = compatibleKinds(field);
+  const compatible = lists.filter((l) => kinds.includes(l.kind));
+
+  return (
+    <div className="flex flex-1 gap-1.5">
+      <Select value={value || undefined} onValueChange={onChange}>
+        <SelectTrigger className="flex-1">
+          <div className="flex items-center gap-1.5">
+            <List className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <SelectValue placeholder={loaded ? "Select list..." : "Loading..."} />
+          </div>
+        </SelectTrigger>
+        <SelectContent>
+          {compatible.length === 0 ? (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              {loaded ? "No compatible lists found" : "Loading..."}
+            </div>
+          ) : (
+            compatible.map((l) => (
+              <SelectItem key={l.name} value={l.name}>
+                <div className="flex items-center gap-2">
+                  <span>{l.name}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {l.kind} &middot; {l.item_count.toLocaleString()} items
+                  </span>
+                </div>
+              </SelectItem>
+            ))
+          )}
+        </SelectContent>
+      </Select>
+      {value && (
+        <a
+          href="/lists"
+          className="flex items-center shrink-0 text-xs text-muted-foreground hover:text-neon-cyan"
+          title="Manage lists"
+        >
+          <List className="h-3.5 w-3.5" />
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ─── Condition Row ──────────────────────────────────────────────────
 
 export function ConditionRow({
@@ -99,6 +167,8 @@ export function ConditionRow({
   const availableFields = fields ?? CONDITION_FIELDS;
   const fieldDef = getFieldDef(condition.field);
   const operators = fieldDef.operators;
+
+  const isListOp = condition.operator === "in_list" || condition.operator === "not_in_list";
 
   return (
     <div className="flex items-start gap-2">
@@ -128,7 +198,7 @@ export function ConditionRow({
       {/* Operator selector */}
       <Select
         value={condition.operator}
-        onValueChange={(v) => onChange(index, { ...condition, operator: v as ConditionOperator })}
+        onValueChange={(v) => onChange(index, { ...condition, operator: v as ConditionOperator, value: "" })}
       >
         <SelectTrigger className="w-[160px] shrink-0">
           <SelectValue />
@@ -142,7 +212,13 @@ export function ConditionRow({
 
       {/* Value input — specialized inputs for specific field/operator combos */}
       <div className="flex flex-1 flex-col gap-1">
-        {condition.field === "host" ? (
+        {isListOp ? (
+          <ListValueSelect
+            value={condition.value}
+            field={condition.field}
+            onChange={(v) => onChange(index, { ...condition, value: v })}
+          />
+        ) : condition.field === "host" ? (
           <HostValueInput
             value={condition.value}
             services={services}
@@ -167,7 +243,7 @@ export function ConditionRow({
             className="flex-1"
           />
         )}
-        {fieldDef.hint && (
+        {fieldDef.hint && !isListOp && (
           <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
         )}
       </div>

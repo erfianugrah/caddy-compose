@@ -16,6 +16,7 @@ const navItems = [
   { id: "services", label: "Services", href: "/services", icon: "server" },
   { id: "policy", label: "Policy", href: "/policy", icon: "shield" },
   { id: "rate-limits", label: "Rate Limits", href: "/rate-limits", icon: "gauge" },
+  { id: "lists", label: "Lists", href: "/lists", icon: "list-tree" },
   { id: "blocklist", label: "Blocklist", href: "/blocklist", icon: "ban" },
   { id: "csp", label: "CSP", href: "/csp", icon: "lock" },
   { id: "settings", label: "Settings", href: "/settings", icon: "settings" },
@@ -164,6 +165,25 @@ const navItems = [
                       stroke-width="2"
                     >
                       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  )}
+                  {/* List Tree / Managed Lists */}
+                  {item.icon === "list-tree" && (
+                    <svg
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <line x1="8" y1="6" x2="21" y2="6" />
+                      <line x1="8" y1="12" x2="21" y2="12" />
+                      <line x1="8" y1="18" x2="21" y2="18" />
+                      <line x1="3" y1="6" x2="3.01" y2="6" />
+                      <line x1="3" y1="12" x2="3.01" y2="12" />
+                      <line x1="3" y1="18" x2="3.01" y2="18" />
                     </svg>
                   )}
                   {/* Ban / Blocklist */}

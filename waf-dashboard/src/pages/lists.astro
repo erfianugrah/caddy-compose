@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import ManagedListsPanel from "../components/ManagedListsPanel";
+---
+
+<DashboardLayout title="wafctl — Managed Lists" active="lists">
+  <ManagedListsPanel client:load />
+</DashboardLayout>

@@ -1,0 +1,612 @@
+import { useState, useEffect, useCallback } from "react";
+import {
+  List, Plus, RefreshCw, Trash2, Pencil, Download, Upload,
+  Globe, Database, ExternalLink, Copy, Check,
+} from "lucide-react";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  fetchManagedLists, getManagedList, createManagedList, updateManagedList,
+  deleteManagedList, refreshManagedList, exportManagedLists, importManagedLists,
+  type ManagedList, type ManagedListCreate, type ManagedListUpdate,
+} from "@/lib/api";
+import { T } from "@/lib/typography";
+
+// ─── Kind / Source Badge Colors ─────────────────────────────────────
+
+const KIND_COLORS: Record<string, string> = {
+  ip: "bg-neon-pink/10 text-neon-pink border-neon-pink/20",
+  hostname: "bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20",
+  string: "bg-neon-green/10 text-neon-green border-neon-green/20",
+  asn: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+};
+
+const SOURCE_ICONS: Record<string, typeof Database> = {
+  manual: Database,
+  url: Globe,
+  ipsum: ExternalLink,
+};
+
+// ─── List Card ──────────────────────────────────────────────────────
+
+function ListCard({
+  list,
+  onEdit,
+  onDelete,
+  onRefresh,
+}: {
+  list: ManagedList;
+  onEdit: () => void;
+  onDelete: () => void;
+  onRefresh: () => void;
+}) {
+  const SourceIcon = SOURCE_ICONS[list.source] ?? Database;
+  const isReadOnly = list.source === "ipsum";
+
+  return (
+    <Card className="group">
+      <CardContent className="pt-4 pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium font-mono truncate">{list.name}</h3>
+              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${KIND_COLORS[list.kind] ?? ""}`}>
+                {list.kind}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                <SourceIcon className="mr-1 h-2.5 w-2.5" />
+                {list.source}
+              </Badge>
+            </div>
+            {list.description && (
+              <p className="mt-1 text-xs text-muted-foreground truncate">{list.description}</p>
+            )}
+            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span>{list.item_count.toLocaleString()} items</span>
+              {list.url && (
+                <span className="truncate max-w-[200px]" title={list.url}>{list.url}</span>
+              )}
+              <span>Updated {new Date(list.updated_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {list.source === "url" && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRefresh} title="Refresh from URL">
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {!isReadOnly && (
+              <>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit} title="Edit">
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-neon-pink" onClick={onDelete} title="Delete">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Create / Edit Dialog ───────────────────────────────────────────
+
+interface FormState {
+  name: string;
+  description: string;
+  kind: ManagedList["kind"];
+  source: ManagedList["source"];
+  url: string;
+  itemsText: string;
+}
+
+const emptyForm: FormState = {
+  name: "", description: "", kind: "ip", source: "manual", url: "", itemsText: "",
+};
+
+function ListFormDialog({
+  open,
+  onOpenChange,
+  editing,
+  onSave,
+  saving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editing: ManagedList | null;
+  onSave: (form: FormState) => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<FormState>(emptyForm);
+
+  useEffect(() => {
+    if (open && editing) {
+      setForm({
+        name: editing.name,
+        description: editing.description ?? "",
+        kind: editing.kind,
+        source: editing.source,
+        url: editing.url ?? "",
+        itemsText: editing.items.join("\n"),
+      });
+    } else if (open) {
+      setForm(emptyForm);
+    }
+  }, [open, editing]);
+
+  const isEdit = !!editing;
+  const nameValid = /^[a-z0-9][a-z0-9_-]*$/.test(form.name);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit List" : "Create List"}</DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Update the list name, description, or items."
+              : "Create a reusable list for use in policy conditions and rate limit rules."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Name</label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g., bad-ips, blocked-countries"
+              disabled={isEdit}
+              className="font-mono"
+            />
+            {form.name && !nameValid && (
+              <p className="text-[11px] text-neon-pink">Lowercase letters, numbers, hyphens, underscores only. Must start with letter or number.</p>
+            )}
+          </div>
+
+          {/* Description */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Description</label>
+            <Input
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Optional description"
+            />
+          </div>
+
+          {/* Kind + Source row */}
+          {!isEdit && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Kind</label>
+                <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v as ManagedList["kind"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ip">IP (addresses + CIDRs)</SelectItem>
+                    <SelectItem value="hostname">Hostname</SelectItem>
+                    <SelectItem value="string">String</SelectItem>
+                    <SelectItem value="asn">ASN</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Source</label>
+                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as ManagedList["source"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual</SelectItem>
+                    <SelectItem value="url">URL (remote fetch)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {/* URL (for url source) */}
+          {form.source === "url" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Source URL</label>
+              <Input
+                value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
+                placeholder="https://example.com/blocklist.txt"
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">One item per line. Lines starting with # are ignored.</p>
+            </div>
+          )}
+
+          {/* Items textarea */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">
+              Items
+              <span className="ml-2 font-normal text-muted-foreground">
+                ({form.itemsText.split("\n").filter((l) => l.trim()).length} entries)
+              </span>
+            </label>
+            <textarea
+              value={form.itemsText}
+              onChange={(e) => setForm({ ...form, itemsText: e.target.value })}
+              placeholder={
+                form.kind === "ip" ? "10.0.0.1\n192.168.0.0/24\n2001:db8::/32"
+                  : form.kind === "hostname" ? "evil.com\nmalware.net"
+                  : form.kind === "asn" ? "AS13335\nAS15169"
+                  : "/admin\n/secret\nblocked-value"
+              }
+              rows={8}
+              className="w-full rounded-md border border-border bg-navy-950 px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 resize-y"
+            />
+            <p className="text-[11px] text-muted-foreground">One item per line.</p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            size="sm"
+            onClick={() => onSave(form)}
+            disabled={saving || !form.name || (!isEdit && !nameValid)}
+          >
+            {saving ? "Saving..." : isEdit ? "Update" : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Delete Confirm Dialog ──────────────────────────────────────────
+
+function DeleteConfirmDialog({
+  open,
+  onOpenChange,
+  list,
+  onConfirm,
+  deleting,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  list: ManagedList | null;
+  onConfirm: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete List</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete <span className="font-mono font-medium">{list?.name}</span>?
+            Any policy rules or rate limit conditions referencing this list will stop matching.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={deleting}>
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────
+
+export default function ManagedListsPanel() {
+  const [lists, setLists] = useState<ManagedList[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Dialog state
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ManagedList | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ManagedList | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Feedback
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const loadLists = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    fetchManagedLists()
+      .then(setLists)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadLists(); }, [loadLists]);
+
+  // Auto-dismiss feedback after 8s
+  useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 8_000);
+    return () => clearTimeout(t);
+  }, [feedback]);
+
+  const handleSave = useCallback(async (form: FormState) => {
+    setSaving(true);
+    try {
+      const items = form.itemsText.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (editing) {
+        const updates: ManagedListUpdate = {
+          description: form.description,
+          items,
+        };
+        if (form.url) updates.url = form.url;
+        await updateManagedList(editing.id, updates);
+        setFeedback({ type: "success", message: `List "${form.name}" updated.` });
+      } else {
+        const create: ManagedListCreate = {
+          name: form.name,
+          description: form.description || undefined,
+          kind: form.kind,
+          source: form.source,
+          url: form.url || undefined,
+          items,
+        };
+        await createManagedList(create);
+        setFeedback({ type: "success", message: `List "${form.name}" created.` });
+      }
+      setFormOpen(false);
+      setEditing(null);
+      loadLists();
+    } catch (err: unknown) {
+      setFeedback({ type: "error", message: err instanceof Error ? err.message : "Save failed" });
+    } finally {
+      setSaving(false);
+    }
+  }, [editing, loadLists]);
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteManagedList(deleteTarget.id);
+      setFeedback({ type: "success", message: `List "${deleteTarget.name}" deleted.` });
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+      loadLists();
+    } catch (err: unknown) {
+      setFeedback({ type: "error", message: err instanceof Error ? err.message : "Delete failed" });
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, loadLists]);
+
+  const handleRefresh = useCallback(async (list: ManagedList) => {
+    try {
+      await refreshManagedList(list.id);
+      setFeedback({ type: "success", message: `List "${list.name}" refreshed from URL.` });
+      loadLists();
+    } catch (err: unknown) {
+      setFeedback({ type: "error", message: err instanceof Error ? err.message : "Refresh failed" });
+    }
+  }, [loadLists]);
+
+  const handleEdit = useCallback(async (list: ManagedList) => {
+    // Fetch full list (includes items) before editing.
+    try {
+      const full = await getManagedList(list.id);
+      setEditing(full);
+      setFormOpen(true);
+    } catch (err: unknown) {
+      setFeedback({ type: "error", message: err instanceof Error ? err.message : "Failed to load list" });
+    }
+  }, []);
+
+  const handleExport = useCallback(async () => {
+    try {
+      const data = await exportManagedLists();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `managed-lists-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setFeedback({ type: "error", message: err instanceof Error ? err.message : "Export failed" });
+    }
+  }, []);
+
+  const handleImport = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const result = await importManagedLists(data);
+        setFeedback({ type: "success", message: `Imported ${result.imported} list(s).` });
+        loadLists();
+      } catch (err: unknown) {
+        setFeedback({ type: "error", message: err instanceof Error ? err.message : "Import failed" });
+      }
+    };
+    input.click();
+  }, [loadLists]);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-neon-pink">Connection Error</CardTitle>
+            <CardDescription>Could not reach the WAF API.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <pre className="rounded-md bg-navy-950 p-3 text-xs text-muted-foreground">{error}</pre>
+            <Button variant="outline" size="sm" className="mt-3" onClick={loadLists}>Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className={T.pageTitle}>Managed Lists</h2>
+          <p className={T.pageDescription}>
+            Reusable IP, hostname, and string lists for policy conditions and rate limit rules
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleImport}>
+            <Upload className="mr-2 h-3.5 w-3.5" /> Import
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={lists.length === 0}>
+            <Download className="mr-2 h-3.5 w-3.5" /> Export
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadLists} disabled={loading}>
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+          <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
+            <Plus className="mr-2 h-3.5 w-3.5" /> New List
+          </Button>
+        </div>
+      </div>
+
+      {/* Feedback */}
+      {feedback && (
+        <Alert
+          variant={feedback.type === "error" ? "destructive" : "default"}
+          className={feedback.type === "success" ? "border-neon-green/30 bg-neon-green/5" : ""}
+        >
+          <AlertTitle className="text-xs font-medium">
+            {feedback.type === "success" ? "Success" : "Error"}
+          </AlertTitle>
+          <AlertDescription className="text-xs">{feedback.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Summary stats */}
+      {!loading && lists.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-4">
+          <Card className="border-l-2 border-l-neon-cyan">
+            <CardContent className="pt-3 pb-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Total Lists</p>
+              <p className="text-lg font-semibold">{lists.length}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-l-2 border-l-neon-pink">
+            <CardContent className="pt-3 pb-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">IP Lists</p>
+              <p className="text-lg font-semibold">{lists.filter((l) => l.kind === "ip").length}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-l-2 border-l-neon-green">
+            <CardContent className="pt-3 pb-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Total Items</p>
+              <p className="text-lg font-semibold">{lists.reduce((s, l) => s + l.item_count, 0).toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-l-2 border-l-amber-500">
+            <CardContent className="pt-3 pb-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">URL Sources</p>
+              <p className="text-lg font-semibold">{lists.filter((l) => l.source === "url").length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Lists */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}><CardContent className="pt-4 pb-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+          ))}
+        </div>
+      ) : lists.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <List className="mx-auto h-10 w-10 text-muted-foreground/30" />
+            <p className="mt-3 text-sm text-muted-foreground">No managed lists yet.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Create a list to use with <span className="font-mono text-neon-cyan">in_list</span> / <span className="font-mono text-neon-cyan">not_in_list</span> operators in policy conditions and rate limit rules.
+            </p>
+            <Button size="sm" className="mt-4" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <Plus className="mr-2 h-3.5 w-3.5" /> Create First List
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {lists.map((list) => (
+            <ListCard
+              key={list.id}
+              list={list}
+              onEdit={() => handleEdit(list)}
+              onDelete={() => { setDeleteTarget(list); setDeleteOpen(true); }}
+              onRefresh={() => handleRefresh(list)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* About card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className={T.cardTitle}>About Managed Lists</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs text-muted-foreground">
+          <p>
+            Managed lists are reusable collections of IPs, hostnames, strings, or ASNs.
+            Reference them in policy engine conditions or rate limit rules using the
+            <span className="font-mono text-neon-cyan mx-1">is in list</span> and
+            <span className="font-mono text-neon-cyan mx-1">is not in list</span> operators.
+          </p>
+          <p>
+            IP lists support CIDR notation and use hash-set lookups for O(1) matching.
+            Lists with URL sources can be refreshed on-demand to pull updated entries.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <ListFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        editing={editing}
+        onSave={handleSave}
+        saving={saving}
+      />
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        list={deleteTarget}
+        onConfirm={handleDelete}
+        deleting={deleting}
+      />
+    </div>
+  );
+}
