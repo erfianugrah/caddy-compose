@@ -155,9 +155,9 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - Incremental file reading with offset tracking and rotation detection
 - Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
 - One cohesive module per `.go` file, split by domain responsibility
-- **Entry point & routing**: `main.go` (~305 lines) — server setup, CORS middleware, `envOr()`, route registration
+- **Entry point & routing**: `main.go` (~370 lines) — server setup, CORS middleware, `envOr()`, route registration
 - **JSON/query helpers**: `json_helpers.go` — `writeJSON`, `decodeJSON`, `queryInt`; `query_helpers.go` — `parseHours`, `parseTimeRange`, `fieldFilter`, `matchField`
-- **Handler files** (split from main.go): `handlers_events.go` (health/summary/events/services), `handlers_analytics.go` (top IPs/URIs/countries, IP lookup), `handlers_exclusions.go` (exclusion CRUD), `handlers_config.go` (CRS catalog, WAF config, deploy), `handlers_ratelimit.go` (RL rule CRUD + analytics)
+- **Handler files** (split from main.go): `handlers_events.go` (health/summary/events/services), `handlers_analytics.go` (top IPs/URIs/countries, IP lookup), `handlers_exclusions.go` (exclusion CRUD), `handlers_config.go` (CRS catalog, WAF config, deploy), `handlers_ratelimit.go` (RL rule CRUD + analytics), `handlers_lists.go` (managed lists CRUD + deploy)
 - **Log parser**: `logparser.go` (~592 lines) — Store struct, offset/JSONL persistence, Load, eviction, tailing; `event_parser.go` — `parseEvent`, anomaly score extraction; `waf_summary.go` — `summarizeEvents`; `waf_analytics.go` — services/IP/top-N analytics
 - **Models** (split by domain): `models.go` (~454 lines) — CRS scoring, audit log types, summary/analytics types; `models_exclusions.go` — Condition, RuleExclusion, WAFConfig; `models_ratelimit.go` — rate limit types; `models_general_logs.go` — general log types
 - **Config generation**: `generator.go` (~458 lines) — SecRule exclusion generation; `generator_helpers.go` (~187 lines) — condition-to-SecRule mapping, escape utilities; `waf_settings_generator.go` — WAF settings generation
@@ -169,9 +169,10 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - **IP intelligence**: `ip_intel.go` (~247 lines) — BGP routing, RPKI validation, orchestration; `ip_intel_sources.go` (~403 lines) — external API clients (Shodan, reputation, BGP); `tls_helpers.go` (38 lines) — TLS version/cipher suite name helpers
 - **GeoIP**: `geoip.go` (~499 lines) — GeoIPStore, API/header/cache resolution; `geoip_mmdb.go` (~403 lines) — pure MMDB binary reader (zero-dependency)
 - **Exclusions**: `exclusions.go` (~366 lines) — ExclusionStore CRUD, persistence; `exclusions_validate.go` (~257 lines) — validation, condition checks, regex patterns
-- **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands
+- **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands; `cli_managed_lists.go` (~116 lines) — managed lists subcommands
 - **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
 - **Policy engine generator**: `policy_generator.go` (~164 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, `GeneratePolicyRules()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`
+- **Managed lists**: `managed_lists.go` (~582 lines) — ManagedListStore CRUD, persistence, validation; `models_lists.go` (~69 lines) — ManagedList types; `handlers_lists.go` (~160 lines) — HTTP handlers
 - **Domain stores**: `rl_rules.go` (564), `csp.go` (558), `csp_generator.go`, `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
@@ -228,10 +229,9 @@ it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paran
 
 | Type | Action | Notes |
 |------|--------|-------|
-| `allow` | `ctl:ruleEngine=Off` | Full WAF bypass for matching requests |
-| `block` | `deny,status:403` | Deny matching requests |
+| `allow` | `ctl:ruleEngine=Off` / Policy Engine allow | Full WAF bypass for matching requests |
+| `block` | `deny,status:403` / Policy Engine block | Deny matching requests. Honeypot paths use `block` + `["honeypot"]` tag |
 | `skip_rule` | `ctl:ruleRemoveById` / `ByTag` | Skip specific CRS rules |
-| `honeypot` | `deny,status:403` (consolidated `@pm`) | Dynamic honeypot path groups; all paths merged into one rule ID `9100021` |
 | `raw` | Verbatim SecRule | Free-form SecRule directive |
 | `remove_by_id`, `remove_by_tag` | Post-CRS removal | Configure-time exclusions |
 | `update_target_by_id`, `update_target_by_tag` | Post-CRS target update | Exclude specific variables |
@@ -244,8 +244,8 @@ it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paran
 
 | Field | SecRule Variable | Operators |
 |-------|-----------------|-----------|
-| `ip` | `REMOTE_ADDR` | `eq`, `neq`, `ip_match`, `not_ip_match` |
-| `path` | `REQUEST_URI` | `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex`, `in` |
+| `ip` | `REMOTE_ADDR` | `eq`, `neq`, `ip_match`, `not_ip_match`, `in_list`, `not_in_list` |
+| `path` | `REQUEST_URI` | `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex`, `in`, `in_list`, `not_in_list` |
 | `host` | `SERVER_NAME` | `eq`, `neq`, `contains` |
 | `method` | `REQUEST_METHOD` | `eq`, `neq`, `in` |
 | `user_agent` | `REQUEST_HEADERS:User-Agent` | `eq`, `contains`, `regex` |
@@ -416,6 +416,7 @@ and generates one-click rule creation from recommendations.
   - `blocklist.ts` — Blocklist types and functions
   - `csp.ts` — CSP types and functions
   - `general-logs.ts` — General log types and functions
+  - `managed-lists.ts` — Managed list types, CRUD
   - `index.ts` — barrel re-export (all components import from `@/lib/api`)
 - Go returns `snake_case` JSON; the api modules map to `camelCase`
 - Type-safe interfaces for all API responses
@@ -473,7 +474,7 @@ Components over ~500 lines are split into feature subdirectories following the `
 
 ### Dashboard Pages (file-based routing)
 
-`/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
+`/` · `/analytics` · `/blocklist` · `/csp` · `/events` · `/lists` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
 
 ### Static MPA Routing
 
@@ -580,6 +581,87 @@ Nonces are not supported — Caddy reverse proxy doesn't control HTML body. `sty
 is unavoidable (Radix UI injects `<style>` tags). `script-src 'unsafe-inline'` needed for most
 proxied apps and Astro hydration.
 
+## Managed Lists
+
+Reusable named lists of values (IPs, paths, user agents, etc.) that can be referenced
+by WAF exclusion and rate limit conditions via `in_list` / `not_in_list` operators.
+Follows the same store → generator → deploy pattern as other subsystems.
+
+### Architecture
+
+- **Store**: `managed_lists.go` — `ManagedListStore` with `sync.RWMutex`, CRUD, validation, persistence
+- **Models**: `models_lists.go` — `ManagedList` type (id, name, description, type, items, tags, enabled, timestamps)
+- **Handlers**: `handlers_lists.go` — 5 HTTP endpoints under `/api/lists` (CRUD)
+- **CLI**: `wafctl lists` subcommands (list, get, create, delete)
+- **Frontend**: `ManagedListsPanel.tsx` — full CRUD UI with search, inline editing, import/export
+- **Generator integration**: Both `generator.go` (SecRule) and `rl_generator.go` (Caddy matchers) resolve `in_list`/`not_in_list` references at generation time
+
+### Data Model
+
+```
+ManagedList {
+  id, name, description, type, items[], tags[], enabled, created_at, updated_at
+}
+```
+
+List types: `ip`, `path`, `user_agent`, `header`, `country`, `generic`.
+Items are validated per type (e.g., CIDR validation for `ip` lists).
+
+### Condition Integration
+
+The `in_list` and `not_in_list` operators reference a list by ID. The value field
+contains the list ID. At generation time:
+- **SecRule generator**: `resolveSecRuleListConditions()` expands list items into `@pmFromFile` or `@ipMatchFromFile` directives
+- **RL generator**: `resolveRLListConditions()` expands into Caddy matcher syntax
+- **Policy engine plugin**: `resolveListConditions()` (v0.3.0+) expands list items into `in` operator conditions
+
+### Directory Layout
+
+| Aspect | Pattern |
+|--------|---------|
+| Store file | `/data/lists.json` (`WAF_MANAGED_LISTS_FILE`) |
+| Output dir | `/data/lists/` (`WAF_MANAGED_LISTS_DIR`) |
+| File naming | `<list-id>.list` (one file per list, items newline-separated) |
+
+## Event Tags & Classification
+
+Events use a tag-based classification system instead of hardcoded event types.
+The `Event.Tags` field (string array) enables flexible, extensible categorization.
+
+### Event Types
+
+| Type | Description |
+|------|-------------|
+| `blocked` | WAF blocked (Coraza anomaly threshold exceeded) |
+| `logged` | WAF logged only (below threshold or detection-only mode) |
+| `rate_limited` | Rate limited (429) or blocklist-blocked |
+| `policy_skip` | Policy engine skipped specific CRS rules |
+| `policy_allow` | Policy engine allowed (WAF bypassed) |
+| `policy_block` | Policy engine blocked (403 from plugin) |
+
+### Tag Conventions
+
+Tags are lowercase alphanumeric + hyphens (`^[a-z0-9][a-z0-9-]*$`), max 10 per rule/event,
+max 50 chars each. Common tags:
+- `honeypot` — honeypot path traps (on `block` type exclusions)
+- `scanner`, `bot-detection` — scanner UA detection rules
+- `bot-signal`, `protocol`, `generic-ua` — heuristic bot signal rules
+- `blocklist`, `ipsum` — IPsum blocklist blocks
+
+### Summary Tag Counts
+
+The `/api/summary` response includes a `tag_counts` array with `{tag, count}` pairs
+aggregated across all events in the time window. The dashboard renders tag-based stat
+cards dynamically instead of hardcoded honeypot/scanner/ipsum counters.
+
+### Store Migrations
+
+- **Exclusion store v1→v2**: Auto-migrates on load. Adds `tags` to seeded rules, converts
+  `honeypot` type exclusions to `block` + `["honeypot"]` tag. Creates `.v1.bak` backup.
+- **JSONL event backfill**: On load, remaps legacy event types:
+  `honeypot`→`policy_block`, `scanner`→`policy_block`, `ipsum_blocked`→`rate_limited`.
+  Backfills appropriate tags. Compacts JSONL file after migration.
+
 ## API Endpoints (wafctl)
 
 | Group | Routes |
@@ -595,6 +677,7 @@ proxied apps and Astro hydration.
 | RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits`, `PUT /api/rate-rules/reorder` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
+| Managed Lists | `GET\|POST /api/lists`, `GET\|PUT\|DELETE /api/lists/{id}` |
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
 | CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
@@ -772,7 +855,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 ## Test Patterns
 
 ### Go (1298 tests across 24 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `testhelpers_test.go`
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -783,9 +866,9 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 ### Frontend (312 tests across 14 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
+- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (33), `rate-limits.test.ts` (31), `managed-lists.test.ts` (14), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
 - Component tests: `DashboardFilterBar.test.ts` (63)
-- Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (37), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
+- Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (38), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
 
 ## Coraza-Caddy Fork
 
@@ -848,6 +931,7 @@ Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `ipsum_block.caddy` — updated daily at 06:00 UTC by wafctl scheduled refresh, or on-demand via `POST /api/blocklist/refresh`
 - `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 - `<service>_csp.caddy` — CSP header configs (per-service)
+- `<list-id>.list` — managed list files (one per list, newline-separated items)
 - `policy-rules.json` — policy engine plugin rules (when `WAF_POLICY_ENGINE_ENABLED=true`)
 
 ### Startup Behavior (generate-on-boot)
@@ -913,6 +997,8 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GENERAL_LOG_OFFSET_FILE` (default `/data/.general-log-offset`) — persists general log read offset across restarts
 - `WAF_GENERAL_LOG_MAX_AGE` (default `168h`) — retention period for general log events (shorter than WAF events due to higher volume)
 - `WAF_BLOCKLIST_REFRESH_HOUR` (default `6`) — UTC hour (0–23) for daily IPsum blocklist refresh
+- `WAF_MANAGED_LISTS_FILE` (default `/data/lists.json`) — managed lists store path
+- `WAF_MANAGED_LISTS_DIR` (default `/data/lists`) — output directory for managed list files (one `.list` file per list)
 - `WAF_POLICY_ENGINE_ENABLED` (default `false`) — enables policy engine plugin integration; when `true`, `allow`/`block`/`honeypot` exclusions are routed to the Caddy plugin instead of Coraza SecRules
 - `WAF_POLICY_RULES_FILE` (default `/data/policy-rules.json`) — output path for the policy engine plugin's rules JSON file
 
@@ -945,6 +1031,10 @@ wafctl csp get              # Show CSP configuration
 wafctl csp set              # Update config (JSON on stdin or --file)
 wafctl csp deploy           # Deploy CSP configs to Caddy
 wafctl csp preview          # Preview rendered CSP headers per service
+wafctl lists list            # List all managed lists (alias: ls)
+wafctl lists get ID          # Get a managed list by ID
+wafctl lists create          # Create list (JSON on stdin or --file)
+wafctl lists delete ID       # Delete a managed list
 wafctl blocklist stats
 wafctl blocklist check IP
 wafctl blocklist refresh

@@ -1,5 +1,9 @@
 # Plan: caddy-policy-engine + Managed Lists
 
+> **Status: COMPLETE** — All phases (1a–1c, 2a–2c, 3a–3d) implemented and merged to
+> main in v2.11.0/1.11.0. Plugin at v0.4.0. Policy engine behind
+> `WAF_POLICY_ENGINE_ENABLED` feature flag (default `false`).
+
 ## Problem Statement
 
 The WAF Policy Engine currently generates Coraza SecRules for **all** exclusion types,

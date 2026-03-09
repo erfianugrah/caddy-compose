@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:2.10.4-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.10.4
+CADDY_IMAGE   ?= <your-registry>/caddy:2.11.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:1.11.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.10.4-2.11.1`), wafctl is plain semver (e.g. `1.10.4`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `2.11.0-2.11.1`), wafctl is plain semver (e.g. `1.11.0`).
 
 ## WAF configuration
 
@@ -169,6 +169,8 @@ A single `(waf)` Caddyfile snippet loads the Coraza WAF for any site block that 
 WebSocket connections bypass WAF entirely via a `@not_websocket` matcher in the `(waf)` snippet. A [fork of coraza-caddy](https://github.com/erfianugrah/coraza-caddy/tree/fix/websocket-hijack) ([upstream PR](https://github.com/corazawaf/coraza-caddy/pull/259)) adds hijack tracking to prevent panics on upgraded connections, but the Caddyfile-level bypass is still required — without it, WebSocket connections fail with `NS_ERROR_WEBSOCKET_CONNECTION_REFUSED`. The fork also fixes the `drop` action status code — upstream returns HTTP 200 for `drop` rules since coraza-caddy can't perform TCP-level resets; the fork treats `drop` the same as `deny` (uses the rule's status or defaults to 403) so `handle_errors` serves the correct error page.
 
 A custom [caddy-body-matcher](https://github.com/erfianugrah/caddy-body-matcher) plugin provides request body matching (raw, JSON, form) and a `body_vars` handler that extracts body field values as Caddy placeholders. This enables body-aware rate limiting (e.g., rate limit by a JSON API key field) and body-based WAF conditions.
+
+A custom [caddy-policy-engine](https://github.com/erfianugrah/caddy-policy-engine) plugin evaluates allow/block/honeypot rules with exact matching semantics — fixing the core security bug where Coraza's `@pm` substring match causes `/admin` to match `/administrator`. The plugin uses hash-set lookups for `in` operator matching. When enabled (`WAF_POLICY_ENGINE_ENABLED=true`), allow/block rules are handled by the plugin before Coraza runs; allowed requests skip WAF entirely. Behind a feature flag with safe default (`false`).
 
 Multi-condition policy rules generate chained SecRules. Due to a Coraza quirk, `ctl:` actions (like `ruleRemoveById` and `ruleEngine=Off`) must be placed on the **last** rule of a chain — Coraza silently ignores `ctl:` on the first rule. The generator handles this automatically via `splitCTLActions()`. Commas in rule names are also escaped to semicolons in `msg:` fields, since Coraza's seclang parser silently stops loading subsequent rules when it encounters an unescaped comma inside a quoted `msg:` value.
 
@@ -211,8 +213,9 @@ The dashboard is an Astro 5 + React 19 static site served by Caddy, protected by
 
 - **Overview** — timeline chart with brush zoom (7 event types, unstacked), service breakdown donut, live event feed, top clients/services, stat cards linking to filtered views. Includes a CF-style filter bar with field/operator/value popover and filter chips.
 - **Events** — paginated table of WAF + rate limit + IPsum events. Expandable rows with matched rules, request headers/body/args. JSON export. "Create Exception" button pre-fills a policy engine rule from the event context.
-- **Policy Engine** — CRUD for WAF exclusions (allow, block, skip, honeypot, raw SecRule, and various CRS removal types). Condition builder with AND/OR logic. CRS rule catalog picker. Sparkline hit charts per rule.
+- **Policy Engine** — CRUD for WAF exclusions (allow, block, skip, raw SecRule, and various CRS removal types). Condition builder with AND/OR logic. Tag-based classification. CRS rule catalog picker. Sparkline hit charts per rule.
 - **Rate Limits** — condition-based rate limiting policy engine with per-path/method/header matching, flexible rate keys, auto-deploy, sparkline hit charts, import/export. Includes a **Rate Advisor** tab with statistical anomaly detection (MAD, Fano factor, IQR) that analyzes real traffic patterns and recommends rules with one-click creation. Global settings panel for jitter, sweep interval, and distributed rate limiting.
+- **Managed Lists** — reusable named lists (IPs, paths, user agents, etc.) referenced by WAF and rate limit conditions via `in_list`/`not_in_list` operators. Full CRUD with search, inline editing, import/export.
 - **Blocklist** — IPsum threat intelligence stats, per-IP lookup, on-demand refresh.
 - **CSP** — per-service Content Security Policy management with directive editor, source input, live preview, set/default/none modes, report-only, global enable/disable.
 - **Logs** — general Caddy log viewer with stream tab, summary aggregation, and header compliance analysis.
@@ -226,7 +229,7 @@ Cross-page navigation ties everything together: clicking a stat card on Overview
 
 wafctl is both an HTTP API server and a CLI tool. When run without arguments (or with `serve`), it starts the API server. Otherwise it acts as a thin client that talks to a running instance.
 
-It manages WAF configuration (including full CRS v4 settings), the WAF policy engine (exclusions with condition-based matching), condition-based rate limiting with a traffic advisor, IPsum blocklist operations, and GeoIP resolution with a three-tier lookup (Cloudflare header → local MMDB → online API).
+It manages WAF configuration (including full CRS v4 settings), the WAF policy engine (exclusions with condition-based matching and tag-based classification), managed lists (reusable value sets for conditions), condition-based rate limiting with a traffic advisor, IPsum blocklist operations, and GeoIP resolution with a three-tier lookup (Cloudflare header → local MMDB → online API).
 
 ### CLI usage
 
@@ -259,6 +262,11 @@ wafctl csp set              # update config (JSON on stdin or --file)
 wafctl csp deploy           # deploy CSP configs to Caddy
 wafctl csp preview          # preview rendered CSP headers per service
 
+wafctl lists list           # list all managed lists (alias: ls)
+wafctl lists get <id>       # get a managed list by ID
+wafctl lists create         # create list (JSON on stdin or --file)
+wafctl lists delete <id>
+
 wafctl blocklist stats
 wafctl blocklist check <ip>
 wafctl blocklist refresh
@@ -281,6 +289,7 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits`, `PUT /api/rate-rules/reorder` |
 | RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
+| Managed Lists | `GET\|POST /api/lists`, `GET\|PUT\|DELETE /api/lists/{id}` |
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
 | CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
@@ -318,6 +327,10 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_GENERAL_LOG_OFFSET_FILE` | `/data/.general-log-offset` | Persists general log read offset across restarts |
 | `WAF_GENERAL_LOG_MAX_AGE` | `168h` (7 days) | Retention period for general log events |
 | `WAF_BLOCKLIST_REFRESH_HOUR` | `6` | UTC hour (0–23) for daily IPsum blocklist refresh |
+| `WAF_MANAGED_LISTS_FILE` | `/data/lists.json` | Managed lists store path |
+| `WAF_MANAGED_LISTS_DIR` | `/data/lists` | Output dir for managed list files |
+| `WAF_POLICY_ENGINE_ENABLED` | `false` | Enable policy engine plugin (allow/block via Caddy plugin) |
+| `WAF_POLICY_RULES_FILE` | `/data/policy-rules.json` | Policy engine rules JSON output path |
 
 ## Site block patterns
 
