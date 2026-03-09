@@ -813,7 +813,7 @@ order coraza_waf after policy_engine
 The `(waf)` snippet chains policy_engine before coraza_waf:
 ```
 policy_engine {
-    rules_file /data/policy-rules.json
+    rules_file /data/coraza/policy-rules.json
     reload_interval 5s
     body_max_size 13mb
 }
@@ -932,7 +932,7 @@ Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
 - `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 - `<service>_csp.caddy` — CSP header configs (per-service)
 - `<list-id>.list` — managed list files (one per list, newline-separated items)
-- `policy-rules.json` — policy engine plugin rules (when `WAF_POLICY_ENGINE_ENABLED=true`)
+- `policy-rules.json` — policy engine plugin rules (in `/data/coraza/`, when `WAF_POLICY_ENGINE_ENABLED=true`)
 
 ### Startup Behavior (generate-on-boot)
 
@@ -1000,7 +1000,7 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_MANAGED_LISTS_FILE` (default `/data/lists.json`) — managed lists store path
 - `WAF_MANAGED_LISTS_DIR` (default `/data/lists`) — output directory for managed list files (one `.list` file per list)
 - `WAF_POLICY_ENGINE_ENABLED` (default `false`) — enables policy engine plugin integration; when `true`, `allow`/`block`/`honeypot` exclusions are routed to the Caddy plugin instead of Coraza SecRules
-- `WAF_POLICY_RULES_FILE` (default `/data/policy-rules.json`) — output path for the policy engine plugin's rules JSON file
+- `WAF_POLICY_RULES_FILE` (default `/data/coraza/policy-rules.json`) — output path for the policy engine plugin's rules JSON file
 
 ### CLI Subcommands
 

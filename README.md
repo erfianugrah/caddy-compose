@@ -330,7 +330,7 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_MANAGED_LISTS_FILE` | `/data/lists.json` | Managed lists store path |
 | `WAF_MANAGED_LISTS_DIR` | `/data/lists` | Output dir for managed list files |
 | `WAF_POLICY_ENGINE_ENABLED` | `false` | Enable policy engine plugin (allow/block via Caddy plugin) |
-| `WAF_POLICY_RULES_FILE` | `/data/policy-rules.json` | Policy engine rules JSON output path |
+| `WAF_POLICY_RULES_FILE` | `/data/coraza/policy-rules.json` | Policy engine rules JSON output path |
 
 ## Site block patterns
 

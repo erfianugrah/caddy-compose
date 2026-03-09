@@ -40,7 +40,7 @@ func runServe() int {
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
 
 	policyEngineEnabled := envOr("WAF_POLICY_ENGINE_ENABLED", "false") == "true"
-	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/policy-rules.json")
+	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/coraza/policy-rules.json")
 
 	deployCfg := DeployConfig{
 		CorazaDir:           envOr("WAF_CORAZA_DIR", "/data/coraza"),

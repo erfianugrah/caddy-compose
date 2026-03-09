@@ -60,7 +60,7 @@ services:
       WAF_TAIL_INTERVAL: 2s
       WAF_CORS_ORIGINS: "*"
       WAF_POLICY_ENGINE_ENABLED: "true"
-      WAF_POLICY_RULES_FILE: /data/policy-rules.json
+      WAF_POLICY_RULES_FILE: /data/coraza/policy-rules.json
       WAF_MANAGED_LISTS_FILE: /data/lists.json
       WAF_MANAGED_LISTS_DIR: /data/lists
     volumes:

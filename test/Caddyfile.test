@@ -43,7 +43,7 @@
 	}
 	route @not_websocket {
 		policy_engine {
-			rules_file /data/policy-rules.json
+			rules_file /data/coraza/policy-rules.json
 			reload_interval 5s
 			body_max_size 13mb
 		}

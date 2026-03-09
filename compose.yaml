@@ -151,7 +151,11 @@ services:
       waf:
         ipv4_address: 172.19.98.2
     extra_hosts:
-      - "caddy:host-gateway"
+      # Map 'caddy' to the waf network gateway (not host-gateway/docker0) so
+      # wafctl can reach Caddy's :2020 admin proxy. Docker inter-network
+      # isolation blocks traffic via docker0; routing through the waf bridge
+      # keeps traffic within the allowed 172.19.98.0/24 subnet.
+      - "caddy:172.19.98.1"
     volumes:
       - /mnt/user/data/caddy/log:/var/log:ro
       - /mnt/user/data/wafctl:/data
@@ -177,8 +181,8 @@ services:
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
       - WAF_GEOIP_DB=/data/geoip/country.mmdb
-      - WAF_POLICY_ENGINE_ENABLED=false
-      - WAF_POLICY_RULES_FILE=/data/policy-rules.json
+      - WAF_POLICY_ENGINE_ENABLED=true
+      - WAF_POLICY_RULES_FILE=/data/coraza/policy-rules.json
 
 networks:
   authelia:
