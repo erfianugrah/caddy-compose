@@ -483,7 +483,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 	})
 }
 
-// ─── SplitHoneypotPaths ──────────────────────────────────────────────
+// ─── splitHoneypotPaths ──────────────────────────────────────────────
 
 func TestSplitHoneypotPaths(t *testing.T) {
 	tests := []struct {
@@ -552,9 +552,9 @@ func TestSplitHoneypotPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := SplitHoneypotPaths(tt.conditions)
+			got := splitHoneypotPaths(tt.conditions)
 			if len(got) != len(tt.want) {
-				t.Fatalf("SplitHoneypotPaths() returned %d paths, want %d: %v", len(got), len(tt.want), got)
+				t.Fatalf("splitHoneypotPaths() returned %d paths, want %d: %v", len(got), len(tt.want), got)
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {

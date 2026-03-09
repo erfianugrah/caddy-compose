@@ -587,7 +587,7 @@ external interface (a parameterless snippet) is the same.
 
 xcaddy build gains:
 ```
---with github.com/erfianugrah/caddy-policy-engine@v0.1.0
+--with github.com/erfianugrah/caddy-policy-engine@v0.2.0
 ```
 
 ### Testing Strategy (Phase 1)
@@ -869,9 +869,9 @@ list items and uses appropriate Coraza operators:
 
 ## Implementation Order
 
-### Phase 1a: Plugin skeleton + block/honeypot (simplest)
+### Phase 1a: Plugin skeleton + block/honeypot (simplest) ✅ COMPLETE
 
-**Scope:** 1 new Go module, ~500-700 lines of code + ~400 lines of tests.
+**Scope:** 1 new Go module. Actual: 887 lines code + 1427 lines tests (81 test cases).
 
 1. Create `caddy-policy-engine/` Go module (separate GitHub repo)
    - `go.mod` with `github.com/erfianugrah/caddy-policy-engine`
@@ -893,7 +893,7 @@ list items and uses appropriate Coraza operators:
 6. Write comprehensive tests (~30-40 test cases)
 7. Tag `v0.1.0`
 
-### Phase 1b: wafctl integration + allow bypass
+### Phase 1b: wafctl integration + allow bypass ✅ COMPLETE
 
 **Scope:** 1 new file + 4 modified files in wafctl, Caddyfile changes, Dockerfile change.
 
@@ -913,13 +913,13 @@ list items and uses appropriate Coraza operators:
 5. Update `Caddyfile`:
    - Line 19: Replace `order coraza_waf first` with two `order` directives
    - Lines 144-178: Rewrite `(waf)` snippet with `policy_engine` + `@needs_waf` routing
-6. Update `Dockerfile` line 8: Add `--with github.com/erfianugrah/caddy-policy-engine@v0.1.0`
+6. Update `Dockerfile` line 8: Add `--with github.com/erfianugrah/caddy-policy-engine@v0.2.0`
 7. Add `WAF_POLICY_RULES_FILE` to env var handling in `main.go`
 8. Test end-to-end: create rule in UI → deploy → verify plugin handles it
 
-### Phase 1c: Complete field coverage
+### Phase 1c: Complete field coverage ✅ COMPLETE
 
-**Scope:** ~200 additional lines in plugin, ~150 additional test lines.
+**Scope:** Plugin v0.2.0: body/body_json/body_form fields, exists operator, body_max_size config.
 
 1. Add remaining fields: header, query, country, cookie, body, body_json, body_form,
    args, uri_path, referer, http_version
@@ -1029,9 +1029,9 @@ If the plugin has issues:
    processes an empty rules file (no-op)
 
 **Mitigation:** To enable the quick rollback without a gap, the generator could
-support a `WAF_POLICY_ENGINE_ENABLED` env var (default `true`). When set to `false`,
-all types go to SecRules as before, and the policy-rules.json is written empty.
-This is a one-line env var change to toggle between old and new behavior.
+support a `WAF_POLICY_ENGINE_ENABLED` env var (default `false`). When set to `true`,
+allow/block/honeypot types go to the policy engine plugin instead of SecRules.
+When `false`, all types go to SecRules as before. One-line env var change to toggle.
 
 ---
 
@@ -1071,9 +1071,9 @@ This is a one-line env var change to toggle between old and new behavior.
    (`netip.Prefix`-based) can be swapped in without changing the JSON format.
 
 7. **Feature toggle:** **DECIDED — `WAF_POLICY_ENGINE_ENABLED` env var.**
-   Default `true`. When `false`, all exclusion types go to SecRule generation
-   (pre-migration behavior), and `policy-rules.json` is written empty. Enables
-   instant rollback without image rebuild.
+   Default `false` (safe rollout). When `true`, allow/block/honeypot exclusions
+   go to the policy engine plugin. When `false`, all types go to SecRule
+   generation (pre-migration behavior). Enables instant rollback without rebuild.
 
 ---
 

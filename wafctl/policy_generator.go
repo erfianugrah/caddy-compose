@@ -141,10 +141,10 @@ func FilterSecRuleExclusions(exclusions []RuleExclusion, policyEngineEnabled boo
 	return filtered
 }
 
-// SplitHoneypotPaths extracts all path values from honeypot exclusion
+// splitHoneypotPaths extracts all path values from honeypot exclusion
 // conditions, handling both single-value and space-separated "in" values.
 // This is used for display/summary purposes.
-func SplitHoneypotPaths(conditions []Condition) []string {
+func splitHoneypotPaths(conditions []Condition) []string {
 	var paths []string
 	for _, c := range conditions {
 		if c.Field != "path" {

@@ -158,21 +158,21 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - **Entry point & routing**: `main.go` (~305 lines) — server setup, CORS middleware, `envOr()`, route registration
 - **JSON/query helpers**: `json_helpers.go` — `writeJSON`, `decodeJSON`, `queryInt`; `query_helpers.go` — `parseHours`, `parseTimeRange`, `fieldFilter`, `matchField`
 - **Handler files** (split from main.go): `handlers_events.go` (health/summary/events/services), `handlers_analytics.go` (top IPs/URIs/countries, IP lookup), `handlers_exclusions.go` (exclusion CRUD), `handlers_config.go` (CRS catalog, WAF config, deploy), `handlers_ratelimit.go` (RL rule CRUD + analytics)
-- **Log parser**: `logparser.go` (~564 lines) — Store struct, offset/JSONL persistence, Load, eviction, tailing; `event_parser.go` — `parseEvent`, anomaly score extraction; `waf_summary.go` — `summarizeEvents`; `waf_analytics.go` — services/IP/top-N analytics
+- **Log parser**: `logparser.go` (~592 lines) — Store struct, offset/JSONL persistence, Load, eviction, tailing; `event_parser.go` — `parseEvent`, anomaly score extraction; `waf_summary.go` — `summarizeEvents`; `waf_analytics.go` — services/IP/top-N analytics
 - **Models** (split by domain): `models.go` (~454 lines) — CRS scoring, audit log types, summary/analytics types; `models_exclusions.go` — Condition, RuleExclusion, WAFConfig; `models_ratelimit.go` — rate limit types; `models_general_logs.go` — general log types
 - **Config generation**: `generator.go` (~458 lines) — SecRule exclusion generation; `generator_helpers.go` (~187 lines) — condition-to-SecRule mapping, escape utilities; `waf_settings_generator.go` — WAF settings generation
-- **Access log store**: `access_log_store.go` (~593 lines) — AccessLogStore struct, persistence, Load, snapshots (split from rl_analytics.go)
+- **Access log store**: `access_log_store.go` (~623 lines) — AccessLogStore struct, persistence, Load, snapshots (split from rl_analytics.go)
 - **Rate limit analytics**: `rl_analytics.go` (~373 lines) — regex cache, summary, filtered events, rule hits, condition matching
 - **Rate limit advisor**: `rl_advisor.go` (~364 lines) — algorithm/computation, recommendations; `rl_advisor_stats.go` (~449 lines) — MAD/IQR/Fano statistical functions, distribution analysis; `rl_advisor_types.go` — types, models, cache
 - **Rate limit generator**: `rl_generator.go` (~321 lines) — Caddyfile generation for RL rules; `rl_matchers.go` (~301 lines) — Caddy matcher syntax generation from conditions
-- **General logs**: `general_logs.go` (~477 lines) — store code; `general_logs_handlers.go` (~515 lines) — handlers + aggregation
+- **General logs**: `general_logs.go` (~505 lines) — store code; `general_logs_handlers.go` (~515 lines) — handlers + aggregation
 - **IP intelligence**: `ip_intel.go` (~247 lines) — BGP routing, RPKI validation, orchestration; `ip_intel_sources.go` (~403 lines) — external API clients (Shodan, reputation, BGP); `tls_helpers.go` (38 lines) — TLS version/cipher suite name helpers
 - **GeoIP**: `geoip.go` (~499 lines) — GeoIPStore, API/header/cache resolution; `geoip_mmdb.go` (~403 lines) — pure MMDB binary reader (zero-dependency)
 - **Exclusions**: `exclusions.go` (~366 lines) — ExclusionStore CRUD, persistence; `exclusions_validate.go` (~257 lines) — validation, condition checks, regex patterns
 - **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands
 - **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
 - **Policy engine generator**: `policy_generator.go` (~164 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, `GeneratePolicyRules()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`
-- **Domain stores**: `rl_rules.go` (561), `csp.go` (541), `csp_generator.go`, `blocklist.go` (370), `validate.go` (446), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
+- **Domain stores**: `rl_rules.go` (564), `csp.go` (558), `csp_generator.go`, `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
 
@@ -744,7 +744,7 @@ for allowed requests. Block/honeypot return 403 before Coraza runs.
 - `policy_generator.go` generates `policy-rules.json` from exclusions with types `allow`, `block`, `honeypot`
 - `FilterSecRuleExclusions()` removes policy-engine types from the SecRule generator input
 - `IsPolicyEngineType()` checks if an exclusion type is handled by the plugin
-- `SplitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions
+- `splitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions (unexported, test-only)
 - Behind `WAF_POLICY_ENGINE_ENABLED` env var (default `false`) — when disabled, all exclusions use Coraza SecRules as before
 - Both `generateOnBoot()` and `handleDeploy()` call the policy generator when enabled
 - `validPolicyEngineFields` map in `models_exclusions.go` — same as RL fields + `args`, excludes `response_header` and `response_status`
@@ -777,9 +777,9 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 ### Frontend (300 tests across 13 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (11), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
+- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (36), `rate-limits.test.ts` (31), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
 - Component tests: `DashboardFilterBar.test.ts` (63)
-- Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (34), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
+- Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (37), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
 
 ## Coraza-Caddy Fork
 
