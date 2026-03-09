@@ -84,8 +84,9 @@ func getWAFEvents(store *Store, tr timeRange, hours int) []Event {
 	return store.SnapshotSince(hours)
 }
 
-// getRLEvents returns rate-limited events filtered by either time range or hours.
-// If rules are provided, events are enriched with tags from the first matching rule.
+// getRLEvents returns rate-limited and policy engine events filtered by either time range or hours.
+// Rate limit events are enriched with tags from matching RL rules.
+// Policy engine events are enriched with tags from the exclusion store (set via SetExclusionStore).
 func getRLEvents(als *AccessLogStore, tr timeRange, hours int, rules []RateLimitRule) []Event {
 	if tr.Valid {
 		return als.SnapshotAsEventsRange(tr.Start, tr.End, rules)

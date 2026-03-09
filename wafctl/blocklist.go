@@ -36,9 +36,9 @@ type BlocklistStore struct {
 
 	refreshing atomic.Bool // guard against concurrent Refresh calls
 
-	// onRefresh is called after a successful blocklist refresh with the
-	// filtered IP list. Used to sync managed lists (ipsum-ips).
-	onRefresh func(ips []string)
+	// onRefresh is called after a successful blocklist refresh with IPs
+	// grouped by their IPsum threat score (1–8). Used to sync managed lists.
+	onRefresh func(ipsByScore map[int][]string)
 }
 
 // NewBlocklistStore creates a store that reads from the given ipsum_block.caddy file.
@@ -166,8 +166,8 @@ func (bs *BlocklistStore) Check(ip string) BlocklistCheckResponse {
 }
 
 // SetOnRefresh sets a callback invoked after each successful blocklist refresh
-// with the filtered IP list. Used to sync the "ipsum-ips" managed list.
-func (bs *BlocklistStore) SetOnRefresh(fn func(ips []string)) {
+// with IPs grouped by their IPsum threat score (1–8).
+func (bs *BlocklistStore) SetOnRefresh(fn func(ipsByScore map[int][]string)) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 	bs.onRefresh = fn
@@ -223,7 +223,9 @@ func (bs *BlocklistStore) Refresh(deployCfg DeployConfig) BlocklistRefreshRespon
 	}
 
 	// Parse the IPsum format: lines are "IP\tSCORE" with # comments.
+	// Track IPs by score for per-level managed lists.
 	var ips []string
+	ipsByScore := make(map[int][]string)
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -240,6 +242,9 @@ func (bs *BlocklistStore) Refresh(deployCfg DeployConfig) BlocklistRefreshRespon
 		}
 		if score >= minScore {
 			ips = append(ips, fields[0])
+		}
+		if score >= 1 && score <= 8 {
+			ipsByScore[score] = append(ipsByScore[score], fields[0])
 		}
 	}
 
@@ -288,12 +293,12 @@ route @ipsum_blocked {
 	// Force-reload the in-memory cache from the new file.
 	bs.ForceReload()
 
-	// Sync managed lists with the refreshed IPs.
+	// Sync managed lists with the refreshed IPs (grouped by score).
 	bs.mu.RLock()
 	cb := bs.onRefresh
 	bs.mu.RUnlock()
 	if cb != nil {
-		cb(ips)
+		cb(ipsByScore)
 	}
 
 	// Reload Caddy so the new blocklist takes effect.

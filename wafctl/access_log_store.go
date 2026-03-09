@@ -66,22 +66,60 @@ type RateLimitEvent struct {
 	URI       string    `json:"uri"`
 	Protocol  string    `json:"protocol,omitempty"` // e.g. "HTTP/2.0"
 	UserAgent string    `json:"user_agent"`
-	Source    string    `json:"source,omitempty"`     // "" = rate_limited, "ipsum" = ipsum_blocked
+	Source    string    `json:"source,omitempty"`     // "" = rate_limited, "ipsum" = ipsum_blocked, "policy" = policy engine block
+	RuleName  string    `json:"rule_name,omitempty"`  // policy engine: X-Blocked-Rule header value
 	RequestID string    `json:"request_id,omitempty"` // Caddy UUID for cross-log correlation
 }
 
-// isIpsumBlocked checks if the response headers contain X-Blocked-By: ipsum.
-func isIpsumBlocked(headers map[string][]string) bool {
+// blockedBySource checks X-Blocked-By response header and returns the source value.
+// Returns "" if no X-Blocked-By header is present.
+func blockedBySource(headers map[string][]string) string {
+	vals, ok := headers["X-Blocked-By"]
+	if !ok {
+		return ""
+	}
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// hasBlockedByValue checks if any X-Blocked-By header value matches the target.
+func hasBlockedByValue(headers map[string][]string, target string) bool {
 	vals, ok := headers["X-Blocked-By"]
 	if !ok {
 		return false
 	}
 	for _, v := range vals {
-		if v == "ipsum" {
+		if v == target {
 			return true
 		}
 	}
 	return false
+}
+
+// isIpsumBlocked checks if the response headers contain X-Blocked-By: ipsum.
+func isIpsumBlocked(headers map[string][]string) bool {
+	return hasBlockedByValue(headers, "ipsum")
+}
+
+// isPolicyBlocked checks if the response headers contain X-Blocked-By: policy-engine.
+func isPolicyBlocked(headers map[string][]string) bool {
+	return hasBlockedByValue(headers, "policy-engine")
+}
+
+// policyBlockedRuleName extracts X-Blocked-Rule header from response (set by policy engine plugin).
+func policyBlockedRuleName(headers map[string][]string) string {
+	vals, ok := headers["X-Blocked-Rule"]
+	if !ok {
+		return ""
+	}
+	if len(vals) > 0 {
+		return vals[0]
+	}
+	return ""
 }
 
 // ─── Access Log Store (tails combined-access.log for 429s) ──────────
@@ -103,6 +141,9 @@ type AccessLogStore struct {
 
 	// geoIP is an optional GeoIP store for country enrichment.
 	geoIP *GeoIPStore
+
+	// exclusionStore is an optional reference for enriching policy engine events with tags.
+	exclusionStore *ExclusionStore
 
 	// generation increments on every Load() that adds/evicts events.
 	generation atomic.Int64
@@ -146,6 +187,13 @@ func (s *AccessLogStore) SetGeoIP(g *GeoIPStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.geoIP = g
+}
+
+// SetExclusionStore configures the exclusion store for enriching policy engine events with tags.
+func (s *AccessLogStore) SetExclusionStore(es *ExclusionStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exclusionStore = es
 }
 
 // SetEventFile configures a JSONL file for persistent rate limit event storage.
@@ -359,10 +407,12 @@ func (s *AccessLogStore) Load() {
 		if len(line) > 0 {
 			var entry AccessLogEntry
 			if jsonErr := json.Unmarshal(line, &entry); jsonErr == nil {
-				// Collect 429 (rate limited) and ipsum-blocked (403 + X-Blocked-By: ipsum) responses.
+				// Collect 429 (rate limited), ipsum-blocked (403 + X-Blocked-By: ipsum),
+				// and policy-engine-blocked (403 + X-Blocked-By: policy-engine) responses.
 				isRateLimit := entry.Status == 429
 				isIpsum := entry.Status == 403 && isIpsumBlocked(entry.RespHeaders)
-				if isRateLimit || isIpsum {
+				isPolicy := entry.Status == 403 && isPolicyBlocked(entry.RespHeaders)
+				if isRateLimit || isIpsum || isPolicy {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -381,6 +431,9 @@ func (s *AccessLogStore) Load() {
 					}
 					if isIpsum {
 						evt.Source = "ipsum"
+					} else if isPolicy {
+						evt.Source = "policy"
+						evt.RuleName = policyBlockedRuleName(entry.RespHeaders)
 					}
 					// Enrich with country from Cf-Ipcountry header or MMDB lookup.
 					if geoIP != nil {
@@ -415,15 +468,18 @@ func (s *AccessLogStore) Load() {
 		s.generation.Add(1)
 		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
-		rlCount, ipsumCount := 0, 0
+		rlCount, ipsumCount, policyCount := 0, 0, 0
 		for _, e := range newEvents {
-			if e.Source == "ipsum" {
+			switch e.Source {
+			case "ipsum":
 				ipsumCount++
-			} else {
+			case "policy":
+				policyCount++
+			default:
 				rlCount++
 			}
 		}
-		log.Printf("loaded %d new events (%d rate-limit, %d ipsum) — %d total", len(newEvents), rlCount, ipsumCount, s.EventCount())
+		log.Printf("loaded %d new events (%d rate-limit, %d ipsum, %d policy) — %d total", len(newEvents), rlCount, ipsumCount, policyCount, s.EventCount())
 	}
 
 	// Evict events older than maxAge.
@@ -584,15 +640,22 @@ func ephemeralID() string {
 // extraTags from the matched rate limit rule are appended to the event tags.
 func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	status := 429
+	eventType := "rate_limited"
 	var tags []string
-	if rle.Source == "ipsum" {
+	switch rle.Source {
+	case "ipsum":
 		status = 403
 		tags = []string{"blocklist", "ipsum"}
+	case "policy":
+		status = 403
+		eventType = "policy_block"
+		// No default tags here — tags will come from matching the rule name
+		// to exclusion store entries (done by the caller via extraTags).
 	}
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
 	}
-	return Event{
+	evt := Event{
 		ID:             ephemeralID(),
 		Timestamp:      rle.Timestamp,
 		ClientIP:       rle.ClientIP,
@@ -604,33 +667,68 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		IsBlocked:      true,
 		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,
-		EventType:      "rate_limited",
+		EventType:      eventType,
 		Tags:           tags,
 		RequestID:      rle.RequestID,
 	}
+	// For policy engine blocks, set the rule message from X-Blocked-Rule header.
+	if rle.Source == "policy" && rle.RuleName != "" {
+		evt.RuleMsg = "Policy Block: " + rle.RuleName
+	}
+	return evt
 }
 
-// SnapshotAsEvents returns 429 events converted to the unified Event type.
-// If rules are provided, events are enriched with tags from the first matching rule.
+// SnapshotAsEvents returns 429/policy events converted to the unified Event type.
+// Rate limit events are enriched with tags from matching RL rules.
+// Policy engine events are enriched with tags from the exclusion store.
 func (s *AccessLogStore) SnapshotAsEvents(hours int, rules []RateLimitRule) []Event {
 	rlEvents := s.snapshotSince(hours)
-	sorted := sortRulesByPriority(rules)
-	events := make([]Event, len(rlEvents))
-	for i, rle := range rlEvents {
-		tags := matchEventToRuleTags(rle, sorted)
-		events[i] = RateLimitEventToEvent(rle, tags)
+	s.mu.RLock()
+	es := s.exclusionStore
+	s.mu.RUnlock()
+	var exclusions []RuleExclusion
+	if es != nil {
+		exclusions = es.List()
 	}
-	return events
+	return enrichAccessEvents(rlEvents, rules, exclusions)
 }
 
-// SnapshotAsEventsRange returns 429 events within [start, end] as unified Events.
-// If rules are provided, events are enriched with tags from the first matching rule.
+// SnapshotAsEventsRange returns 429/policy events within [start, end] as unified Events.
+// Rate limit events are enriched with tags from matching RL rules.
+// Policy engine events are enriched with tags from the exclusion store.
 func (s *AccessLogStore) SnapshotAsEventsRange(start, end time.Time, rules []RateLimitRule) []Event {
 	rlEvents := s.snapshotRange(start, end)
+	s.mu.RLock()
+	es := s.exclusionStore
+	s.mu.RUnlock()
+	var exclusions []RuleExclusion
+	if es != nil {
+		exclusions = es.List()
+	}
+	return enrichAccessEvents(rlEvents, rules, exclusions)
+}
+
+// enrichAccessEvents converts RateLimitEvents to unified Events with tag enrichment.
+func enrichAccessEvents(rlEvents []RateLimitEvent, rules []RateLimitRule, exclusions []RuleExclusion) []Event {
 	sorted := sortRulesByPriority(rules)
+	// Build rule-name → tags lookup for policy engine events.
+	excTagsByName := make(map[string][]string, len(exclusions))
+	for _, exc := range exclusions {
+		if len(exc.Tags) > 0 {
+			excTagsByName[exc.Name] = exc.Tags
+		}
+	}
 	events := make([]Event, len(rlEvents))
 	for i, rle := range rlEvents {
-		tags := matchEventToRuleTags(rle, sorted)
+		var tags []string
+		if rle.Source == "policy" {
+			// Match policy engine event to exclusion tags by rule name.
+			if t, ok := excTagsByName[rle.RuleName]; ok {
+				tags = t
+			}
+		} else {
+			tags = matchEventToRuleTags(rle, sorted)
+		}
 		events[i] = RateLimitEventToEvent(rle, tags)
 	}
 	return events

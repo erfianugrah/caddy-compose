@@ -443,45 +443,84 @@ func TestParseItemLines(t *testing.T) {
 func TestManagedListStore_SyncIPsum(t *testing.T) {
 	store := newTestManagedListStore(t)
 
-	// First sync creates the list.
-	store.SyncIPsum([]string{"1.2.3.4", "5.6.7.8"})
+	// First sync creates 8 per-level lists.
+	store.SyncIPsum(map[int][]string{
+		1: {"1.2.3.4", "5.6.7.8"},
+		3: {"9.10.11.12"},
+	})
 
 	all := store.List()
-	if len(all) != 1 {
-		t.Fatalf("expected 1 list, got %d", len(all))
-	}
-	if all[0].Name != "ipsum-ips" {
-		t.Errorf("Name = %q, want %q", all[0].Name, "ipsum-ips")
-	}
-	if all[0].Kind != "ip" {
-		t.Errorf("Kind = %q, want %q", all[0].Kind, "ip")
-	}
-	if all[0].Source != "ipsum" {
-		t.Errorf("Source = %q, want %q", all[0].Source, "ipsum")
-	}
-	if all[0].ItemCount != 2 {
-		t.Errorf("ItemCount = %d, want 2", all[0].ItemCount)
+	if len(all) != 8 {
+		t.Fatalf("expected 8 lists (one per level), got %d", len(all))
 	}
 
-	// Second sync updates in place.
-	store.SyncIPsum([]string{"1.2.3.4", "5.6.7.8", "9.10.11.12"})
+	// Build name→list lookup.
+	byName := make(map[string]ManagedList)
+	for _, l := range all {
+		byName[l.Name] = l
+	}
+
+	// Level 1 should have 2 IPs.
+	l1 := byName["ipsum-level-1"]
+	if l1.Kind != "ip" {
+		t.Errorf("Kind = %q, want %q", l1.Kind, "ip")
+	}
+	if l1.Source != "ipsum" {
+		t.Errorf("Source = %q, want %q", l1.Source, "ipsum")
+	}
+	if l1.ItemCount != 2 {
+		t.Errorf("Level 1 ItemCount = %d, want 2", l1.ItemCount)
+	}
+
+	// Level 3 should have 1 IP.
+	l3 := byName["ipsum-level-3"]
+	if l3.ItemCount != 1 {
+		t.Errorf("Level 3 ItemCount = %d, want 1", l3.ItemCount)
+	}
+
+	// Levels without data should have 0 items.
+	l5 := byName["ipsum-level-5"]
+	if l5.ItemCount != 0 {
+		t.Errorf("Level 5 ItemCount = %d, want 0", l5.ItemCount)
+	}
+
+	// Second sync updates in place — IDs should be preserved.
+	oldL1ID := l1.ID
+	store.SyncIPsum(map[int][]string{
+		1: {"1.2.3.4", "5.6.7.8", "9.10.11.12"},
+		3: {"10.0.0.1"},
+	})
 
 	all = store.List()
-	if len(all) != 1 {
-		t.Fatalf("expected 1 list after re-sync, got %d", len(all))
+	if len(all) != 8 {
+		t.Fatalf("expected 8 lists after re-sync, got %d", len(all))
 	}
-	if all[0].ItemCount != 3 {
-		t.Errorf("ItemCount after re-sync = %d, want 3", all[0].ItemCount)
+	byName = make(map[string]ManagedList)
+	for _, l := range all {
+		byName[l.Name] = l
 	}
-	// ID should be preserved.
+	if byName["ipsum-level-1"].ItemCount != 3 {
+		t.Errorf("Level 1 ItemCount after re-sync = %d, want 3", byName["ipsum-level-1"].ItemCount)
+	}
+	if byName["ipsum-level-1"].ID != oldL1ID {
+		t.Error("Level 1 ID should be preserved across re-syncs")
+	}
 }
 
 func TestManagedListStore_IpsumCannotBeDeleted(t *testing.T) {
 	store := newTestManagedListStore(t)
-	store.SyncIPsum([]string{"1.2.3.4"})
+	store.SyncIPsum(map[int][]string{1: {"1.2.3.4"}})
 
 	all := store.List()
-	_, err := store.Delete(all[0].ID)
+	// Try deleting the first ipsum list.
+	var ipsumList ManagedList
+	for _, l := range all {
+		if l.Source == "ipsum" {
+			ipsumList = l
+			break
+		}
+	}
+	_, err := store.Delete(ipsumList.ID)
 	if err == nil {
 		t.Error("expected error when deleting ipsum list")
 	}
@@ -493,10 +532,10 @@ func TestManagedListStore_IpsumCannotBeDeleted(t *testing.T) {
 func TestManagedListStore_ImportPreservesIPsum(t *testing.T) {
 	store := newTestManagedListStore(t)
 
-	// Sync an ipsum list first.
-	store.SyncIPsum([]string{"1.2.3.4"})
+	// Sync ipsum lists first.
+	store.SyncIPsum(map[int][]string{1: {"1.2.3.4"}})
 
-	// Import replaces non-ipsum lists but preserves ipsum.
+	// Import replaces non-ipsum lists but preserves all ipsum lists.
 	err := store.Import([]ManagedList{
 		{Name: "imported-list", Kind: "string", Source: "manual", Items: []string{"hello"}},
 	})
@@ -505,16 +544,17 @@ func TestManagedListStore_ImportPreservesIPsum(t *testing.T) {
 	}
 
 	all := store.List()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 lists (ipsum + imported), got %d", len(all))
+	// 8 ipsum level lists + 1 imported = 9.
+	if len(all) != 9 {
+		t.Fatalf("expected 9 lists (8 ipsum + 1 imported), got %d", len(all))
 	}
 
 	names := map[string]bool{}
 	for _, l := range all {
 		names[l.Name] = true
 	}
-	if !names["ipsum-ips"] {
-		t.Error("ipsum-ips list should be preserved after import")
+	if !names["ipsum-level-1"] {
+		t.Error("ipsum-level-1 should be preserved after import")
 	}
 	if !names["imported-list"] {
 		t.Error("imported-list should be present")
@@ -524,12 +564,12 @@ func TestManagedListStore_ImportPreservesIPsum(t *testing.T) {
 func TestManagedListStore_ExportExcludesIPsum(t *testing.T) {
 	store := newTestManagedListStore(t)
 
-	store.SyncIPsum([]string{"1.2.3.4"})
+	store.SyncIPsum(map[int][]string{1: {"1.2.3.4"}})
 	store.Create(ManagedList{Name: "my-list", Kind: "string", Source: "manual", Items: []string{"a"}})
 
 	export := store.Export()
 	if len(export.Lists) != 1 {
-		t.Fatalf("expected 1 exported list, got %d", len(export.Lists))
+		t.Fatalf("expected 1 exported list (excluding 8 ipsum), got %d", len(export.Lists))
 	}
 	if export.Lists[0].Name != "my-list" {
 		t.Errorf("exported list name = %q, want %q", export.Lists[0].Name, "my-list")
@@ -836,9 +876,16 @@ func TestHandlerRefreshManagedList_NotURLSource(t *testing.T) {
 func TestHandlerUpdateManagedList_IpsumReadOnly(t *testing.T) {
 	mux, ls := setupListMux(t)
 
-	ls.SyncIPsum([]string{"1.2.3.4"})
+	ls.SyncIPsum(map[int][]string{1: {"1.2.3.4"}})
 	all := ls.List()
-	ipsumID := all[0].ID
+	// Find any ipsum list to test.
+	var ipsumID string
+	for _, l := range all {
+		if l.Source == "ipsum" {
+			ipsumID = l.ID
+			break
+		}
+	}
 
 	body := `{"description":"hacked"}`
 	req := httptest.NewRequest("PUT", "/api/lists/"+ipsumID, strings.NewReader(body))
@@ -905,10 +952,10 @@ func TestBlocklistStore_OnRefreshCallback(t *testing.T) {
 	bs := NewBlocklistStore(path)
 
 	var called bool
-	var receivedIPs []string
-	bs.SetOnRefresh(func(ips []string) {
+	var receivedScores map[int][]string
+	bs.SetOnRefresh(func(ipsByScore map[int][]string) {
 		called = true
-		receivedIPs = ips
+		receivedScores = ipsByScore
 	})
 
 	// We can't easily test the full Refresh flow (requires HTTP download),
@@ -921,11 +968,47 @@ func TestBlocklistStore_OnRefreshCallback(t *testing.T) {
 	bs.mu.RUnlock()
 
 	// Manually invoke the callback to verify it works.
-	bs.onRefresh([]string{"1.2.3.4", "5.6.7.8"})
+	bs.onRefresh(map[int][]string{1: {"1.2.3.4", "5.6.7.8"}, 3: {"9.10.11.12"}})
 	if !called {
 		t.Error("callback was not called")
 	}
-	if len(receivedIPs) != 2 {
-		t.Errorf("received %d IPs, want 2", len(receivedIPs))
+	if len(receivedScores[1]) != 2 {
+		t.Errorf("received %d level-1 IPs, want 2", len(receivedScores[1]))
+	}
+	if len(receivedScores[3]) != 1 {
+		t.Errorf("received %d level-3 IPs, want 1", len(receivedScores[3]))
+	}
+}
+
+func TestManagedListStore_SyncIPsum_MigratesLegacyList(t *testing.T) {
+	store := newTestManagedListStore(t)
+
+	// Simulate a legacy "ipsum-ips" flat list by manually inserting it.
+	store.mu.Lock()
+	store.lists = append(store.lists, ManagedList{
+		ID:        "legacy-ipsum-id",
+		Name:      "ipsum-ips",
+		Kind:      "ip",
+		Source:    "ipsum",
+		Items:     []string{"1.1.1.1", "2.2.2.2"},
+		ItemCount: 2,
+	})
+	store.mu.Unlock()
+
+	// SyncIPsum should remove the legacy list and create 8 level lists.
+	store.SyncIPsum(map[int][]string{1: {"3.3.3.3"}})
+
+	all := store.List()
+	if len(all) != 8 {
+		t.Fatalf("expected 8 lists after migration, got %d", len(all))
+	}
+
+	for _, l := range all {
+		if l.Name == "ipsum-ips" {
+			t.Error("legacy ipsum-ips list should have been removed")
+		}
+		if l.Source != "ipsum" {
+			t.Errorf("unexpected non-ipsum list: %q", l.Name)
+		}
 	}
 }

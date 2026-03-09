@@ -449,47 +449,84 @@ func (s *ManagedListStore) RefreshURL(id string) (ManagedList, error) {
 
 // ─── IPsum Sync ─────────────────────────────────────────────────────
 
-// SyncIPsum creates or updates the "ipsum-ips" managed list from the
-// blocklist store's parsed IPs. Called as a callback after blocklist refresh.
-func (s *ManagedListStore) SyncIPsum(ips []string) {
+// ipsumLevelName returns the managed list name for a given IPsum threat level.
+func ipsumLevelName(level int) string {
+	return fmt.Sprintf("ipsum-level-%d", level)
+}
+
+// ipsumLevelDescription returns the description for an IPsum threat level list.
+func ipsumLevelDescription(level int) string {
+	return fmt.Sprintf("IPsum threat level %d IPs (auto-synced, read-only)", level)
+}
+
+// SyncIPsum creates or updates per-level IPsum managed lists from the blocklist
+// store's parsed IPs. Creates one list per score level (1–8), named
+// "ipsum-level-1" through "ipsum-level-8". Called as a callback after blocklist
+// refresh. Also cleans up the legacy "ipsum-ips" flat list if present.
+func (s *ManagedListStore) SyncIPsum(ipsByScore map[int][]string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
 
-	// Find existing ipsum list.
-	idx := -1
+	// Build index of existing ipsum lists by name.
+	existingByName := make(map[string]int) // name → index in s.lists
 	for i, l := range s.lists {
-		if l.Source == "ipsum" && l.Name == "ipsum-ips" {
-			idx = i
-			break
+		if l.Source == "ipsum" {
+			existingByName[l.Name] = i
 		}
 	}
 
-	list := ManagedList{
-		Name:        "ipsum-ips",
-		Description: "Auto-synced IPsum blocklist IPs (read-only)",
-		Kind:        "ip",
-		Source:      "ipsum",
-		Items:       ips,
-		ItemCount:   len(ips),
-		UpdatedAt:   now,
+	// Remove legacy "ipsum-ips" flat list (replaced by per-level lists).
+	if idx, ok := existingByName["ipsum-ips"]; ok {
+		old := s.lists[idx]
+		s.lists = append(s.lists[:idx], s.lists[idx+1:]...)
+		log.Printf("[lists] removed legacy ipsum-ips list (%d IPs) — replaced by per-level lists", old.ItemCount)
+		// Rebuild index after removal (indices shifted).
+		existingByName = make(map[string]int)
+		for i, l := range s.lists {
+			if l.Source == "ipsum" {
+				existingByName[l.Name] = i
+			}
+		}
 	}
 
-	if idx >= 0 {
-		list.ID = s.lists[idx].ID
-		list.CreatedAt = s.lists[idx].CreatedAt
-		s.lists[idx] = list
-	} else {
-		list.ID = generateUUID()
-		list.CreatedAt = now
-		s.lists = append(s.lists, list)
+	var totalIPs int
+	for level := 1; level <= 8; level++ {
+		name := ipsumLevelName(level)
+		ips := ipsByScore[level] // may be nil/empty for high levels
+		if ips == nil {
+			ips = []string{}
+		}
+		totalIPs += len(ips)
+
+		list := ManagedList{
+			Name:        name,
+			Description: ipsumLevelDescription(level),
+			Kind:        "ip",
+			Source:      "ipsum",
+			Items:       ips,
+			ItemCount:   len(ips),
+			UpdatedAt:   now,
+		}
+
+		if idx, ok := existingByName[name]; ok {
+			// Update existing.
+			list.ID = s.lists[idx].ID
+			list.CreatedAt = s.lists[idx].CreatedAt
+			s.lists[idx] = list
+		} else {
+			// Create new.
+			list.ID = generateUUID()
+			list.CreatedAt = now
+			s.lists = append(s.lists, list)
+		}
 	}
 
 	if err := s.save(); err != nil {
 		log.Printf("[lists] error saving ipsum sync: %v", err)
 	} else {
-		log.Printf("[lists] synced ipsum-ips: %d IPs", len(ips))
+		log.Printf("[lists] synced 8 ipsum level lists: %d total IPs", totalIPs)
 	}
 }
 

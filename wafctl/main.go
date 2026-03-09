@@ -116,7 +116,7 @@ func runServe() int {
 	accessLogStore.SetEventFile(envOr("WAF_ACCESS_EVENT_FILE", "/data/access-events.jsonl"))
 	accessLogStore.SetMaxAge(maxAge)
 	accessLogStore.SetGeoIP(geoStore)
-	accessLogStore.StartTailing(tailInterval)
+	// ExclusionStore wired up below after it's created (line order dependency).
 
 	generalLogStore := NewGeneralLogStore(combinedAccessLog)
 	generalLogStore.SetOffsetFile(envOr("WAF_GENERAL_LOG_OFFSET_FILE", "/data/.general-log-offset"))
@@ -126,6 +126,9 @@ func runServe() int {
 	generalLogStore.StartTailing(tailInterval)
 
 	exclusionStore := NewExclusionStore(exclusionsFile)
+	accessLogStore.SetExclusionStore(exclusionStore)
+	accessLogStore.StartTailing(tailInterval)
+
 	configStore := NewConfigStore(configFile)
 	rlRuleStore := NewRateLimitRuleStore(rateLimitFile)
 	cspStore := NewCSPStore(cspFile)
@@ -139,9 +142,9 @@ func runServe() int {
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
 
-	// Sync IPsum IPs to managed list store after each blocklist refresh.
-	blocklistStore.SetOnRefresh(func(ips []string) {
-		managedListStore.SyncIPsum(ips)
+	// Sync IPsum IPs to per-level managed lists after each blocklist refresh.
+	blocklistStore.SetOnRefresh(func(ipsByScore map[int][]string) {
+		managedListStore.SyncIPsum(ipsByScore)
 	})
 
 	// Schedule daily blocklist refresh at the configured UTC hour (default 06:00).

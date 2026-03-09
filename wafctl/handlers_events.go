@@ -76,11 +76,13 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		if hasFilter {
 			var allEvents []Event
 			// Optimization: skip event sources that can't match the event_type filter.
+			// policy_block appears in both maps: WAF store has Coraza-detected policy events,
+			// access log store has policy engine plugin blocks (which bypass Coraza entirely).
 			wafTypes := map[string]bool{
 				"blocked": true, "logged": true,
 				"policy_skip": true, "policy_allow": true, "policy_block": true,
 			}
-			rlTypes := map[string]bool{"rate_limited": true}
+			rlTypes := map[string]bool{"rate_limited": true, "policy_block": true}
 			needWAF, needRL := true, true
 			if eventTypeF != nil {
 				switch eventTypeF.op {
@@ -166,46 +168,91 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		}
 		summary := sr.SummaryResponse
 
-		// Merge access-log events (rate-limited, including ipsum blocks) into the summary.
-		rlEvents := getRLEvents(als, tr, hours, rs.List())
+		// Merge access-log events (rate-limited, ipsum, and policy engine blocks) into the summary.
+		alsEvents := getRLEvents(als, tr, hours, rs.List())
 
-		rlCount := len(rlEvents)
-		rlHourMap := make(map[string]int)
-		rlSvcMap := make(map[string]int)
-		rlClients := make(map[string]struct{})
-		rlServices := make(map[string]struct{})
-		rlClientMap := make(map[string]int)
-		rlTagMap := make(map[string]int)
+		// Split access-log events into rate-limited vs policy categories.
+		type alsStat struct {
+			rl, policy int
+		}
+		alsTotal := alsStat{}
+		alsHourMap := make(map[string]*alsStat)
+		alsSvcMap := make(map[string]*alsStat)
+		alsClients := make(map[string]struct{})
+		alsServices := make(map[string]struct{})
+		alsClientMap := make(map[string]*alsStat)
+		alsTagMap := make(map[string]int)
 
-		for i := range rlEvents {
-			ev := &rlEvents[i]
+		for i := range alsEvents {
+			ev := &alsEvents[i]
 			hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
-			rlClients[ev.ClientIP] = struct{}{}
-			rlServices[ev.Service] = struct{}{}
-			rlHourMap[hourKey]++
-			rlSvcMap[ev.Service]++
-			rlClientMap[ev.ClientIP]++
+			alsClients[ev.ClientIP] = struct{}{}
+			alsServices[ev.Service] = struct{}{}
+			isPolicy := ev.EventType == "policy_block"
+
+			if isPolicy {
+				alsTotal.policy++
+			} else {
+				alsTotal.rl++
+			}
+
+			hs, ok := alsHourMap[hourKey]
+			if !ok {
+				hs = &alsStat{}
+				alsHourMap[hourKey] = hs
+			}
+			if isPolicy {
+				hs.policy++
+			} else {
+				hs.rl++
+			}
+
+			ss, ok := alsSvcMap[ev.Service]
+			if !ok {
+				ss = &alsStat{}
+				alsSvcMap[ev.Service] = ss
+			}
+			if isPolicy {
+				ss.policy++
+			} else {
+				ss.rl++
+			}
+
+			cs, ok := alsClientMap[ev.ClientIP]
+			if !ok {
+				cs = &alsStat{}
+				alsClientMap[ev.ClientIP] = cs
+			}
+			if isPolicy {
+				cs.policy++
+			} else {
+				cs.rl++
+			}
+
 			for _, tag := range ev.Tags {
-				rlTagMap[tag]++
+				alsTagMap[tag]++
 			}
 		}
 
-		summary.RateLimited += rlCount
-		summary.TotalEvents += rlCount
+		summary.RateLimited += alsTotal.rl
+		summary.PolicyEvents += alsTotal.policy
+		summary.TotalEvents += len(alsEvents)
 
 		// Merge into existing hourly buckets.
 		existingHours := make(map[string]int)
 		for i, hc := range summary.EventsByHour {
 			existingHours[hc.Hour] = i
 		}
-		for hour, count := range rlHourMap {
+		for hour, stat := range alsHourMap {
+			total := stat.rl + stat.policy
 			if idx, ok := existingHours[hour]; ok {
-				summary.EventsByHour[idx].RateLimited += count
-				summary.EventsByHour[idx].Count += count
+				summary.EventsByHour[idx].RateLimited += stat.rl
+				summary.EventsByHour[idx].Policy += stat.policy
+				summary.EventsByHour[idx].Count += total
 			} else {
 				existingHours[hour] = len(summary.EventsByHour)
 				summary.EventsByHour = append(summary.EventsByHour, HourCount{
-					Hour: hour, Count: count, RateLimited: count,
+					Hour: hour, Count: total, RateLimited: stat.rl, Policy: stat.policy,
 				})
 			}
 		}
@@ -218,14 +265,16 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		for i, sd := range summary.ServiceBreakdown {
 			existingSvcs[sd.Service] = i
 		}
-		for svc, count := range rlSvcMap {
+		for svc, stat := range alsSvcMap {
+			total := stat.rl + stat.policy
 			if idx, ok := existingSvcs[svc]; ok {
-				summary.ServiceBreakdown[idx].RateLimited += count
-				summary.ServiceBreakdown[idx].Total += count
+				summary.ServiceBreakdown[idx].RateLimited += stat.rl
+				summary.ServiceBreakdown[idx].Policy += stat.policy
+				summary.ServiceBreakdown[idx].Total += total
 			} else {
 				existingSvcs[svc] = len(summary.ServiceBreakdown)
 				summary.ServiceBreakdown = append(summary.ServiceBreakdown, ServiceDetail{
-					Service: svc, Total: count, RateLimited: count,
+					Service: svc, Total: total, RateLimited: stat.rl, Policy: stat.policy,
 				})
 			}
 		}
@@ -235,31 +284,35 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		for i, sc := range summary.TopServices {
 			existingTopSvcs[sc.Service] = i
 		}
-		for svc, count := range rlSvcMap {
+		for svc, stat := range alsSvcMap {
+			total := stat.rl + stat.policy
 			if idx, ok := existingTopSvcs[svc]; ok {
-				summary.TopServices[idx].RateLimited += count
-				summary.TopServices[idx].Count += count
+				summary.TopServices[idx].RateLimited += stat.rl
+				summary.TopServices[idx].Policy += stat.policy
+				summary.TopServices[idx].Count += total
 			} else {
 				existingTopSvcs[svc] = len(summary.TopServices)
 				summary.TopServices = append(summary.TopServices, ServiceCount{
-					Service: svc, Count: count, RateLimited: count,
+					Service: svc, Count: total, RateLimited: stat.rl, Policy: stat.policy,
 				})
 			}
 		}
 
-		// Merge RL client counts into TopClients.
+		// Merge access-log client counts into TopClients.
 		existingTopClients := make(map[string]int)
 		for i, cc := range summary.TopClients {
 			existingTopClients[cc.Client] = i
 		}
-		for client, count := range rlClientMap {
+		for client, stat := range alsClientMap {
+			total := stat.rl + stat.policy
 			if idx, ok := existingTopClients[client]; ok {
-				summary.TopClients[idx].RateLimited += count
-				summary.TopClients[idx].Count += count
+				summary.TopClients[idx].RateLimited += stat.rl
+				summary.TopClients[idx].Policy += stat.policy
+				summary.TopClients[idx].Count += total
 			} else {
 				existingTopClients[client] = len(summary.TopClients)
 				summary.TopClients = append(summary.TopClients, ClientCount{
-					Client: client, Count: count, RateLimited: count,
+					Client: client, Count: total, RateLimited: stat.rl, Policy: stat.policy,
 				})
 			}
 		}
@@ -270,20 +323,20 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			summary.TopClients = summary.TopClients[:topNSummary]
 		}
 
-		// Merge unique clients/services (union of WAF + RL).
-		if len(rlClients) > 0 || len(rlServices) > 0 {
-			for c := range rlClients {
+		// Merge unique clients/services (union of WAF + access-log).
+		if len(alsClients) > 0 || len(alsServices) > 0 {
+			for c := range alsClients {
 				sr.clientSet[c] = struct{}{}
 			}
-			for svc := range rlServices {
+			for svc := range alsServices {
 				sr.serviceSet[svc] = struct{}{}
 			}
 			summary.UniqueClients = len(sr.clientSet)
 			summary.UniqueServices = len(sr.serviceSet)
 		}
 
-		// Merge RL events into recent_events, re-sort newest-first.
-		summary.RecentEvents = append(summary.RecentEvents, rlEvents...)
+		// Merge access-log events into recent_events, re-sort newest-first.
+		summary.RecentEvents = append(summary.RecentEvents, alsEvents...)
 		sort.Slice(summary.RecentEvents, func(i, j int) bool {
 			return summary.RecentEvents[i].Timestamp.After(summary.RecentEvents[j].Timestamp)
 		})
@@ -291,13 +344,13 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			summary.RecentEvents = summary.RecentEvents[:topNSummary]
 		}
 
-		// Merge RL tag counts into the summary's TagCounts.
-		if len(rlTagMap) > 0 {
+		// Merge access-log tag counts into the summary's TagCounts.
+		if len(alsTagMap) > 0 {
 			existingTags := make(map[string]int)
 			for i, tc := range summary.TagCounts {
 				existingTags[tc.Tag] = i
 			}
-			for tag, count := range rlTagMap {
+			for tag, count := range alsTagMap {
 				if idx, ok := existingTags[tag]; ok {
 					summary.TagCounts[idx].Count += count
 				} else {
@@ -369,11 +422,13 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 		hours := parseHours(r)
 
 		// Collect WAF events (unless filtering to only rate_limited).
+		// policy_block appears in both maps: WAF store has Coraza-detected policy events,
+		// access log store has policy engine plugin blocks (which bypass Coraza entirely).
 		wafTypes := map[string]bool{
 			"blocked": true, "logged": true,
 			"policy_skip": true, "policy_allow": true, "policy_block": true,
 		}
-		rlTypes := map[string]bool{"rate_limited": true}
+		rlTypes := map[string]bool{"rate_limited": true, "policy_block": true}
 		needWAF, needRL := true, true
 		if eventTypeF != nil {
 			switch eventTypeF.op {

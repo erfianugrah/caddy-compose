@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1091,6 +1092,375 @@ func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
 
 	if ev.RequestID != "" {
 		t.Errorf("request_id should be empty for events without it, got %q", ev.RequestID)
+	}
+}
+
+// --- Policy Engine Event Detection Tests ---
+
+func TestHasBlockedByValue(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string][]string
+		target  string
+		want    bool
+	}{
+		{"exact match", map[string][]string{"X-Blocked-By": {"ipsum"}}, "ipsum", true},
+		{"no match", map[string][]string{"X-Blocked-By": {"other"}}, "ipsum", false},
+		{"no header", map[string][]string{}, "ipsum", false},
+		{"nil headers", nil, "ipsum", false},
+		{"empty values", map[string][]string{"X-Blocked-By": {""}}, "ipsum", false},
+		{"multiple values first match", map[string][]string{"X-Blocked-By": {"ipsum", "policy-engine"}}, "ipsum", true},
+		{"multiple values second match", map[string][]string{"X-Blocked-By": {"other", "policy-engine"}}, "policy-engine", true},
+		{"policy-engine match", map[string][]string{"X-Blocked-By": {"policy-engine"}}, "policy-engine", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hasBlockedByValue(tt.headers, tt.target); got != tt.want {
+				t.Errorf("hasBlockedByValue(%v, %q) = %v, want %v", tt.headers, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsPolicyBlocked(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string][]string
+		want    bool
+	}{
+		{"policy-engine header", map[string][]string{"X-Blocked-By": {"policy-engine"}}, true},
+		{"ipsum header", map[string][]string{"X-Blocked-By": {"ipsum"}}, false},
+		{"no header", map[string][]string{}, false},
+		{"nil headers", nil, false},
+		{"multiple with policy", map[string][]string{"X-Blocked-By": {"ipsum", "policy-engine"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isPolicyBlocked(tt.headers); got != tt.want {
+				t.Errorf("isPolicyBlocked(%v) = %v, want %v", tt.headers, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPolicyBlockedRuleName(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string][]string
+		want    string
+	}{
+		{"rule name present", map[string][]string{"X-Blocked-Rule": {"Honeypot Paths"}}, "Honeypot Paths"},
+		{"no header", map[string][]string{}, ""},
+		{"nil headers", nil, ""},
+		{"empty value", map[string][]string{"X-Blocked-Rule": {""}}, ""},
+		{"multiple values uses first", map[string][]string{"X-Blocked-Rule": {"Rule A", "Rule B"}}, "Rule A"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := policyBlockedRuleName(tt.headers); got != tt.want {
+				t.Errorf("policyBlockedRuleName(%v) = %q, want %q", tt.headers, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRateLimitEventToEvent_PolicyBlock(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 3, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.99",
+		Service:   "sonarr.erfi.io",
+		Method:    "GET",
+		URI:       "/.env",
+		UserAgent: "Scanner/1.0",
+		Source:    "policy",
+		RuleName:  "Honeypot Paths",
+	}
+
+	ev := RateLimitEventToEvent(rle, nil)
+
+	if ev.EventType != "policy_block" {
+		t.Errorf("event_type: want policy_block, got %s", ev.EventType)
+	}
+	if !ev.IsBlocked {
+		t.Error("policy_block events should have is_blocked=true")
+	}
+	if ev.ResponseStatus != 403 {
+		t.Errorf("response_status: want 403, got %d", ev.ResponseStatus)
+	}
+	if ev.RuleMsg != "Policy Block: Honeypot Paths" {
+		t.Errorf("rule_msg: want 'Policy Block: Honeypot Paths', got %q", ev.RuleMsg)
+	}
+	// No default tags for policy events (tags come from exclusion store enrichment).
+	if len(ev.Tags) != 0 {
+		t.Errorf("tags: want empty (no extraTags), got %v", ev.Tags)
+	}
+}
+
+func TestRateLimitEventToEvent_PolicyBlockWithTags(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 3, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.99",
+		Service:   "sonarr.erfi.io",
+		Method:    "GET",
+		URI:       "/.env",
+		Source:    "policy",
+		RuleName:  "Honeypot Paths",
+	}
+
+	ev := RateLimitEventToEvent(rle, []string{"honeypot", "scanner"})
+
+	if ev.EventType != "policy_block" {
+		t.Errorf("event_type: want policy_block, got %s", ev.EventType)
+	}
+	if len(ev.Tags) != 2 || ev.Tags[0] != "honeypot" || ev.Tags[1] != "scanner" {
+		t.Errorf("tags: want [honeypot scanner], got %v", ev.Tags)
+	}
+}
+
+func TestRateLimitEventToEvent_PolicyBlockNoRuleName(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 2, 22, 12, 3, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.99",
+		Service:   "sonarr.erfi.io",
+		Method:    "GET",
+		URI:       "/admin",
+		Source:    "policy",
+	}
+
+	ev := RateLimitEventToEvent(rle, nil)
+
+	if ev.EventType != "policy_block" {
+		t.Errorf("event_type: want policy_block, got %s", ev.EventType)
+	}
+	if ev.RuleMsg != "" {
+		t.Errorf("rule_msg: want empty when no rule name, got %q", ev.RuleMsg)
+	}
+}
+
+// samplePolicyAccessLogLines contains policy engine block events in access log format.
+var samplePolicyAccessLogLines = func() []string {
+	nowHour := time.Now().Truncate(time.Hour)
+	ts := func(t time.Time) string { return t.UTC().Format("2006/01/02 15:04:05") }
+	return []string{
+		// 200 OK — should be ignored
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"resp_headers":{},"status":200,"size":1234,"duration":0.05}`, ts(nowHour.Add(-50*time.Minute))),
+		// 403 policy engine block — honeypot path
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.10","client_ip":"10.0.0.10","proto":"HTTP/1.1","method":"GET","host":"sonarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/1.0"]}},"resp_headers":{"X-Blocked-By":["policy-engine"],"X-Blocked-Rule":["Honeypot Paths"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-49*time.Minute))),
+		// 403 policy engine block — scanner UA (no X-Blocked-Rule)
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.11","client_ip":"10.0.0.11","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["Nmap/7.0"]}},"resp_headers":{"X-Blocked-By":["policy-engine"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-48*time.Minute))),
+		// 429 rate limited — should still be collected as normal
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`, ts(nowHour.Add(-47*time.Minute))),
+		// 403 ipsum blocked — should still be collected as ipsum
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-46*time.Minute))),
+		// 403 without X-Blocked-By — should be ignored
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.4","client_ip":"10.0.0.4","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/2.0"]}},"resp_headers":{},"status":403,"size":0,"duration":0.002}`, ts(nowHour.Add(-45*time.Minute))),
+	}
+}()
+
+func TestAccessLogStoreLoadsPolicyEvents(t *testing.T) {
+	path := writeTempAccessLog(t, samplePolicyAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// 2 policy blocks + 1 rate-limited (429) + 1 ipsum-blocked = 4 total.
+	// The 200 OK and bare 403 are ignored.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 events (2 policy + 1 RL + 1 ipsum), got %d", got)
+	}
+}
+
+func TestPolicyEventSource(t *testing.T) {
+	path := writeTempAccessLog(t, samplePolicyAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0, nil)
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events, got %d", len(events))
+	}
+
+	var policyCount, rlCount, ipsumCount int
+	for _, ev := range events {
+		switch ev.EventType {
+		case "policy_block":
+			policyCount++
+		case "rate_limited":
+			rlCount++
+		}
+	}
+	// Count ipsum as rate_limited (as per existing behavior).
+	for _, ev := range events {
+		if ev.EventType == "rate_limited" {
+			for _, tag := range ev.Tags {
+				if tag == "ipsum" {
+					ipsumCount++
+				}
+			}
+		}
+	}
+	if policyCount != 2 {
+		t.Errorf("expected 2 policy_block events, got %d", policyCount)
+	}
+	if rlCount != 2 {
+		t.Errorf("expected 2 rate_limited events (1 RL + 1 ipsum), got %d", rlCount)
+	}
+	if ipsumCount != 1 {
+		t.Errorf("expected 1 ipsum-tagged event, got %d", ipsumCount)
+	}
+}
+
+func TestPolicyEventRuleMsg(t *testing.T) {
+	path := writeTempAccessLog(t, samplePolicyAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0, nil)
+	var withRuleMsg, withoutRuleMsg int
+	for _, ev := range events {
+		if ev.EventType == "policy_block" {
+			if ev.RuleMsg == "Policy Block: Honeypot Paths" {
+				withRuleMsg++
+			} else if ev.RuleMsg == "" {
+				withoutRuleMsg++
+			}
+		}
+	}
+	if withRuleMsg != 1 {
+		t.Errorf("expected 1 policy event with rule msg, got %d", withRuleMsg)
+	}
+	if withoutRuleMsg != 1 {
+		t.Errorf("expected 1 policy event without rule msg, got %d", withoutRuleMsg)
+	}
+}
+
+func TestPolicyEventsWithExclusionTagEnrichment(t *testing.T) {
+	// Create an exclusion store with a rule that matches the policy event name.
+	es := newTestExclusionStore(t)
+	exc := RuleExclusion{
+		Name:    "Honeypot Paths",
+		Type:    "block",
+		Enabled: true,
+		Tags:    []string{"honeypot"},
+		Conditions: []Condition{
+			{Field: "path", Operator: "in", Value: "/.env|/.git"},
+		},
+	}
+	es.Create(exc)
+
+	path := writeTempAccessLog(t, samplePolicyAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.SetExclusionStore(es)
+	store.Load()
+
+	events := store.SnapshotAsEvents(0, nil)
+	var enrichedCount int
+	for _, ev := range events {
+		if ev.EventType == "policy_block" && ev.RuleMsg == "Policy Block: Honeypot Paths" {
+			// Should have been enriched with "honeypot" tag from exclusion store.
+			for _, tag := range ev.Tags {
+				if tag == "honeypot" {
+					enrichedCount++
+				}
+			}
+		}
+	}
+	if enrichedCount != 1 {
+		t.Errorf("expected 1 policy event enriched with honeypot tag, got %d", enrichedCount)
+	}
+}
+
+func TestEnrichAccessEvents_PolicyTagLookup(t *testing.T) {
+	now := time.Now().UTC()
+	rlEvents := []RateLimitEvent{
+		{Timestamp: now, ClientIP: "1.2.3.4", Source: "policy", RuleName: "Scanner UA Block"},
+		{Timestamp: now, ClientIP: "5.6.7.8", Source: "policy", RuleName: "Unknown Rule"},
+		{Timestamp: now, ClientIP: "9.0.1.2", Source: ""},
+	}
+	exclusions := []RuleExclusion{
+		{Name: "Scanner UA Block", Tags: []string{"scanner", "bot-detection"}},
+		{Name: "Other Rule", Tags: []string{"other"}},
+	}
+
+	events := enrichAccessEvents(rlEvents, nil, exclusions)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+
+	// First event: matches "Scanner UA Block" exclusion, should get scanner + bot-detection tags.
+	if events[0].EventType != "policy_block" {
+		t.Errorf("events[0] type: want policy_block, got %s", events[0].EventType)
+	}
+	if len(events[0].Tags) != 2 || events[0].Tags[0] != "scanner" || events[0].Tags[1] != "bot-detection" {
+		t.Errorf("events[0] tags: want [scanner bot-detection], got %v", events[0].Tags)
+	}
+
+	// Second event: no matching exclusion, should have no tags.
+	if events[1].EventType != "policy_block" {
+		t.Errorf("events[1] type: want policy_block, got %s", events[1].EventType)
+	}
+	if len(events[1].Tags) != 0 {
+		t.Errorf("events[1] tags: want empty (no matching exclusion), got %v", events[1].Tags)
+	}
+
+	// Third event: rate limited (no source), should be rate_limited.
+	if events[2].EventType != "rate_limited" {
+		t.Errorf("events[2] type: want rate_limited, got %s", events[2].EventType)
+	}
+}
+
+func TestSummaryMergesPolicyEvents(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	wafStore := NewStore(wafPath)
+	wafStore.Load()
+
+	alsPath := writeTempAccessLog(t, samplePolicyAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handleSummary(wafStore, als, emptyRLRuleStore(t))(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+
+	var resp SummaryResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	// 3 WAF events + 2 policy_block + 1 RL(429) + 1 ipsum(rate_limited) = 7 total.
+	if resp.TotalEvents != 7 {
+		t.Errorf("total_events: want 7 (3 WAF + 2 policy + 1 RL + 1 ipsum), got %d", resp.TotalEvents)
+	}
+	// rate_limited = 1 RL + 1 ipsum = 2.
+	if resp.RateLimited != 2 {
+		t.Errorf("rate_limited: want 2 (1 RL + 1 ipsum), got %d", resp.RateLimited)
+	}
+}
+
+func TestEventsPolicyBlockFilter(t *testing.T) {
+	wafPath := writeTempLog(t, sampleLines)
+	wafStore := NewStore(wafPath)
+	wafStore.Load()
+
+	alsPath := writeTempAccessLog(t, samplePolicyAccessLogLines)
+	als := NewAccessLogStore(alsPath)
+	als.Load()
+
+	req := httptest.NewRequest("GET", "/api/events?event_type=policy_block&limit=100", nil)
+	w := httptest.NewRecorder()
+	handleEvents(wafStore, als, emptyRLRuleStore(t))(w, req)
+
+	var resp EventsResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.Total != 2 {
+		t.Errorf("policy_block filter: want 2, got %d", resp.Total)
+	}
+	for _, ev := range resp.Events {
+		if ev.EventType != "policy_block" {
+			t.Errorf("event %s has type %s, want policy_block", ev.ID, ev.EventType)
+		}
 	}
 }
 
