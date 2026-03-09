@@ -110,8 +110,13 @@ func validateExclusion(e RuleExclusion) error {
 		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", e.GroupOp)
 	}
 
-	// Validate conditions (all fields allowed for WAF exclusions).
-	if err := validateConditions(e.Conditions, nil); err != nil {
+	// Validate conditions — policy engine types (allow/block/honeypot) only
+	// support request-phase fields; SecRule types support all fields.
+	var allowedFields map[string]bool
+	if IsPolicyEngineType(e.Type) {
+		allowedFields = validPolicyEngineFields
+	}
+	if err := validateConditions(e.Conditions, allowedFields); err != nil {
 		return err
 	}
 

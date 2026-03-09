@@ -7,7 +7,7 @@ RUN xcaddy build \
 	--with github.com/mholt/caddy-ratelimit \
 	--with github.com/corazawaf/coraza-caddy/v2=github.com/erfianugrah/coraza-caddy/v2@89b4c94ebb2a4fa8c08e1b8f75b7df67fbbce78c \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.0 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.1.1
+	--with github.com/erfianugrah/caddy-policy-engine@v0.2.0
 
 # Fetch IPsum blocklist at build time so it's never empty on first boot.
 # wafctl's scheduled refresh overwrites this at runtime.

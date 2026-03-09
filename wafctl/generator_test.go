@@ -642,7 +642,8 @@ func TestGenerateWithMethodAndOperator(t *testing.T) {
 
 func TestValidateConditionFields(t *testing.T) {
 	// Valid: all field types with appropriate operators
-	validCases := []Condition{
+	// Request-phase fields — valid for policy engine types (allow/block/honeypot).
+	requestPhaseCases := []Condition{
 		{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"},
 		{Field: "ip", Operator: "eq", Value: "1.2.3.4"},
 		{Field: "path", Operator: "eq", Value: "/api/"},
@@ -665,21 +666,46 @@ func TestValidateConditionFields(t *testing.T) {
 		{Field: "uri_path", Operator: "begins_with", Value: "/api/"},
 		{Field: "uri_path", Operator: "ends_with", Value: ".php"},
 		{Field: "referer", Operator: "contains", Value: "example.com"},
-		{Field: "response_header", Operator: "eq", Value: "X-Test:val"},
-		{Field: "response_status", Operator: "eq", Value: "200"},
-		{Field: "response_status", Operator: "in", Value: "200 301 404"},
 		{Field: "http_version", Operator: "eq", Value: "HTTP/1.1"},
 		{Field: "http_version", Operator: "neq", Value: "HTTP/1.0"},
 	}
 
-	for _, c := range validCases {
+	for _, c := range requestPhaseCases {
 		e := RuleExclusion{
 			Name:       "test",
 			Type:       "allow",
 			Conditions: []Condition{c},
 		}
 		if err := validateExclusion(e); err != nil {
-			t.Errorf("condition %s/%s should be valid, got: %v", c.Field, c.Operator, err)
+			t.Errorf("condition %s/%s should be valid for allow type, got: %v", c.Field, c.Operator, err)
+		}
+	}
+
+	// Response-phase fields — valid for SecRule types, NOT for policy engine types.
+	responsePhaseCases := []Condition{
+		{Field: "response_header", Operator: "eq", Value: "X-Test:val"},
+		{Field: "response_status", Operator: "eq", Value: "200"},
+		{Field: "response_status", Operator: "in", Value: "200 301 404"},
+	}
+	for _, c := range responsePhaseCases {
+		// Should be valid for skip_rule (SecRule type).
+		e := RuleExclusion{
+			Name:       "test",
+			Type:       "skip_rule",
+			RuleID:     "932100",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("condition %s/%s should be valid for skip_rule, got: %v", c.Field, c.Operator, err)
+		}
+		// Should be rejected for allow (policy engine type).
+		e2 := RuleExclusion{
+			Name:       "test",
+			Type:       "allow",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e2); err == nil {
+			t.Errorf("condition %s/%s should be REJECTED for allow type (response-phase not available)", c.Field, c.Operator)
 		}
 	}
 
@@ -1261,7 +1287,8 @@ func TestGenerateSkipRuleByCountry(t *testing.T) {
 // --- New condition field tests (cookie, body, args, uri_path, referer, response_header, response_status, http_version) ---
 
 func TestValidateNewConditionFields(t *testing.T) {
-	validCases := []Condition{
+	// Request-phase fields — valid for policy engine types (allow/block).
+	requestPhaseCases := []Condition{
 		{Field: "cookie", Operator: "eq", Value: "session:abc123"},
 		{Field: "cookie", Operator: "contains", Value: "authelia_session:random"},
 		{Field: "cookie", Operator: "regex", Value: "token:^[a-f0-9]+$"},
@@ -1292,24 +1319,38 @@ func TestValidateNewConditionFields(t *testing.T) {
 		{Field: "referer", Operator: "contains", Value: "example.com"},
 		{Field: "referer", Operator: "regex", Value: "^https://.*\\.erfi\\.io"},
 		{Field: "referer", Operator: "neq", Value: "https://bad.com"},
-		{Field: "response_header", Operator: "eq", Value: "Content-Type:application/json"},
-		{Field: "response_header", Operator: "contains", Value: "X-Custom:value"},
-		{Field: "response_header", Operator: "regex", Value: "Server:nginx.*"},
-		{Field: "response_status", Operator: "eq", Value: "403"},
-		{Field: "response_status", Operator: "neq", Value: "200"},
-		{Field: "response_status", Operator: "in", Value: "401 403 500"},
 		{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
 		{Field: "http_version", Operator: "neq", Value: "HTTP/2.0"},
 	}
-
-	for _, c := range validCases {
+	for _, c := range requestPhaseCases {
 		e := RuleExclusion{
 			Name:       "test",
 			Type:       "allow",
 			Conditions: []Condition{c},
 		}
 		if err := validateExclusion(e); err != nil {
-			t.Errorf("condition %s/%s/%s should be valid, got: %v", c.Field, c.Operator, c.Value, err)
+			t.Errorf("condition %s/%s/%s should be valid for allow, got: %v", c.Field, c.Operator, c.Value, err)
+		}
+	}
+
+	// Response-phase fields — valid for SecRule types only.
+	responsePhaseCases := []Condition{
+		{Field: "response_header", Operator: "eq", Value: "Content-Type:application/json"},
+		{Field: "response_header", Operator: "contains", Value: "X-Custom:value"},
+		{Field: "response_header", Operator: "regex", Value: "Server:nginx.*"},
+		{Field: "response_status", Operator: "eq", Value: "403"},
+		{Field: "response_status", Operator: "neq", Value: "200"},
+		{Field: "response_status", Operator: "in", Value: "401 403 500"},
+	}
+	for _, c := range responsePhaseCases {
+		e := RuleExclusion{
+			Name:       "test",
+			Type:       "skip_rule",
+			RuleID:     "932100",
+			Conditions: []Condition{c},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("condition %s/%s/%s should be valid for skip_rule, got: %v", c.Field, c.Operator, c.Value, err)
 		}
 	}
 

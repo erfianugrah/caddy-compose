@@ -694,13 +694,25 @@ Zero external dependencies beyond Caddy itself. Registered as `http.handlers.pol
 ### Condition Matching
 
 Supports all request-phase fields: `ip`, `path`, `uri_path`, `host`, `method`, `user_agent`,
-`header`, `cookie`, `args`, `query`, `country`, `referer`, `http_version`.
+`header`, `cookie`, `args`, `query`, `country`, `referer`, `http_version`, `body`, `body_json`,
+`body_form`.
 
 All operators: `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex`, `ip_match`,
-`not_ip_match`, `in`. Named fields use `Name:value` format (same as wafctl conventions).
+`not_ip_match`, `in`, `exists`. Named fields use `Name:value` format (same as wafctl conventions).
 
 **Critical security fix**: `in` operator uses `map[string]bool` hash set for O(1) exact
 lookup instead of Coraza's `@pm` substring match.
+
+### Body Field Support
+
+- **Lazy body reading**: Only reads request body when a rule needs it (`needsBody` flag set at compile time)
+- **Body re-wrap**: Uses `io.LimitReader` + `io.MultiReader` so downstream handlers still see the full body
+- **Default max size**: 13 MiB (matches Coraza WAF `request_body_limit`), configurable via `body_max_size`
+- **`body`**: Raw request body matching (eq, contains, begins_with, ends_with, regex)
+- **`body_json`**: JSON dot-path resolution via `resolveJSONPath()` — walks nested objects/arrays (e.g., `.user.roles.0`). Supports `exists` operator for field presence checks
+- **`body_form`**: URL-encoded form field extraction via `url.ParseQuery()` — first value for multi-valued fields
+- **`exists` operator**: Checks JSON field presence without value comparison (`extractFieldExists()`)
+- `jsonValueToString()` handles all JSON types: strings, floats (integers render without decimals), bools, null, arrays/objects
 
 ### Caddyfile Integration
 
@@ -714,6 +726,7 @@ The `(waf)` snippet chains policy_engine before coraza_waf:
 policy_engine {
     rules_file /data/policy-rules.json
     reload_interval 5s
+    body_max_size 13mb
 }
 @needs_waf {
     not vars {http.vars.policy_engine.action} allow
@@ -734,8 +747,10 @@ for allowed requests. Block/honeypot return 403 before Coraza runs.
 - `SplitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions
 - Behind `WAF_POLICY_ENGINE_ENABLED` env var (default `false`) — when disabled, all exclusions use Coraza SecRules as before
 - Both `generateOnBoot()` and `handleDeploy()` call the policy generator when enabled
+- `validPolicyEngineFields` map in `models_exclusions.go` — same as RL fields + `args`, excludes `response_header` and `response_status`
+- `validateExclusion()` uses `IsPolicyEngineType()` to select the right condition field set (policy engine fields for allow/block/honeypot, all fields for SecRule types)
 
-### Plugin Test Suite (50 tests)
+### Plugin Test Suite (81 tests)
 
 In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Condition matching tests for every operator and field type
@@ -744,6 +759,9 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Action tests: block headers, allow vars, honeypot behavior
 - Hot reload: file change detection, invalid JSON recovery, file deletion
 - Concurrent reads under `sync.RWMutex`
+- Body field tests: body, body_json (dot-path, exists, nested), body_form
+- `needsBody` flag compilation, `readBody` re-wrap, `parseSize` helper
+- `resolveJSONPath` edge cases, `jsonValueToString` type handling
 
 ## Test Patterns
 

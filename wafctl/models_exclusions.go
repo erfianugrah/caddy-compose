@@ -185,6 +185,29 @@ var validConditionFields = map[string]bool{
 	"http_version":    true,
 }
 
+// validPolicyEngineFields are the condition fields supported by the Caddy
+// policy engine plugin. Only request-phase fields are available — response_header
+// and response_status are rejected because the plugin runs before the backend.
+// This is the same set as RL condition fields plus "args" (query string args).
+var validPolicyEngineFields = map[string]bool{
+	"ip":           true,
+	"path":         true,
+	"host":         true,
+	"method":       true,
+	"user_agent":   true,
+	"header":       true,
+	"query":        true,
+	"country":      true,
+	"cookie":       true,
+	"body":         true,
+	"body_json":    true,
+	"body_form":    true,
+	"args":         true,
+	"uri_path":     true,
+	"referer":      true,
+	"http_version": true,
+}
+
 // Valid operators per field type
 var validOperatorsForField = map[string]map[string]bool{
 	"ip": {
