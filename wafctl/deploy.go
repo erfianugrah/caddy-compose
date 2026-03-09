@@ -95,7 +95,7 @@ func ensureCorazaDir(dir string) error {
 // This ensures a stack restart always picks up the latest generator output
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, deployCfg DeployConfig) {
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, ls *ManagedListStore, deployCfg DeployConfig) {
 	// WAF config: generate exclusion rules + WAF settings.
 	cfg := cs.Get()
 	allExclusions := es.EnabledExclusions()
@@ -121,7 +121,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 
 	// Policy engine: generate JSON rules file for the Caddy plugin.
 	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-		policyData, err := GeneratePolicyRules(allExclusions)
+		policyData, err := GeneratePolicyRules(allExclusions, ls)
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
 		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {

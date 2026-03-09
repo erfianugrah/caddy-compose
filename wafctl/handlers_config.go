@@ -47,7 +47,7 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		allExclusions := es.EnabledExclusions()
@@ -64,7 +64,7 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployC
 		}
 		// Include policy rules preview when enabled.
 		if deployCfg.PolicyEngineEnabled {
-			policyData, err := GeneratePolicyRules(allExclusions)
+			policyData, err := GeneratePolicyRules(allExclusions, ls)
 			if err == nil {
 				resp["policy_rules"] = json.RawMessage(policyData)
 			}
@@ -108,7 +108,7 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployC
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -153,7 +153,7 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, d
 
 		// Policy engine: generate JSON rules file for the Caddy plugin.
 		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-			policyData, err := GeneratePolicyRules(allExclusions)
+			policyData, err := GeneratePolicyRules(allExclusions, ls)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",

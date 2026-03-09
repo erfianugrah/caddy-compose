@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -33,9 +34,11 @@ type PolicyRule struct {
 
 // PolicyCondition represents a single match condition for the plugin.
 type PolicyCondition struct {
-	Field    string `json:"field"`
-	Operator string `json:"operator"`
-	Value    string `json:"value"`
+	Field     string   `json:"field"`
+	Operator  string   `json:"operator"`
+	Value     string   `json:"value"`
+	ListItems []string `json:"list_items,omitempty"` // resolved by wafctl before writing
+	ListKind  string   `json:"list_kind,omitempty"`  // "ip", "hostname", "string", "asn"
 }
 
 // policyEngineTypes are the exclusion types handled by the Caddy policy
@@ -61,7 +64,12 @@ var policyTypePriority = map[string]int{
 //
 // Priority is assigned by type (honeypot < block < allow), with the
 // exclusion's store order as a stable tiebreaker within each type.
-func GeneratePolicyRules(exclusions []RuleExclusion) ([]byte, error) {
+//
+// When listStore is non-nil, in_list/not_in_list conditions are resolved
+// by looking up the list name (stored in the Value field) and populating
+// ListItems and ListKind in the output. If a list is not found, the
+// condition is written with an empty ListItems (no match).
+func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore) ([]byte, error) {
 	var rules []PolicyRule
 
 	for i, e := range exclusions {
@@ -71,11 +79,16 @@ func GeneratePolicyRules(exclusions []RuleExclusion) ([]byte, error) {
 
 		conditions := make([]PolicyCondition, len(e.Conditions))
 		for j, c := range e.Conditions {
-			conditions[j] = PolicyCondition{
+			pc := PolicyCondition{
 				Field:    c.Field,
 				Operator: c.Operator,
 				Value:    c.Value,
 			}
+			// Resolve managed list references.
+			if (c.Operator == "in_list" || c.Operator == "not_in_list") && listStore != nil {
+				pc.ListItems, pc.ListKind = resolveListItems(listStore, c.Value)
+			}
+			conditions[j] = pc
 		}
 
 		basePriority := policyTypePriority[e.Type]
@@ -139,6 +152,25 @@ func FilterSecRuleExclusions(exclusions []RuleExclusion, policyEngineEnabled boo
 		}
 	}
 	return filtered
+}
+
+// resolveListItems looks up a managed list by name and returns its items and kind.
+// Returns empty items if the list is not found (condition won't match anything).
+func resolveListItems(ls *ManagedListStore, listName string) ([]string, string) {
+	if ls == nil || listName == "" {
+		return nil, ""
+	}
+	lists := ls.List()
+	for _, l := range lists {
+		if l.Name == listName {
+			// Return a copy so mutations don't affect the store.
+			items := make([]string, len(l.Items))
+			copy(items, l.Items)
+			return items, l.Kind
+		}
+	}
+	log.Printf("[policy] warning: managed list %q not found, condition will not match", listName)
+	return nil, ""
 }
 
 // splitHoneypotPaths extracts all path values from honeypot exclusion

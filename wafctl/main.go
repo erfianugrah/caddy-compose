@@ -134,7 +134,7 @@ func runServe() int {
 	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
 	// stored state so a stack restart always picks up the latest generator output.
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
-	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, deployCfg)
+	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, managedListStore, deployCfg)
 
 	blocklistPath := filepath.Join(deployCfg.CorazaDir, "ipsum_block.caddy")
 	blocklistStore := NewBlocklistStore(blocklistPath)
@@ -201,9 +201,9 @@ func runServe() int {
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, deployCfg))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, managedListStore, deployCfg))
 	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore, deployCfg))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
 
 	// Rate Limit Rules (policy engine)
 	mux.HandleFunc("GET /api/rate-rules", handleListRLRules(rlRuleStore))

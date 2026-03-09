@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -102,7 +103,7 @@ func TestFilterSecRuleExclusions(t *testing.T) {
 
 func TestGeneratePolicyRules(t *testing.T) {
 	t.Run("empty exclusions", func(t *testing.T) {
-		data, err := GeneratePolicyRules(nil)
+		data, err := GeneratePolicyRules(nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +131,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "5", Name: "Honeypot", Type: "honeypot", Enabled: true},
 			{ID: "6", Name: "Raw", Type: "raw", Enabled: true},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +160,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "b1", Name: "Block Scanners", Type: "block", Enabled: true},
 			{ID: "h1", Name: "Honeypot Admin", Type: "honeypot", Enabled: true},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -198,7 +199,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "b2", Name: "Block Second", Type: "block", Enabled: true},
 			{ID: "b3", Name: "Block Third", Type: "block", Enabled: true},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -232,7 +233,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 				Type: "block", Enabled: true, Name: "Block",
 			})
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,7 +264,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 				GroupOp: "and",
 			},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -293,7 +294,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "1", Name: "Test", Type: "allow", Enabled: true, GroupOp: ""},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -310,7 +311,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "1", Name: "Test", Type: "block", Enabled: true, GroupOp: "or"},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -328,7 +329,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "1", Name: "Disabled Block", Type: "block", Enabled: false},
 			{ID: "2", Name: "Enabled Block", Type: "block", Enabled: true},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +372,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 				Enabled: true,
 			},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -400,7 +401,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "a1", Name: "Allow", Type: "allow", Enabled: true,
 				Conditions: []Condition{{Field: "host", Operator: "eq", Value: "trusted.example.com"}}},
 		}
-		data1, err := GeneratePolicyRules(exclusions)
+		data1, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -451,7 +452,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			{ID: "r1", Name: "Custom Rule", Type: "raw", Enabled: true,
 				RawRule: "SecRule REQUEST_URI \"@contains test\" \"id:99999,phase:1,deny\""},
 		}
-		data, err := GeneratePolicyRules(exclusions)
+		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -571,7 +572,7 @@ func TestGeneratePolicyRulesTimestamp(t *testing.T) {
 	before := time.Now().UTC().Truncate(time.Second)
 	data, err := GeneratePolicyRules([]RuleExclusion{
 		{ID: "1", Type: "block", Enabled: true},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -598,7 +599,7 @@ func TestGeneratePolicyRulesValidJSON(t *testing.T) {
 		{ID: "1", Name: "Test \"quotes\" and \\ backslashes", Type: "block", Enabled: true,
 			Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/foo?bar=baz&qux=1"}}},
 	}
-	data, err := GeneratePolicyRules(exclusions)
+	data, err := GeneratePolicyRules(exclusions, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,5 +610,183 @@ func TestGeneratePolicyRulesValidJSON(t *testing.T) {
 	}
 	if file.Rules[0].Name != "Test \"quotes\" and \\ backslashes" {
 		t.Errorf("name not preserved through JSON: %q", file.Rules[0].Name)
+	}
+}
+
+// ─── GeneratePolicyRules: managed list resolution ─────────────────
+
+func TestGeneratePolicyRulesListResolution(t *testing.T) {
+	// Create a managed list store with test data.
+	ls := NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir())
+	ls.Create(ManagedList{
+		Name:   "bad-ips",
+		Kind:   "ip",
+		Source: "manual",
+		Items:  []string{"10.0.0.1", "192.168.1.0/24"},
+	})
+	ls.Create(ManagedList{
+		Name:   "bad-countries",
+		Kind:   "string",
+		Source: "manual",
+		Items:  []string{"CN", "RU", "KP"},
+	})
+
+	exclusions := []RuleExclusion{
+		{
+			ID:      "1",
+			Name:    "block-bad-ips",
+			Type:    "block",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "ip", Operator: "in_list", Value: "bad-ips"},
+			},
+		},
+		{
+			ID:      "2",
+			Name:    "block-bad-countries",
+			Type:    "block",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "country", Operator: "in_list", Value: "bad-countries"},
+			},
+		},
+		{
+			ID:      "3",
+			Name:    "allow-not-in-bad-ips",
+			Type:    "allow",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "ip", Operator: "not_in_list", Value: "bad-ips"},
+			},
+		},
+	}
+
+	data, err := GeneratePolicyRules(exclusions, ls)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(file.Rules) != 3 {
+		t.Fatalf("expected 3 rules, got %d", len(file.Rules))
+	}
+
+	// Rules are sorted by priority: block (200) < allow (300).
+	// Find each rule by name.
+	byName := map[string]PolicyRule{}
+	for _, r := range file.Rules {
+		byName[r.Name] = r
+	}
+
+	t.Run("IP list resolved", func(t *testing.T) {
+		r := byName["block-bad-ips"]
+		if len(r.Conditions) != 1 {
+			t.Fatalf("expected 1 condition, got %d", len(r.Conditions))
+		}
+		c := r.Conditions[0]
+		if c.Operator != "in_list" {
+			t.Errorf("expected operator=in_list, got %q", c.Operator)
+		}
+		if c.ListKind != "ip" {
+			t.Errorf("expected list_kind=ip, got %q", c.ListKind)
+		}
+		if len(c.ListItems) != 2 {
+			t.Errorf("expected 2 list_items, got %d", len(c.ListItems))
+		}
+	})
+
+	t.Run("string list resolved", func(t *testing.T) {
+		r := byName["block-bad-countries"]
+		c := r.Conditions[0]
+		if c.ListKind != "string" {
+			t.Errorf("expected list_kind=string, got %q", c.ListKind)
+		}
+		if len(c.ListItems) != 3 {
+			t.Errorf("expected 3 list_items, got %d", len(c.ListItems))
+		}
+	})
+
+	t.Run("not_in_list resolved", func(t *testing.T) {
+		r := byName["allow-not-in-bad-ips"]
+		c := r.Conditions[0]
+		if c.Operator != "not_in_list" {
+			t.Errorf("expected operator=not_in_list, got %q", c.Operator)
+		}
+		if c.ListKind != "ip" {
+			t.Errorf("expected list_kind=ip, got %q", c.ListKind)
+		}
+		if len(c.ListItems) != 2 {
+			t.Errorf("expected 2 list_items, got %d", len(c.ListItems))
+		}
+	})
+}
+
+func TestGeneratePolicyRulesListNotFound(t *testing.T) {
+	// When a list is not found, condition gets empty ListItems (no match).
+	ls := NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir())
+
+	exclusions := []RuleExclusion{
+		{
+			ID:      "1",
+			Name:    "block-missing-list",
+			Type:    "block",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "ip", Operator: "in_list", Value: "nonexistent-list"},
+			},
+		},
+	}
+
+	data, err := GeneratePolicyRules(exclusions, ls)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	c := file.Rules[0].Conditions[0]
+	if len(c.ListItems) != 0 {
+		t.Errorf("expected empty list_items for missing list, got %d", len(c.ListItems))
+	}
+	if c.ListKind != "" {
+		t.Errorf("expected empty list_kind for missing list, got %q", c.ListKind)
+	}
+}
+
+func TestGeneratePolicyRulesNilListStore(t *testing.T) {
+	// When listStore is nil, in_list conditions pass through unresolved.
+	exclusions := []RuleExclusion{
+		{
+			ID:      "1",
+			Name:    "block-with-list",
+			Type:    "block",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "ip", Operator: "in_list", Value: "some-list"},
+			},
+		},
+	}
+
+	data, err := GeneratePolicyRules(exclusions, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var file PolicyRulesFile
+	json.Unmarshal(data, &file)
+
+	c := file.Rules[0].Conditions[0]
+	if c.Operator != "in_list" {
+		t.Errorf("expected operator preserved as in_list, got %q", c.Operator)
+	}
+	if len(c.ListItems) != 0 {
+		t.Errorf("expected no list_items when store is nil, got %d", len(c.ListItems))
 	}
 }

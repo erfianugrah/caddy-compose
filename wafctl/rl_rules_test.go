@@ -825,7 +825,7 @@ func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
 		CaddyfilePath: caddyfile,
 	}
 
-	generateOnBoot(cs, es, rs, cspS, deployCfg)
+	generateOnBoot(cs, es, rs, cspS, nil, deployCfg)
 
 	// The sonarr service should be auto-discovered.
 	rules := rs.List()
