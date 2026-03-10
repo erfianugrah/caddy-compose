@@ -12,9 +12,9 @@ export function cn(...inputs: ClassValue[]) {
 // Warm = hostile, cool = benign, neutral = informational.
 
 export const ACTION_COLORS = {
-  blocked:      "#ff006e", // neon pink   — WAF blocked (Coraza anomaly)
-  rate_limited: "#f59e0b", // amber-500   — rate limited / blocklist
-  policy_block: "#ef4444", // red-500     — policy engine blocks
+  blocked:      "#f43f5e", // rose-500    — WAF blocked (Coraza anomaly)
+  rate_limited: "#eab308", // yellow-500  — rate limited / blocklist (warning)
+  policy_block: "#f97316", // orange-500  — policy engine blocks
   policy_allow: "#22c55e", // green-500   — policy engine allows (safe bypass)
   policy_skip:  "#a78bfa", // violet-400  — policy engine rule skips (tuning)
   logged:       "#38bdf8", // sky-400     — benign baseline (high volume, calm)
@@ -32,9 +32,9 @@ export const ACTION_LABELS: Record<string, string> = {
 
 // Tailwind badge classes per event type (border + text)
 export const ACTION_BADGE_CLASSES: Record<string, string> = {
-  blocked:       "border-pink-500/50 text-pink-400",
-  rate_limited:  "border-amber-500/50 text-amber-400",
-  policy_block:  "border-red-500/50 text-red-400",
+  blocked:       "border-rose-500/50 text-rose-400",
+  rate_limited:  "border-yellow-500/50 text-yellow-400",
+  policy_block:  "border-orange-500/50 text-orange-400",
   policy_allow:  "border-green-500/50 text-green-400",
   policy_skip:   "border-violet-400/50 text-violet-400",
   logged:        "border-sky-400/50 text-sky-400",
