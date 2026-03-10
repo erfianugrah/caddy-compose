@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.0.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.0.0
+CADDY_IMAGE   ?= <your-registry>/caddy:3.1.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.1.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.0.0-2.11.1`), wafctl is plain semver (e.g. `2.0.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.1.0-2.11.1`), wafctl is plain semver (e.g. `2.1.0`).
 
 ## WAF configuration
 
@@ -199,7 +199,7 @@ Inside the `(waf)` snippet, files load in this order:
 
 Dynamic config survives container restarts. wafctl stores state in JSON files on a Docker volume and regenerates all `.conf` files on boot (`generateOnBoot`). Caddy reads them fresh on its own startup, so a `docker compose restart` picks up changes without a manual deploy.
 
-The entrypoint script also seeds the IPsum blocklist from a build-time snapshot if the runtime copy is missing.
+The entrypoint script starts crond (for audit log rotation) and Caddy.
 
 ### Reload fingerprint
 
@@ -215,8 +215,7 @@ The dashboard is an Astro 5 + React 19 static site served by Caddy, protected by
 - **Events** — paginated table of WAF + rate limit + IPsum events. Expandable rows with matched rules, request headers/body/args. JSON export. "Create Exception" button pre-fills a policy engine rule from the event context.
 - **Policy Engine** — CRUD for WAF exclusions (allow, block, skip, raw SecRule, and various CRS removal types). Condition builder with AND/OR logic. Tag-based classification. CRS rule catalog picker. Sparkline hit charts per rule.
 - **Rate Limits** — condition-based rate limiting policy engine with per-path/method/header matching, flexible rate keys, auto-deploy, sparkline hit charts, import/export. Includes a **Rate Advisor** tab with statistical anomaly detection (MAD, Fano factor, IQR) that analyzes real traffic patterns and recommends rules with one-click creation. Global settings panel for jitter, sweep interval, and distributed rate limiting.
-- **Managed Lists** — reusable named lists (IPs, paths, user agents, etc.) referenced by WAF and rate limit conditions via `in_list`/`not_in_list` operators. Full CRUD with search, inline editing, import/export.
-- **Blocklist** — IPsum threat intelligence stats, per-IP lookup, on-demand refresh.
+- **Managed Lists** — reusable named lists (IPs, paths, user agents, etc.) referenced by WAF and rate limit conditions via `in_list`/`not_in_list` operators. Full CRUD with search, inline editing, import/export. Includes IPsum blocklist stats, per-IP lookup, and on-demand refresh.
 - **CSP** — per-service Content Security Policy management with directive editor, source input, live preview, set/default/none modes, report-only, global enable/disable.
 - **Logs** — general Caddy log viewer with stream tab, summary aggregation, and header compliance analysis.
 - **Services** — per-service stats, top URIs, top triggered rules.
@@ -345,7 +344,6 @@ myservice.example.com {
     import cors
     import security_headers
     import static_cache
-    import ipsum_blocklist
     import waf
     import /data/caddy/rl/myservice_rl*.caddy
     import tls_config
@@ -367,7 +365,6 @@ myservice.example.com {
     import cors
     import security_headers
     import static_cache
-    import ipsum_blocklist
     import waf
     import forward_auth
     import /data/caddy/rl/myservice_rl*.caddy
@@ -390,7 +387,6 @@ myservice.example.com {
     import cors
     import security_headers
     import static_cache
-    import ipsum_blocklist
     import waf
     import /data/caddy/rl/myservice_rl*.caddy
     import tls_config
@@ -425,8 +421,7 @@ Every site block should include these, in order:
 | `import cors` | recommended | CORS preflight handling |
 | `import security_headers` | yes | HSTS, CSP, nosniff, etc. |
 | `import static_cache` | recommended | Cache-Control for static assets |
-| `import ipsum_blocklist` | yes | Block known-malicious IPs |
-| `import waf` or `import waf_off` | yes | Coraza WAF with OWASP CRS |
+| `import waf` or `import waf_off` | yes | Policy engine + Coraza WAF with OWASP CRS |
 | `import forward_auth` | if authenticated | Authelia forward authentication |
 | `import /data/caddy/rl/<name>_rl*.caddy` | yes | Rate limiting (no-op until configured) |
 | `import tls_config` | yes | ACME DNS challenge via Cloudflare |
@@ -434,7 +429,7 @@ Every site block should include these, in order:
 | `import error_pages` | yes | Custom error page templates |
 | `import site_log <name>` | yes | JSON access log + combined log for analytics |
 
-Rate limit rules are managed by wafctl. On boot it creates placeholder `.caddy` files for any service it detects in the Caddyfile, so the glob import works without manual setup. Rules support condition-based matching (per-path, per-method, per-header), flexible rate keys (client IP, path, header values), and auto-deploy on save.
+Rate limit rules are managed by wafctl. When the policy engine is enabled (`WAF_POLICY_ENGINE_ENABLED=true`), rate limiting is handled by the policy engine plugin via `policy-rules.json` hot-reload — no Caddy restart needed. Rules support condition-based matching (per-path, per-method, per-header), flexible rate keys (client IP, path, header values), and auto-deploy on save.
 
 ## Security hardening
 
@@ -452,7 +447,7 @@ Rate limit rules are managed by wafctl. On boot it creates placeholder `.caddy` 
 
 ### Additional layers
 
-- **IPsum blocklist** — ~200k+ known-malicious IPs (all 8 IPsum threat levels, min_score=1), baked in at build time, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
+- **IPsum blocklist** — ~200k+ known-malicious IPs (all 8 IPsum threat levels, min_score=1), managed as 8 per-level managed lists evaluated by the policy engine plugin, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
 - **Cloudflare trusted proxies** — IP ranges fetched at build time so Caddy resolves the real client IP from `X-Forwarded-For`.
 - **Security headers** — HSTS (2yr, preload), nosniff, SAMEORIGIN, strict referrer, permissions-policy, COOP, CORP. Per-service CSP headers managed via wafctl CSP system (global defaults + per-service overrides with set/default/none modes, report-only, and global enable/disable).
 - **ECH** (Encrypted Client Hello) — hides SNI from network observers.
@@ -470,8 +465,8 @@ The CI pipeline (GitHub Actions) includes:
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (1072 tests across 22 files)
-make test-frontend     # Vitest frontend tests (300 tests across 13 files)
+make test-go           # Go tests only (1374 tests across 24 files)
+make test-frontend     # Vitest frontend tests (312 tests across 14 files)
 make test-e2e          # Docker-based e2e smoke tests (79 tests)
 ```
 
@@ -490,7 +485,7 @@ cd waf-dashboard && npx vitest run -t "test description"
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + site blocks)
-  Dockerfile             # 6-stage multi-stage build (uses erfianugrah/coraza-caddy fork + caddy-body-matcher plugin)
+  Dockerfile             # 5-stage multi-stage build (uses erfianugrah/coraza-caddy fork + caddy-body-matcher + caddy-policy-engine plugins)
   Makefile               # Build, push, deploy, test, WAF operations
   compose.yaml           # Caddy + Authelia + wafctl services
   .env                   # SOPS-encrypted secrets (CF token, email)
@@ -556,7 +551,7 @@ caddy-compose/
     cfproxy.go           # Cloudflare proxy stats/refresh
     cache.go             # In-memory cache (24h/100k entries)
     util.go              # Shared utilities (envOr, atomicWriteFile)
-    *_test.go            # 22 test files (1072 tests)
+    *_test.go            # 24 test files (1374 tests)
     Dockerfile           # Standalone wafctl image
     go.mod
   waf-dashboard/         # Astro 5 + React 19 + shadcn/ui frontend
@@ -580,7 +575,7 @@ caddy-compose/
           csp.ts         # CSP types and functions
           general-logs.ts # General log types and functions
           index.ts       # Barrel re-export
-      pages/             # Astro file-based routing (10 pages)
+      pages/             # Astro file-based routing (11 pages)
     package.json
     astro.config.mjs
     vitest.config.ts

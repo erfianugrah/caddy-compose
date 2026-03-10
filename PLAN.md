@@ -1,9 +1,18 @@
 # Plan: caddy-policy-engine + Managed Lists
 
 > **Status: COMPLETE** — All phases (1a–1c, 2a–2c, 3a–3d, 4) implemented and merged to
-> main. Plugin at v0.4.0. Policy engine enabled in production
+> main. Plugin at v0.5.0. Policy engine enabled in production
 > (`WAF_POLICY_ENGINE_ENABLED=true`). Phase 4 migrated IPsum blocklist from Caddy
 > snippet to policy engine via per-level managed lists.
+>
+> **Post-completion fixes (v2.1.0):**
+> - Fixed service FQDN mismatch: RL rules and policy engine exclusions used short
+>   service names (`httpbun`) but the plugin matches against Host headers (FQDNs like
+>   `httpbun.erfi.io`). Added `BuildServiceFQDNMap()` + `resolveServiceName()` to
+>   translate at generation time.
+> - Split dashboard policy events from single "Policy" aggregate into granular
+>   `policy_block`/`policy_allow`/`policy_skip` sub-types across Go models, summary
+>   API, and frontend (charts, donut, timeline, stat cards).
 
 ## Problem Statement
 

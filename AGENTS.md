@@ -171,7 +171,7 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - **Exclusions**: `exclusions.go` (~366 lines) — ExclusionStore CRUD, persistence; `exclusions_validate.go` (~257 lines) — validation, condition checks, regex patterns
 - **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands; `cli_managed_lists.go` (~116 lines) — managed lists subcommands
 - **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
-- **Policy engine generator**: `policy_generator.go` (~260 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, PolicyRateLimitConfig/PolicyRateLimitGlobalConfig, `GeneratePolicyRules()`, `GeneratePolicyRulesWithRL()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`
+- **Policy engine generator**: `policy_generator.go` (~339 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, PolicyRateLimitConfig/PolicyRateLimitGlobalConfig, `GeneratePolicyRules()`, `GeneratePolicyRulesWithRL()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`, `BuildServiceFQDNMap()`, `resolveServiceName()`
 - **Managed lists**: `managed_lists.go` (~582 lines) — ManagedListStore CRUD, persistence, validation; `models_lists.go` (~69 lines) — ManagedList types; `handlers_lists.go` (~160 lines) — HTTP handlers
 - **Domain stores**: `rl_rules.go` (564), `csp.go` (558), `csp_generator.go`, `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
@@ -644,6 +644,25 @@ The `Event.Tags` field (string array) enables flexible, extensible categorizatio
 | `policy_allow` | Policy engine allowed (WAF bypassed) |
 | `policy_block` | Policy engine blocked (403 from plugin) |
 
+### Policy Event Breakdown (Summary API)
+
+The `/api/summary` response splits policy events into three granular sub-types instead
+of a single aggregate. This applies to all aggregation levels:
+
+| Go Field | JSON Key | Frontend Field | Description |
+|----------|----------|----------------|-------------|
+| `PolicyBlocked` | `policy_blocked` | `policyBlocked` | Top-level count of policy engine blocks |
+| `PolicyAllowed` | `policy_allowed` | `policyAllowed` | Top-level count of policy engine allows |
+| `PolicySkipped` | `policy_skipped` | `policySkipped` | Top-level count of policy engine skips |
+| `PolicyBlock` | `policy_block` | `policyBlock` | Per-hour/service/client breakdown |
+| `PolicyAllow` | `policy_allow` | `policyAllow` | Per-hour/service/client breakdown |
+| `PolicySkip` | `policy_skip` | `policySkip` | Per-hour/service/client breakdown |
+
+Affected Go types: `SummaryResponse`, `HourCount`, `ServiceCount`, `ClientCount`, `ServiceDetail`.
+Frontend types: `TimelinePoint`, `ServiceStat`, `ClientStat`, `ServiceBreakdown`, `ServiceDetail`,
+`SummaryData`. Color mapping: `policy_block` (rose-500), `policy_allow` (emerald-500),
+`policy_skip` (emerald-400).
+
 ### Tag Conventions
 
 Tags are lowercase alphanumeric + hyphens (`^[a-z0-9][a-z0-9-]*$`), max 10 per rule/event,
@@ -858,7 +877,7 @@ for allowed requests. Block/honeypot return 403 before Coraza runs.
 ### wafctl Integration
 
 - `policy_generator.go` generates `policy-rules.json` from exclusions (allow/block) and rate limit rules
-- `GeneratePolicyRulesWithRL()` merges WAF exclusions + RL rules into a single rules array with priority bands: block(100) < allow(200) < rate_limit(300)
+- `GeneratePolicyRulesWithRL()` merges WAF exclusions + RL rules into a single rules array with priority bands: block(100) < allow(200) < rate_limit(300). Accepts a `serviceMap` parameter for FQDN resolution.
 - `FilterSecRuleExclusions()` removes policy-engine types from the SecRule generator input
 - `IsPolicyEngineType()` checks if an exclusion type is handled by the plugin
 - `splitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions (unexported, test-only)
@@ -868,6 +887,26 @@ for allowed requests. Block/honeypot return 403 before Coraza runs.
 - On boot with policy engine enabled, stale `*_rl.caddy` files are cleared to prevent double rate limiting
 - `validPolicyEngineFields` map in `models_exclusions.go` — same as RL fields + `args`, excludes `response_header` and `response_status`
 - `validateExclusion()` uses `IsPolicyEngineType()` to select the right condition field set (policy engine fields for allow/block/honeypot, all fields for SecRule types)
+
+### Service FQDN Resolution
+
+The policy engine plugin's `matchService()` compares the rule's `service` field against
+`r.Host` (the HTTP Host header, stripped of port) using `strings.EqualFold`. In production,
+Host headers are FQDNs (e.g., `httpbun.erfi.io`), but exclusions and rate limit rules store
+short service names (e.g., `httpbun`). Without resolution, rules would never match.
+
+- `BuildServiceFQDNMap(caddyfilePath string) map[string]string` — parses the Caddyfile to
+  build a `shortname → fqdn` mapping. Uses `siteBlockPattern` regex to extract the site block
+  label (e.g., `httpbun.erfi.io`) and the `site_log` directive argument (e.g., `httpbun`).
+  Maps both directions: `httpbun → httpbun.erfi.io` and `httpbun.erfi.io → httpbun.erfi.io`.
+- `resolveServiceName(service string, serviceMap map[string]string) string` — looks up a
+  service name in the map. Returns the FQDN if found, or the original name if not (safe
+  pass-through for services not in the Caddyfile or already FQDNs).
+- Called at 5 sites: `generateOnBoot()`, `handleDeploy()` (WAF deploy), `handleDeploy()`
+  (config deploy), `handleDeployRLRules()`, and inline in `handleConfigDeploy()`.
+- Each call site builds the map fresh from `WAF_CADDYFILE_PATH` before passing to
+  `GeneratePolicyRulesWithRL()`. This ensures changes to the Caddyfile are picked up
+  without restarting wafctl.
 
 ### Plugin Test Suite (143 tests)
 
@@ -885,7 +924,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1357 tests across 24 files)
+### Go (1374 tests across 24 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
