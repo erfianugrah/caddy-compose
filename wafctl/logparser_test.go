@@ -1381,6 +1381,286 @@ func TestEnrichAccessEvents_PolicyTagLookup(t *testing.T) {
 	}
 }
 
+// ─── Policy Engine Rate Limit Detection Tests ───────────────────────
+
+func TestIsPolicyRateLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry AccessLogEntry
+		want  bool
+	}{
+		{"policy_action=rate_limit", AccessLogEntry{PolicyAction: "rate_limit"}, true},
+		{"policy_action=block (not RL)", AccessLogEntry{PolicyAction: "block"}, false},
+		{"policy_action=allow (not RL)", AccessLogEntry{PolicyAction: "allow"}, false},
+		{"policy_action empty, X-RateLimit-Policy header", AccessLogEntry{RespHeaders: map[string][]string{"X-RateLimit-Policy": {`10;w=1m;name="api-rl"`}}}, true},
+		{"policy_action empty, lowercase header (HTTP/2)", AccessLogEntry{RespHeaders: map[string][]string{"x-ratelimit-policy": {`10;w=1m;name="api-rl"`}}}, true},
+		{"neither", AccessLogEntry{RespHeaders: map[string][]string{}}, false},
+		{"nil headers", AccessLogEntry{}, false},
+		{"policy_action=rate_limit_monitor (not blocked)", AccessLogEntry{PolicyAction: "rate_limit_monitor"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isPolicyRateLimit(tt.entry); got != tt.want {
+				t.Errorf("isPolicyRateLimit() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPolicyRateLimitRuleName(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry AccessLogEntry
+		want  string
+	}{
+		{"policy_rule field", AccessLogEntry{PolicyRule: "api-rate-limit"}, "api-rate-limit"},
+		{"header with name", AccessLogEntry{RespHeaders: map[string][]string{"X-RateLimit-Policy": {`10;w=1m;name="api-rate-limit"`}}}, "api-rate-limit"},
+		{"header lowercase (HTTP/2)", AccessLogEntry{RespHeaders: map[string][]string{"x-ratelimit-policy": {`50;w=5m;name="brute-force"`}}}, "brute-force"},
+		{"policy_rule takes precedence over header", AccessLogEntry{PolicyRule: "from-var", RespHeaders: map[string][]string{"X-RateLimit-Policy": {`10;w=1m;name="from-header"`}}}, "from-var"},
+		{"no field no header", AccessLogEntry{}, ""},
+		{"header without name field", AccessLogEntry{RespHeaders: map[string][]string{"X-RateLimit-Policy": {"10"}}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := policyRateLimitRuleName(tt.entry); got != tt.want {
+				t.Errorf("policyRateLimitRuleName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRateLimitEventToEvent_PolicyRL(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.50",
+		Service:   "api.erfi.io",
+		Method:    "POST",
+		URI:       "/api/v1/login",
+		UserAgent: "curl/8.0",
+		Source:    "policy_rl",
+		RuleName:  "login-rate-limit",
+	}
+
+	ev := RateLimitEventToEvent(rle, []string{"auth", "brute-force"})
+
+	if ev.EventType != "rate_limited" {
+		t.Errorf("event_type: want rate_limited, got %s", ev.EventType)
+	}
+	if ev.ResponseStatus != 429 {
+		t.Errorf("response_status: want 429, got %d", ev.ResponseStatus)
+	}
+	if !ev.IsBlocked {
+		t.Error("policy_rl events should have is_blocked=true")
+	}
+	if ev.RuleMsg != "Rate Limited: login-rate-limit" {
+		t.Errorf("rule_msg: want 'Rate Limited: login-rate-limit', got %q", ev.RuleMsg)
+	}
+	if len(ev.Tags) != 2 || ev.Tags[0] != "auth" || ev.Tags[1] != "brute-force" {
+		t.Errorf("tags: want [auth brute-force], got %v", ev.Tags)
+	}
+}
+
+func TestRateLimitEventToEvent_PolicyRLNoRuleName(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
+		ClientIP:  "10.0.0.50",
+		Service:   "api.erfi.io",
+		Method:    "GET",
+		URI:       "/",
+		Source:    "policy_rl",
+	}
+
+	ev := RateLimitEventToEvent(rle, nil)
+
+	if ev.EventType != "rate_limited" {
+		t.Errorf("event_type: want rate_limited, got %s", ev.EventType)
+	}
+	if ev.ResponseStatus != 429 {
+		t.Errorf("response_status: want 429, got %d", ev.ResponseStatus)
+	}
+	if ev.RuleMsg != "" {
+		t.Errorf("rule_msg: want empty when no rule name, got %q", ev.RuleMsg)
+	}
+}
+
+func TestEnrichAccessEvents_PolicyRLTagLookup(t *testing.T) {
+	now := time.Now().UTC()
+	rlEvents := []RateLimitEvent{
+		{Timestamp: now, ClientIP: "1.2.3.4", Source: "policy_rl", RuleName: "api-rate-limit"},
+		{Timestamp: now, ClientIP: "5.6.7.8", Source: "policy_rl", RuleName: "unknown-rule"},
+		{Timestamp: now, ClientIP: "9.0.1.2", Source: "policy", RuleName: "Honeypot Paths"},
+		{Timestamp: now, ClientIP: "3.4.5.6", Source: ""},
+	}
+	rules := []RateLimitRule{
+		{Name: "api-rate-limit", Tags: []string{"api", "throttle"}, Enabled: true, Service: "*"},
+	}
+	exclusions := []RuleExclusion{
+		{Name: "Honeypot Paths", Tags: []string{"honeypot"}},
+	}
+
+	events := enrichAccessEvents(rlEvents, rules, exclusions)
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events, got %d", len(events))
+	}
+
+	// First: policy_rl with matching rule → gets RL rule tags.
+	if events[0].EventType != "rate_limited" {
+		t.Errorf("events[0] type: want rate_limited, got %s", events[0].EventType)
+	}
+	if len(events[0].Tags) != 2 || events[0].Tags[0] != "api" || events[0].Tags[1] != "throttle" {
+		t.Errorf("events[0] tags: want [api throttle], got %v", events[0].Tags)
+	}
+	if events[0].RuleMsg != "Rate Limited: api-rate-limit" {
+		t.Errorf("events[0] rule_msg: want 'Rate Limited: api-rate-limit', got %q", events[0].RuleMsg)
+	}
+
+	// Second: policy_rl with unknown rule name → no tags.
+	if events[1].EventType != "rate_limited" {
+		t.Errorf("events[1] type: want rate_limited, got %s", events[1].EventType)
+	}
+	if len(events[1].Tags) != 0 {
+		t.Errorf("events[1] tags: want empty, got %v", events[1].Tags)
+	}
+
+	// Third: policy block → uses exclusion tag lookup.
+	if events[2].EventType != "policy_block" {
+		t.Errorf("events[2] type: want policy_block, got %s", events[2].EventType)
+	}
+	if len(events[2].Tags) != 1 || events[2].Tags[0] != "honeypot" {
+		t.Errorf("events[2] tags: want [honeypot], got %v", events[2].Tags)
+	}
+
+	// Fourth: legacy RL (no source) → heuristic matching (no rules match here).
+	if events[3].EventType != "rate_limited" {
+		t.Errorf("events[3] type: want rate_limited, got %s", events[3].EventType)
+	}
+}
+
+// samplePolicyRLAccessLogLines contains policy engine rate limit events in access log format.
+var samplePolicyRLAccessLogLines = func() []string {
+	nowHour := time.Now().Truncate(time.Hour)
+	ts := func(t time.Time) string { return t.UTC().Format("2006/01/02 15:04:05") }
+	return []string{
+		// 429 from policy engine — detected via policy_action field
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.50","client_ip":"10.0.0.50","proto":"HTTP/2.0","method":"POST","host":"api.erfi.io","uri":"/api/v1/login","headers":{"User-Agent":["curl/8.0"]}},"resp_headers":{"X-RateLimit-Limit":["10"],"X-RateLimit-Remaining":["0"],"X-RateLimit-Policy":["10;w=1m;name=\"login-rl\""]},"policy_action":"rate_limit","policy_rule":"login-rl","status":429,"size":0,"duration":0.001}`, ts(nowHour.Add(-50*time.Minute))),
+		// 429 from policy engine — detected via X-RateLimit-Policy header only (no log_append fields)
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.51","client_ip":"10.0.0.51","proto":"HTTP/1.1","method":"GET","host":"api.erfi.io","uri":"/api/v1/search","headers":{"User-Agent":["Bot/1.0"]}},"resp_headers":{"x-ratelimit-policy":["50;w=5m;name=\"search-rl\""]},"status":429,"size":0,"duration":0.001}`, ts(nowHour.Add(-49*time.Minute))),
+		// 429 from legacy caddy-ratelimit (no policy_action, no X-RateLimit-Policy)
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.52","client_ip":"10.0.0.52","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`, ts(nowHour.Add(-48*time.Minute))),
+		// 403 policy engine block — should be classified as policy block, not RL
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.53","client_ip":"10.0.0.53","proto":"HTTP/1.1","method":"GET","host":"sonarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/1.0"]}},"resp_headers":{},"policy_action":"block","policy_rule":"Honeypot Paths","status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-47*time.Minute))),
+		// 200 OK — should be ignored
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/","headers":{"User-Agent":["Chrome/120"]}},"resp_headers":{},"status":200,"size":5000,"duration":0.05}`, ts(nowHour.Add(-46*time.Minute))),
+	}
+}()
+
+func TestAccessLogStoreLoadsPolicyRLEvents(t *testing.T) {
+	path := writeTempAccessLog(t, samplePolicyRLAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	// 2 policy RL (429) + 1 legacy RL (429) + 1 policy block (403) = 4 events.
+	if got := store.EventCount(); got != 4 {
+		t.Fatalf("expected 4 events, got %d", got)
+	}
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	// Verify classification of each event.
+	var policyRL, legacyRL, policyBlock int
+	for _, ev := range store.events {
+		switch ev.Source {
+		case "policy_rl":
+			policyRL++
+		case "policy":
+			policyBlock++
+		case "":
+			legacyRL++
+		}
+	}
+	if policyRL != 2 {
+		t.Errorf("expected 2 policy_rl events, got %d", policyRL)
+	}
+	if legacyRL != 1 {
+		t.Errorf("expected 1 legacy RL event, got %d", legacyRL)
+	}
+	if policyBlock != 1 {
+		t.Errorf("expected 1 policy block event, got %d", policyBlock)
+	}
+}
+
+func TestPolicyRLEventRuleName(t *testing.T) {
+	path := writeTempAccessLog(t, samplePolicyRLAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	// Collect policy_rl events and verify rule names.
+	var ruleNames []string
+	for _, ev := range store.events {
+		if ev.Source == "policy_rl" {
+			ruleNames = append(ruleNames, ev.RuleName)
+		}
+	}
+	if len(ruleNames) != 2 {
+		t.Fatalf("expected 2 policy_rl events, got %d", len(ruleNames))
+	}
+	// First: detected via policy_rule log_append field.
+	if ruleNames[0] != "login-rl" {
+		t.Errorf("ruleNames[0]: want 'login-rl', got %q", ruleNames[0])
+	}
+	// Second: detected via X-RateLimit-Policy header name extraction.
+	if ruleNames[1] != "search-rl" {
+		t.Errorf("ruleNames[1]: want 'search-rl', got %q", ruleNames[1])
+	}
+}
+
+func TestPolicyRLEventsAsUnifiedEvents(t *testing.T) {
+	path := writeTempAccessLog(t, samplePolicyRLAccessLogLines)
+	store := NewAccessLogStore(path)
+	store.Load()
+
+	rules := []RateLimitRule{
+		{Name: "login-rl", Tags: []string{"auth", "brute-force"}, Enabled: true, Service: "*"},
+	}
+	events := store.SnapshotAsEvents(0, rules)
+
+	// 4 total events (2 policy_rl + 1 legacy RL + 1 policy block).
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events, got %d", len(events))
+	}
+
+	var rateLimited, policyBlock int
+	var loginRLEvent *Event
+	for i, ev := range events {
+		switch ev.EventType {
+		case "rate_limited":
+			rateLimited++
+			if ev.RuleMsg == "Rate Limited: login-rl" {
+				loginRLEvent = &events[i]
+			}
+		case "policy_block":
+			policyBlock++
+		}
+	}
+	if rateLimited != 3 {
+		t.Errorf("expected 3 rate_limited events (2 policy_rl + 1 legacy), got %d", rateLimited)
+	}
+	if policyBlock != 1 {
+		t.Errorf("expected 1 policy_block event, got %d", policyBlock)
+	}
+	// login-rl event should have been enriched with tags from the rule.
+	if loginRLEvent == nil {
+		t.Fatal("expected a login-rl rate_limited event with RuleMsg")
+	}
+	if len(loginRLEvent.Tags) != 2 || loginRLEvent.Tags[0] != "auth" || loginRLEvent.Tags[1] != "brute-force" {
+		t.Errorf("login-rl tags: want [auth brute-force], got %v", loginRLEvent.Tags)
+	}
+}
+
 func TestSummaryMergesPolicyEvents(t *testing.T) {
 	wafPath := writeTempLog(t, sampleLines)
 	wafStore := NewStore(wafPath)

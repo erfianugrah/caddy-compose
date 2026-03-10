@@ -880,7 +880,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1325 tests across 24 files)
+### Go (1357 tests across 24 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
@@ -1007,9 +1007,25 @@ causing exact map lookups like `headers["X-Blocked-By"]` to silently fail when t
 is `"x-blocked-by"`. The `log_append` fields are set from Caddy variables (not headers) and
 are always case-consistent.
 
-**Access log flow**: `AccessLogEntry` → classify as `isRateLimit` (429) or `isPolicy` (403 + policy detection) → `RateLimitEvent{Source: "policy"|""}` → `enrichAccessEvents()` (tag lookup from exclusion store) → `RateLimitEventToEvent()` → unified `Event`
+**Policy engine rate limit detection** (v0.5.0+) uses the same two-tier approach:
 
-**Helper functions**: `headerValuesCI()` / `headerValueCI()` for case-insensitive header lookups, `isPolicyBlocked(entry)` for policy detection, `policyBlockedRuleName(entry)` for rule name extraction.
+1. **Primary**: `policy_action == "rate_limit"` from `log_append` field
+2. **Fallback**: `X-RateLimit-Policy` response header presence (set by policy engine, not by caddy-ratelimit)
+
+Rate limit events from the policy engine carry direct rule name attribution via
+`policy_rule` field (or `X-RateLimit-Policy` header name extraction), eliminating
+the need for heuristic condition-based matching (`matchEventToRuleTags`).
+
+**Access log flow**: `AccessLogEntry` → classify as `isRateLimit` (429) or `isPolicy` (403 + policy detection) → further classify 429s as `isPolicyRateLimit` → `RateLimitEvent{Source: "policy_rl"|"policy"|""}` → `enrichAccessEvents()` (tag lookup from RL rules for `policy_rl`, exclusion store for `policy`, heuristic for legacy) → `RateLimitEventToEvent()` → unified `Event`
+
+**Event sources**:
+| Source | Status | EventType | Tag Enrichment |
+|--------|--------|-----------|----------------|
+| `""` | 429 | `rate_limited` | Heuristic `matchEventToRuleTags()` |
+| `"policy_rl"` | 429 | `rate_limited` | Direct RL rule name lookup |
+| `"policy"` | 403 | `policy_block` | Exclusion store name lookup |
+
+**Helper functions**: `headerValuesCI()` / `headerValueCI()` for case-insensitive header lookups, `isPolicyBlocked(entry)` for block detection, `isPolicyRateLimit(entry)` for RL detection, `policyBlockedRuleName(entry)` / `policyRateLimitRuleName(entry)` for rule name extraction.
 
 ### Blocklist Refresh
 

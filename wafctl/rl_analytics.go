@@ -255,13 +255,19 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 	bucketStart := now.Add(-time.Duration(numBuckets) * time.Hour)
 
 	for _, evt := range events {
-		// Only count rate-limited events (not ipsum).
-		if evt.Source != "" {
+		// Skip policy engine block events (not rate limits).
+		if evt.Source == "policy" || evt.Source == "ipsum" {
 			continue
 		}
 
-		// Find the first matching rule for this event.
-		ruleName := matchEventToRule(evt, sorted)
+		var ruleName string
+		if evt.Source == "policy_rl" {
+			// Policy engine rate limit — rule name is known directly.
+			ruleName = evt.RuleName
+		} else {
+			// Legacy caddy-ratelimit 429 — heuristic condition matching.
+			ruleName = matchEventToRule(evt, sorted)
+		}
 		if ruleName == "" {
 			continue
 		}

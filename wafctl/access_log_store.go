@@ -113,6 +113,39 @@ func isPolicyBlocked(entry AccessLogEntry) bool {
 	return headerValueCI(entry.RespHeaders, "X-Blocked-By") == "policy-engine"
 }
 
+// isPolicyRateLimit detects a policy engine rate limit (429) from log_append fields
+// (primary) or the X-RateLimit-Policy response header (fallback). This distinguishes
+// policy engine 429s (which carry rule name attribution) from legacy caddy-ratelimit 429s.
+func isPolicyRateLimit(entry AccessLogEntry) bool {
+	// Primary: log_append policy_action field.
+	if entry.PolicyAction == "rate_limit" {
+		return true
+	}
+	// Fallback: X-RateLimit-Policy header (set by policy engine, not by caddy-ratelimit).
+	return headerValueCI(entry.RespHeaders, "X-RateLimit-Policy") != ""
+}
+
+// policyRateLimitRuleName extracts the rule name from log_append (primary) or
+// the X-RateLimit-Policy response header (fallback). The header format is
+// "limit;w=window;name=\"rule_name\"" — we extract the quoted name.
+func policyRateLimitRuleName(entry AccessLogEntry) string {
+	if entry.PolicyRule != "" {
+		return entry.PolicyRule
+	}
+	// Fallback: parse name from X-RateLimit-Policy header value.
+	policy := headerValueCI(entry.RespHeaders, "X-RateLimit-Policy")
+	if policy == "" {
+		return ""
+	}
+	// Format: '10;w=1m;name="my-rule"' — extract the quoted name.
+	if idx := strings.Index(policy, "name="); idx >= 0 {
+		nameVal := policy[idx+5:]
+		nameVal = strings.Trim(nameVal, "\"")
+		return nameVal
+	}
+	return ""
+}
+
 // policyBlockedRuleName extracts the rule name from log_append (primary) or
 // X-Blocked-Rule response header (fallback).
 func policyBlockedRuleName(entry AccessLogEntry) string {
@@ -444,6 +477,10 @@ func (s *AccessLogStore) Load() {
 					if isPolicy {
 						evt.Source = "policy"
 						evt.RuleName = policyBlockedRuleName(entry)
+					} else if isRateLimit && isPolicyRateLimit(entry) {
+						// Policy engine rate limit — has rule name attribution.
+						evt.Source = "policy_rl"
+						evt.RuleName = policyRateLimitRuleName(entry)
 					}
 					// Enrich with country from Cf-Ipcountry header or MMDB lookup.
 					if geoIP != nil {
@@ -478,15 +515,18 @@ func (s *AccessLogStore) Load() {
 		s.generation.Add(1)
 		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
-		rlCount, policyCount := 0, 0
+		rlCount, policyCount, policyRLCount := 0, 0, 0
 		for _, e := range newEvents {
-			if e.Source == "policy" {
+			switch e.Source {
+			case "policy":
 				policyCount++
-			} else {
+			case "policy_rl":
+				policyRLCount++
+			default:
 				rlCount++
 			}
 		}
-		log.Printf("loaded %d new events (%d rate-limit, %d policy) — %d total", len(newEvents), rlCount, policyCount, s.EventCount())
+		log.Printf("loaded %d new events (%d rate-limit, %d policy-rl, %d policy-block) — %d total", len(newEvents), rlCount, policyRLCount, policyCount, s.EventCount())
 	}
 
 	// Evict events older than maxAge.
@@ -654,6 +694,10 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// JSONL migration converts these but handle gracefully if encountered.
 		status = 403
 		eventType = "policy_block"
+	case "policy_rl":
+		// Policy engine rate limit — still a 429/rate_limited but with rule attribution.
+		status = 429
+		eventType = "rate_limited"
 	}
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
@@ -677,6 +721,10 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	// For policy engine blocks, set the rule message from X-Blocked-Rule header.
 	if rle.Source == "policy" && rle.RuleName != "" {
 		evt.RuleMsg = "Policy Block: " + rle.RuleName
+	}
+	// For policy engine rate limits, set the rule message from the rule name.
+	if rle.Source == "policy_rl" && rle.RuleName != "" {
+		evt.RuleMsg = "Rate Limited: " + rle.RuleName
 	}
 	return evt
 }
@@ -714,22 +762,36 @@ func (s *AccessLogStore) SnapshotAsEventsRange(start, end time.Time, rules []Rat
 // enrichAccessEvents converts RateLimitEvents to unified Events with tag enrichment.
 func enrichAccessEvents(rlEvents []RateLimitEvent, rules []RateLimitRule, exclusions []RuleExclusion) []Event {
 	sorted := sortRulesByPriority(rules)
-	// Build rule-name → tags lookup for policy engine events.
+	// Build rule-name → tags lookup for policy engine block events.
 	excTagsByName := make(map[string][]string, len(exclusions))
 	for _, exc := range exclusions {
 		if len(exc.Tags) > 0 {
 			excTagsByName[exc.Name] = exc.Tags
 		}
 	}
+	// Build rule-name → tags lookup for policy engine rate limit events.
+	rlTagsByName := make(map[string][]string, len(rules))
+	for _, r := range rules {
+		if len(r.Tags) > 0 {
+			rlTagsByName[r.Name] = r.Tags
+		}
+	}
 	events := make([]Event, len(rlEvents))
 	for i, rle := range rlEvents {
 		var tags []string
-		if rle.Source == "policy" || rle.Source == "ipsum" {
-			// Match policy engine event to exclusion tags by rule name.
+		switch rle.Source {
+		case "policy", "ipsum":
+			// Match policy engine block to exclusion tags by rule name.
 			if t, ok := excTagsByName[rle.RuleName]; ok {
 				tags = t
 			}
-		} else {
+		case "policy_rl":
+			// Policy engine rate limit — direct lookup by rule name (no heuristic needed).
+			if t, ok := rlTagsByName[rle.RuleName]; ok {
+				tags = t
+			}
+		default:
+			// Legacy caddy-ratelimit 429 — heuristic condition matching.
 			tags = matchEventToRuleTags(rle, sorted)
 		}
 		events[i] = RateLimitEventToEvent(rle, tags)
