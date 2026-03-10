@@ -2316,9 +2316,17 @@ func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
 	if h.Logged != 1 {
 		t.Errorf("hour.Logged = %d, want 1", h.Logged)
 	}
-	// Policy = policy_skip(1) + policy_block(3) = 4
-	if h.Policy != 4 {
-		t.Errorf("hour.Policy = %d, want 4", h.Policy)
+	// PolicyBlock = policy_block(3)
+	if h.PolicyBlock != 3 {
+		t.Errorf("hour.PolicyBlock = %d, want 3", h.PolicyBlock)
+	}
+	// PolicySkip = policy_skip(1)
+	if h.PolicySkip != 1 {
+		t.Errorf("hour.PolicySkip = %d, want 1", h.PolicySkip)
+	}
+	// PolicyAllow = 0
+	if h.PolicyAllow != 0 {
+		t.Errorf("hour.PolicyAllow = %d, want 0", h.PolicyAllow)
 	}
 }
 
@@ -2346,17 +2354,25 @@ func TestSummarizeEvents_PerServiceBreakdown(t *testing.T) {
 	if svc1 == nil || svc2 == nil {
 		t.Fatalf("missing services in breakdown: svc1=%v svc2=%v", svc1, svc2)
 	}
-	// svc1: policy_block(2) + policy_allow(1) = 3 policy
-	if svc1.Policy != 3 {
-		t.Errorf("svc1.Policy = %d, want 3", svc1.Policy)
+	// svc1: policy_block(2)
+	if svc1.PolicyBlock != 2 {
+		t.Errorf("svc1.PolicyBlock = %d, want 2", svc1.PolicyBlock)
+	}
+	// svc1: policy_allow(1)
+	if svc1.PolicyAllow != 1 {
+		t.Errorf("svc1.PolicyAllow = %d, want 1", svc1.PolicyAllow)
+	}
+	// svc1: policy_skip(0)
+	if svc1.PolicySkip != 0 {
+		t.Errorf("svc1.PolicySkip = %d, want 0", svc1.PolicySkip)
 	}
 	// svc1: blocked = 0 (policy_ events don't count as plain "blocked" in per-service)
 	if svc1.Blocked != 0 {
 		t.Errorf("svc1.Blocked = %d, want 0", svc1.Blocked)
 	}
 	// svc2: policy_block(1)
-	if svc2.Policy != 1 {
-		t.Errorf("svc2.Policy = %d, want 1", svc2.Policy)
+	if svc2.PolicyBlock != 1 {
+		t.Errorf("svc2.PolicyBlock = %d, want 1", svc2.PolicyBlock)
 	}
 }
 
@@ -2380,9 +2396,17 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 	if c1 == nil {
 		t.Fatal("client 10.0.0.1 not found in TopClients")
 	}
-	// policy_block(2) + policy_skip(1) = 3 policy
-	if c1.Policy != 3 {
-		t.Errorf("client.Policy = %d, want 3", c1.Policy)
+	// policy_block(2)
+	if c1.PolicyBlock != 2 {
+		t.Errorf("client.PolicyBlock = %d, want 2", c1.PolicyBlock)
+	}
+	// policy_skip(1)
+	if c1.PolicySkip != 1 {
+		t.Errorf("client.PolicySkip = %d, want 1", c1.PolicySkip)
+	}
+	// policy_allow(0)
+	if c1.PolicyAllow != 0 {
+		t.Errorf("client.PolicyAllow = %d, want 0", c1.PolicyAllow)
 	}
 	if c1.Count != 3 {
 		t.Errorf("client.Count = %d, want 3", c1.Count)
@@ -2429,13 +2453,21 @@ func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 	if web.Logged != 2 {
 		t.Errorf("web.Logged = %d, want 2", web.Logged)
 	}
-	// Policy = policy_skip(1) + policy_block(3) = 4
-	if web.Policy != 4 {
-		t.Errorf("web.Policy = %d, want 4", web.Policy)
+	// PolicyBlock = policy_block(3)
+	if web.PolicyBlock != 3 {
+		t.Errorf("web.PolicyBlock = %d, want 3", web.PolicyBlock)
+	}
+	// PolicySkip = policy_skip(1)
+	if web.PolicySkip != 1 {
+		t.Errorf("web.PolicySkip = %d, want 1", web.PolicySkip)
+	}
+	// PolicyAllow = 0
+	if web.PolicyAllow != 0 {
+		t.Errorf("web.PolicyAllow = %d, want 0", web.PolicyAllow)
 	}
 	// api.io: 1 policy_block
-	if api.Policy != 1 {
-		t.Errorf("api.Policy = %d, want 1", api.Policy)
+	if api.PolicyBlock != 1 {
+		t.Errorf("api.PolicyBlock = %d, want 1", api.PolicyBlock)
 	}
 	if api.Blocked != 1 {
 		t.Errorf("api.Blocked = %d, want 1", api.Blocked)
@@ -2476,12 +2508,20 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 	if web == nil || api == nil {
 		t.Fatalf("missing service: web=%v api=%v", web, api)
 	}
-	// web: policy_block(2) + policy_allow(1) = 3 policy
-	if web.Policy != 3 {
-		t.Errorf("web.Policy = %d, want 3", web.Policy)
+	// web: policy_block(2)
+	if web.PolicyBlock != 2 {
+		t.Errorf("web.PolicyBlock = %d, want 2", web.PolicyBlock)
 	}
-	if api.Policy != 1 { // policy_block
-		t.Errorf("api.Policy = %d, want 1", api.Policy)
+	// web: policy_allow(1)
+	if web.PolicyAllow != 1 {
+		t.Errorf("web.PolicyAllow = %d, want 1", web.PolicyAllow)
+	}
+	// web: policy_skip(0)
+	if web.PolicySkip != 0 {
+		t.Errorf("web.PolicySkip = %d, want 0", web.PolicySkip)
+	}
+	if api.PolicyBlock != 1 { // policy_block
+		t.Errorf("api.PolicyBlock = %d, want 1", api.PolicyBlock)
 	}
 }
 

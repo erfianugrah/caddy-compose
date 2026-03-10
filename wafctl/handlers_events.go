@@ -173,7 +173,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 
 		// Split access-log events into rate-limited vs policy categories.
 		type alsStat struct {
-			rl, policy int
+			rl, policyBlock int
 		}
 		alsTotal := alsStat{}
 		alsHourMap := make(map[string]*alsStat)
@@ -191,7 +191,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			isPolicy := ev.EventType == "policy_block"
 
 			if isPolicy {
-				alsTotal.policy++
+				alsTotal.policyBlock++
 			} else {
 				alsTotal.rl++
 			}
@@ -202,7 +202,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 				alsHourMap[hourKey] = hs
 			}
 			if isPolicy {
-				hs.policy++
+				hs.policyBlock++
 			} else {
 				hs.rl++
 			}
@@ -213,7 +213,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 				alsSvcMap[ev.Service] = ss
 			}
 			if isPolicy {
-				ss.policy++
+				ss.policyBlock++
 			} else {
 				ss.rl++
 			}
@@ -224,7 +224,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 				alsClientMap[ev.ClientIP] = cs
 			}
 			if isPolicy {
-				cs.policy++
+				cs.policyBlock++
 			} else {
 				cs.rl++
 			}
@@ -235,7 +235,8 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		}
 
 		summary.RateLimited += alsTotal.rl
-		summary.PolicyEvents += alsTotal.policy
+		summary.PolicyEvents += alsTotal.policyBlock
+		summary.PolicyBlocked += alsTotal.policyBlock
 		summary.TotalEvents += len(alsEvents)
 
 		// Merge into existing hourly buckets.
@@ -244,15 +245,15 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			existingHours[hc.Hour] = i
 		}
 		for hour, stat := range alsHourMap {
-			total := stat.rl + stat.policy
+			total := stat.rl + stat.policyBlock
 			if idx, ok := existingHours[hour]; ok {
 				summary.EventsByHour[idx].RateLimited += stat.rl
-				summary.EventsByHour[idx].Policy += stat.policy
+				summary.EventsByHour[idx].PolicyBlock += stat.policyBlock
 				summary.EventsByHour[idx].Count += total
 			} else {
 				existingHours[hour] = len(summary.EventsByHour)
 				summary.EventsByHour = append(summary.EventsByHour, HourCount{
-					Hour: hour, Count: total, RateLimited: stat.rl, Policy: stat.policy,
+					Hour: hour, Count: total, RateLimited: stat.rl, PolicyBlock: stat.policyBlock,
 				})
 			}
 		}
@@ -266,15 +267,15 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			existingSvcs[sd.Service] = i
 		}
 		for svc, stat := range alsSvcMap {
-			total := stat.rl + stat.policy
+			total := stat.rl + stat.policyBlock
 			if idx, ok := existingSvcs[svc]; ok {
 				summary.ServiceBreakdown[idx].RateLimited += stat.rl
-				summary.ServiceBreakdown[idx].Policy += stat.policy
+				summary.ServiceBreakdown[idx].PolicyBlock += stat.policyBlock
 				summary.ServiceBreakdown[idx].Total += total
 			} else {
 				existingSvcs[svc] = len(summary.ServiceBreakdown)
 				summary.ServiceBreakdown = append(summary.ServiceBreakdown, ServiceDetail{
-					Service: svc, Total: total, RateLimited: stat.rl, Policy: stat.policy,
+					Service: svc, Total: total, RateLimited: stat.rl, PolicyBlock: stat.policyBlock,
 				})
 			}
 		}
@@ -285,15 +286,15 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			existingTopSvcs[sc.Service] = i
 		}
 		for svc, stat := range alsSvcMap {
-			total := stat.rl + stat.policy
+			total := stat.rl + stat.policyBlock
 			if idx, ok := existingTopSvcs[svc]; ok {
 				summary.TopServices[idx].RateLimited += stat.rl
-				summary.TopServices[idx].Policy += stat.policy
+				summary.TopServices[idx].PolicyBlock += stat.policyBlock
 				summary.TopServices[idx].Count += total
 			} else {
 				existingTopSvcs[svc] = len(summary.TopServices)
 				summary.TopServices = append(summary.TopServices, ServiceCount{
-					Service: svc, Count: total, RateLimited: stat.rl, Policy: stat.policy,
+					Service: svc, Count: total, RateLimited: stat.rl, PolicyBlock: stat.policyBlock,
 				})
 			}
 		}
@@ -304,15 +305,15 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			existingTopClients[cc.Client] = i
 		}
 		for client, stat := range alsClientMap {
-			total := stat.rl + stat.policy
+			total := stat.rl + stat.policyBlock
 			if idx, ok := existingTopClients[client]; ok {
 				summary.TopClients[idx].RateLimited += stat.rl
-				summary.TopClients[idx].Policy += stat.policy
+				summary.TopClients[idx].PolicyBlock += stat.policyBlock
 				summary.TopClients[idx].Count += total
 			} else {
 				existingTopClients[client] = len(summary.TopClients)
 				summary.TopClients = append(summary.TopClients, ClientCount{
-					Client: client, Count: total, RateLimited: stat.rl, Policy: stat.policy,
+					Client: client, Count: total, RateLimited: stat.rl, PolicyBlock: stat.policyBlock,
 				})
 			}
 		}
@@ -555,7 +556,7 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 		// Merge access-log events (rate-limited and policy blocks) into service breakdown.
 		rlEvents := getRLEvents(als, tr, hours, rs.List())
 		type svcCounts struct {
-			rl, policy int
+			rl, policyBlock int
 		}
 		alsSvcMap := make(map[string]*svcCounts)
 		for i := range rlEvents {
@@ -566,7 +567,7 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 				alsSvcMap[ev.Service] = sc
 			}
 			if ev.EventType == "policy_block" {
-				sc.policy++
+				sc.policyBlock++
 			} else {
 				sc.rl++
 			}
@@ -577,17 +578,17 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 			existingSvcs[sd.Service] = i
 		}
 		for svc, sc := range alsSvcMap {
-			total := sc.rl + sc.policy
+			total := sc.rl + sc.policyBlock
 			if idx, ok := existingSvcs[svc]; ok {
 				resp.Services[idx].RateLimited += sc.rl
-				resp.Services[idx].Policy += sc.policy
+				resp.Services[idx].PolicyBlock += sc.policyBlock
 				resp.Services[idx].Total += total
 			} else {
 				resp.Services = append(resp.Services, ServiceDetail{
 					Service:     svc,
 					Total:       total,
 					RateLimited: sc.rl,
-					Policy:      sc.policy,
+					PolicyBlock: sc.policyBlock,
 				})
 				existingSvcs[svc] = len(resp.Services) - 1
 			}

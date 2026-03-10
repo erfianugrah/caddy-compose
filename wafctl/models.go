@@ -179,6 +179,9 @@ type SummaryResponse struct {
 	LoggedEvents     int             `json:"logged_events"`
 	RateLimited      int             `json:"rate_limited"`
 	PolicyEvents     int             `json:"policy_events"`
+	PolicyBlocked    int             `json:"policy_blocked"`
+	PolicyAllowed    int             `json:"policy_allowed"`
+	PolicySkipped    int             `json:"policy_skipped"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
 	TagCounts        []TagCount      `json:"tag_counts,omitempty"`
@@ -197,7 +200,9 @@ type HourCount struct {
 	Blocked     int    `json:"blocked"`
 	Logged      int    `json:"logged"`
 	RateLimited int    `json:"rate_limited"`
-	Policy      int    `json:"policy"`
+	PolicyBlock int    `json:"policy_block"`
+	PolicyAllow int    `json:"policy_allow"`
+	PolicySkip  int    `json:"policy_skip"`
 }
 
 type ServiceCount struct {
@@ -206,7 +211,9 @@ type ServiceCount struct {
 	Blocked     int    `json:"blocked"`
 	Logged      int    `json:"logged"`
 	RateLimited int    `json:"rate_limited"`
-	Policy      int    `json:"policy"`
+	PolicyBlock int    `json:"policy_block"`
+	PolicyAllow int    `json:"policy_allow"`
+	PolicySkip  int    `json:"policy_skip"`
 }
 
 type ClientCount struct {
@@ -215,7 +222,9 @@ type ClientCount struct {
 	Count       int    `json:"count"`
 	Blocked     int    `json:"blocked"`
 	RateLimited int    `json:"rate_limited"`
-	Policy      int    `json:"policy"`
+	PolicyBlock int    `json:"policy_block"`
+	PolicyAllow int    `json:"policy_allow"`
+	PolicySkip  int    `json:"policy_skip"`
 }
 
 // Blocklist API response types
@@ -291,7 +300,9 @@ type ServiceDetail struct {
 	Blocked     int           `json:"blocked"`
 	Logged      int           `json:"logged"`
 	RateLimited int           `json:"rate_limited"`
-	Policy      int           `json:"policy"`
+	PolicyBlock int           `json:"policy_block"`
+	PolicyAllow int           `json:"policy_allow"`
+	PolicySkip  int           `json:"policy_skip"`
 	TopURIs     []ServiceURI  `json:"top_uris,omitempty"`
 	TopRules    []ServiceRule `json:"top_rules,omitempty"`
 }

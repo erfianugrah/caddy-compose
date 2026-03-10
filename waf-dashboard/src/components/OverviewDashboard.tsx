@@ -283,7 +283,9 @@ export default function OverviewDashboard() {
       ? [
           ...(data.blocked > 0 ? [{ name: "WAF Blocked", value: data.blocked }] : []),
           ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
-          ...(data.policy_events > 0 ? [{ name: "Policy", value: data.policy_events }] : []),
+          ...(data.policy_blocked > 0 ? [{ name: "Policy Block", value: data.policy_blocked }] : []),
+          ...(data.policy_allowed > 0 ? [{ name: "Policy Allow", value: data.policy_allowed }] : []),
+          ...(data.policy_skipped > 0 ? [{ name: "Policy Skip", value: data.policy_skipped }] : []),
           ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
         ]
       : [];
@@ -421,9 +423,17 @@ export default function OverviewDashboard() {
                     <stop offset="5%" stopColor={ACTION_COLORS.rate_limited} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={ACTION_COLORS.rate_limited} stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="gradPolicy" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={ACTION_COLORS.policy} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={ACTION_COLORS.policy} stopOpacity={0} />
+                  <linearGradient id="gradPolicyBlock" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={ACTION_COLORS.policy_block} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={ACTION_COLORS.policy_block} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gradPolicyAllow" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={ACTION_COLORS.policy_allow} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={ACTION_COLORS.policy_allow} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gradPolicySkip" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={ACTION_COLORS.policy_skip} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={ACTION_COLORS.policy_skip} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
@@ -453,7 +463,9 @@ export default function OverviewDashboard() {
                 <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} />
                 <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} />
                 <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#gradBlocked)" strokeWidth={2} />
-                <Area type="monotone" dataKey="policy" stroke={ACTION_COLORS.policy} fill="url(#gradPolicy)" strokeWidth={2} name="Policy" />
+                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" />
+                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" />
+                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" />
                 {/* Selection overlay while dragging */}
                 {refAreaLeft && refAreaRight && (
                   <ReferenceArea
@@ -557,7 +569,7 @@ export default function OverviewDashboard() {
                         data={(data?.top_clients ?? []).slice(0, 8).map((c) => ({
                           ...c,
                           label: c.client_ip,
-                          logged: Math.max(c.total - c.blocked - c.rate_limited - c.policy, 0),
+                          logged: Math.max(c.total - c.blocked - c.rate_limited - c.policy_block - c.policy_allow - c.policy_skip, 0),
                         }))}
                         layout="vertical"
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
@@ -591,7 +603,9 @@ export default function OverviewDashboard() {
                         <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                         <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
-                        <Bar dataKey="policy" name="Policy" fill={ACTION_COLORS.policy} stackId="a" />
+                        <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
+                        <Bar dataKey="policy_allow" name="Policy Allow" fill={ACTION_COLORS.policy_allow} stackId="a" />
+                        <Bar dataKey="policy_skip" name="Policy Skip" fill={ACTION_COLORS.policy_skip} stackId="a" />
                         <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -643,7 +657,9 @@ export default function OverviewDashboard() {
                       <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
                       <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                       <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
-                      <Bar dataKey="policy" name="Policy" fill={ACTION_COLORS.policy} stackId="a" />
+                      <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
+                      <Bar dataKey="policy_allow" name="Policy Allow" fill={ACTION_COLORS.policy_allow} stackId="a" />
+                      <Bar dataKey="policy_skip" name="Policy Skip" fill={ACTION_COLORS.policy_skip} stackId="a" />
                       <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

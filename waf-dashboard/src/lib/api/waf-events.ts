@@ -14,6 +14,9 @@ export interface SummaryData {
   logged: number;
   rate_limited: number;
   policy_events: number;
+  policy_blocked: number;
+  policy_allowed: number;
+  policy_skipped: number;
   unique_clients: number;
   unique_services: number;
   tag_counts: TagCount[];
@@ -31,7 +34,9 @@ export interface TimelinePoint {
   blocked: number;
   logged: number;
   rate_limited: number;
-  policy: number;
+  policy_block: number;
+  policy_allow: number;
+  policy_skip: number;
 }
 
 export interface ServiceStat {
@@ -40,7 +45,9 @@ export interface ServiceStat {
   blocked: number;
   logged: number;
   rate_limited: number;
-  policy: number;
+  policy_block: number;
+  policy_allow: number;
+  policy_skip: number;
   block_rate: number;
 }
 
@@ -50,7 +57,9 @@ export interface ClientStat {
   total: number;
   blocked: number;
   rate_limited: number;
-  policy: number;
+  policy_block: number;
+  policy_allow: number;
+  policy_skip: number;
 }
 
 export interface ServiceBreakdown {
@@ -59,7 +68,9 @@ export interface ServiceBreakdown {
   blocked: number;
   logged: number;
   rate_limited: number;
-  policy: number;
+  policy_block: number;
+  policy_allow: number;
+  policy_skip: number;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────
@@ -129,7 +140,9 @@ export interface ServiceDetail {
   blocked: number;
   logged: number;
   rate_limited: number;
-  policy: number;
+  policy_block: number;
+  policy_allow: number;
+  policy_skip: number;
   block_rate: number;
   top_uris: { uri: string; count: number; blocked: number }[];
   top_rules: { rule_id: string; rule_msg: string; count: number }[];
@@ -152,15 +165,18 @@ interface RawSummary {
   logged_events: number;
   rate_limited: number;
   policy_events: number;
+  policy_blocked: number;
+  policy_allowed: number;
+  policy_skipped: number;
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
-  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; policy: number }[];
+  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
   top_countries: { country: string; count: number; blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
+  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
   recent_events: RawEvent[];
 }
 
@@ -241,6 +257,9 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     logged: raw.logged_events ?? 0,
     rate_limited: raw.rate_limited ?? 0,
     policy_events: raw.policy_events ?? 0,
+    policy_blocked: raw.policy_blocked ?? 0,
+    policy_allowed: raw.policy_allowed ?? 0,
+    policy_skipped: raw.policy_skipped ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     tag_counts: (raw.tag_counts ?? []).map((tc) => ({ tag: tc.tag, count: tc.count ?? 0 })),
@@ -250,7 +269,9 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: h.blocked ?? 0,
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
-      policy: h.policy ?? 0,
+      policy_block: h.policy_block ?? 0,
+      policy_allow: h.policy_allow ?? 0,
+      policy_skip: h.policy_skip ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,
@@ -258,7 +279,9 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: s.blocked ?? 0,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
-      policy: s.policy ?? 0,
+      policy_block: s.policy_block ?? 0,
+      policy_allow: s.policy_allow ?? 0,
+      policy_skip: s.policy_skip ?? 0,
       block_rate: s.count > 0 ? (s.blocked / s.count) * 100 : 0,
     })),
     top_clients: (raw.top_clients ?? []).map((c) => ({
@@ -267,7 +290,9 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       total: c.count ?? 0,
       blocked: c.blocked ?? 0,
       rate_limited: c.rate_limited ?? 0,
-      policy: c.policy ?? 0,
+      policy_block: c.policy_block ?? 0,
+      policy_allow: c.policy_allow ?? 0,
+      policy_skip: c.policy_skip ?? 0,
     })),
     top_countries: (raw.top_countries ?? []).map((c) => ({
       country: c.country,
@@ -281,7 +306,9 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: s.blocked ?? 0,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
-      policy: s.policy ?? 0,
+      policy_block: s.policy_block ?? 0,
+      policy_allow: s.policy_allow ?? 0,
+      policy_skip: s.policy_skip ?? 0,
     })),
   };
 }
@@ -335,7 +362,7 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 // Go API returns {"services":[{service, total, blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
   const qs = hours ? `?hours=${hours}` : "";
-  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
+  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
     `${API_BASE}/services${qs}`
   );
   return (raw.services ?? []).map((s) => ({
@@ -344,7 +371,9 @@ export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
     blocked: s.blocked,
     logged: s.logged,
     rate_limited: s.rate_limited ?? 0,
-    policy: s.policy ?? 0,
+    policy_block: s.policy_block ?? 0,
+    policy_allow: s.policy_allow ?? 0,
+    policy_skip: s.policy_skip ?? 0,
     block_rate: s.total > 0 ? (s.blocked / s.total) * 100 : 0,
     top_uris: (s.top_uris ?? []).map((u) => ({ uri: u.uri, count: u.count, blocked: u.blocked })),
     top_rules: (s.top_rules ?? []).map((r) => ({ rule_id: String(r.rule_id), rule_msg: r.rule_msg, count: r.count })),

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"log"
+	"os"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -85,7 +89,7 @@ var policyTypePriority = map[string]int{
 // rate limit rules. Use GeneratePolicyRulesWithRL when RL rules should
 // also be included in the policy-rules.json output.
 func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore) ([]byte, error) {
-	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore)
+	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore, nil)
 }
 
 // GeneratePolicyRulesWithRL converts exclusions and rate limit rules into
@@ -100,7 +104,7 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 //
 // The global RL config (sweep interval, jitter) is included in the output
 // when any rate limit rules are present.
-func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore) ([]byte, error) {
+func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string) ([]byte, error) {
 	var rules []PolicyRule
 
 	// Convert WAF exclusions (allow/block).
@@ -166,7 +170,7 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 			ID:         rl.ID,
 			Name:       rl.Name,
 			Type:       "rate_limit",
-			Service:    rl.Service,
+			Service:    resolveServiceName(rl.Service, serviceMap),
 			Conditions: conditions,
 			GroupOp:    groupOp,
 			RateLimit: &PolicyRateLimitConfig{
@@ -246,6 +250,73 @@ func FilterSecRuleExclusions(exclusions []RuleExclusion, policyEngineEnabled boo
 		}
 	}
 	return filtered
+}
+
+// ─── Service Name Resolution ──────────────────────────────────────
+
+// siteBlockPattern matches Caddyfile top-level site addresses like:
+//
+//	httpbun.erfi.io {
+//	caddy-prometheus.erfi.io {
+//
+// It requires at least two dot-separated segments (FQDN) and captures the
+// full hostname. Port-only blocks like ":8080 {" are excluded.
+var siteBlockPattern = regexp.MustCompile(`(?m)^([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z0-9][-a-zA-Z0-9]*)+)\s*\{`)
+
+// BuildServiceFQDNMap parses the Caddyfile and builds a mapping from short
+// service names to FQDNs. For a site block "httpbun.erfi.io {", the short
+// name is "httpbun" (everything before the first dot). This allows the
+// policy engine generator to resolve RL rules that use short service names
+// (from Caddyfile auto-discovery) to the FQDNs that the plugin sees in
+// the Host header.
+//
+// Returns nil if the Caddyfile cannot be read or contains no FQDN blocks.
+func BuildServiceFQDNMap(caddyfilePath string) map[string]string {
+	if caddyfilePath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(caddyfilePath)
+	if err != nil {
+		return nil
+	}
+
+	m := make(map[string]string)
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		matches := siteBlockPattern.FindStringSubmatch(line)
+		if len(matches) < 2 {
+			continue
+		}
+		fqdn := matches[1]
+		// Short name = everything before the first dot.
+		short := fqdn
+		if idx := strings.Index(fqdn, "."); idx > 0 {
+			short = fqdn[:idx]
+		}
+		// Only map if short != fqdn (skip bare hostnames without dots).
+		if short != fqdn {
+			m[short] = fqdn
+		}
+	}
+	return m
+}
+
+// resolveServiceName maps a short service name to its FQDN using the
+// provided map. If the service already contains a dot (is already an FQDN)
+// or is a wildcard, it is returned unchanged. If no mapping is found,
+// the original name is returned.
+func resolveServiceName(service string, serviceMap map[string]string) string {
+	if service == "" || service == "*" || strings.Contains(service, ".") {
+		return service
+	}
+	if serviceMap == nil {
+		return service
+	}
+	if fqdn, ok := serviceMap[service]; ok {
+		return fqdn
+	}
+	return service
 }
 
 // resolveListItems looks up a managed list by name and returns its items and kind.

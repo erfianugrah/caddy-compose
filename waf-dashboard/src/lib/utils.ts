@@ -14,7 +14,9 @@ export const ACTION_COLORS = {
   blocked:      "#ff006e", // neon pink  — WAF blocked
   logged:       "#00d4ff", // cyan       — benign baseline (high volume, calm)
   rate_limited: "#eab308", // yellow     — warning tier, distinct from orange
-  policy:       "#00ff41", // neon green — policy engine matches
+  policy_block: "#f43f5e", // rose-500   — policy engine blocks (hostile)
+  policy_allow: "#10b981", // emerald-500 — policy engine allows (safe bypass)
+  policy_skip:  "#34d399", // emerald-400 — policy engine rule skips (tuning)
 } as const;
 
 // Human-readable labels for chart legends (keyed same as ACTION_COLORS)
@@ -22,7 +24,9 @@ export const ACTION_LABELS: Record<string, string> = {
   blocked:      "WAF Blocked",
   logged:       "Logged",
   rate_limited: "Rate Limited",
-  policy:       "Policy",
+  policy_block: "Policy Block",
+  policy_allow: "Policy Allow",
+  policy_skip:  "Policy Skip",
 };
 
 // Tailwind badge classes per event type (border + text)

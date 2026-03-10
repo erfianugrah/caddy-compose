@@ -2,7 +2,6 @@ package main
 
 import (
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -26,9 +25,10 @@ func computeServices(events []Event) ServicesResponse {
 		msg string
 	}
 	type svcData struct {
-		total, blocked, policy int
-		uris                   map[string]*uriStats
-		rules                  map[ruleKey]int
+		total, blocked                       int
+		policyBlock, policyAllow, policySkip int
+		uris                                 map[string]*uriStats
+		rules                                map[ruleKey]int
 	}
 	m := make(map[string]*svcData)
 
@@ -46,8 +46,13 @@ func computeServices(events []Event) ServicesResponse {
 		if ev.IsBlocked {
 			d.blocked++
 		}
-		if strings.HasPrefix(ev.EventType, "policy_") {
-			d.policy++
+		switch ev.EventType {
+		case "policy_block":
+			d.policyBlock++
+		case "policy_allow":
+			d.policyAllow++
+		case "policy_skip":
+			d.policySkip++
 		}
 
 		// Track per-service URI counts.
@@ -78,11 +83,13 @@ func computeServices(events []Event) ServicesResponse {
 	result := make([]ServiceDetail, 0, len(m))
 	for svc, d := range m {
 		sd := ServiceDetail{
-			Service: svc,
-			Total:   d.total,
-			Blocked: d.blocked,
-			Logged:  d.total - d.blocked,
-			Policy:  d.policy,
+			Service:     svc,
+			Total:       d.total,
+			Blocked:     d.blocked,
+			Logged:      d.total - d.blocked,
+			PolicyBlock: d.policyBlock,
+			PolicyAllow: d.policyAllow,
+			PolicySkip:  d.policySkip,
 		}
 
 		// Build top URIs.
@@ -178,7 +185,8 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 
 	// Compute per-service breakdown, first/last seen, blocked count.
 	type counts struct {
-		total, blocked, logged, policy, rateLimited int
+		total, blocked, logged, rateLimited  int
+		policyBlock, policyAllow, policySkip int
 	}
 	svcMap := make(map[string]*counts)
 
@@ -208,8 +216,12 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		switch {
 		case ev.EventType == "rate_limited":
 			c.rateLimited++
-		case strings.HasPrefix(ev.EventType, "policy_"):
-			c.policy++
+		case ev.EventType == "policy_block":
+			c.policyBlock++
+		case ev.EventType == "policy_allow":
+			c.policyAllow++
+		case ev.EventType == "policy_skip":
+			c.policySkip++
 		case ev.EventType == "logged":
 			c.logged++
 		}
@@ -233,7 +245,9 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 			Total:       c.total,
 			Blocked:     c.blocked,
 			Logged:      c.logged,
-			Policy:      c.policy,
+			PolicyBlock: c.policyBlock,
+			PolicyAllow: c.policyAllow,
+			PolicySkip:  c.policySkip,
 			RateLimited: c.rateLimited,
 		})
 	}

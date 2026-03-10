@@ -128,7 +128,8 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
+		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
 		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
@@ -202,7 +203,8 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
+		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
 		if err != nil {
 			return fmt.Errorf("generating policy rules: %w", err)
 		}

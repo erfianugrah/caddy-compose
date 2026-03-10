@@ -70,7 +70,9 @@ export const DONUT_COLOR_MAP: Record<string, string> = {
   [ACTION_LABELS.blocked]:      ACTION_COLORS.blocked,
   [ACTION_LABELS.logged]:       ACTION_COLORS.logged,
   [ACTION_LABELS.rate_limited]: ACTION_COLORS.rate_limited,
-  [ACTION_LABELS.policy]:       ACTION_COLORS.policy,
+  [ACTION_LABELS.policy_block]: ACTION_COLORS.policy_block,
+  [ACTION_LABELS.policy_allow]: ACTION_COLORS.policy_allow,
+  [ACTION_LABELS.policy_skip]:  ACTION_COLORS.policy_skip,
 };
 
 // ─── Event link builder ─────────────────────────────────────────────

@@ -73,7 +73,7 @@ export interface IPLookupData {
   total_events: number;
   blocked_count: number;
   events_total: number;
-  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
+  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
   timeline: TimelinePoint[];
   recent_events: WAFEvent[];
 }
@@ -107,7 +107,7 @@ interface RawIPLookup {
   events_total: number;
   first_seen: string | null;
   last_seen: string | null;
-  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy: number }[];
+  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
   events: {
     id: string;
     timestamp: string;
@@ -157,7 +157,9 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
       blocked: s.blocked,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
-      policy: s.policy ?? 0,
+      policy_block: s.policy_block ?? 0,
+      policy_allow: s.policy_allow ?? 0,
+      policy_skip: s.policy_skip ?? 0,
     })),
     timeline: [],
     recent_events: (raw.events ?? []).map(mapEvent),

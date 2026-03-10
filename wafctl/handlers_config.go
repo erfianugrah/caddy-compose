@@ -66,7 +66,8 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRule
 		if deployCfg.PolicyEngineEnabled {
 			rlRules := rs.EnabledRules()
 			rlGlobal := rs.GetGlobal()
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
+			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
 			if err == nil {
 				resp["policy_rules"] = json.RawMessage(policyData)
 			}
@@ -157,7 +158,8 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
 			rlRules := rs.EnabledRules()
 			rlGlobal := rs.GetGlobal()
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
+			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -786,7 +787,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				Enabled: true,
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -851,7 +852,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "global-limit", Key: "client_ip", Events: 50, Window: "1m", Action: "deny", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -884,7 +885,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "e-1", Name: "allow-test", Type: "allow", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -905,7 +906,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 			{ID: "rl-1", Name: "high-priority", Key: "client_ip", Events: 10, Window: "1m", Priority: 5, Enabled: true},
 			{ID: "rl-2", Name: "low-priority", Key: "client_ip", Events: 100, Window: "1m", Priority: 50, Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -931,7 +932,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "no-action", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -952,7 +953,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				},
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -977,7 +978,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "blocked-ips"}},
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, ls)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, ls, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -996,7 +997,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "test", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1011,7 +1012,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "monitor", Key: "client_ip", Events: 10, Window: "1m", Action: "log_only", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1021,4 +1022,188 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 			t.Errorf("Action = %q, want log_only", file.Rules[0].RateLimit.Action)
 		}
 	})
+
+	t.Run("RL service name resolved via serviceMap", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "httpbun-limit", Service: "httpbun", Key: "client_ip", Events: 100, Window: "1m", Enabled: true},
+			{ID: "rl-2", Name: "caddy-limit", Service: "caddy", Key: "client_ip", Events: 200, Window: "1m", Enabled: true},
+			{ID: "rl-3", Name: "already-fqdn", Service: "sonarr.erfi.io", Key: "client_ip", Events: 300, Window: "1m", Enabled: true},
+			{ID: "rl-4", Name: "wildcard", Service: "*", Key: "client_ip", Events: 400, Window: "1m", Enabled: true},
+			{ID: "rl-5", Name: "empty-service", Service: "", Key: "client_ip", Events: 500, Window: "1m", Enabled: true},
+		}
+		svcMap := map[string]string{
+			"httpbun": "httpbun.erfi.io",
+			"caddy":   "caddy.erfi.io",
+			"sonarr":  "sonarr.erfi.io",
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, svcMap)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		byID := map[string]PolicyRule{}
+		for _, r := range file.Rules {
+			byID[r.ID] = r
+		}
+
+		if byID["rl-1"].Service != "httpbun.erfi.io" {
+			t.Errorf("rl-1 service = %q, want httpbun.erfi.io", byID["rl-1"].Service)
+		}
+		if byID["rl-2"].Service != "caddy.erfi.io" {
+			t.Errorf("rl-2 service = %q, want caddy.erfi.io", byID["rl-2"].Service)
+		}
+		if byID["rl-3"].Service != "sonarr.erfi.io" {
+			t.Errorf("rl-3 service = %q, want sonarr.erfi.io (already FQDN)", byID["rl-3"].Service)
+		}
+		if byID["rl-4"].Service != "*" {
+			t.Errorf("rl-4 service = %q, want * (wildcard unchanged)", byID["rl-4"].Service)
+		}
+		if byID["rl-5"].Service != "" {
+			t.Errorf("rl-5 service = %q, want empty (unchanged)", byID["rl-5"].Service)
+		}
+	})
+
+	t.Run("RL service name with nil serviceMap passes through", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "short-name", Service: "httpbun", Key: "client_ip", Events: 100, Window: "1m", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		// With nil serviceMap, short name passes through unchanged.
+		if file.Rules[0].Service != "httpbun" {
+			t.Errorf("service = %q, want httpbun (no resolution with nil map)", file.Rules[0].Service)
+		}
+	})
+}
+
+// ─── BuildServiceFQDNMap ─────────────────────────────────────────────
+
+func TestBuildServiceFQDNMap(t *testing.T) {
+	t.Run("parses production-style Caddyfile", func(t *testing.T) {
+		caddyfile := `# Global options
+{
+	admin 0.0.0.0:2019
+}
+
+httpbun.erfi.io {
+	reverse_proxy httpbun:80
+}
+
+caddy.erfi.io {
+	reverse_proxy wafctl:8080
+}
+
+sonarr.erfi.io {
+	reverse_proxy sonarr:8989
+}
+
+caddy-prometheus.erfi.io {
+	reverse_proxy prometheus:9090
+}
+`
+		path := filepath.Join(t.TempDir(), "Caddyfile")
+		if err := os.WriteFile(path, []byte(caddyfile), 0644); err != nil {
+			t.Fatal(err)
+		}
+		m := BuildServiceFQDNMap(path)
+		if m == nil {
+			t.Fatal("expected non-nil map")
+		}
+		tests := map[string]string{
+			"httpbun":          "httpbun.erfi.io",
+			"caddy":            "caddy.erfi.io",
+			"sonarr":           "sonarr.erfi.io",
+			"caddy-prometheus": "caddy-prometheus.erfi.io",
+		}
+		for short, wantFQDN := range tests {
+			if got := m[short]; got != wantFQDN {
+				t.Errorf("m[%q] = %q, want %q", short, got, wantFQDN)
+			}
+		}
+		if len(m) != 4 {
+			t.Errorf("map has %d entries, want 4: %v", len(m), m)
+		}
+	})
+
+	t.Run("empty path returns nil", func(t *testing.T) {
+		if m := BuildServiceFQDNMap(""); m != nil {
+			t.Errorf("expected nil, got %v", m)
+		}
+	})
+
+	t.Run("nonexistent file returns nil", func(t *testing.T) {
+		if m := BuildServiceFQDNMap("/nonexistent/Caddyfile"); m != nil {
+			t.Errorf("expected nil, got %v", m)
+		}
+	})
+
+	t.Run("no FQDN blocks returns nil", func(t *testing.T) {
+		caddyfile := `{
+	admin 0.0.0.0:2019
+}
+:8080 {
+	respond "Hello"
+}
+`
+		path := filepath.Join(t.TempDir(), "Caddyfile")
+		os.WriteFile(path, []byte(caddyfile), 0644)
+		m := BuildServiceFQDNMap(path)
+		if m != nil && len(m) > 0 {
+			t.Errorf("expected nil or empty map, got %v", m)
+		}
+	})
+
+	t.Run("handles duplicate short names (last wins)", func(t *testing.T) {
+		caddyfile := `httpbun.erfi.io {
+}
+httpbun.example.com {
+}
+`
+		path := filepath.Join(t.TempDir(), "Caddyfile")
+		os.WriteFile(path, []byte(caddyfile), 0644)
+		m := BuildServiceFQDNMap(path)
+		// Last occurrence wins.
+		if m["httpbun"] != "httpbun.example.com" {
+			t.Errorf("m[httpbun] = %q, want httpbun.example.com (last wins)", m["httpbun"])
+		}
+	})
+}
+
+// ─── resolveServiceName ──────────────────────────────────────────────
+
+func TestResolveServiceName(t *testing.T) {
+	svcMap := map[string]string{
+		"httpbun": "httpbun.erfi.io",
+		"caddy":   "caddy.erfi.io",
+	}
+
+	tests := []struct {
+		name    string
+		service string
+		svcMap  map[string]string
+		want    string
+	}{
+		{"short name resolved", "httpbun", svcMap, "httpbun.erfi.io"},
+		{"another short name", "caddy", svcMap, "caddy.erfi.io"},
+		{"already FQDN unchanged", "sonarr.erfi.io", svcMap, "sonarr.erfi.io"},
+		{"wildcard unchanged", "*", svcMap, "*"},
+		{"empty unchanged", "", svcMap, ""},
+		{"unknown short name passes through", "unknown", svcMap, "unknown"},
+		{"nil map passes through", "httpbun", nil, "httpbun"},
+		{"empty map passes through", "httpbun", map[string]string{}, "httpbun"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveServiceName(tt.service, tt.svcMap)
+			if got != tt.want {
+				t.Errorf("resolveServiceName(%q) = %q, want %q", tt.service, got, tt.want)
+			}
+		})
+	}
 }

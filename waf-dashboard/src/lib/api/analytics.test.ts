@@ -322,14 +322,18 @@ describe("lookupIP service breakdown fields", () => {
         blocked: 4,
         logged: 4,
         rate_limited: 1,
-        policy: 2,
+        policy_block: 2,
+        policy_allow: 0,
+        policy_skip: 0,
       }],
       events: [],
     };
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await lookupIP("10.0.0.1");
-    expect(result.services[0].policy).toBe(2);
+    expect(result.services[0].policy_block).toBe(2);
+    expect(result.services[0].policy_allow).toBe(0);
+    expect(result.services[0].policy_skip).toBe(0);
     expect(result.services[0].rate_limited).toBe(1);
   });
 });

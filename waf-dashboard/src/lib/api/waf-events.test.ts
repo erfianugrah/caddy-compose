@@ -70,7 +70,9 @@ describe("fetchSummary", () => {
       blocked: 10,
       logged: 30,
       rate_limited: 0,
-      policy: 0,
+      policy_block: 0,
+      policy_allow: 0,
+      policy_skip: 0,
     });
 
     // Top services mapped (now includes blocked/logged)
@@ -86,9 +88,11 @@ describe("fetchSummary", () => {
     expect(result.top_clients[0].total).toBe(50);
     expect(result.top_clients[0].blocked).toBe(20);
 
-    // Top clients now include rate_limited, policy
+    // Top clients now include rate_limited, policy breakdown
     expect(result.top_clients[0].rate_limited).toBe(0);
-    expect(result.top_clients[0].policy).toBe(0);
+    expect(result.top_clients[0].policy_block).toBe(0);
+    expect(result.top_clients[0].policy_allow).toBe(0);
+    expect(result.top_clients[0].policy_skip).toBe(0);
 
     // Service breakdown from dedicated field
     expect(result.service_breakdown).toHaveLength(2);
@@ -98,7 +102,9 @@ describe("fetchSummary", () => {
       blocked: 15,
       logged: 45,
       rate_limited: 0,
-      policy: 0,
+      policy_block: 0,
+      policy_allow: 0,
+      policy_skip: 0,
     });
 
     // recent_events mapped from Go events
@@ -648,7 +654,7 @@ describe("event_type mapping in fetchEvents", () => {
 // ─── fetchServices breakdown fields ─────────────────────────────────
 
 describe("fetchServices breakdown fields", () => {
-  it("maps policy/rate_limited fields from Go API", async () => {
+  it("maps policy breakdown/rate_limited fields from Go API", async () => {
     const goResponse = {
       services: [{
         service: "web.erfi.io",
@@ -656,14 +662,18 @@ describe("fetchServices breakdown fields", () => {
         blocked: 40,
         logged: 60,
         rate_limited: 5,
-        policy: 4,
+        policy_block: 3,
+        policy_allow: 1,
+        policy_skip: 0,
       }],
     };
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await fetchServices(24);
     expect(result).toHaveLength(1);
-    expect(result[0].policy).toBe(4);
+    expect(result[0].policy_block).toBe(3);
+    expect(result[0].policy_allow).toBe(1);
+    expect(result[0].policy_skip).toBe(0);
     expect(result[0].rate_limited).toBe(5);
   });
 
@@ -679,7 +689,9 @@ describe("fetchServices breakdown fields", () => {
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await fetchServices(24);
-    expect(result[0].policy).toBe(0);
+    expect(result[0].policy_block).toBe(0);
+    expect(result[0].policy_allow).toBe(0);
+    expect(result[0].policy_skip).toBe(0);
     expect(result[0].rate_limited).toBe(0);
   });
 });

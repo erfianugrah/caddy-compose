@@ -101,7 +101,8 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, ls *Managed
 		// — no Caddy restart needed.
 		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
 			allExclusions := es.EnabledExclusions()
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls)
+			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls, svcMap)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",
