@@ -144,7 +144,8 @@ var sampleAccessLogLines = func() []string {
 	}
 }()
 
-// sampleIpsumAccessLogLines contains mixed 429 (rate limited) and 403+X-Blocked-By:ipsum lines.
+// sampleIpsumAccessLogLines contains mixed 429 (rate limited) and 403 policy engine blocks
+// (detected via policy_action log_append field and/or X-Blocked-By header).
 var sampleIpsumAccessLogLines = func() []string {
 	// Same hour-anchoring pattern for consistent bucket boundaries.
 	nowHour := time.Now().Truncate(time.Hour)
@@ -154,11 +155,11 @@ var sampleIpsumAccessLogLines = func() []string {
 		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"resp_headers":{},"status":200,"size":1234,"duration":0.05}`, ts(nowHour.Add(-50*time.Minute))),
 		// 429 rate limited
 		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`, ts(nowHour.Add(-49*time.Minute))),
-		// 403 ipsum blocked (has X-Blocked-By: ipsum)
-		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-48*time.Minute))),
-		// 403 without ipsum header — should be ignored
+		// 403 policy engine block — detected via policy_action field (primary)
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"x-blocked-by":["policy-engine"],"x-blocked-rule":["IPsum Block (Level 3)"]},"policy_action":"block","policy_rule":"IPsum Block (Level 3)","status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-48*time.Minute))),
+		// 403 without policy headers — should be ignored
 		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.4","client_ip":"10.0.0.4","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/1.0"]}},"resp_headers":{},"status":403,"size":0,"duration":0.002}`, ts(nowHour.Add(-47*time.Minute))),
-		// Another ipsum blocked
-		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.5","client_ip":"10.0.0.5","proto":"HTTP/2.0","method":"POST","host":"sonarr.erfi.io","uri":"/login","headers":{"User-Agent":["MaliciousBot/2.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(1*time.Second))),
+		// Another policy engine block — lowercase headers only (HTTP/2), no policy_action field
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.5","client_ip":"10.0.0.5","proto":"HTTP/2.0","method":"POST","host":"sonarr.erfi.io","uri":"/login","headers":{"User-Agent":["MaliciousBot/2.0"]}},"resp_headers":{"x-blocked-by":["policy-engine"],"x-blocked-rule":["IPsum Block (Level 5)"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(1*time.Second))),
 	}
 }()

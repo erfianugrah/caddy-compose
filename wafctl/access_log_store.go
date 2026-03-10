@@ -20,17 +20,19 @@ import (
 
 // AccessLogEntry is the JSON structure Caddy writes for each request.
 type AccessLogEntry struct {
-	Level       string              `json:"level"`
-	Ts          string              `json:"ts"` // wall clock format: "2026/02/22 12:43:20"
-	Logger      string              `json:"logger"`
-	Msg         string              `json:"msg"`
-	Request     AccessLogReq        `json:"request"`
-	RespHeaders map[string][]string `json:"resp_headers"`
-	Status      int                 `json:"status"`
-	Size        int                 `json:"size"`
-	Duration    float64             `json:"duration"`
-	BytesRead   int                 `json:"bytes_read"`           // request body bytes consumed
-	RequestID   string              `json:"request_id,omitempty"` // Caddy UUID via log_append
+	Level        string              `json:"level"`
+	Ts           string              `json:"ts"` // wall clock format: "2026/02/22 12:43:20"
+	Logger       string              `json:"logger"`
+	Msg          string              `json:"msg"`
+	Request      AccessLogReq        `json:"request"`
+	RespHeaders  map[string][]string `json:"resp_headers"`
+	Status       int                 `json:"status"`
+	Size         int                 `json:"size"`
+	Duration     float64             `json:"duration"`
+	BytesRead    int                 `json:"bytes_read"`              // request body bytes consumed
+	RequestID    string              `json:"request_id,omitempty"`    // Caddy UUID via log_append
+	PolicyAction string              `json:"policy_action,omitempty"` // log_append: policy engine action (allow/block/honeypot)
+	PolicyRule   string              `json:"policy_rule,omitempty"`   // log_append: matched policy engine rule name
 }
 
 type AccessLogReq struct {
@@ -71,14 +73,27 @@ type RateLimitEvent struct {
 	RequestID string    `json:"request_id,omitempty"` // Caddy UUID for cross-log correlation
 }
 
-// blockedBySource checks X-Blocked-By response header and returns the source value.
-// Returns "" if no X-Blocked-By header is present.
-func blockedBySource(headers map[string][]string) string {
-	vals, ok := headers["X-Blocked-By"]
-	if !ok {
-		return ""
+// headerValuesCI does a case-insensitive header lookup on a map[string][]string
+// that was deserialized from JSON. HTTP/2 lowercases all header names on the wire,
+// and Caddy's JSON logger may preserve that casing, so we cannot rely on Title-Case.
+func headerValuesCI(headers map[string][]string, key string) []string {
+	// Fast path: exact match (Go's http.Header canonical form).
+	if vals, ok := headers[key]; ok {
+		return vals
 	}
-	for _, v := range vals {
+	// Slow path: case-insensitive scan.
+	lower := strings.ToLower(key)
+	for k, vals := range headers {
+		if strings.ToLower(k) == lower {
+			return vals
+		}
+	}
+	return nil
+}
+
+// headerValueCI returns the first value for a case-insensitive header lookup.
+func headerValueCI(headers map[string][]string, key string) string {
+	for _, v := range headerValuesCI(headers, key) {
 		if v != "" {
 			return v
 		}
@@ -86,40 +101,25 @@ func blockedBySource(headers map[string][]string) string {
 	return ""
 }
 
-// hasBlockedByValue checks if any X-Blocked-By header value matches the target.
-func hasBlockedByValue(headers map[string][]string, target string) bool {
-	vals, ok := headers["X-Blocked-By"]
-	if !ok {
-		return false
+// isPolicyBlocked detects a policy engine block from log_append fields (primary)
+// or response headers (fallback). The log_append fields are set as Caddy variables
+// by the plugin and are case-safe; response headers may be lowercased by HTTP/2.
+func isPolicyBlocked(entry AccessLogEntry) bool {
+	// Primary: log_append policy_action field (always lowercase, set by plugin).
+	if entry.PolicyAction == "block" || entry.PolicyAction == "honeypot" {
+		return true
 	}
-	for _, v := range vals {
-		if v == target {
-			return true
-		}
-	}
-	return false
+	// Fallback: X-Blocked-By response header (case-insensitive lookup).
+	return headerValueCI(entry.RespHeaders, "X-Blocked-By") == "policy-engine"
 }
 
-// isIpsumBlocked checks if the response headers contain X-Blocked-By: ipsum.
-func isIpsumBlocked(headers map[string][]string) bool {
-	return hasBlockedByValue(headers, "ipsum")
-}
-
-// isPolicyBlocked checks if the response headers contain X-Blocked-By: policy-engine.
-func isPolicyBlocked(headers map[string][]string) bool {
-	return hasBlockedByValue(headers, "policy-engine")
-}
-
-// policyBlockedRuleName extracts X-Blocked-Rule header from response (set by policy engine plugin).
-func policyBlockedRuleName(headers map[string][]string) string {
-	vals, ok := headers["X-Blocked-Rule"]
-	if !ok {
-		return ""
+// policyBlockedRuleName extracts the rule name from log_append (primary) or
+// X-Blocked-Rule response header (fallback).
+func policyBlockedRuleName(entry AccessLogEntry) string {
+	if entry.PolicyRule != "" {
+		return entry.PolicyRule
 	}
-	if len(vals) > 0 {
-		return vals[0]
-	}
-	return ""
+	return headerValueCI(entry.RespHeaders, "X-Blocked-Rule")
 }
 
 // ─── Access Log Store (tails combined-access.log for 429s) ──────────
@@ -211,8 +211,22 @@ func (s *AccessLogStore) SetEventFile(path string) {
 		}
 		return
 	}
+	// Migrate legacy Source="ipsum" events to Source="policy" so they are
+	// classified as policy_block instead of rate_limited. This handles events
+	// persisted before the policy engine migration.
+	migrated := 0
+	for i := range events {
+		if events[i].Source == "ipsum" {
+			events[i].Source = "policy"
+			migrated++
+		}
+	}
 	s.events = events
 	log.Printf("restored %d RL events from %s", len(events), path)
+	if migrated > 0 {
+		log.Printf("migrated %d legacy ipsum events to policy source", migrated)
+		s.compactEventFileLocked()
+	}
 }
 
 // appendEventsToJSONL appends rate limit events to the JSONL file.
@@ -407,12 +421,10 @@ func (s *AccessLogStore) Load() {
 		if len(line) > 0 {
 			var entry AccessLogEntry
 			if jsonErr := json.Unmarshal(line, &entry); jsonErr == nil {
-				// Collect 429 (rate limited), ipsum-blocked (403 + X-Blocked-By: ipsum),
-				// and policy-engine-blocked (403 + X-Blocked-By: policy-engine) responses.
+				// Collect 429 (rate limited) and policy-engine-blocked (403) responses.
 				isRateLimit := entry.Status == 429
-				isIpsum := entry.Status == 403 && isIpsumBlocked(entry.RespHeaders)
-				isPolicy := entry.Status == 403 && isPolicyBlocked(entry.RespHeaders)
-				if isRateLimit || isIpsum || isPolicy {
+				isPolicy := entry.Status == 403 && isPolicyBlocked(entry)
+				if isRateLimit || isPolicy {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -429,11 +441,9 @@ func (s *AccessLogStore) Load() {
 						UserAgent: ua,
 						RequestID: accessLogRequestID(entry),
 					}
-					if isIpsum {
-						evt.Source = "ipsum"
-					} else if isPolicy {
+					if isPolicy {
 						evt.Source = "policy"
-						evt.RuleName = policyBlockedRuleName(entry.RespHeaders)
+						evt.RuleName = policyBlockedRuleName(entry)
 					}
 					// Enrich with country from Cf-Ipcountry header or MMDB lookup.
 					if geoIP != nil {
@@ -468,18 +478,15 @@ func (s *AccessLogStore) Load() {
 		s.generation.Add(1)
 		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
-		rlCount, ipsumCount, policyCount := 0, 0, 0
+		rlCount, policyCount := 0, 0
 		for _, e := range newEvents {
-			switch e.Source {
-			case "ipsum":
-				ipsumCount++
-			case "policy":
+			if e.Source == "policy" {
 				policyCount++
-			default:
+			} else {
 				rlCount++
 			}
 		}
-		log.Printf("loaded %d new events (%d rate-limit, %d ipsum, %d policy) — %d total", len(newEvents), rlCount, ipsumCount, policyCount, s.EventCount())
+		log.Printf("loaded %d new events (%d rate-limit, %d policy) — %d total", len(newEvents), rlCount, policyCount, s.EventCount())
 	}
 
 	// Evict events older than maxAge.
@@ -634,23 +641,19 @@ func ephemeralID() string {
 }
 
 // RateLimitEventToEvent converts a RateLimitEvent into the unified Event type
-// so that 429s and ipsum blocks can be merged into the shared event stream.
-// All access log events use "rate_limited" as the event type; ipsum blocks
-// are distinguished by their tags (["blocklist", "ipsum"]).
-// extraTags from the matched rate limit rule are appended to the event tags.
+// so that 429s and policy engine blocks can be merged into the shared event stream.
+// Rate limit events use "rate_limited"; policy engine blocks use "policy_block".
+// extraTags from the matched rule or exclusion are appended to the event tags.
 func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	status := 429
 	eventType := "rate_limited"
 	var tags []string
 	switch rle.Source {
-	case "ipsum":
-		status = 403
-		tags = []string{"blocklist", "ipsum"}
-	case "policy":
+	case "policy", "ipsum":
+		// "ipsum" is a legacy source from before the policy engine migration;
+		// JSONL migration converts these but handle gracefully if encountered.
 		status = 403
 		eventType = "policy_block"
-		// No default tags here — tags will come from matching the rule name
-		// to exclusion store entries (done by the caller via extraTags).
 	}
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
@@ -721,7 +724,7 @@ func enrichAccessEvents(rlEvents []RateLimitEvent, rules []RateLimitRule, exclus
 	events := make([]Event, len(rlEvents))
 	for i, rle := range rlEvents {
 		var tags []string
-		if rle.Source == "policy" {
+		if rle.Source == "policy" || rle.Source == "ipsum" {
 			// Match policy engine event to exclusion tags by rule name.
 			if t, ok := excTagsByName[rle.RuleName]; ok {
 				tags = t

@@ -965,39 +965,43 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 	}
 }
 
-func TestIsIpsumBlocked(t *testing.T) {
+func TestHeaderValuesCI(t *testing.T) {
 	tests := []struct {
 		name    string
 		headers map[string][]string
-		want    bool
+		key     string
+		want    string
 	}{
-		{"ipsum header present", map[string][]string{"X-Blocked-By": {"ipsum"}}, true},
-		{"different value", map[string][]string{"X-Blocked-By": {"other"}}, false},
-		{"no header", map[string][]string{}, false},
-		{"nil headers", nil, false},
-		{"multiple values with ipsum", map[string][]string{"X-Blocked-By": {"other", "ipsum"}}, true},
+		{"title-case key", map[string][]string{"X-Blocked-By": {"policy-engine"}}, "X-Blocked-By", "policy-engine"},
+		{"lowercase key (HTTP/2)", map[string][]string{"x-blocked-by": {"policy-engine"}}, "X-Blocked-By", "policy-engine"},
+		{"uppercase key", map[string][]string{"X-BLOCKED-BY": {"policy-engine"}}, "X-Blocked-By", "policy-engine"},
+		{"no header", map[string][]string{}, "X-Blocked-By", ""},
+		{"nil headers", nil, "X-Blocked-By", ""},
+		{"empty value", map[string][]string{"x-blocked-by": {""}}, "X-Blocked-By", ""},
+		{"lowercase X-Blocked-Rule", map[string][]string{"x-blocked-rule": {"Honeypot Paths"}}, "X-Blocked-Rule", "Honeypot Paths"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isIpsumBlocked(tt.headers); got != tt.want {
-				t.Errorf("isIpsumBlocked(%v) = %v, want %v", tt.headers, got, tt.want)
+			if got := headerValueCI(tt.headers, tt.key); got != tt.want {
+				t.Errorf("headerValueCI(%v, %q) = %q, want %q", tt.headers, tt.key, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestAccessLogStoreLoadsIpsumEvents(t *testing.T) {
+func TestAccessLogStoreLoadsPolicyBlocksFromIpsumFixture(t *testing.T) {
+	// Uses the ipsum fixture which now has policy engine blocks.
 	path := writeTempAccessLog(t, sampleIpsumAccessLogLines)
 	store := NewAccessLogStore(path)
 	store.Load()
 
-	// 1 rate-limited (429) + 2 ipsum-blocked (403+header) = 3 total, ignoring 200 and bare 403.
+	// 1 rate-limited (429) + 2 policy blocks (403+policy_action or lowercase header) = 3 total.
 	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3 events (1 RL + 2 ipsum), got %d", got)
+		t.Fatalf("expected 3 events (1 RL + 2 policy), got %d", got)
 	}
 }
 
-func TestIpsumEventSource(t *testing.T) {
+func TestPolicyBlockEventSource(t *testing.T) {
 	path := writeTempAccessLog(t, sampleIpsumAccessLogLines)
 	store := NewAccessLogStore(path)
 	store.Load()
@@ -1007,33 +1011,34 @@ func TestIpsumEventSource(t *testing.T) {
 		t.Fatalf("expected 3 events, got %d", len(events))
 	}
 
-	// All access log events (429 rate limited and ipsum blocked) are now
-	// unified as "rate_limited". Ipsum events are distinguished by tags.
-	var rl429Count, rlIpsumCount int
+	var rl429Count, policyBlockCount int
 	for _, ev := range events {
-		if ev.EventType != "rate_limited" {
-			t.Errorf("unexpected event type: %s (want rate_limited)", ev.EventType)
-		}
-		if ev.ResponseStatus == 429 {
-			rl429Count++
-		} else if ev.ResponseStatus == 403 {
-			rlIpsumCount++
-			// Ipsum events should have blocklist/ipsum tags.
-			if len(ev.Tags) < 2 || ev.Tags[0] != "blocklist" || ev.Tags[1] != "ipsum" {
-				t.Errorf("ipsum event should have [blocklist ipsum] tags, got %v", ev.Tags)
+		switch ev.EventType {
+		case "rate_limited":
+			if ev.ResponseStatus != 429 {
+				t.Errorf("rate_limited event should have status 429, got %d", ev.ResponseStatus)
 			}
+			rl429Count++
+		case "policy_block":
+			if ev.ResponseStatus != 403 {
+				t.Errorf("policy_block event should have status 403, got %d", ev.ResponseStatus)
+			}
+			policyBlockCount++
+		default:
+			t.Errorf("unexpected event type: %s", ev.EventType)
 		}
 	}
 
 	if rl429Count != 1 {
-		t.Errorf("expected 1 rate_limited event with status 429, got %d", rl429Count)
+		t.Errorf("expected 1 rate_limited event, got %d", rl429Count)
 	}
-	if rlIpsumCount != 2 {
-		t.Errorf("expected 2 rate_limited (ipsum) events with status 403, got %d", rlIpsumCount)
+	if policyBlockCount != 2 {
+		t.Errorf("expected 2 policy_block events, got %d", policyBlockCount)
 	}
 }
 
 func TestRateLimitEventToEventIpsum(t *testing.T) {
+	// Legacy Source="ipsum" is treated as policy_block (migrated to policy engine).
 	rle := RateLimitEvent{
 		Timestamp: time.Date(2026, 2, 22, 12, 2, 0, 0, time.UTC),
 		ClientIP:  "10.0.0.3",
@@ -1046,9 +1051,8 @@ func TestRateLimitEventToEventIpsum(t *testing.T) {
 
 	ev := RateLimitEventToEvent(rle, nil)
 
-	// Ipsum events are unified as "rate_limited" with blocklist/ipsum tags.
-	if ev.EventType != "rate_limited" {
-		t.Errorf("event_type: want rate_limited, got %s", ev.EventType)
+	if ev.EventType != "policy_block" {
+		t.Errorf("event_type: want policy_block, got %s", ev.EventType)
 	}
 	if !ev.IsBlocked {
 		t.Error("ipsum events should have is_blocked=true")
@@ -1056,8 +1060,9 @@ func TestRateLimitEventToEventIpsum(t *testing.T) {
 	if ev.ResponseStatus != 403 {
 		t.Errorf("response_status: want 403, got %d", ev.ResponseStatus)
 	}
-	if len(ev.Tags) != 2 || ev.Tags[0] != "blocklist" || ev.Tags[1] != "ipsum" {
-		t.Errorf("tags: want [blocklist ipsum], got %v", ev.Tags)
+	// No hardcoded tags — tags come from exclusion store enrichment.
+	if len(ev.Tags) != 0 {
+		t.Errorf("tags: want empty (no extraTags), got %v", ev.Tags)
 	}
 }
 
@@ -1097,47 +1102,24 @@ func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
 
 // --- Policy Engine Event Detection Tests ---
 
-func TestHasBlockedByValue(t *testing.T) {
-	tests := []struct {
-		name    string
-		headers map[string][]string
-		target  string
-		want    bool
-	}{
-		{"exact match", map[string][]string{"X-Blocked-By": {"ipsum"}}, "ipsum", true},
-		{"no match", map[string][]string{"X-Blocked-By": {"other"}}, "ipsum", false},
-		{"no header", map[string][]string{}, "ipsum", false},
-		{"nil headers", nil, "ipsum", false},
-		{"empty values", map[string][]string{"X-Blocked-By": {""}}, "ipsum", false},
-		{"multiple values first match", map[string][]string{"X-Blocked-By": {"ipsum", "policy-engine"}}, "ipsum", true},
-		{"multiple values second match", map[string][]string{"X-Blocked-By": {"other", "policy-engine"}}, "policy-engine", true},
-		{"policy-engine match", map[string][]string{"X-Blocked-By": {"policy-engine"}}, "policy-engine", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := hasBlockedByValue(tt.headers, tt.target); got != tt.want {
-				t.Errorf("hasBlockedByValue(%v, %q) = %v, want %v", tt.headers, tt.target, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestIsPolicyBlocked(t *testing.T) {
 	tests := []struct {
-		name    string
-		headers map[string][]string
-		want    bool
+		name  string
+		entry AccessLogEntry
+		want  bool
 	}{
-		{"policy-engine header", map[string][]string{"X-Blocked-By": {"policy-engine"}}, true},
-		{"ipsum header", map[string][]string{"X-Blocked-By": {"ipsum"}}, false},
-		{"no header", map[string][]string{}, false},
-		{"nil headers", nil, false},
-		{"multiple with policy", map[string][]string{"X-Blocked-By": {"ipsum", "policy-engine"}}, true},
+		{"policy_action=block", AccessLogEntry{PolicyAction: "block"}, true},
+		{"policy_action=honeypot", AccessLogEntry{PolicyAction: "honeypot"}, true},
+		{"policy_action=allow", AccessLogEntry{PolicyAction: "allow"}, false},
+		{"policy_action empty, header title-case", AccessLogEntry{RespHeaders: map[string][]string{"X-Blocked-By": {"policy-engine"}}}, true},
+		{"policy_action empty, header lowercase (HTTP/2)", AccessLogEntry{RespHeaders: map[string][]string{"x-blocked-by": {"policy-engine"}}}, true},
+		{"neither", AccessLogEntry{RespHeaders: map[string][]string{}}, false},
+		{"nil headers", AccessLogEntry{}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isPolicyBlocked(tt.headers); got != tt.want {
-				t.Errorf("isPolicyBlocked(%v) = %v, want %v", tt.headers, got, tt.want)
+			if got := isPolicyBlocked(tt.entry); got != tt.want {
+				t.Errorf("isPolicyBlocked() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1145,20 +1127,21 @@ func TestIsPolicyBlocked(t *testing.T) {
 
 func TestPolicyBlockedRuleName(t *testing.T) {
 	tests := []struct {
-		name    string
-		headers map[string][]string
-		want    string
+		name  string
+		entry AccessLogEntry
+		want  string
 	}{
-		{"rule name present", map[string][]string{"X-Blocked-Rule": {"Honeypot Paths"}}, "Honeypot Paths"},
-		{"no header", map[string][]string{}, ""},
-		{"nil headers", nil, ""},
-		{"empty value", map[string][]string{"X-Blocked-Rule": {""}}, ""},
-		{"multiple values uses first", map[string][]string{"X-Blocked-Rule": {"Rule A", "Rule B"}}, "Rule A"},
+		{"policy_rule field", AccessLogEntry{PolicyRule: "Honeypot Paths"}, "Honeypot Paths"},
+		{"header title-case", AccessLogEntry{RespHeaders: map[string][]string{"X-Blocked-Rule": {"Honeypot Paths"}}}, "Honeypot Paths"},
+		{"header lowercase (HTTP/2)", AccessLogEntry{RespHeaders: map[string][]string{"x-blocked-rule": {"Block Admin"}}}, "Block Admin"},
+		{"policy_rule takes precedence over header", AccessLogEntry{PolicyRule: "From Var", RespHeaders: map[string][]string{"X-Blocked-Rule": {"From Header"}}}, "From Var"},
+		{"no field no header", AccessLogEntry{}, ""},
+		{"empty header", AccessLogEntry{RespHeaders: map[string][]string{"X-Blocked-Rule": {""}}}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := policyBlockedRuleName(tt.headers); got != tt.want {
-				t.Errorf("policyBlockedRuleName(%v) = %q, want %q", tt.headers, got, tt.want)
+			if got := policyBlockedRuleName(tt.entry); got != tt.want {
+				t.Errorf("policyBlockedRuleName() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -1238,20 +1221,22 @@ func TestRateLimitEventToEvent_PolicyBlockNoRuleName(t *testing.T) {
 }
 
 // samplePolicyAccessLogLines contains policy engine block events in access log format.
+// Tests both detection paths: policy_action log_append field (primary) and
+// X-Blocked-By response header (fallback, both title-case and lowercase).
 var samplePolicyAccessLogLines = func() []string {
 	nowHour := time.Now().Truncate(time.Hour)
 	ts := func(t time.Time) string { return t.UTC().Format("2006/01/02 15:04:05") }
 	return []string{
 		// 200 OK — should be ignored
 		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["Sonarr/4.0"]}},"resp_headers":{},"status":200,"size":1234,"duration":0.05}`, ts(nowHour.Add(-50*time.Minute))),
-		// 403 policy engine block — honeypot path
-		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.10","client_ip":"10.0.0.10","proto":"HTTP/1.1","method":"GET","host":"sonarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/1.0"]}},"resp_headers":{"X-Blocked-By":["policy-engine"],"X-Blocked-Rule":["Honeypot Paths"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-49*time.Minute))),
-		// 403 policy engine block — scanner UA (no X-Blocked-Rule)
-		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.11","client_ip":"10.0.0.11","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["Nmap/7.0"]}},"resp_headers":{"X-Blocked-By":["policy-engine"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-48*time.Minute))),
+		// 403 policy engine block — detected via policy_action field + title-case header
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.10","client_ip":"10.0.0.10","proto":"HTTP/1.1","method":"GET","host":"sonarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/1.0"]}},"resp_headers":{"X-Blocked-By":["policy-engine"],"X-Blocked-Rule":["Honeypot Paths"]},"policy_action":"block","policy_rule":"Honeypot Paths","status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-49*time.Minute))),
+		// 403 policy engine block — lowercase headers only (HTTP/2), no policy_action field
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.11","client_ip":"10.0.0.11","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["Nmap/7.0"]}},"resp_headers":{"x-blocked-by":["policy-engine"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-48*time.Minute))),
 		// 429 rate limited — should still be collected as normal
 		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.2","client_ip":"10.0.0.2","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`, ts(nowHour.Add(-47*time.Minute))),
-		// 403 ipsum blocked — should still be collected as ipsum
-		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-46*time.Minute))),
+		// 403 policy engine block — via policy_action=honeypot, lowercase headers
+		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/wp-admin","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"x-blocked-by":["policy-engine"],"x-blocked-rule":["Honeypot WP"]},"policy_action":"honeypot","policy_rule":"Honeypot WP","status":403,"size":0,"duration":0.001}`, ts(nowHour.Add(-46*time.Minute))),
 		// 403 without X-Blocked-By — should be ignored
 		fmt.Sprintf(`{"level":"info","ts":"%s","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.4","client_ip":"10.0.0.4","proto":"HTTP/1.1","method":"GET","host":"radarr.erfi.io","uri":"/.env","headers":{"User-Agent":["Scanner/2.0"]}},"resp_headers":{},"status":403,"size":0,"duration":0.002}`, ts(nowHour.Add(-45*time.Minute))),
 	}
@@ -1262,10 +1247,10 @@ func TestAccessLogStoreLoadsPolicyEvents(t *testing.T) {
 	store := NewAccessLogStore(path)
 	store.Load()
 
-	// 2 policy blocks + 1 rate-limited (429) + 1 ipsum-blocked = 4 total.
+	// 3 policy blocks + 1 rate-limited (429) = 4 total.
 	// The 200 OK and bare 403 are ignored.
 	if got := store.EventCount(); got != 4 {
-		t.Fatalf("expected 4 events (2 policy + 1 RL + 1 ipsum), got %d", got)
+		t.Fatalf("expected 4 events (3 policy + 1 RL), got %d", got)
 	}
 }
 
@@ -1279,7 +1264,7 @@ func TestPolicyEventSource(t *testing.T) {
 		t.Fatalf("expected 4 events, got %d", len(events))
 	}
 
-	var policyCount, rlCount, ipsumCount int
+	var policyCount, rlCount int
 	for _, ev := range events {
 		switch ev.EventType {
 		case "policy_block":
@@ -1288,24 +1273,11 @@ func TestPolicyEventSource(t *testing.T) {
 			rlCount++
 		}
 	}
-	// Count ipsum as rate_limited (as per existing behavior).
-	for _, ev := range events {
-		if ev.EventType == "rate_limited" {
-			for _, tag := range ev.Tags {
-				if tag == "ipsum" {
-					ipsumCount++
-				}
-			}
-		}
+	if policyCount != 3 {
+		t.Errorf("expected 3 policy_block events, got %d", policyCount)
 	}
-	if policyCount != 2 {
-		t.Errorf("expected 2 policy_block events, got %d", policyCount)
-	}
-	if rlCount != 2 {
-		t.Errorf("expected 2 rate_limited events (1 RL + 1 ipsum), got %d", rlCount)
-	}
-	if ipsumCount != 1 {
-		t.Errorf("expected 1 ipsum-tagged event, got %d", ipsumCount)
+	if rlCount != 1 {
+		t.Errorf("expected 1 rate_limited event, got %d", rlCount)
 	}
 }
 
@@ -1318,15 +1290,16 @@ func TestPolicyEventRuleMsg(t *testing.T) {
 	var withRuleMsg, withoutRuleMsg int
 	for _, ev := range events {
 		if ev.EventType == "policy_block" {
-			if ev.RuleMsg == "Policy Block: Honeypot Paths" {
+			if strings.HasPrefix(ev.RuleMsg, "Policy Block: ") {
 				withRuleMsg++
 			} else if ev.RuleMsg == "" {
 				withoutRuleMsg++
 			}
 		}
 	}
-	if withRuleMsg != 1 {
-		t.Errorf("expected 1 policy event with rule msg, got %d", withRuleMsg)
+	// 2 events have policy_rule field (Honeypot Paths, Honeypot WP), 1 has only header (no rule name)
+	if withRuleMsg != 2 {
+		t.Errorf("expected 2 policy events with rule msg, got %d", withRuleMsg)
 	}
 	if withoutRuleMsg != 1 {
 		t.Errorf("expected 1 policy event without rule msg, got %d", withoutRuleMsg)
@@ -1428,13 +1401,13 @@ func TestSummaryMergesPolicyEvents(t *testing.T) {
 	var resp SummaryResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 3 WAF events + 2 policy_block + 1 RL(429) + 1 ipsum(rate_limited) = 7 total.
+	// 3 WAF events + 3 policy_block + 1 RL(429) = 7 total.
 	if resp.TotalEvents != 7 {
-		t.Errorf("total_events: want 7 (3 WAF + 2 policy + 1 RL + 1 ipsum), got %d", resp.TotalEvents)
+		t.Errorf("total_events: want 7 (3 WAF + 3 policy + 1 RL), got %d", resp.TotalEvents)
 	}
-	// rate_limited = 1 RL + 1 ipsum = 2.
-	if resp.RateLimited != 2 {
-		t.Errorf("rate_limited: want 2 (1 RL + 1 ipsum), got %d", resp.RateLimited)
+	// rate_limited = 1 RL only (ipsum blocks are now policy_block).
+	if resp.RateLimited != 1 {
+		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
 	}
 }
 
@@ -1454,8 +1427,8 @@ func TestEventsPolicyBlockFilter(t *testing.T) {
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	if resp.Total != 2 {
-		t.Errorf("policy_block filter: want 2, got %d", resp.Total)
+	if resp.Total != 3 {
+		t.Errorf("policy_block filter: want 3, got %d", resp.Total)
 	}
 	for _, ev := range resp.Events {
 		if ev.EventType != "policy_block" {
@@ -1464,7 +1437,7 @@ func TestEventsPolicyBlockFilter(t *testing.T) {
 	}
 }
 
-func TestSummaryMergesIpsumEvents(t *testing.T) {
+func TestSummaryMergesPolicyBlockEvents(t *testing.T) {
 	wafPath := writeTempLog(t, sampleLines)
 	store := NewStore(wafPath)
 	store.Load()
@@ -1484,29 +1457,20 @@ func TestSummaryMergesIpsumEvents(t *testing.T) {
 	var resp SummaryResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 3 WAF events + 1 RL(429) + 2 ipsum(rate_limited) = 6 total.
+	// 3 WAF events + 1 RL(429) + 2 policy_block = 6 total.
 	if resp.TotalEvents != 6 {
-		t.Errorf("total_events: want 6 (3 WAF + 1 RL + 2 ipsum), got %d", resp.TotalEvents)
+		t.Errorf("total_events: want 6 (3 WAF + 1 RL + 2 policy_block), got %d", resp.TotalEvents)
 	}
-	// All access log events (429 + ipsum) are now "rate_limited" = 3 total.
-	if resp.RateLimited != 3 {
-		t.Errorf("rate_limited: want 3 (1 RL + 2 ipsum), got %d", resp.RateLimited)
+	// Only 1 rate_limited (the actual 429).
+	if resp.RateLimited != 1 {
+		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
 	}
 	if resp.BlockedEvents != 2 {
 		t.Errorf("blocked_events: want 2 (WAF only), got %d", resp.BlockedEvents)
 	}
-
-	// Check hourly buckets sum to 3 rate_limited.
-	var totalRL int
-	for _, hc := range resp.EventsByHour {
-		totalRL += hc.RateLimited
-	}
-	if totalRL != 3 {
-		t.Errorf("hourly rate_limited sum: want 3, got %d", totalRL)
-	}
 }
 
-func TestEventsRateLimitedFilterIncludesIpsum(t *testing.T) {
+func TestEventsRateLimitedFilterExcludesPolicyBlocks(t *testing.T) {
 	wafPath := writeTempLog(t, sampleLines)
 	store := NewStore(wafPath)
 	store.Load()
@@ -1515,8 +1479,8 @@ func TestEventsRateLimitedFilterIncludesIpsum(t *testing.T) {
 	als := NewAccessLogStore(alsPath)
 	als.Load()
 
-	// Ipsum events are now "rate_limited", so filtering by rate_limited
-	// should include both 429 RL events and ipsum (403) events.
+	// Filtering by rate_limited should only get the actual 429 event,
+	// not the policy_block events (which are now separate).
 	req := httptest.NewRequest("GET", "/api/events?event_type=rate_limited&limit=100", nil)
 	w := httptest.NewRecorder()
 	handleEvents(store, als, emptyRLRuleStore(t))(w, req)
@@ -1524,9 +1488,8 @@ func TestEventsRateLimitedFilterIncludesIpsum(t *testing.T) {
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 1 rate-limited (429) + 2 ipsum (403, rate_limited) = 3 total.
-	if resp.Total != 3 {
-		t.Errorf("rate_limited filter: want 3, got %d", resp.Total)
+	if resp.Total != 1 {
+		t.Errorf("rate_limited filter: want 1 (only 429), got %d", resp.Total)
 	}
 	for _, ev := range resp.Events {
 		if ev.EventType != "rate_limited" {
@@ -1535,7 +1498,7 @@ func TestEventsRateLimitedFilterIncludesIpsum(t *testing.T) {
 	}
 }
 
-func TestServicesMergesIpsumCounts(t *testing.T) {
+func TestServicesMergesPolicyBlockCounts(t *testing.T) {
 	wafPath := writeTempLog(t, sampleLines)
 	store := NewStore(wafPath)
 	store.Load()
@@ -1556,17 +1519,17 @@ func TestServicesMergesIpsumCounts(t *testing.T) {
 		svcMap[s.Service] = s
 	}
 
-	// Ipsum events are now "rate_limited", so they count as RateLimited.
-	// radarr: 2 WAF + 1 ipsum(rate_limited) = 3 total, 1 RateLimited
+	// Policy blocks are now separate from rate_limited.
+	// radarr: 2 WAF + 1 policy_block = 3 total, 0 RateLimited
 	radarr := svcMap["radarr.erfi.io"]
-	if radarr.RateLimited != 1 {
-		t.Errorf("radarr rate_limited: want 1, got %d", radarr.RateLimited)
+	if radarr.RateLimited != 0 {
+		t.Errorf("radarr rate_limited: want 0, got %d", radarr.RateLimited)
 	}
 
-	// sonarr: 1 RL(429) + 1 ipsum(rate_limited) = 2 RateLimited total
+	// sonarr: 1 RL(429) + 1 policy_block = 2 access events, 1 RateLimited
 	sonarr := svcMap["sonarr.erfi.io"]
-	if sonarr.RateLimited != 2 {
-		t.Errorf("sonarr rate_limited: want 2 (1 RL + 1 ipsum), got %d", sonarr.RateLimited)
+	if sonarr.RateLimited != 1 {
+		t.Errorf("sonarr rate_limited: want 1, got %d", sonarr.RateLimited)
 	}
 }
 
@@ -1580,10 +1543,10 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 	store := NewStore(logPath)
 	store.Load()
 
-	// Access log with RL + ipsum events
+	// Access log with RL + policy engine block events
 	accessLines := []string{
 		`{"level":"info","ts":"2026/02/22 07:30:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/api/v3/queue","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`,
-		`{"level":"info","ts":"2026/02/22 07:31:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/test","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001}`,
+		`{"level":"info","ts":"2026/02/22 07:31:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"10.0.0.1","client_ip":"10.0.0.1","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/test","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"x-blocked-by":["policy-engine"]},"policy_action":"block","status":403,"size":0,"duration":0.001}`,
 		`{"level":"info","ts":"2026/02/22 07:32:00","logger":"http.log.access.combined","msg":"handled request","request":{"remote_ip":"99.99.99.99","client_ip":"99.99.99.99","proto":"HTTP/2.0","method":"GET","host":"sonarr.erfi.io","uri":"/api","headers":{"User-Agent":["curl/7.68"]}},"resp_headers":{},"status":429,"size":0,"duration":0.001}`,
 	}
 	accessPath := writeTempAccessLog(t, accessLines)
@@ -1609,11 +1572,11 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 		clientMap[c.Client] = c
 	}
 
-	// 10.0.0.1 should have WAF blocked + RL + ipsum counts merged.
-	// Ipsum events are now "rate_limited", so RL(429) + ipsum = 2 rate_limited.
+	// 10.0.0.1 should have WAF blocked + RL + policy_block counts merged.
+	// The policy engine block is separate from rate_limited.
 	c1 := clientMap["10.0.0.1"]
-	if c1.RateLimited != 2 {
-		t.Errorf("10.0.0.1 rate_limited: want 2 (1 RL + 1 ipsum), got %d", c1.RateLimited)
+	if c1.RateLimited != 1 {
+		t.Errorf("10.0.0.1 rate_limited: want 1 (only the 429), got %d", c1.RateLimited)
 	}
 
 	// 99.99.99.99 should have only RL count

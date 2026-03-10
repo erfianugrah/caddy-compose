@@ -515,10 +515,10 @@ func TestAccessLogStoreRequestID_PropagatedToEvent(t *testing.T) {
 	}
 }
 
-func TestAccessLogStoreRequestID_IpsumEvent(t *testing.T) {
-	// ipsum-blocked event should also carry request_id.
+func TestAccessLogStoreRequestID_PolicyBlockEvent(t *testing.T) {
+	// Policy engine block events should carry request_id.
 	lines := []string{
-		`{"level":"info","ts":"2026/02/22 12:02:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"X-Blocked-By":["ipsum"]},"status":403,"size":0,"duration":0.001,"request_id":"ipsum-uuid-def"}`,
+		`{"level":"info","ts":"2026/02/22 12:02:00","logger":"combined","msg":"handled request","request":{"remote_ip":"10.0.0.3","client_ip":"10.0.0.3","proto":"HTTP/2.0","method":"GET","host":"radarr.erfi.io","uri":"/","headers":{"User-Agent":["BadBot/1.0"]}},"resp_headers":{"x-blocked-by":["policy-engine"],"x-blocked-rule":["IPsum Block"]},"policy_action":"block","policy_rule":"IPsum Block","status":403,"size":0,"duration":0.001,"request_id":"policy-uuid-def"}`,
 	}
 	path := writeTempAccessLog(t, lines)
 	store := NewAccessLogStore(path)
@@ -528,11 +528,11 @@ func TestAccessLogStoreRequestID_IpsumEvent(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].EventType != "rate_limited" {
-		t.Errorf("event_type: want rate_limited, got %s", events[0].EventType)
+	if events[0].EventType != "policy_block" {
+		t.Errorf("event_type: want policy_block, got %s", events[0].EventType)
 	}
-	if events[0].RequestID != "ipsum-uuid-def" {
-		t.Errorf("Event.RequestID: want %q, got %q", "ipsum-uuid-def", events[0].RequestID)
+	if events[0].RequestID != "policy-uuid-def" {
+		t.Errorf("Event.RequestID: want %q, got %q", "policy-uuid-def", events[0].RequestID)
 	}
 }
 
@@ -1033,8 +1033,11 @@ func TestRateLimitEventToEvent_ExtraTags(t *testing.T) {
 	}
 }
 
-func TestRateLimitEventToEvent_IpsumPlusTags(t *testing.T) {
-	// Ipsum events already get ["blocklist", "ipsum"] — extra tags are appended.
+func TestRateLimitEventToEvent_IpsumLegacySource(t *testing.T) {
+	// "ipsum" is a legacy source from before the policy engine migration.
+	// It maps to policy_block/403 like "policy" source, with only extraTags
+	// (no hardcoded blocklist/ipsum tags — those come from the exclusion store
+	// via enrichAccessEvents at load time, not from RateLimitEventToEvent).
 	rle := RateLimitEvent{
 		Timestamp: time.Now(),
 		ClientIP:  "10.0.0.1",
@@ -1042,14 +1045,14 @@ func TestRateLimitEventToEvent_IpsumPlusTags(t *testing.T) {
 		Source:    "ipsum",
 	}
 	ev := RateLimitEventToEvent(rle, []string{"extra"})
-	expected := []string{"blocklist", "ipsum", "extra"}
-	if len(ev.Tags) != 3 {
-		t.Fatalf("expected 3 tags, got %v", ev.Tags)
+	if ev.EventType != "policy_block" {
+		t.Errorf("expected policy_block, got %s", ev.EventType)
 	}
-	for i, want := range expected {
-		if ev.Tags[i] != want {
-			t.Errorf("tag[%d]: want %q, got %q", i, want, ev.Tags[i])
-		}
+	if ev.ResponseStatus != 403 {
+		t.Errorf("expected 403, got %d", ev.ResponseStatus)
+	}
+	if len(ev.Tags) != 1 || ev.Tags[0] != "extra" {
+		t.Errorf("expected [extra], got %v", ev.Tags)
 	}
 }
 

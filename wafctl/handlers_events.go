@@ -552,26 +552,42 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 			resp = store.Services(hours)
 		}
 
-		// Merge access-log events (rate-limited, including ipsum blocks) into service breakdown.
+		// Merge access-log events (rate-limited and policy blocks) into service breakdown.
 		rlEvents := getRLEvents(als, tr, hours, rs.List())
-		rlSvcMap := make(map[string]int)
+		type svcCounts struct {
+			rl, policy int
+		}
+		alsSvcMap := make(map[string]*svcCounts)
 		for i := range rlEvents {
-			rlSvcMap[rlEvents[i].Service]++
+			ev := &rlEvents[i]
+			sc, ok := alsSvcMap[ev.Service]
+			if !ok {
+				sc = &svcCounts{}
+				alsSvcMap[ev.Service] = sc
+			}
+			if ev.EventType == "policy_block" {
+				sc.policy++
+			} else {
+				sc.rl++
+			}
 		}
 
 		existingSvcs := make(map[string]int)
 		for i, sd := range resp.Services {
 			existingSvcs[sd.Service] = i
 		}
-		for svc, count := range rlSvcMap {
+		for svc, sc := range alsSvcMap {
+			total := sc.rl + sc.policy
 			if idx, ok := existingSvcs[svc]; ok {
-				resp.Services[idx].RateLimited += count
-				resp.Services[idx].Total += count
+				resp.Services[idx].RateLimited += sc.rl
+				resp.Services[idx].Policy += sc.policy
+				resp.Services[idx].Total += total
 			} else {
 				resp.Services = append(resp.Services, ServiceDetail{
 					Service:     svc,
-					Total:       count,
-					RateLimited: count,
+					Total:       total,
+					RateLimited: sc.rl,
+					Policy:      sc.policy,
 				})
 				existingSvcs[svc] = len(resp.Services) - 1
 			}

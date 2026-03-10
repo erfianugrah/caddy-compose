@@ -1076,7 +1076,7 @@ func TestHandleSummaryMultipleFilters(t *testing.T) {
 
 func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	// Test that event_type=rate_limited correctly fetches RL events
-	// and filters out WAF events.
+	// and filters out WAF events and policy_block events.
 	store := &Store{}
 	now := time.Now().UTC()
 	store.mu.Lock()
@@ -1089,14 +1089,14 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	als.mu.Lock()
 	als.events = []RateLimitEvent{
 		{Timestamp: now.Add(-30 * time.Minute), Service: "api.erfi.io", ClientIP: "10.0.0.1", Method: "GET"},
-		{Timestamp: now.Add(-45 * time.Minute), Service: "api.erfi.io", ClientIP: "10.0.0.2", Method: "POST", Source: "ipsum"},
+		{Timestamp: now.Add(-45 * time.Minute), Service: "api.erfi.io", ClientIP: "10.0.0.2", Method: "POST", Source: "policy", RuleName: "IPsum Block"},
 	}
 	als.mu.Unlock()
 
 	handler := handleSummary(store, als, emptyRLRuleStore(t))
 
-	// event_type=rate_limited — should see both RL events (429 + ipsum),
-	// since ipsum events are now unified as "rate_limited" with tags.
+	// event_type=rate_limited — should only see 1 RL event (the 429).
+	// The policy engine block is now policy_block, not rate_limited.
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&event_type=rate_limited", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1108,11 +1108,11 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}
-	if resp.TotalEvents != 2 {
-		t.Errorf("event_type=rate_limited filter: total_events = %d, want 2 (1 RL + 1 ipsum)", resp.TotalEvents)
+	if resp.TotalEvents != 1 {
+		t.Errorf("event_type=rate_limited filter: total_events = %d, want 1", resp.TotalEvents)
 	}
-	if resp.RateLimited != 2 {
-		t.Errorf("event_type=rate_limited filter: rate_limited = %d, want 2 (1 RL + 1 ipsum)", resp.RateLimited)
+	if resp.RateLimited != 1 {
+		t.Errorf("event_type=rate_limited filter: rate_limited = %d, want 1", resp.RateLimited)
 	}
 }
 
