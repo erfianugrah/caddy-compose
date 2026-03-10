@@ -465,7 +465,7 @@ The CI pipeline (GitHub Actions) includes:
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (1374 tests across 24 files)
+make test-go           # Go tests only (1375 tests across 24 files)
 make test-frontend     # Vitest frontend tests (312 tests across 14 files)
 make test-e2e          # Docker-based e2e smoke tests (79 tests)
 ```
@@ -551,7 +551,7 @@ caddy-compose/
     cfproxy.go           # Cloudflare proxy stats/refresh
     cache.go             # In-memory cache (24h/100k entries)
     util.go              # Shared utilities (envOr, atomicWriteFile)
-    *_test.go            # 24 test files (1374 tests)
+    *_test.go            # 24 test files (1375 tests)
     Dockerfile           # Standalone wafctl image
     go.mod
   waf-dashboard/         # Astro 5 + React 19 + shadcn/ui frontend
