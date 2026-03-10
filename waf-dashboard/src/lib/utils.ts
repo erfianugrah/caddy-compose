@@ -8,15 +8,16 @@ export function cn(...inputs: ClassValue[]) {
 // ─── Centralized Action-Type Color Map ───────────────────────────────
 // Single source of truth for WAF event category colours used across all
 // charts (timeline, donut, bar) and badges.  Chosen for maximum contrast
-// on a dark background: warm colours = threats, cool colours = benign/info.
+// on a dark background — every colour is perceptually distinct at a glance.
+// Warm = hostile, cool = benign, neutral = informational.
 
 export const ACTION_COLORS = {
-  blocked:      "#ff006e", // neon pink  — WAF blocked
-  logged:       "#00d4ff", // cyan       — benign baseline (high volume, calm)
-  rate_limited: "#eab308", // yellow     — warning tier, distinct from orange
-  policy_block: "#f43f5e", // rose-500   — policy engine blocks (hostile)
-  policy_allow: "#10b981", // emerald-500 — policy engine allows (safe bypass)
-  policy_skip:  "#34d399", // emerald-400 — policy engine rule skips (tuning)
+  blocked:      "#ff006e", // neon pink   — WAF blocked (Coraza anomaly)
+  rate_limited: "#f59e0b", // amber-500   — rate limited / blocklist
+  policy_block: "#ef4444", // red-500     — policy engine blocks
+  policy_allow: "#22c55e", // green-500   — policy engine allows (safe bypass)
+  policy_skip:  "#a78bfa", // violet-400  — policy engine rule skips (tuning)
+  logged:       "#38bdf8", // sky-400     — benign baseline (high volume, calm)
 } as const;
 
 // Human-readable labels for chart legends (keyed same as ACTION_COLORS)
@@ -31,12 +32,12 @@ export const ACTION_LABELS: Record<string, string> = {
 
 // Tailwind badge classes per event type (border + text)
 export const ACTION_BADGE_CLASSES: Record<string, string> = {
-  rate_limited:  "border-yellow-500/50 text-yellow-400",
-  policy_skip:   "border-emerald-500/50 text-emerald-400",
-  policy_allow:  "border-emerald-500/50 text-emerald-400",
-  policy_block:  "border-rose-500/50 text-rose-400",
   blocked:       "border-pink-500/50 text-pink-400",
-  logged:        "border-cyan-500/50 text-cyan-400",
+  rate_limited:  "border-amber-500/50 text-amber-400",
+  policy_block:  "border-red-500/50 text-red-400",
+  policy_allow:  "border-green-500/50 text-green-400",
+  policy_skip:   "border-violet-400/50 text-violet-400",
+  logged:        "border-sky-400/50 text-sky-400",
 };
 
 // Shared chart tooltip styling (dark theme)
