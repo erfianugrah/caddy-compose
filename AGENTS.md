@@ -240,6 +240,13 @@ it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paran
 | `runtime_remove_target_by_id` | `ctl:ruleRemoveTargetById` | Exclude variable from specific rule for matching requests |
 | `runtime_remove_target_by_tag` | `ctl:ruleRemoveTargetByTag` | Surgical: exclude variable from tag category for matching requests |
 
+**Known limitation:** `skip_rule`, `anomaly`, and other Coraza-side exclusion types using the
+`in` operator still generate `@pm` (Aho-Corasick substring match) in SecRules. The exact-match
+fix via hash-set lookup only applies to types handled by the policy engine plugin (`allow`,
+`block`, `honeypot`). For example, a `skip_rule` with path `in "/admin|/api"` will also match
+`/administrator` and `/api-docs`. Fixing this for Coraza-side types would require generating
+multiple `@streq` rules or using `@rx` with anchored alternation.
+
 ### Condition Fields
 
 | Field | SecRule Variable | Operators |
@@ -848,6 +855,7 @@ lookup instead of Coraza's `@pm` substring match.
 - **`body_form`**: URL-encoded form field extraction via `url.ParseQuery()` — first value for multi-valued fields
 - **`exists` operator**: Checks JSON field presence without value comparison (`extractFieldExists()`)
 - `jsonValueToString()` handles all JSON types: strings, floats (integers render without decimals), bools, null, arrays/objects
+- **Multi-reader memory impact**: If a request hits the policy engine (body condition), Coraza (body inspection), and a rate limit rule (body matcher), the body is read and buffered three times. Each reader re-wraps `r.Body` with `io.MultiReader` so downstream handlers can re-read. Memory: one copy per reader, up to 13 MiB each (~39 MiB peak per request at the body size limit).
 
 ### Caddyfile Integration
 
@@ -1039,6 +1047,13 @@ restores events from JSONL before tailing begins.
 Two event stores feed into the unified `Event` type:
 - **WAF Audit Log Store** (`Store` in `logparser.go`) — parses Coraza audit log, classifies by rule IDs and `is_interrupted`
 - **Access Log Store** (`AccessLogStore` in `access_log_store.go`) — parses Caddy access log for 429s (rate limit) and 403s (policy engine blocks)
+
+**Allow rule observability:** When a request matches an `allow` rule, Coraza never sees
+it (WAF is bypassed via the `@needs_waf` inverted matcher). This means no audit log entry,
+no anomaly score calculation, and no WAF event in wafctl. The access log still records the
+request (Caddy's access log is independent of Coraza), and the policy engine sets
+`{http.vars.policy_engine.action}=allow` which appears in `log_append` fields. This gap is
+intentional — allow rules exist to bypass WAF for trusted traffic.
 
 **Policy engine block detection** uses a two-tier approach for HTTP/2 compatibility:
 
