@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -89,6 +91,63 @@ func TestRunCLIUnknown(t *testing.T) {
 	code := runCLI([]string{"nonexistent"})
 	if code != 1 {
 		t.Errorf("runCLI unknown returned %d, want 1", code)
+	}
+}
+
+// TestCLIHealthParsesStores verifies that the CLI health struct correctly
+// unmarshals the nested stores structure from the health API response.
+func TestCLIHealthParsesStores(t *testing.T) {
+	handler := testHealthHandler(t)
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+
+	// Parse the response using the same struct shape as cliHealth.
+	var health struct {
+		Status     string `json:"status"`
+		Version    string `json:"version"`
+		CRSVersion string `json:"crs_version"`
+		Uptime     string `json:"uptime"`
+		Stores     struct {
+			WAFEvents struct {
+				Events int `json:"events"`
+			} `json:"waf_events"`
+			AccessEvents struct {
+				Events int `json:"events"`
+			} `json:"access_events"`
+			GeneralLogs struct {
+				Events int `json:"events"`
+			} `json:"general_logs"`
+			GeoIP struct {
+				MMDBLoaded bool `json:"mmdb_loaded"`
+				APIEnabled bool `json:"api_enabled"`
+			} `json:"geoip"`
+			Exclusions struct {
+				Count int `json:"count"`
+			} `json:"exclusions"`
+			Blocklist BlocklistStatsResponse `json:"blocklist"`
+		} `json:"stores"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if health.Status != "ok" {
+		t.Errorf("status = %q, want ok", health.Status)
+	}
+	if health.Version != version {
+		t.Errorf("version = %q, want %q", health.Version, version)
+	}
+	if health.Uptime == "" {
+		t.Error("uptime should not be empty")
+	}
+	// Blocklist source should be set even with 0 IPs.
+	if health.Stores.Blocklist.Source != "IPsum" {
+		t.Errorf("blocklist source = %q, want IPsum", health.Stores.Blocklist.Source)
 	}
 }
 

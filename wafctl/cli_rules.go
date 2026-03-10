@@ -33,12 +33,25 @@ func cliHealth(flags cliFlags) int {
 		Version    string `json:"version"`
 		CRSVersion string `json:"crs_version"`
 		Uptime     string `json:"uptime"`
-		Events     int    `json:"events"`
-		Exclusions int    `json:"exclusions"`
-		GeoIPDB    string `json:"geoip_db"`
-		Blocklist  struct {
-			Total int `json:"total_ips"`
-		} `json:"blocklist"`
+		Stores     struct {
+			WAFEvents struct {
+				Events int `json:"events"`
+			} `json:"waf_events"`
+			AccessEvents struct {
+				Events int `json:"events"`
+			} `json:"access_events"`
+			GeneralLogs struct {
+				Events int `json:"events"`
+			} `json:"general_logs"`
+			GeoIP struct {
+				MMDBLoaded bool `json:"mmdb_loaded"`
+				APIEnabled bool `json:"api_enabled"`
+			} `json:"geoip"`
+			Exclusions struct {
+				Count int `json:"count"`
+			} `json:"exclusions"`
+			Blocklist BlocklistStatsResponse `json:"blocklist"`
+		} `json:"stores"`
 	}
 	if err := json.Unmarshal(data, &health); err != nil {
 		printJSON(data)
@@ -49,10 +62,21 @@ func cliHealth(flags cliFlags) int {
 	fmt.Fprintf(tw, "Version:\t%s\n", health.Version)
 	fmt.Fprintf(tw, "CRS:\t%s\n", health.CRSVersion)
 	fmt.Fprintf(tw, "Uptime:\t%s\n", health.Uptime)
-	fmt.Fprintf(tw, "Events:\t%d\n", health.Events)
-	fmt.Fprintf(tw, "Exclusions:\t%d\n", health.Exclusions)
-	fmt.Fprintf(tw, "GeoIP DB:\t%s\n", health.GeoIPDB)
-	fmt.Fprintf(tw, "Blocklist IPs:\t%d\n", health.Blocklist.Total)
+	fmt.Fprintf(tw, "WAF Events:\t%d\n", health.Stores.WAFEvents.Events)
+	fmt.Fprintf(tw, "Access Events:\t%d\n", health.Stores.AccessEvents.Events)
+	fmt.Fprintf(tw, "General Logs:\t%d\n", health.Stores.GeneralLogs.Events)
+	fmt.Fprintf(tw, "Exclusions:\t%d\n", health.Stores.Exclusions.Count)
+	fmt.Fprintf(tw, "Blocklist IPs:\t%d\n", health.Stores.Blocklist.BlockedIPs)
+	geoStatus := "disabled"
+	if health.Stores.GeoIP.MMDBLoaded {
+		geoStatus = "mmdb"
+		if health.Stores.GeoIP.APIEnabled {
+			geoStatus = "mmdb + api"
+		}
+	} else if health.Stores.GeoIP.APIEnabled {
+		geoStatus = "api only"
+	}
+	fmt.Fprintf(tw, "GeoIP:\t%s\n", geoStatus)
 	tw.Flush()
 	return 0
 }
