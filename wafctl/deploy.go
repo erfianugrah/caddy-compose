@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -145,7 +146,8 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	}
 
 	// Rate limit Caddyfile generation: only needed when policy engine is
-	// disabled (legacy mode). When enabled, RL rules are in policy-rules.json.
+	// disabled (legacy mode). When enabled, RL rules are in policy-rules.json
+	// and stale .caddy files are cleared to prevent double rate limiting.
 	if !deployCfg.PolicyEngineEnabled {
 		rules := rs.EnabledRules()
 		global := rs.GetGlobal()
@@ -158,6 +160,10 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 				log.Printf("[boot] regenerated %d rate limit files", len(written))
 			}
 		}
+	} else {
+		// Clear stale RL .caddy files to prevent double rate limiting
+		// (policy engine + caddy-ratelimit plugin both enforcing the same rules).
+		clearRLFiles(deployCfg.RateLimitDir)
 	}
 
 	// CSP headers: generate per-service CSP .caddy files.
@@ -325,4 +331,34 @@ func deployFingerprint(paths []string) string {
 		}
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+}
+
+// clearRLFiles replaces all *_rl.caddy files in the RL directory with
+// comment-only placeholders. This prevents the caddy-ratelimit plugin from
+// enforcing stale rules when rate limiting has moved to the policy engine.
+func clearRLFiles(rlDir string) {
+	if rlDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(rlDir)
+	if err != nil {
+		return // directory doesn't exist yet — nothing to clear
+	}
+	cleared := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), "_rl.caddy") {
+			continue
+		}
+		path := filepath.Join(rlDir, e.Name())
+		placeholder := fmt.Sprintf("# Rate limiting managed by policy engine plugin\n# File cleared at %s\n",
+			time.Now().UTC().Format(time.RFC3339))
+		if err := atomicWriteFile(path, []byte(placeholder), 0644); err != nil {
+			log.Printf("[boot] warning: failed to clear stale RL file %s: %v", path, err)
+			continue
+		}
+		cleared++
+	}
+	if cleared > 0 {
+		log.Printf("[boot] cleared %d stale RL .caddy files (policy engine handles rate limiting)", cleared)
+	}
 }

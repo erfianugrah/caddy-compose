@@ -171,7 +171,7 @@ wafctl tag format: simple semver (e.g. `1.10.1`).
 - **Exclusions**: `exclusions.go` (~366 lines) — ExclusionStore CRUD, persistence; `exclusions_validate.go` (~257 lines) — validation, condition checks, regex patterns
 - **CLI**: `cli.go` (~333 lines) — CLI framework, serve/config/deploy commands; `cli_rules.go` (~324 lines) — rules/exclusions subcommands; `cli_extras.go` (~310 lines) — ratelimit/csp/blocklist/events subcommands; `cli_managed_lists.go` (~116 lines) — managed lists subcommands
 - **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
-- **Policy engine generator**: `policy_generator.go` (~164 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, `GeneratePolicyRules()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`
+- **Policy engine generator**: `policy_generator.go` (~260 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, PolicyRateLimitConfig/PolicyRateLimitGlobalConfig, `GeneratePolicyRules()`, `GeneratePolicyRulesWithRL()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`
 - **Managed lists**: `managed_lists.go` (~582 lines) — ManagedListStore CRUD, persistence, validation; `models_lists.go` (~69 lines) — ManagedList types; `handlers_lists.go` (~160 lines) — HTTP handlers
 - **Domain stores**: `rl_rules.go` (564), `csp.go` (558), `csp_generator.go`, `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
@@ -760,10 +760,14 @@ directive. The handler must run first so placeholders are populated for bucket k
 
 ## Caddy Policy Engine Plugin (github.com/erfianugrah/caddy-policy-engine)
 
-Custom Caddy HTTP middleware that evaluates allow/block/honeypot rules with correct
-matching semantics. Fixes the core security bug where the `in` operator in Coraza
+Custom Caddy HTTP middleware that evaluates allow/block/honeypot/rate_limit rules with
+correct matching semantics. Fixes the core security bug where the `in` operator in Coraza
 SecRule generation uses `@pm` (Aho-Corasick substring match), causing `/admin` to
 match `/administrator`. The plugin uses `map[string]bool` hash sets for exact matching.
+
+Also provides sliding window rate limiting (v0.5.0+) as a `rate_limit` rule type,
+eliminating the need for Caddyfile generation + Caddy reload for rate limit changes.
+Counter state is preserved across hot-reloads.
 
 Zero external dependencies beyond Caddy itself. Registered as `http.handlers.policy_engine`.
 
@@ -782,6 +786,21 @@ Zero external dependencies beyond Caddy itself. Registered as `http.handlers.pol
 | `allow` | Set vars, pass to next handler | `{http.vars.policy_engine.action}=allow`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}` |
 | `block` | Set vars, return 403 via `caddyhttp.Error` | `{http.vars.policy_engine.action}=block`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}`, `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
 | `honeypot` | Set vars, return 403 via `caddyhttp.Error` | `{http.vars.policy_engine.action}=honeypot`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}`, `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
+| `rate_limit` | Sliding window counter, 429 when exceeded | `{http.vars.policy_engine.action}=rate_limit`, `X-RateLimit-Limit/Remaining/Reset/Policy`, `Retry-After` |
+| `rate_limit` (log_only) | Monitor mode, set headers but don't block | `{http.vars.policy_engine.action}=rate_limit_monitor`, `X-RateLimit-Monitor: <name>` |
+
+### Rate Limiting (v0.5.0+)
+
+Sliding window counter rate limiting using fixed-window interpolation (same algorithm
+as nginx/envoy/cloudflare): `effectiveCount = prevCount × (1 - elapsed/window) + currCount`.
+
+- **Counter storage**: 16-shard concurrent map (reduces lock contention)
+- **Key resolution**: Direct from `http.Request` — `client_ip`, `path`, `static`, compound keys (`client_ip+path`, `client_ip+method`), `header:<Name>`, `cookie:<Name>`, `body_json:<DotPath>`, `body_form:<Field>`
+- **Counter preservation**: Zones with unchanged config (same events+window) keep counters across hot-reload
+- **Sweep goroutine**: Evicts expired counters at configurable interval (default 30s)
+- **Service matching**: Via `service` field (matches Host header; `""` or `"*"` matches all)
+- **Actions**: `deny` (429 + Retry-After with jitter) or `log_only` (headers only, no block)
+- **Global config**: `rate_limit_config` in `PolicyRulesFile` for `sweep_interval` and `jitter`
 
 ### Condition Matching
 
@@ -833,16 +852,19 @@ for allowed requests. Block/honeypot return 403 before Coraza runs.
 
 ### wafctl Integration
 
-- `policy_generator.go` generates `policy-rules.json` from exclusions with types `allow`, `block`, `honeypot`
+- `policy_generator.go` generates `policy-rules.json` from exclusions (allow/block) and rate limit rules
+- `GeneratePolicyRulesWithRL()` merges WAF exclusions + RL rules into a single rules array with priority bands: block(100) < allow(200) < rate_limit(300)
 - `FilterSecRuleExclusions()` removes policy-engine types from the SecRule generator input
 - `IsPolicyEngineType()` checks if an exclusion type is handled by the plugin
 - `splitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions (unexported, test-only)
-- Behind `WAF_POLICY_ENGINE_ENABLED` env var (default `false`) — when disabled, all exclusions use Coraza SecRules as before
-- Both `generateOnBoot()` and `handleDeploy()` call the policy generator when enabled
+- Behind `WAF_POLICY_ENGINE_ENABLED` env var (default `false`) — when disabled, all exclusions use Coraza SecRules and RL rules generate `.caddy` files as before
+- Both `generateOnBoot()` and `handleDeploy()` call the policy generator when enabled, including RL rules
+- `handleDeployRLRules()` writes to `policy-rules.json` when enabled (no Caddy restart), falls back to `.caddy` files when disabled
+- On boot with policy engine enabled, stale `*_rl.caddy` files are cleared to prevent double rate limiting
 - `validPolicyEngineFields` map in `models_exclusions.go` — same as RL fields + `args`, excludes `response_header` and `response_status`
 - `validateExclusion()` uses `IsPolicyEngineType()` to select the right condition field set (policy engine fields for allow/block/honeypot, all fields for SecRule types)
 
-### Plugin Test Suite (97 tests)
+### Plugin Test Suite (143 tests)
 
 In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Condition matching tests for every operator and field type
@@ -854,6 +876,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Body field tests: body, body_json (dot-path, exists, nested), body_form
 - `needsBody` flag compilation, `readBody` re-wrap, `parseSize` helper
 - `resolveJSONPath` edge cases, `jsonValueToString` type handling
+- Rate limit tests: sliding window, key resolution, config compilation, window parsing, zone management, service matching, ServeHTTP integration (deny/log_only/conditions/tags), hot reload with RL rules, block+rate_limit coexistence
 
 ## Test Patterns
 
