@@ -86,7 +86,7 @@ func handleDeleteRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 	}
 }
 
-func handleDeployRLRules(rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -95,6 +95,40 @@ func handleDeployRLRules(rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg
 
 		rules := rs.EnabledRules()
 		global := rs.GetGlobal()
+
+		// When policy engine is enabled, RL rules go into policy-rules.json
+		// alongside WAF exclusions. The plugin hot-reloads via mtime polling
+		// — no Caddy restart needed.
+		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
+			allExclusions := es.EnabledExclusions()
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to generate policy rules",
+					Details: err.Error(),
+				})
+				return
+			}
+			if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to write policy rules file",
+					Details: err.Error(),
+				})
+				return
+			}
+			log.Printf("[deploy] wrote policy rules with %d RL rules → %s", len(rules), deployCfg.PolicyRulesFile)
+
+			writeJSON(w, http.StatusOK, RateLimitDeployResponse{
+				Status:    "deployed",
+				Message:   fmt.Sprintf("Deployed %d RL rules via policy engine (hot-reload, no Caddy restart)", len(rules)),
+				Files:     []string{deployCfg.PolicyRulesFile},
+				Reloaded:  true, // Plugin hot-reloads automatically
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			})
+			return
+		}
+
+		// Legacy mode: generate .caddy files and reload Caddy.
 		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
 
 		written, err := writeRLFiles(deployCfg.RateLimitDir, files)

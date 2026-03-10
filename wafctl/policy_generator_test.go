@@ -768,3 +768,257 @@ func TestGeneratePolicyRules_TagsPassthrough(t *testing.T) {
 		}
 	})
 }
+
+// ─── GeneratePolicyRulesWithRL ─────────────────────────────────────
+
+func TestGeneratePolicyRulesWithRL(t *testing.T) {
+	t.Run("RL rules only", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{
+				ID:      "rl-1",
+				Name:    "api-limit",
+				Service: "api.erfi.io",
+				Key:     "client_ip",
+				Events:  100,
+				Window:  "1m",
+				Action:  "deny",
+				Tags:    []string{"api", "protection"},
+				Enabled: true,
+			},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		if err := json.Unmarshal(data, &file); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if len(file.Rules) != 1 {
+			t.Fatalf("want 1 rule, got %d", len(file.Rules))
+		}
+		r := file.Rules[0]
+		if r.ID != "rl-1" {
+			t.Errorf("ID = %q, want rl-1", r.ID)
+		}
+		if r.Type != "rate_limit" {
+			t.Errorf("Type = %q, want rate_limit", r.Type)
+		}
+		if r.Service != "api.erfi.io" {
+			t.Errorf("Service = %q, want api.erfi.io", r.Service)
+		}
+		if r.RateLimit == nil {
+			t.Fatal("RateLimit should not be nil")
+		}
+		if r.RateLimit.Key != "client_ip" {
+			t.Errorf("Key = %q, want client_ip", r.RateLimit.Key)
+		}
+		if r.RateLimit.Events != 100 {
+			t.Errorf("Events = %d, want 100", r.RateLimit.Events)
+		}
+		if r.RateLimit.Window != "1m" {
+			t.Errorf("Window = %q, want 1m", r.RateLimit.Window)
+		}
+		if r.RateLimit.Action != "deny" {
+			t.Errorf("Action = %q, want deny", r.RateLimit.Action)
+		}
+		if len(r.Tags) != 2 || r.Tags[0] != "api" {
+			t.Errorf("Tags = %v, want [api protection]", r.Tags)
+		}
+		// Priority should be in RL band (300+).
+		if r.Priority < 300 {
+			t.Errorf("Priority = %d, want >= 300", r.Priority)
+		}
+		// Global config should be present.
+		if file.RateLimitConfig == nil {
+			t.Fatal("RateLimitConfig should not be nil")
+		}
+		if file.RateLimitConfig.Jitter != 0.1 {
+			t.Errorf("Jitter = %f, want 0.1", file.RateLimitConfig.Jitter)
+		}
+		if file.RateLimitConfig.SweepInterval != "30s" {
+			t.Errorf("SweepInterval = %q, want 30s", file.RateLimitConfig.SweepInterval)
+		}
+	})
+
+	t.Run("mixed WAF + RL rules sorted by priority", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{ID: "e-1", Name: "allow-office", Type: "allow", Enabled: true,
+				Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"}}},
+			{ID: "e-2", Name: "block-scanner", Type: "block", Enabled: true,
+				Conditions: []Condition{{Field: "user_agent", Operator: "contains", Value: "Nikto"}}},
+		}
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "global-limit", Key: "client_ip", Events: 50, Window: "1m", Action: "deny", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		if len(file.Rules) != 3 {
+			t.Fatalf("want 3 rules, got %d", len(file.Rules))
+		}
+		// Order: block (100) < allow (200) < rate_limit (300).
+		if file.Rules[0].Type != "block" {
+			t.Errorf("rules[0].Type = %q, want block", file.Rules[0].Type)
+		}
+		if file.Rules[1].Type != "allow" {
+			t.Errorf("rules[1].Type = %q, want allow", file.Rules[1].Type)
+		}
+		if file.Rules[2].Type != "rate_limit" {
+			t.Errorf("rules[2].Type = %q, want rate_limit", file.Rules[2].Type)
+		}
+		// RL rule should not have WAF-only fields, should have RateLimit.
+		if file.Rules[2].RateLimit == nil {
+			t.Error("RL rule should have RateLimit config")
+		}
+		if file.Rules[0].RateLimit != nil {
+			t.Error("block rule should not have RateLimit config")
+		}
+	})
+
+	t.Run("no RL rules — same as GeneratePolicyRules", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{ID: "e-1", Name: "allow-test", Type: "allow", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		if len(file.Rules) != 1 {
+			t.Fatalf("want 1 rule, got %d", len(file.Rules))
+		}
+		// No RL global config when no RL rules.
+		if file.RateLimitConfig != nil {
+			t.Error("RateLimitConfig should be nil when no RL rules")
+		}
+	})
+
+	t.Run("RL rule with explicit priority", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "high-priority", Key: "client_ip", Events: 10, Window: "1m", Priority: 5, Enabled: true},
+			{ID: "rl-2", Name: "low-priority", Key: "client_ip", Events: 100, Window: "1m", Priority: 50, Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		if len(file.Rules) != 2 {
+			t.Fatalf("want 2 rules, got %d", len(file.Rules))
+		}
+		// rl-1 should come first (priority 300+5=305 < 300+50=350).
+		if file.Rules[0].ID != "rl-1" {
+			t.Errorf("first rule should be rl-1 (higher priority), got %s", file.Rules[0].ID)
+		}
+		if file.Rules[0].Priority != 305 {
+			t.Errorf("rl-1 priority = %d, want 305", file.Rules[0].Priority)
+		}
+		if file.Rules[1].Priority != 350 {
+			t.Errorf("rl-2 priority = %d, want 350", file.Rules[1].Priority)
+		}
+	})
+
+	t.Run("RL default action is deny", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "no-action", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if file.Rules[0].RateLimit.Action != "deny" {
+			t.Errorf("default action = %q, want deny", file.Rules[0].RateLimit.Action)
+		}
+	})
+
+	t.Run("RL conditions converted correctly", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{
+				ID: "rl-1", Name: "api-limit", Key: "client_ip", Events: 10, Window: "1m", Enabled: true,
+				Conditions: []Condition{
+					{Field: "path", Operator: "begins_with", Value: "/api"},
+					{Field: "method", Operator: "in", Value: "POST|PUT"},
+				},
+			},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if len(file.Rules[0].Conditions) != 2 {
+			t.Fatalf("want 2 conditions, got %d", len(file.Rules[0].Conditions))
+		}
+		if file.Rules[0].Conditions[0].Field != "path" || file.Rules[0].Conditions[0].Operator != "begins_with" {
+			t.Errorf("condition[0] = %+v, want path/begins_with", file.Rules[0].Conditions[0])
+		}
+	})
+
+	t.Run("RL with managed list conditions", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		ls := NewManagedListStore(filepath.Join(tmpDir, "lists.json"), filepath.Join(tmpDir, "lists"))
+		ls.Create(ManagedList{Name: "blocked-ips", Kind: "ip", Items: []string{"1.2.3.4", "5.6.7.8"}})
+
+		rlRules := []RateLimitRule{
+			{
+				ID: "rl-1", Name: "list-limit", Key: "client_ip", Events: 10, Window: "1m", Enabled: true,
+				Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "blocked-ips"}},
+			},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, ls)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		cond := file.Rules[0].Conditions[0]
+		if len(cond.ListItems) != 2 {
+			t.Errorf("ListItems = %v, want 2 items", cond.ListItems)
+		}
+		if cond.ListKind != "ip" {
+			t.Errorf("ListKind = %q, want ip", cond.ListKind)
+		}
+	})
+
+	t.Run("RL group_op defaults to and", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "test", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if file.Rules[0].GroupOp != "and" {
+			t.Errorf("GroupOp = %q, want and", file.Rules[0].GroupOp)
+		}
+	})
+
+	t.Run("RL log_only action preserved", func(t *testing.T) {
+		rlRules := []RateLimitRule{
+			{ID: "rl-1", Name: "monitor", Key: "client_ip", Events: 10, Window: "1m", Action: "log_only", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if file.Rules[0].RateLimit.Action != "log_only" {
+			t.Errorf("Action = %q, want log_only", file.Rules[0].RateLimit.Action)
+		}
+	})
+}

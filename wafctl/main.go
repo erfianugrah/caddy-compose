@@ -212,7 +212,7 @@ func runServe() int {
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
 	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore, deployCfg))
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
 
@@ -221,7 +221,7 @@ func runServe() int {
 	mux.HandleFunc("POST /api/rate-rules", handleCreateRLRule(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rlRuleStore))
-	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, exclusionStore, managedListStore, deployCfg))
 	mux.HandleFunc("PUT /api/rate-rules/reorder", handleReorderRLRules(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))

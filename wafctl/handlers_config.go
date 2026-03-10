@@ -47,7 +47,7 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		allExclusions := es.EnabledExclusions()
@@ -62,9 +62,11 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListSt
 			"waf_settings":          wafSettings,
 			"policy_engine_enabled": deployCfg.PolicyEngineEnabled,
 		}
-		// Include policy rules preview when enabled.
+		// Include policy rules preview when enabled (with RL rules).
 		if deployCfg.PolicyEngineEnabled {
-			policyData, err := GeneratePolicyRules(allExclusions, ls)
+			rlRules := rs.EnabledRules()
+			rlGlobal := rs.GetGlobal()
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
 			if err == nil {
 				resp["policy_rules"] = json.RawMessage(policyData)
 			}
@@ -151,9 +153,11 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 			return
 		}
 
-		// Policy engine: generate JSON rules file for the Caddy plugin.
+		// Policy engine: generate JSON rules file (WAF exclusions + RL rules).
 		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-			policyData, err := GeneratePolicyRules(allExclusions, ls)
+			rlRules := rs.EnabledRules()
+			rlGlobal := rs.GetGlobal()
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",
@@ -174,11 +178,14 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 					policyCount++
 				}
 			}
-			log.Printf("[deploy] wrote policy rules (%d rules) → %s", policyCount, deployCfg.PolicyRulesFile)
+			log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
+				policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 		}
 
-		// Ensure any new Caddyfile services have rate limit files before reload.
-		syncCaddyfileServices(rs, ls, deployCfg)
+		// Sync RL Caddyfile snippets (legacy mode only).
+		if !deployCfg.PolicyEngineEnabled {
+			syncCaddyfileServices(rs, ls, deployCfg)
+		}
 
 		// Reload Caddy via admin API.
 		// Pass the config file paths so reloadCaddy can fingerprint them and

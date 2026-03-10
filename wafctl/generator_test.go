@@ -467,8 +467,9 @@ func TestGenerateConfigEndpoint(t *testing.T) {
 		Enabled: true,
 	})
 
+	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(cs, es, nil, DeployConfig{}))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(cs, es, rs, nil, DeployConfig{}))
 
 	req := httptest.NewRequest("POST", "/api/config/generate", nil)
 	w := httptest.NewRecorder()

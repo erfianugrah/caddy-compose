@@ -119,38 +119,44 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 			len(exclusions), cfg.Defaults.Mode, cfg.Defaults.ParanoiaLevel)
 	}
 
+	// Rate limit rules: discover new services from the Caddyfile.
+	rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
+
 	// Policy engine: generate JSON rules file for the Caddy plugin.
+	// Includes both WAF exclusions (allow/block) and rate limit rules.
 	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-		policyData, err := GeneratePolicyRules(allExclusions, ls)
+		rlRules := rs.EnabledRules()
+		rlGlobal := rs.GetGlobal()
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
 		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
 			log.Printf("[boot] warning: failed to write policy rules file: %v", err)
 		} else {
-			// Count policy engine rules for logging.
 			policyCount := 0
 			for _, e := range allExclusions {
 				if IsPolicyEngineType(e.Type) {
 					policyCount++
 				}
 			}
-			log.Printf("[boot] regenerated policy rules (%d rules) → %s", policyCount, deployCfg.PolicyRulesFile)
+			log.Printf("[boot] regenerated policy rules (%d WAF + %d RL rules) → %s",
+				policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 		}
 	}
 
-	// Rate limit rules: discover new services from the Caddyfile (merge only),
-	// then write RL files for all enabled rules in one pass.
-	rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
-
-	rules := rs.EnabledRules()
-	global := rs.GetGlobal()
-	rlFiles := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
-	if len(rlFiles) > 0 {
-		written, err := writeRLFiles(deployCfg.RateLimitDir, rlFiles)
-		if err != nil {
-			log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
-		} else {
-			log.Printf("[boot] regenerated %d rate limit files", len(written))
+	// Rate limit Caddyfile generation: only needed when policy engine is
+	// disabled (legacy mode). When enabled, RL rules are in policy-rules.json.
+	if !deployCfg.PolicyEngineEnabled {
+		rules := rs.EnabledRules()
+		global := rs.GetGlobal()
+		rlFiles := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
+		if len(rlFiles) > 0 {
+			written, err := writeRLFiles(deployCfg.RateLimitDir, rlFiles)
+			if err != nil {
+				log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
+			} else {
+				log.Printf("[boot] regenerated %d rate limit files", len(written))
+			}
 		}
 	}
 
@@ -186,9 +192,11 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 		return fmt.Errorf("writing WAF config files: %w", err)
 	}
 
-	// Policy engine: generate JSON rules file.
+	// Policy engine: generate JSON rules file (includes RL rules when enabled).
 	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-		policyData, err := GeneratePolicyRules(allExclusions, ls)
+		rlRules := rs.EnabledRules()
+		rlGlobal := rs.GetGlobal()
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls)
 		if err != nil {
 			return fmt.Errorf("generating policy rules: %w", err)
 		}
@@ -201,11 +209,14 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 				policyCount++
 			}
 		}
-		log.Printf("[deploy] wrote policy rules (%d rules) → %s", policyCount, deployCfg.PolicyRulesFile)
+		log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
+			policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 	}
 
-	// Sync rate limit files for any new services.
-	syncCaddyfileServices(rs, ls, deployCfg)
+	// Sync rate limit Caddyfile snippets (legacy mode only).
+	if !deployCfg.PolicyEngineEnabled {
+		syncCaddyfileServices(rs, ls, deployCfg)
+	}
 
 	// Reload Caddy.
 	confFiles := []string{
