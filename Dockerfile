@@ -4,7 +4,6 @@ FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
-	--with github.com/mholt/caddy-ratelimit \
 	--with github.com/corazawaf/coraza-caddy/v2=github.com/erfianugrah/coraza-caddy/v2@89b4c94ebb2a4fa8c08e1b8f75b7df67fbbce78c \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.0 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.5.0

@@ -17,7 +17,6 @@ services:
       - ./ipsum_block.caddy:/etc/caddy/ipsum_block.caddy:ro
       # Shared writable volumes for dynamic configs
       - coraza_data:/data/coraza
-      - rl_data:/data/caddy/rl
       - csp_data:/data/caddy/csp
       - wafctl_data:/data
       - caddy_log:/var/log
@@ -45,7 +44,7 @@ services:
       WAF_CONFIG_FILE: /data/waf-config.json
       WAF_RATELIMIT_FILE: /data/ratelimit.json
       WAF_CORAZA_DIR: /data/coraza
-      WAF_RATELIMIT_DIR: /data/caddy/rl
+      WAF_RATELIMIT_DIR: /data/rl
       WAF_CSP_FILE: /data/csp-config.json
       WAF_CSP_DIR: /data/caddy/csp
       WAF_CADDY_ADMIN_URL: http://caddy:2019
@@ -65,7 +64,6 @@ services:
       WAF_MANAGED_LISTS_DIR: /data/lists
     volumes:
       - coraza_data:/data/coraza
-      - rl_data:/data/caddy/rl
       - csp_data:/data/caddy/csp
       - wafctl_data:/data
       - caddy_log:/data/logs:ro
@@ -86,7 +84,6 @@ services:
 
 volumes:
   coraza_data:
-  rl_data:
   csp_data:
   wafctl_data:
   caddy_log:

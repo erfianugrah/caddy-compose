@@ -349,7 +349,12 @@ but `HTTP/1.0` and `HTTP/1.1` keep their minor version (→ `http/1.0`, `http/1.
 `RateLimitGlobalConfig` controls jitter, sweep interval, and distributed RL settings
 (read/write intervals, purge age). Stored alongside rules in the same JSON file.
 
-### Caddyfile Generation
+### Caddyfile Generation (legacy, `WAF_POLICY_ENGINE_ENABLED=false` only)
+
+**Note:** In production, rate limiting is handled entirely by the policy engine plugin
+via `policy-rules.json` hot-reload. The `caddy-ratelimit` Caddy plugin has been removed
+from the Dockerfile and all `import /data/caddy/rl/*_rl*.caddy` lines removed from the
+Caddyfile. The legacy generator code remains as a fallback for `WAF_POLICY_ENGINE_ENABLED=false`.
 
 Each enabled rule generates a `<service>_rate_limit.caddy` file containing:
 - Named matcher (`@rl_<zone>`) with conditions translated to Caddy matcher syntax
@@ -950,13 +955,12 @@ Files baked into the image at build time (in `/etc/caddy/`):
 - `cf_trusted_proxies.caddy` — Cloudflare IP ranges
 - `waf-ui/` — dashboard static files, `errors/error.html`
 
-Files written at runtime by wafctl (in `/data/coraza/` and `/data/rl/` volumes):
+Files written at runtime by wafctl (in `/data/coraza/` volumes):
 - `custom-waf-settings.conf` — SecRuleEngine mode, paranoia levels, thresholds
 - `custom-pre-crs.conf`, `custom-post-crs.conf` — policy engine exclusions
-- `<service>_rate_limit.caddy` — rate limit rule configs (condition-based)
 - `<service>_csp.caddy` — CSP header configs (per-service)
 - `<list-id>.list` — managed list files (one per list, newline-separated items)
-- `policy-rules.json` — policy engine plugin rules (in `/data/coraza/`, when `WAF_POLICY_ENGINE_ENABLED=true`)
+- `policy-rules.json` — policy engine plugin rules including rate limits (in `/data/coraza/`, when `WAF_POLICY_ENGINE_ENABLED=true`)
 
 ### Startup Behavior (generate-on-boot)
 
@@ -1010,7 +1014,7 @@ are always case-consistent.
 **Policy engine rate limit detection** (v0.5.0+) uses the same two-tier approach:
 
 1. **Primary**: `policy_action == "rate_limit"` from `log_append` field
-2. **Fallback**: `X-RateLimit-Policy` response header presence (set by policy engine, not by caddy-ratelimit)
+2. **Fallback**: `X-RateLimit-Policy` response header presence (set by policy engine)
 
 Rate limit events from the policy engine carry direct rule name attribution via
 `policy_rule` field (or `X-RateLimit-Policy` header name extraction), eliminating
