@@ -780,8 +780,8 @@ Zero external dependencies beyond Caddy itself. Registered as `http.handlers.pol
 | Action | Behavior | Caddy Variables/Headers |
 |--------|----------|------------------------|
 | `allow` | Set vars, pass to next handler | `{http.vars.policy_engine.action}=allow`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}` |
-| `block` | Return 403 via `caddyhttp.Error` | `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
-| `honeypot` | Return 403 via `caddyhttp.Error` | `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
+| `block` | Set vars, return 403 via `caddyhttp.Error` | `{http.vars.policy_engine.action}=block`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}`, `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
+| `honeypot` | Set vars, return 403 via `caddyhttp.Error` | `{http.vars.policy_engine.action}=honeypot`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}`, `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
 
 ### Condition Matching
 
@@ -842,7 +842,7 @@ for allowed requests. Block/honeypot return 403 before Coraza runs.
 - `validPolicyEngineFields` map in `models_exclusions.go` — same as RL fields + `args`, excludes `response_header` and `response_status`
 - `validateExclusion()` uses `IsPolicyEngineType()` to select the right condition field set (policy engine fields for allow/block/honeypot, all fields for SecRule types)
 
-### Plugin Test Suite (81 tests)
+### Plugin Test Suite (97 tests)
 
 In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Condition matching tests for every operator and field type
@@ -857,7 +857,7 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1329 tests across 24 files)
+### Go (1325 tests across 24 files)
 - Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
@@ -964,9 +964,29 @@ restores events from JSONL before tailing begins.
 
 - WAF events: `/data/events.jsonl` — large payload fields (`RequestHeaders`,
   `RequestBody`, `RequestArgs`) are stripped when persisting to keep the file compact
-- Access log events: `/data/access-events.jsonl` — rate limit and ipsum events
+- Access log events: `/data/access-events.jsonl` — rate limit and policy engine block events
 - Compaction runs synchronously after eviction via `compactEventFileLocked()` (caller holds lock); `compactEventFile()` wrapper acquires its own lock for external callers
 - At ~400 WAF events/day and 90-day retention: ~36,000 events, ~36MB on disk
+
+### Access Log Event Classification
+
+Two event stores feed into the unified `Event` type:
+- **WAF Audit Log Store** (`Store` in `logparser.go`) — parses Coraza audit log, classifies by rule IDs and `is_interrupted`
+- **Access Log Store** (`AccessLogStore` in `access_log_store.go`) — parses Caddy access log for 429s (rate limit) and 403s (policy engine blocks)
+
+**Policy engine block detection** uses a two-tier approach for HTTP/2 compatibility:
+
+1. **Primary**: Read `policy_action` and `policy_rule` fields from Caddy `log_append` directives (case-safe, set as Caddy variables by the plugin v0.4.1+)
+2. **Fallback**: Case-insensitive header lookup for `X-Blocked-By: policy-engine` and `X-Blocked-Rule` (defense in depth for older plugin versions)
+
+This two-tier approach was necessary because HTTP/2 lowercases all header names on the wire,
+causing exact map lookups like `headers["X-Blocked-By"]` to silently fail when the actual key
+is `"x-blocked-by"`. The `log_append` fields are set from Caddy variables (not headers) and
+are always case-consistent.
+
+**Access log flow**: `AccessLogEntry` → classify as `isRateLimit` (429) or `isPolicy` (403 + policy detection) → `RateLimitEvent{Source: "policy"|""}` → `enrichAccessEvents()` (tag lookup from exclusion store) → `RateLimitEventToEvent()` → unified `Event`
+
+**Helper functions**: `headerValuesCI()` / `headerValueCI()` for case-insensitive header lookups, `isPolicyBlocked(entry)` for policy detection, `policyBlockedRuleName(entry)` for rule name extraction.
 
 ### Blocklist Refresh
 
