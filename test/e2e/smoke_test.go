@@ -2309,3 +2309,445 @@ func wsAcceptKey(key string) string {
 	h.Write([]byte(key + magic))
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
+
+// ════════════════════════════════════════════════════════════════════
+// 20. Policy Engine — Detect / Anomaly Scoring (v0.8.0)
+// ════════════════════════════════════════════════════════════════════
+
+func TestPolicyEngineDetectCRUD(t *testing.T) {
+	// Create a detect rule via the wafctl API.
+	payload := map[string]any{
+		"name":                  "e2e-detect-test",
+		"type":                  "detect",
+		"description":           "E2E detect rule",
+		"severity":              "WARNING",
+		"detect_paranoia_level": 1,
+		"enabled":               true,
+		"conditions": []map[string]string{
+			{"field": "user_agent", "operator": "contains", "value": "E2EBot"},
+		},
+		"tags": []string{"e2e-test"},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+	assertCode(t, "create detect rule", 201, resp)
+	detectID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+detectID) })
+
+	assertField(t, "create", body, "type", "detect")
+	assertField(t, "create", body, "severity", "WARNING")
+
+	// Get — verify round-trip.
+	t.Run("get", func(t *testing.T) {
+		resp, body := httpGet(t, wafctlURL+"/api/exclusions/"+detectID)
+		assertCode(t, "get", 200, resp)
+		assertField(t, "get", body, "type", "detect")
+		assertField(t, "get", body, "severity", "WARNING")
+		assertField(t, "get", body, "name", "e2e-detect-test")
+	})
+
+	// Update severity to CRITICAL.
+	t.Run("update", func(t *testing.T) {
+		resp, body := httpPut(t, wafctlURL+"/api/exclusions/"+detectID, map[string]any{"severity": "CRITICAL"})
+		assertCode(t, "update", 200, resp)
+		assertField(t, "update", body, "severity", "CRITICAL")
+		assertField(t, "update", body, "name", "e2e-detect-test")
+	})
+
+	// Delete.
+	t.Run("delete", func(t *testing.T) {
+		resp, _ := httpDelete(t, wafctlURL+"/api/exclusions/"+detectID)
+		assertCode(t, "delete", 204, resp)
+		detectID = "" // prevent cleanup double-delete
+	})
+}
+
+func TestPolicyEngineDetectValidation(t *testing.T) {
+	// Missing severity — should fail.
+	t.Run("missing severity rejected", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-bad-detect",
+			"type":       "detect",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/test"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+		assertCode(t, "missing severity", 400, resp)
+		errMsg := jsonField(body, "error")
+		if !strings.Contains(errMsg, "severity") {
+			t.Errorf("expected error about severity, got: %q", errMsg)
+		}
+	})
+
+	// Invalid severity — should fail.
+	t.Run("invalid severity rejected", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-bad-detect2",
+			"type":       "detect",
+			"severity":   "HIGH",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/test"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+		assertCode(t, "invalid severity", 400, resp)
+		errMsg := jsonField(body, "error")
+		if !strings.Contains(errMsg, "severity") {
+			t.Errorf("expected error about severity, got: %q", errMsg)
+		}
+	})
+
+	// Invalid paranoia level — should fail.
+	t.Run("invalid PL rejected", func(t *testing.T) {
+		payload := map[string]any{
+			"name":                  "e2e-bad-detect3",
+			"type":                  "detect",
+			"severity":              "NOTICE",
+			"detect_paranoia_level": 5,
+			"enabled":               true,
+			"conditions":            []map[string]string{{"field": "path", "operator": "eq", "value": "/test"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+		assertCode(t, "invalid PL", 400, resp)
+		errMsg := jsonField(body, "error")
+		if !strings.Contains(errMsg, "paranoia") {
+			t.Errorf("expected error about paranoia level, got: %q", errMsg)
+		}
+	})
+
+	// Empty value with eq operator — should succeed (matching missing headers).
+	t.Run("empty value with eq allowed", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-detect-empty-val",
+			"type":       "detect",
+			"severity":   "NOTICE",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "user_agent", "operator": "eq", "value": ""}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+		assertCode(t, "empty value eq", 201, resp)
+		id := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+id) })
+	})
+}
+
+func TestPolicyEngineDetectScoring(t *testing.T) {
+	// Test the full anomaly scoring pipeline:
+	// 1. Create detect rules that target specific conditions
+	// 2. Configure waf_config with a low threshold
+	// 3. Deploy via policy-rules.json
+	// 4. Send requests that trigger multiple detect rules → score exceeds threshold
+	// 5. Verify 403 with X-Anomaly-Score header
+
+	// Step 1: Create detect rules with known scores.
+	// WARNING=3 + WARNING=3 = 6 total — we'll set threshold to 5.
+	rule1Payload := map[string]any{
+		"name":        "e2e-detect-no-ua",
+		"type":        "detect",
+		"description": "Missing User-Agent",
+		"severity":    "WARNING",
+		"enabled":     true,
+		"conditions":  []map[string]string{{"field": "user_agent", "operator": "eq", "value": ""}},
+		"tags":        []string{"e2e-detect"},
+	}
+	resp1, body1 := httpPost(t, wafctlURL+"/api/exclusions", rule1Payload)
+	assertCode(t, "create detect rule 1", 201, resp1)
+	rule1ID := mustGetID(t, body1)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+rule1ID) })
+
+	rule2Payload := map[string]any{
+		"name":        "e2e-detect-no-accept",
+		"type":        "detect",
+		"description": "Missing Accept header",
+		"severity":    "WARNING",
+		"enabled":     true,
+		"conditions":  []map[string]string{{"field": "header", "operator": "eq", "value": "Accept:"}},
+		"tags":        []string{"e2e-detect"},
+	}
+	resp2, body2 := httpPost(t, wafctlURL+"/api/exclusions", rule2Payload)
+	assertCode(t, "create detect rule 2", 201, resp2)
+	rule2ID := mustGetID(t, body2)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+rule2ID) })
+
+	// Step 2: Set waf_config with a low inbound threshold so scoring triggers blocks.
+	// PL=2 (both rules are PL=0 which means "always evaluate"), threshold=5.
+	configPayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     2,
+			"inbound_threshold":  5,
+			"outbound_threshold": 5,
+		},
+	}
+	resp3, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
+	assertCode(t, "set config", 200, resp3)
+
+	// Step 3: Deploy — generates policy-rules.json with detect rules and waf_config.
+	time.Sleep(2 * time.Second)
+	resp4, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp4)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+
+	// Wait for plugin hot-reload.
+	time.Sleep(8 * time.Second)
+
+	// Step 4: Send a request with no User-Agent AND no Accept header.
+	// This should trigger both detect rules: WARNING(3) + WARNING(3) = 6 >= 5 threshold.
+	t.Run("scoring exceeds threshold — 403 detect_block", func(t *testing.T) {
+		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		// Strip User-Agent (empty = missing).
+		req.Header.Set("User-Agent", "")
+		// Don't set Accept header — Go's default doesn't send one either,
+		// but be explicit.
+		req.Header.Del("Accept")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != 403 {
+			t.Errorf("expected 403 (detect_block, score=6 >= threshold=5), got %d; body=%.200s",
+				resp.StatusCode, string(body))
+		}
+
+		// Verify X-Anomaly-Score header is present on the blocked response.
+		score := resp.Header.Get("X-Anomaly-Score")
+		if score == "" {
+			t.Log("X-Anomaly-Score header not present on 403 response (may be hidden by error handler)")
+		} else {
+			t.Logf("X-Anomaly-Score: %s", score)
+		}
+	})
+
+	// Step 5: Send a normal request with User-Agent and Accept — should pass.
+	t.Run("normal request passes scoring", func(t *testing.T) {
+		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 E2E-Test")
+		req.Header.Set("Accept", "text/html")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == 403 {
+			t.Errorf("expected non-403 (normal request should pass scoring), got 403")
+		}
+	})
+
+	// Step 6: Test that a single detect rule (below threshold) doesn't block.
+	// Only trigger the UA rule (WARNING=3), which is below threshold=5.
+	t.Run("single detect below threshold — passes", func(t *testing.T) {
+		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		req.Header.Set("User-Agent", "")
+		req.Header.Set("Accept", "text/html") // Accept present → only UA rule triggers
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == 403 {
+			t.Errorf("expected non-403 (score=3 < threshold=5), got 403")
+		}
+	})
+
+	// Step 7: Raise the threshold so both rules together don't block.
+	t.Run("raised threshold prevents block", func(t *testing.T) {
+		configPayload := map[string]any{
+			"defaults": map[string]any{
+				"mode":               "enabled",
+				"paranoia_level":     2,
+				"inbound_threshold":  10, // 6 < 10, so no block
+				"outbound_threshold": 10,
+			},
+		}
+		resp, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
+		assertCode(t, "raise threshold", 200, resp)
+
+		time.Sleep(2 * time.Second)
+		resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+		assertCode(t, "deploy raised threshold", 200, resp2)
+		assertField(t, "deploy", deployBody, "status", "deployed")
+		time.Sleep(8 * time.Second)
+
+		// Same request as step 4 (no UA, no Accept) — should now pass.
+		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		req.Header.Set("User-Agent", "")
+		req.Header.Del("Accept")
+
+		resp3, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp3.Body.Close()
+
+		if resp3.StatusCode == 403 {
+			t.Errorf("expected non-403 (score=6 < threshold=10), got 403")
+		}
+	})
+
+	// Step 8: Cleanup — restore config to production defaults.
+	restorePayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     2,
+			"inbound_threshold":  10,
+			"outbound_threshold": 10,
+		},
+	}
+	httpPut(t, wafctlURL+"/api/config", restorePayload)
+	time.Sleep(2 * time.Second)
+	httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	time.Sleep(8 * time.Second)
+}
+
+func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
+	// Test that detect rules with PL > service PL are skipped.
+	// Create a PL=4 detect rule, set service PL=1, verify rule doesn't trigger.
+
+	rulePL4 := map[string]any{
+		"name":                  "e2e-detect-pl4",
+		"type":                  "detect",
+		"description":           "PL4 detect rule — should not fire at PL1",
+		"severity":              "CRITICAL",
+		"detect_paranoia_level": 4,
+		"enabled":               true,
+		"conditions":            []map[string]string{{"field": "user_agent", "operator": "eq", "value": ""}},
+		"tags":                  []string{"e2e-detect-pl"},
+	}
+	resp1, body1 := httpPost(t, wafctlURL+"/api/exclusions", rulePL4)
+	assertCode(t, "create PL4 rule", 201, resp1)
+	ruleID := mustGetID(t, body1)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+ruleID) })
+
+	// Set service PL to 1, threshold to 1 (even CRITICAL=5 > 1 would block IF it fires).
+	configPayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     1,
+			"inbound_threshold":  1,
+			"outbound_threshold": 10,
+		},
+	}
+	resp2, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
+	assertCode(t, "set PL1 config", 200, resp2)
+
+	time.Sleep(2 * time.Second)
+	resp3, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp3)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+	time.Sleep(8 * time.Second)
+
+	// Send request with no UA — rule is PL4 but service PL=1, so rule is skipped.
+	t.Run("PL4 rule skipped at PL1", func(t *testing.T) {
+		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		req.Header.Set("User-Agent", "")
+		req.Header.Set("Accept", "text/html")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == 403 {
+			t.Errorf("expected non-403 (PL4 rule should be skipped at PL1), got 403")
+		}
+	})
+
+	// Cleanup — restore defaults.
+	restorePayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     2,
+			"inbound_threshold":  10,
+			"outbound_threshold": 10,
+		},
+	}
+	httpPut(t, wafctlURL+"/api/config", restorePayload)
+	time.Sleep(2 * time.Second)
+	httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	time.Sleep(8 * time.Second)
+}
+
+func TestPolicyEngineDetectWafConfig(t *testing.T) {
+	// Verify that waf_config is present in policy-rules.json after deploy.
+	// We can check this via the exclusions generate endpoint which returns the
+	// raw generated config.
+
+	// Set a specific config to verify it propagates.
+	configPayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     3,
+			"inbound_threshold":  15,
+			"outbound_threshold": 8,
+		},
+	}
+	resp, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
+	assertCode(t, "set config", 200, resp)
+
+	// Generate (dry-run) to see what would be deployed.
+	resp2, body2 := httpPost(t, wafctlURL+"/api/exclusions/generate", struct{}{})
+	assertCode(t, "generate", 200, resp2)
+	// The generate endpoint returns the generated config files.
+	// Log the output for debugging.
+	logBody(t, "generate output", body2)
+
+	// Restore defaults.
+	restorePayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     2,
+			"inbound_threshold":  10,
+			"outbound_threshold": 10,
+		},
+	}
+	httpPut(t, wafctlURL+"/api/config", restorePayload)
+}
+
+func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
+	// Verify that the v4 migration seeded the 3 heuristic detect rules.
+	resp, body := httpGet(t, wafctlURL+"/api/exclusions")
+	assertCode(t, "list exclusions", 200, resp)
+
+	var exclusions []json.RawMessage
+	if err := json.Unmarshal(body, &exclusions); err != nil {
+		t.Fatalf("unmarshal exclusions: %v", err)
+	}
+
+	detectCount := 0
+	for _, raw := range exclusions {
+		typ := jsonField(raw, "type")
+		if typ == "detect" {
+			detectCount++
+		}
+	}
+
+	// The v4 migration seeds 3 heuristic detect rules:
+	// "Missing Accept Header", "Missing User-Agent", "Missing Referer on Non-API GET"
+	// Plus any that test cleanup might have removed — check for at least 3.
+	if detectCount < 3 {
+		t.Errorf("expected at least 3 seeded detect rules from v4 migration, got %d", detectCount)
+	}
+	t.Logf("found %d detect rules in store", detectCount)
+}

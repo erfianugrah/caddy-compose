@@ -252,6 +252,51 @@ func generateIPs(n int) []string {
 	return ips
 }
 
+// httpGetCustom sends a GET request with full control over headers. If headers
+// is nil, Go's default headers (User-Agent, etc.) are sent. Use this to test
+// detect rules that match on missing headers.
+func httpGetCustom(t *testing.T, url string, headers map[string]string) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		t.Fatalf("creating request: %v", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("reading body from %s: %v", url, err)
+	}
+	return resp, body
+}
+
+// httpGetNoUA sends a GET request with an explicitly empty User-Agent header.
+// Go's net/http sends "Go-http-client/1.1" by default; this overrides it.
+func httpGetNoUA(t *testing.T, url string) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		t.Fatalf("creating request: %v", err)
+	}
+	req.Header.Set("User-Agent", "")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("reading body from %s: %v", url, err)
+	}
+	return resp, body
+}
+
 func logBody(t *testing.T, label string, body []byte) {
 	t.Helper()
 	if len(body) > 500 {
