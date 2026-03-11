@@ -967,73 +967,646 @@ Default rules ship with hardcoded `list_items` from CRS 4.23.0 (restricted exten
 
 ### Recommended Order
 
-Following Path A (ship backend, catch up frontend later). Current progress:
+**Revised 2026-03-11**: Manual porting replaced by automated CRS converter.
 
-1. ~~Port existing custom rules → `default-rules.json`~~ — **DONE** (v0.10.1)
+1. ~~Port existing custom rules → `default-rules.json`~~ — **DONE** (v0.10.1, proof of concept)
 2. ~~Port Protocol Enforcement (920xxx)~~ — **DONE** (v0.10.4, 14 rules)
-3. Port LFI (930xxx) + HTTP Response Splitting (921xxx) + Session Fixation (943xxx) — **NEXT**
-4. Port RCE (932xxx) + RFI (931xxx) + PHP/Node/Java injection (933/934/944xxx)
-5. Frontend catch-up sprint (all v0.8.0–v0.10.0 features) — can happen in parallel
-6. Port XSS (941xxx) + SQLi (942xxx) with libinjection
-7. Remove Coraza from Docker image (v1.0)
+3. ~~Port LFI + Response Splitting + Session Fixation~~ — **DONE** (v0.11.0)
+4. ~~Port RCE (932xxx)~~ — **DONE** (v0.12.0, 11 rules)
+5. **Matched payload observability** (plugin v0.11.x) — CRITICAL, biggest regression from Coraza — **NEXT**
+6. **Build CRS auto-converter** (`tools/crs-converter/`) — replaces all remaining manual porting
+7. **Add missing plugin features** (transforms, operators, condition enhancements) — parallel with 6
+8. **Run converter + validate against CRS regression tests** — validates correctness
+9. Frontend catch-up sprint (matched payload display, CRS categories) — can happen in parallel
+10. Remove Coraza from Docker image (v1.0)
 
 ---
 
-## v0.9.x–v1.0 — Port CRS Rules
+## v0.9.x–v1.0 — Automated CRS Conversion + Coraza Removal
 
-### Approach
+### Decision Record (2026-03-11)
 
-Port CRS rules category by category, starting with highest value and lowest effort. Each category becomes a set of `detect` rules with appropriate severity, paranoia level, transforms, and conditions.
+Manual rule porting is error-prone, slow, and doesn't scale. Instead of hand-writing
+policy engine rules one category at a time, we will:
 
-Rules are shipped as built-in defaults in `default-rules.json` (loaded by plugin v0.10.0), merged with user-defined rules at runtime. Users can disable/override individual rules via `DisabledDefaultRules` or by creating a user rule with the same ID.
+1. **Build an automated CRS-to-PolicyEngine converter** that parses CRS `.conf` files
+   directly from the `coreruleset/coreruleset` GitHub repo and outputs `default-rules.json`
+2. **Add matched payload observability** to the policy engine so detect events have the
+   same detail as Coraza audit logs (variable name, matched value, rule message, tags)
+3. **Import libinjection** as a Go dependency for `@detectSQLi`/`@detectXSS` operators
+4. **Validate using CRS's own regression test suite** (315 YAML test files, ~2500+ test cases)
+5. **Remove Coraza entirely** once parity is confirmed
 
-### Category Porting Order
+The existing 45 hand-ported rules in `default-rules.json` (920xxx, 921xxx, 930xxx, 932xxx,
+943xxx, plus heuristic bot rules) will be superseded by the auto-converter output. The
+hand-ported rules served as proof-of-concept for the rule format and scoring system.
 
-| Priority | Category | Rule Range | Effort | Status |
-|----------|----------|------------|--------|--------|
-| 1 | Protocol Enforcement | 920xxx | Low | **DONE** (v0.10.4, 14 rules) |
-| 2 | Path Traversal / LFI | 930xxx | Low | **DONE** (v0.11.0, 4 rules) |
-| 3 | HTTP Response Splitting | 921xxx | Low | **DONE** (v0.11.0, 5 rules) |
-| 4 | Session Fixation | 943xxx | Low | **DONE** (v0.11.0, 2 rules) |
-| 5 | RCE | 932xxx | Medium | Planned — regex + `phrase_match` command wordlists, partially covered by PE-9100010/11 |
-| 6 | RFI | 931xxx | Medium | Planned — regex for URL patterns in params |
-| 7 | PHP/Node.js/Java Injection | 933, 934, 944xxx | Medium | Planned — regex + `phrase_match` function name wordlists |
-| 8 | XSS | 941xxx | High | Planned — ~30 regex patterns + libinjection |
-| 9 | SQLi | 942xxx | High | Planned — ~40 regex patterns + libinjection |
+### Why Not Keep Coraza
 
-### What Each Category Needs
+Coraza provides rich detection with excellent observability, but has fundamental problems:
 
-**Protocol Enforcement (920xxx)** — Low effort:
-- Missing/invalid Content-Type → `header` field + `eq`/`regex`
-- Invalid HTTP version → `http_version` field
-- Byte range validation → new `validate_byte_range` operator or transform
-- Content-Length checks → numeric operators
-- Max arg count/length → `count:` pseudo-field + numeric operators
-- Restricted file extensions → `uri_path` + `ends_with` or `regex`
-- Restricted headers → `all_headers_names` + `in` / `phrase_match`
+| Issue | Impact |
+|-------|--------|
+| `@pm` uses Aho-Corasick substring match | `/admin` matches `/administrator` — security bug |
+| `.conf` file generation + Caddy reload | 10+ second reload with CRS compilation; any rule change needs full cycle |
+| SecRule language is write-only | Chained rules, `skipAfter`, `ctl:` quirks make debugging painful |
+| Dual-engine complexity | Two WAF engines in the request path, two config formats, two reload mechanisms |
+| WebSocket `@not_websocket` bypass needed | Coraza's deep `rwInterceptor` wrapping breaks hijack |
+| ~30-40MB added to Docker image | CRS rules + Coraza engine |
 
-**Path Traversal / LFI (930xxx)** — Low effort:
-- `../` patterns → `regex` with `normalizePath` transform
-- OS file path patterns → `regex` on `all_args`
-- Null byte injection → `regex` for `%00` / `\x00`
+The policy engine already handles allow/block/rate_limit with correct exact-match semantics,
+hot-reloads via mtime polling (5s, no Caddy restart), and preserves rate limit counter state
+across reloads. Extending it to cover detection is the natural path.
 
-**RCE (932xxx)** — Medium effort:
-- Pipe to command (`|id`, `|cat /etc/passwd`) → `regex` on `all_args`
-- Backtick substitution → `regex`
-- Command wordlist → `phrase_match` with ~100 command names
-- Shell metacharacter detection → `regex`
+---
 
-**XSS (941xxx)** — High effort:
-- ~30 regex patterns from CRS (event handlers, script tags, data URIs, etc.)
-- Transform chains: `urlDecode` + `htmlEntityDecode` + `jsDecode` + `lowercase`
-- `phrase_match` for XSS vector wordlists
-- `@detectXSS` (libinjection) — Phase 5
+### Coraza Full Feature Inventory
 
-**SQLi (942xxx)** — High effort:
-- ~40 regex patterns from CRS (UNION SELECT, comment sequences, tautologies, etc.)
-- Transform chains: `urlDecode` + `htmlEntityDecode` + `lowercase` + `removeComments`
-- `phrase_match` for SQL keyword wordlists
-- `@detectSQLi` (libinjection) — Phase 5
+Everything below must be replicated, explicitly deferred, or confirmed unnecessary.
+
+#### Operators (28 registered, 15 used by CRS)
+
+| Operator | CRS Rules | Plugin Status | Converter Action |
+|----------|-----------|---------------|------------------|
+| `@rx` | 295 | `regex` operator ✅ | Direct map |
+| `@lt` | 182 | Not needed | Paranoia gating — handled by `paranoia_level` field |
+| `@eq` | 48 | Not needed | TX variable checks — handled by scoring system |
+| `@ge` | 42 | Not needed | Threshold checks — handled by scoring system |
+| `@pmFromFile` | 21 | `phrase_match` ✅ | Inline file contents as JSON array |
+| `@gt` | 12 | Not needed | Numeric checks — handled by scoring system |
+| `@within` | 9 | Not needed | CRS config checks (allowed methods, etc.) |
+| `@endsWith` | 7 | `ends_with` ✅ | Direct map |
+| `@validateByteRange` | 6 | **NEEDED** | New `validate_byte_range` operator |
+| `@pm` | 6 | `phrase_match` ✅ | Split space-separated patterns into array |
+| `@streq` | 5 | `eq` ✅ | Direct map (macro expansion not needed — static values) |
+| `@contains` | 4 | `contains` ✅ | Direct map |
+| `@ipMatch` | 2 | `ip_match` ✅ | Direct map |
+| `@detectSQLi` | 2 | **NEEDED** | Import `corazawaf/libinjection-go` |
+| `@detectXSS` | 2 | **NEEDED** | Import `corazawaf/libinjection-go` |
+| `@beginsWith` | 0 | `begins_with` ✅ | Available (unused by CRS) |
+| `@unconditionalMatch` | 0 | N/A | Used by `SecAction` — not a detection rule |
+| `@le`, `@rbl`, `@inspectFile`, `@restpath`, `@geoLookup`, `@noMatch`, `@validateUrlEncoding`, `@validateUtf8Encoding`, `@validateNid`, `@pmFromDataset`, `@ipMatchFromFile`, `@ipMatchFromDataset` | 0 | N/A | Unused by CRS — skip |
+
+**New operators needed**: `validate_byte_range`, `detect_sqli`, `detect_xss` (3 total).
+
+**Operators NOT needed**: `@lt`, `@eq`, `@ge`, `@gt`, `@within` — these are used for CRS
+internal flow control (paranoia gating via `TX:DETECTION_PARANOIA_LEVEL`, anomaly threshold
+checks via `TX:BLOCKING_INBOUND_ANOMALY_SCORE`). The policy engine handles paranoia levels
+via the `paranoia_level` field on each rule, and anomaly scoring via the built-in severity
+→ score → threshold system. The converter skips these flow-control rules entirely.
+
+#### Operator Negation (`!@`)
+
+Any operator can be negated with `!@` prefix. The policy engine needs a `negate: true`
+field on conditions. Currently not implemented — **NEEDED** for ~15 CRS rules that use
+`!@rx`, `!@eq`, `!@within`, etc.
+
+#### Variables (81 supported, ~30 used by CRS detection rules)
+
+**Request-phase — already in plugin:**
+
+| SecRule Variable | Plugin Field | Named | Multi-value |
+|------------------|-------------|-------|-------------|
+| `ARGS` | `all_args_values` | `args:Name` | ✅ |
+| `ARGS_NAMES` | `all_args_names` | — | ✅ |
+| `ARGS_GET` | — | **NEEDED** | ✅ |
+| `ARGS_POST` | — | **NEEDED** | ✅ |
+| `REQUEST_COOKIES` | `all_cookies` | `cookie:Name` | ✅ |
+| `REQUEST_COOKIES_NAMES` | `all_cookies_names` | — | ✅ |
+| `REQUEST_HEADERS` | `all_headers` | `header:Name` | ✅ |
+| `REQUEST_HEADERS_NAMES` | `all_headers_names` | — | ✅ |
+| `REQUEST_URI` | `path` | — | Single |
+| `REQUEST_FILENAME` | `uri_path` | — | Single |
+| `REQUEST_BASENAME` | — | **NEEDED** | Single |
+| `REQUEST_LINE` | — | **NEEDED** | Single |
+| `QUERY_STRING` | `query_string` | — | Single |
+| `REQUEST_METHOD` | `method` | — | Single |
+| `REQUEST_PROTOCOL` | `http_version` | — | Single |
+| `REMOTE_ADDR` | `ip` | — | Single |
+| `SERVER_NAME` | `host` | — | Single |
+| `REQUEST_BODY` | `body` | — | Single |
+| `REQUEST_HEADERS:User-Agent` | `user_agent` | — | Single |
+| `REQUEST_HEADERS:Referer` | `referer` | — | Single |
+| `REQUEST_HEADERS:Content-Type` | `content_type` | — | Single |
+| `REQUEST_HEADERS:Content-Length` | `content_length` | — | Single |
+| `REQUEST_HEADERS:Cf-Ipcountry` | `country` | — | Single |
+
+**Request-phase — needed for CRS coverage:**
+
+| SecRule Variable | Needed For | Priority |
+|------------------|-----------|----------|
+| `ARGS_GET` / `ARGS_POST` | Some CRS rules target GET-only or POST-only args | Medium |
+| `REQUEST_BASENAME` | File extension checks (920440) | Medium |
+| `REQUEST_LINE` | Full request line inspection | Low |
+| `XML:/*` / `XML://@*` | XML body attack detection (XXE, etc.) | Medium |
+| `FILES` / `FILES_NAMES` | File upload rules (922xxx) | Medium |
+| `MULTIPART_STRICT_ERROR` | Multipart attack detection | Medium |
+| `REQBODY_ERROR` | Body parse error detection | Low |
+| `ARGS_COMBINED_SIZE` | Request size limits | Low |
+| `REQUEST_BODY_LENGTH` | Body size enforcement | Low |
+
+**Response-phase — deferred (Phase 2):**
+
+| SecRule Variable | CRS Rules | Notes |
+|------------------|-----------|-------|
+| `RESPONSE_STATUS` | ~14 rules | Outbound anomaly scoring |
+| `RESPONSE_HEADERS` | ~14 rules | Info leakage detection |
+| `RESPONSE_BODY` | ~100+ rules | Data leakage (SSN, CC, error messages, web shells) |
+| `RESPONSE_CONTENT_TYPE` | ~5 rules | MIME type enforcement |
+
+Response-phase detection is a significant architectural addition (requires intercepting the
+response body before it's sent to the client). Deferred to Phase 2 of Coraza removal.
+
+**Variables NOT needed (CRS internal flow control):**
+
+`TX` (handled by scoring system), `MATCHED_VAR`/`MATCHED_VARS` (observability — see below),
+`RULE` (metadata — embedded in rule definition), `UNIQUE_ID` (transaction correlation —
+use Caddy request ID), `DURATION`, `HIGHEST_SEVERITY`, `ENV`, time variables, GEO (handled
+by `country` field via CF header / MMDB), persistent collections (IP, SESSION — not
+implemented in Coraza either).
+
+#### Variable Mechanics to Support
+
+| Mechanic | CRS Usage | Plugin Status |
+|----------|-----------|---------------|
+| Named access (`:key`) | Extensive | ✅ for `header:`, `cookie:`, `args:` |
+| Regex key (`:/pattern/`) | ~20 rules | **NEEDED** — `header:/^X-/` syntax |
+| Count prefix (`&`) | ~30 rules | **NEEDED** — `count:args` or similar |
+| Variable negation (`\|!VAR:key`) | ~40 rules | **NEEDED** — exclude specific args/headers |
+| Pipe-separated multi-var (`ARGS\|COOKIES`) | All detection rules | ✅ via multi-value fields |
+
+#### Transforms (30 unique functions, 20 used by CRS)
+
+| Transform | CRS Uses | Plugin Status |
+|-----------|----------|---------------|
+| `urlDecodeUni` | 135 | ✅ |
+| `lowercase` | 45 | ✅ |
+| `jsDecode` | 37 | ✅ |
+| `htmlEntityDecode` | 35 | ✅ |
+| `utf8toUnicode` | 31 | ✅ |
+| `removeNulls` | 27 | ✅ |
+| `cssDecode` | 23 | ✅ |
+| `cmdLine` | 13 | **NEEDED** — Windows command anti-evasion |
+| `replaceComments` | 9 | **NEEDED** — C-style `/* */` → space |
+| `normalizePath` | 8 | ✅ |
+| `removeWhitespace` | 7 | ✅ |
+| `escapeSeqDecode` | 7 | **NEEDED** — ANSI C escape sequences |
+| `compressWhitespace` | 5 | ✅ |
+| `normalizePathWin` | 3 | ✅ |
+| `length` | 3 | ✅ |
+| `base64Decode` | 3 | ✅ |
+| `sha1` | 2 | Low priority (hashing pipeline) |
+| `hexEncode` | 2 | Low priority (hashing pipeline) |
+| `removeCommentsChar` | 1 | Low priority |
+| `none` | 422 | ✅ (implicit — empty transform list) |
+
+**New transforms needed**: `cmdLine`, `replaceComments`, `escapeSeqDecode` (3 total).
+
+**Low priority**: `sha1`, `hexEncode`, `removeCommentsChar` (used by 5 rules total,
+mostly in PL2+ or correlation rules).
+
+#### Matched Payload Observability (CRITICAL)
+
+Coraza provides per-rule-match detail that the policy engine currently lacks:
+
+| Data Point | Coraza Source | Current Plugin | Needed |
+|------------|---------------|----------------|--------|
+| Matched variable name | `MATCHED_VAR_NAME` (e.g., `ARGS:username`) | ❌ | ✅ |
+| Matched value | `MATCHED_VAR` (e.g., `' OR 1=1--`) | ❌ | ✅ |
+| Captured group | `TX:0` via `capture` action | ❌ | ✅ (regex capture group 0) |
+| Rule message | `msg:'...'` action | Rule `name` field only | ✅ (add `message` field) |
+| Rule tags | `tag:'...'` action (multiple) | `tags` field ✅ | ✅ |
+| Source file | `@owasp_crs/REQUEST-932-*.conf` | Rule `id` prefix identifies category | Nice-to-have |
+| Severity | `severity:'CRITICAL'` | `severity` field ✅ | ✅ |
+| Score contribution | `setvar:tx.inbound_anomaly_score_pl1=+5` | Computed from severity ✅ | ✅ |
+| logdata template | `logdata:'Matched Data: %{TX.0}...'` | ❌ | ✅ (formatted string) |
+
+**Implementation in plugin**: When a detect rule's condition matches, capture:
+- `matched_field`: the field that was evaluated (e.g., `all_args_values`, `header:User-Agent`)
+- `matched_value`: the actual input value that was tested (truncated to 200 chars)
+- `matched_data`: for regex, the portion that matched (capture group 0); for phrase_match,
+  the matched phrase
+- These go into a `MatchDetail` struct per condition, emitted alongside rule ID/severity/score
+
+**Emission path**: Caddy vars → `log_append` → access log → wafctl parsing → frontend display.
+Same path as current `policy_detect_rules` but with richer per-match data.
+
+**Frontend target**: Match the Coraza event detail view — per rule: variable name (green),
+matched value (yellow highlight), rule message, severity badge, source category. Plus the
+anomaly score block with highest-severity rule breakdown.
+
+#### Actions & Flow Control
+
+| Action | CRS Usage | How Handled |
+|--------|-----------|-------------|
+| `block`/`deny`/`pass` | Every rule | Plugin: `detect` scores, `block` blocks — no per-rule disruptive action needed |
+| `chain` | ~50 rules | Converter: multi-condition rule with `group_operator: "AND"` |
+| `setvar` | 633 uses | Not needed — anomaly scoring built into severity system |
+| `skipAfter`/`SecMarker` | 182 uses | Not needed — paranoia gating via `paranoia_level` field |
+| `capture` + `TX:0-9` | 244 uses | Plugin captures regex group 0 for `matched_data` |
+| `log`/`nolog`/`auditlog` | Every rule | All detect rules log; suppressible via `enabled: false` |
+| `logdata` | ~300 rules | Plugin generates equivalent from `matched_field` + `matched_data` |
+| `msg` | Every rule | Map to rule `description` (human-readable) |
+| `tag` | Every rule | Map to rule `tags` array |
+| `severity` | Every rule | Map to rule `severity` field |
+| `phase` | Every rule | Converter filters: phase 1+2 = request (supported), phase 3+4 = response (deferred) |
+| `ctl:` actions | ~40 rules | Not needed — runtime rule removal handled by user exclusions |
+| `multiMatch` | ~15 rules | **NEEDED** — run operator at each transform stage, not just final |
+| `expirevar` / `initcol` | ~5 rules | Not implemented in Coraza either — skip |
+
+**New plugin features needed**: `multiMatch` equivalent (medium effort), `negate` on
+conditions (low effort).
+
+#### Phase Execution Model
+
+Coraza processes rules in 5 phases. The policy engine runs once per request (equivalent
+to phase 2 — after request body is available). Mapping:
+
+| CRS Phase | Converter Action |
+|-----------|------------------|
+| Phase 1 (request headers) | Include — all header/URI variables available |
+| Phase 2 (request body) | Include — body/args/files available |
+| Phase 3 (response headers) | **Defer** — response-phase detection (Phase 2 of removal) |
+| Phase 4 (response body) | **Defer** — response-phase detection |
+| Phase 5 (logging) | Skip — correlation/logging rules, not detection |
+
+#### CRS Internal Rules (Skip)
+
+These CRS rules are flow control / bookkeeping, NOT detection. The converter skips them:
+
+| Rule Range | Purpose | Why Skip |
+|------------|---------|----------|
+| 901xxx | Initialization — set TX variables, paranoia thresholds | Plugin has `paranoia_level` field |
+| 905xxx | Common exceptions | Plugin has user exclusions |
+| 949xxx | Blocking evaluation — compare score to threshold | Plugin's scoring system handles this |
+| 959xxx | Outbound blocking evaluation | Deferred (response phase) |
+| 980xxx | Correlation — cross-phase logging | Deferred |
+| 999xxx | User exceptions placeholder | Plugin has user exclusions |
+
+---
+
+### CRS Auto-Converter Tool
+
+#### Architecture
+
+Standalone Go tool at `tools/crs-converter/` that reads CRS `.conf` files and outputs
+`default-rules.json` for the policy engine plugin.
+
+```
+tools/crs-converter/
+  main.go              — CLI: download CRS, run converter, output JSON
+  parser.go            — SecRule tokenizer + AST builder
+  parser_test.go       — Parser unit tests
+  mapper.go            — Variable/operator/transform/severity mapping
+  mapper_test.go       — Mapper unit tests
+  converter.go         — AST → PolicyRule conversion, chain resolution
+  converter_test.go    — Converter integration tests
+  datafiles.go         — @pmFromFile resolver (reads .data files)
+  report.go            — Gap analysis / coverage report
+  go.mod               — Standalone module (no dependency on plugin or wafctl)
+```
+
+#### SecRule Parser
+
+Parses CRS `.conf` files into a structured AST. Each `SecRule` becomes:
+
+```go
+type SecRule struct {
+    Variables    []Variable      // ARGS|REQUEST_COOKIES|...
+    Operator     Operator        // @rx, @pm, @pmFromFile, etc.
+    Negated      bool            // !@ prefix
+    Actions      []Action        // id, phase, msg, tag, severity, setvar, etc.
+    Chain        *SecRule         // Next rule in chain (nil if no chain)
+}
+
+type Variable struct {
+    Name       string   // ARGS, REQUEST_HEADERS, etc.
+    Key        string   // :User-Agent, :/pattern/, etc.
+    KeyIsRegex bool     // /pattern/ vs literal
+    IsCount    bool     // & prefix
+    IsNegation bool     // ! prefix (exclusion)
+}
+
+type Operator struct {
+    Name    string   // rx, pm, pmFromFile, detectSQLi, etc.
+    Value   string   // Pattern, filename, etc.
+    Negated bool     // !@ prefix
+}
+```
+
+**Parsing challenges**:
+- Multi-line rules with `\` continuation — rejoin before tokenizing
+- Quoted strings with escaped quotes — `msg:'it\'s a test'`
+- Pipe-separated variables with negation — `ARGS|!ARGS:foo|REQUEST_COOKIES`
+- XPath keys — `XML:/*` (colon starts XPath, not a simple key)
+- `SecAction` (no variable/operator) — skip, these are setvar-only
+- `SecMarker` — skip, these are skipAfter labels
+
+#### Conversion Pipeline
+
+```
+1. Download CRS from GitHub (or use local checkout)
+   └─ coreruleset/coreruleset @ tag v4.x.y
+   └─ Rules: rules/@owasp_crs/*.conf
+   └─ Data files: rules/@owasp_crs/*.data
+
+2. Parse all .conf files → []SecRule AST
+
+3. Filter: keep only detection rules
+   └─ Skip: 901xxx (init), 905xxx (exceptions), 949xxx/959xxx (evaluation),
+      980xxx (correlation), 999xxx (placeholder)
+   └─ Skip: paranoia gating rules (TX:DETECTION_PARANOIA_LEVEL @lt N + skipAfter)
+   └─ Skip: SecAction (no variable/operator)
+   └─ Skip: response-phase rules (phase 3/4) — flag for Phase 2
+
+4. For each SecRule (or chain):
+   a. Map variables → policy engine fields
+      └─ ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES → all_args_values
+         (CRS's most common variable combo)
+      └─ Pipe-separated vars with overlapping coverage → appropriate multi-value field
+      └─ Named vars → field:Name syntax
+      └─ Variable negation → note for exclusion handling
+   b. Map operator → policy engine operator
+      └─ @rx → regex (validate RE2 compat, flag PCRE-only features)
+      └─ @pm → phrase_match (split space-separated)
+      └─ @pmFromFile → phrase_match (read .data file, inline as array)
+      └─ @detectSQLi/@detectXSS → detect_sqli/detect_xss
+      └─ Unsupported → flag in gap report
+   c. Map transforms → policy engine transforms array
+      └─ Strip t:none (it's implicit)
+      └─ Validate all transforms exist in plugin registry
+      └─ Flag missing transforms (cmdLine, replaceComments, escapeSeqDecode)
+   d. Map severity → policy engine severity field
+      └─ CRITICAL → "CRITICAL" (5 pts)
+      └─ ERROR → "ERROR" (4 pts)
+      └─ WARNING → "WARNING" (3 pts)
+      └─ NOTICE → "NOTICE" (2 pts)
+   e. Extract paranoia level from tags
+      └─ tag:'paranoia-level/N' → paranoia_level: N
+   f. Resolve chains → multi-condition rules
+      └─ SecRule A chain → SecRule B
+      └─ Becomes: conditions: [A_condition, B_condition], group_operator: "AND"
+   g. Map CRS rule ID to PE rule ID
+      └─ CRS 932120 → PE-932120 (preserve original ID)
+   h. Build tags from CRS tag hierarchy
+      └─ tag:'attack-rce' → "attack-rce"
+      └─ tag:'OWASP_CRS/ATTACK-RCE' → "crs-rce"
+      └─ tag:'platform-unix' → "platform-unix"
+
+5. Validate all regex patterns against Go RE2 engine
+   └─ Flag PCRE-only features (lookahead, lookbehind, backreferences)
+   └─ Attempt automatic conversion where possible
+   └─ Log unconvertible patterns in gap report
+
+6. Output default-rules.json with version number
+
+7. Generate gap report:
+   └─ Rules successfully converted (count + IDs)
+   └─ Rules skipped — unsupported operator (list with reasons)
+   └─ Rules skipped — unsupported variable (list)
+   └─ Rules skipped — response phase (list — deferred)
+   └─ Rules skipped — PCRE regex (list — need RE2 conversion)
+   └─ Rules skipped — flow control (list — not detection)
+   └─ Missing transforms (list)
+   └─ Missing operators (list)
+   └─ Coverage percentage per category
+```
+
+#### PCRE → RE2 Conversion
+
+CRS regexes occasionally use PCRE features not in RE2:
+
+| PCRE Feature | CRS Usage | RE2 Equivalent |
+|--------------|-----------|----------------|
+| `(?!...)` negative lookahead | ~5 rules | Restructure regex or split into two conditions |
+| `(?<=...)` positive lookbehind | ~2 rules | Restructure or use `begins_with` + `regex` combo |
+| `(?:...)` non-capturing group | Extensive | ✅ Supported in RE2 |
+| `\b` word boundary | Extensive | ✅ Supported in RE2 |
+| `(?i)` case-insensitive | Extensive | ✅ Supported in RE2 |
+| `(?s)` dotall mode | Some | ✅ Supported in RE2 |
+| Backreferences `\1` | ~1 rule | Manual rewrite |
+| Possessive quantifiers `++` | ~2 rules | Convert to greedy `+` (safe for detection) |
+| Atomic groups `(?>...)` | ~1 rule | Convert to non-capturing group |
+
+The converter validates each regex against `regexp.Compile()` and flags failures for
+manual review. Most CRS regexes are RE2-compatible (we confirmed this during manual
+porting — only PE-920220 had the `(?!...)` issue out of 45 rules).
+
+#### @pmFromFile Data File Resolution
+
+CRS ships 19 `.data` files. The converter reads each and inlines as `phrase_match` arrays:
+
+| Data File | Entries | Used By |
+|-----------|---------|---------|
+| `unix-shell.data` | ~400 | 932xxx RCE |
+| `windows-powershell-commands.data` | ~60 | 932xxx RCE |
+| `unix-shell-builtins.data` | ~30 | 932xxx RCE |
+| `php-function-names-933150.data` | 212 | 933xxx PHP injection |
+| `php-variables.data` | 22 | 933xxx PHP injection |
+| `ssrf.data` | ~130 | 934xxx Generic |
+| `ssrf-no-scheme.data` | 18 | 934xxx Generic |
+| `java-classes.data` | 64 | 944xxx Java injection |
+| `scanners-user-agents.data` | 48 | 913xxx Scanner detection |
+| `lfi-os-files.data` | ~100 | 930xxx LFI |
+| `restricted-files.data` | 526 | 930xxx LFI |
+| `restricted-upload.data` | ~50 | 932xxx RCE |
+| `sql-errors.data` | ~100 | 951xxx Response SQL leakage |
+| `php-errors.data` | ~30 | 953xxx Response PHP leakage |
+| `java-classes.data` | 64 | 952xxx Response Java leakage |
+| `iis-errors.data` | ~50 | 954xxx Response IIS leakage |
+| `asp-dotnet-errors.data` | ~30 | 954xxx Response ASP leakage |
+| `ruby-errors.data` | ~20 | 956xxx Response Ruby leakage |
+| `web-shells-php.data` / `web-shells-asp.data` | ~200 | 955xxx Web shells |
+
+Response-phase data files are flagged as deferred but still parsed (ready for Phase 2).
+
+---
+
+### CRS Regression Test Adaptation
+
+CRS ships 315 YAML test files (~2500+ test cases) using the `go-ftw` format. Each test
+specifies an HTTP request input and expected output (rule ID should/shouldn't fire).
+
+#### Test Format (go-ftw YAML)
+
+```yaml
+meta:
+  author: "CRS project"
+rule_id: 932120
+tests:
+  - test_id: 1
+    desc: "PowerShell command in query parameter"
+    stages:
+      - input:
+          method: "GET"
+          uri: "/get?param=Invoke-Expression"
+          headers:
+            Host: "localhost"
+            User-Agent: "OWASP CRS test agent"
+            Accept: "*/*"
+        output:
+          log:
+            expect_ids: [932120]      # Rule SHOULD fire
+  - test_id: 2
+    desc: "Benign parameter should not trigger"
+    stages:
+      - input:
+          method: "GET"
+          uri: "/get?param=hello"
+          headers: { ... }
+        output:
+          log:
+            no_expect_ids: [932120]   # Rule should NOT fire
+```
+
+#### Adaptation Strategy
+
+Build a Go test runner at `tools/crs-test-runner/` (or integrate into `test/e2e/`):
+
+1. **Parse YAML test files** — read `input` (method, URI, headers, body) and `output`
+   (expect_ids, no_expect_ids)
+2. **Build HTTP request** from input fields
+3. **Send through policy engine** — either:
+   a. In-process: instantiate plugin, call `ServeHTTP()` directly (fastest, no Docker)
+   b. Via e2e: send to running Caddy with policy engine (validates full stack)
+4. **Check results**:
+   - `expect_ids`: verify the rule ID appears in `policy_detect_rules` output
+   - `no_expect_ids`: verify the rule ID does NOT appear
+   - `status`: verify HTTP response code
+5. **Report**: pass/fail per test case, overall coverage per category
+
+**Key adaptations from go-ftw format**:
+- go-ftw checks WAF engine logs for rule IDs; we check Caddy vars / response headers
+- `encoded_request` fields need base64 decoding into raw HTTP bytes
+- Response-phase tests (950-980) need the `/reflect` endpoint pattern — defer to Phase 2
+- Some tests rely on Coraza-specific behavior (MULTIPART_STRICT_ERROR, etc.) — flag as skipped
+
+#### Expected Coverage
+
+| Category | Test Files | Convertible | Notes |
+|----------|-----------|-------------|-------|
+| 911 Method Enforcement | 1 | ✅ | Simple method checks |
+| 913 Scanner Detection | 1 | ✅ | UA phrase_match |
+| 920 Protocol Enforcement | 59 | ~50 | Some need `validate_byte_range`, numeric ops |
+| 921 Protocol Attack | 17 | ✅ | CR/LF injection regex |
+| 922 Multipart Attack | 4 | ⚠️ | Needs multipart variable support |
+| 930 LFI | 5 | ✅ | Path traversal regex |
+| 931 RFI | 5 | ✅ | URL pattern regex |
+| 932 RCE | 46 | ~40 | Some need `cmdLine` transform |
+| 933 PHP Injection | 21 | ✅ | Regex + phrase_match |
+| 934 Generic | 11 | ✅ | SSRF, Node.js, prototype pollution |
+| 941 XSS | 33 | ~30 | 2 need `@detectXSS` (libinjection) |
+| 942 SQLi | 60 | ~55 | 2 need `@detectSQLi` (libinjection) |
+| 943 Session Fixation | 3 | ✅ | Simple regex |
+| 944 Java Injection | 15 | ✅ | Regex + phrase_match |
+| 949 Blocking Eval | 1 | Skip | Flow control |
+| 950-980 Response | 32 | Defer | Response phase |
+| **Total** | **315** | **~250+** | **~80%+ request-phase coverage** |
+
+---
+
+### Plugin Changes Required
+
+#### v0.11.x — Matched Payload Observability
+
+**Priority: HIGHEST** — this is the biggest regression from Coraza.
+
+Add per-condition match detail to detect rule output:
+
+```go
+type MatchDetail struct {
+    Field       string `json:"field"`        // "all_args_values", "header:User-Agent"
+    MatchedVar  string `json:"matched_var"`  // "ARGS:username" (SecRule-style name)
+    Value       string `json:"value"`        // actual input value (truncated 200 chars)
+    MatchedData string `json:"matched_data"` // regex group 0, or phrase_match hit
+    Operator    string `json:"operator"`     // "regex", "phrase_match", etc.
+    Pattern     string `json:"pattern"`      // the pattern/phrases that matched (truncated)
+}
+```
+
+Emit as Caddy var `policy_detect_matches` (JSON array of MatchDetail per rule).
+wafctl parses into `Event.MatchedRules[].Matches[]`. Frontend renders:
+- Variable name in green (`ARGS:username`)
+- Matched value with yellow highlight (`' OR 1=1--`)
+- Rule message, severity badge, category tag
+
+For multi-value fields (`all_args_values`, `all_headers`, etc.), the match detail includes
+which specific key/value pair triggered. This requires the evaluation loop to track which
+item in the collection matched, not just whether any item matched.
+
+#### v0.12.x — New Operators
+
+1. **`detect_sqli`** — Import `github.com/corazawaf/libinjection-go`. Call `libinjection.IsSQLi()`.
+   Capture fingerprint as `matched_data`. ~20 lines of code.
+2. **`detect_xss`** — Same library, `libinjection.IsXSS()`. ~15 lines.
+3. **`validate_byte_range`** — Check if input contains bytes outside specified ranges.
+   Port from Coraza's implementation (~50 lines). Used by 6 CRS protocol rules.
+
+#### v0.12.x — New Transforms
+
+1. **`cmdLine`** — Port from Coraza (`transformations/cmdline.go`, ~60 lines). Delete
+   `\`, `"`, `'`, `^`; normalize whitespace; lowercase. Used by 13 CRS RCE rules.
+2. **`replaceComments`** — Replace C-style `/* */` with space. ~20 lines. Used by 9 rules.
+3. **`escapeSeqDecode`** — Decode ANSI C escapes (`\n`, `\xHH`, `\OOO`). Port from
+   Coraza (~40 lines). Used by 7 rules.
+
+#### v0.13.x — Condition Enhancements
+
+1. **`negate: true`** on conditions — invert match result. ~5 lines in evaluation loop.
+2. **`multiMatch`** on rules — run operator before AND after each transform in the chain.
+   ~30 lines (loop over transform pipeline, check at each stage).
+3. **Regex key support** — `header:/^X-/` matches headers by regex pattern. ~20 lines.
+4. **Count support** — `count:args` returns the number of matching items as a string.
+   Used with numeric comparison (not directly needed if we handle differently).
+
+---
+
+### Execution Order
+
+| Phase | Work | Depends On | Effort |
+|-------|------|------------|--------|
+| **1** | Matched payload observability (plugin v0.11.x) | Nothing | 2 days |
+| **2** | CRS converter tool (parser + mapper + output) | Nothing | 3-4 days |
+| **3** | New transforms (`cmdLine`, `replaceComments`, `escapeSeqDecode`) | Nothing | 1 day |
+| **4** | New operators (`detect_sqli`, `detect_xss`, `validate_byte_range`) | Nothing | 1 day |
+| **5** | Condition enhancements (`negate`, `multiMatch`, regex keys) | Nothing | 1 day |
+| **6** | Run converter, validate output, fix edge cases | Phases 2-5 | 2 days |
+| **7** | CRS test runner + validate against regression suite | Phases 2-6 | 2 days |
+| **8** | Deploy: replace `default-rules.json`, remove Coraza from Dockerfile | Phases 1-7 | 1 day |
+| **9** | Frontend catch-up (matched payload display, CRS category views) | Phase 1 | 2 days |
+| **10** | Response-phase detection (Phase 2 of Coraza removal) | Phase 8 | Future |
+
+Phases 1-5 are independent and can be parallelized. Total estimate: ~2-3 weeks.
+
+---
+
+### What the Converter Supersedes
+
+The existing 45 hand-ported rules in `default-rules.json` (PE-920xxx, PE-921xxx, PE-930xxx,
+PE-932xxx, PE-943xxx, PE-9100030-9100035) will be **replaced** by converter output.
+The hand-ported rules served as proof-of-concept for:
+- Rule format and schema validation
+- Severity → score mapping
+- Transform chain support
+- `phrase_match` operator
+- `detect` + threshold blocking flow
+- Frontend integration (badges, anomaly score display, create exception)
+
+The converter output preserves the same schema but with full CRS coverage, accurate
+regex patterns (not simplified approximations), and proper transform chains.
+
+### CRS Version Pinning
+
+The converter pins to a specific CRS release tag (initially `v4.23.0` to match current
+production). The tag is configurable. Output `default-rules.json` includes:
+- `version` field (incremented on each converter run)
+- `crs_version` field (e.g., `"4.23.0"`)
+- `generated_at` timestamp
+- `converter_version` field
+
+To upgrade CRS: change the tag, re-run converter, review diff, ship new Docker image.
+Future: periodic runtime sync (already in deferred work — lower priority now that
+converter makes upgrades a single command).
 
 ### Rule File Format
 
@@ -1067,8 +1640,8 @@ These are the immediate candidates — they're already written as SecRules and j
 |---------|-------------|-------------|
 | 9100003 | XXE: DOCTYPE/ENTITY with SYSTEM/PUBLIC | `detect` CRITICAL |
 | 9100006 | XXE: Parameter entity (`<!ENTITY %`) | `detect` CRITICAL |
-| 9100010 | Pipe to shell command in ARGS | `detect` CRITICAL |
-| 9100011 | Backtick command substitution | `detect` CRITICAL |
+| ~~9100010~~ | ~~Pipe to shell command in ARGS~~ | **Replaced** by PE-932100 (broader cmd injection) |
+| ~~9100011~~ | ~~Backtick command substitution~~ | **Replaced** by PE-932130 (shell expressions) |
 | 9100012 | CRLF injection in query string | `detect` CRITICAL |
 | 9100013 | CRLF injection in headers | `detect` CRITICAL |
 | 9100030 | Missing Accept header (heuristic) | `detect` NOTICE |
@@ -1090,7 +1663,7 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Port LFI / Path Traversal rules (930xxx subset) — **v0.11.0**: 4 rules (path traversal regex + phrase_match OS files + restricted files)
 - [x] Port HTTP Response Splitting rules (921xxx subset) — **v0.11.0**: 5 rules (smuggling, response splitting, LDAP injection)
 - [x] Port Session Fixation rules (943xxx subset) — **v0.11.0**: 2 rules (cookie setting + session param)
-- [ ] Port RCE rules (932xxx subset) — regex + `phrase_match` with command wordlists, partially covered by PE-9100010/11
+- [x] Port RCE rules (932xxx subset) — **v0.12.0**: 11 rules (PE-932100 Unix cmd injection, PE-932120 PowerShell, PE-932130 shell expressions, PE-932140 Windows FOR/IF, PE-932150 direct paths, PE-932160 shell fragments, PE-932170/171 Shellshock, PE-932180 file upload, PE-932270 tilde expansion, PE-932280 brace expansion). Replaced PE-9100010/PE-9100011 with more comprehensive equivalents. Not ported: 932105/106 (PL2+), 932110/115 (Windows cmd.exe — add later)
 - [ ] Port RFI rules (931xxx subset) — regex for URL patterns in params
 - [ ] Port PHP/Node.js/Java Injection rules (933/934/944xxx subset) — regex + `phrase_match` against function name wordlists
 - [ ] Port XSS rules (941xxx subset) — ~30 regex patterns + transform chains + libinjection
@@ -1170,21 +1743,34 @@ At each phase, you can compare scores between the policy engine's `detect` rules
 
 Before removing Coraza entirely:
 
-**Detection parity:**
-- [ ] All 11 CRS categories have equivalent `detect` rules
-- [ ] Transform chains cover all evasion techniques CRS handles
-- [ ] Phrase match wordlists cover CRS's `@pmFromFile` data
-- [ ] libinjection or equivalent covers `@detectSQLi`/`@detectXSS`
-- [ ] Anomaly scoring produces comparable scores to CRS for a representative request sample
-- [ ] False positive rate is equal to or better than CRS
-- [ ] False negative rate is equal to or better than CRS (validated against CRS test suite)
-- [ ] Response-phase detection exists (outbound rules) if needed
+**Automated conversion (replaces manual porting):**
+- [ ] CRS converter tool built and tested (`tools/crs-converter/`)
+- [ ] Converter output validates against CRS regression test suite (≥80% pass rate)
+- [ ] All PCRE-only regex patterns converted to RE2 or flagged with workarounds
+- [ ] All 19 CRS `.data` files inlined as `phrase_match` arrays
+
+**Plugin feature parity:**
+- [ ] Matched payload observability: `matched_var`, `matched_data`, `matched_field` per rule match
+- [ ] `detect_sqli` operator (libinjection — `corazawaf/libinjection-go`)
+- [ ] `detect_xss` operator (libinjection)
+- [ ] `validate_byte_range` operator
+- [ ] `cmdLine` transform
+- [ ] `replaceComments` transform
+- [ ] `escapeSeqDecode` transform
+- [ ] `negate: true` on conditions
+- [ ] `multiMatch` support (run operator at each transform stage)
+
+**Validation:**
+- [ ] CRS regression tests pass (request-phase categories: ≥80% of 250+ convertible tests)
+- [ ] Anomaly scoring produces comparable scores to CRS for representative traffic
+- [ ] False positive rate equal to or better than CRS (validated on production traffic shadow)
+- [ ] False negative rate equal to or better than CRS (validated via CRS test suite)
 
 **Infrastructure:**
 - [ ] `responseHeaderWriter` implements `http.Hijacker` for WebSocket support (Phase 1)
 - [ ] WebSocket upgrade requests handled correctly without `@not_websocket` bypass (Phase 2)
-- [ ] Audit logging captures equivalent detail to Coraza audit log (or access log provides enough)
-- [ ] UI bundled into wafctl image (optional but recommended before removal — avoids Caddy rebuild for dashboard changes)
+- [ ] Frontend displays matched payload detail (variable name, matched value, rule message)
+- [ ] UI bundled into wafctl image (optional but recommended — avoids Caddy rebuild for dashboard changes)
 
 ### What Full Coraza Removal Eliminates
 

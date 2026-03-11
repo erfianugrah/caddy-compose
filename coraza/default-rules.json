@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "rules": [
     {
       "id": "PE-9100003",
@@ -38,38 +38,268 @@
       "priority": 400
     },
     {
-      "id": "PE-9100010",
-      "name": "RCE: Pipe to shell command in arguments",
+      "id": "PE-932100",
+      "name": "Unix command injection after shell metacharacter",
+      "description": "Detects Unix command names following shell metacharacters (;|&$) in arguments. Replaces PE-9100010 with broader coverage: all common shell prefixes, not just pipe. Comprehensive command wordlist via phrase_match. CRS 932100/932230/932235/932250/932260 combined.",
       "type": "detect",
       "conditions": [
         {
           "field": "all_args",
           "operator": "regex",
-          "value": "\\|(?:id|cat|ls|whoami|curl|wget|bash|sh|nc|ncat|python[23]?|perl|ruby|php|node|tee|head|tail|less|more|dd|base64|xxd|rev|env|printenv|uname|hostname|passwd|shadow|ifconfig|ip )"
+          "value": "(?:[;|&`$({]|\\|\\||&&)\\s*(?:(?:/(?:usr/)?(?:s?bin|local/bin)/)?(?:id|cat|ls|whoami|curl|wget|bash|sh|nc|ncat|python[23]?|perl|ruby|php|node|tee|head|tail|less|more|dd|base64|xxd|rev|env|printenv|uname|hostname|ifconfig|ip|ping|traceroute|nslookup|dig|find|grep|egrep|awk|sed|sort|uniq|wc|chmod|chown|chgrp|mkdir|rmdir|rm|cp|mv|touch|kill|pkill|ps|top|netstat|ss|lsof|mount|umount|chroot|sudo|su|apt|yum|dnf|dpkg|rpm|pip|gem|npm|docker|kubectl|systemctl|service|crontab|at|nmap|socat|openssl|ssh|scp|sftp|rsync|tar|gzip|gunzip|bzip2|xz|unzip|nc\\.openbsd|nc\\.traditional)\\b)"
         }
       ],
       "group_op": "and",
       "severity": "CRITICAL",
       "paranoia_level": 1,
-      "tags": ["attack-rce", "custom-rules"],
+      "tags": ["attack-rce", "932xxx", "platform-unix"],
       "enabled": true,
       "priority": 400
     },
     {
-      "id": "PE-9100011",
-      "name": "RCE: Backtick command substitution",
+      "id": "PE-932120",
+      "name": "Windows PowerShell command found",
+      "description": "Detects Windows PowerShell cmdlets and keywords in arguments. Uses phrase_match for efficient Aho-Corasick matching against common dangerous cmdlets. CRS 932120.",
       "type": "detect",
       "conditions": [
         {
           "field": "all_args",
-          "operator": "regex",
-          "value": "`[^`]+`"
+          "operator": "phrase_match",
+          "list_items": [
+            "invoke-expression", "invoke-command", "invoke-webrequest", "invoke-restmethod",
+            "invoke-wmimethod", "invoke-cimmethod", "invoke-item",
+            "new-object", "new-service", "new-psdrive", "new-pssession",
+            "start-process", "start-job", "start-service",
+            "stop-process", "stop-service", "stop-computer", "restart-computer",
+            "get-process", "get-service", "get-wmiobject", "get-ciminstance",
+            "get-content", "get-childitem", "get-credential",
+            "set-executionpolicy", "set-content", "set-itemproperty",
+            "remove-item", "remove-computer", "remove-service",
+            "enable-psremoting", "disable-psremoting",
+            "export-csv", "import-csv", "import-module",
+            "convertto-securestring", "convertfrom-securestring",
+            "add-type", "add-computer", "add-content",
+            "write-output", "write-host", "out-file",
+            "send-mailmessage", "test-connection",
+            "enter-pssession", "exit-pssession",
+            "iex", "iwr", "icm", "powershell", "pwsh",
+            "downloadstring", "downloadfile", "bitstransfer",
+            "bypass", "-encodedcommand", "-enc ", "-noprofile", "-windowstyle hidden",
+            "system.net.webclient", "system.net.sockets",
+            "io.streamreader", "io.memorystream",
+            "reflection.assembly", "runtime.interopservices"
+          ],
+          "transforms": ["lowercase"]
         }
       ],
       "group_op": "and",
       "severity": "CRITICAL",
       "paranoia_level": 1,
-      "tags": ["attack-rce", "custom-rules"],
+      "tags": ["attack-rce", "932xxx", "platform-windows", "language-powershell"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932130",
+      "name": "Unix shell expression found",
+      "description": "Detects shell expression syntax: $() command substitution, ${} parameter expansion, <() >() process substitution, $[] arithmetic, heredocs, and backtick substitution. Replaces PE-9100011 with broader coverage. Essential for Log4Shell defense. CRS 932130.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "\\$(?:\\((?:[^)]+|\\([^)]+\\))\\)|\\{[^}]+\\}|\\[[^\\]]*\\])|[<>]\\([^)]+\\)|`[^`]+`"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932140",
+      "name": "Windows FOR/IF command found",
+      "description": "Detects Windows batch flow control used in command injection: FOR /F %a IN ... DO, IF EXIST, IF DEFINED, batch variable expansion. CRS 932140.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "(?i)\\b(?:for(?:/[dflr]\\S*)? %+\\S+ in\\s*\\(.*\\)\\s*do|if(?:/i)?(?:\\s*not)?\\s*(?:exist|defined|errorlevel|cmdextversion)\\b)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-windows"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932150",
+      "name": "Direct Unix command path execution",
+      "description": "Detects direct execution via absolute paths to common Unix commands (/bin/bash, /usr/bin/wget, etc.). CRS 932150.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "phrase_match",
+          "list_items": [
+            "/bin/bash", "/bin/sh", "/bin/dash", "/bin/zsh", "/bin/csh", "/bin/tcsh",
+            "/bin/cat", "/bin/ls", "/bin/rm", "/bin/cp", "/bin/mv", "/bin/chmod",
+            "/bin/chown", "/bin/mkdir", "/bin/rmdir", "/bin/kill", "/bin/ps",
+            "/bin/mount", "/bin/umount", "/bin/dd", "/bin/grep", "/bin/sed",
+            "/bin/awk", "/bin/tar", "/bin/gzip", "/bin/gunzip",
+            "/usr/bin/id", "/usr/bin/whoami", "/usr/bin/curl", "/usr/bin/wget",
+            "/usr/bin/python", "/usr/bin/perl", "/usr/bin/ruby", "/usr/bin/php",
+            "/usr/bin/gcc", "/usr/bin/make", "/usr/bin/find", "/usr/bin/xargs",
+            "/usr/bin/head", "/usr/bin/tail", "/usr/bin/sort", "/usr/bin/uniq",
+            "/usr/bin/wc", "/usr/bin/tee", "/usr/bin/base64", "/usr/bin/xxd",
+            "/usr/bin/nc", "/usr/bin/ncat", "/usr/bin/nmap", "/usr/bin/socat",
+            "/usr/bin/ssh", "/usr/bin/scp", "/usr/bin/sftp",
+            "/usr/bin/env", "/usr/bin/printenv", "/usr/bin/uname",
+            "/usr/bin/passwd", "/usr/bin/sudo", "/usr/bin/su",
+            "/usr/local/bin/", "/usr/sbin/", "/sbin/",
+            "/etc/init.d/", "/etc/cron", "/etc/passwd", "/etc/shadow",
+            "/proc/self/", "/dev/tcp/", "/dev/udp/", "/dev/null"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932160",
+      "name": "Unix shell code fragment found",
+      "description": "Detects shell script fragments in arguments: shebang lines, exec/eval builtins, source command, function definitions, and common shell scripting constructs. CRS 932160.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "(?:#!\\s*/(?:bin|usr/bin|usr/local/bin)/(?:bash|sh|zsh|perl|python|ruby|node|php)|\\b(?:exec|eval|source|\\.)\\s+[\"'/]|\\bfunction\\s+\\w+\\s*\\(|\\bexport\\s+\\w+=|\\balias\\s+\\w+=)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932170",
+      "name": "Shellshock CVE-2014-6271",
+      "description": "Detects Shellshock-style function definition in arguments/headers: () { pattern. The original Shellshock vulnerability allowed remote code execution through environment variables containing function definitions. CRS 932170/932171.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "\\(\\)\\s*\\{"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix", "cve-2014-6271"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932171",
+      "name": "Shellshock in request headers",
+      "description": "Detects Shellshock-style function definition in request headers (the original attack vector was via CGI environment variables derived from headers). CRS 932171.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_headers",
+          "operator": "regex",
+          "value": "\\(\\)\\s*\\{"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix", "cve-2014-6271"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932180",
+      "name": "Restricted file upload attempt",
+      "description": "Detects uploads of files with dangerous extensions that could enable code execution on the server. CRS 932180.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "phrase_match",
+          "list_items": [
+            ".php", ".phtml", ".php3", ".php4", ".php5", ".phps", ".phar",
+            ".jsp", ".jspx", ".jsw", ".jsv", ".jspf", ".java",
+            ".asp", ".aspx", ".asa", ".asax", ".ascx", ".ashx", ".asmx",
+            ".cer", ".shtml",
+            ".exe", ".com", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".wsf", ".wsh",
+            ".ps1", ".psm1", ".psd1",
+            ".sh", ".bash", ".csh", ".ksh", ".zsh",
+            ".py", ".pyc", ".pyo",
+            ".pl", ".pm", ".cgi",
+            ".rb",
+            ".war", ".ear", ".jar",
+            ".htaccess", ".htpasswd",
+            ".swp", ".bak", ".config"
+          ],
+          "transforms": ["lowercase"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "file-upload"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932270",
+      "name": "Bash tilde expansion",
+      "description": "Detects bash tilde expansion shortcuts (~+, ~-, ~+N, ~-N) used to access directory stack entries. CRS 932270.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "~[+-](?:$|[0-9]+)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-932280",
+      "name": "Brace expansion found",
+      "description": "Detects shell brace expansion ({cmd1,cmd2}) used to construct and execute commands. Common evasion technique: {c,url} expands to 'curl'. CRS 932280.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "\\{[0-9A-Za-z_]*,[,\\-0-9A-Za-z_]*\\}"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "932xxx", "platform-unix"],
       "enabled": true,
       "priority": 400
     },
@@ -431,15 +661,14 @@
     {
       "id": "PE-920450",
       "name": "HTTP header restricted by policy",
-      "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. CRS 920450.",
+      "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded — they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450.",
       "type": "detect",
       "conditions": [
         {
           "field": "all_headers_names",
           "operator": "phrase_match",
           "list_items": [
-            "proxy", "lock-token", "content-range", "if",
-            "translate", "via", "x-forwarded-for", "x-forwarded-host"
+            "proxy", "lock-token", "content-range", "if", "translate"
           ],
           "transforms": ["lowercase"]
         }

@@ -2844,9 +2844,9 @@ func TestDefaultRulesAPI(t *testing.T) {
 		t.Fatalf("unmarshal default rules: %v", err)
 	}
 
-	// Should have 36 default rules (26 from v3 + 11 new 930xxx/921xxx/943xxx - 1 removed PE-920280)
-	if len(rules) != 36 {
-		t.Errorf("expected 36 default rules, got %d", len(rules))
+	// Should have 45 default rules (36 from v4 + 11 new 932xxx RCE - 2 replaced PE-9100010/PE-9100011)
+	if len(rules) != 45 {
+		t.Errorf("expected 45 default rules, got %d", len(rules))
 	}
 
 	// Check that key rules exist.
@@ -2884,6 +2884,18 @@ func TestDefaultRulesAPI(t *testing.T) {
 			t.Errorf("missing 943xxx default rule %s", id)
 		}
 	}
+	// v0.12.0 RCE (932xxx) — replaced PE-9100010/PE-9100011
+	for _, id := range []string{"PE-932100", "PE-932120", "PE-932130", "PE-932140", "PE-932150", "PE-932160", "PE-932170", "PE-932171", "PE-932180", "PE-932270", "PE-932280"} {
+		if !ruleIDs[id] {
+			t.Errorf("missing 932xxx default rule %s", id)
+		}
+	}
+	// Verify old rules were replaced
+	for _, id := range []string{"PE-9100010", "PE-9100011"} {
+		if ruleIDs[id] {
+			t.Errorf("old rule %s should have been replaced by 932xxx equivalents", id)
+		}
+	}
 
 	// Verify PE-9100032 is a block rule with phrase_match.
 	resp2, body2 := httpGet(t, wafctlURL+"/api/default-rules/PE-9100032")
@@ -2913,7 +2925,7 @@ func TestDefaultRulesAPI(t *testing.T) {
 		t.Errorf("PE-943120 type: want detect, got %s", typ)
 	}
 
-	t.Log("confirmed: default rules API returns all 36 rules including 930xxx/921xxx/943xxx")
+	t.Log("confirmed: default rules API returns all 45 rules including 930xxx/921xxx/932xxx/943xxx")
 }
 
 // ════════════════════════════════════════════════════════════════════
