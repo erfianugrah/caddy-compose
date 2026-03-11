@@ -2372,9 +2372,10 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 		}
 		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
 		assertCode(t, "missing severity", 400, resp)
-		errMsg := jsonField(body, "error")
-		if !strings.Contains(errMsg, "severity") {
-			t.Errorf("expected error about severity, got: %q", errMsg)
+		// API returns {"error": "validation failed", "details": "detect requires severity ..."}
+		details := jsonField(body, "details")
+		if !strings.Contains(details, "severity") {
+			t.Errorf("expected details about severity, got: %q (error: %q)", details, jsonField(body, "error"))
 		}
 	})
 
@@ -2389,9 +2390,9 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 		}
 		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
 		assertCode(t, "invalid severity", 400, resp)
-		errMsg := jsonField(body, "error")
-		if !strings.Contains(errMsg, "severity") {
-			t.Errorf("expected error about severity, got: %q", errMsg)
+		details := jsonField(body, "details")
+		if !strings.Contains(details, "severity") {
+			t.Errorf("expected details about severity, got: %q (error: %q)", details, jsonField(body, "error"))
 		}
 	})
 
@@ -2407,9 +2408,9 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 		}
 		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
 		assertCode(t, "invalid PL", 400, resp)
-		errMsg := jsonField(body, "error")
-		if !strings.Contains(errMsg, "paranoia") {
-			t.Errorf("expected error about paranoia level, got: %q", errMsg)
+		details := jsonField(body, "details")
+		if !strings.Contains(details, "paranoia") {
+			t.Errorf("expected details about paranoia level, got: %q (error: %q)", details, jsonField(body, "error"))
 		}
 	})
 

@@ -297,7 +297,6 @@ func migrateV3toV4(exclusions []RuleExclusion) []RuleExclusion {
 		Type:        "detect",
 		Conditions: []Condition{
 			{Field: "header", Operator: "eq", Value: "Accept:"},
-			{Field: "path", Operator: "regex", Value: "^(?!/api/health)"},
 		},
 		GroupOp:             "and",
 		Severity:            "NOTICE",
@@ -331,12 +330,11 @@ func migrateV3toV4(exclusions []RuleExclusion) []RuleExclusion {
 	exclusions = append(exclusions, RuleExclusion{
 		ID:          generateUUIDv7(),
 		Name:        "Missing Referer on Non-API GET",
-		Description: "GET requests to non-API paths without Referer suggest direct scanning (mirrors pre-crs rule 9100034)",
+		Description: "GET requests without Referer suggest direct scanning (mirrors pre-crs rule 9100034)",
 		Type:        "detect",
 		Conditions: []Condition{
 			{Field: "method", Operator: "eq", Value: "GET"},
 			{Field: "referer", Operator: "eq", Value: ""},
-			{Field: "path", Operator: "regex", Value: "^(?!/(?:api/|favicon|robots\\.txt))"},
 		},
 		GroupOp:             "and",
 		Severity:            "NOTICE",

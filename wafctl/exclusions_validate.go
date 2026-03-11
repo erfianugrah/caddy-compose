@@ -92,6 +92,13 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 				return fmt.Errorf("condition[%d]: invalid body_json path %q (dot-separated alphanumeric segments)", i, name)
 			}
 		}
+		// Validate regex patterns — Go uses RE2 (no lookaheads/lookbehinds).
+		// Catches PCRE-only patterns like (?!...) and (?<=...) early.
+		if c.Operator == "regex" && c.Value != "" {
+			if _, err := regexp.Compile(c.Value); err != nil {
+				return fmt.Errorf("condition[%d]: invalid regex %q: %v", i, c.Value, err)
+			}
+		}
 		// Reject control characters in condition values.
 		if strings.ContainsAny(c.Value, "\n\r") {
 			return fmt.Errorf("condition[%d]: value must not contain newlines", i)
