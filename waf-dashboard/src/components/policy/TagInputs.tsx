@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Plus, X, Check, Copy } from "lucide-react";
+import { Plus, X, Check, Copy, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { VALID_TRANSFORMS } from "@/lib/api";
 
 // ─── Copy Button ────────────────────────────────────────────────────
 
@@ -272,9 +273,131 @@ export function PipeTagInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         onBlur={() => { if (inputValue.trim()) addTag(inputValue); }}
-        placeholder={tags.length === 0 ? (placeholder ?? "Type value and press Enter") : ""}
+         placeholder={tags.length === 0 ? (placeholder ?? "Type value and press Enter") : ""}
         className="flex-1 min-w-[120px] bg-transparent text-xs font-data outline-none placeholder:text-muted-foreground"
       />
+    </div>
+  );
+}
+
+// ─── Transform Multi-Select ─────────────────────────────────────────
+
+/** Short descriptions for each transform, shown in the popover. */
+const TRANSFORM_HINTS: Record<string, string> = {
+  lowercase: "Convert to lowercase",
+  urlDecode: "Decode %XX sequences",
+  urlDecodeUni: "Decode %uXXXX + %XX",
+  htmlEntityDecode: "Decode &amp; &#NN; &#xHH;",
+  normalizePath: "Collapse /../ /./ //",
+  normalizePathWin: "Normalize + backslash",
+  removeNulls: "Strip null bytes",
+  compressWhitespace: "Collapse whitespace",
+  removeWhitespace: "Strip all whitespace",
+  base64Decode: "Base64 decode",
+  hexDecode: "Hex-encoded decode",
+  jsDecode: "JS escape sequences",
+  cssDecode: "CSS escape sequences",
+  utf8toUnicode: "UTF-8 to \\uXXXX",
+  removeComments: "Strip /* */ and <!-- -->",
+  trim: "Trim leading/trailing space",
+  length: "Replace with string length",
+};
+
+/**
+ * Popover-based multi-select for condition transforms.
+ * Displays selected transforms as ordered chip pills with X to remove.
+ * Values stored as string[] (order matters — applied left-to-right).
+ */
+export function TransformSelect({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ?? [];
+
+  const toggle = (t: string) => {
+    if (selected.includes(t)) {
+      onChange(selected.filter((s) => s !== t));
+    } else {
+      onChange([...selected, t]);
+    }
+  };
+
+  const remove = (t: string) => {
+    onChange(selected.filter((s) => s !== t));
+  };
+
+  const unselected = VALID_TRANSFORMS.filter((t) => !selected.includes(t));
+
+  if (selected.length === 0 && !open) {
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
+            <Sparkles className="h-3 w-3" />
+            Add transforms
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[260px] p-1 max-h-[320px] overflow-y-auto" align="start">
+          {VALID_TRANSFORMS.map((t) => (
+            <button
+              key={t}
+              onClick={() => toggle(t)}
+              className="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
+            >
+              <span>{t}</span>
+              <span className="text-[10px] text-muted-foreground">{TRANSFORM_HINTS[t]}</span>
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 min-h-[24px]">
+      {selected.map((t, i) => (
+        <span
+          key={t}
+          className="inline-flex items-center gap-1 rounded bg-lovelace-800/60 border border-border/50 px-1.5 py-0 text-[11px] font-data text-lv-cyan/80"
+        >
+          {i > 0 && <span className="text-muted-foreground/40 mr-0.5">&rarr;</span>}
+          {t}
+          <button
+            onClick={() => remove(t)}
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
+          >
+            <X className="h-2 w-2" />
+          </button>
+        </span>
+      ))}
+      {unselected.length > 0 && (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
+              <Plus className="h-2.5 w-2.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[260px] p-1 max-h-[320px] overflow-y-auto" align="start">
+            {VALID_TRANSFORMS.map((t) => (
+              <button
+                key={t}
+                onClick={() => { toggle(t); if (unselected.length <= 1) setOpen(false); }}
+                className="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
+              >
+                <span className={selected.includes(t) ? "text-lv-cyan" : ""}>{t}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground">{TRANSFORM_HINTS[t]}</span>
+                  {selected.includes(t) && <Check className="h-3 w-3 text-lv-cyan" />}
+                </div>
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
     </div>
   );
 }

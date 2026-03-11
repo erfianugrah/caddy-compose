@@ -69,7 +69,33 @@ export interface Condition {
   field: ConditionField;
   operator: ConditionOperator;
   value: string;
+  transforms?: string[];
 }
+
+/** All transform names supported by the policy engine plugin (v0.8.1+). */
+export const VALID_TRANSFORMS = [
+  // Phase 1 — covers ~90% of CRS usage
+  "lowercase",
+  "urlDecode",
+  "urlDecodeUni",
+  "htmlEntityDecode",
+  "normalizePath",
+  "normalizePathWin",
+  "removeNulls",
+  "compressWhitespace",
+  "removeWhitespace",
+  // Phase 2 — extended transforms
+  "base64Decode",
+  "hexDecode",
+  "jsDecode",
+  "cssDecode",
+  "utf8toUnicode",
+  "removeComments",
+  "trim",
+  "length",
+] as const;
+
+export type TransformName = (typeof VALID_TRANSFORMS)[number];
 
 export interface Exclusion {
   id: string;

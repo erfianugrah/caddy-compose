@@ -192,6 +192,104 @@ describe("getExclusions (anomaly type mapping)", () => {
   });
 });
 
+// ─── Condition transforms ───────────────────────────────────────────
+
+describe("getExclusions (conditions with transforms)", () => {
+  it("preserves transforms on conditions from Go API", async () => {
+    const goExclusions = [
+      {
+        id: "exc-tf-1",
+        name: "Block encoded admin",
+        description: "",
+        type: "block",
+        conditions: [
+          { field: "path", operator: "contains", value: "/admin", transforms: ["urlDecode", "lowercase"] },
+          { field: "user_agent", operator: "regex", value: "bot" },
+        ],
+        group_operator: "and",
+        enabled: true,
+        created_at: "2026-03-11T10:00:00Z",
+        updated_at: "2026-03-11T10:00:00Z",
+      },
+    ];
+
+    vi.stubGlobal("fetch", mockFetchResponse(goExclusions));
+
+    const { getExclusions } = await import("@/lib/api");
+    const result = await getExclusions();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].conditions[0].transforms).toEqual(["urlDecode", "lowercase"]);
+    expect(result[0].conditions[1].transforms).toBeUndefined();
+  });
+});
+
+describe("createExclusion (conditions with transforms)", () => {
+  it("sends transforms in condition payload", async () => {
+    const goCreated = {
+      id: "exc-tf-new",
+      name: "Block with transforms",
+      description: "",
+      type: "block",
+      conditions: [
+        { field: "path", operator: "contains", value: "/admin", transforms: ["urlDecode", "lowercase"] },
+      ],
+      group_operator: "and",
+      enabled: true,
+      created_at: "2026-03-11T10:00:00Z",
+      updated_at: "2026-03-11T10:00:00Z",
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(goCreated, 201));
+
+    const { createExclusion } = await import("@/lib/api");
+    await createExclusion({
+      name: "Block with transforms",
+      type: "block",
+      conditions: [
+        { field: "path", operator: "contains", value: "/admin", transforms: ["urlDecode", "lowercase"] },
+      ],
+      enabled: true,
+    });
+
+    const postCall = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse(postCall[1]?.body as string);
+    expect(body.conditions[0].transforms).toEqual(["urlDecode", "lowercase"]);
+  });
+
+  it("omits transforms when empty/undefined", async () => {
+    const goCreated = {
+      id: "exc-notf",
+      name: "No transforms",
+      description: "",
+      type: "block",
+      conditions: [
+        { field: "path", operator: "eq", value: "/test" },
+      ],
+      group_operator: "and",
+      enabled: true,
+      created_at: "2026-03-11T10:00:00Z",
+      updated_at: "2026-03-11T10:00:00Z",
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(goCreated, 201));
+
+    const { createExclusion } = await import("@/lib/api");
+    await createExclusion({
+      name: "No transforms",
+      type: "block",
+      conditions: [
+        { field: "path", operator: "eq", value: "/test" },
+      ],
+      enabled: true,
+    });
+
+    const postCall = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse(postCall[1]?.body as string);
+    expect(body.conditions[0].transforms).toBeUndefined();
+  });
+});
+
 // ─── generateConfig ─────────────────────────────────────────────────
 
 describe("generateConfig", () => {

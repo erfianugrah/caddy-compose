@@ -12,7 +12,7 @@ import {
 import type { Condition, ConditionField, ConditionOperator, ServiceDetail } from "@/lib/api";
 import { fetchManagedLists, compatibleKinds, type ManagedList } from "@/lib/api";
 import { CONDITION_FIELDS, getFieldDef, type FieldDef } from "./constants";
-import { MethodMultiSelect, PipeTagInput } from "./TagInputs";
+import { MethodMultiSelect, PipeTagInput, TransformSelect } from "./TagInputs";
 
 // ─── Host Value Input ───────────────────────────────────────────────
 
@@ -182,6 +182,7 @@ export function ConditionRow({
             field: newField,
             operator: newFieldDef.operators[0].value,
             value: "",
+            transforms: condition.transforms,
           });
         }}
       >
@@ -248,6 +249,11 @@ export function ConditionRow({
         {fieldDef.hint && !isListOp && condition.operator !== "exists" && (
           <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
         )}
+        {/* Transform selection — applied left-to-right before operator evaluation */}
+        <TransformSelect
+          value={condition.transforms ?? []}
+          onChange={(transforms) => onChange(index, { ...condition, transforms: transforms.length > 0 ? transforms : undefined })}
+        />
       </div>
 
       {/* Remove button */}

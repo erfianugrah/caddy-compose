@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseRuleIds, joinRuleIds, HTTP_METHODS } from "./TagInputs";
+import { VALID_TRANSFORMS } from "@/lib/api";
 
 // ─── parseRuleIds ───────────────────────────────────────────────────
 
@@ -101,5 +102,51 @@ describe("HTTP_METHODS", () => {
     for (const method of HTTP_METHODS) {
       expect(method).toBe(method.toUpperCase());
     }
+  });
+});
+
+// ─── VALID_TRANSFORMS ───────────────────────────────────────────────
+
+describe("VALID_TRANSFORMS", () => {
+  it("contains all 17 transforms", () => {
+    expect(VALID_TRANSFORMS).toHaveLength(17);
+  });
+
+  it("has no duplicates", () => {
+    expect(new Set(VALID_TRANSFORMS).size).toBe(VALID_TRANSFORMS.length);
+  });
+
+  it("contains Phase 1 transforms", () => {
+    const phase1 = [
+      "lowercase", "urlDecode", "urlDecodeUni", "htmlEntityDecode",
+      "normalizePath", "normalizePathWin", "removeNulls",
+      "compressWhitespace", "removeWhitespace",
+    ];
+    for (const t of phase1) {
+      expect(VALID_TRANSFORMS).toContain(t);
+    }
+  });
+
+  it("contains Phase 2 transforms", () => {
+    const phase2 = [
+      "base64Decode", "hexDecode", "jsDecode", "cssDecode",
+      "utf8toUnicode", "removeComments", "trim", "length",
+    ];
+    for (const t of phase2) {
+      expect(VALID_TRANSFORMS).toContain(t);
+    }
+  });
+
+  it("matches Go validTransforms keys exactly", () => {
+    // These must stay in sync with wafctl/models_exclusions.go validTransforms
+    const goTransforms = new Set([
+      "lowercase", "urlDecode", "urlDecodeUni", "htmlEntityDecode",
+      "normalizePath", "normalizePathWin", "removeNulls",
+      "compressWhitespace", "removeWhitespace",
+      "base64Decode", "hexDecode", "jsDecode", "cssDecode",
+      "utf8toUnicode", "removeComments", "trim", "length",
+    ]);
+    const feTransforms = new Set(VALID_TRANSFORMS);
+    expect(feTransforms).toEqual(goTransforms);
   });
 });
