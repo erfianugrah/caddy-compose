@@ -58,7 +58,10 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 		if !ok || !ops[c.Operator] {
 			return fmt.Errorf("condition[%d]: invalid operator %q for field %q", i, c.Operator, c.Field)
 		}
-		if c.Value == "" {
+		// Empty value is allowed for eq/neq operators (matching empty/missing
+		// headers, user-agents, etc. is a legitimate detect rule pattern).
+		// All other operators require a non-empty value.
+		if c.Value == "" && c.Operator != "eq" && c.Operator != "neq" {
 			return fmt.Errorf("condition[%d]: value is required", i)
 		}
 		// Validate method values.
@@ -153,6 +156,22 @@ func validateExclusion(e RuleExclusion) error {
 		}
 		if e.AnomalyParanoiaLevel != 0 && (e.AnomalyParanoiaLevel < 1 || e.AnomalyParanoiaLevel > 4) {
 			return fmt.Errorf("anomaly_paranoia_level must be between 1 and 4, got %d", e.AnomalyParanoiaLevel)
+		}
+	case "detect":
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("detect requires at least one condition")
+		}
+		validSeverities := map[string]bool{
+			"CRITICAL": true,
+			"ERROR":    true,
+			"WARNING":  true,
+			"NOTICE":   true,
+		}
+		if !validSeverities[e.Severity] {
+			return fmt.Errorf("detect requires severity (CRITICAL, ERROR, WARNING, NOTICE), got %q", e.Severity)
+		}
+		if e.DetectParanoiaLevel != 0 && (e.DetectParanoiaLevel < 1 || e.DetectParanoiaLevel > 4) {
+			return fmt.Errorf("detect_paranoia_level must be between 0 and 4, got %d", e.DetectParanoiaLevel)
 		}
 	case "skip_rule":
 		if e.RuleID == "" && e.RuleTag == "" {

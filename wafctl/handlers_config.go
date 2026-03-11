@@ -68,7 +68,8 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRule
 			rlGlobal := rs.GetGlobal()
 			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
+			wafCfg := BuildPolicyWafConfig(cs, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 			if err == nil {
 				resp["policy_rules"] = json.RawMessage(policyData)
 			}
@@ -161,7 +162,8 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 			rlGlobal := rs.GetGlobal()
 			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
+			wafCfg := BuildPolicyWafConfig(cs, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",

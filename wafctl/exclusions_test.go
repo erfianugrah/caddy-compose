@@ -314,6 +314,47 @@ func TestValidateExclusion(t *testing.T) {
 			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 2, AnomalyParanoiaLevel: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
 			wantErr: false,
 		},
+		// Detect type validation
+		{
+			name:    "valid detect NOTICE",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "NOTICE", Conditions: []Condition{{Field: "user_agent", Operator: "eq", Value: ""}}},
+			wantErr: false,
+		},
+		{
+			name:    "valid detect WARNING with PL",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "WARNING", DetectParanoiaLevel: 2, Conditions: []Condition{{Field: "header", Operator: "eq", Value: "Accept:"}}},
+			wantErr: false,
+		},
+		{
+			name:    "valid detect CRITICAL",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "CRITICAL", Conditions: []Condition{{Field: "path", Operator: "regex", Value: "/admin"}}},
+			wantErr: false,
+		},
+		{
+			name:    "detect missing severity",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: true,
+		},
+		{
+			name:    "detect invalid severity",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "HIGH", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: true,
+		},
+		{
+			name:    "detect missing conditions",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "WARNING"},
+			wantErr: true,
+		},
+		{
+			name:    "detect invalid paranoia level",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "ERROR", DetectParanoiaLevel: 5, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+			wantErr: true,
+		},
+		{
+			name:    "detect paranoia level zero uses all",
+			exc:     RuleExclusion{Name: "test", Type: "detect", Severity: "NOTICE", DetectParanoiaLevel: 0, Conditions: []Condition{{Field: "method", Operator: "eq", Value: "GET"}}},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1010,9 +1051,9 @@ func TestStoreMigrationFromEmptyFile(t *testing.T) {
 	es := NewExclusionStore(path)
 	rules := es.List()
 
-	// 3 from v1 (heuristic bot rules) + 8 from v3 (ipsum block rules) = 11
-	if len(rules) != 11 {
-		t.Fatalf("expected 11 seed rules (3 heuristic + 8 ipsum), got %d", len(rules))
+	// 3 from v1 (heuristic bot rules) + 8 from v3 (ipsum block rules) + 3 from v4 (heuristic detect rules) = 14
+	if len(rules) != 14 {
+		t.Fatalf("expected 14 seed rules (3 heuristic + 8 ipsum + 3 detect), got %d", len(rules))
 	}
 
 	// Verify the seed rules by name.
@@ -1056,8 +1097,8 @@ func TestStoreMigrationFromEmptyFile(t *testing.T) {
 	if sf.Version != currentStoreVersion {
 		t.Errorf("saved version: want %d, got %d", currentStoreVersion, sf.Version)
 	}
-	if len(sf.Exclusions) != 11 {
-		t.Errorf("saved exclusions: want 11, got %d", len(sf.Exclusions))
+	if len(sf.Exclusions) != 14 {
+		t.Errorf("saved exclusions: want 14, got %d", len(sf.Exclusions))
 	}
 }
 
@@ -1080,9 +1121,9 @@ func TestStoreMigrationFromLegacyArray(t *testing.T) {
 	es := NewExclusionStore(path)
 	rules := es.List()
 
-	// Should have 1 existing + 3 seeded (v1) + 8 ipsum (v3) = 12 rules.
-	if len(rules) != 12 {
-		t.Fatalf("expected 12 rules (1 existing + 3 seeded + 8 ipsum), got %d", len(rules))
+	// Should have 1 existing + 3 seeded (v1) + 8 ipsum (v3) + 3 detect (v4) = 15 rules.
+	if len(rules) != 15 {
+		t.Fatalf("expected 15 rules (1 existing + 3 seeded + 8 ipsum + 3 detect), got %d", len(rules))
 	}
 
 	// Existing rule should be preserved.
@@ -1121,18 +1162,18 @@ func TestStoreMigrationIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
 
-	// First load: seeds rules (3 heuristic + 8 ipsum = 11).
+	// First load: seeds rules (3 heuristic + 8 ipsum + 3 detect = 14).
 	es1 := NewExclusionStore(path)
 	count1 := len(es1.List())
-	if count1 != 11 {
-		t.Fatalf("first load: expected 11 seed rules, got %d", count1)
+	if count1 != 14 {
+		t.Fatalf("first load: expected 14 seed rules, got %d", count1)
 	}
 
 	// Second load: reads versioned file, no migration.
 	es2 := NewExclusionStore(path)
 	count2 := len(es2.List())
-	if count2 != 11 {
-		t.Fatalf("second load: expected 11 rules (no re-seeding), got %d", count2)
+	if count2 != 14 {
+		t.Fatalf("second load: expected 14 rules (no re-seeding), got %d", count2)
 	}
 }
 
@@ -1423,9 +1464,9 @@ func TestStoreMigrationV2_FromV1(t *testing.T) {
 	es := NewExclusionStore(path)
 	exclusions := es.List()
 
-	// 2 original + 8 ipsum seeded by v3 = 10
-	if len(exclusions) != 10 {
-		t.Fatalf("expected 10 rules (2 original + 8 ipsum), got %d", len(exclusions))
+	// 2 original + 8 ipsum seeded by v3 + 3 detect seeded by v4 = 13
+	if len(exclusions) != 13 {
+		t.Fatalf("expected 13 rules (2 original + 8 ipsum + 3 detect), got %d", len(exclusions))
 	}
 
 	// Scanner UA Block should have tags backfilled (v2 migration).
@@ -1461,9 +1502,9 @@ func TestStoreMigrationV3_FromV2(t *testing.T) {
 	es := NewExclusionStore(path)
 	exclusions := es.List()
 
-	// 2 original + 8 ipsum = 10
-	if len(exclusions) != 10 {
-		t.Fatalf("expected 10 rules (2 original + 8 ipsum), got %d", len(exclusions))
+	// 2 original + 8 ipsum + 3 detect = 13
+	if len(exclusions) != 13 {
+		t.Fatalf("expected 13 rules (2 original + 8 ipsum + 3 detect), got %d", len(exclusions))
 	}
 
 	// Verify ipsum rules were added.
@@ -1492,6 +1533,61 @@ func TestStoreMigrationV3_IdempotentIfIpsumExists(t *testing.T) {
 	}
 	result := migrateV2toV3(existing)
 	// Should not add 8 ipsum rules because an ipsum-tagged rule already exists.
+	if len(result) != 1 {
+		t.Errorf("expected 1 rule (idempotent), got %d", len(result))
+	}
+}
+
+func TestStoreMigrationV4_FromV3(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exclusions.json")
+
+	// Write a v3 store with 2 existing rules.
+	sf := storeFile{
+		Version: 3,
+		Exclusions: []RuleExclusion{
+			{ID: "a", Name: "Existing Allow", Type: "allow", Enabled: true},
+			{ID: "b", Name: "Existing Block", Type: "block", Tags: []string{"ipsum"}, Enabled: true},
+		},
+	}
+	data, _ := json.MarshalIndent(sf, "", "  ")
+	os.WriteFile(path, data, 0644)
+
+	es := NewExclusionStore(path)
+	exclusions := es.List()
+
+	// 2 original + 3 detect rules seeded by v4 = 5
+	if len(exclusions) != 5 {
+		t.Fatalf("expected 5 rules (2 original + 3 detect), got %d", len(exclusions))
+	}
+
+	// Verify detect rules were added.
+	detectCount := 0
+	for _, e := range exclusions {
+		if e.Type == "detect" {
+			detectCount++
+			if e.Severity == "" {
+				t.Errorf("detect rule %q missing severity", e.Name)
+			}
+			if e.DetectParanoiaLevel == 0 {
+				t.Errorf("detect rule %q missing detect_paranoia_level", e.Name)
+			}
+			if !containsTag(e.Tags, "heuristic") {
+				t.Errorf("detect rule %q missing 'heuristic' tag", e.Name)
+			}
+		}
+	}
+	if detectCount != 3 {
+		t.Errorf("expected 3 detect rules, got %d", detectCount)
+	}
+}
+
+func TestStoreMigrationV4_IdempotentIfDetectExists(t *testing.T) {
+	// If a heuristic detect rule already exists, the v4 migration should not add duplicates.
+	existing := []RuleExclusion{
+		{ID: "a", Name: "My Detect Rule", Type: "detect", Tags: []string{"heuristic"}, Severity: "WARNING", Enabled: true},
+	}
+	result := migrateV3toV4(existing)
 	if len(result) != 1 {
 		t.Errorf("expected 1 rule (idempotent), got %d", len(result))
 	}

@@ -434,7 +434,7 @@ type CSPDeployResponse struct {
 }
 
 // handleDeployCSP generates CSP config files and reloads Caddy.
-func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -447,7 +447,8 @@ func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, es *Exclusi
 			rlGlobal := rs.GetGlobal()
 			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 			respHeaders := BuildPolicyResponseHeaders(store, secStore, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
+			wafCfg := BuildPolicyWafConfig(cs, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",

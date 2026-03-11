@@ -787,7 +787,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				Enabled: true,
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -852,7 +852,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "global-limit", Key: "client_ip", Events: 50, Window: "1m", Action: "deny", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -885,7 +885,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "e-1", Name: "allow-test", Type: "allow", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -906,7 +906,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 			{ID: "rl-1", Name: "high-priority", Key: "client_ip", Events: 10, Window: "1m", Priority: 5, Enabled: true},
 			{ID: "rl-2", Name: "low-priority", Key: "client_ip", Events: 100, Window: "1m", Priority: 50, Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -932,7 +932,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "no-action", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -953,7 +953,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				},
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -978,7 +978,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "blocked-ips"}},
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, ls, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, ls, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -997,7 +997,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "test", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1012,7 +1012,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "monitor", Key: "client_ip", Events: 10, Window: "1m", Action: "log_only", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1036,7 +1036,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 			"caddy":   "caddy.erfi.io",
 			"sonarr":  "sonarr.erfi.io",
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, svcMap, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, svcMap, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1069,7 +1069,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "short-name", Service: "httpbun", Key: "client_ip", Events: 100, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1205,5 +1205,231 @@ func TestResolveServiceName(t *testing.T) {
 				t.Errorf("resolveServiceName(%q) = %q, want %q", tt.service, got, tt.want)
 			}
 		})
+	}
+}
+
+// ─── BuildPolicyWafConfig ─────────────────────────────────────────
+
+func TestBuildPolicyWafConfig_Nil(t *testing.T) {
+	got := BuildPolicyWafConfig(nil, nil)
+	if got != nil {
+		t.Errorf("expected nil, got %+v", got)
+	}
+}
+
+func TestBuildPolicyWafConfig_Defaults(t *testing.T) {
+	cs := newTestConfigStore(t)
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			ParanoiaLevel:     2,
+			InboundThreshold:  10,
+			OutboundThreshold: 8,
+		},
+	}
+	cs.Update(cfg)
+	got := BuildPolicyWafConfig(cs, nil)
+	if got == nil {
+		t.Fatal("expected non-nil")
+	}
+	if got.ParanoiaLevel != 2 {
+		t.Errorf("paranoia_level = %d, want 2", got.ParanoiaLevel)
+	}
+	if got.InboundThreshold != 10 {
+		t.Errorf("inbound_threshold = %d, want 10", got.InboundThreshold)
+	}
+	if got.OutboundThreshold != 8 {
+		t.Errorf("outbound_threshold = %d, want 8", got.OutboundThreshold)
+	}
+	if got.PerService != nil {
+		t.Errorf("expected nil PerService, got %+v", got.PerService)
+	}
+}
+
+func TestBuildPolicyWafConfig_PerService(t *testing.T) {
+	cs := newTestConfigStore(t)
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			ParanoiaLevel:     2,
+			InboundThreshold:  10,
+			OutboundThreshold: 10,
+		},
+		Services: map[string]WAFServiceSettings{
+			"httpbun": {
+				ParanoiaLevel:    3,
+				InboundThreshold: 5,
+			},
+		},
+	}
+	cs.Update(cfg)
+	svcMap := map[string]string{"httpbun": "httpbun.erfi.io"}
+	got := BuildPolicyWafConfig(cs, svcMap)
+	if got == nil {
+		t.Fatal("expected non-nil")
+	}
+	// Should have both short name and FQDN entries.
+	if len(got.PerService) != 2 {
+		t.Fatalf("expected 2 per_service entries, got %d", len(got.PerService))
+	}
+	fqdnCfg, ok := got.PerService["httpbun.erfi.io"]
+	if !ok {
+		t.Fatal("missing FQDN entry")
+	}
+	if fqdnCfg.ParanoiaLevel != 3 {
+		t.Errorf("fqdn paranoia_level = %d, want 3", fqdnCfg.ParanoiaLevel)
+	}
+	if fqdnCfg.InboundThreshold != 5 {
+		t.Errorf("fqdn inbound_threshold = %d, want 5", fqdnCfg.InboundThreshold)
+	}
+	shortCfg, ok := got.PerService["httpbun"]
+	if !ok {
+		t.Fatal("missing short name entry")
+	}
+	if shortCfg.ParanoiaLevel != 3 {
+		t.Errorf("short paranoia_level = %d, want 3", shortCfg.ParanoiaLevel)
+	}
+}
+
+func TestBuildPolicyWafConfig_InPolicyRulesJSON(t *testing.T) {
+	cs := newTestConfigStore(t)
+	cfg := WAFConfig{
+		Defaults: WAFServiceSettings{
+			ParanoiaLevel:     2,
+			InboundThreshold:  10,
+			OutboundThreshold: 10,
+		},
+	}
+	cs.Update(cfg)
+	wafCfg := BuildPolicyWafConfig(cs, nil)
+	data, err := GeneratePolicyRulesWithRL(nil, nil, RateLimitGlobalConfig{}, nil, nil, nil, wafCfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if file.WafConfig == nil {
+		t.Fatal("expected waf_config in output")
+	}
+	if file.WafConfig.ParanoiaLevel != 2 {
+		t.Errorf("paranoia_level = %d, want 2", file.WafConfig.ParanoiaLevel)
+	}
+	if file.WafConfig.InboundThreshold != 10 {
+		t.Errorf("inbound_threshold = %d, want 10", file.WafConfig.InboundThreshold)
+	}
+}
+
+func TestBuildPolicyWafConfig_NilOmitsFromJSON(t *testing.T) {
+	data, err := GeneratePolicyRulesWithRL(nil, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should not contain waf_config key at all.
+	if strings.Contains(string(data), "waf_config") {
+		t.Error("expected no waf_config in output when nil")
+	}
+}
+
+// ─── Detect Rule Generation ───────────────────────────────────────
+
+func TestGenerateDetectRules(t *testing.T) {
+	exclusions := []RuleExclusion{
+		{
+			ID:                  "d1",
+			Name:                "Missing Accept",
+			Type:                "detect",
+			Severity:            "NOTICE",
+			DetectParanoiaLevel: 1,
+			Conditions: []Condition{
+				{Field: "header", Operator: "eq", Value: "Accept:"},
+			},
+			Tags:    []string{"heuristic", "bot-signal"},
+			Enabled: true,
+		},
+		{
+			ID:      "a1",
+			Name:    "Allow Office",
+			Type:    "allow",
+			Enabled: true,
+			Conditions: []Condition{
+				{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"},
+			},
+		},
+	}
+
+	data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(file.Rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(file.Rules))
+	}
+
+	// Rules should be sorted by priority: allow (200) before detect (400).
+	if file.Rules[0].Type != "allow" {
+		t.Errorf("first rule type = %q, want allow", file.Rules[0].Type)
+	}
+	if file.Rules[1].Type != "detect" {
+		t.Errorf("second rule type = %q, want detect", file.Rules[1].Type)
+	}
+
+	// Detect rule should carry severity and paranoia level.
+	detectRule := file.Rules[1]
+	if detectRule.Severity != "NOTICE" {
+		t.Errorf("severity = %q, want NOTICE", detectRule.Severity)
+	}
+	if detectRule.ParanoiaLevel != 1 {
+		t.Errorf("paranoia_level = %d, want 1", detectRule.ParanoiaLevel)
+	}
+	if detectRule.Name != "Missing Accept" {
+		t.Errorf("name = %q, want Missing Accept", detectRule.Name)
+	}
+	if len(detectRule.Tags) != 2 || detectRule.Tags[0] != "heuristic" {
+		t.Errorf("tags = %v, want [heuristic bot-signal]", detectRule.Tags)
+	}
+
+	// Allow rule should NOT have severity or PL.
+	allowRule := file.Rules[0]
+	if allowRule.Severity != "" {
+		t.Errorf("allow rule severity = %q, want empty", allowRule.Severity)
+	}
+	if allowRule.ParanoiaLevel != 0 {
+		t.Errorf("allow rule paranoia_level = %d, want 0", allowRule.ParanoiaLevel)
+	}
+}
+
+func TestGenerateDetectRules_PriorityBand(t *testing.T) {
+	exclusions := []RuleExclusion{
+		{ID: "b1", Name: "Block", Type: "block", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/bad"}}},
+		{ID: "a1", Name: "Allow", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}}},
+		{ID: "d1", Name: "Detect", Type: "detect", Severity: "CRITICAL", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/sus"}}},
+	}
+
+	data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var file PolicyRulesFile
+	json.Unmarshal(data, &file)
+
+	// Priority order: block(100) < allow(200) < detect(400).
+	if len(file.Rules) != 3 {
+		t.Fatalf("expected 3 rules, got %d", len(file.Rules))
+	}
+	if file.Rules[0].Type != "block" {
+		t.Errorf("rule[0] type = %q, want block", file.Rules[0].Type)
+	}
+	if file.Rules[1].Type != "allow" {
+		t.Errorf("rule[1] type = %q, want allow", file.Rules[1].Type)
+	}
+	if file.Rules[2].Type != "detect" {
+		t.Errorf("rule[2] type = %q, want detect", file.Rules[2].Type)
 	}
 }

@@ -22,22 +22,25 @@ type PolicyRulesFile struct {
 	Rules           []PolicyRule                 `json:"rules"`
 	RateLimitConfig *PolicyRateLimitGlobalConfig `json:"rate_limit_config,omitempty"`
 	ResponseHeaders *PolicyResponseHeaderConfig  `json:"response_headers,omitempty"`
+	WafConfig       *PolicyWafConfig             `json:"waf_config,omitempty"`
 	Generated       string                       `json:"generated"`
 	Version         int                          `json:"version"`
 }
 
 // PolicyRule is a single policy rule as consumed by the Caddy plugin.
 type PolicyRule struct {
-	ID         string                 `json:"id"`
-	Name       string                 `json:"name"`
-	Type       string                 `json:"type"`
-	Service    string                 `json:"service,omitempty"`
-	Conditions []PolicyCondition      `json:"conditions"`
-	GroupOp    string                 `json:"group_op"`
-	RateLimit  *PolicyRateLimitConfig `json:"rate_limit,omitempty"`
-	Tags       []string               `json:"tags,omitempty"`
-	Enabled    bool                   `json:"enabled"`
-	Priority   int                    `json:"priority"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Type          string                 `json:"type"`
+	Service       string                 `json:"service,omitempty"`
+	Conditions    []PolicyCondition      `json:"conditions"`
+	GroupOp       string                 `json:"group_op"`
+	RateLimit     *PolicyRateLimitConfig `json:"rate_limit,omitempty"`
+	Severity      string                 `json:"severity,omitempty"`       // For detect: CRITICAL, ERROR, WARNING, NOTICE
+	ParanoiaLevel int                    `json:"paranoia_level,omitempty"` // For detect: 1-4 (0 = all levels)
+	Tags          []string               `json:"tags,omitempty"`
+	Enabled       bool                   `json:"enabled"`
+	Priority      int                    `json:"priority"`
 }
 
 // PolicyRateLimitConfig holds per-rule rate limit parameters.
@@ -56,6 +59,28 @@ type PolicyRateLimitGlobalConfig struct {
 	Jitter        float64 `json:"jitter,omitempty"`
 }
 
+// ─── WAF Config Types ──────────────────────────────────────────────
+//
+// These types mirror the caddy-policy-engine plugin's WafConfig.
+// wafctl converts its WAFConfig (models_exclusions.go) into this format
+// so the plugin can resolve per-service paranoia levels and thresholds
+// for anomaly scoring.
+
+// PolicyWafConfig holds global WAF settings for the anomaly scoring engine.
+type PolicyWafConfig struct {
+	ParanoiaLevel     int                               `json:"paranoia_level"`
+	InboundThreshold  int                               `json:"inbound_threshold"`
+	OutboundThreshold int                               `json:"outbound_threshold"`
+	PerService        map[string]PolicyWafServiceConfig `json:"per_service,omitempty"`
+}
+
+// PolicyWafServiceConfig holds per-service WAF overrides.
+type PolicyWafServiceConfig struct {
+	ParanoiaLevel     int `json:"paranoia_level,omitempty"`
+	InboundThreshold  int `json:"inbound_threshold,omitempty"`
+	OutboundThreshold int `json:"outbound_threshold,omitempty"`
+}
+
 // PolicyCondition represents a single match condition for the plugin.
 type PolicyCondition struct {
 	Field     string   `json:"field"`
@@ -68,8 +93,9 @@ type PolicyCondition struct {
 // policyEngineTypes are the exclusion types handled by the Caddy policy
 // engine plugin instead of Coraza SecRules.
 var policyEngineTypes = map[string]bool{
-	"allow": true,
-	"block": true,
+	"allow":  true,
+	"block":  true,
+	"detect": true,
 }
 
 // policyTypePriority assigns a base priority per exclusion type.
@@ -80,6 +106,7 @@ var policyTypePriority = map[string]int{
 	"block":      100,
 	"allow":      200,
 	"rate_limit": 300,
+	"detect":     400,
 }
 
 // GeneratePolicyRules converts exclusions into the plugin's JSON format.
@@ -90,7 +117,7 @@ var policyTypePriority = map[string]int{
 // rate limit rules. Use GeneratePolicyRulesWithRL when RL rules should
 // also be included in the policy-rules.json output.
 func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore) ([]byte, error) {
-	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore, nil, nil)
+	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore, nil, nil, nil)
 }
 
 // GeneratePolicyRulesWithRL converts exclusions and rate limit rules into
@@ -108,10 +135,13 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 //
 // respHeaders is included in the output when non-nil, enabling the plugin
 // to inject CSP and security headers without Caddy reload.
-func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string, respHeaders *PolicyResponseHeaderConfig) ([]byte, error) {
+//
+// wafConfig is included in the output when non-nil, enabling the plugin's
+// anomaly scoring engine with per-service paranoia levels and thresholds.
+func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string, respHeaders *PolicyResponseHeaderConfig, wafConfig *PolicyWafConfig) ([]byte, error) {
 	var rules []PolicyRule
 
-	// Convert WAF exclusions (allow/block).
+	// Convert WAF exclusions (allow/block/detect).
 	for i, e := range exclusions {
 		if !policyEngineTypes[e.Type] {
 			continue
@@ -131,7 +161,7 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 			groupOp = "and"
 		}
 
-		rules = append(rules, PolicyRule{
+		pr := PolicyRule{
 			ID:         e.ID,
 			Name:       e.Name,
 			Type:       e.Type,
@@ -140,7 +170,16 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 			Tags:       e.Tags,
 			Enabled:    e.Enabled,
 			Priority:   basePriority + tiebreaker,
-		})
+		}
+
+		// Detect rules carry severity and paranoia level for the plugin's
+		// anomaly scoring engine.
+		if e.Type == "detect" {
+			pr.Severity = e.Severity
+			pr.ParanoiaLevel = e.DetectParanoiaLevel
+		}
+
+		rules = append(rules, pr)
 	}
 
 	// Convert rate limit rules.
@@ -200,6 +239,7 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 	file := PolicyRulesFile{
 		Rules:           rules,
 		ResponseHeaders: respHeaders,
+		WafConfig:       wafConfig,
 		Generated:       time.Now().UTC().Format(time.RFC3339),
 		Version:         1,
 	}
@@ -446,6 +486,45 @@ func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStor
 	}
 
 	return resp
+}
+
+// ─── WAF Config Builder ────────────────────────────────────────────
+
+// BuildPolicyWafConfig converts the wafctl WAFConfig into the plugin's
+// PolicyWafConfig format. Per-service entries are keyed by FQDN using the
+// provided serviceMap so the plugin can match Host headers in production.
+//
+// Returns nil if cs is nil (anomaly scoring disabled — backward compatible).
+func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *PolicyWafConfig {
+	if cs == nil {
+		return nil
+	}
+	cfg := cs.Get()
+
+	pwc := &PolicyWafConfig{
+		ParanoiaLevel:     cfg.Defaults.ParanoiaLevel,
+		InboundThreshold:  cfg.Defaults.InboundThreshold,
+		OutboundThreshold: cfg.Defaults.OutboundThreshold,
+	}
+
+	if len(cfg.Services) > 0 {
+		pwc.PerService = make(map[string]PolicyWafServiceConfig, len(cfg.Services))
+		for svc, ss := range cfg.Services {
+			fqdn := resolveServiceName(svc, serviceMap)
+			psc := PolicyWafServiceConfig{
+				ParanoiaLevel:     ss.ParanoiaLevel,
+				InboundThreshold:  ss.InboundThreshold,
+				OutboundThreshold: ss.OutboundThreshold,
+			}
+			pwc.PerService[fqdn] = psc
+			// Also map the short name if different from FQDN.
+			if fqdn != svc {
+				pwc.PerService[svc] = psc
+			}
+		}
+	}
+
+	return pwc
 }
 
 // resolveListItems looks up a managed list by name and returns its items and kind.

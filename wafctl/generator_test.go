@@ -726,10 +726,11 @@ func TestValidateConditionFields(t *testing.T) {
 		t.Error("expected error for invalid operator on ip field")
 	}
 
-	// Empty value
-	e.Conditions = []Condition{{Field: "path", Operator: "eq", Value: ""}}
+	// Empty value — allowed for eq/neq (matching empty/missing headers),
+	// but still rejected for other operators like contains.
+	e.Conditions = []Condition{{Field: "path", Operator: "contains", Value: ""}}
 	if err := validateExclusion(e); err == nil {
-		t.Error("expected error for empty condition value")
+		t.Error("expected error for empty condition value with contains operator")
 	}
 
 	// Invalid method value

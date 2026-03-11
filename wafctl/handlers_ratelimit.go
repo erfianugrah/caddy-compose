@@ -86,7 +86,7 @@ func handleDeleteRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 	}
 }
 
-func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -103,7 +103,8 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, ls *Managed
 			allExclusions := es.EnabledExclusions()
 			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls, svcMap, respHeaders)
+			wafCfg := BuildPolicyWafConfig(cs, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls, svcMap, respHeaders, wafCfg)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",
