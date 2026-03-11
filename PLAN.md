@@ -803,8 +803,45 @@ During the transition, these rules dual-run alongside Coraza's CRS 920xxx rules.
   - `length` transform on multi-value fields (`all_args_names`, `all_args_values`) applies per-value via `isMulti` iteration
   - `count:` pseudo-field returns `strconv.Itoa(len(values))`, compared via `gt` numeric operator
   - `phrase_match` + `transforms` on aggregate fields works (transforms applied per-value before Aho-Corasick search)
-- [ ] Update e2e test `TestDefaultRulesAPI` expected count (12 → 26)
-- [ ] Version bumps: caddy `3.11.0-2.11.1`, wafctl `2.12.0`
+- [x] Update e2e test `TestDefaultRulesAPI` expected count (12 → 26)
+- [x] Version bumps: caddy `3.11.0-2.11.1`, wafctl `2.12.0`
+- [x] E2e tests passing
+- [x] Deployed to production
+
+### v0.11.0 — CRS 930xxx/921xxx/943xxx: LFI, Protocol Attack, Session Fixation
+
+Second batch of CRS rule porting. Three categories in one release — all low effort with well-understood patterns. 11 new rules bring the total to 37 default rules. `default-rules.json` version 3 → 4.
+
+- [x] Added 11 new rules to `coraza/default-rules.json` (version 3 → 4, 37 rules total):
+
+  **LFI / Path Traversal (930xxx) — 4 rules, all PL1 CRITICAL:**
+  - PE-930110: Path traversal in arguments (decoded `../` sequences, `all_args regex` with `urlDecodeUni`+`normalizePath`+`removeNulls` transforms)
+  - PE-930111: Path traversal in URI path (same pattern on `uri_path`, separate rule for clarity)
+  - PE-930120: OS file access attempt (`all_args phrase_match` with 80 curated entries from CRS `lfi-os-files.data` — `.ssh/`, `.aws/`, `etc/passwd`, `proc/self`, SSH keys, cloud creds, etc. + `urlDecodeUni`+`normalizePathWin` transforms)
+  - PE-930130: Restricted file access in URI (`uri_path phrase_match` with 55 curated entries from CRS `restricted-files.data` — `.git/`, `.env`, `wp-config.`, `Dockerfile`, `secrets.json`, Vite CVE paths, etc. + `urlDecodeUni`+`normalizePathWin` transforms)
+
+  **Protocol Attack / HTTP Response Splitting (921xxx) — 5 rules, all PL1 CRITICAL:**
+  - PE-921110: HTTP request smuggling (embedded method+version in args, `htmlEntityDecode`+`lowercase` transforms. CRS 921110)
+  - PE-921120: HTTP response splitting (CRLF + response header names in args, `urlDecodeUni`+`lowercase` transforms. CRS 921120)
+  - PE-921130: Embedded response body (CRLF + `http/N` or HTML tags in args, `htmlEntityDecode`+`lowercase` transforms. CRS 921130)
+  - PE-921150: CRLF in argument names (`all_args_names regex [\r\n]`. CRS 921150)
+  - PE-921200: LDAP injection (LDAP filter syntax + DN components in args, `htmlEntityDecode`+`lowercase` transforms. CRS 921200)
+
+  **Session Fixation (943xxx) — 2 rules, all PL1 CRITICAL:**
+  - PE-943100: Cookie setting via HTML (`document.cookie` + `http-equiv set-cookie` patterns in args. CRS 943100)
+  - PE-943120: Session ID param without referer (AND condition: `all_args_names phrase_match` 14 session param names + `referer eq ""`. CRS 943110/943120 merged)
+
+  **Skipped (with rationale):**
+  - 921140: CRLF in headers — already covered by PE-9100013
+  - 921160: CRLF in arg names — similar to PE-921150
+  - 921190: CRLF in path — covered by PE-920220 + PE-9100012
+  - 921240: Apache mod_proxy — Apache-specific, not relevant to Caddy
+  - 921250: Old cookie V1 — edge case, low value
+  - 921421: Body processor bypass — Coraza-specific, not applicable to policy engine
+  - 943110: Session ID + off-domain referer (chained) — requires cross-field chain comparison, merged into PE-943120
+
+- [x] Updated e2e test `TestDefaultRulesAPI` (expected 26 → 37, spot checks for all 3 categories)
+- [x] Version bumps: caddy `3.12.0-2.11.1`, wafctl `2.13.0` (all 5+4 locations)
 - [ ] E2e tests passing
 - [ ] Deployed to production
 
@@ -938,9 +975,9 @@ Rules are shipped as built-in defaults in `default-rules.json` (loaded by plugin
 | Priority | Category | Rule Range | Effort | Status |
 |----------|----------|------------|--------|--------|
 | 1 | Protocol Enforcement | 920xxx | Low | **DONE** (v0.10.4, 14 rules) |
-| 2 | Path Traversal / LFI | 930xxx | Low | Next — regex + `normalizePath` transform |
-| 3 | HTTP Response Splitting | 921xxx | Low | Next — CRLF detection, partially covered by PE-9100012/13 |
-| 4 | Session Fixation | 943xxx | Low | Next — regex patterns |
+| 2 | Path Traversal / LFI | 930xxx | Low | **DONE** (v0.11.0, 4 rules) |
+| 3 | HTTP Response Splitting | 921xxx | Low | **DONE** (v0.11.0, 5 rules) |
+| 4 | Session Fixation | 943xxx | Low | **DONE** (v0.11.0, 2 rules) |
 | 5 | RCE | 932xxx | Medium | Planned — regex + `phrase_match` command wordlists, partially covered by PE-9100010/11 |
 | 6 | RFI | 931xxx | Medium | Planned — regex for URL patterns in params |
 | 7 | PHP/Node.js/Java Injection | 933, 934, 944xxx | Medium | Planned — regex + `phrase_match` function name wordlists |
@@ -1033,9 +1070,9 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Ship scanner-useragents.txt equivalent as phrase_match default rule — **COMPLETED** (v0.10.3, PE-9100032)
 - [x] Ship generic-useragents.txt equivalent as phrase_match default rule — **COMPLETED** (v0.10.3, PE-9100035 + PE-9100036)
 - [~] Port Protocol Enforcement rules (920xxx subset) — **v0.10.4**: 14 rules shipped (header validation, encoding validation, policy enforcement)
-- [ ] Port LFI / Path Traversal rules (930xxx subset) — regex + `normalizePath` transform
-- [ ] Port HTTP Response Splitting rules (921xxx subset) — CRLF detection, partially covered by PE-9100012/13
-- [ ] Port Session Fixation rules (943xxx subset) — regex patterns
+- [x] Port LFI / Path Traversal rules (930xxx subset) — **v0.11.0**: 4 rules (path traversal regex + phrase_match OS files + restricted files)
+- [x] Port HTTP Response Splitting rules (921xxx subset) — **v0.11.0**: 5 rules (smuggling, response splitting, LDAP injection)
+- [x] Port Session Fixation rules (943xxx subset) — **v0.11.0**: 2 rules (cookie setting + session param)
 - [ ] Port RCE rules (932xxx subset) — regex + `phrase_match` with command wordlists, partially covered by PE-9100010/11
 - [ ] Port RFI rules (931xxx subset) — regex for URL patterns in params
 - [ ] Port PHP/Node.js/Java Injection rules (933/934/944xxx subset) — regex + `phrase_match` against function name wordlists
@@ -1105,8 +1142,8 @@ Usage:
 | v0.10.0 | + default rules loading/merging | Remaining CRS categories |
 | v0.10.2 | + default rule override API (list/get/set/reset) | Remaining CRS categories |
 | v0.10.3 | + scanner/generic UA as phrase_match default rules, v6 migration | Remaining CRS categories |
-| v0.10.4 (current) | + 14 CRS 920xxx Protocol Enforcement rules (26 defaults total) | Remaining CRS categories (930–944xxx) |
-| v0.11.x | + LFI (930xxx), HTTP Response Splitting (921xxx), Session Fixation (943xxx) | RCE, injection, XSS, SQLi |
+| v0.10.4 | + 14 CRS 920xxx Protocol Enforcement rules (26 defaults total) | Remaining CRS categories (930–944xxx) |
+| v0.11.0 (current) | + LFI (930xxx, 4 rules), Protocol Attack (921xxx, 5 rules), Session Fixation (943xxx, 2 rules) — 37 defaults total | RCE, RFI, injection, XSS, SQLi |
 | v0.12.x | + RCE (932xxx), RFI (931xxx), PHP/Node/Java injection (933/934/944xxx) | XSS, SQLi (hardest categories) |
 | v1.0 | + XSS (941xxx), SQLi (942xxx) with libinjection | Nothing — Coraza can be removed |
 

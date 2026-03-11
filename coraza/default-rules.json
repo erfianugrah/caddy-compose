@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "rules": [
     {
       "id": "PE-9100003",
@@ -526,6 +526,278 @@
       "severity": "CRITICAL",
       "paranoia_level": 2,
       "tags": ["protocol-enforcement", "920xxx", "policy"],
+      "enabled": true,
+      "priority": 400
+    },
+
+    {
+      "id": "PE-930110",
+      "name": "Path traversal attack (decoded)",
+      "description": "Detects decoded directory traversal sequences (../ or ..\\ variants). Go's net/http URL-decodes paths before they reach the handler, so we match the decoded form. CRS 930110.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "(?:^|[/;\\\\])\\.{2,3}[/;\\\\]",
+          "transforms": ["urlDecodeUni", "normalizePath", "removeNulls"]
+        }
+      ],
+      "group_op": "or",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-lfi", "930xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-930111",
+      "name": "Path traversal in URI path (decoded)",
+      "description": "Detects decoded directory traversal sequences in the URI path itself. Separate from PE-930110 which checks argument values. CRS 930110.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "uri_path",
+          "operator": "regex",
+          "value": "(?:^|[/;\\\\])\\.{2,3}[/;\\\\]",
+          "transforms": ["urlDecodeUni", "normalizePath", "removeNulls"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-lfi", "930xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-930120",
+      "name": "OS file access attempt",
+      "description": "Detects attempts to access sensitive OS files (passwd, shadow, SSH keys, cloud credentials, etc.) via argument values. Curated from CRS lfi-os-files.data. CRS 930120.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "phrase_match",
+          "list_items": [
+            ".ssh/", ".aws/", ".azure/", ".kube/", ".docker/", ".gnupg/", ".git/",
+            ".env", ".bashrc", ".bash_", ".profile", ".zshrc", ".netrc", ".pgpass",
+            ".htpasswd", ".htaccess", ".htdigest", ".npmrc", ".pypirc",
+            ".my.cnf", ".s3cfg", ".boto", ".credentials", ".secrets",
+            ".google_authenticator", ".password-store", ".config/",
+            ".terraform/", ".vagrant.d/", ".cargo/", ".npm/", ".nvm/",
+            "etc/passwd", "etc/shadow", "etc/group", "etc/gshadow",
+            "etc/hosts", "etc/hostname", "etc/resolv.conf", "etc/fstab",
+            "etc/crontab", "etc/sudoers", "etc/ssh", "etc/ssl",
+            "etc/mysql", "etc/nginx", "etc/apache2", "etc/redis.conf",
+            "etc/mongod.conf", "etc/docker", "etc/kubernetes",
+            "etc/letsencrypt", "etc/postfix", "etc/dovecot",
+            "proc/self", "proc/version", "proc/cmdline", "proc/cpuinfo",
+            "proc/meminfo", "proc/mounts", "proc/net", "proc/environ",
+            "var/log", "var/mail", "var/spool", "var/run/utmp",
+            "var/lib/mysql", "var/lib/pgsql",
+            "wp-config.", "web.config", "configuration.php", "localsettings.php",
+            "config.inc.php", "config.php", "parameters.yml", "database.yml",
+            "boot.ini", "win.ini", "system.ini",
+            "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "authorized_keys", "known_hosts"
+          ],
+          "transforms": ["urlDecodeUni", "normalizePathWin"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-lfi", "930xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-930130",
+      "name": "Restricted file access in URI",
+      "description": "Detects direct requests for files that should never be publicly accessible (version control, configs, credentials, backups). Curated from CRS restricted-files.data. CRS 930130.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "uri_path",
+          "operator": "phrase_match",
+          "list_items": [
+            ".git/", ".svn/", ".hg/", ".env", ".htpasswd", ".htaccess", ".htdigest",
+            ".ssh/", ".aws/", ".kube/", ".docker/", ".gnupg/", ".npmrc",
+            ".gitconfig", ".gitignore", ".gitmodules", ".gitattributes",
+            ".vscode", ".idea", "nbproject/",
+            ".DS_Store", "Thumbs.db", "Desktop.ini",
+            "wp-config.", "web.config", "config.inc.php", "config.php",
+            "configuration.php", "localsettings.php", "defaults.inc.php",
+            "Dockerfile", "docker-compose.y", "compose.yml", "compose.yaml",
+            "package.json", "package-lock.json", "yarn.lock", "composer.json", "composer.lock",
+            "Gruntfile.js", "webpack.config.js", "bower.json",
+            "database.yml", "database.yaml", "parameters.yml",
+            "credentials.json", "secrets.json", "secrets.yaml", "secrets.yml",
+            "gitlab.rb", "initial_root_password",
+            "WEB-INF/", "__pycache__/",
+            "phpinfo.php", "php.ini", ".user.ini",
+            ".gitlab-ci.yml", ".travis.yml",
+            "debug.log", "error.log", "npm-debug.log", "pm2.log",
+            "sslvpn_websession", "sendgrid.env",
+            "/@fs/", "/@id/"
+          ],
+          "transforms": ["urlDecodeUni", "normalizePathWin"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-lfi", "930xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+
+    {
+      "id": "PE-921110",
+      "name": "HTTP request smuggling attack",
+      "description": "Detects HTTP request smuggling attempts — embedded HTTP method and version string in argument values. CRS 921110.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "(?:get|post|head|options|connect|put|delete|trace|track|patch|propfind|propatch|mkcol|copy|move|lock|unlock)\\s+[^\\s]+\\s+http/\\d",
+          "transforms": ["htmlEntityDecode", "lowercase"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "921xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-921120",
+      "name": "HTTP response splitting in arguments",
+      "description": "Detects CRLF injection followed by HTTP response header names (Content-Type, Set-Cookie, Location, etc.) in argument values. CRS 921120.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "[\\r\\n]\\s*(?:content-(?:type|length)|set-cookie|location|transfer-encoding|www-authenticate|proxy-authenticate)\\s*:",
+          "transforms": ["urlDecodeUni", "lowercase"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "921xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-921130",
+      "name": "HTTP response splitting — embedded response body",
+      "description": "Detects embedded HTTP response or HTML body in arguments, indicating response splitting or header injection. CRS 921130.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "[\\r\\n]\\s*(?:http/\\d|<!(?:doctype|html)|<(?:html|head|body|meta|script|style|link|div|span|form|img|iframe)\\b)",
+          "transforms": ["htmlEntityDecode", "lowercase"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "921xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-921150",
+      "name": "CRLF in argument names",
+      "description": "Detects carriage return or line feed characters in argument names. These are never valid and indicate header/parameter injection attempts. CRS 921150.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_names",
+          "operator": "regex",
+          "value": "[\\r\\n]"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "921xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-921200",
+      "name": "LDAP injection attack",
+      "description": "Detects LDAP injection patterns in arguments — LDAP filter syntax, distinguished name components, and common search operations. CRS 921200.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "(?:\\((?:[\\|&!]\\(|\\)\\(|[a-z]+\\s*(?:~=|>=|<=|=(?:[^)]*\\*))))|(?:(?:cn|dc|ou|uid|mail|sn|givenname|objectclass|samaccountname|userprincipalname|memberof|distinguishedname|dn)\\s*=)",
+          "transforms": ["htmlEntityDecode", "lowercase"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "921xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+
+    {
+      "id": "PE-943100",
+      "name": "Session fixation — cookie setting via HTML",
+      "description": "Detects attempts to set cookies through HTML content in arguments (JavaScript document.cookie or HTTP-EQUIV Set-Cookie). CRS 943100.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "(?:\\.cookie\\b.*?;[^0-9A-Za-z_]*?(?:expires|domain|path|secure|httponly|samesite)[^0-9A-Za-z_]*?=|\\bhttp-equiv[^0-9A-Za-z_]+set-cookie\\b)",
+          "transforms": ["urlDecodeUni"]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-session-fixation", "943xxx"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-943120",
+      "name": "Session fixation — session ID parameter without referer",
+      "description": "Detects common session ID parameter names in requests with no Referer header — suggests an attacker is injecting a session token via a crafted link. CRS 943110/943120.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_names",
+          "operator": "phrase_match",
+          "list_items": [
+            "jsessionid", "aspsessionid", "asp.net_sessionid", "phpsessid",
+            "phpsessionid", "weblogicsession", "session_id", "sessionid",
+            "cfid", "cftoken", "cfsid", "sid", "sessid", "zenid"
+          ],
+          "transforms": ["lowercase"]
+        },
+        {
+          "field": "referer",
+          "operator": "eq",
+          "value": ""
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-session-fixation", "943xxx"],
       "enabled": true,
       "priority": 400
     }
