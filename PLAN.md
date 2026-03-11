@@ -769,7 +769,14 @@ These are the immediate candidates — they're already written as SecRules and j
 
 ### Tasks
 
-- [ ] Define default rule JSON schema and loading mechanism
+- [x] Define default rule JSON schema and loading mechanism — **COMPLETED** (plugin v0.10.0)
+  - `DefaultRulesFile` Caddyfile directive + JSON config field
+  - `DefaultRulesFile` struct: `{ "rules": [...], "version": N }`
+  - `DisabledDefaultRules` field on user `PolicyRulesFile`
+  - `mergeDefaultAndUserRules()` — defaults first, user rules override by ID, disabled IDs filtered
+  - Hot-reload watches both files via mtime comparison
+  - 9 new test functions (18 subtests), 327 total plugin tests
+  - Deployed: caddy 3.7.0-2.11.1, wafctl 2.8.0, plugin v0.10.0
 - [ ] Port Protocol Enforcement rules (920xxx subset)
 - [ ] Port LFI rules (930xxx subset)
 - [ ] Port RCE rules (932xxx subset) — requires phrase_match
