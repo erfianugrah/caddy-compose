@@ -1044,48 +1044,34 @@ func TestMatchesPolicyRuleNameFilter_MultiplePolicy(t *testing.T) {
 // ─── Store Migration Tests ─────────────────────────────────────────
 
 func TestStoreMigrationFromEmptyFile(t *testing.T) {
-	// No file on disk → should seed heuristic rules via migration v1.
+	// No file on disk → full migration chain seeds then cleans up.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
 
 	es := NewExclusionStore(path)
 	rules := es.List()
 
-	// 3 from v1 (heuristic bot rules) + 8 from v3 (ipsum block rules) = 11
-	// (v4 is no-op, v5 removes detect rules — none were seeded since v4 is no-op)
-	if len(rules) != 11 {
-		t.Fatalf("expected 11 seed rules (3 heuristic + 8 ipsum), got %d", len(rules))
+	// v1 seeds 3 bot rules, v3 seeds 8 ipsum rules = 11
+	// v6 removes the 3 bot rules (now in default-rules.json) = 8 remaining
+	if len(rules) != 8 {
+		t.Fatalf("expected 8 seed rules (8 ipsum, bot rules removed by v6), got %d", len(rules))
 	}
 
-	// Verify the seed rules by name.
+	// Verify only ipsum rules remain.
 	names := map[string]bool{}
 	for _, r := range rules {
 		names[r.Name] = true
 	}
-	for _, expected := range []string{"Scanner UA Block", "HTTP/1.0 Anomaly", "Generic UA Anomaly"} {
-		if !names[expected] {
-			t.Errorf("missing seed rule %q", expected)
+	// Bot rules should be gone (removed by v6).
+	for _, removed := range []string{"Scanner UA Block", "HTTP/1.0 Anomaly", "Generic UA Anomaly"} {
+		if names[removed] {
+			t.Errorf("rule %q should have been removed by v6 migration", removed)
 		}
 	}
 	for level := 1; level <= 8; level++ {
 		name := fmt.Sprintf("IPsum Block (Level %d)", level)
 		if !names[name] {
 			t.Errorf("missing ipsum seed rule %q", name)
-		}
-	}
-
-	// Verify Scanner UA Block is a block type with user_agent in condition.
-	for _, r := range rules {
-		if r.Name == "Scanner UA Block" {
-			if r.Type != "block" {
-				t.Errorf("Scanner UA Block: want type block, got %s", r.Type)
-			}
-			if len(r.Conditions) != 1 || r.Conditions[0].Field != "user_agent" || r.Conditions[0].Operator != "in" {
-				t.Errorf("Scanner UA Block: unexpected conditions: %+v", r.Conditions)
-			}
-			if !strings.Contains(r.Conditions[0].Value, "sqlmap") {
-				t.Error("Scanner UA Block: condition value should contain sqlmap")
-			}
 		}
 	}
 
@@ -1098,8 +1084,8 @@ func TestStoreMigrationFromEmptyFile(t *testing.T) {
 	if sf.Version != currentStoreVersion {
 		t.Errorf("saved version: want %d, got %d", currentStoreVersion, sf.Version)
 	}
-	if len(sf.Exclusions) != 11 {
-		t.Errorf("saved exclusions: want 11, got %d", len(sf.Exclusions))
+	if len(sf.Exclusions) != 8 {
+		t.Errorf("saved exclusions: want 8, got %d", len(sf.Exclusions))
 	}
 }
 
@@ -1122,10 +1108,9 @@ func TestStoreMigrationFromLegacyArray(t *testing.T) {
 	es := NewExclusionStore(path)
 	rules := es.List()
 
-	// Should have 1 existing + 3 seeded (v1) + 8 ipsum (v3) = 12 rules.
-	// (v4 is no-op, v5 removes detect rules — none were seeded since v4 is no-op)
-	if len(rules) != 12 {
-		t.Fatalf("expected 12 rules (1 existing + 3 seeded + 8 ipsum), got %d", len(rules))
+	// 1 existing + 3 seeded (v1) + 8 ipsum (v3) - 3 bot rules (v6) = 9.
+	if len(rules) != 9 {
+		t.Fatalf("expected 9 rules (1 existing + 8 ipsum, bot rules removed by v6), got %d", len(rules))
 	}
 
 	// Existing rule should be preserved.
@@ -1164,18 +1149,18 @@ func TestStoreMigrationIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exclusions.json")
 
-	// First load: seeds rules (3 heuristic + 8 ipsum = 11).
+	// First load: seeds rules then v6 removes bot rules = 8 ipsum only.
 	es1 := NewExclusionStore(path)
 	count1 := len(es1.List())
-	if count1 != 11 {
-		t.Fatalf("first load: expected 11 seed rules, got %d", count1)
+	if count1 != 8 {
+		t.Fatalf("first load: expected 8 seed rules, got %d", count1)
 	}
 
 	// Second load: reads versioned file, no migration.
 	es2 := NewExclusionStore(path)
 	count2 := len(es2.List())
-	if count2 != 11 {
-		t.Fatalf("second load: expected 11 rules (no re-seeding), got %d", count2)
+	if count2 != 8 {
+		t.Fatalf("second load: expected 8 rules (no re-seeding), got %d", count2)
 	}
 }
 
@@ -1406,16 +1391,13 @@ func TestMigrateV1toV2_Idempotent(t *testing.T) {
 // ─── Store Migration v2 Integration Test ────────────────────────────
 
 func TestStoreMigrationV2_FromFreshInstall(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "exclusions.json")
+	// Test that v2 migration adds tags to v1-seeded rules.
+	// Test the v1→v2 migration functions directly since v6 removes bot rules.
+	rules := migrateV0toV1(nil)
+	rules = migrateV1toV2(rules)
 
-	// Create a fresh store — should seed v1 rules then apply v2 migration.
-	es := NewExclusionStore(path)
-	exclusions := es.List()
-
-	// Verify seeded rules have tags from v0→v1→v2 migration chain.
 	found := 0
-	for _, e := range exclusions {
+	for _, e := range rules {
 		switch e.Name {
 		case "Scanner UA Block":
 			found++
@@ -1435,15 +1417,7 @@ func TestStoreMigrationV2_FromFreshInstall(t *testing.T) {
 		}
 	}
 	if found != 3 {
-		t.Errorf("expected 3 seeded rules, found %d", found)
-	}
-
-	// Verify store version is persisted as current.
-	data, _ := os.ReadFile(path)
-	var sf storeFile
-	json.Unmarshal(data, &sf)
-	if sf.Version != currentStoreVersion {
-		t.Errorf("stored version = %d, want %d", sf.Version, currentStoreVersion)
+		t.Errorf("expected 3 seeded rules with tags, found %d", found)
 	}
 }
 
@@ -1466,18 +1440,17 @@ func TestStoreMigrationV2_FromV1(t *testing.T) {
 	es := NewExclusionStore(path)
 	exclusions := es.List()
 
-	// 2 original + 8 ipsum seeded by v3 = 10 (v4 is no-op, v5 has no detect to remove)
-	if len(exclusions) != 10 {
-		t.Fatalf("expected 10 rules (2 original + 8 ipsum), got %d", len(exclusions))
+	// 2 original + 8 ipsum (v3) - 1 Scanner UA Block (v6) = 9.
+	if len(exclusions) != 9 {
+		t.Fatalf("expected 9 rules (1 custom + 8 ipsum, Scanner UA removed by v6), got %d", len(exclusions))
 	}
 
-	// Scanner UA Block should have tags backfilled (v2 migration).
+	// Scanner UA Block should have been removed by v6.
 	for _, e := range exclusions {
 		if e.Name == "Scanner UA Block" {
-			if len(e.Tags) == 0 {
-				t.Error("Scanner UA Block should have tags after v2 migration")
-			}
+			t.Error("Scanner UA Block should have been removed by v6 migration")
 		}
+		// Custom Rule should be preserved without tags.
 		if e.Name == "Custom Rule" {
 			if len(e.Tags) != 0 {
 				t.Error("Custom Rule should not have tags after v2 migration")
@@ -1504,9 +1477,9 @@ func TestStoreMigrationV3_FromV2(t *testing.T) {
 	es := NewExclusionStore(path)
 	exclusions := es.List()
 
-	// 2 original + 8 ipsum = 10 (v4 is no-op, v5 has no detect to remove)
-	if len(exclusions) != 10 {
-		t.Fatalf("expected 10 rules (2 original + 8 ipsum), got %d", len(exclusions))
+	// 2 original + 8 ipsum (v3) - 1 Scanner UA Block (v6) = 9.
+	if len(exclusions) != 9 {
+		t.Fatalf("expected 9 rules (1 custom + 8 ipsum, Scanner UA removed by v6), got %d", len(exclusions))
 	}
 
 	// Verify ipsum rules were added.
@@ -1609,6 +1582,43 @@ func TestStoreMigrationV5_PreservesUserDetectRules(t *testing.T) {
 	result := migrateV4toV5(existing)
 	if len(result) != 1 {
 		t.Errorf("expected 1 rule (user detect preserved), got %d", len(result))
+	}
+}
+
+func TestStoreMigrationV6_RemovesSeededBotRules(t *testing.T) {
+	// v6 removes the 3 v1-seeded bot rules now in default-rules.json.
+	existing := []RuleExclusion{
+		{ID: "a", Name: "Scanner UA Block", Type: "block", Tags: []string{"scanner", "bot-detection"}, Enabled: true},
+		{ID: "b", Name: "HTTP/1.0 Anomaly", Type: "anomaly", Tags: []string{"bot-signal", "protocol"}, Enabled: true},
+		{ID: "c", Name: "Generic UA Anomaly", Type: "anomaly", Tags: []string{"bot-signal", "generic-ua"}, Enabled: true},
+		{ID: "d", Name: "Custom Block", Type: "block", Enabled: true},
+		{ID: "e", Name: "Custom Detect", Type: "detect", Tags: []string{"custom"}, Severity: "WARNING", Enabled: true},
+	}
+	result := migrateV5toV6(existing)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 rules (3 bot rules removed), got %d", len(result))
+	}
+	if result[0].ID != "d" || result[1].ID != "e" {
+		t.Errorf("unexpected surviving rules: %v, %v", result[0].Name, result[1].Name)
+	}
+}
+
+func TestStoreMigrationV6_PreservesUserRules(t *testing.T) {
+	// v6 only removes the 3 known names — user rules are preserved.
+	existing := []RuleExclusion{
+		{ID: "a", Name: "My Scanner Rule", Type: "block", Tags: []string{"scanner"}, Enabled: true},
+		{ID: "b", Name: "My Protocol Rule", Type: "anomaly", Enabled: true},
+	}
+	result := migrateV5toV6(existing)
+	if len(result) != 2 {
+		t.Errorf("expected 2 rules (user rules preserved), got %d", len(result))
+	}
+}
+
+func TestStoreMigrationV6_EmptyStore(t *testing.T) {
+	result := migrateV5toV6(nil)
+	if len(result) != 0 {
+		t.Errorf("expected 0 rules for empty store, got %d", len(result))
 	}
 }
 

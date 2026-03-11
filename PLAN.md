@@ -731,6 +731,45 @@ CRS-equivalent rules will ship as built-in detection rules with the Docker image
 
 **Shipped:** caddy 3.8.0-2.11.1, wafctl 2.9.0. Default rules file with 9 rules live in production.
 
+### v0.10.2 — Default Rule Override API
+
+- [x] Created `wafctl/default_rules.go` — `DefaultRuleStore` with JSON merge overrides
+  - `NewDefaultRuleStore(defaultsPath, overridesPath)` loads baked defaults + persisted overrides
+  - `List()` returns all defaults with `is_default`, `has_override`, `override_fields` metadata
+  - `Get(id)` single rule lookup with override applied
+  - `SetOverride(id, json.RawMessage)` partial JSON merge (strips `id` field, persists)
+  - `RemoveOverride(id)` revert to baked default
+  - `GetOverriddenRules()` returns modified rules for policy-rules.json emission
+  - `GetDisabledIDs()` returns IDs where `enabled: false` for `DisabledDefaultRules`
+- [x] Added `ApplyDefaultRuleOverrides()` in `policy_generator.go` — appends overridden rules + sets `DisabledDefaultRules`
+- [x] Wired `*DefaultRuleStore` through all 6 deploy paths (generateOnBoot, deployAll, handleDeploy, handleDeployRLRules, handleDeployCSP, handleDeploySecurityHeaders)
+- [x] 4 new API endpoints: `GET /api/default-rules`, `GET /api/default-rules/{id}`, `PUT /api/default-rules/{id}`, `DELETE /api/default-rules/{id}/override`
+- [x] Env vars: `WAF_DEFAULT_RULES_FILE`, `WAF_DEFAULT_RULES_OVERRIDES_FILE`
+- [x] 24 unit tests in `default_rules_test.go` (store, generator integration, HTTP handlers)
+- [x] Fixed SecurityHeadersPanel.tsx crash (React error #130 — `T` used as JSX components instead of className strings)
+- [x] Version bumps: caddy `3.9.0-2.11.1`, wafctl `2.10.0` (all 5/4 locations)
+- [x] E2e smoke tests: 50 test functions all passing
+- [x] Deployed to production, health verified
+
+**Shipped:** caddy 3.9.0-2.11.1, wafctl 2.10.0. Default rule override API live — no plugin changes needed (existing `mergeDefaultAndUserRules()` handles same-ID replacement).
+
+### v0.10.3 — Scanner/Generic UA Default Rules + v6 Migration
+
+- [x] Added 3 new default rules to `coraza/default-rules.json` (version 1 → 2):
+  - PE-9100032: Scanner UA Block (`block` type, `phrase_match` with 30 scanner UA substrings from scanner-useragents.txt)
+  - PE-9100035: Generic UA Anomaly (`detect` CRITICAL, `phrase_match` with 8 generic library UA substrings from generic-useragents.txt)
+  - PE-9100036: HTTP/1.0 Anomaly (`detect` NOTICE, `http_version eq HTTP/1.0`)
+- [x] Added `migrateV5toV6` — removes v1-seeded bot rules ("Scanner UA Block", "HTTP/1.0 Anomaly", "Generic UA Anomaly") from user store (now default rules)
+- [x] Updated `currentStoreVersion` from 5 to 6
+- [x] Fixed SecurityHeadersPanel.tsx crash (React error #130)
+- [x] Updated 6 migration tests for v6 behavior (fresh install yields 8 ipsum rules, bot rules removed)
+- [x] Added 3 new v6 migration unit tests
+- [x] Added e2e test `TestDefaultRulesAPI` (verifies 12 rules including new scanner/generic)
+- [x] Updated e2e `TestPolicyEngineDetectMigrationSeedRules` to also verify bot rule removal
+- [x] Version bumps: caddy `3.10.0-2.11.1`, wafctl `2.11.0` (all 5/4 locations)
+
+**Shipped:** caddy 3.10.0-2.11.1, wafctl 2.11.0. 12 default rules total (6 attack + 3 heuristic + 3 bot). Scanner/generic UA detection now via policy engine `phrase_match` (Aho-Corasick) instead of Coraza `@pmFromFile` SecRules.
+
 ---
 
 ## Deferred Work
@@ -759,9 +798,15 @@ The waf-dashboard condition builder and event display are missing support for fe
 
 | Feature | Description | Effort |
 |---------|-------------|--------|
-| Default rules list API | `GET /api/default-rules` — list built-in rules from default-rules.json | Low |
-| Default rules disable API | `PUT /api/default-rules/disabled` — manage `DisabledDefaultRules` list | Low |
+| ~~Default rules list API~~ | ~~`GET /api/default-rules` — list built-in rules from default-rules.json~~ | ~~Low~~ — **DONE v0.10.2** |
+| ~~Default rules disable API~~ | ~~`PUT /api/default-rules/disabled` — manage `DisabledDefaultRules` list~~ | ~~Low~~ — **DONE v0.10.2** (via `PUT /api/default-rules/{id}` with `enabled: false`) |
 | IP lookup managed-list check | Show which managed lists contain a given IP during `/api/lookup/{ip}` | Low |
+
+### Architecture — UI Bundling
+
+| Feature | Description | Effort |
+|---------|-------------|--------|
+| Move waf-dashboard into wafctl image | wafctl serves static files via `http.FileServer`, Caddy proxies UI path. Dashboard changes no longer restart Caddy. | Medium |
 
 ### Plugin
 
@@ -888,13 +933,15 @@ These are the immediate candidates — they're already written as SecRules and j
 
 Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.json`. The v4 migration (previously seeded these as user rules) is a no-op, and v5 migration removes any previously-seeded copies. The corresponding SecRules were removed from `coraza/pre-crs.conf`. Attack detect rules (9100003, 9100006, 9100010-9100013) are in `default-rules.json` AND still in SecRules (dual-running during transition).
 
+9100032 (Scanner UA Block), 9100035 (Generic UA Anomaly), and 9100036 (HTTP/1.0 Anomaly) are now default rules using `phrase_match`. The v1-seeded user store copies were removed by v6 migration. The original SecRules (9100032, 9100035) in `pre-crs.conf` were already removed in v0.10.1; the `scanner-useragents.txt` and `generic-useragents.txt` files remain for reference but are no longer loaded by any SecRule.
+
 ### Tasks
 
 - [x] Define default rule JSON schema and loading mechanism — **COMPLETED** (plugin v0.10.0)
 - [x] Create initial `default-rules.json` with existing custom rules (9100003, 9100006, 9100010-9100013) — **COMPLETED** (v0.10.1)
 - [x] Port heuristic bot rules (9100030, 9100033, 9100034) to default-rules.json — deduplicate with seeded exclusion store entries — **COMPLETED** (v0.10.1)
-- [ ] Ship scanner-useragents.txt equivalent as phrase_match default rule
-- [ ] Ship generic-useragents.txt equivalent as phrase_match default rule
+- [x] Ship scanner-useragents.txt equivalent as phrase_match default rule — **COMPLETED** (v0.10.3, PE-9100032)
+- [x] Ship generic-useragents.txt equivalent as phrase_match default rule — **COMPLETED** (v0.10.3, PE-9100035 + PE-9100036)
 - [ ] Port Protocol Enforcement rules (920xxx subset)
 - [ ] Port LFI rules (930xxx subset)
 - [ ] Port RCE rules (932xxx subset) — requires phrase_match
@@ -961,7 +1008,9 @@ The policy engine runs **alongside** Coraza during the entire transition. Each p
 | v0.8.0 | + anomaly scoring, heuristic bot detect rules | CRS detection (score comparison possible) |
 | v0.8.1 | + transform-resistant detection (17 transforms) | CRS detection (for categories not yet ported) |
 | v0.9.0 | + multi-variable, phrase matching, numeric ops, count: | Remaining CRS categories |
-| v0.10.0 (current) | + default rules loading/merging | Remaining CRS categories |
+| v0.10.0 | + default rules loading/merging | Remaining CRS categories |
+| v0.10.2 | + default rule override API (list/get/set/reset) | Remaining CRS categories |
+| v0.10.3 (current) | + scanner/generic UA as phrase_match default rules, v6 migration | Remaining CRS categories |
 | v0.11.x | + shipped default-rules.json (custom rules + 920xxx) | Remaining CRS categories |
 | v0.12.x | + LFI, RCE, injection categories | XSS, SQLi (hardest categories) |
 | v1.0 | + XSS, SQLi with libinjection | Nothing — Coraza can be removed |

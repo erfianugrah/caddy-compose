@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rules": [
     {
       "id": "PE-9100003",
@@ -165,6 +165,71 @@
       "severity": "NOTICE",
       "paranoia_level": 1,
       "tags": ["heuristic", "bot-signal"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100032",
+      "name": "Scanner UA Block",
+      "description": "Block known scanner/attack tool User-Agents. Case-insensitive substring match via Aho-Corasick.",
+      "type": "block",
+      "conditions": [
+        {
+          "field": "user_agent",
+          "operator": "phrase_match",
+          "list_items": [
+            "sqlmap", "havij",
+            "nikto", "nuclei", "acunetix", "nessus", "qualys", "arachni", "whatweb", "wapiti", "skipfish",
+            "gobuster", "dirbuster", "dirb", "ffuf", "wfuzz", "feroxbuster",
+            "nmap", "masscan", "zgrab", "censys", "shodan", "netcraft",
+            "burpsuite", "burp", "zaproxy", "zap",
+            "httprobe", "subfinder", "amass", "httpx"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "tags": ["scanner", "bot-detection"],
+      "enabled": true,
+      "priority": 100
+    },
+    {
+      "id": "PE-9100035",
+      "name": "Generic UA Anomaly",
+      "description": "+5 anomaly for generic HTTP library User-Agents (python-requests, curl/, etc.). Combined with other signals to detect automated tools.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "user_agent",
+          "operator": "phrase_match",
+          "list_items": [
+            "python-requests", "go-http-client", "libwww-perl", "lwp-trivial",
+            "wget", "curl/", "mechanize", "scrapy"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["heuristic", "bot-signal", "generic-ua"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100036",
+      "name": "HTTP/1.0 Anomaly",
+      "description": "+2 anomaly for HTTP/1.0 requests. Modern clients use HTTP/1.1 or HTTP/2.",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "http_version",
+          "operator": "eq",
+          "value": "HTTP/1.0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 1,
+      "tags": ["heuristic", "bot-signal", "protocol"],
       "enabled": true,
       "priority": 400
     }

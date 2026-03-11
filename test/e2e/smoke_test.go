@@ -2772,14 +2772,58 @@ func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
 		"Missing User-Agent":             true,
 		"Missing Referer on Non-API GET": true,
 	}
+	seededBotNames := map[string]bool{
+		"Scanner UA Block":   true,
+		"HTTP/1.0 Anomaly":   true,
+		"Generic UA Anomaly": true,
+	}
 	for _, raw := range exclusions {
 		typ := jsonField(raw, "type")
 		name := jsonField(raw, "name")
 		if typ == "detect" && seededDetectNames[name] {
 			t.Errorf("seeded detect rule %q should have been removed by v5 migration", name)
 		}
+		if seededBotNames[name] {
+			t.Errorf("seeded bot rule %q should have been removed by v6 migration", name)
+		}
 	}
-	t.Log("confirmed: no seeded heuristic detect rules in user store (moved to default-rules.json)")
+	t.Log("confirmed: no seeded heuristic detect or bot rules in user store (moved to default-rules.json)")
+}
+
+func TestDefaultRulesAPI(t *testing.T) {
+	// Verify the default rules API returns all baked-in rules including
+	// the scanner UA and generic UA rules added in v0.10.3.
+	resp, body := httpGet(t, wafctlURL+"/api/default-rules")
+	assertCode(t, "list default rules", 200, resp)
+
+	var rules []json.RawMessage
+	if err := json.Unmarshal(body, &rules); err != nil {
+		t.Fatalf("unmarshal default rules: %v", err)
+	}
+
+	// Should have 12 default rules (9 from v1 + 3 new: scanner, generic UA, HTTP/1.0)
+	if len(rules) != 12 {
+		t.Errorf("expected 12 default rules, got %d", len(rules))
+	}
+
+	// Check that key rules exist.
+	ruleIDs := map[string]bool{}
+	for _, raw := range rules {
+		ruleIDs[jsonField(raw, "id")] = true
+	}
+	for _, id := range []string{"PE-9100032", "PE-9100035", "PE-9100036"} {
+		if !ruleIDs[id] {
+			t.Errorf("missing default rule %s", id)
+		}
+	}
+
+	// Verify PE-9100032 is a block rule with phrase_match.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/default-rules/PE-9100032")
+	assertCode(t, "get scanner rule", 200, resp2)
+	if typ := jsonField(body2, "type"); typ != "block" {
+		t.Errorf("PE-9100032 type: want block, got %s", typ)
+	}
+	t.Log("confirmed: default rules API returns all 12 rules including scanner/generic UA")
 }
 
 // ════════════════════════════════════════════════════════════════════

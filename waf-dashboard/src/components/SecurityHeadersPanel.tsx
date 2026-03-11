@@ -42,6 +42,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -202,7 +203,7 @@ export default function SecurityHeadersPanel() {
   };
 
   const addService = () => {
-    if (!config || !newServiceName.trim()) return;
+    if (!config || !newServiceName?.trim()) return;
     const name = newServiceName.trim();
     if (config.services?.[name]) {
       showFlash("error", `Service "${name}" already has an override`);
@@ -502,12 +503,13 @@ export default function SecurityHeadersPanel() {
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
-                  <DialogHeader>
+                   <DialogHeader>
                     <DialogTitle>Add Service Override</DialogTitle>
+                    <DialogDescription>Select or type a service name to add per-service header overrides.</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-3">
                     {availableServices.length > 0 ? (
-                      <Select value={newServiceName} onValueChange={setNewServiceName}>
+                      <Select value={newServiceName} onValueChange={(v) => setNewServiceName(v ?? "")}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a service..." />
                         </SelectTrigger>
@@ -528,7 +530,7 @@ export default function SecurityHeadersPanel() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button onClick={addService} disabled={!newServiceName.trim()}>Add</Button>
+                    <Button onClick={addService} disabled={!newServiceName?.trim()}>Add</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -769,6 +771,7 @@ function PreviewDialog({
       <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Security Headers Preview</DialogTitle>
+          <DialogDescription>Resolved headers per service after profile inheritance and overrides.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           {/* Global defaults */}

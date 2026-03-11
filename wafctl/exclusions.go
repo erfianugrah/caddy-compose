@@ -12,7 +12,7 @@ import (
 // currentStoreVersion is the latest store schema version.
 // Increment this and add a migration function when changing the store format
 // or adding default seed rules.
-const currentStoreVersion = 5
+const currentStoreVersion = 6
 
 // storeFile is the versioned on-disk format for the exclusions store.
 // Legacy stores (bare JSON arrays) are detected and migrated on load.
@@ -51,6 +51,7 @@ var storeMigrations = []storeMigration{
 	{toVersion: 3, name: "seed ipsum block rules", migrate: migrateV2toV3},
 	{toVersion: 4, name: "seed heuristic detect rules", migrate: migrateV3toV4},
 	{toVersion: 5, name: "remove heuristic detect rules (now in default-rules.json)", migrate: migrateV4toV5},
+	{toVersion: 6, name: "remove seeded bot rules (now in default-rules.json)", migrate: migrateV5toV6},
 }
 
 // load reads exclusions from the JSON file on disk. Handles both legacy
@@ -300,6 +301,27 @@ func migrateV4toV5(exclusions []RuleExclusion) []RuleExclusion {
 	for _, e := range exclusions {
 		if e.Type == "detect" && containsTag(e.Tags, "heuristic") && remove[e.Name] {
 			continue // skip — now provided by default-rules.json
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
+}
+
+// migrateV5toV6 removes the v1-seeded bot rules (Scanner UA Block, HTTP/1.0
+// Anomaly, Generic UA Anomaly) which are now shipped as built-in default rules
+// in default-rules.json (PE-9100032, PE-9100035, PE-9100036). Keeping them in
+// the user store would cause duplicate blocking/scoring.
+func migrateV5toV6(exclusions []RuleExclusion) []RuleExclusion {
+	remove := map[string]bool{
+		"Scanner UA Block":   true,
+		"HTTP/1.0 Anomaly":   true,
+		"Generic UA Anomaly": true,
+	}
+
+	filtered := make([]RuleExclusion, 0, len(exclusions))
+	for _, e := range exclusions {
+		if remove[e.Name] {
+			continue
 		}
 		filtered = append(filtered, e)
 	}
