@@ -323,8 +323,8 @@ export default function SecurityHeadersPanel() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <T.H2>Security Headers</T.H2>
-            <T.Muted>Manage HTTP security headers injected by the policy engine</T.Muted>
+            <h2 className={T.pageTitle}>Security Headers</h2>
+            <p className={T.muted}>Manage HTTP security headers injected by the policy engine</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleExport}>
@@ -397,9 +397,9 @@ export default function SecurityHeadersPanel() {
                   {profileName}
                 </Badge>
                 {profiles.find((p) => p.name === profileName) && (
-                  <T.Muted className="text-xs">
+                  <p className={`${T.muted} text-xs`}>
                     {profiles.find((p) => p.name === profileName)!.description}
-                  </T.Muted>
+                  </p>
                 )}
               </div>
             </div>
@@ -469,7 +469,7 @@ export default function SecurityHeadersPanel() {
             {/* Remove headers */}
             <div className="space-y-2">
               <Label>Headers to Remove</Label>
-              <T.Muted className="text-xs">These headers are stripped from responses (e.g. Server, X-Powered-By)</T.Muted>
+              <p className={`${T.muted} text-xs`}>These headers are stripped from responses (e.g. Server, X-Powered-By)</p>
               <div className="flex flex-wrap gap-2">
                 {(config.remove || []).map((h) => (
                   <Badge
@@ -536,7 +536,7 @@ export default function SecurityHeadersPanel() {
           </CardHeader>
           <CardContent className="space-y-4">
             {serviceNames.length === 0 && (
-              <T.Muted>No per-service overrides. All services use the global configuration.</T.Muted>
+              <p className={T.muted}>No per-service overrides. All services use the global configuration.</p>
             )}
             {serviceNames.map((svc) => {
               const sc = config.services?.[svc] || {};
@@ -773,7 +773,7 @@ function PreviewDialog({
         <div className="space-y-4">
           {/* Global defaults */}
           <div>
-            <T.H4 className="mb-2">Global Defaults</T.H4>
+            <h4 className={`${T.sectionHeading} mb-2`}>Global Defaults</h4>
             <HeaderTable headers={preview.global.headers} remove={preview.global.remove} />
           </div>
 
@@ -784,7 +784,7 @@ function PreviewDialog({
             const resolved = preview.services[svc];
             return (
               <div key={svc}>
-                <T.H4 className="mb-2 font-mono">{svc}</T.H4>
+                <h4 className={`${T.sectionHeading} mb-2 font-mono`}>{svc}</h4>
                 <HeaderTable headers={resolved.headers} remove={resolved.remove} />
               </div>
             );
