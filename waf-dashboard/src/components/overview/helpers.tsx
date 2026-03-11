@@ -71,6 +71,7 @@ export const DONUT_COLOR_MAP: Record<string, string> = {
   [ACTION_LABELS.logged]:       ACTION_COLORS.logged,
   [ACTION_LABELS.rate_limited]: ACTION_COLORS.rate_limited,
   [ACTION_LABELS.policy_block]: ACTION_COLORS.policy_block,
+  [ACTION_LABELS.detect_block]: ACTION_COLORS.detect_block,
   [ACTION_LABELS.policy_allow]: ACTION_COLORS.policy_allow,
   [ACTION_LABELS.policy_skip]:  ACTION_COLORS.policy_skip,
 };

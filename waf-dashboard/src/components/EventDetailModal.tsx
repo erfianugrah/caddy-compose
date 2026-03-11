@@ -31,9 +31,11 @@ interface EventDetailModalProps {
 export function EventDetailModal({ event, open, onOpenChange }: EventDetailModalProps) {
   if (!event) return null;
 
+  // detect_block events are anomaly threshold blocks where creating allow/skip exceptions makes sense
   const isWafEvent =
     event.event_type !== "rate_limited" &&
-    !event.event_type?.startsWith("policy_");
+    !event.event_type?.startsWith("policy_")
+    || event.event_type === "detect_block";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -20,6 +20,7 @@ export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "policy_skip", label: "Policy Skip" },
   { value: "policy_allow", label: "Policy Allow" },
   { value: "policy_block", label: "Policy Block" },
+  { value: "detect_block", label: "Detect Block" },
 ];
 
 export const METHOD_OPTIONS: { value: string; label: string }[] = [

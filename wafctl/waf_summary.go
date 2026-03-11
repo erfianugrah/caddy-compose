@@ -63,9 +63,9 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		switch {
 		case ev.EventType == "rate_limited":
 			totalRateLimited++
-		case ev.EventType == "policy_block":
+		case ev.EventType == "policy_block" || ev.EventType == "detect_block":
 			totalPolicyBlock++
-			// policy_block events are also blocked
+			// policy_block and detect_block events are also blocked
 			if ev.IsBlocked {
 				totalBlocked++
 			}
@@ -93,7 +93,7 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		switch {
 		case ev.EventType == "rate_limited":
 			hs.rateLimited++
-		case ev.EventType == "policy_block":
+		case ev.EventType == "policy_block" || ev.EventType == "detect_block":
 			hs.policyBlock++
 		case ev.EventType == "policy_allow":
 			hs.policyAllow++
@@ -113,7 +113,7 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		switch {
 		case ev.EventType == "rate_limited":
 			ss.rateLimited++
-		case ev.EventType == "policy_block":
+		case ev.EventType == "policy_block" || ev.EventType == "detect_block":
 			ss.policyBlock++
 		case ev.EventType == "policy_allow":
 			ss.policyAllow++
@@ -133,7 +133,7 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		switch {
 		case ev.EventType == "rate_limited":
 			cs.rateLimited++
-		case ev.EventType == "policy_block":
+		case ev.EventType == "policy_block" || ev.EventType == "detect_block":
 			cs.policyBlock++
 		case ev.EventType == "policy_allow":
 			cs.policyAllow++

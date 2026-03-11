@@ -134,7 +134,7 @@ type Event struct {
 	ResponseStatus int       `json:"response_status"`
 	UserAgent      string    `json:"user_agent"`
 	Country        string    `json:"country,omitempty"` // ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
-	EventType      string    `json:"event_type"`        // "blocked", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block"
+	EventType      string    `json:"event_type"`        // "blocked", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block", "detect_block"
 	Tags           []string  `json:"tags,omitempty"`    // Event classification tags from matched policy rules (e.g., "scanner", "honeypot", "blocklist")
 	// How the request was blocked: "anomaly_inbound", "anomaly_outbound", "direct", or ""
 	BlockedBy string `json:"blocked_by,omitempty"`

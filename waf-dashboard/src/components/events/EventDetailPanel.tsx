@@ -40,8 +40,10 @@ function ExpandableSection({ title, children }: { title: string; children: React
 
 export function EventDetailPanel({ event, hideActions = false, viewInEventsHref }: { event: WAFEvent; hideActions?: boolean; viewInEventsHref?: string }) {
   // Only show "Create Exception" for CRS WAF events (not rate-limited or policy-engine-managed)
+  // detect_block events are anomaly threshold blocks where creating allow/skip exceptions makes sense
   const isWafEvent = event.event_type !== "rate_limited"
-    && !event.event_type?.startsWith("policy_");
+    && !event.event_type?.startsWith("policy_")
+    || event.event_type === "detect_block";
 
   return (
     <div className="space-y-3 p-4">
@@ -161,7 +163,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
             {event.event_type === "rate_limited" ? "Rate Limit Details"
-              : event.event_type?.startsWith("policy_") ? "Policy Engine Match"
+              : event.event_type?.startsWith("policy_") || event.event_type === "detect_block" ? "Policy Engine Match"
               : event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound"
                 ? "Anomaly Score Block"
                 : "Rule Match"}
@@ -194,15 +196,30 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                   </div>
                 )}
               </>
-            ) : event.event_type?.startsWith("policy_") ? (
+            ) : event.event_type?.startsWith("policy_") || event.event_type === "detect_block" ? (
               <>
                 {/* Policy engine event — tag-aware display */}
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className="text-lv-red font-medium">
-                    Policy {event.event_type.replace("policy_", "").replace(/^\w/, (c) => c.toUpperCase())} ({event.status || 403})
+                  <span className={`font-medium ${event.event_type === "detect_block" ? "text-amber-400" : "text-lv-red"}`}>
+                    {event.event_type === "detect_block"
+                      ? `Detect Block — Anomaly Threshold ({event.status || 403})`
+                      : `Policy ${event.event_type.replace("policy_", "").replace(/^\w/, (c) => c.toUpperCase())} (${event.status || 403})`}
                   </span>
                 </div>
+                {/* Anomaly score for detect_block events */}
+                {event.event_type === "detect_block" && event.anomaly_score > 0 && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Anomaly Score:</span>
+                    <span className={
+                      event.anomaly_score >= 25 ? "text-lv-red font-bold" :
+                      event.anomaly_score >= 10 ? "text-lv-peach font-medium" :
+                      "text-amber-400"
+                    }>
+                      {event.anomaly_score}
+                    </span>
+                  </div>
+                )}
                 {event.tags && event.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
                     <span className="text-muted-foreground">Tags:</span>
@@ -223,6 +240,20 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     ) : (
                       <span className="text-foreground">{event.rule_id ? `${event.rule_id} — ` : ""}{event.rule_msg}</span>
                     )}
+                  </div>
+                )}
+                {/* Matched rules for detect_block (e.g. "PE-920350 (WARNING, score 3)") */}
+                {event.event_type === "detect_block" && event.matched_rules && event.matched_rules.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-muted-foreground text-xs uppercase tracking-wider">Matched Rules ({event.matched_rules.length})</span>
+                    {event.matched_rules.map((rule, idx) => (
+                      <div key={rule.id || idx} className="flex items-center gap-2 text-xs">
+                        {rule.id > 0 && (
+                          <Badge variant="outline" className={T.badgeMono}>{rule.id}</Badge>
+                        )}
+                        <span className="text-foreground/80">{rule.msg}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
                 {event.user_agent && (

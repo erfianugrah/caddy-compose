@@ -47,7 +47,7 @@ func computeServices(events []Event) ServicesResponse {
 			d.blocked++
 		}
 		switch ev.EventType {
-		case "policy_block":
+		case "policy_block", "detect_block":
 			d.policyBlock++
 		case "policy_allow":
 			d.policyAllow++
@@ -231,7 +231,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		case ev.EventType == "rate_limited":
 			c.rateLimited++
 			hc.rateLimited++
-		case ev.EventType == "policy_block":
+		case ev.EventType == "policy_block" || ev.EventType == "detect_block":
 			c.policyBlock++
 			hc.policyBlock++
 		case ev.EventType == "policy_allow":

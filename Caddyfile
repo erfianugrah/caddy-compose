@@ -185,12 +185,18 @@
 # Standard log config — INFO level, per-site log file + combined log
 # log_append adds custom fields to every access log entry:
 # - request_id: Caddy UUID for correlating with Coraza audit logs
-# - policy_action: policy engine decision (allow/block/honeypot, empty if no rule matched)
-# - policy_rule: name of the matched policy engine rule (empty if none)
+# - policy_action: policy engine decision (allow/block/honeypot/detect_block, empty if no rule matched)
+# - policy_rule: name of the matched rule, or detect block summary
+# - policy_tags: comma-separated tags from matched rule(s)
+# - policy_score: anomaly score (detect rules only, empty if no detect rules fired)
+# - policy_detect_rules: matched detect rule details "id:severity:score,..." (detect_block only)
 (site_log) {
 	log_append request_id {http.request.uuid}
 	log_append policy_action {http.vars.policy_engine.action}
 	log_append policy_rule {http.vars.policy_engine.rule_name}
+	log_append policy_tags {http.vars.policy_engine.tags}
+	log_append policy_score {http.vars.policy_engine.anomaly_score}
+	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
 	log {
 		level INFO
 		output file /var/log/{args[0]}-access.log {

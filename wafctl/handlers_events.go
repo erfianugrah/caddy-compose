@@ -83,7 +83,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 				"blocked": true, "logged": true,
 				"policy_skip": true, "policy_allow": true, "policy_block": true,
 			}
-			rlTypes := map[string]bool{"rate_limited": true, "policy_block": true}
+			rlTypes := map[string]bool{"rate_limited": true, "policy_block": true, "detect_block": true}
 			needWAF, needRL := true, true
 			if eventTypeF != nil {
 				switch eventTypeF.op {
@@ -189,7 +189,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
 			alsClients[ev.ClientIP] = struct{}{}
 			alsServices[ev.Service] = struct{}{}
-			isPolicy := ev.EventType == "policy_block"
+			isPolicy := ev.EventType == "policy_block" || ev.EventType == "detect_block"
 
 			if isPolicy {
 				alsTotal.policyBlock++
@@ -430,7 +430,7 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 			"blocked": true, "logged": true,
 			"policy_skip": true, "policy_allow": true, "policy_block": true,
 		}
-		rlTypes := map[string]bool{"rate_limited": true, "policy_block": true}
+		rlTypes := map[string]bool{"rate_limited": true, "policy_block": true, "detect_block": true}
 		needWAF, needRL := true, true
 		if eventTypeF != nil {
 			switch eventTypeF.op {
@@ -567,7 +567,7 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 				sc = &svcCounts{}
 				alsSvcMap[ev.Service] = sc
 			}
-			if ev.EventType == "policy_block" {
+			if ev.EventType == "policy_block" || ev.EventType == "detect_block" {
 				sc.policyBlock++
 			} else {
 				sc.rl++

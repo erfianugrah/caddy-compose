@@ -7,6 +7,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   policy_skip: "SKIPPED",
   policy_allow: "ALLOWED",
   policy_block: "POLICY BLOCK",
+  detect_block: "DETECT BLOCK",
   blocked: "CRS BLOCKED",
   logged: "LOGGED",
 };
