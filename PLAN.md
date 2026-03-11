@@ -770,6 +770,44 @@ CRS-equivalent rules will ship as built-in detection rules with the Docker image
 
 **Shipped:** caddy 3.10.0-2.11.1, wafctl 2.11.0. 12 default rules total (6 attack + 3 heuristic + 3 bot). Scanner/generic UA detection now via policy engine `phrase_match` (Aho-Corasick) instead of Coraza `@pmFromFile` SecRules.
 
+### v0.10.4 — CRS 920xxx Protocol Enforcement Rules
+
+First batch of CRS rule porting. These rules are part of the Coraza→policy engine migration — the policy engine is replacing Coraza entirely (see [Coraza Removal Checklist](#coraza-removal-checklist)), so every CRS category needs equivalent `detect` rules in `default-rules.json`.
+
+During the transition, these rules dual-run alongside Coraza's CRS 920xxx rules. Both produce anomaly scores independently (Coraza via `tx.inbound_anomaly_score`, policy engine via `scoreAccumulator`). Once all CRS categories are ported and detection parity is validated, Coraza is removed.
+
+- [x] Added 14 new Protocol Enforcement rules to `coraza/default-rules.json` (version 2 → 3, 26 rules total):
+
+  **Header Validation (PL1):**
+  - PE-920280: Request missing Host header (`header eq Host:` — empty value = missing, WARNING)
+  - PE-920350: Host header is numeric IP (`host regex`, WARNING)
+  - PE-920170: GET/HEAD request with body content (`method in GET|HEAD` + `header regex Content-Length:[1-9]`, WARNING)
+  - PE-920180: POST request missing Content-Type (`method eq POST` + `header eq Content-Type:`, NOTICE)
+  - PE-920160: Content-Length not numeric (`header regex Content-Length:[^0-9]`, CRITICAL)
+  - PE-920210: Multiple/conflicting Connection header values (`header regex Connection:.*,.*`, WARNING)
+
+  **Encoding Validation (PL1):**
+  - PE-920270: Null byte in request arguments (`all_args regex (?:%00|\\x00)`, CRITICAL)
+  - PE-920220: URL encoding abuse in path (`uri_path regex %(?![0-9a-fA-F]{2})`, WARNING)
+
+  **Policy Enforcement (PL1, unless noted):**
+  - PE-920430: HTTP version not allowed (`http_version regex ^HTTP/(?:0\\.9|1\\.0)$`, WARNING)
+  - PE-920440: Restricted file extensions (`uri_path phrase_match` with 50 extensions + `lowercase` transform, CRITICAL)
+  - PE-920450: Restricted HTTP headers (`all_headers_names phrase_match` with 8 headers + `lowercase` transform, WARNING)
+  - PE-920300: Max args count exceeded (`count:all_args_names gt 255`, CRITICAL)
+  - PE-920310: Argument name too long (`all_args_names` + `length` transform + `gt 100`, CRITICAL)
+  - PE-920311: Argument value too long (`all_args_values` + `length` transform + `gt 400`, CRITICAL, **PL2**)
+
+- [x] All 14 rules use plugin capabilities verified from source:
+  - `header` field `Name:value` split correctly extracts header name for `r.Header.Get()`, regex applied to header value
+  - `length` transform on multi-value fields (`all_args_names`, `all_args_values`) applies per-value via `isMulti` iteration
+  - `count:` pseudo-field returns `strconv.Itoa(len(values))`, compared via `gt` numeric operator
+  - `phrase_match` + `transforms` on aggregate fields works (transforms applied per-value before Aho-Corasick search)
+- [ ] Update e2e test `TestDefaultRulesAPI` expected count (12 → 26)
+- [ ] Version bumps: caddy `3.11.0-2.11.1`, wafctl `2.12.0`
+- [ ] E2e tests passing
+- [ ] Deployed to production
+
 ---
 
 ## Deferred Work
@@ -802,36 +840,88 @@ The waf-dashboard condition builder and event display are missing support for fe
 | ~~Default rules disable API~~ | ~~`PUT /api/default-rules/disabled` — manage `DisabledDefaultRules` list~~ | ~~Low~~ — **DONE v0.10.2** (via `PUT /api/default-rules/{id}` with `enabled: false`) |
 | IP lookup managed-list check | Show which managed lists contain a given IP during `/api/lookup/{ip}` | Low |
 
-### Architecture — UI Bundling
+### Architecture — UI Bundling into wafctl
 
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| Move waf-dashboard into wafctl image | wafctl serves static files via `http.FileServer`, Caddy proxies UI path. Dashboard changes no longer restart Caddy. | Medium |
+Currently the waf-dashboard is built as static files and baked into the **Caddy** image (`COPY --from=frontend /app/dist /etc/caddy/waf-ui/` in the Dockerfile). This means any dashboard change (even a typo fix) requires rebuilding and redeploying the Caddy image, which restarts the reverse proxy and interrupts all traffic.
 
-### Plugin
+**Goal:** Move the dashboard into the wafctl sidecar image instead. wafctl serves the static files via `http.FileServer`, and Caddy reverse-proxies the UI path to wafctl. Dashboard changes only restart the sidecar, not the proxy.
 
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| `length` transform | Replace value with its string length (`strconv.Itoa(len(s))`) | Low |
-| `responseHeaderWriter` Hijacker check | Verify wrapper implements `http.Hijacker` for WebSocket compat with CSP `default` mode | Low |
+**Changes required:**
+- [ ] Dockerfile: Move `frontend` build stage and `COPY --from=frontend` from caddy image to wafctl image
+- [ ] wafctl `main.go`: Add `http.FileServer(http.Dir("/app/waf-ui"))` handler for `/` path (or a configurable `WAF_UI_DIR`)
+- [ ] Caddyfile: Replace `root * /etc/caddy/waf-ui` + `file_server` with `reverse_proxy wafctl:8080` for the dashboard route
+- [ ] Ensure `try_files {path} {path}/index.html` logic moves to wafctl (Astro MPA routing)
+- [ ] Ensure `404.html` is served correctly from wafctl for unknown paths
+- [ ] Update `compose.yaml` build contexts if needed
+- [ ] Test: dashboard loads, all pages work, no Web Cache Deception vulnerability (no catch-all `/index.html` fallback)
+
+**Effort:** Medium. The main risk is getting the MPA routing right in wafctl's file server (Caddy's `try_files` is doing heavy lifting today).
+
+### Plugin — WebSocket / HTTP Upgrade Support
+
+When Coraza is removed (v1.0), the `@not_websocket` Caddyfile bypass goes away. Currently WebSocket connections bypass both Coraza and the policy engine via:
+
+```
+@not_websocket {
+    not header Connection *Upgrade*
+    not header Upgrade websocket
+}
+route @not_websocket {
+    coraza_waf { ... }
+}
+```
+
+The policy engine's `responseHeaderWriter` (used for CSP `default` mode and security header removal) wraps `http.ResponseWriter`. If the wrapper doesn't implement `http.Hijacker`, WebSocket upgrades will fail with `NS_ERROR_WEBSOCKET_CONNECTION_REFUSED` — the same issue the coraza-caddy fork fixed with its `hijackTracker`.
+
+**Two-phase approach:**
+
+**Phase 1 (pre-Coraza removal):** The `@not_websocket` bypass is still in the Caddyfile, so WebSocket traffic never hits either engine. No action needed yet, but the `responseHeaderWriter` should still implement `http.Hijacker` for correctness when CSP `default` mode is active.
+
+**Phase 2 (post-Coraza removal, v1.0):** Remove `@not_websocket` bypass. The policy engine must:
+- [ ] Implement `http.Hijacker` on `responseHeaderWriter` — delegate to underlying `ResponseWriter` if it implements `Hijacker`
+- [ ] Skip response header injection (`WriteHeader` interception) on hijacked connections — track hijack state like coraza-caddy's `hijackTracker`
+- [ ] Decide: should `detect` rules evaluate on WebSocket upgrade requests? The initial HTTP upgrade request is a normal HTTP request that could carry attack payloads in headers/query params. CRS currently does NOT inspect it (bypassed by `@not_websocket`). Options:
+  - **Inspect upgrade request** (stricter) — evaluate rules normally, only skip response-phase logic after hijack
+  - **Skip entirely** (current behavior) — maintain backward compat, WebSocket traffic is never scored
+- [ ] Test: WebSocket connections work through the policy engine, CSP `default` mode doesn't break upgrades
+
+**Effort:** Low for Phase 1 (just implement the interface). Medium for Phase 2 (needs design decision on upgrade request inspection + integration testing).
+
+### CRS Sync — Automatic Policy List Updates
+
+Default rules ship with hardcoded `list_items` from CRS 4.23.0 (restricted extensions, headers, etc.). These values change between CRS releases. A periodic sync mechanism should fetch updates directly from the CRS GitHub repository.
+
+**Source:** `https://raw.githubusercontent.com/coreruleset/coreruleset/main/crs-setup.conf.example`
+
+**Values to sync** (CRS `tx.*` variables → default rule `list_items`):
+- `tx.restricted_extensions` → PE-920440
+- `tx.restricted_headers` → PE-920450
+- `tx.allowed_methods` → (future rule)
+- `tx.allowed_request_content_type` → (future rule)
+- `tx.allowed_http_versions` → PE-920430
+
+**Design:**
+- wafctl `CRSSyncStore` — fetches `crs-setup.conf.example`, parses `setvar:'tx.*=...'` directives
+- Periodic refresh (configurable, default weekly via `WAF_CRS_SYNC_INTERVAL`)
+- Applies diffs via `DefaultRuleStore.SetOverride()` (JSON merge pattern)
+- Logs when values change, optionally triggers auto-deploy
+- Same pattern as IPsum blocklist refresh (`onRefresh` callback → `onDeploy` callback)
+- Env vars: `WAF_CRS_SYNC_ENABLED` (default `false`), `WAF_CRS_SYNC_INTERVAL` (default `168h`), `WAF_CRS_SYNC_URL`
+- Stores last-synced CRS version + hash in `/data/crs-sync-state.json`
+
+**Effort:** Medium (parser + store + periodic goroutine + deploy integration)
 
 ### Recommended Order
 
-The frontend debt is the largest pile-up but doesn't block anything functionally. Two reasonable paths:
+Following Path A (ship backend, catch up frontend later). Current progress:
 
-**Path A — Keep shipping backend, catch up frontend later:**
-1. Port existing custom rules → `default-rules.json` (validates pipeline)
-2. Port Protocol Enforcement (920xxx)
-3. Frontend catch-up sprint (all v0.8.0–v0.10.0 features)
-4. Continue CRS porting
-
-**Path B — Pay down debt first:**
-1. Frontend catch-up sprint (all v0.8.0–v0.10.0 features)
-2. wafctl default rules API
-3. Port existing custom rules → `default-rules.json`
-4. Continue CRS porting
-
-Path A gets real detection rules into production faster. Path B ensures the dashboard stays usable for managing the rules we're about to ship.
+1. ~~Port existing custom rules → `default-rules.json`~~ — **DONE** (v0.10.1)
+2. ~~Port Protocol Enforcement (920xxx)~~ — **DONE** (v0.10.4, 14 rules)
+3. Port LFI (930xxx) + HTTP Response Splitting (921xxx) + Session Fixation (943xxx) — **NEXT**
+4. Port RCE (932xxx) + RFI (931xxx) + PHP/Node/Java injection (933/934/944xxx)
+5. Frontend catch-up sprint (all v0.8.0–v0.10.0 features) — can happen in parallel
+6. Port XSS (941xxx) + SQLi (942xxx) with libinjection
+7. Remove Coraza from Docker image (v1.0)
 
 ---
 
@@ -845,17 +935,17 @@ Rules are shipped as built-in defaults in `default-rules.json` (loaded by plugin
 
 ### Category Porting Order
 
-| Priority | Category | Rule Range | Effort | Key Techniques Needed |
-|----------|----------|------------|--------|-----------------------|
-| 1 | Protocol Enforcement | 920xxx | Low | Header checks, byte range validation, numeric operators |
-| 2 | Path Traversal / LFI | 930xxx | Low | Regex, normalizePath transform |
-| 3 | HTTP Response Splitting | 921xxx | Low | Regex (CRLF detection) — already partially in post-crs.conf |
-| 4 | Session Fixation | 943xxx | Low | Regex patterns |
-| 5 | RCE | 932xxx | Medium | Regex + phrase_match against command wordlists |
-| 6 | RFI | 931xxx | Medium | Regex for URL patterns in params |
-| 7 | PHP/Node.js/Java Injection | 933, 934, 944xxx | Medium | Regex + phrase_match against function name wordlists |
-| 8 | XSS | 941xxx | High | ~30 regex patterns + libinjection |
-| 9 | SQLi | 942xxx | High | ~40 regex patterns + libinjection |
+| Priority | Category | Rule Range | Effort | Status |
+|----------|----------|------------|--------|--------|
+| 1 | Protocol Enforcement | 920xxx | Low | **DONE** (v0.10.4, 14 rules) |
+| 2 | Path Traversal / LFI | 930xxx | Low | Next — regex + `normalizePath` transform |
+| 3 | HTTP Response Splitting | 921xxx | Low | Next — CRLF detection, partially covered by PE-9100012/13 |
+| 4 | Session Fixation | 943xxx | Low | Next — regex patterns |
+| 5 | RCE | 932xxx | Medium | Planned — regex + `phrase_match` command wordlists, partially covered by PE-9100010/11 |
+| 6 | RFI | 931xxx | Medium | Planned — regex for URL patterns in params |
+| 7 | PHP/Node.js/Java Injection | 933, 934, 944xxx | Medium | Planned — regex + `phrase_match` function name wordlists |
+| 8 | XSS | 941xxx | High | Planned — ~30 regex patterns + libinjection |
+| 9 | SQLi | 942xxx | High | Planned — ~40 regex patterns + libinjection |
 
 ### What Each Category Needs
 
@@ -931,7 +1021,7 @@ These are the immediate candidates — they're already written as SecRules and j
 | 9100033 | Empty/missing User-Agent (heuristic) | `detect` WARNING |
 | 9100034 | Missing Referer on non-API GET (heuristic) | `detect` NOTICE |
 
-Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.json`. The v4 migration (previously seeded these as user rules) is a no-op, and v5 migration removes any previously-seeded copies. The corresponding SecRules were removed from `coraza/pre-crs.conf`. Attack detect rules (9100003, 9100006, 9100010-9100013) are in `default-rules.json` AND still in SecRules (dual-running during transition).
+Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.json`. The v4 migration (previously seeded these as user rules) is a no-op, and v5 migration removes any previously-seeded copies. The corresponding SecRules were removed from `coraza/pre-crs.conf`. Attack detect rules (9100003, 9100006, 9100010-9100013) are in `default-rules.json` AND still in SecRules (dual-running during transition). The 920xxx rules (v0.10.4) also dual-run alongside CRS — both produce anomaly scores independently. This is intentional: it allows comparing policy engine scores vs Coraza scores to validate detection parity before removing Coraza.
 
 9100032 (Scanner UA Block), 9100035 (Generic UA Anomaly), and 9100036 (HTTP/1.0 Anomaly) are now default rules using `phrase_match`. The v1-seeded user store copies were removed by v6 migration. The original SecRules (9100032, 9100035) in `pre-crs.conf` were already removed in v0.10.1; the `scanner-useragents.txt` and `generic-useragents.txt` files remain for reference but are no longer loaded by any SecRule.
 
@@ -942,11 +1032,15 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Port heuristic bot rules (9100030, 9100033, 9100034) to default-rules.json — deduplicate with seeded exclusion store entries — **COMPLETED** (v0.10.1)
 - [x] Ship scanner-useragents.txt equivalent as phrase_match default rule — **COMPLETED** (v0.10.3, PE-9100032)
 - [x] Ship generic-useragents.txt equivalent as phrase_match default rule — **COMPLETED** (v0.10.3, PE-9100035 + PE-9100036)
-- [ ] Port Protocol Enforcement rules (920xxx subset)
-- [ ] Port LFI rules (930xxx subset)
-- [ ] Port RCE rules (932xxx subset) — requires phrase_match
-- [ ] Port XSS rules (941xxx subset) — requires transform chains
-- [ ] Port SQLi rules (942xxx subset) — requires transform chains
+- [~] Port Protocol Enforcement rules (920xxx subset) — **v0.10.4**: 14 rules shipped (header validation, encoding validation, policy enforcement)
+- [ ] Port LFI / Path Traversal rules (930xxx subset) — regex + `normalizePath` transform
+- [ ] Port HTTP Response Splitting rules (921xxx subset) — CRLF detection, partially covered by PE-9100012/13
+- [ ] Port Session Fixation rules (943xxx subset) — regex patterns
+- [ ] Port RCE rules (932xxx subset) — regex + `phrase_match` with command wordlists, partially covered by PE-9100010/11
+- [ ] Port RFI rules (931xxx subset) — regex for URL patterns in params
+- [ ] Port PHP/Node.js/Java Injection rules (933/934/944xxx subset) — regex + `phrase_match` against function name wordlists
+- [ ] Port XSS rules (941xxx subset) — ~30 regex patterns + transform chains + libinjection
+- [ ] Port SQLi rules (942xxx subset) — ~40 regex patterns + transform chains + libinjection
 - [x] Add `default-rules.json` to Dockerfile COPY (bake into image at `/etc/caddy/coraza/default-rules.json`) — already covered by `COPY coraza/ /etc/caddy/coraza/`
 - [ ] E2e tests for default rules: verify detect scoring with shipped rules
 - [ ] Production validation: compare policy engine scores vs Coraza scores for same requests
@@ -999,7 +1093,7 @@ Usage:
 
 ## Incremental Migration Strategy
 
-The policy engine runs **alongside** Coraza during the entire transition. Each phase adds capabilities without removing Coraza.
+**Goal: Replace Coraza entirely with the policy engine.** The policy engine runs alongside Coraza during the transition, with each phase porting more CRS detection categories into `default-rules.json`. Both engines score requests independently during dual-running, allowing detection parity validation before Coraza removal. At v1.0, all CRS categories have equivalent policy engine rules and Coraza is removed from the Docker image.
 
 | Phase | Policy Engine Handles | Coraza Still Handles |
 |-------|----------------------|---------------------|
@@ -1010,10 +1104,11 @@ The policy engine runs **alongside** Coraza during the entire transition. Each p
 | v0.9.0 | + multi-variable, phrase matching, numeric ops, count: | Remaining CRS categories |
 | v0.10.0 | + default rules loading/merging | Remaining CRS categories |
 | v0.10.2 | + default rule override API (list/get/set/reset) | Remaining CRS categories |
-| v0.10.3 (current) | + scanner/generic UA as phrase_match default rules, v6 migration | Remaining CRS categories |
-| v0.11.x | + shipped default-rules.json (custom rules + 920xxx) | Remaining CRS categories |
-| v0.12.x | + LFI, RCE, injection categories | XSS, SQLi (hardest categories) |
-| v1.0 | + XSS, SQLi with libinjection | Nothing — Coraza can be removed |
+| v0.10.3 | + scanner/generic UA as phrase_match default rules, v6 migration | Remaining CRS categories |
+| v0.10.4 (current) | + 14 CRS 920xxx Protocol Enforcement rules (26 defaults total) | Remaining CRS categories (930–944xxx) |
+| v0.11.x | + LFI (930xxx), HTTP Response Splitting (921xxx), Session Fixation (943xxx) | RCE, injection, XSS, SQLi |
+| v0.12.x | + RCE (932xxx), RFI (931xxx), PHP/Node/Java injection (933/934/944xxx) | XSS, SQLi (hardest categories) |
+| v1.0 | + XSS (941xxx), SQLi (942xxx) with libinjection | Nothing — Coraza can be removed |
 
 At each phase, you can compare scores between the policy engine's `detect` rules and Coraza's CRS rules to validate detection parity before removing Coraza.
 
@@ -1021,6 +1116,7 @@ At each phase, you can compare scores between the policy engine's `detect` rules
 
 Before removing Coraza entirely:
 
+**Detection parity:**
 - [ ] All 11 CRS categories have equivalent `detect` rules
 - [ ] Transform chains cover all evasion techniques CRS handles
 - [ ] Phrase match wordlists cover CRS's `@pmFromFile` data
@@ -1029,7 +1125,12 @@ Before removing Coraza entirely:
 - [ ] False positive rate is equal to or better than CRS
 - [ ] False negative rate is equal to or better than CRS (validated against CRS test suite)
 - [ ] Response-phase detection exists (outbound rules) if needed
-- [ ] Audit logging captures equivalent detail to Coraza audit log
+
+**Infrastructure:**
+- [ ] `responseHeaderWriter` implements `http.Hijacker` for WebSocket support (Phase 1)
+- [ ] WebSocket upgrade requests handled correctly without `@not_websocket` bypass (Phase 2)
+- [ ] Audit logging captures equivalent detail to Coraza audit log (or access log provides enough)
+- [ ] UI bundled into wafctl image (optional but recommended before removal — avoids Caddy rebuild for dashboard changes)
 
 ### What Full Coraza Removal Eliminates
 
@@ -1049,4 +1150,5 @@ Before removing Coraza entirely:
 | SecRule exclusion types (12 types in AGENTS.md) | Simplified to policy engine types only |
 | Docker image size (~30-40MB from Coraza + CRS) | Reduced |
 | Caddy startup time (CRS rule compilation) | Faster |
-| WebSocket bypass workaround | Removed (policy engine doesn't deeply wrap ResponseWriter like Coraza's `rwInterceptor`, so no hijack conflict) |
+| WebSocket bypass workaround | Removed — `responseHeaderWriter` implements `http.Hijacker` (unlike Coraza's deep `rwInterceptor` wrapping, the policy engine's wrapper is thin and only intercepts `WriteHeader`) |
+| `waf-dashboard` in Caddy image | Moved to wafctl image (dashboard changes no longer restart proxy) |

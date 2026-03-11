@@ -2792,7 +2792,7 @@ func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
 
 func TestDefaultRulesAPI(t *testing.T) {
 	// Verify the default rules API returns all baked-in rules including
-	// the scanner UA and generic UA rules added in v0.10.3.
+	// scanner/generic UA (v0.10.3) and 920xxx Protocol Enforcement (v0.10.4).
 	resp, body := httpGet(t, wafctlURL+"/api/default-rules")
 	assertCode(t, "list default rules", 200, resp)
 
@@ -2801,9 +2801,9 @@ func TestDefaultRulesAPI(t *testing.T) {
 		t.Fatalf("unmarshal default rules: %v", err)
 	}
 
-	// Should have 12 default rules (9 from v1 + 3 new: scanner, generic UA, HTTP/1.0)
-	if len(rules) != 12 {
-		t.Errorf("expected 12 default rules, got %d", len(rules))
+	// Should have 26 default rules (12 from v2 + 14 new 920xxx Protocol Enforcement)
+	if len(rules) != 26 {
+		t.Errorf("expected 26 default rules, got %d", len(rules))
 	}
 
 	// Check that key rules exist.
@@ -2811,9 +2811,16 @@ func TestDefaultRulesAPI(t *testing.T) {
 	for _, raw := range rules {
 		ruleIDs[jsonField(raw, "id")] = true
 	}
+	// v0.10.3 scanner/generic UA rules
 	for _, id := range []string{"PE-9100032", "PE-9100035", "PE-9100036"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing default rule %s", id)
+		}
+	}
+	// v0.10.4 920xxx Protocol Enforcement rules (spot check)
+	for _, id := range []string{"PE-920280", "PE-920170", "PE-920440", "PE-920300", "PE-920311"} {
+		if !ruleIDs[id] {
+			t.Errorf("missing 920xxx default rule %s", id)
 		}
 	}
 
@@ -2823,7 +2830,15 @@ func TestDefaultRulesAPI(t *testing.T) {
 	if typ := jsonField(body2, "type"); typ != "block" {
 		t.Errorf("PE-9100032 type: want block, got %s", typ)
 	}
-	t.Log("confirmed: default rules API returns all 12 rules including scanner/generic UA")
+
+	// Verify PE-920440 is a detect rule with phrase_match (restricted extensions).
+	resp3, body3 := httpGet(t, wafctlURL+"/api/default-rules/PE-920440")
+	assertCode(t, "get restricted extensions rule", 200, resp3)
+	if typ := jsonField(body3, "type"); typ != "detect" {
+		t.Errorf("PE-920440 type: want detect, got %s", typ)
+	}
+
+	t.Log("confirmed: default rules API returns all 26 rules including 920xxx Protocol Enforcement")
 }
 
 // ════════════════════════════════════════════════════════════════════
