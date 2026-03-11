@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -44,6 +45,9 @@ var namedConditionFields = map[string]bool{
 // array indices (digits). Leading dot is optional.
 var jsonPathNameRe = regexp.MustCompile(`^\.?[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*$`)
 
+// numericOperators are operators that require a numeric Value.
+var numericOperators = map[string]bool{"gt": true, "ge": true, "lt": true, "le": true}
+
 // validateConditions validates a slice of conditions against a set of allowed fields.
 // Pass nil for allowedFields to use validConditionFields (all fields allowed).
 func validateConditions(conditions []Condition, allowedFields map[string]bool) error {
@@ -51,18 +55,55 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 		allowedFields = validConditionFields
 	}
 	for i, c := range conditions {
-		if !allowedFields[c.Field] {
+		// Handle count: pseudo-field — "count:all_args", etc.
+		// Resolve the underlying field for validation, then check it's an aggregate field.
+		fieldForValidation := c.Field
+		if strings.HasPrefix(c.Field, "count:") {
+			underlying := c.Field[len("count:"):]
+			if !validAggregateFields[underlying] {
+				return fmt.Errorf("condition[%d]: count: requires an aggregate field, got %q", i, underlying)
+			}
+			if !numericOperators[c.Operator] {
+				return fmt.Errorf("condition[%d]: count: fields require a numeric operator (gt, ge, lt, le), got %q", i, c.Operator)
+			}
+			// Use the underlying aggregate field for field allowlist validation.
+			fieldForValidation = underlying
+		}
+		if !allowedFields[fieldForValidation] {
 			return fmt.Errorf("condition[%d]: invalid field %q", i, c.Field)
 		}
-		ops, ok := validOperatorsForField[c.Field]
-		if !ok || !ops[c.Operator] {
-			return fmt.Errorf("condition[%d]: invalid operator %q for field %q", i, c.Operator, c.Field)
+
+		// Operator validation: numeric operators are valid on any field.
+		// phrase_match is checked against the per-field operator map.
+		if !numericOperators[c.Operator] {
+			ops, ok := validOperatorsForField[fieldForValidation]
+			if !ok || !ops[c.Operator] {
+				return fmt.Errorf("condition[%d]: invalid operator %q for field %q", i, c.Operator, c.Field)
+			}
 		}
-		// Empty value is allowed for eq/neq operators (matching empty/missing
-		// headers, user-agents, etc. is a legitimate detect rule pattern).
-		// All other operators require a non-empty value.
-		if c.Value == "" && c.Operator != "eq" && c.Operator != "neq" {
+
+		// Empty value is allowed for eq/neq (matching empty/missing headers),
+		// phrase_match (patterns come from ListItems), and exists.
+		if c.Value == "" && c.Operator != "eq" && c.Operator != "neq" && c.Operator != "phrase_match" && c.Operator != "exists" {
 			return fmt.Errorf("condition[%d]: value is required", i)
+		}
+		// phrase_match requires list_items.
+		if c.Operator == "phrase_match" && len(c.ListItems) == 0 {
+			return fmt.Errorf("condition[%d]: phrase_match requires list_items (pattern list)", i)
+		}
+		// Numeric operators require a parseable numeric value.
+		// For named fields (header, cookie, args, etc.), the value is "Name:number" —
+		// extract the portion after ':' for numeric parsing. Same for body_json ("dotpath:number").
+		if numericOperators[c.Operator] {
+			numStr := c.Value
+			if namedConditionFields[c.Field] || c.Field == "body_json" {
+				if idx := strings.Index(numStr, ":"); idx >= 0 {
+					numStr = numStr[idx+1:]
+				}
+			}
+			if _, err := strconv.ParseFloat(numStr, 64); err != nil {
+				return fmt.Errorf("condition[%d]: numeric operator %q requires a numeric value, got %q", i, c.Operator, c.Value)
+			}
 		}
 		// Validate method values.
 		if c.Field == "method" {

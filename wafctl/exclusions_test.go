@@ -1905,3 +1905,204 @@ func TestTransformPassthroughInPolicyGenerator(t *testing.T) {
 		t.Errorf("result[2] transforms = %v, want empty", result[2].Transforms)
 	}
 }
+
+// ─── v0.9.0 Validation Tests ──────────────────────────────────────
+
+func TestValidateConditions_AggregateFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		conds   []Condition
+		wantErr bool
+	}{
+		{
+			name:  "all_args with contains",
+			conds: []Condition{{Field: "all_args", Operator: "contains", Value: "select"}},
+		},
+		{
+			name:  "all_headers_names with regex",
+			conds: []Condition{{Field: "all_headers_names", Operator: "regex", Value: "^X-"}},
+		},
+		{
+			name:  "all_cookies with eq",
+			conds: []Condition{{Field: "all_cookies", Operator: "eq", Value: "malicious"}},
+		},
+		{
+			name:    "aggregate not in validConditionFields (SecRule)",
+			conds:   []Condition{{Field: "all_args", Operator: "contains", Value: "x"}},
+			wantErr: true, // all_args is NOT in validConditionFields (SecRule doesn't support it)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test with policy engine fields (should pass for aggregate fields)
+			if !tt.wantErr {
+				err := validateConditions(tt.conds, validPolicyEngineFields)
+				if err != nil {
+					t.Errorf("policy engine validation: unexpected error: %v", err)
+				}
+			}
+			// Test with nil (validConditionFields) — aggregate fields are not in SecRule field set
+			if tt.wantErr {
+				err := validateConditions(tt.conds, nil)
+				if err == nil {
+					t.Error("expected error for aggregate field with SecRule validation")
+				}
+			}
+		})
+	}
+}
+
+func TestValidateConditions_PhraseMatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		conds   []Condition
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid phrase_match",
+			conds: []Condition{{
+				Field: "all_args", Operator: "phrase_match",
+				ListItems: []string{"select", "union", "insert"},
+			}},
+		},
+		{
+			name: "phrase_match without list_items",
+			conds: []Condition{{
+				Field: "all_args", Operator: "phrase_match", Value: "",
+			}},
+			wantErr: true,
+			errMsg:  "phrase_match requires list_items",
+		},
+		{
+			name: "phrase_match on single field",
+			conds: []Condition{{
+				Field: "query", Operator: "phrase_match",
+				ListItems: []string{"select", "union"},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConditions(tt.conds, validPolicyEngineFields)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error = %q, want substring %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateConditions_NumericOperators(t *testing.T) {
+	tests := []struct {
+		name    string
+		conds   []Condition
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:  "gt with numeric value",
+			conds: []Condition{{Field: "header", Operator: "gt", Value: "Content-Length:100"}},
+		},
+		{
+			name:    "gt with non-numeric value",
+			conds:   []Condition{{Field: "header", Operator: "gt", Value: "Content-Length:abc"}},
+			wantErr: true,
+			errMsg:  "numeric operator",
+		},
+		{
+			name:  "le with zero",
+			conds: []Condition{{Field: "header", Operator: "le", Value: "X-Count:0"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConditions(tt.conds, validPolicyEngineFields)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error = %q, want substring %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateConditions_CountField(t *testing.T) {
+	tests := []struct {
+		name    string
+		conds   []Condition
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:  "valid count:all_args with gt",
+			conds: []Condition{{Field: "count:all_args", Operator: "gt", Value: "255"}},
+		},
+		{
+			name:  "valid count:all_headers with le",
+			conds: []Condition{{Field: "count:all_headers", Operator: "le", Value: "50"}},
+		},
+		{
+			name:    "count: with non-aggregate field",
+			conds:   []Condition{{Field: "count:path", Operator: "gt", Value: "10"}},
+			wantErr: true,
+			errMsg:  "count: requires an aggregate field",
+		},
+		{
+			name:    "count: with non-numeric operator",
+			conds:   []Condition{{Field: "count:all_args", Operator: "contains", Value: "10"}},
+			wantErr: true,
+			errMsg:  "count: fields require a numeric operator",
+		},
+		{
+			name:    "count: with non-numeric value",
+			conds:   []Condition{{Field: "count:all_args", Operator: "gt", Value: "abc"}},
+			wantErr: true,
+			errMsg:  "numeric operator",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConditions(tt.conds, validPolicyEngineFields)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error = %q, want substring %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestConvertConditions_PhraseMatch(t *testing.T) {
+	conds := []Condition{
+		{
+			Field:     "all_args",
+			Operator:  "phrase_match",
+			ListItems: []string{"select", "union", "drop"},
+		},
+	}
+	result := convertConditions(conds, nil)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(result))
+	}
+	if len(result[0].ListItems) != 3 {
+		t.Errorf("ListItems should be passed through, got %v", result[0].ListItems)
+	}
+	if result[0].ListItems[0] != "select" {
+		t.Errorf("ListItems[0] = %q, want select", result[0].ListItems[0])
+	}
+}

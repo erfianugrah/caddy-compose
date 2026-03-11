@@ -6,10 +6,11 @@ import "time"
 
 // Condition represents a single match condition in an exclusion or rate limit rule.
 type Condition struct {
-	Field      string   `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query", "country", "cookie", "body", "body_json", "body_form", "args", "uri_path", "referer", "response_header", "response_status", "http_version"
-	Operator   string   `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in"
+	Field      string   `json:"field"`    // single: "ip", "path", "host", etc. | aggregate: "all_args", "all_headers", etc. | count: "count:all_args", etc.
+	Operator   string   `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in", "phrase_match", "gt", "ge", "lt", "le"
 	Value      string   `json:"value"`
 	Transforms []string `json:"transforms,omitempty"` // ordered transform chain: "lowercase", "urlDecode", "htmlEntityDecode", etc.
+	ListItems  []string `json:"list_items,omitempty"` // patterns for phrase_match (inline, not from managed list)
 }
 
 // RuleExclusion is a single WAF policy engine rule (allow, block, skip_rule, anomaly, honeypot, raw, etc.).
@@ -209,6 +210,14 @@ var validPolicyEngineFields = map[string]bool{
 	"uri_path":     true,
 	"referer":      true,
 	"http_version": true,
+	// v0.9.0: aggregate fields (multi-variable inspection)
+	"all_args":          true,
+	"all_args_values":   true,
+	"all_args_names":    true,
+	"all_headers":       true,
+	"all_headers_names": true,
+	"all_cookies":       true,
+	"all_cookies_names": true,
 }
 
 // validTransforms are the transform function names supported by the policy
@@ -236,6 +245,17 @@ var validTransforms = map[string]bool{
 	"length":         true,
 }
 
+// validAggregateFields are the multi-variable fields that can be used with count:.
+var validAggregateFields = map[string]bool{
+	"all_args":          true,
+	"all_args_values":   true,
+	"all_args_names":    true,
+	"all_headers":       true,
+	"all_headers_names": true,
+	"all_cookies":       true,
+	"all_cookies_names": true,
+}
+
 // Valid operators per field type
 var validOperatorsForField = map[string]map[string]bool{
 	"ip": {
@@ -244,7 +264,7 @@ var validOperatorsForField = map[string]map[string]bool{
 	},
 	"path": {
 		"eq": true, "neq": true, "contains": true, "begins_with": true,
-		"ends_with": true, "regex": true, "in": true,
+		"ends_with": true, "regex": true, "in": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"host": {
@@ -256,15 +276,15 @@ var validOperatorsForField = map[string]map[string]bool{
 		"in_list": true, "not_in_list": true,
 	},
 	"user_agent": {
-		"eq": true, "contains": true, "regex": true, "in": true,
+		"eq": true, "contains": true, "regex": true, "in": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"header": {
-		"eq": true, "contains": true, "regex": true,
+		"eq": true, "contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"query": {
-		"contains": true, "regex": true,
+		"contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"country": {
@@ -272,36 +292,36 @@ var validOperatorsForField = map[string]map[string]bool{
 		"in_list": true, "not_in_list": true,
 	},
 	"cookie": {
-		"eq": true, "neq": true, "contains": true, "regex": true,
+		"eq": true, "neq": true, "contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"body": {
-		"eq": true, "contains": true, "begins_with": true, "ends_with": true, "regex": true,
+		"eq": true, "contains": true, "begins_with": true, "ends_with": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"body_json": {
-		"eq": true, "contains": true, "regex": true, "exists": true,
+		"eq": true, "contains": true, "regex": true, "exists": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"body_form": {
-		"eq": true, "contains": true, "regex": true,
+		"eq": true, "contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"args": {
-		"eq": true, "neq": true, "contains": true, "regex": true,
+		"eq": true, "neq": true, "contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"uri_path": {
 		"eq": true, "neq": true, "contains": true, "begins_with": true,
-		"ends_with": true, "regex": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"referer": {
-		"eq": true, "neq": true, "contains": true, "regex": true,
+		"eq": true, "neq": true, "contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"response_header": {
-		"eq": true, "contains": true, "regex": true,
+		"eq": true, "contains": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"response_status": {
@@ -310,6 +330,42 @@ var validOperatorsForField = map[string]map[string]bool{
 	},
 	"http_version": {
 		"eq": true, "neq": true,
+		"in_list": true, "not_in_list": true,
+	},
+	// v0.9.0: aggregate fields — support all string operators + phrase_match
+	"all_args": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"all_args_values": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"all_args_names": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"all_headers": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"all_headers_names": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"all_cookies": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"all_cookies_names": {
+		"eq": true, "neq": true, "contains": true, "begins_with": true,
+		"ends_with": true, "regex": true, "phrase_match": true,
 		"in_list": true, "not_in_list": true,
 	},
 }

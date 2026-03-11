@@ -272,6 +272,10 @@ func convertConditions(conditions []Condition, listStore *ManagedListStore) []Po
 		if (c.Operator == "in_list" || c.Operator == "not_in_list") && listStore != nil {
 			pc.ListItems, pc.ListKind = resolveListItems(listStore, c.Value)
 		}
+		// Pass through inline list items for phrase_match.
+		if c.Operator == "phrase_match" && len(c.ListItems) > 0 {
+			pc.ListItems = c.ListItems
+		}
 		result[j] = pc
 	}
 	return result
