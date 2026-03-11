@@ -129,6 +129,7 @@
 		# Rules are hot-reloaded from JSON file written by wafctl.
 		policy_engine {
 			rules_file /data/coraza/policy-rules.json
+			default_rules_file /etc/caddy/default-rules.json
 			reload_interval 5s
 		}
 		# Only run Coraza WAF when the policy engine did NOT allow the request.

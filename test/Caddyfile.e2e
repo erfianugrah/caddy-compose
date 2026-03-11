@@ -35,6 +35,7 @@
 	route @not_websocket {
 		policy_engine {
 			rules_file /data/coraza/policy-rules.json
+			default_rules_file /etc/caddy/default-rules.json
 			reload_interval 5s
 		}
 		@needs_waf {

@@ -19,12 +19,13 @@ import (
 
 // PolicyRulesFile is the top-level JSON structure written to policy-rules.json.
 type PolicyRulesFile struct {
-	Rules           []PolicyRule                 `json:"rules"`
-	RateLimitConfig *PolicyRateLimitGlobalConfig `json:"rate_limit_config,omitempty"`
-	ResponseHeaders *PolicyResponseHeaderConfig  `json:"response_headers,omitempty"`
-	WafConfig       *PolicyWafConfig             `json:"waf_config,omitempty"`
-	Generated       string                       `json:"generated"`
-	Version         int                          `json:"version"`
+	Rules                []PolicyRule                 `json:"rules"`
+	DisabledDefaultRules []string                     `json:"disabled_default_rules,omitempty"`
+	RateLimitConfig      *PolicyRateLimitGlobalConfig `json:"rate_limit_config,omitempty"`
+	ResponseHeaders      *PolicyResponseHeaderConfig  `json:"response_headers,omitempty"`
+	WafConfig            *PolicyWafConfig             `json:"waf_config,omitempty"`
+	Generated            string                       `json:"generated"`
+	Version              int                          `json:"version"`
 }
 
 // PolicyRule is a single policy rule as consumed by the Caddy plugin.
