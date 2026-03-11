@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "PE-9100003",
+      "name": "XXE: DOCTYPE/ENTITY with SYSTEM or PUBLIC",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "body",
+          "operator": "regex",
+          "value": "(?i:<!(?:DOCTYPE|ENTITY)[^>]*(?:SYSTEM|PUBLIC))"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-xxe", "custom-rules"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100006",
+      "name": "XXE: Parameter entity declaration",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "body",
+          "operator": "regex",
+          "value": "(?i:<!ENTITY\\s+%)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-xxe", "custom-rules"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100010",
+      "name": "RCE: Pipe to shell command in arguments",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "\\|(?:id|cat|ls|whoami|curl|wget|bash|sh|nc|ncat|python[23]?|perl|ruby|php|node|tee|head|tail|less|more|dd|base64|xxd|rev|env|printenv|uname|hostname|passwd|shadow|ifconfig|ip )"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "custom-rules"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100011",
+      "name": "RCE: Backtick command substitution",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "regex",
+          "value": "`[^`]+`"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-rce", "custom-rules"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100012",
+      "name": "CRLF injection in query string",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "query",
+          "operator": "regex",
+          "value": "(?:%0[dD]%0[aA]|\\r\\n)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "custom-rules"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100013",
+      "name": "CRLF injection in request headers",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_headers",
+          "operator": "regex",
+          "value": "(?:%0[dD]%0[aA]|\\r\\n)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": ["attack-protocol", "custom-rules"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100030",
+      "name": "Missing Accept header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header",
+          "operator": "eq",
+          "value": "Accept:"
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 1,
+      "tags": ["heuristic", "bot-signal"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100033",
+      "name": "Missing or empty User-Agent",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "user_agent",
+          "operator": "eq",
+          "value": ""
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": ["heuristic", "bot-signal"],
+      "enabled": true,
+      "priority": 400
+    },
+    {
+      "id": "PE-9100034",
+      "name": "Missing Referer on non-API GET",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "method",
+          "operator": "eq",
+          "value": "GET"
+        },
+        {
+          "field": "referer",
+          "operator": "eq",
+          "value": ""
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 1,
+      "tags": ["heuristic", "bot-signal"],
+      "enabled": true,
+      "priority": 400
+    }
+  ]
+}

@@ -706,6 +706,31 @@ CRS-equivalent rules will ship as built-in detection rules with the Docker image
 
 **Shipped:** Plugin v0.10.0 (commit `d15dc39`), caddy 3.7.0-2.11.1, wafctl 2.8.0. 327 plugin tests, 50 e2e test functions.
 
+### v0.10.1 — Default Rules Content & Heuristic Dedup
+
+- [x] Created `coraza/default-rules.json` with 9 rules (6 attack detect + 3 heuristic detect)
+  - PE-9100003: XXE DOCTYPE/ENTITY (CRITICAL, PL1)
+  - PE-9100006: XXE parameter entity (CRITICAL, PL1)
+  - PE-9100010: Pipe to shell RCE (CRITICAL, PL1)
+  - PE-9100011: Backtick substitution RCE (CRITICAL, PL1)
+  - PE-9100012: CRLF in query string (WARNING, PL1)
+  - PE-9100013: CRLF in headers (WARNING, PL1)
+  - PE-9100030: Missing Accept Header (NOTICE, PL1)
+  - PE-9100033: Missing User-Agent (WARNING, PL1)
+  - PE-9100034: Missing Referer on Non-API GET (NOTICE, PL1)
+- [x] Removed heuristic SecRules (9100030/33/34) from `coraza/pre-crs.conf`
+- [x] Changed `migrateV3toV4` to no-op (detect rules no longer seeded in user store)
+- [x] Added `migrateV4toV5` to remove previously-seeded heuristic detect rules from existing stores
+- [x] Updated `currentStoreVersion` from 4 to 5
+- [x] Fixed Caddyfile + test/Caddyfile.e2e paths to `/etc/caddy/coraza/default-rules.json`
+- [x] Fixed 6 migration tests + added 3 new v5 migration tests
+- [x] Updated e2e `TestPolicyEngineDetectMigrationSeedRules` for new behavior
+- [x] Version bumps: caddy `3.8.0-2.11.1`, wafctl `2.9.0` (all 5/4 locations)
+- [x] E2e smoke tests: 50 test functions all passing
+- [x] Deployed to production, health verified, WAF deploy triggered
+
+**Shipped:** caddy 3.8.0-2.11.1, wafctl 2.9.0. Default rules file with 9 rules live in production.
+
 ---
 
 ## Deferred Work
@@ -861,13 +886,13 @@ These are the immediate candidates — they're already written as SecRules and j
 | 9100033 | Empty/missing User-Agent (heuristic) | `detect` WARNING |
 | 9100034 | Missing Referer on non-API GET (heuristic) | `detect` NOTICE |
 
-Note: 9100030, 9100033, 9100034 are already seeded as `detect` rules in the wafctl exclusion store (v4 migration). They currently run through Coraza SecRules AND are duplicated as policy engine detect rules. Once ported to `default-rules.json`, the seeded exclusion store entries and the baked SecRules become redundant.
+Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.json`. The v4 migration (previously seeded these as user rules) is a no-op, and v5 migration removes any previously-seeded copies. The corresponding SecRules were removed from `coraza/pre-crs.conf`. Attack detect rules (9100003, 9100006, 9100010-9100013) are in `default-rules.json` AND still in SecRules (dual-running during transition).
 
 ### Tasks
 
 - [x] Define default rule JSON schema and loading mechanism — **COMPLETED** (plugin v0.10.0)
-- [ ] Create initial `default-rules.json` with existing custom rules (9100003, 9100006, 9100010-9100013)
-- [ ] Port heuristic bot rules (9100030, 9100033, 9100034) to default-rules.json — deduplicate with seeded exclusion store entries
+- [x] Create initial `default-rules.json` with existing custom rules (9100003, 9100006, 9100010-9100013) — **COMPLETED** (v0.10.1)
+- [x] Port heuristic bot rules (9100030, 9100033, 9100034) to default-rules.json — deduplicate with seeded exclusion store entries — **COMPLETED** (v0.10.1)
 - [ ] Ship scanner-useragents.txt equivalent as phrase_match default rule
 - [ ] Ship generic-useragents.txt equivalent as phrase_match default rule
 - [ ] Port Protocol Enforcement rules (920xxx subset)
@@ -875,7 +900,7 @@ Note: 9100030, 9100033, 9100034 are already seeded as `detect` rules in the wafc
 - [ ] Port RCE rules (932xxx subset) — requires phrase_match
 - [ ] Port XSS rules (941xxx subset) — requires transform chains
 - [ ] Port SQLi rules (942xxx subset) — requires transform chains
-- [ ] Add `default-rules.json` to Dockerfile COPY (bake into image at `/etc/caddy/default-rules.json`)
+- [x] Add `default-rules.json` to Dockerfile COPY (bake into image at `/etc/caddy/coraza/default-rules.json`) — already covered by `COPY coraza/ /etc/caddy/coraza/`
 - [ ] E2e tests for default rules: verify detect scoring with shipped rules
 - [ ] Production validation: compare policy engine scores vs Coraza scores for same requests
 

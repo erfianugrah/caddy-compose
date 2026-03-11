@@ -12,7 +12,7 @@ import (
 // currentStoreVersion is the latest store schema version.
 // Increment this and add a migration function when changing the store format
 // or adding default seed rules.
-const currentStoreVersion = 4
+const currentStoreVersion = 5
 
 // storeFile is the versioned on-disk format for the exclusions store.
 // Legacy stores (bare JSON arrays) are detected and migrated on load.
@@ -50,6 +50,7 @@ var storeMigrations = []storeMigration{
 	{toVersion: 2, name: "add event tags to rules", migrate: migrateV1toV2},
 	{toVersion: 3, name: "seed ipsum block rules", migrate: migrateV2toV3},
 	{toVersion: 4, name: "seed heuristic detect rules", migrate: migrateV3toV4},
+	{toVersion: 5, name: "remove heuristic detect rules (now in default-rules.json)", migrate: migrateV4toV5},
 }
 
 // load reads exclusions from the JSON file on disk. Handles both legacy
@@ -274,78 +275,35 @@ func migrateV2toV3(exclusions []RuleExclusion) []RuleExclusion {
 	return exclusions
 }
 
-// migrateV3toV4 seeds heuristic bot detection rules using the policy engine's
-// detect type (anomaly scoring). These replace the baked-in Coraza SecRules
-// 9100030, 9100033, 9100034 from pre-crs.conf. The SecRules can be removed
-// once detection parity is validated.
+// migrateV3toV4 previously seeded heuristic bot detection rules (detect type)
+// for 9100030, 9100033, 9100034. These are now shipped as built-in default
+// rules in default-rules.json (loaded by the policy engine plugin). The
+// migration is kept as a no-op for version compatibility — existing stores
+// at version 3 will advance to version 4 without adding duplicate rules.
 func migrateV3toV4(exclusions []RuleExclusion) []RuleExclusion {
-	// Check if any detect rules already exist (idempotent).
-	for _, e := range exclusions {
-		if e.Type == "detect" && containsTag(e.Tags, "heuristic") {
-			return exclusions // already seeded
-		}
+	return exclusions // no-op — heuristic detect rules are now in default-rules.json
+}
+
+// migrateV4toV5 removes heuristic detect rules that were seeded by v3→v4.
+// These rules are now shipped as built-in defaults in default-rules.json
+// (PE-9100030, PE-9100033, PE-9100034). Removing the user-store copies
+// avoids double-counting anomaly scores.
+func migrateV4toV5(exclusions []RuleExclusion) []RuleExclusion {
+	// Known names of the v4-seeded heuristic detect rules.
+	remove := map[string]bool{
+		"Missing Accept Header":          true,
+		"Missing User-Agent":             true,
+		"Missing Referer on Non-API GET": true,
 	}
 
-	now := time.Now().UTC()
-
-	// Rule 9100030: Missing Accept header — scripts/scanners omit Accept.
-	// Excluding /api/health to avoid false positives on health probes.
-	exclusions = append(exclusions, RuleExclusion{
-		ID:          generateUUIDv7(),
-		Name:        "Missing Accept Header",
-		Description: "Requests without an Accept header suggest automated scripts or scanners (mirrors pre-crs rule 9100030)",
-		Type:        "detect",
-		Conditions: []Condition{
-			{Field: "header", Operator: "eq", Value: "Accept:"},
-		},
-		GroupOp:             "and",
-		Severity:            "NOTICE",
-		DetectParanoiaLevel: 1,
-		Tags:                []string{"heuristic", "bot-signal"},
-		Enabled:             true,
-		CreatedAt:           now,
-		UpdatedAt:           now,
-	})
-
-	// Rule 9100033: Empty/missing User-Agent — strong bot signal.
-	exclusions = append(exclusions, RuleExclusion{
-		ID:          generateUUIDv7(),
-		Name:        "Missing User-Agent",
-		Description: "Requests without a User-Agent header are a strong bot signal (mirrors pre-crs rule 9100033)",
-		Type:        "detect",
-		Conditions: []Condition{
-			{Field: "user_agent", Operator: "eq", Value: ""},
-		},
-		GroupOp:             "and",
-		Severity:            "WARNING",
-		DetectParanoiaLevel: 1,
-		Tags:                []string{"heuristic", "bot-signal"},
-		Enabled:             true,
-		CreatedAt:           now,
-		UpdatedAt:           now,
-	})
-
-	// Rule 9100034: Missing Referer on non-API GET — low confidence.
-	// Only applies to GET requests for non-API, non-favicon, non-robots paths.
-	exclusions = append(exclusions, RuleExclusion{
-		ID:          generateUUIDv7(),
-		Name:        "Missing Referer on Non-API GET",
-		Description: "GET requests without Referer suggest direct scanning (mirrors pre-crs rule 9100034)",
-		Type:        "detect",
-		Conditions: []Condition{
-			{Field: "method", Operator: "eq", Value: "GET"},
-			{Field: "referer", Operator: "eq", Value: ""},
-		},
-		GroupOp:             "and",
-		Severity:            "NOTICE",
-		DetectParanoiaLevel: 1,
-		Tags:                []string{"heuristic", "bot-signal"},
-		Enabled:             true,
-		CreatedAt:           now,
-		UpdatedAt:           now,
-	})
-
-	return exclusions
+	filtered := make([]RuleExclusion, 0, len(exclusions))
+	for _, e := range exclusions {
+		if e.Type == "detect" && containsTag(e.Tags, "heuristic") && remove[e.Name] {
+			continue // skip — now provided by default-rules.json
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
 }
 
 // List returns all exclusions.

@@ -2756,7 +2756,9 @@ func TestPolicyEngineDetectWafConfig(t *testing.T) {
 }
 
 func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
-	// Verify that the v4 migration seeded the 3 heuristic detect rules.
+	// v4 migration is now a no-op and v5 removes previously-seeded heuristic
+	// detect rules. These rules now ship in default-rules.json instead.
+	// Verify the user store has zero seeded detect rules.
 	resp, body := httpGet(t, wafctlURL+"/api/exclusions")
 	assertCode(t, "list exclusions", 200, resp)
 
@@ -2765,21 +2767,19 @@ func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
 		t.Fatalf("unmarshal exclusions: %v", err)
 	}
 
-	detectCount := 0
+	seededDetectNames := map[string]bool{
+		"Missing Accept Header":          true,
+		"Missing User-Agent":             true,
+		"Missing Referer on Non-API GET": true,
+	}
 	for _, raw := range exclusions {
 		typ := jsonField(raw, "type")
-		if typ == "detect" {
-			detectCount++
+		name := jsonField(raw, "name")
+		if typ == "detect" && seededDetectNames[name] {
+			t.Errorf("seeded detect rule %q should have been removed by v5 migration", name)
 		}
 	}
-
-	// The v4 migration seeds 3 heuristic detect rules:
-	// "Missing Accept Header", "Missing User-Agent", "Missing Referer on Non-API GET"
-	// Plus any that test cleanup might have removed — check for at least 3.
-	if detectCount < 3 {
-		t.Errorf("expected at least 3 seeded detect rules from v4 migration, got %d", detectCount)
-	}
-	t.Logf("found %d detect rules in store", detectCount)
+	t.Log("confirmed: no seeded heuristic detect rules in user store (moved to default-rules.json)")
 }
 
 // ════════════════════════════════════════════════════════════════════
