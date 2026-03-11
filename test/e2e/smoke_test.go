@@ -2433,17 +2433,24 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 func TestPolicyEngineDetectScoring(t *testing.T) {
 	// Test the full anomaly scoring pipeline:
 	// 1. Create detect rules that target specific conditions
-	// 2. Configure waf_config with a low threshold
+	// 2. Configure waf_config with a threshold
 	// 3. Deploy via policy-rules.json
-	// 4. Send requests that trigger multiple detect rules → score exceeds threshold
+	// 4. Send requests that trigger detect rules → score exceeds threshold
 	// 5. Verify 403 with X-Anomaly-Score header
+	//
+	// Note: The v4 migration seeds 3 heuristic detect rules that also contribute:
+	//   - Missing Accept Header (NOTICE=2)
+	//   - Missing User-Agent (WARNING=3)
+	//   - Missing Referer on Non-API GET (NOTICE=2, GET only)
+	// A GET with no UA, no Accept, no Referer triggers all 3 → base score = 7.
 
-	// Step 1: Create detect rules with known scores.
-	// WARNING=3 + WARNING=3 = 6 total — we'll set threshold to 5.
+	// Step 1: Create 2 additional detect rules.
+	// Combined score with seeded rules for a "naked" GET:
+	// Seeded: 2+3+2=7, Custom: 3+3=6 → Total=13
 	rule1Payload := map[string]any{
 		"name":        "e2e-detect-no-ua",
 		"type":        "detect",
-		"description": "Missing User-Agent",
+		"description": "Missing User-Agent (custom)",
 		"severity":    "WARNING",
 		"enabled":     true,
 		"conditions":  []map[string]string{{"field": "user_agent", "operator": "eq", "value": ""}},
@@ -2457,7 +2464,7 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 	rule2Payload := map[string]any{
 		"name":        "e2e-detect-no-accept",
 		"type":        "detect",
-		"description": "Missing Accept header",
+		"description": "Missing Accept header (custom)",
 		"severity":    "WARNING",
 		"enabled":     true,
 		"conditions":  []map[string]string{{"field": "header", "operator": "eq", "value": "Accept:"}},
@@ -2468,8 +2475,7 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 	rule2ID := mustGetID(t, body2)
 	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+rule2ID) })
 
-	// Step 2: Set waf_config with a low inbound threshold so scoring triggers blocks.
-	// PL=2 (both rules are PL=0 which means "always evaluate"), threshold=5.
+	// Step 2: Set threshold=5 — a "naked" GET (no UA, no Accept) triggers score=13.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
 			"mode":               "enabled",
@@ -2491,16 +2497,13 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 	time.Sleep(8 * time.Second)
 
 	// Step 4: Send a request with no User-Agent AND no Accept header.
-	// This should trigger both detect rules: WARNING(3) + WARNING(3) = 6 >= 5 threshold.
+	// Total score ~13 (seeded 7 + custom 6) >> threshold 5.
 	t.Run("scoring exceeds threshold — 403 detect_block", func(t *testing.T) {
 		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
 		if err != nil {
 			t.Fatalf("creating request: %v", err)
 		}
-		// Strip User-Agent (empty = missing).
 		req.Header.Set("User-Agent", "")
-		// Don't set Accept header — Go's default doesn't send one either,
-		// but be explicit.
 		req.Header.Del("Accept")
 
 		resp, err := client.Do(req)
@@ -2511,20 +2514,21 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 		resp.Body.Close()
 
 		if resp.StatusCode != 403 {
-			t.Errorf("expected 403 (detect_block, score=6 >= threshold=5), got %d; body=%.200s",
+			t.Errorf("expected 403 (detect_block), got %d; body=%.200s",
 				resp.StatusCode, string(body))
 		}
 
 		// Verify X-Anomaly-Score header is present on the blocked response.
 		score := resp.Header.Get("X-Anomaly-Score")
 		if score == "" {
-			t.Log("X-Anomaly-Score header not present on 403 response (may be hidden by error handler)")
+			t.Log("X-Anomaly-Score header not present on 403 (may be hidden by error handler)")
 		} else {
 			t.Logf("X-Anomaly-Score: %s", score)
 		}
 	})
 
-	// Step 5: Send a normal request with User-Agent and Accept — should pass.
+	// Step 5: Send a well-formed request — should pass scoring.
+	// With UA, Accept, and Referer all present, no detect rules fire → score=0.
 	t.Run("normal request passes scoring", func(t *testing.T) {
 		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
 		if err != nil {
@@ -2532,6 +2536,7 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 		}
 		req.Header.Set("User-Agent", "Mozilla/5.0 E2E-Test")
 		req.Header.Set("Accept", "text/html")
+		req.Header.Set("Referer", "https://example.com/")
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -2540,39 +2545,19 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 		resp.Body.Close()
 
 		if resp.StatusCode == 403 {
-			t.Errorf("expected non-403 (normal request should pass scoring), got 403")
+			t.Errorf("expected non-403 (score=0, threshold=5), got 403")
 		}
 	})
 
-	// Step 6: Test that a single detect rule (below threshold) doesn't block.
-	// Only trigger the UA rule (WARNING=3), which is below threshold=5.
-	t.Run("single detect below threshold — passes", func(t *testing.T) {
-		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
-		if err != nil {
-			t.Fatalf("creating request: %v", err)
-		}
-		req.Header.Set("User-Agent", "")
-		req.Header.Set("Accept", "text/html") // Accept present → only UA rule triggers
-
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("request failed: %v", err)
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode == 403 {
-			t.Errorf("expected non-403 (score=3 < threshold=5), got 403")
-		}
-	})
-
-	// Step 7: Raise the threshold so both rules together don't block.
+	// Step 6: Raise the threshold above the max possible score so nothing blocks.
+	// Max score for "naked" GET: ~13. Set threshold=20 → always passes.
 	t.Run("raised threshold prevents block", func(t *testing.T) {
 		configPayload := map[string]any{
 			"defaults": map[string]any{
 				"mode":               "enabled",
 				"paranoia_level":     2,
-				"inbound_threshold":  10, // 6 < 10, so no block
-				"outbound_threshold": 10,
+				"inbound_threshold":  20,
+				"outbound_threshold": 20,
 			},
 		}
 		resp, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
@@ -2584,7 +2569,7 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 		assertField(t, "deploy", deployBody, "status", "deployed")
 		time.Sleep(8 * time.Second)
 
-		// Same request as step 4 (no UA, no Accept) — should now pass.
+		// Same "naked" GET — score ~13 but threshold=20 → passes.
 		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
 		if err != nil {
 			t.Fatalf("creating request: %v", err)
@@ -2599,11 +2584,11 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 		resp3.Body.Close()
 
 		if resp3.StatusCode == 403 {
-			t.Errorf("expected non-403 (score=6 < threshold=10), got 403")
+			t.Errorf("expected non-403 (score ~13 < threshold=20), got 403")
 		}
 	})
 
-	// Step 8: Cleanup — restore config to production defaults.
+	// Step 7: Cleanup — restore config to production defaults.
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
 			"mode":               "enabled",
@@ -2620,7 +2605,14 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 
 func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 	// Test that detect rules with PL > service PL are skipped.
-	// Create a PL=4 detect rule, set service PL=1, verify rule doesn't trigger.
+	// Create a PL=4 CRITICAL detect rule, set service PL=1, verify rule doesn't trigger.
+	//
+	// Test request: no UA, has Accept, no Referer, GET
+	// Seeded PL=1 rules that fire:
+	//   - "Missing User-Agent" (WARNING=3) — user_agent eq ""
+	//   - "Missing Referer on Non-API GET" (NOTICE=2) — method=GET + referer=""
+	// Seeded total = 5. Custom PL=4 CRITICAL = 5.
+	// Threshold = 8: at PL=1 → 5 < 8 (pass); at PL=4 → 10 ≥ 8 (block).
 
 	rulePL4 := map[string]any{
 		"name":                  "e2e-detect-pl4",
@@ -2637,12 +2629,12 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 	ruleID := mustGetID(t, body1)
 	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+ruleID) })
 
-	// Set service PL to 1, threshold to 1 (even CRITICAL=5 > 1 would block IF it fires).
+	// Set PL=1, threshold=8 — seeded PL1 rules score 5, below 8.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
 			"mode":               "enabled",
 			"paranoia_level":     1,
-			"inbound_threshold":  1,
+			"inbound_threshold":  8,
 			"outbound_threshold": 10,
 		},
 	}
@@ -2655,8 +2647,8 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 	assertField(t, "deploy", deployBody, "status", "deployed")
 	time.Sleep(8 * time.Second)
 
-	// Send request with no UA — rule is PL4 but service PL=1, so rule is skipped.
-	t.Run("PL4 rule skipped at PL1", func(t *testing.T) {
+	// Send request with no UA — PL4 rule is skipped at PL=1, score=5 < 8 → passes.
+	t.Run("PL4 rule skipped at PL1 — score below threshold", func(t *testing.T) {
 		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
 		if err != nil {
 			t.Fatalf("creating request: %v", err)
@@ -2671,7 +2663,44 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 		resp.Body.Close()
 
 		if resp.StatusCode == 403 {
-			t.Errorf("expected non-403 (PL4 rule should be skipped at PL1), got 403")
+			t.Errorf("expected non-403 (PL4 skipped, score=5 < threshold=8), got 403")
+		}
+	})
+
+	// Now raise PL to 4 — same request should now trigger PL4 rule, total=10 ≥ 8 → block.
+	t.Run("PL4 rule fires at PL4 — score exceeds threshold", func(t *testing.T) {
+		configPL4 := map[string]any{
+			"defaults": map[string]any{
+				"mode":               "enabled",
+				"paranoia_level":     4,
+				"inbound_threshold":  8,
+				"outbound_threshold": 10,
+			},
+		}
+		resp, _ := httpPut(t, wafctlURL+"/api/config", configPL4)
+		assertCode(t, "set PL4 config", 200, resp)
+
+		time.Sleep(2 * time.Second)
+		resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+		assertCode(t, "deploy PL4", 200, resp2)
+		assertField(t, "deploy PL4", deployBody, "status", "deployed")
+		time.Sleep(8 * time.Second)
+
+		req, err := http.NewRequest("GET", caddyURL+"/get", nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		req.Header.Set("User-Agent", "")
+		req.Header.Set("Accept", "text/html")
+
+		resp3, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp3.Body.Close()
+
+		if resp3.StatusCode != 403 {
+			t.Errorf("expected 403 (PL4 fires, score=10 >= threshold=8), got %d", resp3.StatusCode)
 		}
 	})
 
