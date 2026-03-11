@@ -235,25 +235,6 @@
     },
 
     {
-      "id": "PE-920280",
-      "name": "Request missing Host header",
-      "description": "HTTP/1.1 requires a Host header. Absence indicates a malformed request or pre-HTTP/1.1 client. CRS 920280.",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header",
-          "operator": "eq",
-          "value": "Host:"
-        }
-      ],
-      "group_op": "and",
-      "severity": "WARNING",
-      "paranoia_level": 1,
-      "tags": ["protocol-enforcement", "920xxx"],
-      "enabled": true,
-      "priority": 400
-    },
-    {
       "id": "PE-920350",
       "name": "Host header is a numeric IP address",
       "description": "Host header contains an IP address instead of a hostname. Often indicates direct IP scanning or automated tools. CRS 920350.",
@@ -381,13 +362,13 @@
     {
       "id": "PE-920220",
       "name": "URL encoding abuse in path",
-      "description": "Invalid URL encoding sequences in the request path may indicate evasion attempts. CRS 920220.",
+      "description": "Invalid URL encoding sequences in the request path may indicate evasion attempts. Matches percent sign at end of string, followed by non-hex, or followed by only one hex digit at end. CRS 920220.",
       "type": "detect",
       "conditions": [
         {
           "field": "uri_path",
           "operator": "regex",
-          "value": "%(?![0-9a-fA-F]{2})"
+          "value": "%(?:$|[^0-9a-fA-F]|[0-9a-fA-F](?:$|[^0-9a-fA-F]))"
         }
       ],
       "group_op": "and",

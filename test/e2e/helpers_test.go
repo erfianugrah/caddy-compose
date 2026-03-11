@@ -31,14 +31,45 @@ var (
 
 // ── HTTP helpers ───────────────────────────────────────────────────
 
-var client = &http.Client{Timeout: httpTimeout}
+// browserTransport wraps the default transport to inject browser-like headers
+// on every request. Without these, the policy engine's default detect rules
+// (PE-9100030 Missing Accept, PE-9100033 Missing User-Agent, PE-9100034
+// Missing Referer, PE-920280 Missing Host) accumulate anomaly scores that
+// exceed the default threshold of 5, blocking bare Go http.Client requests.
+type browserTransport struct {
+	base http.RoundTripper
+}
+
+func (bt *browserTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Only inject defaults when the header is completely absent.
+	// Tests that explicitly set headers (even to "") are left alone.
+	if _, ok := req.Header["User-Agent"]; !ok {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; e2e-test/1.0)")
+	}
+	if _, ok := req.Header["Accept"]; !ok {
+		req.Header.Set("Accept", "*/*")
+	}
+	return bt.base.RoundTrip(req)
+}
+
+var client = &http.Client{
+	Timeout:   httpTimeout,
+	Transport: &browserTransport{base: http.DefaultTransport},
+}
 
 // deployClient has a longer timeout for deploy operations (Caddy reload).
-var deployClient = &http.Client{Timeout: 120 * time.Second}
+var deployClient = &http.Client{
+	Timeout:   120 * time.Second,
+	Transport: &browserTransport{base: http.DefaultTransport},
+}
 
 func httpGet(t *testing.T, url string) (*http.Response, []byte) {
 	t.Helper()
-	resp, err := client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
@@ -100,7 +131,11 @@ func httpDo(t *testing.T, c *http.Client, method, url string, payload any) (*htt
 }
 
 func httpGetCode(url string) (int, error) {
-	resp, err := client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -109,7 +144,12 @@ func httpGetCode(url string) (int, error) {
 }
 
 func httpPostRaw(url string, body []byte) (int, error) {
-	resp, err := client.Post(url, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
 	}

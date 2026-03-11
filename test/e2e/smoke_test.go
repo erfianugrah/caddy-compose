@@ -42,6 +42,48 @@ func TestServiceReadiness(t *testing.T) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  0.5. Blocklist Refresh — populates ipsum managed lists + redeploy
+// ════════════════════════════════════════════════════════════════════
+
+func TestBlocklistRefresh(t *testing.T) {
+	// Download real IPsum data from GitHub and populate the 8 per-level
+	// managed lists. This also triggers deployAll() which regenerates
+	// policy-rules.json with resolved list items, ensuring the policy
+	// engine has a valid rule set for all subsequent tests.
+	resp, body := httpPostDeploy(t, wafctlURL+"/api/blocklist/refresh", struct{}{})
+	if resp.StatusCode != 200 {
+		t.Fatalf("blocklist refresh failed: %d %s", resp.StatusCode, string(body))
+	}
+	t.Logf("blocklist refresh: %s", string(body))
+
+	// Verify managed lists were created.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/lists")
+	assertCode(t, "list managed lists", 200, resp2)
+	listCount := jsonArrayLen(body2)
+	if listCount < 8 {
+		t.Errorf("expected at least 8 ipsum managed lists, got %d", listCount)
+	}
+	t.Logf("managed lists after refresh: %d", listCount)
+
+	// Verify blocklist stats show loaded IPs.
+	resp3, body3 := httpGet(t, wafctlURL+"/api/blocklist/stats")
+	assertCode(t, "blocklist stats", 200, resp3)
+	blockedIPs := jsonInt(body3, "blocked_ips")
+	if blockedIPs < 1000 {
+		t.Errorf("expected >1000 blocked IPs after refresh, got %d", blockedIPs)
+	}
+	t.Logf("blocked IPs after refresh: %d", blockedIPs)
+
+	// Wait for policy engine hot-reload to pick up the new rules.
+	time.Sleep(8 * time.Second)
+
+	// Verify policy engine loaded successfully by checking Caddy logs
+	// indirectly — a known-clean request should still pass through.
+	resp4, _ := httpGet(t, caddyURL+"/get")
+	assertCode(t, "clean request after refresh", 200, resp4)
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  1. Health & Basics
 // ════════════════════════════════════════════════════════════════════
 
@@ -1639,7 +1681,7 @@ func TestPolicyEngineNotInList(t *testing.T) {
 		"name":   "e2e-safe-agents",
 		"kind":   "string",
 		"source": "manual",
-		"items":  []string{"Go-http-client/1.1"},
+		"items":  []string{"Go-http-client/1.1", "Mozilla/5.0 (compatible; e2e-test/1.0)"},
 	}
 	resp, body := httpPost(t, wafctlURL+"/api/lists", listPayload)
 	assertCode(t, "create safe list", 201, resp)
@@ -1673,7 +1715,7 @@ func TestPolicyEngineNotInList(t *testing.T) {
 
 	// Step 4: Verify not_in_list matching.
 	t.Run("safe UA passes through", func(t *testing.T) {
-		// Go's default HTTP client sends "Go-http-client/1.1" which is in the safe list.
+		// The e2e browserTransport sends "Mozilla/5.0 (compatible; e2e-test/1.0)" which is in the safe list.
 		code, err := httpGetCode(caddyURL + "/e2e-notinlist-test")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -2802,9 +2844,9 @@ func TestDefaultRulesAPI(t *testing.T) {
 		t.Fatalf("unmarshal default rules: %v", err)
 	}
 
-	// Should have 37 default rules (26 from v3 + 11 new 930xxx/921xxx/943xxx)
-	if len(rules) != 37 {
-		t.Errorf("expected 37 default rules, got %d", len(rules))
+	// Should have 36 default rules (26 from v3 + 11 new 930xxx/921xxx/943xxx - 1 removed PE-920280)
+	if len(rules) != 36 {
+		t.Errorf("expected 36 default rules, got %d", len(rules))
 	}
 
 	// Check that key rules exist.
@@ -2819,7 +2861,7 @@ func TestDefaultRulesAPI(t *testing.T) {
 		}
 	}
 	// v0.10.4 920xxx Protocol Enforcement rules (spot check)
-	for _, id := range []string{"PE-920280", "PE-920170", "PE-920440", "PE-920300", "PE-920311"} {
+	for _, id := range []string{"PE-920170", "PE-920440", "PE-920300", "PE-920311"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing 920xxx default rule %s", id)
 		}
@@ -2871,7 +2913,7 @@ func TestDefaultRulesAPI(t *testing.T) {
 		t.Errorf("PE-943120 type: want detect, got %s", typ)
 	}
 
-	t.Log("confirmed: default rules API returns all 37 rules including 930xxx/921xxx/943xxx")
+	t.Log("confirmed: default rules API returns all 36 rules including 930xxx/921xxx/943xxx")
 }
 
 // ════════════════════════════════════════════════════════════════════

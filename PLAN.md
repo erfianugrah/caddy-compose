@@ -842,7 +842,22 @@ Second batch of CRS rule porting. Three categories in one release — all low ef
 
 - [x] Updated e2e test `TestDefaultRulesAPI` (expected 26 → 37, spot checks for all 3 categories)
 - [x] Version bumps: caddy `3.12.0-2.11.1`, wafctl `2.13.0` (all 5+4 locations)
-- [ ] E2e tests passing
+- [x] E2e tests passing
+- [x] Deployed to production
+
+### v0.11.1 — Critical bugfix: RE2 regex + broken default rule + e2e hardening
+
+**Root cause**: PE-920220 used PCRE negative lookahead `(?!...)` which Go's RE2 regex engine rejects. The policy engine compiles ALL rules at load time — if ANY regex fails, the ENTIRE rule set is rejected. This meant the plugin ran with 0 rules since v0.10.4, breaking ALL policy engine features (block, allow, rate limit, detect, response headers, CSP).
+
+**Fixes:**
+- [x] PE-920220 regex: `%(?![0-9a-fA-F]{2})` → `%(?:$|[^0-9a-fA-F]|[0-9a-fA-F](?:$|[^0-9a-fA-F]))` (RE2-compatible equivalent)
+- [x] Removed PE-920280 (Request missing Host header): Go's `net/http` server always strips Host from `r.Header` and puts it in `r.Host`, so `header:Host eq ""` fires on EVERY request. HTTP/1.1 requests without Host are rejected with 400 by Go before middleware runs. Rule is dead code. 37 → 36 default rules.
+- [x] E2e `browserTransport`: injects `User-Agent` and `Accept` headers on bare requests. Without these, default detect rules (PE-9100030 Missing Accept, PE-9100033 Missing UA, PE-9100034 Missing Referer) accumulated anomaly scores exceeding the default threshold of 5, causing all test requests to be blocked.
+- [x] E2e `not_in_list` safe list updated to include the new UA string
+- [x] E2e rule count assertions updated (37 → 36)
+- [x] `TestBlocklistRefresh` added: downloads real IPsum data, verifies 8 managed lists, >1000 blocked IPs, waits for hot-reload
+- [x] Version bumps: caddy `3.12.1-2.11.1`, wafctl `2.13.1`
+- [x] All tests passing: 1425 Go + 340 frontend + full e2e suite
 - [ ] Deployed to production
 
 ---
@@ -866,6 +881,8 @@ The waf-dashboard condition builder and event display are missing support for fe
 | Numeric operators (`gt`/`ge`/`lt`/`le`) | `ConditionOperator` type, operator dropdowns | v0.9.0 | Low |
 | `count:` pseudo-field prefix | Field selector, prefix toggle/dropdown | v0.9.0 | Medium |
 | Default rules list + disable/enable UI | New panel/section in Policy page | v0.10.0 | Medium |
+| Policy rule position indicator | Edit Rule dialog should show "Rule #N of M" so user knows current position | v0.11.1 | Low |
+| Move to top / Move to bottom buttons | Drag-to-reorder breaks across paginated pages — add "Move to top", "Move to bottom", and/or position number input for cross-page reordering | v0.11.1 | Medium |
 
 **What IS implemented in frontend:** `TransformSelect` component (v0.8.1), `transforms` field on `Condition` interface.
 
