@@ -858,7 +858,7 @@ Second batch of CRS rule porting. Three categories in one release — all low ef
 - [x] `TestBlocklistRefresh` added: downloads real IPsum data, verifies 8 managed lists, >1000 blocked IPs, waits for hot-reload
 - [x] Version bumps: caddy `3.12.1-2.11.1`, wafctl `2.13.1`
 - [x] All tests passing: 1425 Go + 340 frontend + full e2e suite
-- [ ] Deployed to production
+- [x] Deployed to production (2026-03-11)
 
 ---
 
