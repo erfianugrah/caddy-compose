@@ -426,18 +426,20 @@ These appear in `log_append` for wafctl to parse and display in the dashboard.
 
 ### Tasks
 
-- [ ] Add `severity` and `paranoia_level` fields to `PolicyRule`
-- [ ] Add `scoreAccumulator` struct
-- [ ] Add `detect` rule type to `compileRule()` — skip if PL > configured
-- [ ] Extend `ServeHTTP()` evaluation loop with score accumulation pass
-- [ ] Add threshold check after all detect rules evaluate
-- [ ] Add `WafConfig` type to `PolicyRulesFile` with per-service overrides
-- [ ] Pre-compile WAF config at load time
-- [ ] Set Caddy variables for scored/blocked requests
-- [ ] Log score breakdown (rule IDs, severities, total)
-- [ ] Tests: single detect rule scoring, multiple rules cumulative, threshold blocking, per-service thresholds, paranoia level filtering, severity mapping
-- [ ] Update wafctl to generate `waf_config` section from existing `WAFConfig` store
-- [ ] Port existing heuristic bot rules (9100030, 9100033, 9100034) to `detect` type as proof-of-concept
+- [x] Add `severity` and `paranoia_level` fields to `PolicyRule`
+- [x] Add `scoreAccumulator` struct
+- [x] Add `detect` rule type to `compileRule()` — skip if PL > configured
+- [x] Extend `ServeHTTP()` evaluation loop with score accumulation pass
+- [x] Add threshold check after all detect rules evaluate
+- [x] Add `WafConfig` type to `PolicyRulesFile` with per-service overrides
+- [x] Pre-compile WAF config at load time
+- [x] Set Caddy variables for scored/blocked requests
+- [x] Log score breakdown (rule IDs, severities, total)
+- [x] Tests: single detect rule scoring, multiple rules cumulative, threshold blocking, per-service thresholds, paranoia level filtering, severity mapping
+- [x] Update wafctl to generate `waf_config` section from existing `WAFConfig` store
+- [x] Port existing heuristic bot rules (9100030, 9100033, 9100034) to `detect` type as proof-of-concept
+
+**Shipped:** Plugin v0.8.0 (commit `6d45c85`), caddy 3.4.0-2.11.1, wafctl 2.5.0. 3 seeded PL1 heuristic detect rules, 37 e2e tests pass.
 
 ---
 
@@ -527,14 +529,16 @@ Transform functions are resolved at compile time (rule load) — per-request cos
 
 ### Tasks
 
-- [ ] Implement Phase 1 transforms (9 functions) as pure Go
-- [ ] Add `transforms` field to `PolicyCondition` and `compiledCondition`
-- [ ] Resolve transforms at compile time in `compileCondition()`
-- [ ] Apply transforms in `matchCondition()` before `evalOperator()`
-- [ ] Tests: each transform function unit test, transform chains, empty transforms (no-op)
-- [ ] Implement Phase 2 transforms (8 functions)
-- [ ] Update wafctl condition model and validation
+- [x] Implement Phase 1 transforms (9 functions) as pure Go
+- [x] Add `transforms` field to `PolicyCondition` and `compiledCondition`
+- [x] Resolve transforms at compile time in `compileCondition()`
+- [x] Apply transforms in `matchCondition()` before `evalOperator()`
+- [x] Tests: each transform function unit test, transform chains, empty transforms (no-op)
+- [x] Implement Phase 2 transforms (8 functions)
+- [x] Update wafctl condition model and validation
 - [ ] Update frontend ConditionRow to allow transform selection (optional, can defer)
+
+**Shipped:** Plugin v0.8.1 (commit `96336af`), caddy 3.5.0-2.11.1, wafctl 2.6.0. All 17 transforms (Phase 1 + Phase 2) in one release. 40 plugin tests, 19 wafctl tests, 6 e2e transform tests. 43 total e2e tests pass.
 
 ---
 
