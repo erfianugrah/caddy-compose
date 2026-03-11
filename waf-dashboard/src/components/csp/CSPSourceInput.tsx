@@ -87,13 +87,13 @@ export function CSPSourceInput({
           const pill = (
             <span
               key={val}
-              className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
+              className="inline-flex items-center gap-1 rounded bg-lovelace-800 border border-border px-2 py-0.5 text-xs font-data text-lv-cyan"
             >
               {val}
               <button
                 type="button"
                 onClick={() => removeValue(val)}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
+                className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
               >
                 <span className="sr-only">Remove</span>
                 <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -128,14 +128,14 @@ export function CSPSourceInput({
             }, 200);
           }}
           placeholder={values.length === 0 ? (placeholder ?? "Add source...") : ""}
-          className="flex-1 min-w-[100px] bg-transparent text-xs font-mono outline-none placeholder:text-muted-foreground"
+          className="flex-1 min-w-[100px] bg-transparent text-xs font-data outline-none placeholder:text-muted-foreground"
         />
       </div>
       {showDropdown && grouped.length > 0 && (
-        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-navy-950 shadow-lg">
+        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-lovelace-950 shadow-lg">
           {grouped.map(({ cat, items }) => (
             <div key={cat}>
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-navy-900/50 sticky top-0">
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-lovelace-900/50 sticky top-0">
                 {SOURCE_CATEGORY_LABELS[cat]}
               </div>
               {items.map((src) => (
@@ -149,7 +149,7 @@ export function CSPSourceInput({
                   }}
                   className="flex w-full items-start gap-3 px-3 py-1.5 text-xs hover:bg-accent cursor-pointer"
                 >
-                  <span className="font-mono text-foreground shrink-0">{src.value}</span>
+                  <span className="font-data text-foreground shrink-0">{src.value}</span>
                   <span className="text-muted-foreground text-[10px] leading-tight">{src.desc}</span>
                 </button>
               ))}

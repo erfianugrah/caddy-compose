@@ -79,66 +79,66 @@ const modsecLanguage = StreamLanguage.define({
 // ─── Syntax Highlighting Theme ──────────────────────────────────────
 
 const modsecHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: "#c792ea", fontWeight: "bold" },           // SecRule, SecAction — purple
-  { tag: tags.operatorKeyword, color: "#f78c6c" },                       // @rx, @streq — orange
-  { tag: tags.variableName, color: "#82aaff" },                          // ARGS, REQUEST_URI — blue
-  { tag: tags.function(tags.name), color: "#c3e88d" },                   // id:, phase:, deny — green
-  { tag: tags.typeName, color: "#ffcb6b" },                              // t:none, t:lowercase — yellow
-  { tag: tags.string, color: "#c3e88d" },                                // "quoted strings" — green
-  { tag: tags.number, color: "#f78c6c" },                                // 920420, 1 — orange
-  { tag: tags.lineComment, color: "#546e7a", fontStyle: "italic" },      // # comments — gray italic
-  { tag: tags.escape, color: "#546e7a" },                                // \ continuation
-  { tag: tags.punctuation, color: "#89ddff" },                           // : | — cyan
-  { tag: tags.operator, color: "#89ddff" },                              // ! — cyan
+  { tag: tags.keyword, color: "#c574dd", fontWeight: "bold" },           // SecRule, SecAction — lv-purple
+  { tag: tags.operatorKeyword, color: "#f1a171" },                       // @rx, @streq — lv-peach
+  { tag: tags.variableName, color: "#8796f4" },                          // ARGS, REQUEST_URI — lv-blue
+  { tag: tags.function(tags.name), color: "#5adecd" },                   // id:, phase:, deny — lv-green
+  { tag: tags.typeName, color: "#f1a171" },                              // t:none, t:lowercase — lv-peach
+  { tag: tags.string, color: "#5adecd" },                                // "quoted strings" — lv-green
+  { tag: tags.number, color: "#f1a171" },                                // 920420, 1 — lv-peach
+  { tag: tags.lineComment, color: "#606270", fontStyle: "italic" },      // # comments — muted italic
+  { tag: tags.escape, color: "#606270" },                                // \ continuation
+  { tag: tags.punctuation, color: "#79e6f3" },                           // : | — lv-cyan
+  { tag: tags.operator, color: "#79e6f3" },                              // ! — lv-cyan
 ]);
 
-// Dark editor theme matching the dashboard
+// Dark editor theme matching the Lovelace dashboard
 const editorTheme = EditorView.theme({
   "&": {
-    backgroundColor: "hsl(222 47% 8%)",
-    color: "#a6accd",
+    backgroundColor: "#15161e",
+    color: "#bdbdc1",
     fontSize: "13px",
     borderRadius: "0.5rem",
-    border: "1px solid hsl(215 20% 20%)",
+    border: "1px solid #414457",
   },
   ".cm-content": {
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
     padding: "12px 0",
   },
   "&.cm-focused": {
-    outline: "1px solid hsl(180 100% 50% / 0.3)",
+    outline: "1px solid rgba(197, 116, 221, 0.3)",
   },
   ".cm-gutters": {
-    backgroundColor: "hsl(222 47% 6%)",
-    color: "hsl(215 20% 35%)",
+    backgroundColor: "#15161e",
+    color: "#606270",
     border: "none",
-    borderRight: "1px solid hsl(215 20% 15%)",
+    borderRight: "1px solid #343647",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "hsl(222 47% 12%)",
-    color: "hsl(215 20% 55%)",
+    backgroundColor: "#282a36",
+    color: "#bdbdc1",
   },
   ".cm-activeLine": {
-    backgroundColor: "hsl(222 47% 12% / 0.5)",
+    backgroundColor: "rgba(40, 42, 54, 0.5)",
   },
   ".cm-selectionBackground": {
-    backgroundColor: "hsl(220 50% 30% / 0.5) !important",
+    backgroundColor: "rgba(197, 116, 221, 0.15) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "hsl(180 100% 50%)",
+    borderLeftColor: "#c574dd",
   },
   ".cm-tooltip": {
-    backgroundColor: "hsl(222 47% 10%)",
-    border: "1px solid hsl(215 20% 20%)",
-    color: "#a6accd",
+    backgroundColor: "#282a36",
+    border: "1px solid #414457",
+    color: "#bdbdc1",
   },
   ".cm-tooltip.cm-tooltip-autocomplete": {
     "& > ul > li": {
       padding: "2px 8px",
     },
     "& > ul > li[aria-selected]": {
-      backgroundColor: "hsl(220 50% 25%)",
-      color: "#fff",
+      backgroundColor: "#414457",
+      color: "#fcfcfc",
     },
   },
   ".cm-diagnostic-error": {

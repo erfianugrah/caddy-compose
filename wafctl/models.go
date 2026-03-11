@@ -396,6 +396,7 @@ type IPLookupResponse struct {
 	FirstSeen    *time.Time      `json:"first_seen"`
 	LastSeen     *time.Time      `json:"last_seen"`
 	Services     []ServiceDetail `json:"services"`
+	EventsByHour []HourCount     `json:"events_by_hour"`
 	Events       []Event         `json:"events"`
 	EventsTotal  int             `json:"events_total"`
 }

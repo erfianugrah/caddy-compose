@@ -91,19 +91,19 @@ const HEADERS: HeaderMeta[] = [
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function complianceColor(rate: number): string {
-  if (rate >= 0.95) return "text-emerald-400";
-  if (rate >= 0.8) return "text-emerald-400/70";
-  if (rate >= 0.5) return "text-amber-400";
-  if (rate >= 0.2) return "text-orange-400";
-  return "text-red-400";
+  if (rate >= 0.95) return "text-lv-green";
+  if (rate >= 0.8) return "text-lv-green/70";
+  if (rate >= 0.5) return "text-lv-peach";
+  if (rate >= 0.2) return "text-lv-peach-bright";
+  return "text-lv-red";
 }
 
 function barColor(rate: number): string {
-  if (rate >= 0.95) return "bg-emerald-500";
-  if (rate >= 0.8) return "bg-emerald-500/70";
+  if (rate >= 0.95) return "bg-lv-green";
+  if (rate >= 0.8) return "bg-lv-green/70";
   if (rate >= 0.5) return "bg-amber-500";
-  if (rate >= 0.2) return "bg-orange-500";
-  return "bg-red-500";
+  if (rate >= 0.2) return "bg-lv-peach-bright";
+  return "bg-lv-red";
 }
 
 function gradeLabel(rate: number): string {
@@ -162,7 +162,7 @@ export default function HeaderComplianceTab({ compliance }: HeaderComplianceTabP
                         style={{ width: `${Math.max(rate * 100, 1)}%` }}
                       />
                     </div>
-                    <div className={`mt-1 text-right font-mono text-xs ${complianceColor(rate)}`}>
+                    <div className={`mt-1 text-right font-data text-xs ${complianceColor(rate)}`}>
                       {(rate * 100).toFixed(0)}%
                     </div>
                   </CardContent>
@@ -175,7 +175,7 @@ export default function HeaderComplianceTab({ compliance }: HeaderComplianceTabP
                   href={header.specUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-neon-cyan hover:underline mt-1"
+                  className="inline-flex items-center gap-1 text-xs text-lv-cyan hover:underline mt-1"
                 >
                   {header.spec}
                   <ExternalLink className="h-2.5 w-2.5" />
@@ -216,7 +216,7 @@ export default function HeaderComplianceTab({ compliance }: HeaderComplianceTabP
                             href={h.specUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-neon-cyan hover:underline mt-1"
+                            className="inline-flex items-center gap-1 text-xs text-lv-cyan hover:underline mt-1"
                           >
                             {h.spec}
                             <ExternalLink className="h-2.5 w-2.5" />
@@ -230,13 +230,13 @@ export default function HeaderComplianceTab({ compliance }: HeaderComplianceTabP
                   {compliance.map((c) => (
                     <TableRow key={c.service}>
                       <TableCell className="text-xs font-medium">{c.service}</TableCell>
-                      <TableCell className="text-xs text-right font-mono">{formatNumber(c.total)}</TableCell>
+                      <TableCell className="text-xs text-right font-data">{formatNumber(c.total)}</TableCell>
                       {HEADERS.map((h) => {
                         const rate = c[h.key] as number;
                         return (
                           <TableCell key={h.key} className="text-center px-2">
                             <div className="flex flex-col items-center gap-0.5">
-                              <span className={`font-mono text-xs ${complianceColor(rate)}`}>
+                              <span className={`font-data text-xs ${complianceColor(rate)}`}>
                                 {(rate * 100).toFixed(0)}%
                               </span>
                               <div className="w-full h-1 rounded-full bg-muted/30 overflow-hidden">
@@ -278,7 +278,7 @@ export default function HeaderComplianceTab({ compliance }: HeaderComplianceTabP
                         href={h.specUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-neon-cyan transition-colors"
+                        className="text-muted-foreground hover:text-lv-cyan transition-colors"
                       >
                         <ExternalLink className="h-3 w-3" />
                       </a>

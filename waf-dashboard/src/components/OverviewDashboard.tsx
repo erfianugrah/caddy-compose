@@ -304,13 +304,13 @@ export default function OverviewDashboard() {
       <div className="flex items-center justify-center py-20">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-neon-pink">Connection Error</CardTitle>
+            <CardTitle className="text-lv-red">Connection Error</CardTitle>
             <CardDescription>
               Could not reach the WAF API. Make sure the API sidecar is running.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <pre className="rounded-md bg-navy-950 p-3 text-xs text-muted-foreground">
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-lovelace-950 p-3 text-xs text-muted-foreground">
               {error}
             </pre>
             <Button variant="outline" size="sm" className="mt-3" onClick={loadData}>
@@ -365,10 +365,10 @@ export default function OverviewDashboard() {
             <a
               key={tc.tag}
               href={`/events?tag=${encodeURIComponent(tc.tag)}&tag_op=eq`}
-              className="inline-flex items-center gap-1.5 rounded-full bg-cyan-950/40 border border-cyan-800/30 px-2.5 py-0.5 text-xs font-mono text-cyan-300 hover:bg-cyan-900/50 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full bg-lv-cyan/10 border border-lv-cyan/30 px-2.5 py-0.5 text-xs font-data text-lv-cyan hover:bg-lv-cyan/20 transition-colors"
             >
               {tc.tag}
-              <span className="text-cyan-400/70">{tc.count}</span>
+              <span className="text-lv-cyan/70">{tc.count}</span>
             </a>
           ))}
         </div>
@@ -436,17 +436,17 @@ export default function OverviewDashboard() {
                     <stop offset="95%" stopColor={ACTION_COLORS.policy_skip} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#414457" vertical={false} />
                 <XAxis
                   dataKey="hour"
-                  stroke="#7a8baa"
+                  stroke="#bdbdc1"
                   fontSize={T.chartLabel}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={formatHourTick}
                 />
                 <YAxis
-                  stroke="#7a8baa"
+                  stroke="#bdbdc1"
                   fontSize={T.chartLabel}
                   tickLine={false}
                   axisLine={false}
@@ -458,7 +458,7 @@ export default function OverviewDashboard() {
                   height={28}
                   iconType="square"
                   iconSize={10}
-                  wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }}
+                  wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }}
                 />
                 <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} />
                 <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} />
@@ -472,7 +472,7 @@ export default function OverviewDashboard() {
                     x1={refAreaLeft}
                     x2={refAreaRight}
                     strokeOpacity={0.3}
-                    fill="#7a8baa"
+                    fill="#bdbdc1"
                     fillOpacity={0.15}
                   />
                 )}
@@ -520,7 +520,7 @@ export default function OverviewDashboard() {
                             stroke="none"
                           >
                             {donutData.map((entry, idx) => (
-                              <Cell key={`cell-${idx}`} fill={DONUT_COLOR_MAP[entry.name] ?? "#7a8baa"} />
+                              <Cell key={`cell-${idx}`} fill={DONUT_COLOR_MAP[entry.name] ?? "#bdbdc1"} />
                             ))}
                           </Pie>
                           <Tooltip {...chartTooltipStyle} />
@@ -531,7 +531,7 @@ export default function OverviewDashboard() {
                           <div key={entry.name} className="flex items-center gap-1.5">
                             <div
                               className="h-2.5 w-2.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: DONUT_COLOR_MAP[entry.name] ?? "#7a8baa" }}
+                              style={{ backgroundColor: DONUT_COLOR_MAP[entry.name] ?? "#bdbdc1" }}
                             />
                             <span className="text-muted-foreground truncate">
                               {entry.name} ({entry.value.toLocaleString()})
@@ -574,12 +574,12 @@ export default function OverviewDashboard() {
                         layout="vertical"
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" horizontal={false} />
-                        <XAxis type="number" stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#414457" horizontal={false} />
+                        <XAxis type="number" stroke="#bdbdc1" fontSize={T.chartLabel} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
                         <YAxis
                           type="category"
                           dataKey="label"
-                          stroke="#7a8baa"
+                          stroke="#bdbdc1"
                           fontSize={T.chartLabel}
                           tickLine={false}
                           axisLine={false}
@@ -600,7 +600,7 @@ export default function OverviewDashboard() {
                             return client?.country && client.country !== "XX" ? `${label} (${client.country})` : label;
                           }}
                         />
-                        <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
+                        <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }} />
                         <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                         <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
@@ -634,12 +634,12 @@ export default function OverviewDashboard() {
                       layout="vertical"
                       margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" horizontal={false} />
-                      <XAxis type="number" stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#414457" horizontal={false} />
+                      <XAxis type="number" stroke="#bdbdc1" fontSize={T.chartLabel} tickLine={false} axisLine={false} tickFormatter={formatNumber} />
                       <YAxis
                         type="category"
                         dataKey="service"
-                        stroke="#7a8baa"
+                        stroke="#bdbdc1"
                         fontSize={T.chartLabel}
                         tickLine={false}
                         axisLine={false}
@@ -654,7 +654,7 @@ export default function OverviewDashboard() {
                         )}
                       />
                       <Tooltip {...chartTooltipStyle} />
-                      <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#7a8baa" }} />
+                      <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }} />
                       <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
                       <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                       <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
@@ -783,13 +783,13 @@ export default function OverviewDashboard() {
                           {evt.method}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-xs font-mono" title={evt.uri}>
+                      <TableCell className="max-w-[200px] truncate text-xs font-data" title={evt.uri}>
                         {evt.uri}
                       </TableCell>
-                      <TableCell className="text-xs font-mono">
+                      <TableCell className="text-xs font-data">
                         <a
                           href={`/analytics?q=${encodeURIComponent(evt.client_ip)}`}
-                          className="text-neon-cyan hover:underline"
+                          className="text-lv-cyan hover:underline"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {evt.client_ip}
@@ -799,7 +799,7 @@ export default function OverviewDashboard() {
                         {evt.country && evt.country !== "XX" ? (
                           <span className="inline-flex items-center gap-1">
                             <span>{countryFlag(evt.country)}</span>
-                            <span className="font-mono">{evt.country}</span>
+                            <span className="font-data">{evt.country}</span>
                           </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -811,7 +811,7 @@ export default function OverviewDashboard() {
                     </TableRow>
                     {expanded.has(evt.id) && (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={8} className="bg-navy-950/50 p-0">
+                        <TableCell colSpan={8} className="bg-lovelace-950/50 p-0">
                           <EventDetailPanel event={evt} viewInEventsHref={buildViewInEventsHref(evt)} />
                         </TableCell>
                       </TableRow>
@@ -832,7 +832,7 @@ export default function OverviewDashboard() {
 
         {/* Pagination */}
         {totalEventsPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-navy-800">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-lovelace-800">
             <span className="text-xs text-muted-foreground">
               Page {eventsPage} of {totalEventsPages}
             </span>

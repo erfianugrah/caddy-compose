@@ -30,7 +30,7 @@ export function CopyButton({ text, label }: { text: string; label?: string }) {
   return (
     <Button variant="ghost" size="sm" onClick={handleCopy}>
       {copied ? (
-        <Check className="h-3.5 w-3.5 text-neon-green" />
+        <Check className="h-3.5 w-3.5 text-lv-green" />
       ) : (
         <Copy className="h-3.5 w-3.5" />
       )}
@@ -108,12 +108,12 @@ export function RuleIdTagInput({
       {ids.map((id) => (
         <span
           key={id}
-          className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
+          className="inline-flex items-center gap-1 rounded bg-lovelace-800 border border-border px-2 py-0.5 text-xs font-data text-lv-cyan"
         >
           {id}
           <button
             onClick={() => removeId(id)}
-            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -127,7 +127,7 @@ export function RuleIdTagInput({
         onPaste={handlePaste}
         onBlur={() => { if (inputValue.trim()) addId(inputValue); }}
         placeholder={ids.length === 0 ? (placeholder ?? "Type rule ID and press Enter") : ""}
-        className="flex-1 min-w-[120px] bg-transparent text-xs font-mono outline-none placeholder:text-muted-foreground"
+        className="flex-1 min-w-[120px] bg-transparent text-xs font-data outline-none placeholder:text-muted-foreground"
       />
     </div>
   );
@@ -167,12 +167,12 @@ export function MethodMultiSelect({
       {selected.map((method) => (
         <span
           key={method}
-          className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
+          className="inline-flex items-center gap-1 rounded bg-lovelace-800 border border-border px-2 py-0.5 text-xs font-data text-lv-cyan"
         >
           {method}
           <button
             onClick={() => remove(method)}
-            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -191,7 +191,7 @@ export function MethodMultiSelect({
               <button
                 key={method}
                 onClick={() => { toggle(method); if (unselected.length <= 1) setOpen(false); }}
-                className="flex w-full items-center rounded px-2 py-1.5 text-xs font-mono cursor-pointer hover:bg-accent"
+                className="flex w-full items-center rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
               >
                 {method}
               </button>
@@ -254,12 +254,12 @@ export function PipeTagInput({
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 rounded bg-navy-800 border border-border px-2 py-0.5 text-xs font-mono text-neon-cyan"
+          className="inline-flex items-center gap-1 rounded bg-lovelace-800 border border-border px-2 py-0.5 text-xs font-data text-lv-cyan"
         >
           {tag}
           <button
             onClick={() => removeTag(tag)}
-            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-neon-pink"
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -273,7 +273,7 @@ export function PipeTagInput({
         onPaste={handlePaste}
         onBlur={() => { if (inputValue.trim()) addTag(inputValue); }}
         placeholder={tags.length === 0 ? (placeholder ?? "Type value and press Enter") : ""}
-        className="flex-1 min-w-[120px] bg-transparent text-xs font-mono outline-none placeholder:text-muted-foreground"
+        className="flex-1 min-w-[120px] bg-transparent text-xs font-data outline-none placeholder:text-muted-foreground"
       />
     </div>
   );

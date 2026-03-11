@@ -133,7 +133,7 @@ export function DirectiveEditor({
           value={policy.raw_directives ?? ""}
           onChange={(e) => onChange({ ...policy, raw_directives: e.target.value || undefined })}
           placeholder="e.g. report-uri /csp-report"
-          className="text-xs font-mono h-16"
+          className="text-xs font-data h-16"
         />
       </div>
     </div>

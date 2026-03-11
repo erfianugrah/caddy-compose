@@ -33,7 +33,7 @@ export function ModeSelector({
             className={`rounded-lg border p-4 text-left transition-all ${
               value === mode
                 ? meta.color
-                : "border-border bg-navy-950 text-muted-foreground hover:border-border/80"
+                : "border-border bg-lovelace-950 text-muted-foreground hover:border-border/80"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -88,15 +88,15 @@ export function SensitivitySettings({
               className={`rounded-md border px-3 py-2 text-xs font-medium transition-all ${
                 preset === p
                   ? p === "strict"
-                    ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
+                    ? "border-lv-green/40 bg-lv-green/10 text-lv-green"
                     : p === "moderate"
-                      ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
+                      ? "border-lv-cyan/40 bg-lv-cyan/10 text-lv-cyan"
                       : p === "tuning"
-                        ? "border-neon-amber/40 bg-neon-amber/10 text-neon-amber"
+                        ? "border-lv-peach/40 bg-lv-peach/10 text-lv-peach"
                         : "border-neon-purple/40 bg-neon-purple/10 text-neon-purple"
                   : p === "custom"
-                    ? "border-border bg-navy-950 text-muted-foreground/40 cursor-default"
-                    : "border-border bg-navy-950 text-muted-foreground hover:border-border/80"
+                    ? "border-border bg-lovelace-950 text-muted-foreground/40 cursor-default"
+                    : "border-border bg-lovelace-950 text-muted-foreground hover:border-border/80"
               }`}
             >
               {p === "strict" ? "Strict (5/4)" : p === "moderate" ? "Moderate (15/15)" : p === "tuning" ? "Tuning (log only)" : "Custom"}
@@ -125,7 +125,7 @@ export function SensitivitySettings({
               <span>1</span><span>2</span><span>3</span><span>4</span>
             </div>
           </div>
-          <span className="w-8 text-center text-lg font-bold text-neon-green">
+          <span className="w-8 text-center text-lg font-bold text-lv-green">
             {settings.paranoia_level}
           </span>
         </div>
@@ -213,7 +213,7 @@ export function RuleGroupToggles({
           return (
             <div
               key={cat.tag}
-              className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2"
+              className="flex items-center justify-between rounded-md border border-border bg-lovelace-950 px-3 py-2"
             >
               <div className="min-w-0">
                 <p className="text-xs font-medium truncate">{cat.name}</p>

@@ -40,7 +40,7 @@ export function ServiceSettingsCard({
   return (
     <Card className="overflow-hidden">
       <div
-        className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-navy-900/50"
+        className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-lovelace-900/50"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
@@ -59,14 +59,14 @@ export function ServiceSettingsCard({
                 {serviceDetail.total_events.toLocaleString()} events
               </span>
               <div className="flex items-center gap-1">
-                <div className="h-1.5 w-10 overflow-hidden rounded-full bg-navy-800">
+                <div className="h-1.5 w-10 overflow-hidden rounded-full bg-lovelace-800">
                   <div
                     className={`h-full rounded-full ${
                       serviceDetail.block_rate > 50
-                        ? "bg-neon-pink"
+                        ? "bg-lv-red"
                         : serviceDetail.block_rate > 20
-                          ? "bg-neon-amber"
-                          : "bg-neon-green"
+                          ? "bg-lv-peach"
+                          : "bg-lv-green"
                     }`}
                     style={{ width: `${Math.min(serviceDetail.block_rate, 100)}%` }}
                   />
@@ -121,7 +121,7 @@ export function ServiceSettingsCard({
           )}
 
           <div className="flex justify-end">
-            <Button variant="ghost" size="sm" onClick={onRemove} className="text-neon-pink text-xs">
+            <Button variant="ghost" size="sm" onClick={onRemove} className="text-lv-red text-xs">
               Remove Override
             </Button>
           </div>

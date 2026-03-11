@@ -256,7 +256,7 @@ export default function EventsTable() {
     return (
       <Card className="max-w-md">
         <CardHeader>
-          <CardTitle className="text-neon-pink">Error</CardTitle>
+          <CardTitle className="text-lv-red">Error</CardTitle>
           <CardDescription>{error}</CardDescription>
         </CardHeader>
       </Card>
@@ -419,14 +419,14 @@ export default function EventsTable() {
                           {evt.method}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-xs font-mono" title={evt.uri}>
+                      <TableCell className="max-w-[200px] truncate text-xs font-data" title={evt.uri}>
                         {evt.uri}
                       </TableCell>
-                      <TableCell className="text-xs font-mono">
+                      <TableCell className="text-xs font-data">
                         <a
                           href={`/analytics?tab=ip&q=${encodeURIComponent(evt.client_ip)}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="hover:text-neon-green transition-colors"
+                          className="hover:text-lv-green transition-colors"
                         >
                           {evt.client_ip}
                         </a>
@@ -435,7 +435,7 @@ export default function EventsTable() {
                         {evt.country && evt.country !== "XX" ? (
                           <span className="inline-flex items-center gap-1">
                             <span>{countryFlag(evt.country)}</span>
-                            <span className="font-mono">{evt.country}</span>
+                            <span className="font-data">{evt.country}</span>
                           </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -445,7 +445,7 @@ export default function EventsTable() {
                         {evt.rule_id ? (
                           isPolicyRuleEvent(evt) && policyRuleLink(evt.rule_msg) ? (
                             <a href={policyRuleLink(evt.rule_msg)!} className="inline-flex items-center gap-1 group" onClick={(e) => e.stopPropagation()}>
-                              <Badge variant="outline" className={`${T.badgeMono} group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors`}>
+                              <Badge variant="outline" className={`${T.badgeMono} group-hover:border-lv-green/50 group-hover:text-lv-green transition-colors`}>
                                 {evt.rule_id}
                               </Badge>
                             </a>
@@ -462,9 +462,9 @@ export default function EventsTable() {
                         {evt.anomaly_score > 0 || evt.outbound_anomaly_score > 0 ? (
                           <span className="flex items-center gap-1">
                             <span className={
-                              evt.anomaly_score >= 25 ? "text-neon-pink font-bold" :
-                              evt.anomaly_score >= 10 ? "text-neon-amber font-medium" :
-                              evt.anomaly_score > 0 ? "text-neon-cyan" :
+                              evt.anomaly_score >= 25 ? "text-lv-red font-bold" :
+                              evt.anomaly_score >= 10 ? "text-lv-peach font-medium" :
+                              evt.anomaly_score > 0 ? "text-lv-cyan" :
                               "text-muted-foreground"
                             }>
                               {evt.anomaly_score || 0}
@@ -473,9 +473,9 @@ export default function EventsTable() {
                               <>
                                 <span className="text-muted-foreground">/</span>
                                 <span className={
-                                  evt.outbound_anomaly_score >= 25 ? "text-neon-pink font-bold" :
-                                  evt.outbound_anomaly_score >= 10 ? "text-neon-amber font-medium" :
-                                  "text-neon-cyan"
+                                  evt.outbound_anomaly_score >= 25 ? "text-lv-red font-bold" :
+                                  evt.outbound_anomaly_score >= 10 ? "text-lv-peach font-medium" :
+                                  "text-lv-cyan"
                                 }>
                                   {evt.outbound_anomaly_score}
                                 </span>
@@ -490,7 +490,7 @@ export default function EventsTable() {
                         <div className="flex flex-wrap items-center gap-1">
                           <EventTypeBadge eventType={evt.event_type} blocked={evt.blocked} />
                           {evt.tags && evt.tags.map((tag) => (
-                            <span key={tag} className="inline-flex items-center rounded bg-neon-cyan/10 border border-neon-cyan/30 px-1.5 py-0 text-[10px] font-mono text-neon-cyan">
+                            <span key={tag} className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-1.5 py-0 text-[10px] font-data text-lv-cyan">
                               {tag}
                             </span>
                           ))}
@@ -499,7 +499,7 @@ export default function EventsTable() {
                     </TableRow>
                     {expanded.has(evt.id) && (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={10} className="bg-navy-950/50 p-0">
+                        <TableCell colSpan={10} className="bg-lovelace-950/50 p-0">
                           <EventDetailPanel event={evt} />
                         </TableCell>
                       </TableRow>

@@ -137,7 +137,7 @@ export function ListValueSelect({
       {value && (
         <a
           href="/lists"
-          className="flex items-center shrink-0 text-xs text-muted-foreground hover:text-neon-cyan"
+          className="flex items-center shrink-0 text-xs text-muted-foreground hover:text-lv-cyan"
           title="Manage lists"
         >
           <List className="h-3.5 w-3.5" />
@@ -212,7 +212,9 @@ export function ConditionRow({
 
       {/* Value input — specialized inputs for specific field/operator combos */}
       <div className="flex flex-1 flex-col gap-1">
-        {isListOp ? (
+        {condition.operator === "exists" ? (
+          <span className="flex items-center h-9 px-3 text-xs text-muted-foreground italic">field exists (no value needed)</span>
+        ) : isListOp ? (
           <ListValueSelect
             value={condition.value}
             field={condition.field}
@@ -243,7 +245,7 @@ export function ConditionRow({
             className="flex-1"
           />
         )}
-        {fieldDef.hint && !isListOp && (
+        {fieldDef.hint && !isListOp && condition.operator !== "exists" && (
           <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
         )}
       </div>
@@ -252,7 +254,7 @@ export function ConditionRow({
       <Button
         variant="ghost"
         size="icon"
-        className="shrink-0 text-muted-foreground hover:text-neon-pink"
+        className="shrink-0 text-muted-foreground hover:text-lv-red"
         onClick={() => onRemove(index)}
       >
         <X className="h-4 w-4" />

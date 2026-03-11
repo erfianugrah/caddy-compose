@@ -183,12 +183,13 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		EventsTotal: len(combined),
 	}
 
-	// Compute per-service breakdown, first/last seen, blocked count.
+	// Compute per-service breakdown, hourly timeline, first/last seen, blocked count.
 	type counts struct {
 		total, blocked, logged, rateLimited  int
 		policyBlock, policyAllow, policySkip int
 	}
 	svcMap := make(map[string]*counts)
+	hourMap := make(map[string]*counts)
 
 	for i := range combined {
 		ev := &combined[i]
@@ -213,17 +214,35 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		if ev.IsBlocked {
 			c.blocked++
 		}
+
+		// Per-hour bucketing for timeline.
+		hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
+		hc, ok := hourMap[hourKey]
+		if !ok {
+			hc = &counts{}
+			hourMap[hourKey] = hc
+		}
+		hc.total++
+		if ev.IsBlocked {
+			hc.blocked++
+		}
+
 		switch {
 		case ev.EventType == "rate_limited":
 			c.rateLimited++
+			hc.rateLimited++
 		case ev.EventType == "policy_block":
 			c.policyBlock++
+			hc.policyBlock++
 		case ev.EventType == "policy_allow":
 			c.policyAllow++
+			hc.policyAllow++
 		case ev.EventType == "policy_skip":
 			c.policySkip++
+			hc.policySkip++
 		case ev.EventType == "logged":
 			c.logged++
+			hc.logged++
 		}
 	}
 
@@ -255,6 +274,29 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		return svcList[i].Total > svcList[j].Total
 	})
 	resp.Services = svcList
+
+	// Build sorted hourly timeline.
+	hourCounts := make([]HourCount, 0, len(hourMap))
+	for k, v := range hourMap {
+		logged := v.total - v.blocked - v.rateLimited - v.policyBlock - v.policyAllow - v.policySkip
+		if logged < 0 {
+			logged = 0
+		}
+		hourCounts = append(hourCounts, HourCount{
+			Hour:        k,
+			Count:       v.total,
+			Blocked:     v.blocked,
+			Logged:      logged,
+			RateLimited: v.rateLimited,
+			PolicyBlock: v.policyBlock,
+			PolicyAllow: v.policyAllow,
+			PolicySkip:  v.policySkip,
+		})
+	}
+	sort.Slice(hourCounts, func(i, j int) bool {
+		return hourCounts[i].Hour < hourCounts[j].Hour
+	})
+	resp.EventsByHour = hourCounts
 
 	return resp
 }

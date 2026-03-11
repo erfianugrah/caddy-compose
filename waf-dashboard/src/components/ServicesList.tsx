@@ -25,13 +25,13 @@ import { T } from "@/lib/typography";
 function BlockRateBar({ rate }: { rate: number }) {
   const color =
     rate > 50
-      ? "bg-neon-pink"
+      ? "bg-lv-red"
       : rate > 20
-        ? "bg-neon-amber"
-        : "bg-neon-green";
+        ? "bg-lv-peach"
+        : "bg-lv-green";
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 w-16 overflow-hidden rounded-full bg-navy-800">
+      <div className="h-2 w-16 overflow-hidden rounded-full bg-lovelace-800">
         <div
           className={`h-full rounded-full ${color} transition-all`}
           style={{ width: `${Math.min(rate, 100)}%` }}
@@ -56,7 +56,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
           {(service.top_uris ?? []).slice(0, 8).map((u) => (
             <div
               key={u.uri}
-              className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
+              className="flex items-center justify-between rounded-md bg-lovelace-950 px-3 py-1.5 text-xs"
             >
               <code className="max-w-[200px] truncate text-foreground" title={u.uri}>
                 {u.uri}
@@ -88,7 +88,7 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
           {(service.top_rules ?? []).slice(0, 8).map((r) => (
             <div
               key={r.rule_id}
-              className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
+              className="flex items-center justify-between rounded-md bg-lovelace-950 px-3 py-1.5 text-xs"
             >
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className={T.badgeMono}>
@@ -146,7 +146,7 @@ export default function ServicesList() {
     return (
       <Card className="max-w-md">
         <CardHeader>
-          <CardTitle className="text-neon-pink">Error</CardTitle>
+          <CardTitle className="text-lv-red">Error</CardTitle>
           <CardDescription>{error}</CardDescription>
         </CardHeader>
       </Card>
@@ -220,10 +220,10 @@ export default function ServicesList() {
                       <TableCell className="text-right tabular-nums">
                         {svc.total_events.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-neon-pink">
+                      <TableCell className="text-right tabular-nums text-lv-red">
                         {svc.blocked.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-neon-green">
+                      <TableCell className="text-right tabular-nums text-lv-green">
                         {svc.logged.toLocaleString()}
                       </TableCell>
                       <TableCell>
@@ -235,7 +235,7 @@ export default function ServicesList() {
                         key={`${svc.service}-detail`}
                         className="hover:bg-transparent"
                       >
-                        <TableCell colSpan={6} className="bg-navy-950/50 p-0">
+                        <TableCell colSpan={6} className="bg-lovelace-950/50 p-0">
                           <ServiceDetailPanel service={svc} />
                         </TableCell>
                       </TableRow>

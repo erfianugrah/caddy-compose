@@ -26,6 +26,10 @@ describe("lookupIP", () => {
         { service: "radarr.erfi.io", total: 30, blocked: 5, logged: 25 },
         { service: "sonarr.erfi.io", total: 20, blocked: 5, logged: 15 },
       ],
+      events_by_hour: [
+        { hour: "2026-02-22T07:00:00Z", count: 20, blocked: 5, logged: 15, rate_limited: 0, policy_block: 0, policy_allow: 0, policy_skip: 0 },
+        { hour: "2026-02-22T08:00:00Z", count: 30, blocked: 5, logged: 25, rate_limited: 0, policy_block: 0, policy_allow: 0, policy_skip: 0 },
+      ],
       events: [
         {
           id: "E1",
@@ -50,7 +54,11 @@ describe("lookupIP", () => {
     expect(result.first_seen).toBe("2026-02-22T07:00:00Z");
     expect(result.last_seen).toBe("2026-02-22T09:00:00Z");
     expect(result.services).toHaveLength(2);
-    expect(result.timeline).toEqual([]); // Not provided by Go API
+    expect(result.timeline).toHaveLength(2);
+    expect(result.timeline[0]).toEqual({
+      hour: "2026-02-22T07:00:00Z", total: 20, blocked: 5, logged: 15,
+      rate_limited: 0, policy_block: 0, policy_allow: 0, policy_skip: 0,
+    });
 
     // Events mapped
     expect(result.recent_events).toHaveLength(1);

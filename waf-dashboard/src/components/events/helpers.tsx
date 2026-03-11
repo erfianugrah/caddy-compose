@@ -1,10 +1,10 @@
 import type { WAFEvent } from "@/lib/api";
 
 export const SEVERITY_MAP: Record<number, { label: string; color: string }> = {
-  2: { label: "CRITICAL", color: "text-neon-pink" },
-  3: { label: "ERROR", color: "text-neon-amber" },
-  4: { label: "WARNING", color: "text-yellow-400" },
-  5: { label: "NOTICE", color: "text-neon-blue" },
+  2: { label: "CRITICAL", color: "text-lv-red" },
+  3: { label: "ERROR", color: "text-lv-peach" },
+  4: { label: "WARNING", color: "text-lv-peach" },
+  5: { label: "NOTICE", color: "text-lv-blue" },
 };
 
 export function formatSeverity(severity: number): { label: string; color: string } {
@@ -29,7 +29,7 @@ export function HighlightedText({ text, highlight }: { text: string; highlight: 
     <>
       {parts.map((part, i) =>
         part.toLowerCase() === highlight.toLowerCase() ? (
-          <mark key={i} className="bg-neon-amber/25 text-neon-amber rounded px-0.5">{part}</mark>
+          <mark key={i} className="bg-lv-peach/25 text-lv-peach rounded px-0.5">{part}</mark>
         ) : (
           <span key={i}>{part}</span>
         )

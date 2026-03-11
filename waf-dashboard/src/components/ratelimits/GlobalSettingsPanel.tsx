@@ -87,7 +87,7 @@ export function GlobalSettingsPanel({ config, onChange, onSave, saving, dirty }:
             Enable distributed rate limiting across multiple Caddy instances using shared state.
           </p>
           {config.distributed && (
-            <div className="grid gap-4 sm:grid-cols-3 pl-4 border-l-2 border-neon-cyan/20">
+            <div className="grid gap-4 sm:grid-cols-3 pl-4 border-l-2 border-lv-cyan/20">
               <div className="space-y-2">
                 <Label>Read Interval</Label>
                 <Select value={config.read_interval || "5s"} onValueChange={(v) => onChange({ ...config, read_interval: v })}>

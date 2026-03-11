@@ -150,35 +150,63 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
 
       {/* Conditions */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label>Conditions <span className="text-muted-foreground text-xs">(optional)</span></Label>
-          {conditions.length > 1 && (
-            <Select value={groupOp} onValueChange={(v) => setGroupOp(v as GroupOperator)}>
-              <SelectTrigger className="w-[100px] h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="and">AND</SelectItem>
-                <SelectItem value="or">OR</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
+        <Label>Conditions <span className="text-muted-foreground text-xs">(optional)</span></Label>
+
+        <div className={`space-y-2 rounded-md border p-3 ${
+          conditions.length > 1
+            ? groupOp === "and"
+              ? "border-lv-cyan/30 bg-lv-cyan/5"
+              : "border-lv-peach/30 bg-lv-peach/5"
+            : "border-border bg-lovelace-950/30"
+        }`}>
+          {conditions.map((cond, idx) => (
+            <div key={idx}>
+              {idx > 0 && conditions.length > 1 && (
+                <div className="flex items-center gap-2 py-1.5">
+                  <div className="h-px flex-1 bg-border/50" />
+                  <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-lovelace-950/50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setGroupOp("and")}
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                        groupOp === "and"
+                          ? "bg-lv-cyan/20 text-lv-cyan border border-lv-cyan/30"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      AND
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGroupOp("or")}
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                        groupOp === "or"
+                          ? "bg-lv-peach/20 text-lv-peach border border-lv-peach/30"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      OR
+                    </button>
+                  </div>
+                  <div className="h-px flex-1 bg-border/50" />
+                </div>
+              )}
+              <ConditionRow
+                condition={cond}
+                index={idx}
+                onChange={updateCondition}
+                onRemove={removeCondition}
+                services={services}
+                fields={RL_FIELD_DEFS}
+              />
+            </div>
+          ))}
+
+          <Button variant="outline" size="sm" onClick={addCondition} className="mt-1">
+            <Plus className="h-3.5 w-3.5" />
+            Add Condition
+          </Button>
         </div>
-        {conditions.map((cond, idx) => (
-          <ConditionRow
-            key={idx}
-            condition={cond}
-            index={idx}
-            onChange={updateCondition}
-            onRemove={removeCondition}
-            services={services}
-            fields={RL_FIELD_DEFS}
-          />
-        ))}
-        <Button variant="outline" size="sm" onClick={addCondition}>
-          <Plus className="h-3.5 w-3.5" />
-          Add Condition
-        </Button>
         <p className="text-xs text-muted-foreground">
           Without conditions, the rule matches all requests to this service.
         </p>
@@ -254,7 +282,7 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
                 value={window}
                 onChange={(e) => setWindow(e.target.value.trim().toLowerCase())}
                 placeholder="e.g. 3m, 45s, 2h"
-                className="font-mono text-sm"
+                className="font-data text-sm"
               />
               <Button
                 variant="ghost"
@@ -268,7 +296,7 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
             </div>
           )}
           {window && !WINDOW_VALUES.has(window) && !isValidWindow(window) && (
-            <p className="text-xs text-red-400">Invalid format. Use number + s/m/h (e.g. 3m, 45s, 2h)</p>
+            <p className="text-xs text-lv-red">Invalid format. Use number + s/m/h (e.g. 3m, 45s, 2h)</p>
           )}
         </div>
       </div>

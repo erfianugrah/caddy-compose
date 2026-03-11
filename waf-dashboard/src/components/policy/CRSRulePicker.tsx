@@ -90,7 +90,7 @@ export function CRSRulePicker({
                       className={`flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent ${isSelected ? "bg-accent/50" : ""}`}
                       onClick={() => toggleRule(rule.id)}
                     >
-                      <span className="shrink-0 font-mono text-neon-cyan">{rule.id}</span>
+                      <span className="shrink-0 font-data text-lv-cyan">{rule.id}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate">{rule.description}</p>
                         <p className="text-muted-foreground">
@@ -103,7 +103,7 @@ export function CRSRulePicker({
                         </p>
                       </div>
                       {isSelected && (
-                        <Check className="h-3.5 w-3.5 shrink-0 text-neon-green" />
+                        <Check className="h-3.5 w-3.5 shrink-0 text-lv-green" />
                       )}
                     </button>
                   );

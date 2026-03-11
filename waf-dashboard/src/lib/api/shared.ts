@@ -2,11 +2,24 @@ export const API_BASE = "/api";
 
 // ─── HTTP Helpers ───────────────────────────────────────────────────
 
+/** Strip HTML tags and collapse whitespace for error display. */
+function sanitizeErrorBody(raw: string, maxLen = 200): string {
+  // Strip tags, decode common entities, collapse whitespace
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  return text.length > maxLen ? text.slice(0, maxLen) + "…" : text;
+}
+
 export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API error: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+    const raw = await res.text().catch(() => "");
+    const detail = sanitizeErrorBody(raw);
+    throw new Error(`API error: ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`);
   }
   // 204 No Content — used by DELETE endpoints. Callers expecting void
   // discard the return value; callers expecting data never get 204.

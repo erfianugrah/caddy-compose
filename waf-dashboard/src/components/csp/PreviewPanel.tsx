@@ -55,14 +55,14 @@ export function ServiceCard({
             {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <CardTitle className={T.cardTitle}>{name}</CardTitle>
             <Badge variant="outline" className="text-[10px]">{config.mode}</Badge>
-            {config.report_only && <Badge variant="outline" className="text-[10px] text-amber-400">report-only</Badge>}
-            {config.inherit && <Badge variant="outline" className="text-[10px] text-neon-cyan">inherit</Badge>}
+            {config.report_only && <Badge variant="outline" className="text-[10px] text-lv-peach">report-only</Badge>}
+            {config.inherit && <Badge variant="outline" className="text-[10px] text-lv-cyan">inherit</Badge>}
           </div>
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" onClick={onRemove}>
-                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-neon-pink" />
+                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-lv-red" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Remove service override</TooltipContent>
@@ -71,7 +71,7 @@ export function ServiceCard({
         </div>
         {/* Inline preview */}
         {previewHeader && config.mode !== "none" && (
-          <p className="mt-1 text-[10px] font-mono text-muted-foreground truncate max-w-full" title={previewHeader}>
+          <p className="mt-1 text-[10px] font-data text-muted-foreground truncate max-w-full" title={previewHeader}>
             {previewHeader}
           </p>
         )}
@@ -132,7 +132,7 @@ export function ServiceCard({
 function CSPHeaderFormatted({ header }: { header: string }) {
   const parts = header.split(";").map((p) => p.trim()).filter(Boolean);
   return (
-    <span className="text-[10px] font-mono leading-relaxed">
+    <span className="text-[10px] font-data leading-relaxed">
       {parts.map((part, i) => {
         const spaceIdx = part.indexOf(" ");
         const directive = spaceIdx > 0 ? part.slice(0, spaceIdx) : part;
@@ -140,7 +140,7 @@ function CSPHeaderFormatted({ header }: { header: string }) {
         return (
           <span key={i}>
             {i > 0 && <span className="text-muted-foreground/40">; </span>}
-            <span className="text-neon-cyan">{directive}</span>
+            <span className="text-lv-cyan">{directive}</span>
             <span className="text-muted-foreground">{values}</span>
           </span>
         );
@@ -200,7 +200,7 @@ export function PreviewPanel({ preview }: { preview: CSPPreviewResponse | null }
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4 text-neon-cyan" />
+            <Eye className="h-4 w-4 text-lv-cyan" />
             <CardTitle className={T.cardTitle}>CSP Header Preview</CardTitle>
             <Badge variant="outline" className="text-[10px]">{filtered.length} service{filtered.length !== 1 ? "s" : ""}</Badge>
           </div>
@@ -223,15 +223,15 @@ export function PreviewPanel({ preview }: { preview: CSPPreviewResponse | null }
                 <div className="flex items-center gap-3 px-4 py-2 hover:bg-accent/30 transition-colors">
                   {/* Service name + badges */}
                   <div className="flex items-center gap-2 min-w-[180px] shrink-0">
-                    <span className="text-xs font-medium font-mono">{service}</span>
+                    <span className="text-xs font-medium font-data">{service}</span>
                     <Badge
                       variant="outline"
-                      className={`text-[9px] ${entry.mode === "none" ? "text-muted-foreground" : entry.mode === "default" ? "text-amber-400" : "text-neon-green"}`}
+                      className={`text-[9px] ${entry.mode === "none" ? "text-muted-foreground" : entry.mode === "default" ? "text-lv-peach" : "text-lv-green"}`}
                     >
                       {entry.mode}
                     </Badge>
                     {entry.report_only && (
-                      <Badge variant="outline" className="text-[9px] text-amber-400">RO</Badge>
+                      <Badge variant="outline" className="text-[9px] text-lv-peach">RO</Badge>
                     )}
                   </div>
 
@@ -278,7 +278,7 @@ export function PreviewPanel({ preview }: { preview: CSPPreviewResponse | null }
                               className="h-6 w-6 p-0"
                             >
                               {copied === service ? (
-                                <Check className="h-3 w-3 text-neon-green" />
+                                <Check className="h-3 w-3 text-lv-green" />
                               ) : (
                                 <Copy className="h-3 w-3" />
                               )}
@@ -293,15 +293,15 @@ export function PreviewPanel({ preview }: { preview: CSPPreviewResponse | null }
 
                 {/* Expanded: full header with directive breakdown */}
                 {isExpanded && entry.header && (
-                  <div className="px-4 pb-3 bg-navy-950/50">
+                  <div className="px-4 pb-3 bg-lovelace-950/50">
                     <div className="rounded border border-border p-3 space-y-1">
                       {entry.header.split(";").map((part) => part.trim()).filter(Boolean).map((part, i) => {
                         const spaceIdx = part.indexOf(" ");
                         const directive = spaceIdx > 0 ? part.slice(0, spaceIdx) : part;
                         const values = spaceIdx > 0 ? part.slice(spaceIdx + 1) : "";
                         return (
-                          <div key={i} className="flex items-baseline gap-2 text-[11px] font-mono">
-                            <span className="text-neon-cyan font-semibold shrink-0 min-w-[140px]">{directive}</span>
+                          <div key={i} className="flex items-baseline gap-2 text-[11px] font-data">
+                            <span className="text-lv-cyan font-semibold shrink-0 min-w-[140px]">{directive}</span>
                             <span className="text-muted-foreground break-all">{values}</span>
                           </div>
                         );

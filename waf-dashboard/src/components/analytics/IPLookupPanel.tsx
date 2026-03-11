@@ -70,6 +70,28 @@ import type { WAFEvent } from "@/lib/api";
 
 const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
+/** Format ISO hour string for multi-day IP timeline X-axis. */
+function formatIPTimelineTick(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return ts;
+  }
+}
+
+/** Format ISO hour string for tooltip (includes time). */
+function formatIPTimelineTooltip(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+  } catch {
+    return ts;
+  }
+}
+
 const IP_EVENTS_PAGE_SIZE = 20;
 
 export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
@@ -194,8 +216,8 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-neon-cyan" />
-                  <CardTitle className="text-sm font-mono">{data.ip}</CardTitle>
+                  <Globe className="h-4 w-4 text-lv-cyan" />
+                  <CardTitle className="text-sm font-data">{data.ip}</CardTitle>
                   {data.geoip?.country && (
                     <span className="text-sm" title={data.geoip.country}>
                       {countryFlag(data.geoip.country)} {data.geoip.country}
@@ -228,13 +250,13 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                   </div>
                   <div className="space-y-1">
                     <p className={T.formLabel}>Total Security Events</p>
-                    <p className="text-sm font-bold text-neon-cyan">
+                    <p className="text-sm font-bold text-lv-cyan">
                       {data.total_events.toLocaleString()}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className={T.formLabel}>Blocked</p>
-                    <p className="text-sm font-bold text-neon-pink">
+                    <p className="text-sm font-bold text-lv-red">
                       {data.blocked_count.toLocaleString()}
                     </p>
                   </div>
@@ -248,7 +270,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                       {data.services.map((svc) => (
                         <div
                           key={svc.service}
-                          className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-1.5 text-xs"
+                          className="flex items-center justify-between rounded-md bg-lovelace-950 px-3 py-1.5 text-xs"
                         >
                           <span className="font-medium">{svc.service}</span>
                           <div className="flex items-center gap-3">
@@ -295,10 +317,10 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                           <stop offset="95%" stopColor={ACTION_COLORS.logged} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e275c" vertical={false} />
-                      <XAxis dataKey="hour" stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#7a8baa" fontSize={T.chartLabel} tickLine={false} axisLine={false} />
-                      <Tooltip {...chartTooltipStyle} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#414457" vertical={false} />
+                      <XAxis dataKey="hour" stroke="#bdbdc1" fontSize={T.chartAxisTick} tickLine={false} axisLine={false} tickFormatter={formatIPTimelineTick} interval="preserveStartEnd" />
+                      <YAxis stroke="#bdbdc1" fontSize={T.chartAxisTick} tickLine={false} axisLine={false} />
+                      <Tooltip {...chartTooltipStyle} labelFormatter={formatIPTimelineTooltip} />
                       <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#ipGradBlocked)" strokeWidth={2} />
                       <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} />
                     </AreaChart>
@@ -379,7 +401,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                               {evt.method}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-[200px] truncate text-xs font-mono" title={evt.uri}>
+                          <TableCell className="max-w-[200px] truncate text-xs font-data" title={evt.uri}>
                             {evt.uri}
                           </TableCell>
                           <TableCell>
@@ -442,11 +464,11 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
   if (!hasLocation && !hasNetwork) return null;
 
   return (
-    <div className="rounded-lg border border-border/50 bg-navy-950/50 p-3 space-y-2.5">
+    <div className="rounded-lg border border-border/50 bg-lovelace-950/50 p-3 space-y-2.5">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground">GeoIP Intelligence</p>
         {geoip.source && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-data">
             {SOURCE_LABELS[geoip.source] ?? geoip.source}
           </Badge>
         )}
@@ -480,7 +502,7 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
                 <Clock3 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
                 <div>
                   <p className="text-[10px] text-muted-foreground">Timezone</p>
-                  <p className="text-xs font-medium font-mono">{geoip.timezone}</p>
+                  <p className="text-xs font-medium font-data">{geoip.timezone}</p>
                 </div>
               </div>
             )}
@@ -492,7 +514,7 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
             <Network className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <div>
               <p className="text-[10px] text-muted-foreground">ASN</p>
-              <p className="text-xs font-medium font-mono">{geoip.asn}</p>
+              <p className="text-xs font-medium font-data">{geoip.asn}</p>
             </div>
           </div>
         )}
@@ -503,7 +525,7 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
               <p className="text-[10px] text-muted-foreground">Organization</p>
               <p className="text-xs font-medium">{geoip.org}</p>
               {geoip.as_domain && (
-                <p className="text-[10px] text-muted-foreground font-mono">{geoip.as_domain}</p>
+                <p className="text-[10px] text-muted-foreground font-data">{geoip.as_domain}</p>
               )}
             </div>
           </div>
@@ -513,7 +535,7 @@ function GeoIPSection({ geoip }: { geoip: GeoIPInfo }) {
             <Globe className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <div>
               <p className="text-[10px] text-muted-foreground">Network</p>
-              <p className="text-xs font-medium font-mono">{geoip.network}</p>
+              <p className="text-xs font-medium font-data">{geoip.network}</p>
             </div>
           </div>
         )}
@@ -529,7 +551,7 @@ function RoutingSection({ routing, netType }: { routing: RoutingInfo; netType?: 
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <Radio className="h-4 w-4 text-neon-cyan" />
+          <Radio className="h-4 w-4 text-lv-cyan" />
           <CardTitle className={T.cardTitle}>BGP Routing</CardTitle>
           {routing.roa_validity && <ROABadge validity={routing.roa_validity} />}
         </div>
@@ -543,7 +565,7 @@ function RoutingSection({ routing, netType }: { routing: RoutingInfo; netType?: 
             {routing.as_number && (
               <div>
                 <p className="text-[10px] text-muted-foreground">AS Number</p>
-                <p className="text-xs font-mono font-medium">AS{routing.as_number}</p>
+                <p className="text-xs font-data font-medium">AS{routing.as_number}</p>
               </div>
             )}
             {routing.as_name && (
@@ -555,26 +577,26 @@ function RoutingSection({ routing, netType }: { routing: RoutingInfo; netType?: 
             {routing.route && (
               <div>
                 <p className="text-[10px] text-muted-foreground">Route Prefix</p>
-                <p className="text-xs font-mono font-medium">{routing.route}</p>
+                <p className="text-xs font-data font-medium">{routing.route}</p>
               </div>
             )}
             {routing.rir && (
               <div>
                 <p className="text-[10px] text-muted-foreground">RIR</p>
-                <p className="text-xs font-mono font-medium uppercase">{routing.rir}</p>
+                <p className="text-xs font-data font-medium uppercase">{routing.rir}</p>
               </div>
             )}
             {routing.alloc_date && (
               <div>
                 <p className="text-[10px] text-muted-foreground">Allocation Date</p>
-                <p className="text-xs font-mono font-medium">{routing.alloc_date}</p>
+                <p className="text-xs font-data font-medium">{routing.alloc_date}</p>
               </div>
             )}
             {routing.roa_validity && (
               <div>
                 <p className="text-[10px] text-muted-foreground">RPKI/ROA</p>
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-mono font-medium">{routing.roa_validity}</p>
+                  <p className="text-xs font-data font-medium">{routing.roa_validity}</p>
                   {(routing.roa_count ?? 0) > 0 && (
                     <span className="text-[10px] text-muted-foreground">
                       ({routing.roa_count} ROA{(routing.roa_count ?? 0) > 1 ? "s" : ""})
@@ -588,12 +610,12 @@ function RoutingSection({ routing, netType }: { routing: RoutingInfo; netType?: 
               <div className="col-span-2 flex flex-wrap gap-1.5 pt-1">
                 {netType.org_type && <OrgTypeBadge type={netType.org_type} />}
                 {netType.is_anycast && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-500/50 text-yellow-400">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-lv-peach/20 border-lv-peach/30 text-lv-peach">
                     Anycast
                   </Badge>
                 )}
                 {netType.is_dc && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/50 text-purple-400">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/50 text-lv-purple">
                     Datacenter
                   </Badge>
                 )}
@@ -617,7 +639,7 @@ function ReputationSection({ reputation }: { reputation: ReputationInfo }) {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-neon-cyan" />
+          <Shield className="h-4 w-4 text-lv-cyan" />
           <CardTitle className={T.cardTitle}>Reputation</CardTitle>
           <ReputationStatusBadge status={reputation.status} />
         </div>
@@ -628,10 +650,10 @@ function ReputationSection({ reputation }: { reputation: ReputationInfo }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {reputation.ipsum_listed && (
-          <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/30 px-3 py-2">
-            <ShieldX className="h-4 w-4 text-red-400 shrink-0" />
+          <div className="flex items-center gap-2 rounded-md bg-lv-red/10 border border-lv-red/30 px-3 py-2">
+            <ShieldX className="h-4 w-4 text-lv-red shrink-0" />
             <div>
-              <p className="text-xs font-medium text-red-400">IPsum Blocklisted</p>
+              <p className="text-xs font-medium text-lv-red">IPsum Blocklisted</p>
               <p className="text-[10px] text-muted-foreground">This IP is on the active IPsum blocklist</p>
             </div>
           </div>
@@ -666,13 +688,13 @@ function ReputationSourceRow({ entry }: { entry: ReputationEntry }) {
     : entry.status === "noisy" ? ShieldAlert
     : Shield;
 
-  const statusColor = entry.status === "benign" ? "text-green-400"
-    : entry.status === "malicious" ? "text-red-400"
-    : entry.status === "noisy" ? "text-yellow-400"
+  const statusColor = entry.status === "benign" ? "text-lv-green"
+    : entry.status === "malicious" ? "text-lv-red"
+    : entry.status === "noisy" ? "text-lv-peach"
     : "text-muted-foreground";
 
   return (
-    <div className="flex items-center justify-between rounded-md bg-navy-950 px-3 py-2">
+    <div className="flex items-center justify-between rounded-md bg-lovelace-950 px-3 py-2">
       <div className="flex items-center gap-2">
         <StatusIcon className={`h-3.5 w-3.5 shrink-0 ${statusColor}`} />
         <div>
@@ -688,9 +710,9 @@ function ReputationSourceRow({ entry }: { entry: ReputationEntry }) {
         <Badge
           variant="outline"
           className={`text-[10px] px-1.5 py-0 ${
-            entry.status === "benign" ? "border-green-500/50 text-green-400"
-            : entry.status === "malicious" ? "border-red-500/50 text-red-400"
-            : entry.status === "noisy" ? "border-yellow-500/50 text-yellow-400"
+            entry.status === "benign" ? "bg-lv-green/20 border-lv-green/30 text-lv-green"
+            : entry.status === "malicious" ? "border-lv-red/50 text-lv-red"
+            : entry.status === "noisy" ? "bg-lv-peach/20 border-lv-peach/30 text-lv-peach"
             : ""
           }`}
         >
@@ -709,11 +731,11 @@ function ReputationSourceRow({ entry }: { entry: ReputationEntry }) {
 function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
   const hasVulns = shodan.vulns && shodan.vulns.length > 0;
   return (
-    <Card className={hasVulns ? "border-red-500/30" : ""}>
+    <Card className={hasVulns ? "border-lv-red/30" : ""}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Server className="h-4 w-4 text-neon-cyan" />
+            <Server className="h-4 w-4 text-lv-cyan" />
             <CardTitle className={T.cardTitle}>Shodan InternetDB</CardTitle>
             {hasVulns && (
               <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
@@ -739,7 +761,7 @@ function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
             <p className="text-[10px] text-muted-foreground mb-1">Hostnames</p>
             <div className="flex flex-wrap gap-1">
               {shodan.hostnames.map((h) => (
-                <Badge key={h} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                <Badge key={h} variant="outline" className="text-[10px] px-1.5 py-0 font-data">
                   {h}
                 </Badge>
               ))}
@@ -755,7 +777,7 @@ function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
             </p>
             <div className="flex flex-wrap gap-1">
               {shodan.ports.map((p) => (
-                <Badge key={p} variant="secondary" className="text-[10px] px-1.5 py-0 font-mono tabular-nums">
+                <Badge key={p} variant="secondary" className="text-[10px] px-1.5 py-0 font-data tabular-nums">
                   {p}
                 </Badge>
               ))}
@@ -783,7 +805,7 @@ function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
             <p className="text-[10px] text-muted-foreground mb-1">CPEs</p>
             <div className="flex flex-wrap gap-1">
               {shodan.cpes.map((c) => (
-                <Badge key={c} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                <Badge key={c} variant="outline" className="text-[10px] px-1.5 py-0 font-data">
                   {c.replace("cpe:/", "")}
                 </Badge>
               ))}
@@ -795,7 +817,7 @@ function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
         {hasVulns && (
           <div>
             <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
-              <Bug className="h-3 w-3 text-red-400" />
+              <Bug className="h-3 w-3 text-lv-red" />
               Known Vulnerabilities
             </p>
             <div className="flex flex-wrap gap-1">
@@ -807,7 +829,7 @@ function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
                   rel="noopener noreferrer"
                   className="inline-flex"
                 >
-                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0 font-mono hover:bg-red-600">
+                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0 font-data hover:bg-lv-red-bright">
                     {v}
                   </Badge>
                 </a>
@@ -824,9 +846,9 @@ function ShodanSection({ shodan, ip }: { shodan: ShodanInfo; ip: string }) {
 
 function ROABadge({ validity }: { validity: string }) {
   const config: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
-    valid: { icon: CheckCircle2, color: "border-green-500/50 text-green-400", label: "ROA Valid" },
-    invalid: { icon: XCircle, color: "border-red-500/50 text-red-400", label: "ROA Invalid" },
-    unknown: { icon: HelpCircle, color: "border-yellow-500/50 text-yellow-400", label: "ROA Unknown" },
+    valid: { icon: CheckCircle2, color: "bg-lv-green/20 border-lv-green/30 text-lv-green", label: "ROA Valid" },
+    invalid: { icon: XCircle, color: "border-lv-red/50 text-lv-red", label: "ROA Invalid" },
+    unknown: { icon: HelpCircle, color: "bg-lv-peach/20 border-lv-peach/30 text-lv-peach", label: "ROA Unknown" },
     not_found: { icon: AlertCircle, color: "border-muted-foreground/50 text-muted-foreground", label: "No ROA" },
   };
   const c = config[validity] ?? config.unknown;
@@ -841,10 +863,10 @@ function ROABadge({ validity }: { validity: string }) {
 
 function ReputationStatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
-    clean: { color: "border-green-500/50 text-green-400", label: "Clean" },
-    known_good: { color: "border-emerald-500/50 text-emerald-400", label: "Known Good" },
-    suspicious: { color: "border-yellow-500/50 text-yellow-400", label: "Suspicious" },
-    malicious: { color: "border-red-500/50 text-red-400", label: "Malicious" },
+    clean: { color: "bg-lv-green/20 border-lv-green/30 text-lv-green", label: "Clean" },
+    known_good: { color: "border-lv-green/50 text-lv-green", label: "Known Good" },
+    suspicious: { color: "bg-lv-peach/20 border-lv-peach/30 text-lv-peach", label: "Suspicious" },
+    malicious: { color: "border-lv-red/50 text-lv-red", label: "Malicious" },
   };
   const c = config[status] ?? { color: "", label: status };
   return (
@@ -863,7 +885,7 @@ function OrgTypeBadge({ type }: { type: string }) {
     business: "Business",
   };
   return (
-    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-data">
       {labels[type] ?? type}
     </Badge>
   );

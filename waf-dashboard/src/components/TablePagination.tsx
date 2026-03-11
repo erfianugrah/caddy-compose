@@ -17,7 +17,7 @@ export function TablePagination({ page, totalPages, onPageChange, totalItems }: 
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-navy-800">
+    <div className="flex items-center justify-between px-4 py-3 border-t border-lovelace-800">
       <span className="text-xs text-muted-foreground">
         Page {page} of {totalPages}
         {totalItems != null && <span className="ml-2">({totalItems.toLocaleString()} items)</span>}

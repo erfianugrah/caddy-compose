@@ -24,26 +24,28 @@ export function StatCard({
   const animatedValue = useCountUp(loading ? 0 : value);
 
   const colorMap: Record<string, string> = {
-    green: "text-neon-green bg-neon-green/10",
-    pink: "text-neon-pink bg-neon-pink/10",
-    cyan: "text-neon-cyan bg-neon-cyan/10",
-    yellow: "text-yellow-400 bg-yellow-400/10",
-    purple: "text-purple-400 bg-purple-400/10",
-    orange: "text-orange-400 bg-orange-400/10",
-    red: "text-red-400 bg-red-400/10",
+    green: "text-lv-green bg-lv-green/15",
+    pink: "text-lv-red bg-lv-red/15",
+    cyan: "text-lv-cyan bg-lv-cyan/15",
+    yellow: "text-lv-peach bg-lv-peach/15",
+    purple: "text-lv-purple bg-lv-purple/15",
+    orange: "text-lv-peach-bright bg-lv-peach-bright/15",
+    red: "text-lv-red-bright bg-lv-red-bright/15",
+    blue: "text-lv-blue bg-lv-blue/15",
   };
   const textColorMap: Record<string, string> = {
-    green: "text-neon-green",
-    pink: "text-neon-pink",
-    cyan: "text-neon-cyan",
-    yellow: "text-yellow-400",
-    purple: "text-purple-400",
-    orange: "text-orange-400",
-    red: "text-red-400",
+    green: "text-lv-green",
+    pink: "text-lv-red",
+    cyan: "text-lv-cyan",
+    yellow: "text-lv-peach",
+    purple: "text-lv-purple",
+    orange: "text-lv-peach-bright",
+    red: "text-lv-red-bright",
+    blue: "text-lv-blue",
   };
 
   const card = (
-    <Card className={href ? "cursor-pointer hover:ring-1 hover:ring-neon-green/30 transition-all" : undefined}>
+    <Card className={href ? "cursor-pointer hover:ring-1 hover:ring-lv-purple/30 transition-all" : undefined}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardDescription className={T.statLabelUpper}>
           {title}

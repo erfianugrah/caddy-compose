@@ -97,7 +97,7 @@ export interface TopTargetedURI {
 
 // ─── Raw types ──────────────────────────────────────────────────────
 
-// Go API returns {ip, geoip?, intelligence?, total, blocked, first_seen, last_seen, services:[ServiceDetail], events:[RawEvent]}
+// Go API returns {ip, geoip?, intelligence?, total, blocked, first_seen, last_seen, services:[ServiceDetail], events_by_hour:[HourCount], events:[RawEvent]}
 interface RawIPLookup {
   ip: string;
   geoip?: GeoIPInfo;
@@ -108,6 +108,7 @@ interface RawIPLookup {
   first_seen: string | null;
   last_seen: string | null;
   services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour?: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
   events: {
     id: string;
     timestamp: string;
@@ -161,7 +162,16 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
     })),
-    timeline: [],
+    timeline: (raw.events_by_hour ?? []).map((h) => ({
+      hour: h.hour,
+      total: h.count ?? 0,
+      blocked: h.blocked ?? 0,
+      logged: h.logged ?? 0,
+      rate_limited: h.rate_limited ?? 0,
+      policy_block: h.policy_block ?? 0,
+      policy_allow: h.policy_allow ?? 0,
+      policy_skip: h.policy_skip ?? 0,
+    })),
     recent_events: (raw.events ?? []).map(mapEvent),
   };
 }

@@ -39,12 +39,12 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-[1200px] max-h-[90vh] overflow-y-auto p-0">
         {/* Header */}
-        <div className="sticky top-0 z-10 border-b border-navy-800 bg-card px-6 py-4">
+        <div className="sticky top-0 z-10 border-b border-lovelace-800 bg-card px-6 py-4">
           <DialogHeader>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <EventTypeBadge eventType={event.event_type} blocked={event.blocked} />
-                <DialogTitle className="text-sm font-mono truncate" title={`${event.method} ${event.uri}`}>
+                <DialogTitle className="text-sm font-data truncate" title={`${event.method} ${event.uri}`}>
                   {event.method} {event.uri}
                 </DialogTitle>
               </div>
@@ -90,7 +90,7 @@ export function EventDetailModal({ event, open, onOpenChange }: EventDetailModal
                 }}
                 className="inline-flex"
               >
-                <Button variant="outline" size="xs" className="text-xs text-neon-cyan hover:text-neon-green">
+                <Button variant="outline" size="xs" className="text-xs text-lv-cyan hover:text-lv-green">
                   <ShieldPlus className="h-3 w-3 mr-1" />
                   Create Exception
                 </Button>

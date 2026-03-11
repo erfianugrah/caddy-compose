@@ -353,7 +353,7 @@ export default function CSPPanel() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 text-neon-cyan" />
+              <Globe className="h-4 w-4 text-lv-cyan" />
               <CardTitle className={T.cardTitle}>Global Defaults</CardTitle>
             </div>
             <p className={T.muted}>

@@ -44,20 +44,20 @@ function RecommendationBanner({
   onApply: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-neon-cyan/30 bg-neon-cyan/5 px-5 py-4">
+    <div className="flex items-center justify-between rounded-lg border border-lv-cyan/30 bg-lv-cyan/5 px-5 py-4">
       <div className="flex items-center gap-3">
-        <Zap className="h-5 w-5 text-neon-cyan shrink-0" />
+        <Zap className="h-5 w-5 text-lv-cyan shrink-0" />
         <div>
           <div className="text-sm">
             <span className="text-muted-foreground">Recommended threshold: </span>
-            <span className="font-mono font-semibold text-neon-cyan text-base">{rec.threshold}</span>
+            <span className="font-data font-semibold text-lv-cyan text-base">{rec.threshold}</span>
             <span className="text-muted-foreground"> req/{window} </span>
             <ConfidenceBadge confidence={rec.confidence} />
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {rec.method.toUpperCase()}-based — would affect{" "}
-            <span className="font-mono">{rec.affected_clients}</span> client{rec.affected_clients !== 1 ? "s" : ""},{" "}
-            <span className="font-mono">{rec.affected_requests.toLocaleString()}</span> requests
+            <span className="font-data">{rec.affected_clients}</span> client{rec.affected_clients !== 1 ? "s" : ""},{" "}
+            <span className="font-data">{rec.affected_requests.toLocaleString()}</span> requests
           </div>
         </div>
       </div>
@@ -87,16 +87,16 @@ function CreateRuleAction({
   onCreateRule: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-neon-green/30 bg-neon-green/5 px-5 py-4">
+    <div className="flex items-center justify-between rounded-lg border border-lv-green/30 bg-lv-green/5 px-5 py-4">
       <div className="text-sm">
         <span className="text-muted-foreground">Create a rule that limits clients to </span>
-        <span className="font-mono font-medium text-neon-cyan">{threshold}</span>
+        <span className="font-data font-medium text-lv-cyan">{threshold}</span>
         <span className="text-muted-foreground"> requests per </span>
-        <span className="font-mono font-medium text-neon-cyan">{window}</span>
+        <span className="font-data font-medium text-lv-cyan">{window}</span>
         {service && (
           <>
             <span className="text-muted-foreground"> on </span>
-            <span className="font-mono font-medium text-neon-cyan">{service}</span>
+            <span className="font-data font-medium text-lv-cyan">{service}</span>
           </>
         )}
         <span className="text-muted-foreground">
@@ -144,7 +144,7 @@ function ThresholdCard({
             </div>
           </div>
           {/* Percentile display — high contrast */}
-          <div className="flex items-center gap-4 tabular-nums font-mono">
+          <div className="flex items-center gap-4 tabular-nums font-data">
             {([
               { label: "P50", value: data.percentiles.p50, highlight: false },
               { label: "P75", value: data.percentiles.p75, highlight: false },
@@ -171,7 +171,7 @@ function ThresholdCard({
         {data.histogram && data.histogram.length > 0 && (
           <div className="pt-3">
             <div className="text-xs text-muted-foreground mb-2">
-              Client rate distribution <span className="text-neon-yellow">(yellow line = threshold</span>, <span className="text-red-400">red = above)</span>
+              Client rate distribution <span className="text-neon-yellow">(yellow line = threshold</span>, <span className="text-lv-red">red = above)</span>
             </div>
             <DistributionHistogram histogram={data.histogram} threshold={threshold} />
           </div>
@@ -211,12 +211,12 @@ function ImpactCard({
         <div className="flex items-center gap-4 text-xs pt-2 border-t border-border">
           <div>
             <span className="text-muted-foreground">Clients: </span>
-            <span className="font-mono text-neon-cyan">{affectedClients}/{data.unique_clients}</span>
+            <span className="font-data text-lv-cyan">{affectedClients}/{data.unique_clients}</span>
             <span className="text-muted-foreground"> ({data.unique_clients > 0 ? ((affectedClients / data.unique_clients) * 100).toFixed(1) : 0}%)</span>
           </div>
           <div>
             <span className="text-muted-foreground">Reqs: </span>
-            <span className="font-mono text-pink-400">{affectedRequests.toLocaleString()}/{data.total_requests.toLocaleString()}</span>
+            <span className="font-data text-lv-red">{affectedRequests.toLocaleString()}/{data.total_requests.toLocaleString()}</span>
           </div>
         </div>
       </CardContent>
@@ -294,7 +294,7 @@ export function AdvisorRecommendations({
                   Median
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(34,211,238,0.15)" }} />
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(121,230,243,0.15)" }} />
                   P95
                 </span>
               </div>

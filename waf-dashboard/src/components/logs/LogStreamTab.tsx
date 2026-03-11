@@ -160,7 +160,7 @@ export default function LogStreamTab({
                     onClick={() => toggleColumn(col.id)}
                   >
                     <span className="w-4 h-4 flex items-center justify-center">
-                      {isVisible(col.id) && <Check className="h-3 w-3 text-neon-cyan" />}
+                      {isVisible(col.id) && <Check className="h-3 w-3 text-lv-cyan" />}
                     </span>
                     {col.label}
                   </button>
@@ -247,14 +247,14 @@ export default function LogStreamTab({
                           )}
                         </TableCell>
                         {isVisible("time") && (
-                          <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                          <TableCell className="font-data text-xs text-muted-foreground whitespace-nowrap">
                             {formatDate(evt.timestamp)} {formatTime(evt.timestamp)}
                           </TableCell>
                         )}
                         {isVisible("status") && <TableCell>{statusBadge(evt.status)}</TableCell>}
                         {isVisible("method") && (
                           <TableCell>
-                            <span className="font-mono text-xs">{evt.method}</span>
+                            <span className="font-data text-xs">{evt.method}</span>
                           </TableCell>
                         )}
                         {isVisible("service") && (
@@ -263,19 +263,19 @@ export default function LogStreamTab({
                           </TableCell>
                         )}
                         {isVisible("uri") && (
-                          <TableCell className="font-mono text-xs max-w-[300px] truncate text-muted-foreground" title={evt.uri}>
+                          <TableCell className="font-data text-xs max-w-[300px] truncate text-muted-foreground" title={evt.uri}>
                             {evt.uri}
                           </TableCell>
                         )}
                         {isVisible("latency") && (
-                          <TableCell className="font-mono text-xs">
-                            <span className={evt.duration >= 1 ? "text-red-400" : evt.duration >= 0.1 ? "text-amber-400" : "text-muted-foreground"}>
+                          <TableCell className="font-data text-xs">
+                            <span className={evt.duration >= 1 ? "text-lv-red" : evt.duration >= 0.1 ? "text-lv-peach" : "text-muted-foreground"}>
                               {formatDuration(evt.duration)}
                             </span>
                           </TableCell>
                         )}
                         {isVisible("size") && (
-                          <TableCell className="font-mono text-xs text-muted-foreground">
+                          <TableCell className="font-data text-xs text-muted-foreground">
                             {formatBytes(evt.size)}
                           </TableCell>
                         )}
@@ -289,14 +289,14 @@ export default function LogStreamTab({
                           </TableCell>
                         )}
                         {isVisible("protocol") && (
-                          <TableCell className="font-mono text-xs text-muted-foreground">
+                          <TableCell className="font-data text-xs text-muted-foreground">
                             {evt.protocol}
                           </TableCell>
                         )}
                         {isVisible("tls") && (
                           <TableCell className="text-xs">
                             {evt.tls ? (
-                              <span className="text-neon-green" title={`${evt.tls.version} / ${evt.tls.proto}`}>
+                              <span className="text-lv-green" title={`${evt.tls.version} / ${evt.tls.proto}`}>
                                 {evt.tls.version.replace("TLS ", "")}
                               </span>
                             ) : (
@@ -312,7 +312,7 @@ export default function LogStreamTab({
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={colSpan} className="bg-navy-950/50 p-0">
+                          <TableCell colSpan={colSpan} className="bg-lovelace-950/50 p-0">
                             <LogDetailPanel event={evt} />
                           </TableCell>
                         </TableRow>
@@ -394,7 +394,7 @@ function HeaderDots({ headers }: { headers: GeneralLogEvent["security_headers"] 
       {present.map((p, i) => (
         <div
           key={i}
-          className={`h-1.5 w-1.5 rounded-full ${p ? "bg-emerald-400" : "bg-red-400/40"}`}
+          className={`h-1.5 w-1.5 rounded-full ${p ? "bg-lv-green" : "bg-lv-red/40"}`}
         />
       ))}
     </div>

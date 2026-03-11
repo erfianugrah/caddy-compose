@@ -205,19 +205,27 @@ export function QuickActionsForm({
         {QUICK_ACTIONS.map((action) => {
           const Icon = QUICK_ACTION_ICONS[action.iconName] ?? Shield;
           const isActive = actionType === action.value;
+          // Color-code by action intent: green=allow, red=block, peach=anomaly, purple=skip
+          const colorMap: Record<string, { active: string; icon: string; text: string }> = {
+            allow: { active: "border-lv-green/40 bg-lv-green/5", icon: "text-lv-green", text: "text-lv-green" },
+            block: { active: "border-lv-red/40 bg-lv-red/5", icon: "text-lv-red", text: "text-lv-red" },
+            anomaly: { active: "border-lv-peach/40 bg-lv-peach/5", icon: "text-lv-peach", text: "text-lv-peach" },
+            skip_rule: { active: "border-lv-purple/40 bg-lv-purple/5", icon: "text-lv-purple", text: "text-lv-purple" },
+          };
+          const colors = colorMap[action.value] ?? colorMap.skip_rule;
           return (
             <button
               key={action.value}
               className={`flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors ${
                 isActive
-                  ? "border-neon-cyan bg-neon-cyan/5"
+                  ? colors.active
                   : "border-border hover:border-muted-foreground/50"
               }`}
               onClick={() => setActionType(action.value)}
             >
               <div className="flex items-center gap-2">
-                <Icon className={`h-4 w-4 ${isActive ? "text-neon-cyan" : "text-muted-foreground"}`} />
-                <span className={`text-sm font-medium ${isActive ? "text-neon-cyan" : ""}`}>
+                <Icon className={`h-4 w-4 ${isActive ? colors.icon : "text-muted-foreground"}`} />
+                <span className={`text-sm font-medium ${isActive ? colors.text : ""}`}>
                   {action.label}
                 </span>
               </div>
@@ -255,36 +263,47 @@ export function QuickActionsForm({
 
       {/* Condition Builder */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className={T.formLabel}>
-            When incoming requests match...
-          </Label>
-          {conditions.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Match:</span>
-              <Select value={groupOp} onValueChange={(v) => setGroupOp(v as GroupOperator)}>
-                <SelectTrigger className="h-7 w-[90px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="and">All (AND)</SelectItem>
-                  <SelectItem value="or">Any (OR)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
+        <Label className={T.formLabel}>
+          When incoming requests match...
+        </Label>
 
-        <div className="space-y-2 rounded-md border border-border bg-navy-950/30 p-3">
+        <div className={`space-y-2 rounded-md border p-3 ${
+          conditions.length > 1
+            ? groupOp === "and"
+              ? "border-lv-cyan/30 bg-lv-cyan/5"
+              : "border-lv-peach/30 bg-lv-peach/5"
+            : "border-border bg-lovelace-950/30"
+        }`}>
           {conditions.map((c, i) => (
             <div key={i}>
-              {i > 0 && (
-                <div className="flex items-center gap-2 py-1">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs font-medium uppercase text-muted-foreground">
-                    {groupOp}
-                  </span>
-                  <div className="h-px flex-1 bg-border" />
+              {i > 0 && conditions.length > 1 && (
+                <div className="flex items-center gap-2 py-1.5">
+                  <div className="h-px flex-1 bg-border/50" />
+                  <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-lovelace-950/50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setGroupOp("and")}
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                        groupOp === "and"
+                          ? "bg-lv-cyan/20 text-lv-cyan border border-lv-cyan/30"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      AND
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGroupOp("or")}
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                        groupOp === "or"
+                          ? "bg-lv-peach/20 text-lv-peach border border-lv-peach/30"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      OR
+                    </button>
+                  </div>
+                  <div className="h-px flex-1 bg-border/50" />
                 </div>
               )}
               <ConditionRow
@@ -531,8 +550,18 @@ export function AdvancedBuilderForm({
       </div>
 
       {/* Exclusion Type */}
-      <div className="space-y-1.5">
-        <Label className={T.formLabel}>Exclusion Type</Label>
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Label className={T.formLabel}>Exclusion Type</Label>
+          {/* Color-coded intent indicator */}
+          {form.type === "allow" && <span className="inline-flex items-center rounded bg-lv-green/20 border border-lv-green/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-green">Allow</span>}
+          {form.type === "block" && <span className="inline-flex items-center rounded bg-lv-red/20 border border-lv-red/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-red">Block</span>}
+          {form.type === "anomaly" && <span className="inline-flex items-center rounded bg-lv-peach/20 border border-lv-peach/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-peach">Anomaly</span>}
+          {form.type === "skip_rule" && <span className="inline-flex items-center rounded bg-lv-purple/20 border border-lv-purple/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-purple">Skip</span>}
+          {form.type === "raw" && <span className="inline-flex items-center rounded bg-lv-blue/20 border border-lv-blue/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-blue">Raw</span>}
+          {isRuntimeType(form.type) && <span className="inline-flex items-center rounded bg-lv-cyan/20 border border-lv-cyan/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-cyan">Runtime</span>}
+          {(form.type.startsWith("SecRule") && !isRuntimeType(form.type)) && <span className="inline-flex items-center rounded bg-lovelace-600/30 border border-lovelace-600/50 px-1.5 py-0 text-[10px] font-semibold uppercase text-muted-foreground">Config-time</span>}
+        </div>
         <Select value={form.type} onValueChange={handleTypeChange}>
           <SelectTrigger className="h-auto py-2">
             <SelectValue />
@@ -631,36 +660,47 @@ export function AdvancedBuilderForm({
       {/* Condition builder for runtime ctl: types */}
       {needsConditions && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className={T.formLabel}>
-              Apply when requests match...
-            </Label>
-            {form.conditions.length > 1 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Match:</span>
-                <Select value={form.group_operator} onValueChange={(v) => update("group_operator", v as GroupOperator)}>
-                  <SelectTrigger className="h-7 w-[90px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="and">All (AND)</SelectItem>
-                    <SelectItem value="or">Any (OR)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
+          <Label className={T.formLabel}>
+            Apply when requests match...
+          </Label>
 
-          <div className="space-y-2 rounded-md border border-border bg-navy-950/30 p-3">
+          <div className={`space-y-2 rounded-md border p-3 ${
+            form.conditions.length > 1
+              ? form.group_operator === "and"
+                ? "border-lv-cyan/30 bg-lv-cyan/5"
+                : "border-lv-peach/30 bg-lv-peach/5"
+              : "border-border bg-lovelace-950/30"
+          }`}>
             {form.conditions.map((c, i) => (
               <div key={i}>
-                {i > 0 && (
-                  <div className="flex items-center gap-2 py-1">
-                    <div className="h-px flex-1 bg-border" />
-                    <span className="text-xs font-medium uppercase text-muted-foreground">
-                      {form.group_operator}
-                    </span>
-                    <div className="h-px flex-1 bg-border" />
+                {i > 0 && form.conditions.length > 1 && (
+                  <div className="flex items-center gap-2 py-1.5">
+                    <div className="h-px flex-1 bg-border/50" />
+                    <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-lovelace-950/50 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => update("group_operator", "and" as GroupOperator)}
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                          form.group_operator === "and"
+                            ? "bg-lv-cyan/20 text-lv-cyan border border-lv-cyan/30"
+                            : "text-muted-foreground hover:text-foreground border border-transparent"
+                        }`}
+                      >
+                        AND
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => update("group_operator", "or" as GroupOperator)}
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                          form.group_operator === "or"
+                            ? "bg-lv-peach/20 text-lv-peach border border-lv-peach/30"
+                            : "text-muted-foreground hover:text-foreground border border-transparent"
+                        }`}
+                      >
+                        OR
+                      </button>
+                    </div>
+                    <div className="h-px flex-1 bg-border/50" />
                   </div>
                 )}
                 <ConditionRow

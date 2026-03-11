@@ -264,6 +264,10 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
+	// Backup / Restore (unified export of all config stores)
+	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, exclusionStore, rlRuleStore, managedListStore))
+	mux.HandleFunc("POST /api/backup/restore", handleRestore(configStore, cspStore, exclusionStore, rlRuleStore, managedListStore))
+
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
 	allowedOrigins := strings.Split(corsOrigins, ",")

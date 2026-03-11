@@ -12,3 +12,4 @@ export * from "./blocklist";
 export * from "./csp";
 export * from "./general-logs";
 export * from "./managed-lists";
+export * from "./backup";

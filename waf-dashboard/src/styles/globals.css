@@ -1,47 +1,54 @@
 @import "tailwindcss";
+@import "@fontsource-variable/space-grotesk";
 
 @theme {
-  /* Dark navy / neon terminal palette */
-  --color-navy-950: #050816;
-  --color-navy-900: #0a0e27;
-  --color-navy-800: #0f1538;
-  --color-navy-700: #161d4a;
-  --color-navy-600: #1e275c;
-  --color-neon-green: #00ff41;
-  --color-neon-green-dim: #00cc34;
-  --color-neon-pink: #ff006e;
-  --color-neon-pink-dim: #cc0058;
-  --color-neon-cyan: #00d4ff;
-  --color-neon-blue: #3b82f6;
-  --color-neon-amber: #ffbe0b;
+  /* Lovelace palette — warm charcoal base with pastel-neon accents */
+  --color-lovelace-950: #15161e;
+  --color-lovelace-900: #1d1f28;
+  --color-lovelace-800: #282a36;
+  --color-lovelace-700: #343647;
+  --color-lovelace-600: #414457;
+
+  --color-lv-purple: #c574dd;
+  --color-lv-purple-dim: #af43d1;
+  --color-lv-green: #5adecd;
+  --color-lv-green-bright: #17e2c7;
+  --color-lv-red: #f37e96;
+  --color-lv-red-bright: #ff4870;
+  --color-lv-peach: #f1a171;
+  --color-lv-peach-bright: #ff8037;
+  --color-lv-blue: #8796f4;
+  --color-lv-blue-bright: #546eff;
+  --color-lv-cyan: #79e6f3;
+  --color-lv-cyan-bright: #3edced;
 
   /* shadcn CSS variable mapping */
-  --color-background: #0a0e27;
-  --color-foreground: #e0e6f0;
-  --color-card: #0f1538;
-  --color-card-foreground: #e0e6f0;
-  --color-popover: #0f1538;
-  --color-popover-foreground: #e0e6f0;
-  --color-primary: #00ff41;
-  --color-primary-foreground: #050816;
-  --color-secondary: #161d4a;
-  --color-secondary-foreground: #e0e6f0;
-  --color-muted: #161d4a;
-  --color-muted-foreground: #7a8baa;
-  --color-accent: #1e275c;
-  --color-accent-foreground: #e0e6f0;
-  --color-destructive: #ff006e;
+  --color-background: #1d1f28;
+  --color-foreground: #fcfcfc;
+  --color-card: #282a36;
+  --color-card-foreground: #fcfcfc;
+  --color-popover: #282a36;
+  --color-popover-foreground: #fcfcfc;
+  --color-primary: #c574dd;
+  --color-primary-foreground: #15161e;
+  --color-secondary: #343647;
+  --color-secondary-foreground: #fcfcfc;
+  --color-muted: #343647;
+  --color-muted-foreground: #bdbdc1;
+  --color-accent: #414457;
+  --color-accent-foreground: #fcfcfc;
+  --color-destructive: #f37e96;
   --color-destructive-foreground: #ffffff;
-  --color-border: #1e275c;
-  --color-input: #1e275c;
-  --color-ring: #00ff41;
+  --color-border: #414457;
+  --color-input: #414457;
+  --color-ring: #c574dd;
 
   /* Chart colors */
-  --color-chart-1: #00ff41;
-  --color-chart-2: #ff006e;
-  --color-chart-3: #00d4ff;
-  --color-chart-4: #ffbe0b;
-  --color-chart-5: #a855f7;
+  --color-chart-1: #c574dd;
+  --color-chart-2: #5adecd;
+  --color-chart-3: #f37e96;
+  --color-chart-4: #f1a171;
+  --color-chart-5: #8796f4;
 
   /* Radius */
   --radius: 0.5rem;
@@ -65,22 +72,33 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
-      SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    font-size: 18px;
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
+      sans-serif;
+    font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Neon glow utilities */
+  /* Monospace utility for data-oriented elements */
+  .font-data {
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
+      SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* Glow utilities — Lovelace palette */
+  .glow-purple {
+    text-shadow: 0 0 10px rgba(197, 116, 221, 0.5),
+      0 0 20px rgba(197, 116, 221, 0.3), 0 0 40px rgba(197, 116, 221, 0.1);
+  }
+
   .glow-green {
-    text-shadow: 0 0 10px rgba(0, 255, 65, 0.5),
-      0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+    text-shadow: 0 0 10px rgba(90, 222, 205, 0.5),
+      0 0 20px rgba(90, 222, 205, 0.3), 0 0 40px rgba(90, 222, 205, 0.1);
   }
 
   .glow-pink {
-    text-shadow: 0 0 10px rgba(255, 0, 110, 0.5),
-      0 0 20px rgba(255, 0, 110, 0.3), 0 0 40px rgba(255, 0, 110, 0.1);
+    text-shadow: 0 0 10px rgba(243, 126, 150, 0.5),
+      0 0 20px rgba(243, 126, 150, 0.3), 0 0 40px rgba(243, 126, 150, 0.1);
   }
 
   /* Scrollbar styling */
@@ -90,32 +108,16 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--color-navy-950);
+    background: var(--color-lovelace-950);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--color-navy-600);
+    background: var(--color-lovelace-600);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-neon-green);
-  }
-
-  /* Scanline overlay effect */
-  .scanlines::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0, 0, 0, 0.05) 2px,
-      rgba(0, 0, 0, 0.05) 4px
-    );
-    pointer-events: none;
-    z-index: 50;
+    background: var(--color-lv-purple);
   }
 
   /* Stat card fade-in animation */
@@ -139,7 +141,7 @@
     transition: background-color 150ms ease-out;
   }
   tr.cursor-pointer:active {
-    background-color: rgba(30, 39, 92, 0.5);
+    background-color: rgba(65, 68, 87, 0.5);
   }
 
   /* Hide native number input spinners — they clash with the dark theme */

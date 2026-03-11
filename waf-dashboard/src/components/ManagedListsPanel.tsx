@@ -31,10 +31,10 @@ import { T } from "@/lib/typography";
 // ─── Kind / Source Badge Colors ─────────────────────────────────────
 
 const KIND_COLORS: Record<string, string> = {
-  ip: "bg-neon-pink/10 text-neon-pink border-neon-pink/20",
-  hostname: "bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20",
-  string: "bg-neon-green/10 text-neon-green border-neon-green/20",
-  asn: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  ip: "bg-lv-red/10 text-lv-red border-lv-red/20",
+  hostname: "bg-lv-cyan/10 text-lv-cyan border-lv-cyan/20",
+  string: "bg-lv-green/10 text-lv-green border-lv-green/20",
+  asn: "bg-amber-500/10 text-lv-peach border-amber-500/20",
 };
 
 const SOURCE_ICONS: Record<string, typeof Database> = {
@@ -65,7 +65,7 @@ function ListCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium font-mono truncate">{list.name}</h3>
+              <h3 className="text-sm font-medium font-data truncate">{list.name}</h3>
               <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${KIND_COLORS[list.kind] ?? ""}`}>
                 {list.kind}
               </Badge>
@@ -96,7 +96,7 @@ function ListCard({
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit} title="Edit">
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-neon-pink" onClick={onDelete} title="Delete">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-lv-red" onClick={onDelete} title="Delete">
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </>
@@ -213,10 +213,10 @@ function ListFormDialog({
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g., bad-ips, blocked-countries"
                 disabled={isEdit}
-                className="font-mono"
+                className="font-data"
               />
               {form.name && !nameValid && (
-                <p className="text-[11px] text-neon-pink">Lowercase alphanumeric, hyphens, underscores. Must start with letter/number.</p>
+                <p className="text-[11px] text-lv-red">Lowercase alphanumeric, hyphens, underscores. Must start with letter/number.</p>
               )}
             </div>
             {/* Description */}
@@ -292,7 +292,7 @@ function ListFormDialog({
                 value={form.url}
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
                 placeholder="https://example.com/blocklist.txt"
-                className="font-mono text-xs"
+                className="font-data text-xs"
               />
               <p className="text-[11px] text-muted-foreground">One item per line. Lines starting with # are ignored.</p>
             </div>
@@ -311,20 +311,20 @@ function ListFormDialog({
                 </Badge>
               </label>
               {itemErrors.length > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-amber-400">
+                <span className="flex items-center gap-1 text-[11px] text-lv-peach">
                   <AlertTriangle className="h-3 w-3" />
                   {itemErrors.length} invalid {itemErrors.length === 1 ? "entry" : "entries"}
                 </span>
               )}
             </div>
 
-            <div className="rounded-md border border-border bg-navy-950/30 p-3 space-y-2">
+            <div className="rounded-md border border-border bg-lovelace-950/30 p-3 space-y-2">
               <textarea
                 value={form.itemsText}
                 onChange={(e) => setForm({ ...form, itemsText: e.target.value })}
                 placeholder={kindMeta.placeholder}
                 rows={8}
-                className="w-full rounded-md border border-border bg-navy-950 px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 resize-y"
+                className="w-full rounded-md border border-border bg-lovelace-950 px-3 py-2 text-xs font-data text-foreground placeholder:text-muted-foreground focus:border-lv-cyan focus:outline-none focus:ring-1 focus:ring-lv-cyan/50 resize-y"
               />
               <p className="text-[11px] text-muted-foreground/70 px-1">{kindMeta.hint}</p>
             </div>
@@ -372,7 +372,7 @@ function DeleteConfirmDialog({
         <DialogHeader>
           <DialogTitle>Delete List</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete <span className="font-mono font-medium">{list?.name}</span>?
+            Are you sure you want to delete <span className="font-data font-medium">{list?.name}</span>?
             Any policy rules or rate limit conditions referencing this list will stop matching.
           </DialogDescription>
         </DialogHeader>
@@ -451,11 +451,11 @@ function IpsumSection({
   };
 
   return (
-    <Card className="border-neon-pink/20">
+    <Card className="border-lv-red/20">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-neon-pink" />
+            <Shield className="h-4 w-4 text-lv-red" />
             <CardTitle className={T.cardTitle}>IPsum Threat Intelligence</CardTitle>
           </div>
           <Button
@@ -475,17 +475,17 @@ function IpsumSection({
       <CardContent className="space-y-4">
         {/* Stats row */}
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-md border border-border/50 bg-navy-950 px-3 py-2">
+          <div className="rounded-md border border-border/50 bg-lovelace-950 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Blocked IPs</p>
-            <p className="text-lg font-semibold font-mono">{(stats?.blocked_ips ?? totalIPs).toLocaleString()}</p>
+            <p className="text-lg font-semibold font-data">{(stats?.blocked_ips ?? totalIPs).toLocaleString()}</p>
           </div>
-          <div className="rounded-md border border-border/50 bg-navy-950 px-3 py-2">
+          <div className="rounded-md border border-border/50 bg-lovelace-950 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Threat Levels</p>
             <p className="text-lg font-semibold">{ipsumLists.length}</p>
           </div>
-          <div className="rounded-md border border-border/50 bg-navy-950 px-3 py-2">
+          <div className="rounded-md border border-border/50 bg-lovelace-950 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Last Updated</p>
-            <p className="text-sm font-mono text-muted-foreground">
+            <p className="text-sm font-data text-muted-foreground">
               {stats?.last_updated ? new Date(stats.last_updated).toLocaleDateString() : "—"}
             </p>
           </div>
@@ -495,7 +495,7 @@ function IpsumSection({
         {refreshResult && (
           <Alert
             variant={refreshResult.status === "error" ? "destructive" : "default"}
-            className={refreshResult.status !== "error" ? "border-neon-green/30 bg-neon-green/5" : ""}
+            className={refreshResult.status !== "error" ? "border-lv-green/30 bg-lv-green/5" : ""}
           >
             <AlertDescription className="text-xs">{refreshResult.message}</AlertDescription>
           </Alert>
@@ -510,7 +510,7 @@ function IpsumSection({
               onChange={(e) => { setCheckIP(e.target.value); setCheckResult(null); }}
               onKeyDown={(e) => e.key === "Enter" && handleCheck()}
               placeholder="Enter IP address to check"
-              className="font-mono text-xs max-w-xs"
+              className="font-data text-xs max-w-xs"
             />
             <Button
               variant="outline"
@@ -523,14 +523,14 @@ function IpsumSection({
             </Button>
           </div>
           {checkResult && (
-            <div className={`flex items-center gap-2 text-xs ${checkResult.blocked ? "text-neon-pink" : "text-neon-green"}`}>
+            <div className={`flex items-center gap-2 text-xs ${checkResult.blocked ? "text-lv-red" : "text-lv-green"}`}>
               <Badge variant="outline" className={checkResult.blocked
-                ? "bg-neon-pink/10 text-neon-pink border-neon-pink/20"
-                : "bg-neon-green/10 text-neon-green border-neon-green/20"
+                ? "bg-lv-red/10 text-lv-red border-lv-red/20"
+                : "bg-lv-green/10 text-lv-green border-lv-green/20"
               }>
                 {checkResult.blocked ? "BLOCKED" : "CLEAN"}
               </Badge>
-              <span className="font-mono">{checkResult.ip}</span>
+              <span className="font-data">{checkResult.ip}</span>
             </div>
           )}
         </div>
@@ -687,11 +687,11 @@ export default function ManagedListsPanel() {
       <div className="flex items-center justify-center py-20">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-neon-pink">Connection Error</CardTitle>
+            <CardTitle className="text-lv-red">Connection Error</CardTitle>
             <CardDescription>Could not reach the WAF API.</CardDescription>
           </CardHeader>
           <CardContent>
-            <pre className="rounded-md bg-navy-950 p-3 text-xs text-muted-foreground">{error}</pre>
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-lovelace-950 p-3 text-xs text-muted-foreground">{error}</pre>
             <Button variant="outline" size="sm" className="mt-3" onClick={loadLists}>Retry</Button>
           </CardContent>
         </Card>
@@ -729,7 +729,7 @@ export default function ManagedListsPanel() {
       {feedback && (
         <Alert
           variant={feedback.type === "error" ? "destructive" : "default"}
-          className={feedback.type === "success" ? "border-neon-green/30 bg-neon-green/5" : ""}
+          className={feedback.type === "success" ? "border-lv-green/30 bg-lv-green/5" : ""}
         >
           <AlertTitle className="text-xs font-medium">
             {feedback.type === "success" ? "Success" : "Error"}
@@ -746,19 +746,19 @@ export default function ManagedListsPanel() {
       {/* Summary stats */}
       {!loading && lists.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-4">
-          <Card className="border-l-2 border-l-neon-cyan">
+          <Card className="border-l-2 border-l-lv-cyan">
             <CardContent className="pt-3 pb-3">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Total Lists</p>
               <p className="text-lg font-semibold">{lists.length}</p>
             </CardContent>
           </Card>
-          <Card className="border-l-2 border-l-neon-pink">
+          <Card className="border-l-2 border-l-lv-red">
             <CardContent className="pt-3 pb-3">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">IP Lists</p>
               <p className="text-lg font-semibold">{lists.filter((l) => l.kind === "ip").length}</p>
             </CardContent>
           </Card>
-          <Card className="border-l-2 border-l-neon-green">
+          <Card className="border-l-2 border-l-lv-green">
             <CardContent className="pt-3 pb-3">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Total Items</p>
               <p className="text-lg font-semibold">{lists.reduce((s, l) => s + l.item_count, 0).toLocaleString()}</p>
@@ -786,7 +786,7 @@ export default function ManagedListsPanel() {
             <List className="mx-auto h-10 w-10 text-muted-foreground/30" />
             <p className="mt-3 text-sm text-muted-foreground">No managed lists yet.</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Create a list to use with <span className="font-mono text-neon-cyan">in_list</span> / <span className="font-mono text-neon-cyan">not_in_list</span> operators in policy conditions and rate limit rules.
+              Create a list to use with <span className="font-data text-lv-cyan">in_list</span> / <span className="font-data text-lv-cyan">not_in_list</span> operators in policy conditions and rate limit rules.
             </p>
             <Button size="sm" className="mt-4" onClick={() => { setEditing(null); setFormOpen(true); }}>
               <Plus className="mr-2 h-3.5 w-3.5" /> Create First List
@@ -819,8 +819,8 @@ export default function ManagedListsPanel() {
           <p>
             Managed lists are reusable collections of IPs, hostnames, strings, or ASNs.
             Reference them in policy engine conditions or rate limit rules using the
-            <span className="font-mono text-neon-cyan mx-1">is in list</span> and
-            <span className="font-mono text-neon-cyan mx-1">is not in list</span> operators.
+            <span className="font-data text-lv-cyan mx-1">is in list</span> and
+            <span className="font-data text-lv-cyan mx-1">is not in list</span> operators.
           </p>
           <p>
             IP lists support CIDR notation and use hash-set lookups for O(1) matching.

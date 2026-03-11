@@ -70,7 +70,7 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Globe className="h-4 w-4 text-neon-cyan" />
+          <Globe className="h-4 w-4 text-lv-cyan" />
           <CardTitle className={T.cardTitle}>Top Countries</CardTitle>
         </div>
         <CardDescription>Request origins by country code</CardDescription>
@@ -104,9 +104,9 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <div className="h-2 w-24 overflow-hidden rounded-full bg-navy-800">
+                        <div className="h-2 w-24 overflow-hidden rounded-full bg-lovelace-800">
                           <div
-                            className="h-full rounded-full bg-neon-cyan/70 transition-all"
+                            className="h-full rounded-full bg-lv-cyan/70 transition-all"
                             style={{ width: `${(c.count / maxCount) * 100}%` }}
                           />
                         </div>
@@ -115,12 +115,12 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
                     <TableCell className="text-right tabular-nums text-xs">
                       {formatNumber(c.count)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-xs text-neon-pink">
+                    <TableCell className="text-right tabular-nums text-xs text-lv-red">
                       {c.blocked > 0 ? formatNumber(c.blocked) : "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={`text-xs tabular-nums ${
-                        blockRate > 50 ? "text-neon-pink" : blockRate > 20 ? "text-neon-amber" : "text-muted-foreground"
+                        blockRate > 50 ? "text-lv-red" : blockRate > 20 ? "text-lv-peach" : "text-muted-foreground"
                       }`}>
                         {blockRate > 0 ? `${blockRate.toFixed(1)}%` : "-"}
                       </span>

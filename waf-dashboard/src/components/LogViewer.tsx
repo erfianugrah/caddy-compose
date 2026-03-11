@@ -138,10 +138,10 @@ export default function LogViewer() {
 
   if (error && !response) {
     return (
-      <Card className="border-red-500/30 bg-red-500/5">
+      <Card className="border-lv-red/30 bg-lv-red/5">
         <CardContent className="py-8 text-center">
-          <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-400" />
-          <p className="text-sm text-red-400">{error}</p>
+          <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-lv-red" />
+          <p className="text-sm text-lv-red">{error}</p>
           <Button variant="outline" size="sm" className="mt-4" onClick={loadLogs}>Retry</Button>
         </CardContent>
       </Card>
@@ -198,18 +198,18 @@ export default function LogViewer() {
           <StatCard
             label="Total Requests"
             value={formatNumber(summary.total_requests)}
-            icon={<Activity className="h-4 w-4 text-neon-cyan" />}
+            icon={<Activity className="h-4 w-4 text-lv-cyan" />}
           />
           <StatCard
             label="5xx Errors"
             value={formatNumber(summary.error_count)}
-            icon={<AlertTriangle className="h-4 w-4 text-red-400" />}
+            icon={<AlertTriangle className="h-4 w-4 text-lv-red" />}
             accent={summary.error_count > 0 ? "red" : undefined}
           />
           <StatCard
             label="4xx Errors"
             value={formatNumber(summary.client_error_count)}
-            icon={<ShieldAlert className="h-4 w-4 text-amber-400" />}
+            icon={<ShieldAlert className="h-4 w-4 text-lv-peach" />}
           />
           <StatCard
             label="Avg Latency"
@@ -219,12 +219,12 @@ export default function LogViewer() {
           <StatCard
             label="P95 Latency"
             value={formatDuration(summary.p95_duration)}
-            icon={<Clock className="h-4 w-4 text-amber-400" />}
+            icon={<Clock className="h-4 w-4 text-lv-peach" />}
           />
           <StatCard
             label="P99 Latency"
             value={formatDuration(summary.p99_duration)}
-            icon={<Clock className="h-4 w-4 text-red-400" />}
+            icon={<Clock className="h-4 w-4 text-lv-red" />}
           />
         </div>
       )}

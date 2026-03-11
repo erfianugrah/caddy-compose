@@ -64,7 +64,7 @@ function HeaderDetailRow({ specKey, present, value }: {
           href={spec.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-muted-foreground hover:text-neon-cyan transition-colors"
+          className="text-muted-foreground hover:text-lv-cyan transition-colors"
           title={spec.spec}
           onClick={(e) => e.stopPropagation()}
         >
@@ -72,11 +72,11 @@ function HeaderDetailRow({ specKey, present, value }: {
           <ExternalLink className="inline ml-1 h-2.5 w-2.5 opacity-50" />
         </a>
       </div>
-      <div className="font-mono break-all min-w-0">
+      <div className="font-data break-all min-w-0">
         {present ? (
           <span className="text-foreground">{value || "present"}</span>
         ) : (
-          <span className="text-red-400/60">missing</span>
+          <span className="text-lv-red/60">missing</span>
         )}
       </div>
     </div>
@@ -151,11 +151,11 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
         {/* Request Details */}
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>Request Details</h4>
-          <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
+          <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs">
             <Field label="Client">
               <a
                 href={`/analytics?tab=ip&q=${encodeURIComponent(evt.client_ip)}`}
-                className="text-neon-cyan hover:underline"
+                className="text-lv-cyan hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 {evt.client_ip}
@@ -167,7 +167,7 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
               )}
             </Field>
             <Field label="Method">
-              <span className="font-medium text-neon-cyan">{evt.method}</span>
+              <span className="font-medium text-lv-cyan">{evt.method}</span>
             </Field>
             <Field label="URI">
               <code className="break-all text-foreground">{evt.uri}</code>
@@ -185,11 +185,11 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
             )}
             {evt.request_id && (
               <Field label="Request ID">
-                <code className="font-mono text-foreground break-all">{evt.request_id}</code>
+                <code className="font-data text-foreground break-all">{evt.request_id}</code>
                 <a
                   href={`/events?request_id=${encodeURIComponent(evt.request_id)}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="ml-1.5 inline-flex items-center text-neon-cyan hover:underline"
+                  className="ml-1.5 inline-flex items-center text-lv-cyan hover:underline"
                   title="Find correlated security events"
                 >
                   <Link2 className="h-3 w-3" />
@@ -202,37 +202,37 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
         {/* Response Details */}
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>Response Details</h4>
-          <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
+          <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs">
             <Field label="Status">
-              <span className={evt.status >= 400 ? "text-neon-pink" : "text-neon-green"}>
+              <span className={evt.status >= 400 ? "text-lv-red" : "text-lv-green"}>
                 {evt.status}
               </span>
             </Field>
             <Field label="Response Size">
-              <span className="text-foreground font-mono">{formatBytes(evt.size)}</span>
+              <span className="text-foreground font-data">{formatBytes(evt.size)}</span>
             </Field>
             {evt.bytes_read > 0 && (
               <Field label="Request Body">
-                <span className="text-foreground font-mono">{formatBytes(evt.bytes_read)}</span>
+                <span className="text-foreground font-data">{formatBytes(evt.bytes_read)}</span>
               </Field>
             )}
             <Field label="Latency">
               <span className={
-                evt.duration >= 1 ? "text-red-400 font-medium" :
-                evt.duration >= 0.1 ? "text-amber-400" :
-                "text-neon-green"
+                evt.duration >= 1 ? "text-lv-red font-medium" :
+                evt.duration >= 0.1 ? "text-lv-peach" :
+                "text-lv-green"
               }>
                 {formatDuration(evt.duration)}
               </span>
             </Field>
             <Field label="Level">
-              <span className={evt.level === "error" ? "text-red-400" : "text-foreground"}>
+              <span className={evt.level === "error" ? "text-lv-red" : "text-foreground"}>
                 {evt.level || "info"}
               </span>
             </Field>
             {evt.logger && (
               <Field label="Logger">
-                <code className="text-foreground font-mono">{evt.logger}</code>
+                <code className="text-foreground font-data">{evt.logger}</code>
               </Field>
             )}
           </div>
@@ -243,17 +243,17 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
       {evt.tls && (
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>TLS Connection</h4>
-          <div className="rounded-md bg-navy-950 p-3 text-xs">
+          <div className="rounded-md bg-lovelace-950 p-3 text-xs">
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               <Field label="Version">
-                <span className="font-mono text-foreground flex items-center gap-1">
-                  <Lock className="h-3 w-3 text-neon-green" />
+                <span className="font-data text-foreground flex items-center gap-1">
+                  <Lock className="h-3 w-3 text-lv-green" />
                   {evt.tls.version}
                 </span>
               </Field>
               <Field label="ALPN Protocol">
-                <span className="font-mono text-foreground flex items-center gap-1">
-                  <Zap className="h-3 w-3 text-neon-cyan" />
+                <span className="font-data text-foreground flex items-center gap-1">
+                  <Zap className="h-3 w-3 text-lv-cyan" />
                   {evt.tls.proto || "none"}
                 </span>
               </Field>
@@ -264,19 +264,19 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
                 </code>
               </Field>
               <Field label="SNI">
-                <span className="font-mono text-foreground flex items-center gap-1">
+                <span className="font-data text-foreground flex items-center gap-1">
                   <Globe className="h-3 w-3 text-muted-foreground" />
                   {evt.tls.server_name || "none"}
                 </span>
               </Field>
               <Field label="ECH">
-                <span className={evt.tls.ech ? "text-neon-green flex items-center gap-1" : "text-muted-foreground flex items-center gap-1"}>
+                <span className={evt.tls.ech ? "text-lv-green flex items-center gap-1" : "text-muted-foreground flex items-center gap-1"}>
                   <ShieldCheck className="h-3 w-3" />
                   {evt.tls.ech ? "Accepted" : "Not used"}
                 </span>
               </Field>
               <Field label="Session Resumed">
-                <span className={evt.tls.resumed ? "text-neon-cyan" : "text-muted-foreground"}>
+                <span className={evt.tls.resumed ? "text-lv-cyan" : "text-muted-foreground"}>
                   {evt.tls.resumed ? "Yes (0-RTT)" : "No (full handshake)"}
                 </span>
               </Field>
@@ -288,7 +288,7 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
       {/* Security Headers */}
       <div className="space-y-2">
         <h4 className={T.sectionLabel}>Security Headers</h4>
-        <div className="space-y-1 rounded-md bg-navy-950 p-3 text-xs">
+        <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs">
           <HeaderDetailRow specKey="csp" present={evt.security_headers.has_csp} value={evt.security_headers.csp} />
           <HeaderDetailRow specKey="hsts" present={evt.security_headers.has_hsts} value={evt.security_headers.hsts} />
           <HeaderDetailRow specKey="xcto" present={evt.security_headers.has_x_content_type_options} value={evt.security_headers.x_content_type_options} />

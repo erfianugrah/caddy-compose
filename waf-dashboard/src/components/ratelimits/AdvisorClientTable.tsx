@@ -147,7 +147,7 @@ export function AdvisorClientTable({ clients, threshold }: AdvisorClientTablePro
               return (
                 <Fragment key={client.client_ip}>
                 <TableRow
-                  className={`cursor-pointer ${isAbove ? "bg-red-500/5" : ""}`}
+                  className={`cursor-pointer ${isAbove ? "bg-lv-red/5" : ""}`}
                   onClick={() => toggleClientExpand(client.client_ip)}
                 >
                   <TableCell className="w-8">
@@ -157,24 +157,24 @@ export function AdvisorClientTable({ clients, threshold }: AdvisorClientTablePro
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{client.client_ip}</TableCell>
+                  <TableCell className="font-data text-xs">{client.client_ip}</TableCell>
                   <TableCell className="text-xs">{client.country || "—"}</TableCell>
-                  <TableCell className={`text-xs font-mono tabular-nums text-right ${isAbove ? "text-red-400 font-medium" : ""}`}>
+                  <TableCell className={`text-xs font-data tabular-nums text-right ${isAbove ? "text-lv-red font-medium" : ""}`}>
                     {client.requests.toLocaleString()}
                   </TableCell>
-                  <TableCell className="text-xs font-mono tabular-nums text-right text-neon-cyan">
+                  <TableCell className="text-xs font-data tabular-nums text-right text-lv-cyan">
                     {client.requests_per_sec > 0 ? client.requests_per_sec.toFixed(2) : "—"}
                   </TableCell>
-                  <TableCell className={`text-xs font-mono tabular-nums text-right ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
+                  <TableCell className={`text-xs font-data tabular-nums text-right ${client.error_rate > 0.3 ? "text-lv-red" : client.error_rate > 0.1 ? "text-lv-peach" : ""}`}>
                     {(client.error_rate * 100).toFixed(0)}%
                   </TableCell>
-                  <TableCell className={`text-xs font-mono tabular-nums text-right ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
+                  <TableCell className={`text-xs font-data tabular-nums text-right ${client.path_diversity < 0.05 ? "text-lv-red" : client.path_diversity < 0.2 ? "text-lv-peach" : ""}`}>
                     {client.path_diversity.toFixed(2)}
                   </TableCell>
-                  <TableCell className={`text-xs font-mono tabular-nums text-right ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
+                  <TableCell className={`text-xs font-data tabular-nums text-right ${client.burstiness > 5 ? "text-lv-red" : client.burstiness > 2 ? "text-lv-peach" : ""}`}>
                     {client.burstiness.toFixed(1)}
                   </TableCell>
-                  <TableCell className="text-xs font-mono tabular-nums text-right">
+                  <TableCell className="text-xs font-data tabular-nums text-right">
                     {client.anomaly_score.toFixed(0)}
                   </TableCell>
                   <TableCell>
@@ -188,7 +188,7 @@ export function AdvisorClientTable({ clients, threshold }: AdvisorClientTablePro
                 </TableRow>
                 {isExpanded && (
                   <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={11} className="bg-navy-950/50 p-4">
+                    <TableCell colSpan={11} className="bg-lovelace-950/50 p-4">
                       <div className="grid gap-4 sm:grid-cols-2">
                         {/* Left: all paths with bars */}
                         <div className="space-y-1.5">
@@ -201,14 +201,14 @@ export function AdvisorClientTable({ clients, threshold }: AdvisorClientTablePro
                                 return (
                                   <div key={i} className="relative">
                                     <div
-                                      className="absolute inset-y-0 left-0 rounded-sm bg-neon-cyan/10"
+                                      className="absolute inset-y-0 left-0 rounded-sm bg-lv-cyan/10"
                                       style={{ width: `${pct}%` }}
                                     />
                                     <div className="relative flex items-center justify-between gap-3 px-2 py-0.5 text-xs">
-                                      <span className="font-mono text-muted-foreground truncate" title={p.path}>
+                                      <span className="font-data text-muted-foreground truncate" title={p.path}>
                                         {p.path}
                                       </span>
-                                      <span className="font-mono tabular-nums text-foreground shrink-0">
+                                      <span className="font-data tabular-nums text-foreground shrink-0">
                                         {p.count.toLocaleString()}
                                       </span>
                                     </div>
@@ -227,19 +227,19 @@ export function AdvisorClientTable({ clients, threshold }: AdvisorClientTablePro
                             <div className="text-muted-foreground">Classification</div>
                             <div><ClassificationBadge classification={client.classification} /></div>
                             <div className="text-muted-foreground">Anomaly Score</div>
-                            <div className="font-mono tabular-nums">{client.anomaly_score.toFixed(1)} / 100</div>
+                            <div className="font-data tabular-nums">{client.anomaly_score.toFixed(1)} / 100</div>
                             <div className="text-muted-foreground">Requests</div>
-                            <div className="font-mono tabular-nums">{client.requests.toLocaleString()} total ({client.requests_per_sec > 0 ? `${client.requests_per_sec.toFixed(2)} req/s` : "—"})</div>
+                            <div className="font-data tabular-nums">{client.requests.toLocaleString()} total ({client.requests_per_sec > 0 ? `${client.requests_per_sec.toFixed(2)} req/s` : "—"})</div>
                             <div className="text-muted-foreground">Error Rate</div>
-                            <div className={`font-mono tabular-nums ${client.error_rate > 0.3 ? "text-red-400" : client.error_rate > 0.1 ? "text-neon-amber" : ""}`}>
+                            <div className={`font-data tabular-nums ${client.error_rate > 0.3 ? "text-lv-red" : client.error_rate > 0.1 ? "text-lv-peach" : ""}`}>
                               {(client.error_rate * 100).toFixed(1)}%
                             </div>
                             <div className="text-muted-foreground">Path Diversity</div>
-                            <div className={`font-mono tabular-nums ${client.path_diversity < 0.05 ? "text-red-400" : client.path_diversity < 0.2 ? "text-neon-amber" : ""}`}>
+                            <div className={`font-data tabular-nums ${client.path_diversity < 0.05 ? "text-lv-red" : client.path_diversity < 0.2 ? "text-lv-peach" : ""}`}>
                               {client.path_diversity.toFixed(3)} <span className="text-muted-foreground font-normal">({client.path_diversity < 0.05 ? "very focused" : client.path_diversity < 0.2 ? "focused" : client.path_diversity < 0.5 ? "moderate" : "varied"})</span>
                             </div>
                             <div className="text-muted-foreground">Burstiness (Fano)</div>
-                            <div className={`font-mono tabular-nums ${client.burstiness > 5 ? "text-red-400" : client.burstiness > 2 ? "text-neon-amber" : ""}`}>
+                            <div className={`font-data tabular-nums ${client.burstiness > 5 ? "text-lv-red" : client.burstiness > 2 ? "text-lv-peach" : ""}`}>
                               {client.burstiness.toFixed(2)} <span className="text-muted-foreground font-normal">({client.burstiness <= 1.2 ? "even" : client.burstiness <= 3 ? "moderate" : "bursty"})</span>
                             </div>
                             <div className="text-muted-foreground">Country</div>

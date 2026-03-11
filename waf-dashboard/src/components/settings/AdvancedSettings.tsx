@@ -131,7 +131,7 @@ export function RequestPolicySettings({
             placeholder="GET HEAD POST OPTIONS"
             value={settings.allowed_methods ?? ""}
             onChange={(e) => onChange({ ...settings, allowed_methods: e.target.value || undefined })}
-            className="font-mono text-xs"
+            className="font-data text-xs"
           />
         </div>
         <div className="space-y-1">
@@ -146,7 +146,7 @@ export function RequestPolicySettings({
             placeholder="HTTP/1.0 HTTP/1.1 HTTP/2 HTTP/2.0"
             value={settings.allowed_http_versions ?? ""}
             onChange={(e) => onChange({ ...settings, allowed_http_versions: e.target.value || undefined })}
-            className="font-mono text-xs"
+            className="font-data text-xs"
           />
         </div>
       </div>
@@ -162,7 +162,7 @@ export function RequestPolicySettings({
           placeholder="|application/x-www-form-urlencoded| |multipart/form-data| |application/json|"
           value={settings.allowed_request_content_type ?? ""}
           onChange={(e) => onChange({ ...settings, allowed_request_content_type: e.target.value || undefined })}
-          className="font-mono text-xs"
+          className="font-data text-xs"
         />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -178,7 +178,7 @@ export function RequestPolicySettings({
             placeholder=".asa .asax .backup .bak ..."
             value={settings.restricted_extensions ?? ""}
             onChange={(e) => onChange({ ...settings, restricted_extensions: e.target.value || undefined })}
-            className="font-mono text-xs"
+            className="font-data text-xs"
           />
         </div>
         <div className="space-y-1">
@@ -193,7 +193,7 @@ export function RequestPolicySettings({
             placeholder="/accept-charset/ /proxy/ ..."
             value={settings.restricted_headers ?? ""}
             onChange={(e) => onChange({ ...settings, restricted_headers: e.target.value || undefined })}
-            className="font-mono text-xs"
+            className="font-data text-xs"
           />
         </div>
       </div>
@@ -310,7 +310,7 @@ export function CRSExclusionProfiles({
           return (
             <div
               key={profile.value}
-              className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2"
+              className="flex items-center justify-between rounded-md border border-border bg-lovelace-950 px-3 py-2"
             >
               <div className="min-w-0">
                 <p className="text-xs font-medium truncate">{profile.label}</p>
@@ -347,7 +347,7 @@ export function AdvancedCRSControls({
         Fine-grained CRS engine behavior. These are expert settings — defaults work well for most deployments.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2.5">
+        <div className="flex items-center justify-between rounded-md border border-border bg-lovelace-950 px-3 py-2.5">
           <div>
             <p className="inline-flex items-center text-xs font-medium">
               Early Blocking
@@ -363,7 +363,7 @@ export function AdvancedCRSControls({
             onCheckedChange={(v) => onChange({ ...settings, early_blocking: v || undefined })}
           />
         </div>
-        <div className="flex items-center justify-between rounded-md border border-border bg-navy-950 px-3 py-2.5">
+        <div className="flex items-center justify-between rounded-md border border-border bg-lovelace-950 px-3 py-2.5">
           <div>
             <p className="inline-flex items-center text-xs font-medium">
               Enforce URL-Encoded Body

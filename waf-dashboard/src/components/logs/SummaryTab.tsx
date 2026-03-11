@@ -17,10 +17,10 @@ export interface SummaryTabProps {
 
 function bucketColor(bucket: string): { bar: string; text: string; bg: string } {
   switch (bucket) {
-    case "2xx": return { bar: "bg-emerald-500", text: "text-emerald-400", bg: "bg-emerald-500/10" };
+    case "2xx": return { bar: "bg-lv-green", text: "text-lv-green", bg: "bg-lv-green/10" };
     case "3xx": return { bar: "bg-blue-500", text: "text-blue-400", bg: "bg-blue-500/10" };
-    case "4xx": return { bar: "bg-amber-500", text: "text-amber-400", bg: "bg-amber-500/10" };
-    case "5xx": return { bar: "bg-red-500", text: "text-red-400", bg: "bg-red-500/10" };
+    case "4xx": return { bar: "bg-amber-500", text: "text-lv-peach", bg: "bg-amber-500/10" };
+    case "5xx": return { bar: "bg-lv-red", text: "text-lv-red", bg: "bg-lv-red/10" };
     default:   return { bar: "bg-muted", text: "text-muted-foreground", bg: "bg-muted/10" };
   }
 }
@@ -28,25 +28,25 @@ function bucketColor(bucket: string): { bar: string; text: string; bg: string } 
 // ─── Latency indicator ──────────────────────────────────────────────
 
 function LatencyBadge({ seconds }: { seconds: number }) {
-  const cls = seconds >= 1 ? "text-red-400" : seconds >= 0.1 ? "text-amber-400" : "text-emerald-400";
-  return <span className={`font-mono text-xs ${cls}`}>{formatDuration(seconds)}</span>;
+  const cls = seconds >= 1 ? "text-lv-red" : seconds >= 0.1 ? "text-lv-peach" : "text-lv-green";
+  return <span className={`font-data text-xs ${cls}`}>{formatDuration(seconds)}</span>;
 }
 
 // ─── Latency Percentiles ────────────────────────────────────────────
 
 function latencyColor(seconds: number): string {
-  if (seconds >= 2) return "text-red-400";
-  if (seconds >= 1) return "text-red-400/80";
-  if (seconds >= 0.5) return "text-amber-400";
-  if (seconds >= 0.1) return "text-amber-400/70";
-  return "text-emerald-400";
+  if (seconds >= 2) return "text-lv-red";
+  if (seconds >= 1) return "text-lv-red/80";
+  if (seconds >= 0.5) return "text-lv-peach";
+  if (seconds >= 0.1) return "text-lv-peach/70";
+  return "text-lv-green";
 }
 
 function latencyBarColor(seconds: number): string {
-  if (seconds >= 1) return "bg-red-500";
+  if (seconds >= 1) return "bg-lv-red";
   if (seconds >= 0.5) return "bg-amber-500";
   if (seconds >= 0.1) return "bg-amber-500/70";
-  return "bg-emerald-500";
+  return "bg-lv-green";
 }
 
 function LatencyPercentiles({ summary }: { summary: GeneralLogsSummary }) {
@@ -66,10 +66,10 @@ function LatencyPercentiles({ summary }: { summary: GeneralLogsSummary }) {
           <div key={p.label} className="space-y-1">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-medium w-8">{p.label}</span>
+                <span className="font-data text-xs font-medium w-8">{p.label}</span>
                 <span className="text-xs text-muted-foreground">{p.description}</span>
               </div>
-              <span className={`font-mono text-xs font-medium ${latencyColor(p.value)}`}>
+              <span className={`font-data text-xs font-medium ${latencyColor(p.value)}`}>
                 {formatDuration(p.value)}
               </span>
             </div>
@@ -116,7 +116,7 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
                   className="block group"
                 >
                   <div className="flex items-center gap-3">
-                    <Badge className={`${colors.bg} ${colors.text} font-mono text-xs border-transparent w-10 justify-center`}>
+                    <Badge className={`${colors.bg} ${colors.text} font-data text-xs border-transparent w-10 justify-center`}>
                       {bucket}
                     </Badge>
                     <div className="flex-1 h-6 rounded bg-muted/20 overflow-hidden relative">
@@ -124,11 +124,11 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
                         className={`h-full ${colors.bar} rounded transition-all group-hover:brightness-125`}
                         style={{ width: `${Math.max(barWidth, 0.5)}%` }}
                       />
-                      <span className="absolute inset-y-0 right-2 flex items-center font-mono text-xs text-foreground">
+                      <span className="absolute inset-y-0 right-2 flex items-center font-data text-xs text-foreground">
                         {formatNumber(count)}
                       </span>
                     </div>
-                    <span className="w-14 text-right text-xs text-muted-foreground font-mono">
+                    <span className="w-14 text-right text-xs text-muted-foreground font-data">
                       {pct.toFixed(1)}%
                     </span>
                   </div>
@@ -173,12 +173,12 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
                   <div className="flex items-center gap-2 min-w-0">
                     <Server className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <span className="truncate group-hover:text-foreground">{s.service}</span>
-                    <span className="text-muted-foreground/50 font-mono">{pct.toFixed(0)}%</span>
+                    <span className="text-muted-foreground/50 font-data">{pct.toFixed(0)}%</span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-mono">{formatNumber(s.count)}</span>
+                    <span className="font-data">{formatNumber(s.count)}</span>
                     {s.error_count > 0 && (
-                      <Badge variant="destructive" className="text-xs px-1 py-0 font-mono">
+                      <Badge variant="destructive" className="text-xs px-1 py-0 font-data">
                         {s.error_count} err
                       </Badge>
                     )}
@@ -206,12 +206,12 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
               <div key={u.uri} className="flex items-center justify-between text-xs hover:bg-muted/30 rounded-md px-2 py-1.5 -mx-2 transition-colors">
                 <div className="flex items-center gap-2 min-w-0">
                   <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="font-mono truncate max-w-[55%] text-muted-foreground">{u.uri}</span>
+                  <span className="font-data truncate max-w-[55%] text-muted-foreground">{u.uri}</span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-mono">{formatNumber(u.count)}</span>
+                  <span className="font-data">{formatNumber(u.count)}</span>
                   {u.error_count > 0 && (
-                    <Badge variant="destructive" className="text-xs px-1 py-0 font-mono">
+                    <Badge variant="destructive" className="text-xs px-1 py-0 font-data">
                       {u.error_count} err
                     </Badge>
                   )}
@@ -239,15 +239,15 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
                 href={`/analytics?tab=ip&q=${encodeURIComponent(c.client_ip)}`}
                 className="flex items-center justify-between text-xs group hover:bg-muted/30 rounded-md px-2 py-1.5 -mx-2 transition-colors"
               >
-                <div className="flex items-center gap-2 font-mono">
+                <div className="flex items-center gap-2 font-data">
                   <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
                   {c.country && <span>{countryFlag(c.country)}</span>}
-                  <span className="group-hover:text-neon-cyan transition-colors">{c.client_ip}</span>
+                  <span className="group-hover:text-lv-cyan transition-colors">{c.client_ip}</span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-mono">{formatNumber(c.count)}</span>
+                  <span className="font-data">{formatNumber(c.count)}</span>
                   {c.error_count > 0 && (
-                    <Badge variant="destructive" className="text-xs px-1 py-0 font-mono">
+                    <Badge variant="destructive" className="text-xs px-1 py-0 font-data">
                       {c.error_count} err
                     </Badge>
                   )}
@@ -273,9 +273,9 @@ export default function SummaryTab({ summary }: SummaryTabProps) {
               {summary.recent_errors.slice(0, 10).map((e, i) => (
                 <div key={i} className="flex items-center gap-3 text-xs hover:bg-muted/30 rounded-md px-2 py-1.5 -mx-2 transition-colors">
                   {statusBadge(e.status)}
-                  <span className="font-mono text-muted-foreground w-12">{e.method}</span>
+                  <span className="font-data text-muted-foreground w-12">{e.method}</span>
                   <span className="truncate text-muted-foreground w-28">{e.service}</span>
-                  <span className="font-mono truncate text-muted-foreground flex-1">{e.uri}</span>
+                  <span className="font-data truncate text-muted-foreground flex-1">{e.uri}</span>
                   <span className="text-muted-foreground whitespace-nowrap">
                     {formatDate(e.timestamp)} {formatTime(e.timestamp)}
                   </span>

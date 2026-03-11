@@ -10,6 +10,11 @@ import {
   Globe,
   Settings2,
   Loader2,
+  DatabaseBackup,
+  FileUp,
+  CheckCircle2,
+  XCircle,
+  SkipForward,
 } from "lucide-react";
 import {
   Card,
@@ -37,10 +42,14 @@ import {
   fetchServices,
   fetchCRSRules,
   deployConfig,
+  downloadBackup,
+  restoreBackup,
   type WAFConfig,
   type WAFServiceSettings,
   type ServiceDetail,
   type CRSCategory,
+  type FullBackup,
+  type RestoreResult,
 } from "@/lib/api";
 import { T } from "@/lib/typography";
 import { ModeSelector, SensitivitySettings, RuleGroupToggles } from "./settings/SettingsFormSections";
@@ -65,6 +74,11 @@ export default function SettingsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  // Backup/restore state
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
 
   // Working copy of the config.
   const [defaults, setDefaults] = useState<WAFServiceSettings>({
@@ -216,6 +230,55 @@ export default function SettingsPanel() {
     input.click();
   };
 
+  // ─── Backup / Restore ─────────────────────────────────────────────
+
+  const handleBackupDownload = async () => {
+    setBackupLoading(true);
+    setError(null);
+    try {
+      await downloadBackup();
+      showSuccess("Backup downloaded");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Backup failed");
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleRestoreUpload = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setRestoreLoading(true);
+      setError(null);
+      setRestoreResult(null);
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text) as FullBackup;
+        if (!data.version) {
+          throw new Error("Invalid backup file: missing version field");
+        }
+        const result = await restoreBackup(data);
+        setRestoreResult(result);
+        if (result.status === "restored") {
+          showSuccess("All stores restored successfully — deploy to apply");
+        } else {
+          setError("Partial restore — some stores failed. See details below.");
+        }
+        // Reload config to reflect restored data
+        loadData();
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Restore failed");
+      } finally {
+        setRestoreLoading(false);
+      }
+    };
+    input.click();
+  };
+
   // Services that have overrides + services discovered from traffic.
   const allHosts = Array.from(
     new Set([
@@ -308,7 +371,7 @@ export default function SettingsPanel() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4 text-neon-cyan" />
+            <Globe className="h-4 w-4 text-lv-cyan" />
             <CardTitle className={T.cardTitle}>Global Defaults</CardTitle>
           </div>
           <CardDescription>
@@ -400,6 +463,97 @@ export default function SettingsPanel() {
             />
           ))}
       </div>
+
+      <Separator className="my-2" />
+
+      {/* ── Unified Backup / Restore ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <DatabaseBackup className="h-4 w-4 text-lv-purple" />
+            <CardTitle className={T.cardTitle}>Backup & Restore</CardTitle>
+          </div>
+          <CardDescription>
+            Download or restore a unified backup of all configuration stores
+            (WAF config, CSP, policy rules, rate limits, managed lists).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBackupDownload}
+              disabled={backupLoading}
+            >
+              {backupLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {backupLoading ? "Downloading..." : "Download Backup"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRestoreUpload}
+              disabled={restoreLoading}
+            >
+              {restoreLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileUp className="h-3.5 w-3.5" />
+              )}
+              {restoreLoading ? "Restoring..." : "Restore from Backup"}
+            </Button>
+          </div>
+
+          {restoreResult && (
+            <div className="rounded-md border p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {restoreResult.status === "restored" ? (
+                  <CheckCircle2 className="h-4 w-4 text-lv-green" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-lv-peach" />
+                )}
+                <span>
+                  {restoreResult.status === "restored"
+                    ? "All stores restored"
+                    : "Partial restore — some stores failed"}
+                </span>
+              </div>
+              <div className="grid gap-1.5">
+                {Object.entries(restoreResult.results).map(([store, msg]) => {
+                  const isOk = msg.startsWith("restored");
+                  const isSkipped = msg.startsWith("skipped");
+                  const isFailed = msg.startsWith("failed");
+                  return (
+                    <div
+                      key={store}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      {isOk && <CheckCircle2 className="h-3 w-3 text-lv-green shrink-0" />}
+                      {isSkipped && <SkipForward className="h-3 w-3 text-muted-foreground shrink-0" />}
+                      {isFailed && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                      <span className="font-data text-muted-foreground w-24 shrink-0">
+                        {store.replace(/_/g, " ")}
+                      </span>
+                      <span className={isFailed ? "text-destructive" : "text-muted-foreground"}>
+                        {msg}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            The backup includes all five config stores. IPsum blocklists are excluded
+            (they auto-refresh from upstream). After restoring, deploy to apply changes.
+          </p>
+        </CardContent>
+      </Card>
     </div>
     </TooltipProvider>
   );

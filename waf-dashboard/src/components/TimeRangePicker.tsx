@@ -222,7 +222,7 @@ export default function TimeRangePicker({
             <button
               className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
                 tab === "quick"
-                  ? "border-b-2 border-neon-cyan text-neon-cyan"
+                  ? "border-b-2 border-lv-cyan text-lv-cyan"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setTab("quick")}
@@ -232,7 +232,7 @@ export default function TimeRangePicker({
             <button
               className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
                 tab === "custom"
-                  ? "border-b-2 border-neon-cyan text-neon-cyan"
+                  ? "border-b-2 border-lv-cyan text-lv-cyan"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setTab("custom")}
@@ -248,7 +248,7 @@ export default function TimeRangePicker({
                   key={r.label}
                   className={`rounded px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
                     value.type === "relative" && value.label === r.label
-                      ? "bg-accent text-neon-cyan"
+                      ? "bg-accent text-lv-cyan"
                       : "text-foreground"
                   }`}
                   onClick={() => handleQuickRange(r.label)}
@@ -266,7 +266,7 @@ export default function TimeRangePicker({
                   step="1"
                   value={customFrom}
                   onChange={(e) => setCustomFrom(e.target.value)}
-                  className="h-8 text-xs font-mono"
+                  className="h-8 text-xs font-data"
                 />
               </div>
               <div className="space-y-1.5">
@@ -276,7 +276,7 @@ export default function TimeRangePicker({
                   step="1"
                   value={customTo}
                   onChange={(e) => setCustomTo(e.target.value)}
-                  className="h-8 text-xs font-mono"
+                  className="h-8 text-xs font-data"
                 />
               </div>
               <Button
@@ -299,7 +299,7 @@ export default function TimeRangePicker({
         onClick={onRefresh}
         title="Refresh"
       >
-        <RefreshCw className={`h-3.5 w-3.5 ${autoRefresh > 0 ? "animate-spin text-neon-cyan" : ""}`} style={autoRefresh > 0 ? { animationDuration: "3s" } : undefined} />
+        <RefreshCw className={`h-3.5 w-3.5 ${autoRefresh > 0 ? "animate-spin text-lv-cyan" : ""}`} style={autoRefresh > 0 ? { animationDuration: "3s" } : undefined} />
       </Button>
 
       {/* Auto-refresh interval dropdown */}
@@ -310,7 +310,7 @@ export default function TimeRangePicker({
             size="sm"
             className="h-8 gap-1 text-xs font-normal px-2"
           >
-            <span className={autoRefresh > 0 ? "text-neon-cyan" : "text-muted-foreground"}>
+            <span className={autoRefresh > 0 ? "text-lv-cyan" : "text-muted-foreground"}>
               {autoRefresh > 0
                 ? AUTO_REFRESH_OPTIONS.find((o) => o.seconds === autoRefresh)
                     ?.label ?? `${autoRefresh}s`
@@ -325,7 +325,7 @@ export default function TimeRangePicker({
               key={opt.seconds}
               className={`w-full rounded px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
                 autoRefresh === opt.seconds
-                  ? "bg-accent text-neon-cyan"
+                  ? "bg-accent text-lv-cyan"
                   : "text-foreground"
               }`}
               onClick={() => {

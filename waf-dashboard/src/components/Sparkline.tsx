@@ -1,6 +1,6 @@
 // ─── Inline SVG Sparkline ────────────────────────────────────────────
 
-export function Sparkline({ data, width = 80, height = 24, color = "#22d3ee" }: {
+export function Sparkline({ data, width = 80, height = 24, color = "#79e6f3" }: {
   data: number[];
   width?: number;
   height?: number;

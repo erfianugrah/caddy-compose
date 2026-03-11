@@ -67,7 +67,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-neon-pink" />
+          <Shield className="h-4 w-4 text-lv-red" />
           <CardTitle className={T.cardTitle}>Top Blocked IPs</CardTitle>
         </div>
         <CardDescription>IP addresses with the most blocked events</CardDescription>
@@ -96,7 +96,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
             <TableBody>
               {pageData.map((ip) => (
                 <TableRow key={ip.client_ip}>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-data text-xs">
                     {ip.client_ip}
                   </TableCell>
                   <TableCell className="text-xs">
@@ -105,19 +105,19 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
                   <TableCell className="text-right tabular-nums text-xs">
                     {ip.total.toLocaleString()}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs text-neon-pink">
+                  <TableCell className="text-right tabular-nums text-xs text-lv-red">
                     {ip.blocked.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <div className="h-2 w-12 overflow-hidden rounded-full bg-navy-800">
+                      <div className="h-2 w-12 overflow-hidden rounded-full bg-lovelace-800">
                         <div
                           className={`h-full rounded-full transition-all ${
                             ip.block_rate > 50
-                              ? "bg-neon-pink"
+                              ? "bg-lv-red"
                               : ip.block_rate > 20
-                                ? "bg-neon-amber"
-                                : "bg-neon-green"
+                                ? "bg-lv-peach"
+                                : "bg-lv-green"
                           }`}
                           style={{ width: `${Math.min(ip.block_rate, 100)}%` }}
                         />

@@ -562,7 +562,7 @@ export default function PolicyEngine() {
                     id={excl.id}
                     disabled={isFiltered}
                     rowRef={isHighlighted ? highlightedRef : undefined}
-                    className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-emerald-500/5 transition-all duration-700" : undefined}
+                    className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-lv-green/5 transition-all duration-700" : undefined}
                   >
                     <TableCell className="text-xs tabular-nums text-muted-foreground/60">
                       {globalIdx}
@@ -580,7 +580,7 @@ export default function PolicyEngine() {
                         {exclusionTypeLabel(excl.type)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs font-mono max-w-[300px] truncate" title={conditionsSummary(excl)}>
+                    <TableCell className="text-xs font-data max-w-[300px] truncate" title={conditionsSummary(excl)}>
                       {conditionsSummary(excl)}
                     </TableCell>
                     <TableCell>
@@ -590,18 +590,18 @@ export default function PolicyEngine() {
                         if (hit.total === 0) {
                           return (
                             <div className="flex items-center gap-1.5">
-                              <Sparkline data={hit.sparkline} color="#475569" />
+                              <Sparkline data={hit.sparkline} color="#606270" />
                             </div>
                           );
                         }
                         return (
                           <a
                             href={`/?rule_name=${encodeURIComponent(excl.name)}`}
-                            className="flex items-center gap-1.5 group no-underline rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 hover:bg-neon-cyan/10 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] transition-all"
+                            className="flex items-center gap-1.5 group no-underline rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 hover:bg-lv-cyan/10 hover:shadow-[0_0_8px_rgba(121,230,243,0.15)] transition-all"
                             title={`View ${hit.total} events for "${excl.name}" on Overview`}
                           >
-                            <Sparkline data={hit.sparkline} color="#22d3ee" />
-                            <span className="text-xs tabular-nums text-muted-foreground group-hover:text-neon-cyan transition-colors">
+                            <Sparkline data={hit.sparkline} color="#79e6f3" />
+                            <span className="text-xs tabular-nums text-muted-foreground group-hover:text-lv-cyan transition-colors">
                               {hit.total.toLocaleString()}
                             </span>
                           </a>
@@ -628,7 +628,7 @@ export default function PolicyEngine() {
                           aria-label={`Delete rule ${excl.name}`}
                           variant="ghost"
                           size="icon-sm"
-                          className="text-muted-foreground hover:text-neon-pink"
+                          className="text-muted-foreground hover:text-lv-red"
                           onClick={() => setDeleteConfirmId(excl.id)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -648,7 +648,7 @@ export default function PolicyEngine() {
                 <Search className="mb-2 h-6 w-6 text-muted-foreground/50" />
                 <p className="text-sm text-muted-foreground">No rules match your filters</p>
                 <button
-                  className="text-xs text-neon-cyan hover:underline mt-1"
+                  className="text-xs text-lv-cyan hover:underline mt-1"
                   onClick={() => { setSearchQuery(""); setTypeFilter("all"); }}
                 >
                   Clear filters
@@ -661,7 +661,7 @@ export default function PolicyEngine() {
               <Shield className="mb-3 h-8 w-8 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">No rules configured yet</p>
               <p className="text-xs text-muted-foreground/70 mt-1">
-                <button className="text-neon-cyan hover:underline" onClick={openCreateDialog}>
+                <button className="text-lv-cyan hover:underline" onClick={openCreateDialog}>
                   Create your first rule
                 </button>
               </p>
@@ -675,7 +675,7 @@ export default function PolicyEngine() {
         <DialogContent className="w-[90vw] max-w-[1800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-neon-green" />
+              <Shield className="h-4 w-4 text-lv-green" />
               {editingId ? "Edit Rule" : "Create Rule"}
             </DialogTitle>
             <DialogDescription>

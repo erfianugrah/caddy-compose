@@ -221,7 +221,7 @@ export function RateAdvisorPanel({
           {METHOD_OPTIONS.map((m) => (
             <button
               key={m}
-              className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-mono hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+              className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-data hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
               onClick={() => applyFilter("method", m)}
             >
               {m}
@@ -271,7 +271,7 @@ export function RateAdvisorPanel({
               filtered.map((s) => (
                 <button
                   key={s}
-                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-mono hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-data hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
                   onClick={() => applyFilter("service", s)}
                 >
                   {s}
@@ -317,7 +317,7 @@ export function RateAdvisorPanel({
               resetFilterPopover();
             }
           }}
-          className="h-8 text-sm font-mono"
+          className="h-8 text-sm font-data"
         />
         <Button
           size="sm"
@@ -337,13 +337,13 @@ export function RateAdvisorPanel({
   const FilterChip = ({ field, label, value, mono }: { field: AdvisorField; label: string; value: string; mono?: boolean }) => (
     <Badge
       variant="secondary"
-      className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
+      className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-lv-cyan/10 border-lv-cyan/20 hover:bg-lv-cyan/20 transition-colors"
     >
       <span className="text-muted-foreground font-medium">{label}</span>
-      <span className="text-neon-cyan/70 font-mono text-xs">=</span>
-      <span className={mono ? "font-mono" : ""}>{value}</span>
+      <span className="text-lv-cyan/70 font-data text-xs">=</span>
+      <span className={mono ? "font-data" : ""}>{value}</span>
       <button
-        className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
+        className="ml-0.5 rounded-sm p-0.5 hover:bg-lv-cyan/30 transition-colors cursor-pointer"
         onClick={() => removeFilter(field)}
         title={`Remove ${label} filter`}
       >
@@ -358,7 +358,7 @@ export function RateAdvisorPanel({
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-neon-cyan" />
+          <BarChart3 className="h-4 w-4 text-lv-cyan" />
           <h3 className={T.sectionHeading}>Request Rate Analysis</h3>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -368,8 +368,8 @@ export function RateAdvisorPanel({
       </div>
 
       {/* Filter Bar */}
-      <div className="flex items-center gap-2 rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2">
-        <Filter className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
+      <div className="flex items-center gap-2 rounded-lg border border-lv-cyan/20 bg-lv-cyan/5 px-3 py-2">
+        <Filter className="h-3.5 w-3.5 text-lv-cyan shrink-0" />
         <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
           {/* Window chip (always present, click to change) */}
           <Popover open={windowPopoverOpen} onOpenChange={(open) => {
@@ -377,9 +377,9 @@ export function RateAdvisorPanel({
             if (!open) setCustomWindow("");
           }}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/30 bg-neon-cyan/15 px-2 py-0.5 text-xs transition-colors hover:bg-neon-cyan/25 cursor-pointer">
+              <button className="inline-flex items-center gap-1 rounded-md border border-lv-cyan/30 bg-lv-cyan/15 px-2 py-0.5 text-xs transition-colors hover:bg-lv-cyan/25 cursor-pointer">
                 <span className="text-muted-foreground font-medium">Window</span>
-                <span className="text-neon-cyan/70 font-mono">=</span>
+                <span className="text-lv-cyan/70 font-data">=</span>
                 <span className="font-medium">{windowLabel(window)}</span>
               </button>
             </PopoverTrigger>
@@ -388,7 +388,7 @@ export function RateAdvisorPanel({
                 <button
                   key={opt.value}
                   className={`flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors cursor-pointer ${
-                    window === opt.value ? "bg-neon-cyan/10 text-neon-cyan" : "hover:bg-accent hover:text-accent-foreground"
+                    window === opt.value ? "bg-lv-cyan/10 text-lv-cyan" : "hover:bg-accent hover:text-accent-foreground"
                   }`}
                   onClick={() => { setWindow(opt.value); setWindowPopoverOpen(false); }}
                 >
@@ -413,7 +413,7 @@ export function RateAdvisorPanel({
                         }
                       }
                     }}
-                    className="h-7 text-xs font-mono flex-1"
+                    className="h-7 text-xs font-data flex-1"
                   />
                   <Button
                     size="sm"
@@ -497,9 +497,9 @@ export function RateAdvisorPanel({
                 </div>
                 <div className={T.statValue}>{data.unique_clients.toLocaleString()}</div>
                 <div className="flex gap-2 mt-1.5 text-xs">
-                  <span className="text-neon-green">{classifications.normal} ok</span>
-                  <span className="text-neon-amber">{classifications.suspicious} sus</span>
-                  <span className="text-red-400">{classifications.abusive} bad</span>
+                  <span className="text-lv-green">{classifications.normal} ok</span>
+                  <span className="text-lv-peach">{classifications.suspicious} sus</span>
+                  <span className="text-lv-red">{classifications.abusive} bad</span>
                 </div>
               </CardContent>
             </Card>
@@ -513,7 +513,7 @@ export function RateAdvisorPanel({
                 <div className="text-xs text-muted-foreground mt-0.5">
                   req/{window}
                   {data.normalized_percentiles && data.window_seconds > 0 && (
-                    <span className="ml-1 text-neon-cyan">({data.normalized_percentiles.p95.toFixed(2)} rps)</span>
+                    <span className="ml-1 text-lv-cyan">({data.normalized_percentiles.p95.toFixed(2)} rps)</span>
                   )}
                 </div>
               </CardContent>

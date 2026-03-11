@@ -16,7 +16,7 @@ export function FieldTip({ tip, rule }: { tip: string; rule?: string }) {
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
         <p>{tip}</p>
-        {rule && <p className="mt-1 font-mono text-xs text-muted-foreground">{rule}</p>}
+        {rule && <p className="mt-1 font-data text-xs text-muted-foreground">{rule}</p>}
       </TooltipContent>
     </Tooltip>
   );
@@ -60,19 +60,19 @@ export const MODE_META: Record<WAFMode, { label: string; desc: string; color: st
   enabled: {
     label: "Enabled",
     desc: "WAF actively blocks malicious requests",
-    color: "text-neon-green border-neon-green/30 bg-neon-green/5",
-    dot: "bg-neon-green",
+    color: "text-lv-green border-lv-green/30 bg-lv-green/5",
+    dot: "bg-lv-green",
   },
   detection_only: {
     label: "Detection Only",
     desc: "WAF logs but does not block requests",
-    color: "text-neon-amber border-neon-amber/30 bg-neon-amber/5",
-    dot: "bg-neon-amber",
+    color: "text-lv-peach border-lv-peach/30 bg-lv-peach/5",
+    dot: "bg-lv-peach",
   },
   disabled: {
     label: "Disabled",
     desc: "WAF engine is completely disabled",
-    color: "text-neon-pink border-neon-pink/30 bg-neon-pink/5",
-    dot: "bg-neon-pink",
+    color: "text-lv-red border-lv-red/30 bg-lv-red/5",
+    dot: "bg-lv-red",
   },
 };

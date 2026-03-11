@@ -513,19 +513,19 @@ export default function RateLimitsPanel() {
             <Card>
               <CardContent className="p-4">
                 <div className={T.statLabelUpper}>Active</div>
-                <div className={`${T.statValue} text-neon-green`}>{enabledCount}</div>
+                <div className={`${T.statValue} text-lv-green`}>{enabledCount}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className={T.statLabelUpper}>Deny</div>
-                <div className={`${T.statValue} text-neon-pink`}>{denyCount}</div>
+                <div className={`${T.statValue} text-lv-red`}>{denyCount}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className={T.statLabelUpper}>Monitor</div>
-                <div className={`${T.statValue} text-neon-amber`}>{monitorCount}</div>
+                <div className={`${T.statValue} text-lv-peach`}>{monitorCount}</div>
               </CardContent>
             </Card>
           </div>
@@ -623,7 +623,7 @@ export default function RateLimitsPanel() {
                               {rule.tags && rule.tags.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1">
                                   {rule.tags.map((tag) => (
-                                    <span key={tag} className="inline-flex items-center rounded bg-navy-800 border border-border px-1.5 py-0 text-[10px] font-mono text-neon-cyan">
+                                    <span key={tag} className="inline-flex items-center rounded bg-lovelace-800 border border-border px-1.5 py-0 text-[10px] font-data text-lv-cyan">
                                       {tag}
                                     </span>
                                   ))}
@@ -631,8 +631,8 @@ export default function RateLimitsPanel() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{rule.service}</TableCell>
-                          <TableCell className="text-xs font-mono max-w-[250px] truncate" title={rlConditionsSummary(rule)}>
+                          <TableCell className="font-data text-xs">{rule.service}</TableCell>
+                          <TableCell className="text-xs font-data max-w-[250px] truncate" title={rlConditionsSummary(rule)}>
                             {rlConditionsSummary(rule)}
                           </TableCell>
                           <TableCell className="text-xs tabular-nums whitespace-nowrap">
@@ -645,11 +645,11 @@ export default function RateLimitsPanel() {
                               const hit = hitsData?.[rule.id];
                               if (!hit) return <span className="text-xs text-muted-foreground/50">—</span>;
                               if (hit.total === 0) {
-                                return <Sparkline data={hit.sparkline} color="#475569" />;
+                                return <Sparkline data={hit.sparkline} color="#606270" />;
                               }
                               return (
                                 <div className="flex items-center gap-1.5">
-                                  <Sparkline data={hit.sparkline} color="#22d3ee" />
+                                  <Sparkline data={hit.sparkline} color="#79e6f3" />
                                   <span className="text-xs tabular-nums text-muted-foreground">
                                     {hit.total.toLocaleString()}
                                   </span>
@@ -677,7 +677,7 @@ export default function RateLimitsPanel() {
                                 aria-label={`Delete rule ${rule.name}`}
                                 variant="ghost"
                                 size="icon-sm"
-                                className="text-muted-foreground hover:text-neon-pink"
+                                className="text-muted-foreground hover:text-lv-red"
                                 onClick={() => setDeleteConfirmId(rule.id)}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -699,7 +699,7 @@ export default function RateLimitsPanel() {
                       <Search className="mb-2 h-6 w-6 text-muted-foreground/50" />
                       <p className="text-sm text-muted-foreground">No rules match your filters</p>
                       <button
-                        className="text-xs text-neon-cyan hover:underline mt-1"
+                        className="text-xs text-lv-cyan hover:underline mt-1"
                         onClick={() => { setSearchQuery(""); setActionFilter("all"); }}
                       >
                         Clear filters
@@ -712,7 +712,7 @@ export default function RateLimitsPanel() {
                   <Shield className="mb-3 h-8 w-8 text-muted-foreground/50" />
                   <p className="text-sm text-muted-foreground">No rate limit rules configured yet</p>
                   <p className="text-xs text-muted-foreground/70 mt-1">
-                    <button className="text-neon-cyan hover:underline" onClick={openCreateDialog}>
+                    <button className="text-lv-cyan hover:underline" onClick={openCreateDialog}>
                       Create your first rule
                     </button>
                   </p>
@@ -747,7 +747,7 @@ export default function RateLimitsPanel() {
         <DialogContent className="w-[90vw] max-w-[1200px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-neon-green" />
+              <Zap className="h-4 w-4 text-lv-green" />
               {editingId ? "Edit Rate Limit Rule" : "Create Rate Limit Rule"}
             </DialogTitle>
             <DialogDescription>

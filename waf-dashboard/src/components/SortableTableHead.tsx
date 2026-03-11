@@ -48,9 +48,9 @@ export function SortableTableHead<K extends string = string>({
         {children}
         {isActive ? (
           direction === "asc" ? (
-            <ArrowUp className="h-3 w-3 text-neon-cyan" />
+            <ArrowUp className="h-3 w-3 text-lv-cyan" />
           ) : (
-            <ArrowDown className="h-3 w-3 text-neon-cyan" />
+            <ArrowDown className="h-3 w-3 text-lv-cyan" />
           )
         ) : (
           <ArrowUpDown className="h-3 w-3 opacity-30" />

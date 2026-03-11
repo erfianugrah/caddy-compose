@@ -11,9 +11,9 @@ const alertVariants = cva(
         destructive:
           "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
         warning:
-          "border-neon-amber/50 text-neon-amber [&>svg]:text-neon-amber",
+          "border-lv-peach/50 text-lv-peach [&>svg]:text-lv-peach",
         success:
-          "border-neon-green/50 text-neon-green [&>svg]:text-neon-green",
+          "border-lv-green/50 text-lv-green [&>svg]:text-lv-green",
       },
     },
     defaultVariants: {

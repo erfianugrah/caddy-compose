@@ -226,7 +226,7 @@ export default function DashboardFilterBar<F extends string = string>({
               onClick={() => setSelectedOp(op)}
             >
               <span>{OP_META[op].label}</span>
-              <span className="text-xs font-mono text-muted-foreground">{OP_META[op].chip}</span>
+              <span className="text-xs font-data text-muted-foreground">{OP_META[op].chip}</span>
             </button>
           ))}
         </div>
@@ -288,7 +288,7 @@ export default function DashboardFilterBar<F extends string = string>({
               {inValues.filter((v) => !inOptions.some((o) => o.value === v)).map((v) => (
                 <span
                   key={v}
-                  className="inline-flex items-center gap-1 rounded bg-neon-cyan/10 px-1.5 py-0.5 text-xs font-mono text-neon-cyan"
+                  className="inline-flex items-center gap-1 rounded bg-lv-cyan/10 px-1.5 py-0.5 text-xs font-data text-lv-cyan"
                 >
                   {v}
                   <button
@@ -308,7 +308,7 @@ export default function DashboardFilterBar<F extends string = string>({
                 <button
                   key={opt.value}
                   className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors cursor-pointer ${
-                    checked ? "bg-neon-cyan/10 text-neon-cyan" : "hover:bg-accent hover:text-accent-foreground"
+                    checked ? "bg-lv-cyan/10 text-lv-cyan" : "hover:bg-accent hover:text-accent-foreground"
                   }`}
                   onClick={() => {
                     setInValues((prev) =>
@@ -317,11 +317,11 @@ export default function DashboardFilterBar<F extends string = string>({
                   }}
                 >
                   <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center text-xs ${
-                    checked ? "border-neon-cyan bg-neon-cyan/20 text-neon-cyan" : "border-muted-foreground"
+                    checked ? "border-lv-cyan bg-lv-cyan/20 text-lv-cyan" : "border-muted-foreground"
                   }`}>
                     {checked && "\u2713"}
                   </div>
-                  <span className={meta.dynamic ? "font-mono" : ""}>{opt.label}</span>
+                  <span className={meta.dynamic ? "font-data" : ""}>{opt.label}</span>
                 </button>
               );
             })}
@@ -404,7 +404,7 @@ export default function DashboardFilterBar<F extends string = string>({
               filtered.map((opt) => (
                 <button
                   key={opt.value}
-                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-mono hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm font-data hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
                   onClick={() => addFilter(selectedField, selectedOp, opt.value)}
                 >
                   {opt.label}
@@ -441,7 +441,7 @@ export default function DashboardFilterBar<F extends string = string>({
           &larr; {FIELDS[selectedField].label} &middot; {OP_META[selectedOp].label}
         </button>
         {selectedOp === "regex" && (
-          <p className="px-1 text-xs text-neon-cyan/60 font-mono">
+          <p className="px-1 text-xs text-lv-cyan/60 font-data">
             Go regexp syntax (RE2)
           </p>
         )}
@@ -456,7 +456,7 @@ export default function DashboardFilterBar<F extends string = string>({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          className={`h-8 text-sm ${selectedOp === "regex" ? "font-mono" : ""}`}
+          className={`h-8 text-sm ${selectedOp === "regex" ? "font-data" : ""}`}
         />
         <Button
           size="sm"
@@ -493,8 +493,8 @@ export default function DashboardFilterBar<F extends string = string>({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2">
-      <Filter className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
+    <div className="flex items-center gap-2 rounded-lg border border-lv-cyan/20 bg-lv-cyan/5 px-3 py-2">
+      <Filter className="h-3.5 w-3.5 text-lv-cyan shrink-0" />
       <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
         {filters.map((f) => {
           const meta = FIELDS[f.field];
@@ -507,10 +507,10 @@ export default function DashboardFilterBar<F extends string = string>({
               <div key={f.field} className="flex items-center gap-1">
                 <Badge
                   variant="secondary"
-                  className="gap-1 pl-2 pr-2 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20"
+                  className="gap-1 pl-2 pr-2 py-0.5 text-xs font-normal bg-lv-cyan/10 border-lv-cyan/20"
                 >
                   <span className="text-muted-foreground font-medium">{meta.label}</span>
-                  <span className="text-neon-cyan/70 font-mono text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
+                  <span className="text-lv-cyan/70 font-data text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
                 </Badge>
                 {values.map((v) => {
                   const label = meta.options?.find((o) => o.value === v)?.label ?? v;
@@ -518,11 +518,11 @@ export default function DashboardFilterBar<F extends string = string>({
                     <Badge
                       key={v}
                       variant="secondary"
-                      className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/15 border-neon-cyan/30 hover:bg-neon-cyan/25 transition-colors"
+                      className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-lv-cyan/15 border-lv-cyan/30 hover:bg-lv-cyan/25 transition-colors"
                     >
-                      <span className="font-mono">{label}</span>
+                      <span className="font-data">{label}</span>
                       <button
-                        className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
+                        className="ml-0.5 rounded-sm p-0.5 hover:bg-lv-cyan/30 transition-colors cursor-pointer"
                         onClick={() => {
                           const remaining = values.filter((x) => x !== v);
                           if (remaining.length === 0) {
@@ -562,13 +562,13 @@ export default function DashboardFilterBar<F extends string = string>({
             <Badge
               key={f.field}
               variant="secondary"
-              className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-neon-cyan/10 border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors"
+              className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal bg-lv-cyan/10 border-lv-cyan/20 hover:bg-lv-cyan/20 transition-colors"
             >
               <span className="text-muted-foreground font-medium">{meta.label}</span>
-              <span className="text-neon-cyan/70 font-mono text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
-              <span className="font-mono">{displayValue(f.field, f.value)}</span>
+              <span className="text-lv-cyan/70 font-data text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
+              <span className="font-data">{displayValue(f.field, f.value)}</span>
               <button
-                className="ml-0.5 rounded-sm p-0.5 hover:bg-neon-cyan/30 transition-colors cursor-pointer"
+                className="ml-0.5 rounded-sm p-0.5 hover:bg-lv-cyan/30 transition-colors cursor-pointer"
                 onClick={() => removeFilter(f.field)}
                 title={`Remove ${meta.label} filter`}
               >

@@ -8,13 +8,13 @@ import { T } from "@/lib/typography";
 export function ActionBadge({ action }: { action: RLRuleAction }) {
   if (action === "log_only") {
     return (
-      <Badge variant="outline" className={`${T.badgeMono} bg-neon-amber/10 text-neon-amber border-neon-amber/30`}>
+      <Badge variant="outline" className={`${T.badgeMono} bg-lv-peach/10 text-lv-peach border-lv-peach/30`}>
         Monitor
       </Badge>
     );
   }
   return (
-      <Badge variant="outline" className={`${T.badgeMono} bg-neon-pink/10 text-neon-pink border-neon-pink/30`}>
+      <Badge variant="outline" className={`${T.badgeMono} bg-lv-red/10 text-lv-red border-lv-red/30`}>
       Deny
     </Badge>
   );

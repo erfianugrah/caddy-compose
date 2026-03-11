@@ -63,7 +63,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Target className="h-4 w-4 text-neon-amber" />
+          <Target className="h-4 w-4 text-lv-peach" />
           <CardTitle className={T.cardTitle}>Top Targeted URIs</CardTitle>
         </div>
         <CardDescription>Most-hit URIs across all services</CardDescription>
@@ -89,13 +89,13 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
             <TableBody>
               {pageData.map((uri, idx) => (
                 <TableRow key={idx}>
-                  <TableCell className="max-w-[300px] truncate font-mono text-xs" title={uri.uri}>
+                  <TableCell className="max-w-[300px] truncate font-data text-xs" title={uri.uri}>
                     {uri.uri}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
                     {uri.total.toLocaleString()}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs text-neon-pink">
+                  <TableCell className="text-right tabular-nums text-xs text-lv-red">
                     {uri.blocked.toLocaleString()}
                   </TableCell>
                   <TableCell>

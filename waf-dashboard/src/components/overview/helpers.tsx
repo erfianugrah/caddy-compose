@@ -53,9 +53,9 @@ export function LinkTickRenderer({
         y={y}
         dy={4}
         textAnchor="end"
-        fill="#7a8baa"
+        fill="#bdbdc1"
         fontSize={T.chartLabel}
-        className="hover:fill-neon-green cursor-pointer"
+        className="hover:fill-lv-green cursor-pointer"
         style={{ textDecoration: "none" }}
       >
         {payload.value}

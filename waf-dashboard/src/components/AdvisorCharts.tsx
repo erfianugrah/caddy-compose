@@ -99,7 +99,7 @@ function SelectionOverlay({ state, padLeft, padTop, chartW, chartH }: {
   const right = Math.max(state.selFracLeft, state.selFracRight);
   const x = padLeft + left * chartW;
   const w = (right - left) * chartW;
-  return <rect x={x} y={padTop} width={w} height={chartH} fill="rgba(34,211,238,0.15)" stroke="#22d3ee" strokeWidth={1} strokeOpacity={0.4} />;
+  return <rect x={x} y={padTop} width={w} height={chartH} fill="rgba(121,230,243,0.15)" stroke="#79e6f3" strokeWidth={1} strokeOpacity={0.4} />;
 }
 
 /** HTML reset zoom button positioned outside SVG */
@@ -107,7 +107,7 @@ function ResetZoomButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="absolute top-1 right-1 px-2 py-0.5 text-[10px] font-mono text-cyan-400 bg-cyan-400/10 border border-cyan-400/30 rounded hover:bg-cyan-400/20 transition-colors cursor-pointer z-10"
+      className="absolute top-1 right-1 px-2 py-0.5 text-[10px] font-data text-lv-cyan bg-lv-cyan/10 border border-lv-cyan/30 rounded hover:bg-lv-cyan/20 transition-colors cursor-pointer z-10"
     >
       Reset zoom
     </button>
@@ -120,13 +120,13 @@ export function ClassificationBadge({ classification }: { classification: Client
   switch (classification) {
     case "abusive":
       return (
-         <Badge variant="outline" className={`${T.badgeMono} bg-red-500/10 text-red-400 border-red-500/30`}>
+         <Badge variant="outline" className={`${T.badgeMono} bg-lv-red/10 text-lv-red border-lv-red/30`}>
           Abusive
         </Badge>
       );
     case "suspicious":
       return (
-        <Badge variant="outline" className={`${T.badgeMono} bg-neon-amber/10 text-neon-amber border-neon-amber/30`}>
+        <Badge variant="outline" className={`${T.badgeMono} bg-lv-peach/10 text-lv-peach border-lv-peach/30`}>
           Suspicious
         </Badge>
       );
@@ -138,7 +138,7 @@ export function ClassificationBadge({ classification }: { classification: Client
       );
     default:
       return (
-        <Badge variant="outline" className={`${T.badgeMono} bg-neon-green/10 text-neon-green border-neon-green/30`}>
+        <Badge variant="outline" className={`${T.badgeMono} bg-lv-green/10 text-lv-green border-lv-green/30`}>
           Normal
         </Badge>
       );
@@ -149,9 +149,9 @@ export function ClassificationBadge({ classification }: { classification: Client
 
 export function ConfidenceBadge({ confidence }: { confidence: string }) {
   const cls = confidence === "high"
-    ? "bg-neon-green/10 text-neon-green border-neon-green/30"
+    ? "bg-lv-green/10 text-lv-green border-lv-green/30"
     : confidence === "medium"
-      ? "bg-neon-amber/10 text-neon-amber border-neon-amber/30"
+      ? "bg-lv-peach/10 text-lv-peach border-lv-peach/30"
       : "bg-muted text-muted-foreground border-border";
   return (
     <Badge variant="outline" className={`${T.badgeMono} ${cls}`}>
@@ -294,12 +294,12 @@ export function DistributionHistogram({
         const thresholdX = padLeft + ((thresholdScaled - scaledGlobalMin) / scaledGlobalRange) * chartW;
         // Clamp to chart area
         if (threshold < globalMin) {
-          return <line x1={padLeft} y1={padTop} x2={padLeft} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
+          return <line x1={padLeft} y1={padTop} x2={padLeft} y2={padTop + chartH} stroke="#f1a171" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
         }
         if (threshold > globalMax) {
-          return <line x1={padLeft + chartW} y1={padTop} x2={padLeft + chartW} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
+          return <line x1={padLeft + chartW} y1={padTop} x2={padLeft + chartW} y2={padTop + chartH} stroke="#f1a171" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
         }
-        return <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
+        return <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#f1a171" strokeWidth={2} strokeDasharray="6,4" opacity={0.9} />;
       })()}
 
       {/* Y-axis label */}
@@ -405,12 +405,12 @@ export function ImpactCurve({
         })}
 
         <g clipPath={`url(#${clipId})`}>
-          <path d={clientLine} fill="none" stroke="#22d3ee" strokeWidth={2} opacity={0.9} />
-          <path d={requestLine} fill="none" stroke="#f472b6" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
+          <path d={clientLine} fill="none" stroke="#79e6f3" strokeWidth={2} opacity={0.9} />
+          <path d={requestLine} fill="none" stroke="#f37e96" strokeWidth={2} opacity={0.9} strokeDasharray="5,3" />
 
           {/* Threshold line */}
           {showThreshold && (
-            <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#eab308" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
+            <line x1={thresholdX} y1={padTop} x2={thresholdX} y2={padTop + chartH} stroke="#f1a171" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
           )}
         </g>
 
@@ -435,9 +435,9 @@ export function ImpactCurve({
         })}
 
         {/* Legend */}
-        <line x1={padLeft + 12} y1={vh - 10} x2={padLeft + 34} y2={vh - 10} stroke="#22d3ee" strokeWidth={2} />
+        <line x1={padLeft + 12} y1={vh - 10} x2={padLeft + 34} y2={vh - 10} stroke="#79e6f3" strokeWidth={2} />
         <text x={padLeft + 40} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Clients</text>
-        <line x1={padLeft + 120} y1={vh - 10} x2={padLeft + 142} y2={vh - 10} stroke="#f472b6" strokeWidth={2} strokeDasharray="4,2" />
+        <line x1={padLeft + 120} y1={vh - 10} x2={padLeft + 142} y2={vh - 10} stroke="#f37e96" strokeWidth={2} strokeDasharray="4,2" />
         <text x={padLeft + 148} y={vh - 6} className="fill-muted-foreground" fontSize={T.chartAxisTick}>Requests</text>
       </svg>
     </div>
@@ -547,7 +547,7 @@ export function TimeOfDayChart({
                 y={padTop + chartH - p95H}
                 width={Math.max(bw, 2)}
                 height={Math.max(p95H, 0)}
-                fill="rgba(34,211,238,0.15)"
+                fill="rgba(121,230,243,0.15)"
                 rx={2}
               />
               <rect
