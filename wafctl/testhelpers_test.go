@@ -58,7 +58,8 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	blStore := NewBlocklistStore()
 	cfStore := NewCFProxyStore(filepath.Join(t.TempDir(), "cf.caddy"))
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
-	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore)
+	secStore := NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec.json"))
+	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore, secStore)
 }
 
 // emptyAccessLogStore returns an AccessLogStore with no events for tests that

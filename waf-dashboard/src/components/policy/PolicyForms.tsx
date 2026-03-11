@@ -7,7 +7,10 @@ import {
   SkipForward,
   Plus,
   X,
+  ChevronDown,
+  Check,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -24,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import type {
   Condition,
   ExclusionCreateData,
@@ -60,6 +64,68 @@ const QUICK_ACTION_ICONS: Record<string, typeof Shield> = {
   ShieldAlert,
   SkipForward,
 };
+
+// ─── Exclusion Type Picker (Popover-based, no Radix Select scroll) ──
+
+function ExclusionTypePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const selected = ALL_EXCLUSION_TYPES.find((t) => t.value === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-auto w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background transition-all duration-150 ease-out hover:border-accent-foreground/20 hover:bg-accent/50 focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          {selected ? (
+            <div className="flex flex-col gap-0.5 text-left">
+              <span className="font-medium text-sm">{selected.label}</span>
+              <span className="text-xs leading-tight text-muted-foreground">{selected.description}</span>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">Select type...</span>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <div className="max-h-80 overflow-y-auto p-1">
+          {(["quick", "advanced", "runtime"] as const).map((group, gi) => {
+            const items = ALL_EXCLUSION_TYPES.filter((t) => t.group === group);
+            if (items.length === 0) return null;
+            const groupLabel = group === "quick" ? "Quick Actions" : group === "advanced" ? "Global Exclusions" : "Conditional Exclusions";
+            return (
+              <div key={group}>
+                {gi > 0 && <div className="-mx-1 my-1 h-px bg-muted" />}
+                <div className="px-2 py-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  {groupLabel}
+                </div>
+                {items.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => { onChange(t.value); setOpen(false); }}
+                    className={cn(
+                      "flex w-full cursor-default select-none items-center rounded-sm px-2 py-2 text-left outline-none transition-colors hover:bg-accent hover:text-accent-foreground",
+                      t.value === value && "bg-accent text-accent-foreground",
+                    )}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-sm">{t.label}</span>
+                      <span className="text-xs leading-tight text-muted-foreground">{t.description}</span>
+                    </div>
+                    {t.value === value && <Check className="ml-auto h-4 w-4 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // ─── Quick Actions Form ─────────────────────────────────────────────
 
@@ -536,7 +602,7 @@ export function AdvancedBuilderForm({
   })();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Name & Description */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -562,70 +628,45 @@ export function AdvancedBuilderForm({
           {isRuntimeType(form.type) && <span className="inline-flex items-center rounded bg-lv-cyan/20 border border-lv-cyan/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-cyan">Runtime</span>}
           {(form.type.startsWith("SecRule") && !isRuntimeType(form.type)) && <span className="inline-flex items-center rounded bg-lovelace-600/30 border border-lovelace-600/50 px-1.5 py-0 text-[10px] font-semibold uppercase text-muted-foreground">Config-time</span>}
         </div>
-        <Select value={form.type} onValueChange={handleTypeChange}>
-          <SelectTrigger className="h-auto py-2">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(["quick", "advanced", "runtime"] as const).map((group, gi) => {
-              const items = ALL_EXCLUSION_TYPES.filter((t) => t.group === group);
-              if (items.length === 0) return null;
-              const groupLabel = group === "quick" ? "Quick Actions" : group === "advanced" ? "Configure-time" : "Runtime (per-request)";
-              return [
-                gi > 0 ? <SelectSeparator key={`sep-${group}`} /> : null,
-                <SelectGroup key={`group-${group}`}>
-                  <SelectLabel className="text-xs uppercase tracking-widest text-muted-foreground/60">
-                    {groupLabel}
-                  </SelectLabel>
-                  {items.map((t) => (
-                    <SelectItem key={t.value} value={t.value} textValue={t.label} className="py-2">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-medium text-sm">{t.label}</span>
-                        <span className="text-xs leading-tight text-muted-foreground">{t.description}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>,
-              ];
-            })}
-          </SelectContent>
-        </Select>
+        <ExclusionTypePicker value={form.type} onChange={handleTypeChange} />
       </div>
 
       {/* Rule ID / Tag / Variable fields */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {needsRuleId && (
-          <div className="space-y-1.5">
-            <Label className={T.formLabel}>Rule ID / Range</Label>
-            <RuleIdTagInput
-              value={form.rule_id}
-              onChange={(v) => update("rule_id", v)}
-              placeholder="e.g., 941100, 942000-942999 (Enter to add)"
-            />
-          </div>
-        )}
-        {needsRuleTag && (
-          <div className="space-y-1.5">
-            <Label className={T.formLabel}>Rule Tag</Label>
-            <Select value={form.rule_tag} onValueChange={(v) => update("rule_tag", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a tag" />
-              </SelectTrigger>
-              <SelectContent>
-                {RULE_TAGS.map((tag) => (
-                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {needsVariable && (
-          <div className="space-y-1.5">
-            <Label className={T.formLabel}>Variable</Label>
-            <Input value={form.variable} onChange={(e) => update("variable", e.target.value)} placeholder='e.g., ARGS:wp_post, REQUEST_COOKIES:/^uid_.*/' />
-          </div>
-        )}
-      </div>
+      {(needsRuleId || needsRuleTag || needsVariable) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {needsRuleId && (
+            <div className="space-y-1.5">
+              <Label className={T.formLabel}>Rule ID / Range</Label>
+              <RuleIdTagInput
+                value={form.rule_id}
+                onChange={(v) => update("rule_id", v)}
+                placeholder="e.g., 941100, 942000-942999 (Enter to add)"
+              />
+            </div>
+          )}
+          {needsRuleTag && (
+            <div className="space-y-1.5">
+              <Label className={T.formLabel}>Rule Tag</Label>
+              <Select value={form.rule_tag} onValueChange={(v) => update("rule_tag", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RULE_TAGS.map((tag) => (
+                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {needsVariable && (
+            <div className="space-y-1.5">
+              <Label className={T.formLabel}>Variable</Label>
+              <Input value={form.variable} onChange={(e) => update("variable", e.target.value)} placeholder='e.g., ARGS:wp_post, REQUEST_COOKIES:/^uid_.*/' />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Anomaly score fields */}
       {needsAnomalyFields && (

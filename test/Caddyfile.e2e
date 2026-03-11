@@ -27,18 +27,6 @@
 	header Vary Origin
 }
 
-(security_headers) {
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		-Server
-		-X-Powered-By
-	}
-}
-
 # WAF with dynamic config includes — matches production loading order
 (waf) {
 	@not_websocket {
@@ -134,13 +122,9 @@
 # Test site — reverse proxy to httpbun with WAF + dynamic RL + CSP
 :8080 {
 	import cors
-	import security_headers
 	import static_cache
 	import waf
 	import ipsum_blocklist
-
-	# Dynamic CSP configs from wafctl
-	import /data/caddy/csp/httpbun_csp*.caddy
 
 	encode zstd gzip
 	reverse_proxy httpbun:8080 {

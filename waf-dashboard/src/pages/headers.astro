@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import SecurityHeadersPanel from "../components/SecurityHeadersPanel";
+---
+
+<DashboardLayout title="wafctl — Security Headers" active="headers">
+  <SecurityHeadersPanel client:load />
+</DashboardLayout>

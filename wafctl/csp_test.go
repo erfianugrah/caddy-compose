@@ -524,324 +524,6 @@ func TestCSPStoreNilServices(t *testing.T) {
 
 // ─── Generator Tests ────────────────────────────────────────────────────────
 
-func TestGenerateServiceCSP(t *testing.T) {
-	global := CSPPolicy{
-		DefaultSrc:              []string{"'self'"},
-		ScriptSrc:               []string{"'self'", "'unsafe-inline'"},
-		StyleSrc:                []string{"'self'", "'unsafe-inline'"},
-		UpgradeInsecureRequests: true,
-	}
-
-	t.Run("mode set with inherit", func(t *testing.T) {
-		sc := CSPServiceConfig{
-			Mode:    "set",
-			Inherit: true,
-			Policy: CSPPolicy{
-				ConnectSrc: []string{"'self'", "wss:"},
-			},
-		}
-		out := generateServiceCSP("jellyfin", sc, global)
-		if !strings.Contains(out, "header Content-Security-Policy") {
-			t.Error("should contain header directive")
-		}
-		if strings.Contains(out, "?Content-Security-Policy") {
-			t.Error("mode=set should not use ? prefix")
-		}
-		if !strings.Contains(out, "default-src 'self'") {
-			t.Error("should inherit default-src from global")
-		}
-		if !strings.Contains(out, "connect-src 'self' wss:") {
-			t.Error("should include service override connect-src")
-		}
-	})
-
-	t.Run("mode default uses ? prefix", func(t *testing.T) {
-		sc := CSPServiceConfig{
-			Mode:    "default",
-			Inherit: false,
-			Policy: CSPPolicy{
-				DefaultSrc: []string{"'self'"},
-			},
-		}
-		out := generateServiceCSP("authelia", sc, global)
-		if !strings.Contains(out, "header ?Content-Security-Policy") {
-			t.Errorf("mode=default should use ? prefix, got:\n%s", out)
-		}
-	})
-
-	t.Run("mode none produces comment-only", func(t *testing.T) {
-		sc := CSPServiceConfig{Mode: "none"}
-		out := generateServiceCSP("qbittorrent", sc, global)
-		if strings.Contains(out, "header ") {
-			t.Error("mode=none should not produce header directive")
-		}
-		if !strings.Contains(out, "Mode: none") {
-			t.Error("should indicate mode none in comment")
-		}
-	})
-
-	t.Run("report-only header name", func(t *testing.T) {
-		sc := CSPServiceConfig{
-			Mode:       "set",
-			ReportOnly: true,
-			Inherit:    false,
-			Policy: CSPPolicy{
-				DefaultSrc: []string{"'self'"},
-			},
-		}
-		out := generateServiceCSP("test", sc, global)
-		if !strings.Contains(out, "Content-Security-Policy-Report-Only") {
-			t.Error("report_only should use Report-Only header name")
-		}
-	})
-
-	t.Run("empty policy after resolve produces no header", func(t *testing.T) {
-		sc := CSPServiceConfig{
-			Mode:    "set",
-			Inherit: false,
-			Policy:  CSPPolicy{}, // no directives
-		}
-		out := generateServiceCSP("empty", sc, global)
-		if strings.Contains(out, "\nheader ") {
-			t.Error("empty policy should not produce header directive")
-		}
-		if !strings.Contains(out, "Empty policy") {
-			t.Error("should indicate empty policy in comment")
-		}
-	})
-
-	t.Run("quotes in header value escaped", func(t *testing.T) {
-		sc := CSPServiceConfig{
-			Mode:    "set",
-			Inherit: false,
-			Policy: CSPPolicy{
-				RawDirectives: `require-trusted-types-for "script"`,
-			},
-		}
-		out := generateServiceCSP("test", sc, global)
-		// The " in the raw directive value should be escaped as \"
-		if !strings.Contains(out, `\"script\"`) {
-			t.Errorf("double quotes should be escaped, got:\n%s", out)
-		}
-	})
-}
-
-func TestWriteCSPFiles(t *testing.T) {
-	dir := t.TempDir()
-	files := map[string]string{
-		"jellyfin_csp.caddy": "header Content-Security-Policy \"default-src 'self'\"\n",
-		"sonarr_csp.caddy":   "# CSP: no config for sonarr\n",
-	}
-
-	written, err := writeCSPFiles(dir, files)
-	if err != nil {
-		t.Fatalf("writeCSPFiles failed: %v", err)
-	}
-	if len(written) != 2 {
-		t.Errorf("expected 2 written files, got %d", len(written))
-	}
-
-	// Verify files exist.
-	for filename, expectedContent := range files {
-		data, err := os.ReadFile(filepath.Join(dir, filename))
-		if err != nil {
-			t.Errorf("could not read %s: %v", filename, err)
-			continue
-		}
-		if string(data) != expectedContent {
-			t.Errorf("%s content mismatch:\ngot:  %q\nwant: %q", filename, string(data), expectedContent)
-		}
-	}
-}
-
-func TestWriteCSPFilesStaleCleanup(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create a stale file.
-	stale := filepath.Join(dir, "removed_csp.caddy")
-	os.WriteFile(stale, []byte("old"), 0644)
-
-	// Also create a non-CSP file that should be left alone.
-	other := filepath.Join(dir, "keepme.txt")
-	os.WriteFile(other, []byte("keep"), 0644)
-
-	files := map[string]string{
-		"jellyfin_csp.caddy": "# new\n",
-	}
-
-	_, err := writeCSPFiles(dir, files)
-	if err != nil {
-		t.Fatalf("writeCSPFiles failed: %v", err)
-	}
-
-	// Stale CSP file should be removed.
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Error("stale CSP file should have been removed")
-	}
-
-	// Non-CSP file should remain.
-	if _, err := os.Stat(other); err != nil {
-		t.Error("non-CSP file should not be removed")
-	}
-}
-
-func TestScanCaddyfileCSPServices(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-
-	content := `sonarr.erfi.io {
-	import /data/caddy/csp/sonarr_csp*.caddy
-}
-radarr.erfi.io {
-	import /data/caddy/csp/radarr_csp*.caddy
-}
-jellyfin.erfi.io {
-	import /data/caddy/csp/jellyfin_csp*.caddy
-}
-`
-	os.WriteFile(caddyfile, []byte(content), 0644)
-
-	services := scanCaddyfileCSPServices(caddyfile)
-	if len(services) != 3 {
-		t.Fatalf("expected 3 services, got %d: %v", len(services), services)
-	}
-
-	seen := make(map[string]bool)
-	for _, s := range services {
-		seen[s] = true
-	}
-	for _, want := range []string{"sonarr", "radarr", "jellyfin"} {
-		if !seen[want] {
-			t.Errorf("missing service %q", want)
-		}
-	}
-}
-
-func TestScanCaddyfileCSPServicesEmpty(t *testing.T) {
-	// Empty path should return nil.
-	services := scanCaddyfileCSPServices("")
-	if services != nil {
-		t.Errorf("expected nil for empty path, got %v", services)
-	}
-
-	// Nonexistent file should return nil.
-	services = scanCaddyfileCSPServices("/nonexistent/Caddyfile")
-	if services != nil {
-		t.Errorf("expected nil for missing file, got %v", services)
-	}
-}
-
-func TestScanCaddyfileCSPServicesDedup(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-
-	content := `sonarr.erfi.io {
-	import /data/caddy/csp/sonarr_csp*.caddy
-	import /data/caddy/csp/sonarr_csp*.caddy
-}
-`
-	os.WriteFile(caddyfile, []byte(content), 0644)
-
-	services := scanCaddyfileCSPServices(caddyfile)
-	if len(services) != 1 {
-		t.Errorf("expected 1 deduplicated service, got %d: %v", len(services), services)
-	}
-}
-
-func TestGenerateCSPConfigsIntegration(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-
-	// Caddyfile with CSP imports for 3 services.
-	os.WriteFile(caddyfile, []byte(`sonarr.erfi.io {
-	import /data/caddy/csp/sonarr_csp*.caddy
-}
-radarr.erfi.io {
-	import /data/caddy/csp/radarr_csp*.caddy
-}
-jellyfin.erfi.io {
-	import /data/caddy/csp/jellyfin_csp*.caddy
-}
-`), 0644)
-
-	store := NewCSPStore(filepath.Join(dir, "csp.json"))
-	cfg := store.Get()
-	cfg.Services["jellyfin"] = CSPServiceConfig{
-		Mode:    "set",
-		Inherit: true,
-		Policy: CSPPolicy{
-			ConnectSrc: []string{"'self'", "wss:"},
-		},
-	}
-	cfg.Services["sonarr"] = CSPServiceConfig{
-		Mode: "none",
-	}
-	store.Update(cfg)
-
-	files := GenerateCSPConfigs(store, caddyfile)
-
-	// Should have files for jellyfin (configured), sonarr (configured as none), radarr (placeholder).
-	if len(files) != 3 {
-		t.Fatalf("expected 3 files, got %d: %v", len(files), fileNames(files))
-	}
-
-	// Jellyfin should have a header directive.
-	jf := files["jellyfin_csp.caddy"]
-	if !strings.Contains(jf, "header Content-Security-Policy") {
-		t.Errorf("jellyfin should have CSP header directive:\n%s", jf)
-	}
-
-	// Sonarr should be comment-only (mode none).
-	sn := files["sonarr_csp.caddy"]
-	if strings.Contains(sn, "header ") {
-		t.Errorf("sonarr (mode none) should not have header directive:\n%s", sn)
-	}
-
-	// Radarr is discovered (not configured) — should get global defaults
-	// since the store has non-empty global defaults.
-	rd := files["radarr_csp.caddy"]
-	if !strings.Contains(rd, "header Content-Security-Policy") {
-		t.Errorf("radarr (discovered, no override) should get global defaults CSP header:\n%s", rd)
-	}
-	if !strings.Contains(rd, "default-src 'self'") {
-		t.Errorf("radarr header should contain global default-src, got:\n%s", rd)
-	}
-}
-
-func TestGenerateCSPConfigsEmptyGlobals(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-	os.WriteFile(caddyfile, []byte(`app.example.com {
-	import /data/caddy/csp/myapp_csp*.caddy
-}
-`), 0644)
-
-	store := NewCSPStore(filepath.Join(dir, "csp.json"))
-	// Clear global defaults.
-	cfg := store.Get()
-	cfg.GlobalDefaults = CSPPolicy{}
-	store.Update(cfg)
-
-	files := GenerateCSPConfigs(store, caddyfile)
-
-	// myapp should be a comment-only placeholder since globals are empty.
-	content := files["myapp_csp.caddy"]
-	if strings.Contains(content, "header ") {
-		t.Errorf("discovered service with empty globals should not have header directive:\n%s", content)
-	}
-	if !strings.Contains(content, "global defaults empty") {
-		t.Errorf("discovered service with empty globals should have placeholder comment:\n%s", content)
-	}
-}
-
-func fileNames(m map[string]string) []string {
-	names := make([]string, 0, len(m))
-	for k := range m {
-		names = append(names, k)
-	}
-	return names
-}
-
 // ─── HTTP Handler Tests ─────────────────────────────────────────────────────
 
 func setupCSPMux(t *testing.T) (*http.ServeMux, *CSPStore) {
@@ -858,7 +540,7 @@ func setupCSPMux(t *testing.T) (*http.ServeMux, *CSPStore) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/csp", handleGetCSP(store))
 	mux.HandleFunc("PUT /api/csp", handleUpdateCSP(store))
-	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(store, deployCfg))
+	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(store, nil, nil, nil, nil, deployCfg))
 	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(store, deployCfg))
 	return mux, store
 }
@@ -993,12 +675,12 @@ func TestHandlePreviewCSPDiscoveredServices(t *testing.T) {
 	dir := t.TempDir()
 	caddyfilePath := filepath.Join(dir, "Caddyfile")
 
-	// Write a Caddyfile with CSP import lines for sonarr and radarr.
+	// Write a Caddyfile with site blocks for sonarr and radarr.
 	caddyfileContent := `sonarr.example.com {
-	import /data/caddy/csp/sonarr_csp*.caddy
+	reverse_proxy sonarr:8989
 }
 radarr.example.com {
-	import /data/caddy/csp/radarr_csp*.caddy
+	reverse_proxy radarr:7878
 }
 `
 	os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644)
@@ -1104,7 +786,7 @@ func TestHandlePreviewCSPEmptyGlobals(t *testing.T) {
 	}
 }
 
-func TestHandleDeployCSP(t *testing.T) {
+func TestHandleDeployCSPRequiresPolicyEngine(t *testing.T) {
 	mux, store := setupCSPMux(t)
 
 	cfg := store.Get()
@@ -1121,20 +803,16 @@ func TestHandleDeployCSP(t *testing.T) {
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != 200 {
-		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	// Without policy engine enabled, deploy should return 400.
+	if w.Code != 400 {
+		t.Fatalf("status = %d, want 400, body: %s", w.Code, w.Body.String())
 	}
 
-	var resp CSPDeployResponse
+	var resp ErrorResponse
 	json.NewDecoder(w.Body).Decode(&resp)
-	if resp.Status != "ok" {
-		t.Errorf("status = %q, want %q", resp.Status, "ok")
+	if !strings.Contains(resp.Error, "policy engine") {
+		t.Errorf("error should mention policy engine, got %q", resp.Error)
 	}
-	if len(resp.Files) == 0 {
-		t.Error("expected at least one generated file")
-	}
-	// Reloaded will be false since there's no real Caddy running.
-	// That's expected in tests.
 }
 
 // ─── Default Config Tests ───────────────────────────────────────────────────
@@ -1183,25 +861,6 @@ func TestCSPStoreInfo(t *testing.T) {
 	}
 }
 
-// ─── CSP File Name Tests ────────────────────────────────────────────────────
-
-func TestCSPFileName(t *testing.T) {
-	tests := []struct {
-		service string
-		want    string
-	}{
-		{"jellyfin", "jellyfin_csp.caddy"},
-		{"sonarr", "sonarr_csp.caddy"},
-		{"waf-dashboard", "waf-dashboard_csp.caddy"},
-	}
-	for _, tt := range tests {
-		got := cspFileName(tt.service)
-		if got != tt.want {
-			t.Errorf("cspFileName(%q) = %q, want %q", tt.service, got, tt.want)
-		}
-	}
-}
-
 // ─── Enabled/Disabled Tests ─────────────────────────────────────────────────
 
 func TestCSPEnabled(t *testing.T) {
@@ -1225,39 +884,6 @@ func TestCSPEnabled(t *testing.T) {
 			t.Error("explicit false should be disabled")
 		}
 	})
-}
-
-func TestGenerateCSPConfigsDisabled(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-	os.WriteFile(caddyfile, []byte(`sonarr.erfi.io {
-	import /data/caddy/csp/sonarr_csp*.caddy
-}
-`), 0644)
-
-	store := NewCSPStore(filepath.Join(dir, "csp.json"))
-	cfg := store.Get()
-	cfg.Enabled = boolPtr(false)
-	cfg.Services["sonarr"] = CSPServiceConfig{
-		Mode:    "set",
-		Inherit: true,
-		Policy: CSPPolicy{
-			DefaultSrc: []string{"'self'"},
-		},
-	}
-	store.Update(cfg)
-
-	files := GenerateCSPConfigs(store, caddyfile)
-
-	// All files should be comment-only placeholders when disabled.
-	for name, content := range files {
-		if strings.Contains(content, "header ") {
-			t.Errorf("file %s should not have header directive when disabled:\n%s", name, content)
-		}
-		if !strings.Contains(content, "CSP disabled") {
-			t.Errorf("file %s should indicate CSP is disabled:\n%s", name, content)
-		}
-	}
 }
 
 func TestPreviewCSPDisabled(t *testing.T) {
@@ -1358,79 +984,13 @@ func TestFindParentServiceConfig(t *testing.T) {
 	})
 }
 
-func TestGenerateCSPConfigsFQDNPropagation(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-
-	// Caddyfile with both short name and FQDN imports (like the real setup).
-	os.WriteFile(caddyfile, []byte(`httpbun.erfi.io {
-	import /data/caddy/csp/httpbun_csp*.caddy
-	import /data/caddy/csp/httpbun.erfi.io_csp*.caddy
-}
-`), 0644)
-
-	store := NewCSPStore(filepath.Join(dir, "csp.json"))
-	cfg := store.Get()
-	cfg.Services["httpbun"] = CSPServiceConfig{
-		Mode:    "set",
-		Inherit: false,
-		Policy: CSPPolicy{
-			DefaultSrc: []string{"'self'"},
-			ScriptSrc:  []string{"'self'", "'unsafe-eval'"},
-		},
-	}
-	store.Update(cfg)
-
-	files := GenerateCSPConfigs(store, caddyfile)
-
-	// Both httpbun_csp.caddy and httpbun.erfi.io_csp.caddy should have
-	// the same override content (not global defaults).
-	shortFile := files["httpbun_csp.caddy"]
-	fqdnFile := files["httpbun.erfi.io_csp.caddy"]
-
-	if !strings.Contains(shortFile, "'unsafe-eval'") {
-		t.Errorf("short name file should have override:\n%s", shortFile)
-	}
-	if !strings.Contains(fqdnFile, "'unsafe-eval'") {
-		t.Errorf("FQDN file should propagate override from short name:\n%s", fqdnFile)
-	}
-	// FQDN should NOT have global defaults that differ from the override.
-	if strings.Contains(fqdnFile, "'unsafe-inline'") {
-		t.Errorf("FQDN file should NOT have global defaults, should use override:\n%s", fqdnFile)
-	}
-}
-
-func TestGenerateCSPConfigsFQDNModeNone(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-
-	os.WriteFile(caddyfile, []byte(`qbit.erfi.io {
-	import /data/caddy/csp/qbit_csp*.caddy
-	import /data/caddy/csp/qbit.erfi.io_csp*.caddy
-}
-`), 0644)
-
-	store := NewCSPStore(filepath.Join(dir, "csp.json"))
-	cfg := store.Get()
-	cfg.Services["qbit"] = CSPServiceConfig{Mode: "none"}
-	store.Update(cfg)
-
-	files := GenerateCSPConfigs(store, caddyfile)
-
-	fqdnFile := files["qbit.erfi.io_csp.caddy"]
-	if strings.Contains(fqdnFile, "header ") {
-		t.Errorf("FQDN file should propagate mode:none (no header):\n%s", fqdnFile)
-	}
-}
-
 func TestPreviewCSPFQDNPropagation(t *testing.T) {
 	store := newTestCSPStore(t)
 	dir := t.TempDir()
 	caddyfilePath := filepath.Join(dir, "Caddyfile")
 
 	os.WriteFile(caddyfilePath, []byte(`httpbun.erfi.io {
-	import /data/caddy/csp/httpbun_csp*.caddy
-	import /data/caddy/csp/httpbun.erfi.io_csp*.caddy
+	reverse_proxy httpbun:8080
 }
 `), 0644)
 

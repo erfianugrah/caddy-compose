@@ -96,7 +96,7 @@ func ensureCorazaDir(dir string) error {
 // This ensures a stack restart always picks up the latest generator output
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, ls *ManagedListStore, deployCfg DeployConfig) {
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ls *ManagedListStore, deployCfg DeployConfig) {
 	// WAF config: generate exclusion rules + WAF settings.
 	cfg := cs.Get()
 	allExclusions := es.EnabledExclusions()
@@ -129,7 +129,8 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
 		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
@@ -167,23 +168,15 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 		clearRLFiles(deployCfg.RateLimitDir)
 	}
 
-	// CSP headers: generate per-service CSP .caddy files.
-	cspFiles := GenerateCSPConfigs(cspStore, deployCfg.CaddyfilePath)
-	if len(cspFiles) > 0 {
-		written, err := writeCSPFiles(deployCfg.CSPDir, cspFiles)
-		if err != nil {
-			log.Printf("[boot] warning: failed to generate CSP configs: %v", err)
-		} else {
-			log.Printf("[boot] regenerated %d CSP files", len(written))
-		}
-	}
+	// CSP headers are now handled by the policy engine plugin via
+	// response_headers in policy-rules.json (no .caddy file generation needed).
 }
 
 // deployAll regenerates all WAF and policy engine config files and reloads Caddy.
 // This is the programmatic equivalent of POST /api/config/deploy, used by
 // background processes (e.g. blocklist refresh) that need to trigger a full
 // regeneration + reload cycle after updating managed lists.
-func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) error {
+func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) error {
 	deployMu.Lock()
 	defer deployMu.Unlock()
 
@@ -204,7 +197,8 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
 		if err != nil {
 			return fmt.Errorf("generating policy rules: %w", err)
 		}

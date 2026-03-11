@@ -21,6 +21,7 @@ import (
 type PolicyRulesFile struct {
 	Rules           []PolicyRule                 `json:"rules"`
 	RateLimitConfig *PolicyRateLimitGlobalConfig `json:"rate_limit_config,omitempty"`
+	ResponseHeaders *PolicyResponseHeaderConfig  `json:"response_headers,omitempty"`
 	Generated       string                       `json:"generated"`
 	Version         int                          `json:"version"`
 }
@@ -89,7 +90,7 @@ var policyTypePriority = map[string]int{
 // rate limit rules. Use GeneratePolicyRulesWithRL when RL rules should
 // also be included in the policy-rules.json output.
 func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore) ([]byte, error) {
-	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore, nil)
+	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore, nil, nil)
 }
 
 // GeneratePolicyRulesWithRL converts exclusions and rate limit rules into
@@ -104,7 +105,10 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 //
 // The global RL config (sweep interval, jitter) is included in the output
 // when any rate limit rules are present.
-func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string) ([]byte, error) {
+//
+// respHeaders is included in the output when non-nil, enabling the plugin
+// to inject CSP and security headers without Caddy reload.
+func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string, respHeaders *PolicyResponseHeaderConfig) ([]byte, error) {
 	var rules []PolicyRule
 
 	// Convert WAF exclusions (allow/block).
@@ -194,9 +198,10 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 	})
 
 	file := PolicyRulesFile{
-		Rules:     rules,
-		Generated: time.Now().UTC().Format(time.RFC3339),
-		Version:   1,
+		Rules:           rules,
+		ResponseHeaders: respHeaders,
+		Generated:       time.Now().UTC().Format(time.RFC3339),
+		Version:         1,
 	}
 
 	// Include global RL config when rate limit rules are present.
@@ -317,6 +322,130 @@ func resolveServiceName(service string, serviceMap map[string]string) string {
 		return fqdn
 	}
 	return service
+}
+
+// ─── Response Header Types ─────────────────────────────────────────
+//
+// These types mirror the caddy-policy-engine plugin's response header config.
+// wafctl builds this from the CSP store and hardcoded security headers,
+// then includes it in policy-rules.json for hot-reload.
+
+// PolicyResponseHeaderConfig holds CSP and security header configuration.
+type PolicyResponseHeaderConfig struct {
+	CSP      *PolicyCSPConfig            `json:"csp,omitempty"`
+	Security *PolicySecurityHeaderConfig `json:"security,omitempty"`
+}
+
+// PolicyCSPConfig holds global and per-service CSP policies.
+type PolicyCSPConfig struct {
+	Enabled        *bool                             `json:"enabled,omitempty"` // nil = true
+	GlobalDefaults CSPPolicy                         `json:"global_defaults"`
+	Services       map[string]PolicyCSPServiceConfig `json:"services"`
+}
+
+// PolicyCSPServiceConfig holds the CSP configuration for a single service.
+type PolicyCSPServiceConfig struct {
+	Mode       string    `json:"mode"`        // "set", "default", "none"
+	ReportOnly bool      `json:"report_only"` // Content-Security-Policy-Report-Only
+	Inherit    bool      `json:"inherit"`     // merge on top of GlobalDefaults
+	Policy     CSPPolicy `json:"policy"`
+}
+
+// PolicySecurityHeaderConfig holds static security headers.
+type PolicySecurityHeaderConfig struct {
+	Enabled    *bool                                    `json:"enabled,omitempty"` // nil = true
+	Headers    map[string]string                        `json:"headers,omitempty"`
+	Remove     []string                                 `json:"remove,omitempty"`
+	PerService map[string]PolicySecurityServiceOverride `json:"per_service,omitempty"`
+}
+
+// PolicySecurityServiceOverride holds per-service security header overrides.
+type PolicySecurityServiceOverride struct {
+	Headers map[string]string `json:"headers,omitempty"`
+	Remove  []string          `json:"remove,omitempty"`
+}
+
+// DefaultSecurityHeaders returns the standard security headers used by all services.
+// These match the (security_headers_base) Caddyfile snippet.
+func DefaultSecurityHeaders() *PolicySecurityHeaderConfig {
+	return &PolicySecurityHeaderConfig{
+		Headers: map[string]string{
+			"Strict-Transport-Security":         "max-age=63072000; includeSubDomains; preload",
+			"X-Content-Type-Options":            "nosniff",
+			"X-Frame-Options":                   "SAMEORIGIN",
+			"Referrer-Policy":                   "strict-origin-when-cross-origin",
+			"Permissions-Policy":                "camera=(), microphone=(), geolocation=(), payment=()",
+			"Cross-Origin-Opener-Policy":        "same-origin",
+			"Cross-Origin-Resource-Policy":      "cross-origin",
+			"X-Permitted-Cross-Domain-Policies": "none",
+		},
+		Remove: []string{"Server", "X-Powered-By"},
+	}
+}
+
+// BuildPolicyResponseHeaders constructs the response header config for the
+// policy engine plugin from the CSP store and security header store.
+// The CSP policy data and service FQDNs are resolved so the plugin gets
+// FQDN-keyed services matching the Host headers it sees in production.
+func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStore, serviceMap map[string]string) *PolicyResponseHeaderConfig {
+	resp := &PolicyResponseHeaderConfig{}
+
+	// Build security header config from store (or defaults).
+	if secStore != nil {
+		cfg := secStore.Get()
+		enabled := cfg.Enabled == nil || *cfg.Enabled
+		sec := &PolicySecurityHeaderConfig{
+			Headers: cfg.Headers,
+			Remove:  cfg.Remove,
+		}
+		if !enabled {
+			sec.Enabled = boolPtr(false)
+		}
+		// Build per-service overrides, keyed by FQDN.
+		if len(cfg.Services) > 0 {
+			sec.PerService = make(map[string]PolicySecurityServiceOverride)
+			for svc := range cfg.Services {
+				fqdn := resolveServiceName(svc, serviceMap)
+				resolved := resolveSecurityHeaders(cfg, svc)
+				sec.PerService[fqdn] = PolicySecurityServiceOverride{
+					Headers: resolved.Headers,
+					Remove:  resolved.Remove,
+				}
+				// Also map the short name if different from FQDN.
+				if fqdn != svc {
+					sec.PerService[svc] = PolicySecurityServiceOverride{
+						Headers: resolved.Headers,
+						Remove:  resolved.Remove,
+					}
+				}
+			}
+		}
+		resp.Security = sec
+	} else {
+		resp.Security = DefaultSecurityHeaders()
+	}
+
+	// Build CSP config from store.
+	if cspStore != nil {
+		cspCfg := cspStore.Get()
+		services := make(map[string]PolicyCSPServiceConfig)
+		for svc, sc := range cspCfg.Services {
+			fqdn := resolveServiceName(svc, serviceMap)
+			services[fqdn] = PolicyCSPServiceConfig{
+				Mode:       sc.Mode,
+				ReportOnly: sc.ReportOnly,
+				Inherit:    sc.Inherit,
+				Policy:     sc.Policy,
+			}
+		}
+		resp.CSP = &PolicyCSPConfig{
+			Enabled:        cspCfg.Enabled,
+			GlobalDefaults: cspCfg.GlobalDefaults,
+			Services:       services,
+		}
+	}
+
+	return resp
 }
 
 // resolveListItems looks up a managed list by name and returns its items and kind.

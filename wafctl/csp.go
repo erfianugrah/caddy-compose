@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -435,40 +434,46 @@ type CSPDeployResponse struct {
 }
 
 // handleDeployCSP generates CSP config files and reloads Caddy.
-func handleDeployCSP(store *CSPStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
-		files := GenerateCSPConfigs(store, deployCfg.CaddyfilePath)
 
-		written, err := writeCSPFiles(deployCfg.CSPDir, files)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-				Error:   "failed to write CSP configs",
-				Details: err.Error(),
+		// When policy engine is enabled, CSP config goes into policy-rules.json
+		// for hot-reload (no Caddy restart needed).
+		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
+			allExclusions := es.EnabledExclusions()
+			rlRules := rs.EnabledRules()
+			rlGlobal := rs.GetGlobal()
+			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+			respHeaders := BuildPolicyResponseHeaders(store, secStore, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to generate policy rules",
+					Details: err.Error(),
+				})
+				return
+			}
+			if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to write policy rules file",
+					Details: err.Error(),
+				})
+				return
+			}
+			writeJSON(w, http.StatusOK, CSPDeployResponse{
+				Status:    "ok",
+				Message:   "CSP config updated in policy-rules.json (hot-reload)",
+				Reloaded:  false,
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
 			})
 			return
 		}
 
-		// Collect all config file paths for the reload fingerprint.
-		var configPaths []string
-		for _, f := range written {
-			configPaths = append(configPaths, filepath.Join(deployCfg.CSPDir, f))
-		}
-
-		reloaded := false
-		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, configPaths...); err != nil {
-			log.Printf("CSP deploy: Caddy reload failed: %v", err)
-		} else {
-			reloaded = true
-		}
-
-		writeJSON(w, http.StatusOK, CSPDeployResponse{
-			Status:    "ok",
-			Message:   fmt.Sprintf("generated %d CSP files", len(written)),
-			Files:     written,
-			Reloaded:  reloaded,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		// Policy engine is required for CSP deployment.
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "CSP deployment requires policy engine (WAF_POLICY_ENGINE_ENABLED=true)",
 		})
 	}
 }
@@ -515,7 +520,7 @@ func handlePreviewCSP(store *CSPStore, deployCfg DeployConfig) http.HandlerFunc 
 
 		// 2. Caddyfile-discovered services — check for FQDN parent configs first,
 		//    then fall back to global defaults.
-		discovered := scanCaddyfileCSPServices(deployCfg.CaddyfilePath)
+		discovered := discoverCaddyfileServices(deployCfg.CaddyfilePath)
 		for _, svc := range discovered {
 			if _, exists := result[svc]; exists {
 				continue
@@ -555,4 +560,48 @@ func handlePreviewCSP(store *CSPStore, deployCfg DeployConfig) http.HandlerFunc 
 
 		writeJSON(w, http.StatusOK, CSPPreviewResponse{Services: result})
 	}
+}
+
+// ─── Service Discovery Helpers ──────────────────────────────────────────────
+
+// findParentServiceConfig checks if a FQDN service (e.g. "httpbun.erfi.io")
+// has a parent short-name service (e.g. "httpbun") with an explicit config.
+// Returns the config and true if found.
+func findParentServiceConfig(fqdn string, services map[string]CSPServiceConfig) (CSPServiceConfig, bool) {
+	dotIdx := strings.IndexByte(fqdn, '.')
+	if dotIdx <= 0 {
+		return CSPServiceConfig{}, false
+	}
+	shortName := fqdn[:dotIdx]
+	sc, ok := services[shortName]
+	return sc, ok
+}
+
+// discoverCaddyfileServices returns unique service short names from the
+// Caddyfile's site blocks. Uses BuildServiceFQDNMap and returns both
+// short names and FQDNs for comprehensive discovery.
+func discoverCaddyfileServices(caddyfilePath string) []string {
+	svcMap := BuildServiceFQDNMap(caddyfilePath)
+	if len(svcMap) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var services []string
+	for short, fqdn := range svcMap {
+		if !seen[short] {
+			seen[short] = true
+			services = append(services, short)
+		}
+		if !seen[fqdn] {
+			seen[fqdn] = true
+			services = append(services, fqdn)
+		}
+	}
+	sort.Strings(services)
+	return services
+}
+
+// ensureCSPDir creates the CSP output directory if it doesn't exist.
+func ensureCSPDir(dir string) error {
+	return os.MkdirAll(dir, 0755)
 }

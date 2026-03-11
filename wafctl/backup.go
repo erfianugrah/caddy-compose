@@ -7,19 +7,20 @@ import (
 
 // ─── Backup / Restore ───────────────────────────────────────────────────────
 //
-// Unified backup bundles all five configuration stores into a single JSON
+// Unified backup bundles all six configuration stores into a single JSON
 // envelope for download. Restore replaces all stores atomically (per-store),
 // preserving ipsum managed lists and assigning fresh UUIDs.
 
 // FullBackup is the top-level envelope for a complete config backup.
 type FullBackup struct {
-	Version    int             `json:"version"`
-	ExportedAt time.Time       `json:"exported_at"`
-	WAFConfig  WAFConfig       `json:"waf_config"`
-	CSPConfig  CSPConfig       `json:"csp_config"`
-	Exclusions []RuleExclusion `json:"exclusions"`
-	RateLimits RateLimitBackup `json:"rate_limits"`
-	Lists      []ManagedList   `json:"lists"`
+	Version         int                  `json:"version"`
+	ExportedAt      time.Time            `json:"exported_at"`
+	WAFConfig       WAFConfig            `json:"waf_config"`
+	CSPConfig       CSPConfig            `json:"csp_config"`
+	SecurityHeaders SecurityHeaderConfig `json:"security_headers"`
+	Exclusions      []RuleExclusion      `json:"exclusions"`
+	RateLimits      RateLimitBackup      `json:"rate_limits"`
+	Lists           []ManagedList        `json:"lists"`
 }
 
 // RateLimitBackup holds both rules and global config for rate limits.
@@ -32,6 +33,7 @@ type RateLimitBackup struct {
 func handleBackup(
 	cs *ConfigStore,
 	cspS *CSPStore,
+	secS *SecurityHeaderStore,
 	es *ExclusionStore,
 	rs *RateLimitRuleStore,
 	ls *ManagedListStore,
@@ -43,11 +45,12 @@ func handleBackup(
 		listExport := ls.Export() // already excludes ipsum lists
 
 		backup := FullBackup{
-			Version:    1,
-			ExportedAt: time.Now().UTC(),
-			WAFConfig:  cs.Get(),
-			CSPConfig:  cspS.Get(),
-			Exclusions: exclusionExport.Exclusions,
+			Version:         1,
+			ExportedAt:      time.Now().UTC(),
+			WAFConfig:       cs.Get(),
+			CSPConfig:       cspS.Get(),
+			SecurityHeaders: secS.Get(),
+			Exclusions:      exclusionExport.Exclusions,
 			RateLimits: RateLimitBackup{
 				Rules:  rlExport.Rules,
 				Global: rlExport.Global,
@@ -69,6 +72,7 @@ func handleBackup(
 func handleRestore(
 	cs *ConfigStore,
 	cspS *CSPStore,
+	secS *SecurityHeaderStore,
 	es *ExclusionStore,
 	rs *RateLimitRuleStore,
 	ls *ManagedListStore,
@@ -104,7 +108,14 @@ func handleRestore(
 			results["csp_config"] = "restored"
 		}
 
-		// 3. Exclusions
+		// 3. Security Headers
+		if _, err := secS.Update(backup.SecurityHeaders); err != nil {
+			results["security_headers"] = "failed: " + err.Error()
+		} else {
+			results["security_headers"] = "restored"
+		}
+
+		// 4. Exclusions
 		if len(backup.Exclusions) == 0 {
 			results["exclusions"] = "skipped: no exclusions in backup"
 		} else {
@@ -123,7 +134,7 @@ func handleRestore(
 			}
 		}
 
-		// 4. Rate Limit Rules
+		// 5. Rate Limit Rules
 		if len(backup.RateLimits.Rules) == 0 {
 			results["rate_limits"] = "skipped: no rules in backup"
 		} else {
@@ -142,7 +153,7 @@ func handleRestore(
 			}
 		}
 
-		// 5. Managed Lists (ipsum lists are preserved by the store's Import method)
+		// 6. Managed Lists (ipsum lists are preserved by the store's Import method)
 		if len(backup.Lists) == 0 {
 			results["lists"] = "skipped: no lists in backup"
 		} else {

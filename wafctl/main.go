@@ -35,6 +35,7 @@ func runServe() int {
 	combinedAccessLog := envOr("WAF_COMBINED_ACCESS_LOG", "/var/log/combined-access.log")
 
 	cspFile := envOr("WAF_CSP_FILE", "/data/csp-config.json")
+	secHeadersFile := envOr("WAF_SECURITY_HEADERS_FILE", "/data/security-headers.json")
 
 	managedListsFile := envOr("WAF_MANAGED_LISTS_FILE", "/data/lists.json")
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
@@ -132,12 +133,13 @@ func runServe() int {
 	configStore := NewConfigStore(configFile)
 	rlRuleStore := NewRateLimitRuleStore(rateLimitFile)
 	cspStore := NewCSPStore(cspFile)
+	secHeaderStore := NewSecurityHeaderStore(secHeadersFile)
 	managedListStore := NewManagedListStore(managedListsFile, managedListsDir)
 
 	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
 	// stored state so a stack restart always picks up the latest generator output.
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
-	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, managedListStore, deployCfg)
+	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, secHeaderStore, managedListStore, deployCfg)
 
 	blocklistStore := NewBlocklistStore()
 
@@ -149,7 +151,7 @@ func runServe() int {
 	// After managed list sync, regenerate policy-rules.json so the plugin
 	// picks up updated IP lists, then reload Caddy.
 	blocklistStore.SetOnDeploy(func() error {
-		return deployAll(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg)
+		return deployAll(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, deployCfg)
 	})
 
 	// Populate in-memory IP set from existing managed lists (for Check API).
@@ -180,7 +182,7 @@ func runServe() int {
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore, rlRuleStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore, rlRuleStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore, rlRuleStore))
@@ -212,16 +214,16 @@ func runServe() int {
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, deployCfg))
 	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore, deployCfg))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, deployCfg))
 
 	// Rate Limit Rules (policy engine)
 	mux.HandleFunc("GET /api/rate-rules", handleListRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules", handleCreateRLRule(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rlRuleStore))
-	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, exclusionStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, exclusionStore, managedListStore, cspStore, secHeaderStore, deployCfg))
 	mux.HandleFunc("PUT /api/rate-rules/reorder", handleReorderRLRules(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))
@@ -243,8 +245,15 @@ func runServe() int {
 	// CSP (Content Security Policy)
 	mux.HandleFunc("GET /api/csp", handleGetCSP(cspStore))
 	mux.HandleFunc("PUT /api/csp", handleUpdateCSP(cspStore))
-	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, deployCfg))
+	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, secHeaderStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
 	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(cspStore, deployCfg))
+
+	// Security Headers
+	mux.HandleFunc("GET /api/security-headers", handleGetSecurityHeaders(secHeaderStore))
+	mux.HandleFunc("PUT /api/security-headers", handleUpdateSecurityHeaders(secHeaderStore))
+	mux.HandleFunc("GET /api/security-headers/profiles", handleListSecurityProfiles())
+	mux.HandleFunc("POST /api/security-headers/deploy", handleDeploySecurityHeaders(secHeaderStore, cspStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("GET /api/security-headers/preview", handlePreviewSecurityHeaders(secHeaderStore, deployCfg))
 
 	// Cloudflare trusted proxies
 	mux.HandleFunc("GET /api/cfproxy/stats", handleCFProxyStats(cfProxyStore))
@@ -265,8 +274,8 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
 	// Backup / Restore (unified export of all config stores)
-	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, exclusionStore, rlRuleStore, managedListStore))
-	mux.HandleFunc("POST /api/backup/restore", handleRestore(configStore, cspStore, exclusionStore, rlRuleStore, managedListStore))
+	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, rlRuleStore, managedListStore))
+	mux.HandleFunc("POST /api/backup/restore", handleRestore(configStore, cspStore, secHeaderStore, exclusionStore, rlRuleStore, managedListStore))
 
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")

@@ -10,7 +10,7 @@ import (
 
 // --- Handlers: Health, Summary, Events, Services ---
 
-func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore) http.HandlerFunc {
+func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
@@ -25,9 +25,10 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 			"exclusions": map[string]any{
 				"count": len(exclusionStore.List()),
 			},
-			"blocklist": blocklistStore.Stats(),
-			"cfproxy":   cfProxyStore.Stats(),
-			"csp":       cspStore.StoreInfo(),
+			"blocklist":        blocklistStore.Stats(),
+			"cfproxy":          cfProxyStore.Stats(),
+			"csp":              cspStore.StoreInfo(),
+			"security_headers": secStore.StoreInfo(),
 		}
 
 		writeJSON(w, http.StatusOK, HealthResponse{

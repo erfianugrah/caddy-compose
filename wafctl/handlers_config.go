@@ -47,7 +47,7 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		allExclusions := es.EnabledExclusions()
@@ -67,7 +67,8 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRule
 			rlRules := rs.EnabledRules()
 			rlGlobal := rs.GetGlobal()
 			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
+			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
 			if err == nil {
 				resp["policy_rules"] = json.RawMessage(policyData)
 			}
@@ -111,7 +112,7 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployC
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -159,7 +160,8 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 			rlRules := rs.EnabledRules()
 			rlGlobal := rs.GetGlobal()
 			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap)
+			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",

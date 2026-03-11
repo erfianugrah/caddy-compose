@@ -110,7 +110,7 @@ func TestDeployEndpoint(t *testing.T) {
 	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), nil, nil, deployCfg))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
 	rec := httptest.NewRecorder()
@@ -165,7 +165,7 @@ func TestDeployEndpointReloadFail(t *testing.T) {
 	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), nil, nil, deployCfg))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
 	rec := httptest.NewRecorder()
@@ -431,7 +431,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	mux.HandleFunc("GET /api/exclusions", handleListExclusions(exclusionStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), nil, nil, deployCfg))
 
 	// Step 1: Create a "block bad IP" exclusion.
 	exclusionJSON := `{
@@ -586,7 +586,7 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 	// Change settings to detection_only with paranoia 3.
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rateLimitStore, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), nil, nil, deployCfg))
 
 	configJSON := `{
 		"defaults": {
@@ -668,7 +668,7 @@ func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/config/deploy",
 		nil)
 	w := httptest.NewRecorder()
-	handleDeploy(configStore, exclusionStore, rateLimitStore, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), deployCfg)(w, req)
+	handleDeploy(configStore, exclusionStore, rateLimitStore, NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), t.TempDir()), nil, nil, deployCfg)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("deploy should return 200 even when reload fails, got %d", w.Code)

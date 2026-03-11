@@ -173,7 +173,9 @@ wafctl tag format: simple semver (e.g. `2.1.0`).
 - **Shared utilities**: `util.go` (~85 lines) — `envOr()`, `atomicWriteFile()` (shared across stores)
 - **Policy engine generator**: `policy_generator.go` (~339 lines) — PolicyRulesFile/PolicyRule/PolicyCondition types, PolicyRateLimitConfig/PolicyRateLimitGlobalConfig, `GeneratePolicyRules()`, `GeneratePolicyRulesWithRL()`, `FilterSecRuleExclusions()`, `IsPolicyEngineType()`, `SplitHoneypotPaths()`, `BuildServiceFQDNMap()`, `resolveServiceName()`
 - **Managed lists**: `managed_lists.go` (~582 lines) — ManagedListStore CRUD, persistence, validation; `models_lists.go` (~69 lines) — ManagedList types; `handlers_lists.go` (~160 lines) — HTTP handlers
-- **Domain stores**: `rl_rules.go` (564), `csp.go` (558), `csp_generator.go`, `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
+- **Security headers**: `security_headers.go` (~370 lines) — SecurityHeaderStore, 4 profiles (strict/default/relaxed/api), per-service overrides with profile inheritance, resolution, validation, HTTP handlers
+- **Backup/Restore**: `backup.go` (~210 lines) — FullBackup envelope, handleBackup/handleRestore for all 6 config stores
+- **Domain stores**: `rl_rules.go` (564), `csp.go` (~700 lines, includes functions moved from deleted `csp_generator.go`), `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
 ## Coraza Rule ID Namespaces
 
@@ -458,6 +460,7 @@ and generates one-click rule creation from recommendations.
 - `Sparkline` — shared SVG sparkline chart (used by PolicyEngine, RateLimitsPanel)
 - `SortableTableRow` — dnd-kit sortable table row (used by PolicyEngine, RateLimitsPanel)
 - `StatCard` — animated stat card with `useCountUp` hook (used by OverviewDashboard)
+- `SecurityHeadersPanel` — security headers management: profile selector (strict/default/relaxed/api/custom), per-service overrides with profile inheritance, editable headers table, preview dialog, export/import
 
 ### Component Subdirectories
 
@@ -486,7 +489,7 @@ Components over ~500 lines are split into feature subdirectories following the `
 
 ### Dashboard Pages (file-based routing)
 
-`/` · `/analytics` · `/csp` · `/events` · `/lists` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
+`/` · `/analytics` · `/csp` · `/events` · `/headers` · `/lists` · `/logs` · `/policy` · `/rate-limits` · `/services` · `/settings`
 
 ### Static MPA Routing
 
@@ -511,8 +514,7 @@ JSON store → Caddy config generator → file deploy → Caddy reload.
 
 ### Architecture
 
-- **Store**: `csp.go` — `CSPStore` with `sync.RWMutex`, CRUD, validation, header builder, merge logic
-- **Generator**: `csp_generator.go` — translates config into per-service `header` directives in `.caddy` files
+- **Store**: `csp.go` (~700 lines) — `CSPStore` with `sync.RWMutex`, CRUD, validation, header builder, merge logic, service discovery via `discoverCaddyfileServices()`, CSP deploy (policy engine only)
 - **Handlers**: 4 HTTP endpoints under `/api/csp` (get, update, deploy, preview)
 - **CLI**: `wafctl csp` subcommands (get, set, deploy, preview)
 - **Frontend**: `CSPPanel.tsx` (~420 lines) orchestrator + `csp/` subdir (constants, CSPSourceInput, DirectiveEditor, PreviewPanel)
@@ -581,11 +583,8 @@ Non-empty override directive slices replace the base; empty slices keep the base
 | Aspect | Pattern |
 |--------|---------|
 | Store file | `/data/csp-config.json` (`WAF_CSP_FILE`) |
-| Output dir (wafctl) | `/data/csp/` (`WAF_CSP_DIR`) |
-| Output dir (Caddy) | `/data/caddy/csp/` |
-| File naming | `<service>_csp.caddy` |
-| Caddyfile import | `import /data/caddy/csp/<svc>_csp*.caddy` |
-| Import position | After `security_headers`, before rate limit imports |
+| Delivery | Policy engine plugin `response_headers.csp` (no `.caddy` files) |
+| Deploy | `POST /api/csp/deploy` writes to `policy-rules.json` (requires `WAF_POLICY_ENGINE_ENABLED=true`) |
 
 ### Nonce Limitations
 
@@ -713,6 +712,7 @@ cards dynamically instead of hardcoded honeypot/scanner/ipsum counters.
 | RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
 | Managed Lists | `GET\|POST /api/lists`, `GET\|PUT\|DELETE /api/lists/{id}` |
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
+| Security Headers | `GET\|PUT /api/security-headers`, `POST /api/security-headers/deploy`, `GET /api/security-headers/preview`, `GET /api/security-headers/profiles` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
 | CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
@@ -932,8 +932,8 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1375 tests across 24 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `testhelpers_test.go`
+### Go (1425 tests across 26 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `generator_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_generator_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `security_headers_test.go`, `backup_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -941,10 +941,10 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (312 tests across 14 files)
+### Frontend (332 tests across 16 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (33), `rate-limits.test.ts` (31), `managed-lists.test.ts` (14), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `config.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
+- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (33), `rate-limits.test.ts` (31), `managed-lists.test.ts` (14), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `security-headers.test.ts` (11), `config.test.ts` (9), `backup.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
 - Component tests: `DashboardFilterBar.test.ts` (63)
 - Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (38), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
 
@@ -1118,6 +1118,7 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_BLOCKLIST_REFRESH_HOUR` (default `6`) — UTC hour (0–23) for daily IPsum blocklist refresh
 - `WAF_MANAGED_LISTS_FILE` (default `/data/lists.json`) — managed lists store path
 - `WAF_MANAGED_LISTS_DIR` (default `/data/lists`) — output directory for managed list files (one `.list` file per list)
+- `WAF_SECURITY_HEADERS_FILE` (default `/data/security-headers.json`) — security headers configuration store path
 - `WAF_POLICY_ENGINE_ENABLED` (default `false`) — enables policy engine plugin integration; when `true`, `allow`/`block`/`honeypot` exclusions are routed to the Caddy plugin instead of Coraza SecRules
 - `WAF_POLICY_RULES_FILE` (default `/data/coraza/policy-rules.json`) — output path for the policy engine plugin's rules JSON file
 

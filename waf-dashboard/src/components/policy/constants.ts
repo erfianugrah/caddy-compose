@@ -19,16 +19,16 @@ export const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; descrip
   { value: "block", label: "Block", description: "Deny matching requests", group: "quick" },
   { value: "skip_rule", label: "Skip / Bypass", description: "Skip specific CRS rules", group: "quick" },
   { value: "anomaly", label: "Anomaly Score", description: "Add anomaly score points for heuristic signals", group: "quick" },
-  // Configure-time advanced types
-  { value: "SecRuleRemoveById", label: "Remove entire rule", description: "SecRuleRemoveById — removes a rule globally", group: "advanced" },
-  { value: "SecRuleRemoveByTag", label: "Remove rule category", description: "SecRuleRemoveByTag — removes all rules in a tag category", group: "advanced" },
-  { value: "SecRuleUpdateTargetById", label: "Exclude variable from rule", description: "SecRuleUpdateTargetById — excludes a specific variable from a rule", group: "advanced" },
-  { value: "SecRuleUpdateTargetByTag", label: "Exclude variable from category", description: "SecRuleUpdateTargetByTag — excludes a variable from all rules in a tag", group: "advanced" },
-  // Runtime ctl: types
-  { value: "ctl:ruleRemoveById", label: "Remove rule for URI", description: "Runtime ctl:ruleRemoveById — removes a rule only for matching requests", group: "runtime" },
-  { value: "ctl:ruleRemoveByTag", label: "Remove category for URI", description: "Runtime ctl:ruleRemoveByTag — removes a tag category for matching requests", group: "runtime" },
-  { value: "ctl:ruleRemoveTargetById", label: "Exclude variable for URI", description: "Runtime ctl:ruleRemoveTargetById — excludes a variable for matching requests", group: "runtime" },
-  { value: "ctl:ruleRemoveTargetByTag", label: "Exclude variable from category for URI", description: "Runtime ctl:ruleRemoveTargetByTag — surgical variable exclusion from a tag category for matching requests", group: "runtime" },
+  // Global exclusions — applied at deploy time to all requests unconditionally
+  { value: "SecRuleRemoveById", label: "Disable rule globally", description: "Completely removes a rule by ID — it never runs for any request", group: "advanced" },
+  { value: "SecRuleRemoveByTag", label: "Disable rule category globally", description: "Removes all rules in a category (e.g., all SQLi rules) — they never run", group: "advanced" },
+  { value: "SecRuleUpdateTargetById", label: "Ignore a field in a rule", description: "Tells a specific rule to stop inspecting a field (e.g., skip checking ARGS:token)", group: "advanced" },
+  { value: "SecRuleUpdateTargetByTag", label: "Ignore a field in a category", description: "Tells all rules in a category to stop inspecting a field", group: "advanced" },
+  // Conditional exclusions — only applied when a request matches your conditions
+  { value: "ctl:ruleRemoveById", label: "Disable rule for matching requests", description: "Skips a rule only when conditions match (e.g., disable SQLi check on /api/webhook)", group: "runtime" },
+  { value: "ctl:ruleRemoveByTag", label: "Disable category for matching requests", description: "Skips all rules in a category only when conditions match", group: "runtime" },
+  { value: "ctl:ruleRemoveTargetById", label: "Ignore a field for matching requests", description: "Tells a rule to skip a specific field only when conditions match", group: "runtime" },
+  { value: "ctl:ruleRemoveTargetByTag", label: "Ignore a field in category for matching requests", description: "Tells all rules in a category to skip a field only when conditions match", group: "runtime" },
 ];
 
 // ─── CRS Rule Tags ──────────────────────────────────────────────────
