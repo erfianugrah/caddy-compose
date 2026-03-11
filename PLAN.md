@@ -542,7 +542,7 @@ Transform functions are resolved at compile time (rule load) — per-request cos
 
 ---
 
-## v0.9.0 — Multi-Variable Inspection + Aho-Corasick
+## v0.9.0 — Multi-Variable Inspection + Aho-Corasick (COMPLETED)
 
 ### Problem
 
@@ -657,15 +657,18 @@ CRS equivalent: `&ARGS @gt 255` (max_num_args).
 
 ### Tasks
 
-- [ ] Implement aggregate field extraction (`all_args`, `all_headers`, `all_cookies`, etc.)
-- [ ] Implement multi-value matching loop in `matchCondition()`
-- [ ] Evaluate Aho-Corasick library options (zero-dep vs. external)
-- [ ] Implement `phrase_match` operator with compiled automaton
-- [ ] Implement numeric comparison operators (`gt`, `ge`, `lt`, `le`)
-- [ ] Implement `count:` pseudo-field
-- [ ] Implement `length` transform
-- [ ] Tests: multi-field iteration, phrase_match compilation and matching, numeric operators, count field
-- [ ] Load testing: phrase_match with 1000+ patterns against realistic request data
+- [x] Implement aggregate field extraction (`all_args`, `all_headers`, `all_cookies`, etc.) — 7 fields: `all_args`, `all_args_values`, `all_args_names`, `all_headers`, `all_headers_names`, `all_cookies`, `all_cookies_names`
+- [x] Implement multi-value matching loop in `matchCondition()` — OR semantics (match if ANY value matches), negate as NOT-ANY = ALL-NOT
+- [x] Evaluate Aho-Corasick library options (zero-dep vs. external) — hand-rolled zero-dep in `ahocorasick.go` (~163 lines)
+- [x] Implement `phrase_match` operator with compiled automaton — works on all string-searchable fields (aggregates + singles)
+- [x] Implement numeric comparison operators (`gt`, `ge`, `lt`, `le`) — named fields use `Name:number` format
+- [x] Implement `count:` pseudo-field — returns `strconv.Itoa(count)` of aggregate field values
+- [ ] Implement `length` transform (deferred — not needed for v0.9.0 CRS porting)
+- [x] Tests: multi-field iteration, phrase_match compilation and matching, numeric operators, count field — 318 plugin tests, 15 AC-specific tests + 3 benchmarks
+- [x] Load testing: phrase_match with 1000+ patterns against realistic request data — 3.7µs per search, zero allocations
+- [x] wafctl backend: validation for aggregate fields, phrase_match, numeric ops, count: prefix, ListItems on Condition struct
+- [x] E2e tests: 5 new test functions (22 subtests) covering phrase_match, aggregates, count, numeric ops
+- [x] Deployed: plugin v0.9.0, caddy 3.6.0-2.11.1, wafctl 2.7.0
 
 ---
 
@@ -829,11 +832,11 @@ The policy engine runs **alongside** Coraza during the entire transition. Each p
 
 | Phase | Policy Engine Handles | Coraza Still Handles |
 |-------|----------------------|---------------------|
-| v0.6.x (current) | block, allow, honeypot, rate_limit | All CRS detection + scoring |
+| v0.6.x | block, allow, honeypot, rate_limit | All CRS detection + scoring |
 | v0.7.0 | + CSP headers, security headers | CRS detection + scoring |
 | v0.8.0 | + anomaly scoring, heuristic bot detect rules | CRS detection (score comparison possible) |
 | v0.8.x | + transform-resistant detection | CRS detection (for categories not yet ported) |
-| v0.9.0 | + multi-variable, phrase matching, protocol enforcement | Remaining CRS categories |
+| v0.9.0 (current) | + multi-variable, phrase matching, numeric ops, count: | Remaining CRS categories |
 | v0.9.x | + LFI, RCE, injection categories | XSS, SQLi (hardest categories) |
 | v1.0 | + XSS, SQLi with libinjection | Nothing — Coraza can be removed |
 
