@@ -43,6 +43,9 @@ func runServe() int {
 	policyEngineEnabled := envOr("WAF_POLICY_ENGINE_ENABLED", "false") == "true"
 	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/coraza/policy-rules.json")
 
+	defaultRulesFile := envOr("WAF_DEFAULT_RULES_FILE", "/etc/caddy/coraza/default-rules.json")
+	defaultRulesOverridesFile := envOr("WAF_DEFAULT_RULES_OVERRIDES_FILE", "/data/default-rule-overrides.json")
+
 	deployCfg := DeployConfig{
 		CorazaDir:           envOr("WAF_CORAZA_DIR", "/data/coraza"),
 		RateLimitDir:        envOr("WAF_RATELIMIT_DIR", "/data/rl"),
@@ -96,8 +99,8 @@ func runServe() int {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled)
+	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v default_rules=%s",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled, defaultRulesFile)
 
 	var geoAPICfg *GeoIPAPIConfig
 	if geoAPIURL != "" {
@@ -135,11 +138,12 @@ func runServe() int {
 	cspStore := NewCSPStore(cspFile)
 	secHeaderStore := NewSecurityHeaderStore(secHeadersFile)
 	managedListStore := NewManagedListStore(managedListsFile, managedListsDir)
+	defaultRuleStore := NewDefaultRuleStore(defaultRulesFile, defaultRulesOverridesFile)
 
 	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
 	// stored state so a stack restart always picks up the latest generator output.
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
-	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, secHeaderStore, managedListStore, deployCfg)
+	generateOnBoot(configStore, exclusionStore, rlRuleStore, cspStore, secHeaderStore, managedListStore, defaultRuleStore, deployCfg)
 
 	blocklistStore := NewBlocklistStore()
 
@@ -151,7 +155,7 @@ func runServe() int {
 	// After managed list sync, regenerate policy-rules.json so the plugin
 	// picks up updated IP lists, then reload Caddy.
 	blocklistStore.SetOnDeploy(func() error {
-		return deployAll(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, deployCfg)
+		return deployAll(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg)
 	})
 
 	// Populate in-memory IP set from existing managed lists (for Check API).
@@ -214,16 +218,16 @@ func runServe() int {
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, deployCfg))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
 	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore, deployCfg))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
 
 	// Rate Limit Rules (policy engine)
 	mux.HandleFunc("GET /api/rate-rules", handleListRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules", handleCreateRLRule(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/export", handleExportRLRules(rlRuleStore))
 	mux.HandleFunc("POST /api/rate-rules/import", handleImportRLRules(rlRuleStore))
-	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, exclusionStore, configStore, managedListStore, cspStore, secHeaderStore, deployCfg))
+	mux.HandleFunc("POST /api/rate-rules/deploy", handleDeployRLRules(rlRuleStore, exclusionStore, configStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
 	mux.HandleFunc("PUT /api/rate-rules/reorder", handleReorderRLRules(rlRuleStore))
 	mux.HandleFunc("GET /api/rate-rules/global", handleGetRLGlobal(rlRuleStore))
 	mux.HandleFunc("PUT /api/rate-rules/global", handleUpdateRLGlobal(rlRuleStore))
@@ -245,14 +249,14 @@ func runServe() int {
 	// CSP (Content Security Policy)
 	mux.HandleFunc("GET /api/csp", handleGetCSP(cspStore))
 	mux.HandleFunc("PUT /api/csp", handleUpdateCSP(cspStore))
-	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, secHeaderStore, configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, secHeaderStore, configStore, exclusionStore, rlRuleStore, managedListStore, defaultRuleStore, deployCfg))
 	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(cspStore, deployCfg))
 
 	// Security Headers
 	mux.HandleFunc("GET /api/security-headers", handleGetSecurityHeaders(secHeaderStore))
 	mux.HandleFunc("PUT /api/security-headers", handleUpdateSecurityHeaders(secHeaderStore))
 	mux.HandleFunc("GET /api/security-headers/profiles", handleListSecurityProfiles())
-	mux.HandleFunc("POST /api/security-headers/deploy", handleDeploySecurityHeaders(secHeaderStore, cspStore, configStore, exclusionStore, rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/security-headers/deploy", handleDeploySecurityHeaders(secHeaderStore, cspStore, configStore, exclusionStore, rlRuleStore, managedListStore, defaultRuleStore, deployCfg))
 	mux.HandleFunc("GET /api/security-headers/preview", handlePreviewSecurityHeaders(secHeaderStore, deployCfg))
 
 	// Cloudflare trusted proxies
@@ -268,6 +272,12 @@ func runServe() int {
 	mux.HandleFunc("PUT /api/lists/{id}", handleUpdateManagedList(managedListStore))
 	mux.HandleFunc("DELETE /api/lists/{id}", handleDeleteManagedList(managedListStore))
 	mux.HandleFunc("POST /api/lists/{id}/refresh", handleRefreshManagedList(managedListStore))
+
+	// Default Rules (baked-in rules with user overrides)
+	mux.HandleFunc("GET /api/default-rules", handleListDefaultRules(defaultRuleStore))
+	mux.HandleFunc("GET /api/default-rules/{id}", handleGetDefaultRule(defaultRuleStore))
+	mux.HandleFunc("PUT /api/default-rules/{id}", handleOverrideDefaultRule(defaultRuleStore))
+	mux.HandleFunc("DELETE /api/default-rules/{id}/override", handleResetDefaultRule(defaultRuleStore))
 
 	// General Logs (all access log entries)
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))

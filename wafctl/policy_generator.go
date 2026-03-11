@@ -258,6 +258,48 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 	return json.MarshalIndent(file, "", "  ")
 }
 
+// ApplyDefaultRuleOverrides injects overridden default rules into the
+// PolicyRulesFile and sets DisabledDefaultRules. Call this after
+// GeneratePolicyRulesWithRL and before writing to disk.
+//
+// Overridden defaults are appended to the rules array so the plugin's
+// merge-by-ID logic replaces the baked defaults. Disabled defaults are
+// listed in DisabledDefaultRules so the plugin filters them out.
+func ApplyDefaultRuleOverrides(data []byte, ds *DefaultRuleStore) ([]byte, error) {
+	if ds == nil {
+		return data, nil
+	}
+
+	overridden := ds.GetOverriddenRules()
+	disabled := ds.GetDisabledIDs()
+
+	// Fast path: no overrides, no changes needed.
+	if len(overridden) == 0 && len(disabled) == 0 {
+		return data, nil
+	}
+
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil, err
+	}
+
+	// Append overridden rules (plugin replaces defaults by matching ID).
+	// Only add rules that are still enabled — disabled ones go to the
+	// DisabledDefaultRules list instead.
+	for _, r := range overridden {
+		if r.Enabled {
+			file.Rules = append(file.Rules, r)
+		}
+	}
+
+	// Set disabled default rule IDs.
+	if len(disabled) > 0 {
+		file.DisabledDefaultRules = disabled
+	}
+
+	return json.MarshalIndent(file, "", "  ")
+}
+
 // convertConditions translates wafctl Conditions to PolicyConditions,
 // resolving managed list references along the way.
 func convertConditions(conditions []Condition, listStore *ManagedListStore) []PolicyCondition {

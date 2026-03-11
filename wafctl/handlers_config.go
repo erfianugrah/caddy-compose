@@ -47,7 +47,7 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		cfg := cs.Get()
 		allExclusions := es.EnabledExclusions()
@@ -71,7 +71,10 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRule
 			wafCfg := BuildPolicyWafConfig(cs, svcMap)
 			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 			if err == nil {
-				resp["policy_rules"] = json.RawMessage(policyData)
+				policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+				if err == nil {
+					resp["policy_rules"] = json.RawMessage(policyData)
+				}
 			}
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -113,7 +116,7 @@ func handleValidateConfig(cs *ConfigStore, es *ExclusionStore, deployCfg DeployC
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -167,6 +170,14 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",
+					Details: err.Error(),
+				})
+				return
+			}
+			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to apply default rule overrides",
 					Details: err.Error(),
 				})
 				return

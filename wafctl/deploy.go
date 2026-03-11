@@ -96,7 +96,7 @@ func ensureCorazaDir(dir string) error {
 // This ensures a stack restart always picks up the latest generator output
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ls *ManagedListStore, deployCfg DeployConfig) {
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
 	// WAF config: generate exclusion rules + WAF settings.
 	cfg := cs.Get()
 	allExclusions := es.EnabledExclusions()
@@ -134,17 +134,23 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
-		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-			log.Printf("[boot] warning: failed to write policy rules file: %v", err)
 		} else {
-			policyCount := 0
-			for _, e := range allExclusions {
-				if IsPolicyEngineType(e.Type) {
-					policyCount++
+			// Apply default rule overrides (disabled IDs + field overrides).
+			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+			if err != nil {
+				log.Printf("[boot] warning: failed to apply default rule overrides: %v", err)
+			} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+				log.Printf("[boot] warning: failed to write policy rules file: %v", err)
+			} else {
+				policyCount := 0
+				for _, e := range allExclusions {
+					if IsPolicyEngineType(e.Type) {
+						policyCount++
+					}
 				}
+				log.Printf("[boot] regenerated policy rules (%d WAF + %d RL rules) → %s",
+					policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 			}
-			log.Printf("[boot] regenerated policy rules (%d WAF + %d RL rules) → %s",
-				policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 		}
 	}
 
@@ -177,7 +183,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 // This is the programmatic equivalent of POST /api/config/deploy, used by
 // background processes (e.g. blocklist refresh) that need to trigger a full
 // regeneration + reload cycle after updating managed lists.
-func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) error {
+func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) error {
 	deployMu.Lock()
 	defer deployMu.Unlock()
 
@@ -203,6 +209,10 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			return fmt.Errorf("generating policy rules: %w", err)
+		}
+		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+		if err != nil {
+			return fmt.Errorf("applying default rule overrides: %w", err)
 		}
 		if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
 			return fmt.Errorf("writing policy rules file: %w", err)

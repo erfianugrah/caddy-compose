@@ -434,7 +434,7 @@ type CSPDeployResponse struct {
 }
 
 // handleDeployCSP generates CSP config files and reloads Caddy.
-func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -452,6 +452,14 @@ func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigS
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",
+					Details: err.Error(),
+				})
+				return
+			}
+			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to apply default rule overrides",
 					Details: err.Error(),
 				})
 				return

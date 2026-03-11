@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.8.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.9.0
+CADDY_IMAGE   ?= <your-registry>/caddy:3.9.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.10.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -158,7 +158,7 @@ Image tags must stay in sync across five files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.8.0-2.11.1`), wafctl is plain semver (e.g. `2.9.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.9.0-2.11.1`), wafctl is plain semver (e.g. `2.10.0`).
 
 ## WAF configuration
 

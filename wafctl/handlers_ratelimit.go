@@ -86,7 +86,7 @@ func handleDeleteRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 	}
 }
 
-func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -108,6 +108,14 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigS
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 					Error:   "failed to generate policy rules",
+					Details: err.Error(),
+				})
+				return
+			}
+			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+					Error:   "failed to apply default rule overrides",
 					Details: err.Error(),
 				})
 				return

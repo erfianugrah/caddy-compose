@@ -431,7 +431,7 @@ type SecurityHeaderDeployResponse struct {
 }
 
 // handleDeploySecurityHeaders generates security header config and triggers policy engine hot-reload.
-func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -453,6 +453,14 @@ func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore,
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",
+				Details: err.Error(),
+			})
+			return
+		}
+		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to apply default rule overrides",
 				Details: err.Error(),
 			})
 			return
