@@ -2781,3 +2781,137 @@ func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
 	}
 	t.Logf("found %d detect rules in store", detectCount)
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  Transform Functions (v0.8.1)
+// ════════════════════════════════════════════════════════════════════
+
+func TestPolicyEngineTransforms(t *testing.T) {
+	// Test transform functions end-to-end:
+	// 1. Create a block rule with transforms: ["urlDecode", "lowercase"]
+	//    that blocks requests containing "/admin" in the path after decoding.
+	// 2. Deploy to policy engine.
+	// 3. Send a URL-encoded path like /%41dmin — after urlDecode+lowercase it
+	//    becomes "/admin" and should be blocked.
+	// 4. Verify the block triggers.
+	// 5. Send a normal request to verify pass-through.
+
+	// Step 1: Create block rule with transforms.
+	blockPayload := map[string]any{
+		"name":        "e2e-transform-block-admin",
+		"type":        "block",
+		"description": "Block /admin after URL decode + lowercase",
+		"enabled":     true,
+		"conditions": []map[string]any{
+			{
+				"field":      "path",
+				"operator":   "contains",
+				"value":      "/admin",
+				"transforms": []string{"urlDecode", "lowercase"},
+			},
+		},
+		"tags": []string{"e2e-transforms"},
+	}
+	resp1, body1 := httpPost(t, wafctlURL+"/api/exclusions", blockPayload)
+	assertCode(t, "create block rule with transforms", 201, resp1)
+	ruleID := mustGetID(t, body1)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+ruleID) })
+
+	// Step 2: Deploy.
+	time.Sleep(2 * time.Second)
+	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy", deployBody, "status", "deployed")
+
+	// Wait for plugin hot-reload.
+	time.Sleep(8 * time.Second)
+
+	// Step 3: Send URL-encoded path — %41 = 'A', so /%41dmin → /Admin → /admin
+	t.Run("url-encoded path blocked after transform", func(t *testing.T) {
+		resp, body := httpGet(t, caddyURL+"/%41dmin")
+		if resp.StatusCode != 403 {
+			t.Errorf("expected 403 for /%s, got %d; body=%.200s",
+				"%41dmin", resp.StatusCode, string(body))
+		}
+		if !headerContains(resp, "X-Blocked-By", "policy-engine") {
+			t.Error("expected X-Blocked-By: policy-engine header")
+		}
+		t.Logf("URL-encoded path correctly blocked: %d", resp.StatusCode)
+	})
+
+	// Step 4: Mixed case — /ADMIN should also match after lowercase transform.
+	t.Run("mixed-case path blocked after lowercase", func(t *testing.T) {
+		resp, body := httpGet(t, caddyURL+"/ADMIN")
+		if resp.StatusCode != 403 {
+			t.Errorf("expected 403 for /ADMIN, got %d; body=%.200s",
+				resp.StatusCode, string(body))
+		}
+		t.Logf("Mixed-case path correctly blocked: %d", resp.StatusCode)
+	})
+
+	// Step 5: Double-encoded — %2541dmin → after urlDecode → %41dmin → contains
+	// "/admin"? No — urlDecode is applied once, so %25 → '%', result is "%41dmin".
+	// This should NOT match "/admin" — tests that transforms don't over-decode.
+	t.Run("double-encoded path passes — no recursive decode", func(t *testing.T) {
+		resp, _ := httpGet(t, caddyURL+"/%2541dmin")
+		if resp.StatusCode == 403 {
+			t.Error("double-encoded path should NOT be blocked (single urlDecode)")
+		}
+		t.Logf("Double-encoded path correctly passed: %d", resp.StatusCode)
+	})
+
+	// Step 6: Normal path should pass through.
+	t.Run("normal request passes", func(t *testing.T) {
+		resp, _ := httpGet(t, caddyURL+"/get")
+		if resp.StatusCode != 200 {
+			t.Errorf("expected 200 for /get, got %d", resp.StatusCode)
+		}
+	})
+}
+
+func TestPolicyEngineTransformValidation(t *testing.T) {
+	// Test that wafctl rejects unknown transform names via the API.
+
+	t.Run("invalid transform name rejected", func(t *testing.T) {
+		payload := map[string]any{
+			"name":    "e2e-bad-transform",
+			"type":    "block",
+			"enabled": true,
+			"conditions": []map[string]any{
+				{
+					"field":      "path",
+					"operator":   "eq",
+					"value":      "/test",
+					"transforms": []string{"noSuchTransform"},
+				},
+			},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+		if resp.StatusCode != 400 {
+			t.Errorf("expected 400 for invalid transform, got %d; body=%s",
+				resp.StatusCode, string(body))
+		}
+		t.Logf("Invalid transform correctly rejected: %d", resp.StatusCode)
+	})
+
+	t.Run("valid transforms accepted", func(t *testing.T) {
+		payload := map[string]any{
+			"name":    "e2e-valid-transforms",
+			"type":    "block",
+			"enabled": true,
+			"conditions": []map[string]any{
+				{
+					"field":      "path",
+					"operator":   "contains",
+					"value":      "/test",
+					"transforms": []string{"lowercase", "urlDecode", "normalizePath"},
+				},
+			},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
+		assertCode(t, "create with valid transforms", 201, resp)
+		id := mustGetID(t, body)
+		cleanup(t, wafctlURL+"/api/exclusions/"+id)
+		t.Log("Valid transforms accepted")
+	})
+}
