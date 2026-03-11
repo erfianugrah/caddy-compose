@@ -99,6 +99,12 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 				return fmt.Errorf("condition[%d]: invalid regex %q: %v", i, c.Value, err)
 			}
 		}
+		// Validate transforms — must be known names from the policy engine plugin.
+		for _, t := range c.Transforms {
+			if !validTransforms[t] {
+				return fmt.Errorf("condition[%d]: unknown transform %q", i, t)
+			}
+		}
 		// Reject control characters in condition values.
 		if strings.ContainsAny(c.Value, "\n\r") {
 			return fmt.Errorf("condition[%d]: value must not contain newlines", i)

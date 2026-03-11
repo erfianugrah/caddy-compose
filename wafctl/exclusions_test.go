@@ -1678,3 +1678,230 @@ func TestExclusionStore_TagsExportImport(t *testing.T) {
 	}
 	t.Error("imported rule not found")
 }
+
+// --- Transform Validation Tests ---
+
+func TestTransformValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		conds   []Condition
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "no transforms",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "single valid transform",
+			conds: []Condition{
+				{Field: "path", Operator: "contains", Value: "admin", Transforms: []string{"lowercase"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple valid transforms",
+			conds: []Condition{
+				{Field: "user_agent", Operator: "regex", Value: "bot", Transforms: []string{"lowercase", "urlDecode", "htmlEntityDecode"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "all phase 1 transforms",
+			conds: []Condition{
+				{Field: "path", Operator: "contains", Value: "test", Transforms: []string{
+					"lowercase", "urlDecode", "urlDecodeUni", "htmlEntityDecode",
+					"normalizePath", "normalizePathWin", "removeNulls",
+					"compressWhitespace", "removeWhitespace",
+				}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "all phase 2 transforms",
+			conds: []Condition{
+				{Field: "body", Operator: "contains", Value: "test", Transforms: []string{
+					"base64Decode", "hexDecode", "jsDecode", "cssDecode",
+					"utf8toUnicode", "removeComments", "trim", "length",
+				}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "unknown transform",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test", Transforms: []string{"noSuchTransform"}},
+			},
+			wantErr: true,
+			errMsg:  `unknown transform "noSuchTransform"`,
+		},
+		{
+			name: "valid then invalid transform",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test", Transforms: []string{"lowercase", "bogus"}},
+			},
+			wantErr: true,
+			errMsg:  `unknown transform "bogus"`,
+		},
+		{
+			name: "empty string transform",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test", Transforms: []string{""}},
+			},
+			wantErr: true,
+			errMsg:  `unknown transform ""`,
+		},
+		{
+			name: "case sensitive transform name",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test", Transforms: []string{"Lowercase"}},
+			},
+			wantErr: true,
+			errMsg:  `unknown transform "Lowercase"`,
+		},
+		{
+			name: "transform on second condition only",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test"},
+				{Field: "user_agent", Operator: "contains", Value: "bot", Transforms: []string{"lowercase"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid transform on second condition",
+			conds: []Condition{
+				{Field: "path", Operator: "eq", Value: "/test", Transforms: []string{"lowercase"}},
+				{Field: "user_agent", Operator: "contains", Value: "bot", Transforms: []string{"bad"}},
+			},
+			wantErr: true,
+			errMsg:  `condition[1]: unknown transform "bad"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConditions(tt.conds, nil)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateConditions() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error = %q, want substring %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateExclusion_WithTransforms(t *testing.T) {
+	tests := []struct {
+		name    string
+		exc     RuleExclusion
+		wantErr bool
+	}{
+		{
+			name: "block with transforms",
+			exc: RuleExclusion{
+				Name: "test", Type: "block",
+				Conditions: []Condition{
+					{Field: "path", Operator: "contains", Value: "/admin", Transforms: []string{"lowercase", "urlDecode"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "allow with transforms",
+			exc: RuleExclusion{
+				Name: "test", Type: "allow",
+				Conditions: []Condition{
+					{Field: "user_agent", Operator: "eq", Value: "goodbot", Transforms: []string{"lowercase"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "detect with transforms",
+			exc: RuleExclusion{
+				Name: "test", Type: "detect", Severity: "WARNING",
+				Conditions: []Condition{
+					{Field: "header", Operator: "eq", Value: "Accept:", Transforms: []string{"trim"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "anomaly with transforms",
+			exc: RuleExclusion{
+				Name: "test", Type: "anomaly", AnomalyScore: 3,
+				Conditions: []Condition{
+					{Field: "path", Operator: "regex", Value: "(?i)\\.(php|asp)", Transforms: []string{"urlDecode", "normalizePath"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "block with invalid transform rejected",
+			exc: RuleExclusion{
+				Name: "test", Type: "block",
+				Conditions: []Condition{
+					{Field: "path", Operator: "eq", Value: "/test", Transforms: []string{"INVALID"}},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "skip_rule with transforms",
+			exc: RuleExclusion{
+				Name: "test", Type: "skip_rule", RuleID: "920420",
+				Conditions: []Condition{
+					{Field: "path", Operator: "eq", Value: "/api", Transforms: []string{"lowercase"}},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateExclusion(tt.exc)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateExclusion() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestTransformPassthroughInPolicyGenerator(t *testing.T) {
+	conditions := []Condition{
+		{Field: "path", Operator: "contains", Value: "/admin", Transforms: []string{"lowercase", "urlDecode"}},
+		{Field: "user_agent", Operator: "regex", Value: "bot", Transforms: []string{"htmlEntityDecode"}},
+		{Field: "method", Operator: "eq", Value: "GET"},
+	}
+
+	result := convertConditions(conditions, nil)
+
+	if len(result) != 3 {
+		t.Fatalf("got %d conditions, want 3", len(result))
+	}
+
+	// First condition: 2 transforms
+	if len(result[0].Transforms) != 2 {
+		t.Errorf("result[0] transforms = %v, want 2 items", result[0].Transforms)
+	}
+	if result[0].Transforms[0] != "lowercase" || result[0].Transforms[1] != "urlDecode" {
+		t.Errorf("result[0] transforms = %v, want [lowercase urlDecode]", result[0].Transforms)
+	}
+
+	// Second condition: 1 transform
+	if len(result[1].Transforms) != 1 || result[1].Transforms[0] != "htmlEntityDecode" {
+		t.Errorf("result[1] transforms = %v, want [htmlEntityDecode]", result[1].Transforms)
+	}
+
+	// Third condition: no transforms
+	if len(result[2].Transforms) != 0 {
+		t.Errorf("result[2] transforms = %v, want empty", result[2].Transforms)
+	}
+}

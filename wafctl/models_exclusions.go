@@ -6,9 +6,10 @@ import "time"
 
 // Condition represents a single match condition in an exclusion or rate limit rule.
 type Condition struct {
-	Field    string `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query", "country", "cookie", "body", "body_json", "body_form", "args", "uri_path", "referer", "response_header", "response_status", "http_version"
-	Operator string `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in"
-	Value    string `json:"value"`
+	Field      string   `json:"field"`    // "ip", "path", "host", "method", "user_agent", "header", "query", "country", "cookie", "body", "body_json", "body_form", "args", "uri_path", "referer", "response_header", "response_status", "http_version"
+	Operator   string   `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in"
+	Value      string   `json:"value"`
+	Transforms []string `json:"transforms,omitempty"` // ordered transform chain: "lowercase", "urlDecode", "htmlEntityDecode", etc.
 }
 
 // RuleExclusion is a single WAF policy engine rule (allow, block, skip_rule, anomaly, honeypot, raw, etc.).
@@ -208,6 +209,31 @@ var validPolicyEngineFields = map[string]bool{
 	"uri_path":     true,
 	"referer":      true,
 	"http_version": true,
+}
+
+// validTransforms are the transform function names supported by the policy
+// engine plugin (v0.8.1+). Transforms are applied left-to-right to the
+// extracted field value before operator evaluation.
+var validTransforms = map[string]bool{
+	// Phase 1 — covers ~90% of CRS usage
+	"lowercase":          true,
+	"urlDecode":          true,
+	"urlDecodeUni":       true,
+	"htmlEntityDecode":   true,
+	"normalizePath":      true,
+	"normalizePathWin":   true,
+	"removeNulls":        true,
+	"compressWhitespace": true,
+	"removeWhitespace":   true,
+	// Phase 2 — extended transforms
+	"base64Decode":   true,
+	"hexDecode":      true,
+	"jsDecode":       true,
+	"cssDecode":      true,
+	"utf8toUnicode":  true,
+	"removeComments": true,
+	"trim":           true,
+	"length":         true,
 }
 
 // Valid operators per field type

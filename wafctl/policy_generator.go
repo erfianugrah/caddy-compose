@@ -83,11 +83,12 @@ type PolicyWafServiceConfig struct {
 
 // PolicyCondition represents a single match condition for the plugin.
 type PolicyCondition struct {
-	Field     string   `json:"field"`
-	Operator  string   `json:"operator"`
-	Value     string   `json:"value"`
-	ListItems []string `json:"list_items,omitempty"` // resolved by wafctl before writing
-	ListKind  string   `json:"list_kind,omitempty"`  // "ip", "hostname", "string", "asn"
+	Field      string   `json:"field"`
+	Operator   string   `json:"operator"`
+	Value      string   `json:"value"`
+	Transforms []string `json:"transforms,omitempty"` // ordered transform chain applied before operator
+	ListItems  []string `json:"list_items,omitempty"` // resolved by wafctl before writing
+	ListKind   string   `json:"list_kind,omitempty"`  // "ip", "hostname", "string", "asn"
 }
 
 // policyEngineTypes are the exclusion types handled by the Caddy policy
@@ -262,9 +263,10 @@ func convertConditions(conditions []Condition, listStore *ManagedListStore) []Po
 	result := make([]PolicyCondition, len(conditions))
 	for j, c := range conditions {
 		pc := PolicyCondition{
-			Field:    c.Field,
-			Operator: c.Operator,
-			Value:    c.Value,
+			Field:      c.Field,
+			Operator:   c.Operator,
+			Value:      c.Value,
+			Transforms: c.Transforms,
 		}
 		// Resolve managed list references.
 		if (c.Operator == "in_list" || c.Operator == "not_in_list") && listStore != nil {
