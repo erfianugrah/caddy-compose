@@ -536,9 +536,9 @@ Transform functions are resolved at compile time (rule load) — per-request cos
 - [x] Tests: each transform function unit test, transform chains, empty transforms (no-op)
 - [x] Implement Phase 2 transforms (8 functions)
 - [x] Update wafctl condition model and validation
-- [ ] Update frontend ConditionRow to allow transform selection (optional, can defer)
+- [x] Update frontend ConditionRow to allow transform selection
 
-**Shipped:** Plugin v0.8.1 (commit `96336af`), caddy 3.5.0-2.11.1, wafctl 2.6.0. All 17 transforms (Phase 1 + Phase 2) in one release. 40 plugin tests, 19 wafctl tests, 6 e2e transform tests. 43 total e2e tests pass.
+**Shipped:** Plugin v0.8.1 (commit `96336af`), caddy 3.5.0-2.11.1, wafctl 2.6.0. All 17 transforms (Phase 1 + Phase 2) in one release. 40 plugin tests, 19 wafctl tests, 6 e2e transform tests, 8 frontend tests. 43 total e2e tests pass. Frontend TransformSelect UI deployed (commit `cd92b11`).
 
 ---
 
