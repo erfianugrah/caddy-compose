@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
 // Warm = hostile, cool = benign, neutral = informational.
 
 export const ACTION_COLORS = {
-  blocked:      "#f37e96", // lv-red      — WAF blocked (Coraza anomaly)
+  blocked:      "#f37e96", // lv-red      — WAF blocked (anomaly threshold)
   rate_limited: "#f1a171", // lv-peach    — rate limited / blocklist (warning)
   policy_block: "#ff4870", // lv-red-bright — policy engine blocks
   detect_block: "#f59e0b", // amber-500   — policy engine anomaly threshold blocks

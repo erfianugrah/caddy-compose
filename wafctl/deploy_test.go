@@ -13,10 +13,10 @@ import (
 
 // --- Deploy tests ---
 
-func TestEnsureCorazaDir(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "coraza")
-	if err := ensureCorazaDir(dir); err != nil {
-		t.Fatalf("ensureCorazaDir failed: %v", err)
+func TestEnsureWafDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "waf")
+	if err := ensureWafDir(dir); err != nil {
+		t.Fatalf("ensureWafDir failed: %v", err)
 	}
 
 	// Check placeholder files exist
@@ -32,8 +32,8 @@ func TestEnsureCorazaDir(t *testing.T) {
 	}
 
 	// Calling again should be idempotent (doesn't overwrite)
-	if err := ensureCorazaDir(dir); err != nil {
-		t.Fatalf("second ensureCorazaDir failed: %v", err)
+	if err := ensureWafDir(dir); err != nil {
+		t.Fatalf("second ensureWafDir failed: %v", err)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestWriteConfFiles(t *testing.T) {
 }
 
 func TestDeployEndpoint(t *testing.T) {
-	corazaDir := t.TempDir()
+	wafDir := t.TempDir()
 	caddyfileDir := t.TempDir()
 	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
 	os.WriteFile(caddyfilePath, []byte("localhost:80 {\n\trespond \"ok\"\n}\n"), 0644)
@@ -89,7 +89,7 @@ func TestDeployEndpoint(t *testing.T) {
 	defer adminServer.Close()
 
 	deployCfg := DeployConfig{
-		CorazaDir:     corazaDir,
+		WafDir:        wafDir,
 		CaddyfilePath: caddyfilePath,
 		CaddyAdminURL: adminServer.URL,
 	}
@@ -133,7 +133,7 @@ func TestDeployEndpoint(t *testing.T) {
 	}
 
 	// Verify files were written
-	preData, err := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	preData, err := os.ReadFile(filepath.Join(wafDir, "custom-pre-crs.conf"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestDeployEndpoint(t *testing.T) {
 }
 
 func TestDeployEndpointReloadFail(t *testing.T) {
-	corazaDir := t.TempDir()
+	wafDir := t.TempDir()
 	caddyfilePath := filepath.Join(t.TempDir(), "Caddyfile")
 	os.WriteFile(caddyfilePath, []byte("localhost:80\n"), 0644)
 
@@ -155,7 +155,7 @@ func TestDeployEndpointReloadFail(t *testing.T) {
 	defer adminServer.Close()
 
 	deployCfg := DeployConfig{
-		CorazaDir:     corazaDir,
+		WafDir:        wafDir,
 		CaddyfilePath: caddyfilePath,
 		CaddyAdminURL: adminServer.URL,
 	}
@@ -387,15 +387,15 @@ func TestReloadCaddyFingerprintChangesWithContent(t *testing.T) {
 // 5. Verify exclusions are NOT lost when settings deploy, and vice versa
 func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	// Set up temp dirs and files.
-	corazaDir := t.TempDir()
+	wafDir := t.TempDir()
 	rlDir := t.TempDir()
 	caddyfileDir := t.TempDir()
 	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
 	os.WriteFile(caddyfilePath, []byte("localhost:80 { respond ok }"), 0644)
 
 	// Ensure placeholder files exist (like startup does).
-	if err := ensureCorazaDir(corazaDir); err != nil {
-		t.Fatalf("ensureCorazaDir: %v", err)
+	if err := ensureWafDir(wafDir); err != nil {
+		t.Fatalf("ensureWafDir: %v", err)
 	}
 
 	// Mock Caddy admin API.
@@ -414,7 +414,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	defer adminServer.Close()
 
 	deployCfg := DeployConfig{
-		CorazaDir:     corazaDir,
+		WafDir:        wafDir,
 		RateLimitDir:  rlDir,
 		CaddyfilePath: caddyfilePath,
 		CaddyAdminURL: adminServer.URL,
@@ -487,7 +487,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	// Step 4: Verify generated files on disk.
 
 	// 4a: custom-pre-crs.conf should contain the block exclusion.
-	preCRS, err := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	preCRS, err := os.ReadFile(filepath.Join(wafDir, "custom-pre-crs.conf"))
 	if err != nil {
 		t.Fatalf("reading pre-crs: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	}
 
 	// 4b: custom-waf-settings.conf should contain paranoia=2, thresholds=10.
-	wafSettings, err := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	wafSettings, err := os.ReadFile(filepath.Join(wafDir, "custom-waf-settings.conf"))
 	if err != nil {
 		t.Fatalf("reading waf-settings: %v", err)
 	}
@@ -519,7 +519,7 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 	}
 
 	// 4c: custom-post-crs.conf should exist (even if empty of exclusions).
-	postCRS, err := os.ReadFile(filepath.Join(corazaDir, "custom-post-crs.conf"))
+	postCRS, err := os.ReadFile(filepath.Join(wafDir, "custom-post-crs.conf"))
 	if err != nil {
 		t.Fatalf("reading post-crs: %v", err)
 	}
@@ -536,11 +536,11 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 		t.Fatalf("second deploy: want 200, got %d", w.Code)
 	}
 
-	preCRS2, _ := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	preCRS2, _ := os.ReadFile(filepath.Join(wafDir, "custom-pre-crs.conf"))
 	if !strings.Contains(string(preCRS2), "192.168.1.100") {
 		t.Error("second deploy: exclusion should still be in pre-crs.conf")
 	}
-	wafSettings2, _ := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	wafSettings2, _ := os.ReadFile(filepath.Join(wafDir, "custom-waf-settings.conf"))
 	if !strings.Contains(string(wafSettings2), "paranoia_level=2") {
 		t.Error("second deploy: settings should still be in waf-settings.conf")
 	}
@@ -560,12 +560,12 @@ func TestDeployEndToEnd_ExclusionAndSettings(t *testing.T) {
 // TestDeployEndToEnd_SettingsOnlyNoExclusions verifies that deploying
 // with settings but zero exclusions still produces valid files.
 func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
-	corazaDir := t.TempDir()
+	wafDir := t.TempDir()
 	rlDir := t.TempDir()
 	caddyfileDir := t.TempDir()
 	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
 	os.WriteFile(caddyfilePath, []byte("localhost:80 { respond ok }"), 0644)
-	ensureCorazaDir(corazaDir)
+	ensureWafDir(wafDir)
 
 	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -573,7 +573,7 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 	defer adminServer.Close()
 
 	deployCfg := DeployConfig{
-		CorazaDir:     corazaDir,
+		WafDir:        wafDir,
 		RateLimitDir:  rlDir,
 		CaddyfilePath: caddyfilePath,
 		CaddyAdminURL: adminServer.URL,
@@ -612,7 +612,7 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 	}
 
 	// Verify settings.
-	wafSettings, _ := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	wafSettings, _ := os.ReadFile(filepath.Join(wafDir, "custom-waf-settings.conf"))
 	wafStr := string(wafSettings)
 	if !strings.Contains(wafStr, "paranoia_level=3") {
 		t.Errorf("want paranoia_level=3, got:\n%s", wafStr)
@@ -626,7 +626,7 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 	}
 
 	// Pre-CRS should just have the header (no exclusions).
-	preCRS, _ := os.ReadFile(filepath.Join(corazaDir, "custom-pre-crs.conf"))
+	preCRS, _ := os.ReadFile(filepath.Join(wafDir, "custom-pre-crs.conf"))
 	if !strings.Contains(string(preCRS), "Pre-CRS Configuration") {
 		t.Error("pre-crs should have a header")
 	}
@@ -640,12 +640,12 @@ func TestDeployEndToEnd_SettingsOnlyNoExclusions(t *testing.T) {
 
 // TestDeployEndToEnd_CaddyReloadFails verifies partial deploy when Caddy is unreachable.
 func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
-	corazaDir := t.TempDir()
+	wafDir := t.TempDir()
 	rlDir := t.TempDir()
 	caddyfileDir := t.TempDir()
 	caddyfilePath := filepath.Join(caddyfileDir, "Caddyfile")
 	os.WriteFile(caddyfilePath, []byte("localhost:80 { respond ok }"), 0644)
-	ensureCorazaDir(corazaDir)
+	ensureWafDir(wafDir)
 
 	// Admin server that rejects reloads.
 	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -655,7 +655,7 @@ func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
 	defer adminServer.Close()
 
 	deployCfg := DeployConfig{
-		CorazaDir:     corazaDir,
+		WafDir:        wafDir,
 		RateLimitDir:  rlDir,
 		CaddyfilePath: caddyfilePath,
 		CaddyAdminURL: adminServer.URL,
@@ -684,7 +684,7 @@ func TestDeployEndToEnd_CaddyReloadFails(t *testing.T) {
 	}
 
 	// Files should still be written to disk.
-	wafSettings, err := os.ReadFile(filepath.Join(corazaDir, "custom-waf-settings.conf"))
+	wafSettings, err := os.ReadFile(filepath.Join(wafDir, "custom-waf-settings.conf"))
 	if err != nil {
 		t.Fatalf("waf-settings should exist even when reload fails: %v", err)
 	}

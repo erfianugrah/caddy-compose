@@ -105,9 +105,9 @@
         "platform-multi",
         "attack-protocol"
       ],
-      "enabled": true,
+      "enabled": false,
       "priority": 400,
-      "description": "Invalid HTTP Request Line",
+      "description": "Invalid HTTP Request Line [Disabled: Go net/http validates request line at protocol level]",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -1271,7 +1271,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "all_headers",
+          "field": "all_headers_names",
           "operator": "regex",
           "value": "[\\n\\r]",
           "transforms": [
@@ -1377,7 +1377,7 @@
     },
     {
       "id": "921170",
-      "name": "",
+      "name": "HTTP/1.0 Protocol Detected",
       "type": "detect",
       "conditions": [
         {
@@ -1396,7 +1396,9 @@
       "enabled": false,
       "priority": 400,
       "category": "REQUEST-921-PROTOCOL-ATTACK",
-      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf",
+      "severity": "NOTICE",
+      "paranoia_level": 1
     },
     {
       "id": "921190",
@@ -1679,29 +1681,6 @@
       "enabled": true,
       "priority": 400,
       "description": "Multipart header contains characters outside of valid range",
-      "category": "REQUEST-922-MULTIPART-ATTACK",
-      "crs_file": "REQUEST-922-MULTIPART-ATTACK.conf"
-    },
-    {
-      "id": "922150",
-      "name": "",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "multipart_part_headers",
-          "operator": "regex",
-          "value": "^content-type\\s*:\\s*(.*)$",
-          "transforms": [
-            "lowercase"
-          ]
-        }
-      ],
-      "group_op": "and",
-      "tags": [
-        "attack-multipart-header"
-      ],
-      "enabled": true,
-      "priority": 400,
       "category": "REQUEST-922-MULTIPART-ATTACK",
       "crs_file": "REQUEST-922-MULTIPART-ATTACK.conf"
     },
@@ -2805,7 +2784,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "referer",
+          "field": "user_agent",
           "operator": "phrase_match",
           "transforms": [
             "utf8toUnicode",
@@ -5935,7 +5914,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "referer",
+          "field": "user_agent",
           "operator": "phrase_match",
           "transforms": [
             "cmdLine",
@@ -7043,7 +7022,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "user_agent",
+          "field": "referer",
           "operator": "regex",
           "value": "(?i)\\b(?:(?:7z[arx]?|(?:GE|POS)T|y(?:e(?:s|lp)|um|arn)|HEAD)[\\s\\x0b&\\),<>\\|]|a(?:a-[^\\s\\x0b]{1,10}\\b|(?:b|t(?:obm)?|w[ks]|l(?:ias|pine)|xel)[\\s\\x0b&\\),<>\\|]|p(?:t(?:(?:itude)?[\\s\\x0b&\\),<>\\|]|-get)|parmor_[^\\s\\x0b]{1,10}\\b)|r(?:(?:p|ch)?[\\s\\x0b&\\),<>\\|]|j(?:[\\s\\x0b&\\),<>\\|]|-register|disp)|ia2c)|s(?:h?[\\s\\x0b&\\),<>\\|]|cii(?:-xfr|85)|pell)|dd(?:group|user)|getty|nsible|u(?:ditctl|repot|search))|b(?:z(?:(?:z|c(?:at|mp))[\\s\\x0b&\\),<>\\|]|diff|e(?:grep|xe[\\s\\x0b&\\),<>\\|])|f?grep|ip2(?:[\\s\\x0b&\\),<>\\|]|recover)|less|more)|a(?:s(?:e(?:32|64|n(?:ame[\\s\\x0b&\\),<>\\|]|c))|h[\\s\\x0b&\\),<>\\|])|tch[\\s\\x0b&\\),<>\\|])|lkid[\\s\\x0b&\\),<>\\|]|pftrace|r(?:eaksw|(?:idge|wap)[\\s\\x0b&\\),<>\\|])|sd(?:cat|iff|tar)|u(?:iltin|n(?:dler[\\s\\x0b&\\),<>\\|]|zip2)|s(?:ctl|ybox))|y(?:ebug|obu[\\s\\x0b&\\),<>\\|]))|c(?:[89]9(?:[\\s\\x0b&\\),<>\\|]|-gcc)|(?:a(?:t|ncel|psh)|c|mp)[\\s\\x0b&\\),<>\\|]|p(?:(?:an|io)?[\\s\\x0b&\\),<>\\|]|ulimit)|s(?:(?:h|cli)[\\s\\x0b&\\),<>\\|]|plit|vtool)|u(?:t[\\s\\x0b&\\),<>\\|]|psfilter)|ertbot|h(?:(?:(?:att|di)r|mod|o(?:om|wn)|root|sh)[\\s\\x0b&\\),<>\\|]|e(?:ck_(?:by_ssh|cups|log|memory|raid|s(?:sl_cert|tatusfile))|f[\\s\\x0b&\\),\\-<>\\|])|(?:flag|pas)s|g(?:passwd|rp[\\s\\x0b&\\),<>\\|]))|lang(?:\\+\\+|[\\s\\x0b&\\),<>\\|])|o(?:bc(?:[\\s\\x0b&\\),<>\\|]|run)|(?:lumn|m(?:m(?:and)?|p(?:oser|ress)))[\\s\\x0b&\\),<>\\|]|proc|w(?:say|think))|r(?:ash[\\s\\x0b&\\),<>\\|]|on(?:[\\s\\x0b&\\),<>\\|]|tab)))|d(?:(?:[dfu]|i(?:(?:alo)?g|r|ff)|a(?:sh|te)|vips)[\\s\\x0b&\\),<>\\|]|nf[\\s\\x0b&\\),<>\\|]?|hclient|m(?:esg[\\s\\x0b&\\),<>\\|]|idecode|setup)|o(?:(?:as|ne)[\\s\\x0b&\\),<>\\|]|cker[\\s\\x0b&\\),\\-<>\\|]|sbox)|pkg[\\s\\x0b&\\),\\-<>\\|])|e(?:(?:[bd]|qn|s(?:h|ac)?|cho|fax|grep|macs|val)[\\s\\x0b&\\),<>\\|]|n(?:v(?:[\\s\\x0b&\\),<>\\|]|-update)|d(?:if|sw)[\\s\\x0b&\\),<>\\|])|x(?:(?:ec|p(?:and|(?:ec|or)t|r))?[\\s\\x0b&\\),<>\\|]|iftool)|2fsck|asy_install)|f(?:(?:c|g(?:rep)?|mt|etch|lock|unction)[\\s\\x0b&\\),<>\\|]|i(?:(?:n(?:d|ger)|sh)?[\\s\\x0b&\\),<>\\|]|le(?:[\\s\\x0b&\\),<>\\|]|test))|tp(?:[\\s\\x0b&\\),<>\\|]|stats|who)|acter|d(?:(?:find|isk)[\\s\\x0b&\\),<>\\|]|u?mount)|o(?:ld[\\s\\x0b&\\),<>\\|]|reach)|ping[\\s\\x0b&\\),6<>\\|])|g(?:c(?:c[^\\s\\x0b]{1,10}\\b|ore[\\s\\x0b&\\),<>\\|])|(?:db|i(?:t|mp|nsh)|o|pg|awk|z(?:cat|exe|ip))[\\s\\x0b&\\),<>\\|]|e(?:m[\\s\\x0b&\\),<>\\|]|ni(?:e[\\s\\x0b&\\),<>\\|]|soimage)|t(?:cap|facl[\\s\\x0b&\\),<>\\|]))|hc(?:-?[\\s\\x0b&\\),<>\\|]|i[\\s\\x0b&\\),\\-<>\\|])|r(?:(?:c(?:at)?|ep)[\\s\\x0b&\\),<>\\|]|oupmod)|tester|unzip)|h(?:(?:d|up|ash|i(?:ghlight|story))[\\s\\x0b&\\),<>\\|]|e(?:ad[\\s\\x0b&\\),<>\\|]|xdump)|ost(?:id|name)|ping3|t(?:digest|op[\\s\\x0b&\\),<>\\|]|passwd))|i(?:(?:d|rb|conv|nstall)[\\s\\x0b&\\),<>\\|]|p(?:[\\s\\x0b&\\),<>\\|]|6?tables|config|p(?:eveprinter|find|tool))|f(?:config|top[\\s\\x0b&\\),<>\\|])|onice|spell)|j(?:(?:js|q|ava|exec)[\\s\\x0b&\\),<>\\|]|o(?:(?:bs|in)[\\s\\x0b&\\),<>\\|]|urnalctl)|runscript)|k(?:s(?:h[\\s\\x0b&\\),<>\\|]|shell)|ill(?:[\\s\\x0b&\\),<>\\|]|all)|nife[\\s\\x0b&\\),<>\\|])|l(?:d(?:d?[\\s\\x0b&\\),<>\\|]|config)|(?:[np]|ynx)[\\s\\x0b&\\),<>\\|]|s(?:(?:-F|cpu|hw|mod|of|pci|usb)?[\\s\\x0b&\\),<>\\|]|b_release)|ua(?:[\\s\\x0b&\\),<>\\|]|(?:la)?tex)|z(?:4(?:[\\s\\x0b&\\),<>\\|]|c(?:[\\s\\x0b&\\),<>\\|]|at))|(?:c(?:at|mp))?[\\s\\x0b&\\),<>\\|]|diff|[ef]?grep|less|m(?:a(?:[\\s\\x0b&\\),<>\\|]|dec|info)|ore))|a(?:st(?:(?:comm)?[\\s\\x0b&\\),<>\\|]|log(?:in)?)|tex[\\s\\x0b&\\),<>\\|])|ess(?:[\\s\\x0b&\\),<>\\|]|echo|(?:fil|pip)e)|ftp(?:[\\s\\x0b&\\),<>\\|]|get)|o(?:(?:ca(?:l|te)|ok)[\\s\\x0b&\\),<>\\|]|g(?:inctl|(?:nam|sav)e)|setup)|trace|wp-(?:d(?:ownload|ump)|mirror|request))|m(?:(?:a(?:n|il[qx]?|ke|wk)|tr|v|utt)[\\s\\x0b&\\),<>\\|]|k(?:(?:dir|nod)[\\s\\x0b&\\),<>\\|]|fifo|temp)|locate|o(?:(?:re|unt)[\\s\\x0b&\\),<>\\|]|squitto)|sg(?:attrib|c(?:at|onv)|filter|merge|uniq)|ysql(?:[\\s\\x0b&\\),<>\\|]|admin|dump(?:slow)?|hotcopy|show))|n(?:c(?:(?:at)?[\\s\\x0b&\\),<>\\|]|\\.(?:openbsd|traditional))|e(?:t(?:[\\s\\x0b&\\),<>\\|]|(?:c|st)at|kit-ftp|plan)|ofetch)|(?:l|m(?:ap)?|p(?:m|ing)|a(?:no|sm|wk)|ice|o(?:de|hup)|roff)[\\s\\x0b&\\),<>\\|]|s(?:enter|lookup|tat[\\s\\x0b&\\),<>\\|]))|o(?:(?:d|ctave)[\\s\\x0b&\\),<>\\|]|nintr|p(?:en(?:ssl|v(?:pn|t))|kg[\\s\\x0b&\\),<>\\|]))|p(?:a(?:(?:x|cman|rted|tch)[\\s\\x0b&\\),<>\\|]|s(?:swd|te[\\s\\x0b&\\),<>\\|]))|d(?:b(?:[\\s\\x0b&\\),<>\\|]|2mb|3[\\s\\x0b&\\),\\.<>\\|])|f(?:la)?tex|ksh[\\s\\x0b&\\),<>\\|])|(?:f(?:tp)?|g(?:rep)?|(?:w|op)d|xz|u(?:ppet|shd))[\\s\\x0b&\\),<>\\|]|hp(?:[57]?[\\s\\x0b&\\),<>\\|]|-cgi)|i(?:(?:co?|gz|ng6?)[\\s\\x0b&\\),<>\\|]|p(?:[\\s\\x0b&\\),<>\\|]|[^\\s\\x0b]{1,10}\\b)|dstat)|k(?:g(?:[\\s\\x0b&\\),<>\\|]|_?info)|exec|ill[\\s\\x0b&\\),<>\\|])|r(?:y?[\\s\\x0b&\\),<>\\|]|int(?:env|f[\\s\\x0b&\\),<>\\|]))|s(?:(?:ed|ql)?[\\s\\x0b&\\),<>\\|]|ftp)|t(?:x[\\s\\x0b&\\),<>\\|]|ar(?:[\\s\\x0b&\\),<>\\|]|diff|grep))|er(?:(?:f|ms)[\\s\\x0b&\\),<>\\|]|l(?:5?[\\s\\x0b&\\),<>\\|]|sh))|y(?:3?versions|thon[23]))|r(?:(?:a(?:r|k[eu])|cp?|bash|nano|oute|vi(?:ew|m))[\\s\\x0b&\\),<>\\|]|e(?:(?:d(?:carpet)?|v|boot|name|p(?:eat|lace))[\\s\\x0b&\\),<>\\|]|a(?:delf|lpath)|stic)|m(?:(?:dir)?[\\s\\x0b&\\),<>\\|]|t(?:[\\s\\x0b&\\),<>\\|]|-(?:dump|tar))|user)|pm(?:(?:db)?[\\s\\x0b&\\),<>\\|]|(?:quer|verif)y)|l(?:ogin|wrap)|sync(?:-ssl|[\\s\\x0b&\\),<>\\|])|u(?:by[^\\s\\x0b]{1,10}\\b|n(?:-(?:mailcap|parts)|c[\\s\\x0b&\\),<>\\|])))|s(?:(?:c(?:p|hed|r(?:een|ipt))|g|ash|diff|ftp|l(?:eep|sh)|plit)[\\s\\x0b&\\),<>\\|]|e(?:(?:d|ndmail|rvice)[\\s\\x0b&\\),<>\\|]|t(?:(?:facl)?[\\s\\x0b&\\),<>\\|]|arch|cap|env|sid))|h(?:(?:u(?:f|tdown))?[\\s\\x0b&\\),<>\\|]|\\.distrib)|s(?:[\\s\\x0b&\\),<>\\|]|h(?:[\\s\\x0b&\\),<>\\|]|-(?:a(?:dd|gent)|copy-id|key(?:ge|sca)n)|pass))|u(?:[\\s\\x0b&\\),<>\\|]|do(?:-rs|[\\s\\x0b&\\),<>_\\|]|edit|replay))|vn(?:[\\s\\x0b&\\),<>\\|]|a(?:dmin|uthz)|bench|dumpfilter|fsfs|look|mucc|rdump|s(?:erve|ync)|version)|mbclient|o(?:(?:(?:ca|r)t|urce)[\\s\\x0b&\\),<>\\|]|elim)|qlite3|t(?:art-stop-daemon|dbuf|r(?:ace|ings[\\s\\x0b&\\),<>\\|]))|ys(?:ctl|tem(?:ctl|d-resolve)))|t(?:a(?:(?:[cr]|ilf?)[\\s\\x0b&\\),<>\\|]|sk(?:[\\s\\x0b&\\),<>\\|]|set))|(?:bl|o(?:p|uch)|ftp|mux)[\\s\\x0b&\\),<>\\|]|e(?:[ex][\\s\\x0b&\\),<>\\|]|lnet)|i(?:c[\\s\\x0b&\\),<>\\|]|me(?:(?:out)?[\\s\\x0b&\\),<>\\|]|datectl))|c(?:l?sh[\\s\\x0b&\\),<>\\|]|p(?:dump|ing|traceroute))|r(?:a(?:ceroute6?|p[\\s\\x0b&\\),<>\\|])|off[\\s\\x0b&\\),<>\\|])|shark)|u(?:l(?:imit)?[\\s\\x0b&\\),<>\\|]|n(?:(?:ame|compress|iq|rar|s(?:et|hare)|xz)[\\s\\x0b&\\),<>\\|]|expand|l(?:ink[\\s\\x0b&\\),<>\\|]|z(?:4[\\s\\x0b&\\),<>\\|]|ma))|pigz|z(?:ip[\\s\\x0b&\\),<>\\|]|std))|p(?:2date[\\s\\x0b&\\),<>\\|]|date-alternatives)|ser(?:(?:ad|mo)d|del)|u(?:de|en)code)|v(?:i(?:(?:[ep]w|gr|rsh)?[\\s\\x0b&\\),<>\\|]|m(?:[\\s\\x0b&\\),<>\\|]|diff)|sudo(?:-rs)?)|algrind|olatility[\\s\\x0b&\\),<>\\|])|w(?:(?:c|a(?:ll|tch))?[\\s\\x0b&\\),<>\\|]|h(?:o(?:(?:is)?[\\s\\x0b&\\),<>\\|]|ami)?|iptail[\\s\\x0b&\\),<>\\|])|i(?:reshark|sh[\\s\\x0b&\\),<>\\|]))|x(?:(?:(?:x|pa)d|args|term)[\\s\\x0b&\\),<>\\|]|z(?:(?:c(?:at|mp))?[\\s\\x0b&\\),<>\\|]|d(?:ec[\\s\\x0b&\\),<>\\|]|iff)|[ef]?grep|less|more)|e(?:latex|tex[\\s\\x0b&\\),<>\\|])|mo(?:dmap|re[\\s\\x0b&\\),<>\\|]))|z(?:ip(?:[\\s\\x0b&\\),<>\\|]|c(?:loak|mp)|details|grep|info|(?:merg|not)e|split|tool)|s(?:h[\\s\\x0b&\\),<>\\|]|oelim|td(?:[\\s\\x0b&\\),<>\\|]|(?:ca|m)t|grep|less))|athura|(?:c(?:at|mp)|diff|grep|less|run)[\\s\\x0b&\\),<>\\|]|[ef]grep|mo(?:dload|re[\\s\\x0b&\\),<>\\|])|ypper))(?:\\b|[^0-9A-Z_a-z])",
           "transforms": [
@@ -7667,7 +7646,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X-Filename",
+          "field": "header:X-File-Name",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\.*$",
           "transforms": [
@@ -7696,7 +7675,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "files",
+          "field": "header:X-File-Name",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\..*$",
           "transforms": [
@@ -8195,7 +8174,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X-Filename",
+          "field": "files",
           "operator": "regex",
           "value": "(?:^|[/\\x5c])sess_[,\\-0-9a-z]{20,256}$",
           "transforms": [
@@ -8662,7 +8641,7 @@
     },
     {
       "id": "941010",
-      "name": "",
+      "name": "Verify Content Type is not text/html for API endpoints",
       "type": "detect",
       "conditions": [
         {
@@ -8676,7 +8655,9 @@
       "enabled": false,
       "priority": 400,
       "category": "REQUEST-941-APPLICATION-ATTACK-XSS",
-      "crs_file": "REQUEST-941-APPLICATION-ATTACK-XSS.conf"
+      "crs_file": "REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+      "severity": "NOTICE",
+      "paranoia_level": 1
     },
     {
       "id": "941100",
@@ -9800,7 +9781,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "uri_path",
+          "field": "request_basename",
           "operator": "detect_sqli",
           "transforms": [
             "utf8toUnicode",
@@ -12172,5 +12153,8 @@
       "enabled": true,
       "priority": 400
     }
-  ]
+  ],
+  "version": 7,
+  "crs_version": "4.24.1",
+  "generated": "2026-03-12T15:22:36Z"
 }

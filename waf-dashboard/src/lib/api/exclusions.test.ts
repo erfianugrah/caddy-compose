@@ -337,9 +337,9 @@ describe("deployConfig", () => {
     const deployResponse = {
       status: "deployed",
       message: "Config files written and Caddy reloaded successfully",
-      pre_crs_file: "/data/coraza/custom-pre-crs.conf",
-      post_crs_file: "/data/coraza/custom-post-crs.conf",
-      waf_settings_file: "/data/coraza/custom-waf-settings.conf",
+      pre_crs_file: "/data/waf/custom-pre-crs.conf",
+      post_crs_file: "/data/waf/custom-post-crs.conf",
+      waf_settings_file: "/data/waf/custom-waf-settings.conf",
       reloaded: true,
       timestamp: "2026-02-22T11:00:00Z",
     };
@@ -355,9 +355,9 @@ describe("deployConfig", () => {
     const partialResponse = {
       status: "partial",
       message: "Config files written but Caddy reload failed",
-      pre_crs_file: "/data/coraza/custom-pre-crs.conf",
-      post_crs_file: "/data/coraza/custom-post-crs.conf",
-      waf_settings_file: "/data/coraza/custom-waf-settings.conf",
+      pre_crs_file: "/data/waf/custom-pre-crs.conf",
+      post_crs_file: "/data/waf/custom-post-crs.conf",
+      waf_settings_file: "/data/waf/custom-waf-settings.conf",
       reloaded: false,
       timestamp: "2026-02-22T11:00:00Z",
     };

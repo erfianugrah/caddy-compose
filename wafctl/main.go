@@ -14,9 +14,8 @@ import (
 // Set at build time via: -ldflags="-X main.version=0.21.0"
 var version = "dev"
 
-// crsVersion is the OWASP CRS version bundled via coraza-caddy.
-// Derived from the coraza-coreruleset module version in the plugin's go.mod.
-const crsVersion = "4.23.0"
+// crsVersion is the OWASP CRS version used by the policy engine's default rules.
+const crsVersion = "4.24.1"
 
 // startTime records when the process started, used for uptime calculation.
 var startTime = time.Now()
@@ -27,7 +26,7 @@ func main() {
 
 // runServe starts the HTTP API server. This is the default command.
 func runServe() int {
-	logPath := envOr("WAF_AUDIT_LOG", "/var/log/coraza-audit.log")
+	logPath := envOr("WAF_AUDIT_LOG", "/var/log/waf-audit.log")
 	port := envOr("WAFCTL_PORT", "8080")
 	exclusionsFile := envOr("WAF_EXCLUSIONS_FILE", "/data/exclusions.json")
 	configFile := envOr("WAF_CONFIG_FILE", "/data/waf-config.json")
@@ -41,13 +40,13 @@ func runServe() int {
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
 
 	policyEngineEnabled := envOr("WAF_POLICY_ENGINE_ENABLED", "false") == "true"
-	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/coraza/policy-rules.json")
+	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/waf/policy-rules.json")
 
-	defaultRulesFile := envOr("WAF_DEFAULT_RULES_FILE", "/etc/caddy/coraza/default-rules.json")
+	defaultRulesFile := envOr("WAF_DEFAULT_RULES_FILE", "/etc/caddy/waf/default-rules.json")
 	defaultRulesOverridesFile := envOr("WAF_DEFAULT_RULES_OVERRIDES_FILE", "/data/default-rule-overrides.json")
 
 	deployCfg := DeployConfig{
-		CorazaDir:           envOr("WAF_CORAZA_DIR", "/data/coraza"),
+		WafDir:              envOr("WAF_DIR", "/data/waf"),
 		RateLimitDir:        envOr("WAF_RATELIMIT_DIR", "/data/rl"),
 		CSPDir:              envOr("WAF_CSP_DIR", "/data/csp"),
 		CaddyfilePath:       envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
@@ -56,9 +55,9 @@ func runServe() int {
 		PolicyEngineEnabled: policyEngineEnabled,
 	}
 
-	// Ensure custom coraza config directory and placeholder files exist.
-	if err := ensureCorazaDir(deployCfg.CorazaDir); err != nil {
-		log.Printf("warning: could not initialize coraza dir: %v", err)
+	// Ensure WAF config directory and placeholder files exist.
+	if err := ensureWafDir(deployCfg.WafDir); err != nil {
+		log.Printf("warning: could not initialize waf dir: %v", err)
 	}
 
 	// Ensure rate limit directory exists.
@@ -99,8 +98,8 @@ func runServe() int {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s coraza_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v default_rules=%s",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.CorazaDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled, defaultRulesFile)
+	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s waf_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v default_rules=%s",
+		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.WafDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled, defaultRulesFile)
 
 	var geoAPICfg *GeoIPAPIConfig
 	if geoAPIURL != "" {
@@ -177,7 +176,7 @@ func runServe() int {
 	intelStore := NewIPIntelStore(blocklistStore)
 
 	// Cloudflare trusted proxy store — refreshes CF IP ranges at runtime.
-	cfProxyPath := filepath.Join(deployCfg.CorazaDir, "cf_trusted_proxies.caddy")
+	cfProxyPath := filepath.Join(deployCfg.WafDir, "cf_trusted_proxies.caddy")
 	cfProxyStore := NewCFProxyStore(cfProxyPath)
 
 	// Schedule weekly CF IP refresh (Monday at the same hour as blocklist).

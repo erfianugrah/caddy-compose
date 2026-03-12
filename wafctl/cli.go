@@ -12,7 +12,7 @@ import (
 
 // --- CLI subcommand dispatch ---
 
-const cliUsage = `wafctl — WAF management tool for Caddy + Coraza
+const cliUsage = `wafctl — WAF management tool for Caddy Policy Engine
 
 Usage:
   wafctl [command] [flags]

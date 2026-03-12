@@ -4,9 +4,8 @@ FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
-	--with github.com/corazawaf/coraza-caddy/v2=github.com/erfianugrah/coraza-caddy/v2@89b4c94ebb2a4fa8c08e1b8f75b7df67fbbce78c \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.12.4
+	--with github.com/erfianugrah/caddy-policy-engine@v0.12.5
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
@@ -43,12 +42,8 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY --from=waf-dashboard /build/dist/ /etc/caddy/waf-ui/
 COPY errors/ /etc/caddy/errors/
-COPY coraza/ /etc/caddy/coraza/
-COPY scripts/rotate-audit-log.sh /usr/local/bin/rotate-audit-log.sh
+COPY waf/default-rules.json /etc/caddy/waf/default-rules.json
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/rotate-audit-log.sh /usr/local/bin/entrypoint.sh \
-	&& echo '0 * * * * /usr/local/bin/rotate-audit-log.sh >> /var/log/audit-rotate.log 2>&1' \
-	   >> /var/spool/cron/crontabs/root \
-	&& chmod 0600 /var/spool/cron/crontabs/root
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

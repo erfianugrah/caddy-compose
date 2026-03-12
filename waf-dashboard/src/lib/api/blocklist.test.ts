@@ -18,7 +18,7 @@ describe("getBlocklistStats", () => {
       last_updated: "2026-02-22T06:00:01Z",
       source: "IPsum",
       min_score: 1,
-      file_path: "/data/coraza/ipsum_block.caddy",
+      file_path: "/data/waf/ipsum_block.caddy",
     };
     vi.stubGlobal("fetch", mockFetchResponse(mockStats));
 

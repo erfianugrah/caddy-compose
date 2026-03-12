@@ -20,9 +20,9 @@ var deployMu sync.Mutex
 
 // DeployConfig holds paths and settings for the deploy pipeline.
 type DeployConfig struct {
-	// CorazaDir is the directory for custom Coraza config files.
+	// WafDir is the directory for WAF config files (policy rules, trusted proxies, etc.).
 	// These files are volume-mounted into the Caddy container.
-	CorazaDir string
+	WafDir string
 
 	// RateLimitDir is the directory for per-zone rate limit .caddy files.
 	// These files are volume-mounted into the Caddy container and imported
@@ -48,7 +48,7 @@ type DeployConfig struct {
 
 	// PolicyEngineEnabled controls whether allow/block/honeypot exclusions
 	// are routed to the Caddy policy engine plugin (true) or remain as
-	// Coraza SecRules (false). Default false for safe rollback.
+	// SecRules (false). Default false for safe rollback.
 	PolicyEngineEnabled bool
 }
 
@@ -63,11 +63,11 @@ type DeployResponse struct {
 	Timestamp   string `json:"timestamp"`
 }
 
-// ensureCorazaDir creates the coraza config directory and empty placeholder
+// ensureWafDir creates the WAF config directory and empty placeholder
 // files if they don't exist. Called at startup.
-func ensureCorazaDir(dir string) error {
+func ensureWafDir(dir string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("creating coraza dir %s: %w", dir, err)
+		return fmt.Errorf("creating waf dir %s: %w", dir, err)
 	}
 
 	placeholders := map[string]string{
@@ -102,7 +102,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	allExclusions := es.EnabledExclusions()
 
 	// When policy engine is enabled, allow/block/honeypot go to the plugin's
-	// JSON file instead of Coraza SecRules. Filter them out before generation.
+	// JSON file instead of SecRules. Filter them out before generation.
 	exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
 	result := GenerateConfigs(cfg, exclusions, ls)
 	wafSettings := GenerateWAFSettings(cfg)
@@ -113,7 +113,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	vr.Warnings = append(vr.Warnings, selfRefWarnings...)
 	logValidationResult(vr)
 
-	if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
+	if err := writeConfFiles(deployCfg.WafDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
 		log.Printf("[boot] warning: failed to generate WAF configs: %v", err)
 	} else {
 		log.Printf("[boot] regenerated WAF configs (%d exclusions, mode=%s, paranoia=%d)",
@@ -195,7 +195,7 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 	result := GenerateConfigs(cfg, exclusions, ls)
 	wafSettings := GenerateWAFSettings(cfg)
 
-	if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
+	if err := writeConfFiles(deployCfg.WafDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
 		return fmt.Errorf("writing WAF config files: %w", err)
 	}
 
@@ -234,9 +234,9 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 
 	// Reload Caddy.
 	confFiles := []string{
-		filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
-		filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
-		filepath.Join(deployCfg.CorazaDir, "custom-waf-settings.conf"),
+		filepath.Join(deployCfg.WafDir, "custom-pre-crs.conf"),
+		filepath.Join(deployCfg.WafDir, "custom-post-crs.conf"),
+		filepath.Join(deployCfg.WafDir, "custom-waf-settings.conf"),
 	}
 	if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, confFiles...); err != nil {
 		return fmt.Errorf("Caddy reload: %w", err)
@@ -272,8 +272,8 @@ func writeConfFiles(dir, preCRS, postCRS, wafSettings string) error {
 //
 // We solve this with Cache-Control: must-revalidate, which sets forceReload=true
 // in Caddy's admin handler, bypassing the bytes.Equal() gate entirely. This
-// forces a full re-provision of all modules — including Coraza, which re-reads
-// its Include files at provision time.
+// forces a full re-provision of all modules (including the policy engine,
+// which re-reads its rules files at provision time).
 //
 // The fingerprint comment is still prepended for logging/diagnostics but is NOT
 // relied upon for forcing the reload.
@@ -304,7 +304,7 @@ func reloadCaddy(caddyfilePath, adminURL string, configFiles ...string) error {
 	// stripped during Caddyfile-to-JSON adaptation. The "must-revalidate"
 	// value sets forceReload=true in Caddy's admin handler, bypassing the
 	// bytes.Equal() gate entirely and forcing a full re-provision of all
-	// modules (including Coraza, which re-reads its Include files).
+	// modules (including the policy engine, which re-reads its rules files).
 	// See: caddy.go changeConfig() and admin.go handleLoadConfig().
 	req.Header.Set("Cache-Control", "must-revalidate")
 

@@ -4135,7 +4135,7 @@ func setCRSv7TestConfig(t *testing.T) {
 // false positives from CRS protocol enforcement rules (920310 empty Accept,
 // 920470 no Content-Type, 9100034 missing browser headers, etc.).
 func setBrowserHeaders(req *http.Request) {
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
 }

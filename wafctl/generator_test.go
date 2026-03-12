@@ -431,14 +431,11 @@ func TestGenerateWAFSettingsDetectionOnlyToBlocking(t *testing.T) {
 }
 
 // TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine verifies the
-// placeholder file written by ensureCorazaDir includes SecRuleEngine On.
-
-// TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine verifies the
-// placeholder file written by ensureCorazaDir includes SecRuleEngine On.
+// placeholder file written by ensureWafDir includes SecRuleEngine On.
 func TestGenerateWAFSettingsPlaceholderContainsSecRuleEngine(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "coraza")
-	if err := ensureCorazaDir(dir); err != nil {
-		t.Fatalf("ensureCorazaDir failed: %v", err)
+	dir := filepath.Join(t.TempDir(), "waf")
+	if err := ensureWafDir(dir); err != nil {
+		t.Fatalf("ensureWafDir failed: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "custom-waf-settings.conf"))
 	if err != nil {

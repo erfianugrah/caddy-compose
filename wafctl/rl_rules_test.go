@@ -842,8 +842,8 @@ func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
 	caddyfile := filepath.Join(dir, "Caddyfile")
 	os.WriteFile(caddyfile, []byte("sonarr.erfi.io {\n\timport /data/caddy/rl/sonarr_rl*.caddy\n}\n"), 0644)
 
-	corazaDir := filepath.Join(dir, "coraza")
-	os.MkdirAll(corazaDir, 0755)
+	wafDir := filepath.Join(dir, "waf")
+	os.MkdirAll(wafDir, 0755)
 	rlDir := filepath.Join(dir, "rl")
 	os.MkdirAll(rlDir, 0755)
 	cspDir := filepath.Join(dir, "csp")
@@ -855,7 +855,7 @@ func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
 	cspS := NewCSPStore(filepath.Join(dir, "csp.json"))
 
 	deployCfg := DeployConfig{
-		CorazaDir:     corazaDir,
+		WafDir:        wafDir,
 		RateLimitDir:  rlDir,
 		CSPDir:        cspDir,
 		CaddyfilePath: caddyfile,

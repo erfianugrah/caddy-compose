@@ -16,7 +16,7 @@ services:
       - ./Caddyfile.e2e:/etc/caddy/Caddyfile:ro
       - ./ipsum_block.caddy:/etc/caddy/ipsum_block.caddy:ro
       # Shared writable volumes for dynamic configs
-      - coraza_data:/data/coraza
+      - waf_data:/data/waf
       - csp_data:/data/caddy/csp
       - wafctl_data:/data
       - caddy_log:/var/log
@@ -34,16 +34,16 @@ services:
     image: wafctl-e2e:local
     container_name: wafctl-e2e
     user: "0:0"  # Run as root in test (production uses volumes with correct ownership)
+    command: ["serve"]
     ports:
       - "18082:8080"   # wafctl API
     environment:
       WAFCTL_PORT: "8080"
-      WAF_AUDIT_LOG: /data/logs/coraza-audit.log
       WAF_COMBINED_ACCESS_LOG: /data/logs/combined-access.log
       WAF_EXCLUSIONS_FILE: /data/exclusions.json
       WAF_CONFIG_FILE: /data/waf-config.json
       WAF_RATELIMIT_FILE: /data/ratelimit.json
-      WAF_CORAZA_DIR: /data/coraza
+      WAF_DIR: /data/waf
       WAF_RATELIMIT_DIR: /data/rl
       WAF_CSP_FILE: /data/csp-config.json
       WAF_CSP_DIR: /data/caddy/csp
@@ -59,11 +59,11 @@ services:
       WAF_TAIL_INTERVAL: 2s
       WAF_CORS_ORIGINS: "*"
       WAF_POLICY_ENGINE_ENABLED: "true"
-      WAF_POLICY_RULES_FILE: /data/coraza/policy-rules.json
+      WAF_POLICY_RULES_FILE: /data/waf/policy-rules.json
       WAF_MANAGED_LISTS_FILE: /data/lists.json
       WAF_MANAGED_LISTS_DIR: /data/lists
     volumes:
-      - coraza_data:/data/coraza
+      - waf_data:/data/waf
       - csp_data:/data/caddy/csp
       - wafctl_data:/data
       - caddy_log:/data/logs:ro
@@ -83,7 +83,7 @@ services:
     container_name: httpbun-e2e
 
 volumes:
-  coraza_data:
+  waf_data:
   csp_data:
   wafctl_data:
   caddy_log:

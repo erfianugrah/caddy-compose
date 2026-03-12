@@ -40,7 +40,7 @@ DOCKGE_CONTAINER ?= dockge
 
 # ── WAF data paths (on remote host) ────────────────────────────────
 WAF_CONFIG_PATH    ?= /mnt/user/data/wafctl/waf-config.json
-WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/coraza/custom-waf-settings.conf
+WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/waf/custom-waf-settings.conf
 
 # ── Computed helpers ────────────────────────────────────────────────
 ifeq ($(DEPLOY_MODE),dockge)

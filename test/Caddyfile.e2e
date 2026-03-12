@@ -1,9 +1,7 @@
-# E2E test Caddyfile — mirrors production config loading order
-# with dynamic wafctl-managed configs included.
+# E2E test Caddyfile — policy engine as sole WAF
 {
 	admin :2019
 	order policy_engine first
-	order coraza_waf after policy_engine
 	log {
 		level INFO
 		output stdout
@@ -27,38 +25,12 @@
 	header Vary Origin
 }
 
-# WAF with dynamic config includes — matches production loading order
+# WAF — policy engine only
 (waf) {
-	@not_websocket {
-		not header Connection *Upgrade*
-	}
-	route @not_websocket {
-		policy_engine {
-			rules_file /data/coraza/policy-rules.json
-			default_rules_file /etc/caddy/coraza/default-rules.json
-			reload_interval 5s
-		}
-		@needs_waf {
-			not vars {http.vars.policy_engine.action} allow
-		}
-		route @needs_waf {
-			coraza_waf {
-				load_owasp_crs
-				directives `
-				Include /etc/caddy/coraza/pre-crs.conf
-				Include /data/coraza/custom-pre-crs.conf
-				Include @crs-setup.conf.example
-				Include /data/coraza/custom-waf-settings.conf
-				Include @owasp_crs/*.conf
-				Include /etc/caddy/coraza/post-crs.conf
-				Include /data/coraza/custom-post-crs.conf
-				SecAuditEngine RelevantOnly
-				SecAuditLog /var/log/coraza-audit.log
-				SecAuditLogFormat json
-				SecAuditLogParts ABCFHKZ
-				`
-			}
-		}
+	policy_engine {
+		rules_file /data/waf/policy-rules.json
+		default_rules_file /etc/caddy/waf/default-rules.json
+		reload_interval 5s
 	}
 	handle_errors 400 403 429 {
 		root * /etc/caddy/errors

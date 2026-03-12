@@ -47,7 +47,7 @@ services:
       - /mnt/user/data/caddy/config:/config
       - /mnt/user/data/caddy/log:/var/log
       # Dynamic WAF overrides — written by wafctl Policy Engine
-      - /mnt/user/data/caddy/coraza:/data/coraza
+      - /mnt/user/data/caddy/waf:/data/waf
       # Dynamic rate limit zone files — written by wafctl Rate Limit Engine
       - /mnt/user/data/caddy/rl:/data/caddy/rl
       # Dynamic CSP header files — written by wafctl CSP Engine
@@ -160,7 +160,7 @@ services:
       - /mnt/user/data/caddy/log:/var/log:ro
       - /mnt/user/data/wafctl:/data
       # Dynamic WAF overrides — shared with Caddy
-      - /mnt/user/data/caddy/coraza:/data/coraza
+      - /mnt/user/data/caddy/waf:/data/waf
       # Dynamic rate limit zone files — shared with Caddy
       - /mnt/user/data/caddy/rl:/data/rl
       # Dynamic CSP header files — shared with Caddy
@@ -171,18 +171,18 @@ services:
       - /mnt/user/data/wafctl/geoip:/data/geoip:ro
     environment:
       - TZ=Asia/Singapore
-      - WAF_AUDIT_LOG=/var/log/coraza-audit.log
+      - WAF_AUDIT_LOG=/var/log/waf-audit.log
       - WAF_EXCLUSIONS_FILE=/data/exclusions.json
       - WAF_CONFIG_FILE=/data/waf-config.json
       - WAF_RATELIMIT_FILE=/data/rate-limits.json
       - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
-      - WAF_CORAZA_DIR=/data/coraza
+      - WAF_DIR=/data/waf
       - WAF_RATELIMIT_DIR=/data/rl
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
       - WAF_GEOIP_DB=/data/geoip/country.mmdb
       - WAF_POLICY_ENGINE_ENABLED=true
-      - WAF_POLICY_RULES_FILE=/data/coraza/policy-rules.json
+      - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json
 
 networks:
   authelia:

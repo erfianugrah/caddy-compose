@@ -12,7 +12,7 @@ on:
       - 'Caddyfile'
       - 'wafctl/**'
       - 'waf-dashboard/**'
-      - 'coraza/**'
+      - 'waf/**'
       - 'scripts/**'
       - 'errors/**'
       - '.github/workflows/build.yml'
@@ -47,7 +47,7 @@ jobs:
               - 'Caddyfile'
               - 'waf-dashboard/**'
               - 'wafctl/**'
-              - 'coraza/**'
+              - 'waf/**'
               - 'scripts/**'
               - 'errors/**'
             wafctl:

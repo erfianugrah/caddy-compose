@@ -124,7 +124,7 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		allExclusions := es.EnabledExclusions()
 
 		// When policy engine is enabled, allow/block/honeypot go to the plugin's
-		// JSON file instead of Coraza SecRules. Filter them out before generation.
+		// JSON file instead of SecRules. Filter them out before generation.
 		exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
 		result := GenerateConfigs(cfg, exclusions, ls)
 		wafSettings := GenerateWAFSettings(cfg)
@@ -151,7 +151,7 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		}
 
 		// Write config files to the shared volume.
-		if err := writeConfFiles(deployCfg.CorazaDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
+		if err := writeConfFiles(deployCfg.WafDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to write config files",
 				Details: err.Error(),
@@ -208,9 +208,9 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		// Pass the config file paths so reloadCaddy can fingerprint them and
 		// inject a unique comment, forcing Caddy to reparse all includes.
 		confFiles := []string{
-			filepath.Join(deployCfg.CorazaDir, "custom-pre-crs.conf"),
-			filepath.Join(deployCfg.CorazaDir, "custom-post-crs.conf"),
-			filepath.Join(deployCfg.CorazaDir, "custom-waf-settings.conf"),
+			filepath.Join(deployCfg.WafDir, "custom-pre-crs.conf"),
+			filepath.Join(deployCfg.WafDir, "custom-post-crs.conf"),
+			filepath.Join(deployCfg.WafDir, "custom-waf-settings.conf"),
 		}
 		reloaded := true
 		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, confFiles...); err != nil {

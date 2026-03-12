@@ -161,6 +161,23 @@ func (c *Converter) shouldSkip(rule SecRule, filename string) bool {
 		return true
 	}
 
+	// Skip data-extraction helper rules (pass + nolog, no msg/severity).
+	// These only capture/setvar for downstream rules — they don't detect anything.
+	// Example: 922140 (counter init), 922150 (multipart header extraction).
+	if hasAction(rule.Actions, "pass") && hasAction(rule.Actions, "nolog") &&
+		!hasAction(rule.Actions, "block") && !hasAction(rule.Actions, "deny") {
+		msg := actionValue(rule.Actions, "msg")
+		sev := actionValue(rule.Actions, "severity")
+		if msg == "" && sev == "" {
+			c.report.SkippedFlowControl = append(c.report.SkippedFlowControl, SkippedRule{
+				ID: rule.ID, Reason: "data-extraction helper (pass+nolog, no msg/severity)", File: filename,
+			})
+			c.report.SkippedRules++
+			c.addCategoryStat(categoryFromFilename(filename), false)
+			return true
+		}
+	}
+
 	return false
 }
 

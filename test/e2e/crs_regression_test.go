@@ -256,12 +256,21 @@ func runCRSTest(ruleID int, test CRSTest, targetURL string) crsTestResult {
 
 	// Inject headers to suppress our custom 9100xxx rules without affecting
 	// CRS detection. CRS tests don't test for these header absences.
+	// - User-Agent: suppresses 9100033 (empty UA, WARNING=3) and
+	//   9100035 (generic UA like go-http-client, CRITICAL=5)
+	// - Accept: suppresses 9100030 (missing Accept, NOTICE=2)
 	// - Referer: suppresses 9100034 (Missing Referer on non-API GET, NOTICE=2)
 	// - Accept-Language: suppresses part of 9100034's heuristics
 	// - Accept-Encoding: suppresses browser fingerprint heuristics
 	// Only set if the test didn't explicitly set these headers.
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "text/html,application/xml;q=0.9,*/*;q=0.8")
+	}
 	if req.Header.Get("Referer") == "" {
-		req.Header.Set("Referer", "https://localhost/")
+		req.Header.Set("Referer", "https://example.com/")
 	}
 	if req.Header.Get("Accept-Language") == "" {
 		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
@@ -414,7 +423,7 @@ func buildOverrides() map[string]testOverride {
 
 func TestCRSRegression(t *testing.T) {
 	// Paths.
-	defaultRulesPath := envOr("CRS_DEFAULT_RULES", "../../coraza/default-rules.json")
+	defaultRulesPath := envOr("CRS_DEFAULT_RULES", "../../waf/default-rules.json")
 	crsTestsDir := envOr("CRS_TESTS_DIR", "../../tools/coreruleset/tests/regression/tests")
 	filter := envOr("CRS_TEST_FILTER", "")
 
