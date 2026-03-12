@@ -13,4 +13,5 @@ export * from "./csp";
 export * from "./general-logs";
 export * from "./managed-lists";
 export * from "./security-headers";
+export * from "./default-rules";
 export * from "./backup";

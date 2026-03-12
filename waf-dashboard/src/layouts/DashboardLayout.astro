@@ -14,6 +14,7 @@ const navLinks = [
   { id: "logs", label: "Logs", href: "/logs", icon: "file-text", section: "Observability" },
   { id: "investigate", label: "IP Lookup", href: "/analytics", icon: "search", section: "Observability" },
   { id: "services", label: "Services", href: "/services", icon: "server", section: "Infrastructure" },
+  { id: "rules", label: "Rules", href: "/rules", icon: "book-open", section: "Security" },
   { id: "policy", label: "Policy", href: "/policy", icon: "shield", section: "Security" },
   { id: "rate-limits", label: "Rate Limits", href: "/rate-limits", icon: "gauge", section: "Security" },
   { id: "lists", label: "Lists", href: "/lists", icon: "list-tree", section: "Security" },
@@ -168,6 +169,13 @@ for (const link of navLinks) {
                             <line x1="16" y1="13" x2="8" y2="13" />
                             <line x1="16" y1="17" x2="8" y2="17" />
                             <polyline points="10 9 9 9 8 9" />
+                          </svg>
+                        )}
+                        {/* Book-open / Rules */}
+                        {link.icon === "book-open" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
                           </svg>
                         )}
                         {/* Shield / Policy */}
