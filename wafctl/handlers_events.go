@@ -77,8 +77,8 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		if hasFilter {
 			var allEvents []Event
 			// Optimization: skip event sources that can't match the event_type filter.
-			// policy_block appears in both maps: WAF store has Coraza-detected policy events,
-			// access log store has policy engine plugin blocks (which bypass Coraza entirely).
+			// policy_block appears in both maps: WAF store has detect-based policy events,
+			// access log store has policy engine blocks and rate limit events.
 			wafTypes := map[string]bool{
 				"blocked": true, "logged": true,
 				"policy_skip": true, "policy_allow": true, "policy_block": true,
@@ -376,9 +376,8 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
-		// Fast path: lookup a single event by ID (WAF events have persistent UUIDs;
-		// access log events use ephemeral IDs so they won't match here — the caller
-		// should also pass filters as fallback).
+		// Fast path: lookup a single event by ID (Caddy request UUID).
+		// Events without a request UUID have empty IDs and won't match.
 		if id := q.Get("id"); id != "" {
 			if ev := store.EventByID(id); ev != nil {
 				writeJSON(w, http.StatusOK, EventsResponse{Total: 1, Events: []Event{*ev}})
@@ -424,8 +423,8 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 		hours := parseHours(r)
 
 		// Collect WAF events (unless filtering to only rate_limited).
-		// policy_block appears in both maps: WAF store has Coraza-detected policy events,
-		// access log store has policy engine plugin blocks (which bypass Coraza entirely).
+		// policy_block appears in both maps: WAF store has detect-based policy events,
+		// access log store has policy engine blocks and rate limit events.
 		wafTypes := map[string]bool{
 			"blocked": true, "logged": true,
 			"policy_skip": true, "policy_allow": true, "policy_block": true,

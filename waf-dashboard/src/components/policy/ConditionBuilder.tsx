@@ -199,7 +199,19 @@ export function ConditionRow({
       {/* Operator selector */}
       <Select
         value={condition.operator}
-        onValueChange={(v) => onChange(index, { ...condition, operator: v as ConditionOperator, value: "" })}
+        onValueChange={(v) => {
+          const newOp = v as ConditionOperator;
+          // When switching to phrase_match, move any existing pipe-separated value into list_items
+          if (newOp === "phrase_match") {
+            const items = condition.value ? condition.value.split("|").filter(Boolean) : [];
+            onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : undefined });
+          } else {
+            // When switching away from phrase_match, move list_items back to pipe value for "in" or clear
+            const fromPhraseMatch = condition.operator === "phrase_match" && condition.list_items?.length;
+            const newValue = fromPhraseMatch && newOp === "in" ? condition.list_items!.join("|") : "";
+            onChange(index, { ...condition, operator: newOp, value: newValue, list_items: undefined });
+          }
+        }}
       >
         <SelectTrigger className="w-[160px] shrink-0">
           <SelectValue />
@@ -231,6 +243,15 @@ export function ConditionRow({
           <MethodMultiSelect
             value={condition.value}
             onChange={(v) => onChange(index, { ...condition, value: v })}
+          />
+        ) : condition.operator === "phrase_match" ? (
+          <PipeTagInput
+            value={(condition.list_items ?? []).join("|")}
+            onChange={(v) => {
+              const items = v ? v.split("|").filter(Boolean) : [];
+              onChange(index, { ...condition, value: "", list_items: items.length > 0 ? items : undefined });
+            }}
+            placeholder="e.g., select|union|insert|drop"
           />
         ) : condition.operator === "in" ? (
           <PipeTagInput

@@ -58,7 +58,6 @@ services:
       WAF_EVENT_MAX_AGE: 24h
       WAF_TAIL_INTERVAL: 2s
       WAF_CORS_ORIGINS: "*"
-      WAF_POLICY_ENGINE_ENABLED: "true"
       WAF_POLICY_RULES_FILE: /data/waf/policy-rules.json
       WAF_MANAGED_LISTS_FILE: /data/lists.json
       WAF_MANAGED_LISTS_DIR: /data/lists

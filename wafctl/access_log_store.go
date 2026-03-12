@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -469,9 +468,9 @@ func (s *AccessLogStore) Load() {
 
 	var newEvents []RateLimitEvent
 	reader := bufio.NewReaderSize(f, 64*1024)
-	// Use ReadBytes instead of Scanner — no line length limit, consistent
-	// with the audit log reader. Access log lines are typically small but
-	// this avoids a latent stall risk if a line ever exceeds 1MB.
+	// Use ReadBytes instead of Scanner — no line length limit. Access log
+	// lines are typically small but this avoids a latent stall risk if a
+	// line ever exceeds 1MB.
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
@@ -730,16 +729,6 @@ func parsePolicyRequestHeaders(raw string) map[string][]string {
 
 // ─── Converter: RateLimitEvent → Event ──────────────────────────────
 
-// ephemeralCounter generates fast sequential IDs for ephemeral RL→Event conversions.
-// These IDs only exist in JSON responses and are never persisted.
-var ephemeralCounter atomic.Int64
-
-// ephemeralID returns a fast unique ID without crypto/rand overhead.
-func ephemeralID() string {
-	n := ephemeralCounter.Add(1)
-	return fmt.Sprintf("rl-%d-%d", time.Now().UnixMilli(), n)
-}
-
 // RateLimitEventToEvent converts a RateLimitEvent into the unified Event type
 // so that 429s and policy engine blocks can be merged into the shared event stream.
 // Rate limit events use "rate_limited"; policy engine blocks use "policy_block".
@@ -766,16 +755,8 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
 	}
-	// Use the Caddy request UUID as the unified event ID.
-	// This ensures the same request has one ID across security events and
-	// general logs. Fall back to ephemeralID() only for legacy log entries
-	// that pre-date the log_append request_id directive.
-	eventID := rle.RequestID
-	if eventID == "" {
-		eventID = ephemeralID()
-	}
 	evt := Event{
-		ID:             eventID,
+		ID:             rle.RequestID,
 		Timestamp:      rle.Timestamp,
 		ClientIP:       rle.ClientIP,
 		Country:        rle.Country,
@@ -795,8 +776,8 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		evt.RuleMsg = "Policy Block: " + rle.RuleName
 	}
 	// For detect_block, include the anomaly score and matched rule details.
-	// Enrich with CRS descriptions and populate top-level fields to match
-	// Coraza event quality (rule_id, severity, rule_msg, blocked_by, matched_data, rule_tags).
+	// Enrich with CRS descriptions and populate top-level fields
+	// (rule_id, severity, rule_msg, blocked_by, matched_data, rule_tags).
 	if rle.Source == "detect_block" {
 		evt.AnomalyScore = rle.AnomalyScore
 		evt.BlockedBy = "anomaly_inbound"
@@ -920,7 +901,7 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		cleanID := strings.TrimPrefix(ruleID, "PE-")
 		// Try to parse as numeric rule ID for the int field.
 		numID, _ := strconv.Atoi(cleanID)
-		// Map severity string to numeric (matches Coraza convention).
+		// Map severity string to numeric (CRS convention).
 		sevNum := 0
 		switch severity {
 		case "CRITICAL":
@@ -954,8 +935,7 @@ type detectMatchEntry struct {
 
 // enrichMatchedRulesWithDetails parses the policy_detect_matches JSON and enriches
 // the MatchedRule slice with per-condition match details (field, var_name, value,
-// matched_data, operator). This provides Coraza-style MATCHED_VAR_NAME / MATCHED_VAR
-// observability for detect rules.
+// matched_data, operator).
 func enrichMatchedRulesWithDetails(rules []MatchedRule, detectMatchesJSON string) {
 	if detectMatchesJSON == "" || len(rules) == 0 {
 		return
@@ -996,8 +976,7 @@ func enrichMatchedRulesWithDetails(rules []MatchedRule, detectMatchesJSON string
 
 // enrichDetectBlockEvent enriches a detect_block Event with CRS rule descriptions
 // and populates the top-level fields (RuleID, Severity, RuleMsg, MatchedData, RuleTags)
-// from the highest-severity matched rule. This brings detect_block events to parity
-// with Coraza CRS events in the event detail UI.
+// from the highest-severity matched rule.
 func enrichDetectBlockEvent(evt *Event, rawRuleName string) {
 	if len(evt.MatchedRules) == 0 {
 		if rawRuleName != "" {

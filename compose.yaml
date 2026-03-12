@@ -181,7 +181,6 @@ services:
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
       - WAF_GEOIP_DB=/data/geoip/country.mmdb
-      - WAF_POLICY_ENGINE_ENABLED=true
       - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json
 
 networks:

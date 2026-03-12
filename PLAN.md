@@ -1842,8 +1842,9 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Add `default-rules.json` to Dockerfile COPY — **COMPLETED** (`COPY waf/default-rules.json /etc/caddy/waf/default-rules.json`)
 - [x] CRS regression test runner — **COMPLETED**: 3925 tests, 97.5% pass rate, **zero detection misses**
 - [x] Remove Coraza entirely — **COMPLETED**: coraza-caddy removed from Dockerfile, all `coraza/` paths renamed to `waf/`, policy engine is sole WAF
-- [ ] Build rules management UI — Frontend page to browse/toggle/override individual CRS rules (CF-style)
-- [ ] Clean up dead wafctl code — SecRule generators (~600 lines), audit log parser dead paths, SecRule exclusion types in frontend
+- [x] Build rules management UI — **COMPLETED**: `/rules` page with `RulesPanel.tsx`, category pill filters, search, per-rule toggle/override, Save & Deploy
+- [x] Clean up dead wafctl code — **COMPLETED**: 43 files changed, -8,287 net lines. Go: deleted 7 files, cleaned 18+ files. Frontend: deleted SecRuleEditor.tsx, rewrote PolicyForms.tsx, trimmed to 3 exclusion types (allow/block/detect)
+- [x] Fix "Create Exception" for policy engine events — **COMPLETED**: button was hidden for all `policy_*` events, action defaulted wrong, name generation broke on empty rule IDs
 - [ ] Deploy to production
 - [ ] Response-phase detection (Phase 2 — deferred)
 
@@ -1911,7 +1912,7 @@ Usage:
 | v0.11.1 | + per-condition match detail, request context, PE- prefix removed, detect_block parity | CRS auto-converter integration |
 | v0.12.5 | + `request_combined` field, CRS auto-converter output (254 rules from CRS 4.24.1), `cmdLine`/`escapeSeqDecode`/`removeCommentsChar` transforms, `validate_byte_range`/`validate_url_encoding` operators | Nothing |
 | **v0.12.5 (current)** | **Coraza fully removed. Policy engine is sole WAF.** 97.5% CRS regression pass, zero detection misses. | Nothing — Coraza removed |
-| v1.0 | + rules management UI, dead code cleanup, production deploy | libinjection (deferred) |
+| v1.0 | + rules management UI, dead code cleanup, exception creation fix, production deploy | libinjection (deferred) |
 
 ### Coraza Removal Checklist
 
@@ -1951,8 +1952,8 @@ Usage:
 - [ ] `detect_sqli` / `detect_xss` operators (libinjection) — 4 CRS rules use these; regex alternatives cover the same attacks
 - [ ] `multiMatch` support — ~15 CRS rules; regex patterns already match post-transform
 - [ ] Response-phase detection (Phase 2) — 100+ CRS outbound rules
-- [ ] Dead code cleanup in wafctl (SecRule generators, audit log parser, ~800 lines)
-- [ ] Rules management UI (CF-style browse/toggle/override individual CRS rules)
+- [x] Dead code cleanup in wafctl — **COMPLETED**: SecRule generators, audit log parser, SecRule exclusion types in frontend. 43 files, -8,287 net lines
+- [x] Rules management UI — **COMPLETED**: `/rules` page with CF-style browse/toggle/override
 - [ ] WebSocket `http.Hijacker` support (currently using `@not_websocket` bypass in Caddyfile)
 
 ### What Full Coraza Removal Eliminates
@@ -1969,8 +1970,35 @@ Usage:
 | `@needs_waf` matcher block | ✅ Removed |
 | Docker image size (~30-40MB from Coraza + CRS) | ✅ Reduced |
 | Caddy startup time (CRS rule compilation) | ✅ Faster (JSON parse + hot-reload vs SecRule compilation) |
-| `wafctl/generator.go` (SecRule generation, ~458 lines) | Deferred cleanup |
-| `wafctl/generator_helpers.go` (~187 lines) | Deferred cleanup |
-| `wafctl/waf_settings_generator.go` | Deferred cleanup |
-| SecRule exclusion types in frontend | Deferred cleanup |
-| Coraza audit log parsing (`logparser.go`) | Deferred cleanup (still has dead code paths) |
+| `wafctl/generator.go` (SecRule generation, ~458 lines) | ✅ Deleted |
+| `wafctl/generator_helpers.go` (~187 lines) | ✅ Deleted |
+| `wafctl/waf_settings_generator.go` | ✅ Deleted |
+| SecRule exclusion types in frontend | ✅ Cleaned (3 types only) |
+| Coraza audit log parsing (`logparser.go`) | ✅ Gutted to eviction-only |
+| `ephemeralID()` / `ephemeralCounter` | ✅ Removed (Caddy request UUID is sole event ID) |
+| `PolicyEngineEnabled` flag | Pending cleanup (always `true`) |
+| Legacy RL `.caddy` generator (`rl_generator.go`) | Pending cleanup (dead code, policy engine handles RL) |
+| CRS autocomplete data (`crs_rules.go` lines 263-345) | Pending cleanup (SecRule editor removed) |
+| `RawRule`, `RuleID`, `RuleTag`, `Variable` fields on `RuleExclusion` | Pending cleanup (SecRule types removed) |
+| JSONL migration code (6 exclusion versions, RL v1, config old format) | Kept (handles existing production stores) |
+
+### Deploy-time Actions (First Coraza-Free Deploy)
+
+On first production deploy after Coraza removal, manually clean up on the remote host:
+
+```bash
+# Delete legacy JSONL event files (events will rebuild from fresh access logs)
+rm -f /data/events.jsonl /data/access-events.jsonl
+rm -f /data/.audit-log-offset /data/.access-log-offset
+rm -f /var/log/waf-audit.log*
+
+# Delete legacy .caddy rate limit files (policy engine handles RL now)
+rm -f /data/caddy/rl/*_rl*.caddy
+
+# Delete legacy Coraza config files if present
+rm -f /data/coraza/*.conf
+```
+
+These files contain legacy event formats (rl- prefix IDs, Coraza transaction IDs,
+old event types like `ipsum_blocked`, `honeypot`, `scanner`). Starting fresh ensures
+all events use Caddy request UUIDs and the new event classification.

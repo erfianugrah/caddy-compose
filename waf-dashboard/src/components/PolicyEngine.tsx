@@ -33,6 +33,8 @@ import {
   Check,
   Search,
   X,
+  ArrowUpToLine,
+  ArrowDownToLine,
 } from "lucide-react";
 import {
   Card,
@@ -162,6 +164,34 @@ export default function PolicyEngine() {
       setError(err instanceof Error ? err.message : "Reorder failed");
     }
   }, [exclusions, rulesPage]);
+
+  const handleMoveToEdge = useCallback(async (id: string, edge: "top" | "bottom") => {
+    const idx = exclusions.findIndex((e) => e.id === id);
+    if (idx === -1) return;
+    if (edge === "top" && idx === 0) return;
+    if (edge === "bottom" && idx === exclusions.length - 1) return;
+
+    const newExclusions = [...exclusions];
+    const [item] = newExclusions.splice(idx, 1);
+    if (edge === "top") {
+      newExclusions.unshift(item);
+      setRulesPage(1); // jump to first page so user sees the moved rule
+    } else {
+      newExclusions.push(item);
+      setRulesPage(Math.ceil(newExclusions.length / RULES_PAGE_SIZE)); // jump to last page
+    }
+
+    const prev = exclusions;
+    setExclusions(newExclusions);
+    try {
+      const result = await reorderExclusions(newExclusions.map((e) => e.id));
+      setExclusions(result);
+      await autoDeploy(`Rule moved to ${edge}`);
+    } catch (err: unknown) {
+      setExclusions(prev);
+      setError(err instanceof Error ? err.message : "Move failed");
+    }
+  }, [exclusions]);
 
   // Highlight a specific exclusion when navigating from an event (e.g. /policy?rule=<name>).
   // The name is extracted from the Policy Engine rule's msg field.
@@ -544,7 +574,7 @@ export default function PolicyEngine() {
                     rowRef={isHighlighted ? highlightedRef : undefined}
                     className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-lv-green/5 transition-all duration-700" : undefined}
                   >
-                    <TableCell className="text-xs tabular-nums text-muted-foreground/60">
+                    <TableCell className="text-xs tabular-nums text-muted-foreground/60" title={`Rule ${globalIdx} of ${filteredExclusions.length}`}>
                       {globalIdx}
                     </TableCell>
                     <TableCell>
@@ -596,6 +626,30 @@ export default function PolicyEngine() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {!isFiltered && (
+                          <>
+                            <Button
+                              aria-label={`Move rule ${excl.name} to top`}
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground/50 hover:text-lv-cyan"
+                              onClick={() => handleMoveToEdge(excl.id, "top")}
+                              disabled={globalIdx === 1}
+                            >
+                              <ArrowUpToLine className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              aria-label={`Move rule ${excl.name} to bottom`}
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground/50 hover:text-lv-cyan"
+                              onClick={() => handleMoveToEdge(excl.id, "bottom")}
+                              disabled={globalIdx === filteredExclusions.length}
+                            >
+                              <ArrowDownToLine className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                         <Button
                           aria-label={`Edit rule ${excl.name}`}
                           variant="ghost"

@@ -1,4 +1,33 @@
+import { useState } from "react";
 import type { WAFEvent } from "@/lib/api";
+
+// ─── Truncation ─────────────────────────────────────────────────────
+
+const TRUNCATE_THRESHOLD = 200;
+
+/** Renders a code value with truncation for long strings (regex patterns, matched data, etc.).
+ * Shows a toggle to expand/collapse. */
+export function TruncatedCode({ value, className = "" }: { value: string; className?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  if (value.length <= TRUNCATE_THRESHOLD) {
+    return <code className={`break-all ${className}`}>{value}</code>;
+  }
+  return (
+    <span className="inline">
+      <code className={`break-all ${className}`}>
+        {expanded ? value : value.slice(0, TRUNCATE_THRESHOLD) + "…"}
+      </code>
+      <button
+        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+        className="ml-1 text-[10px] text-lv-cyan hover:text-lv-green underline"
+      >
+        {expanded ? "less" : `+${value.length - TRUNCATE_THRESHOLD} chars`}
+      </button>
+    </span>
+  );
+}
+
+// ─── Severity ───────────────────────────────────────────────────────
 
 export const SEVERITY_MAP: Record<number, { label: string; color: string }> = {
   2: { label: "CRITICAL", color: "text-lv-red" },

@@ -18,7 +18,7 @@ func TestStoreEviction(t *testing.T) {
 		{ID: "new", Timestamp: time.Now().UTC().Add(-1 * time.Hour), EventType: "blocked"},
 	})
 	store.SetMaxAge(168 * time.Hour) // 7 days
-	store.Load()                     // triggers eviction
+	store.evictOld()                 // triggers eviction
 	if got := store.EventCount(); got != 1 {
 		t.Fatalf("expected 1 event after eviction, got %d", got)
 	}
@@ -30,7 +30,6 @@ func TestStoreEviction(t *testing.T) {
 
 func TestStoreEventFileMalformedLines(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
 	eventPath := filepath.Join(dir, "events.jsonl")
 
 	// Pre-seed a JSONL file with some valid events and some garbage.
@@ -42,10 +41,7 @@ func TestStoreEventFileMalformedLines(t *testing.T) {
 	ef.WriteString(`{"id":"GOOD2","timestamp":"2026-02-22T07:20:00Z","client_ip":"2.2.2.2","service":"test.erfi.io","method":"POST","uri":"/api","is_blocked":true,"response_status":403,"event_type":"blocked"}` + "\n")
 	ef.Close()
 
-	// Create empty audit log so Load() has nothing to add.
-	os.Create(logPath)
-
-	store := NewStore(logPath)
+	store := NewStore()
 	store.SetEventFile(eventPath)
 
 	// Should gracefully skip malformed lines and load 2 valid events.
@@ -64,14 +60,12 @@ func TestStoreEventFileMalformedLines(t *testing.T) {
 
 func TestStoreEventFileEmpty(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
 	eventPath := filepath.Join(dir, "events.jsonl")
 
 	// Create an empty JSONL file.
 	os.Create(eventPath)
-	os.Create(logPath)
 
-	store := NewStore(logPath)
+	store := NewStore()
 	store.SetEventFile(eventPath)
 
 	if got := store.EventCount(); got != 0 {
@@ -79,22 +73,17 @@ func TestStoreEventFileEmpty(t *testing.T) {
 	}
 }
 
-func TestStoreEventFileMigratesMisclassifiedPolicySkip(t *testing.T) {
+func TestStoreEventFileLoadsEvents(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
 	eventPath := filepath.Join(dir, "events.jsonl")
-	os.Create(logPath)
 
-	// Write JSONL with a misclassified event: policy_skip but is_blocked=true.
 	ef, _ := os.Create(eventPath)
-	ef.WriteString(`{"id":"MIS1","timestamp":"2026-02-22T10:00:00Z","client_ip":"1.1.1.1","service":"test.erfi.io","method":"POST","uri":"/upload","is_blocked":true,"response_status":403,"event_type":"policy_skip"}` + "\n")
-	// Correctly classified: policy_skip and NOT blocked.
-	ef.WriteString(`{"id":"OK1","timestamp":"2026-02-22T10:01:00Z","client_ip":"2.2.2.2","service":"test.erfi.io","method":"GET","uri":"/page","is_blocked":false,"response_status":200,"event_type":"policy_skip"}` + "\n")
-	// Normal blocked event — should not be touched.
-	ef.WriteString(`{"id":"OK2","timestamp":"2026-02-22T10:02:00Z","client_ip":"3.3.3.3","service":"test.erfi.io","method":"GET","uri":"/.env","is_blocked":true,"response_status":403,"event_type":"blocked"}` + "\n")
+	ef.WriteString(`{"id":"E1","timestamp":"2026-02-22T10:00:00Z","client_ip":"1.1.1.1","service":"test.erfi.io","method":"POST","uri":"/upload","is_blocked":true,"response_status":403,"event_type":"blocked"}` + "\n")
+	ef.WriteString(`{"id":"E2","timestamp":"2026-02-22T10:01:00Z","client_ip":"2.2.2.2","service":"test.erfi.io","method":"GET","uri":"/page","is_blocked":false,"response_status":200,"event_type":"policy_skip"}` + "\n")
+	ef.WriteString(`{"id":"E3","timestamp":"2026-02-22T10:02:00Z","client_ip":"3.3.3.3","service":"test.erfi.io","method":"GET","uri":"/.env","is_blocked":true,"response_status":403,"event_type":"policy_block"}` + "\n")
 	ef.Close()
 
-	store := NewStore(logPath)
+	store := NewStore()
 	store.SetEventFile(eventPath)
 
 	if got := store.EventCount(); got != 3 {
@@ -102,34 +91,14 @@ func TestStoreEventFileMigratesMisclassifiedPolicySkip(t *testing.T) {
 	}
 
 	events := store.Snapshot()
-	for _, ev := range events {
-		switch ev.ID {
-		case "MIS1":
-			if ev.EventType != "blocked" {
-				t.Errorf("MIS1: want event_type=blocked after migration, got %s", ev.EventType)
-			}
-		case "OK1":
-			if ev.EventType != "policy_skip" {
-				t.Errorf("OK1: should remain policy_skip, got %s", ev.EventType)
-			}
-		case "OK2":
-			if ev.EventType != "blocked" {
-				t.Errorf("OK2: should remain blocked, got %s", ev.EventType)
-			}
-		}
+	if events[0].ID != "E1" || events[0].EventType != "blocked" {
+		t.Errorf("event 0: want E1/blocked, got %s/%s", events[0].ID, events[0].EventType)
 	}
-
-	// Verify the compacted JSONL file also has the fix.
-	// Give the goroutine a moment to compact.
-	time.Sleep(100 * time.Millisecond)
-	restored, err := loadEventsFromJSONL(eventPath)
-	if err != nil {
-		t.Fatalf("error reading compacted JSONL: %v", err)
+	if events[1].ID != "E2" || events[1].EventType != "policy_skip" {
+		t.Errorf("event 1: want E2/policy_skip, got %s/%s", events[1].ID, events[1].EventType)
 	}
-	for _, ev := range restored {
-		if ev.ID == "MIS1" && ev.EventType != "blocked" {
-			t.Errorf("MIS1 in compacted JSONL: want blocked, got %s", ev.EventType)
-		}
+	if events[2].ID != "E3" || events[2].EventType != "policy_block" {
+		t.Errorf("event 2: want E3/policy_block, got %s/%s", events[2].ID, events[2].EventType)
 	}
 }
 
@@ -198,12 +167,9 @@ func TestRateLimitEventToEvent(t *testing.T) {
 	if ev.Service != "sonarr.erfi.io" {
 		t.Errorf("service: want sonarr.erfi.io, got %s", ev.Service)
 	}
-	if ev.ID == "" {
-		t.Error("ID should not be empty")
-	}
-	// Ephemeral IDs use "rl-<millis>-<counter>" format for fast generation.
-	if !strings.HasPrefix(ev.ID, "rl-") {
-		t.Errorf("ID should have rl- prefix, got %s", ev.ID)
+	// Events without a Caddy request UUID have an empty ID (legacy entries age out).
+	if ev.ID != "" {
+		t.Errorf("ID should be empty for events without RequestID, got %s", ev.ID)
 	}
 }
 
@@ -488,7 +454,7 @@ func TestRateLimitEventToEvent_RequestID(t *testing.T) {
 	if ev.RequestID != "caddy-uuid-test-123" {
 		t.Errorf("request_id: want caddy-uuid-test-123, got %q", ev.RequestID)
 	}
-	// Unified request ID: Event.ID should be the Caddy request UUID, not an ephemeral rl- ID.
+	// Unified request ID: Event.ID should be the Caddy request UUID.
 	if ev.ID != "caddy-uuid-test-123" {
 		t.Errorf("ID (unified request ID): want caddy-uuid-test-123, got %q", ev.ID)
 	}
@@ -508,9 +474,9 @@ func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
 	if ev.RequestID != "" {
 		t.Errorf("request_id should be empty for events without it, got %q", ev.RequestID)
 	}
-	// Without a Caddy request UUID, falls back to ephemeral rl- ID.
-	if !strings.HasPrefix(ev.ID, "rl-") {
-		t.Errorf("ID without RequestID should fall back to rl- prefix, got %q", ev.ID)
+	// Without a Caddy request UUID, ID is empty (legacy entries age out).
+	if ev.ID != "" {
+		t.Errorf("ID without RequestID should be empty, got %q", ev.ID)
 	}
 }
 
@@ -1484,7 +1450,7 @@ func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 }
 
 func TestIPLookup_TracksAllEventTypes(t *testing.T) {
-	s := NewStore("")
+	s := NewStore()
 	s.mu.Lock()
 	s.events = []Event{
 		{ID: "1", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
@@ -1536,17 +1502,14 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 
 // --- RequestID Extraction Tests ---
 
-func TestSetEventFile_BackfillsTagsAndRemapsEventTypes(t *testing.T) {
+func TestSetEventFile_PreservesTagsAndTypes(t *testing.T) {
 	dir := t.TempDir()
 	eventPath := filepath.Join(dir, "events.jsonl")
 
-	// Write old-format events with legacy event types (no tags).
 	events := []Event{
-		{ID: "1", EventType: "honeypot", Timestamp: time.Now()},
-		{ID: "2", EventType: "scanner", Timestamp: time.Now()},
-		{ID: "3", EventType: "ipsum_blocked", Timestamp: time.Now()},
-		{ID: "4", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
-		{ID: "5", EventType: "logged", Timestamp: time.Now()},
+		{ID: "1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}, Timestamp: time.Now()},
+		{ID: "2", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "3", EventType: "rate_limited", IsBlocked: true, Tags: []string{"blocklist", "ipsum"}, Timestamp: time.Now()},
 	}
 	f, _ := os.Create(eventPath)
 	for _, ev := range events {
@@ -1560,81 +1523,17 @@ func TestSetEventFile_BackfillsTagsAndRemapsEventTypes(t *testing.T) {
 	store.SetEventFile(eventPath)
 
 	restored := store.SnapshotSince(24)
-
-	// Expected event types after migration:
-	// honeypot → policy_block, scanner → policy_block, ipsum_blocked → rate_limited
-	expectedTypes := map[string]string{
-		"1": "policy_block",
-		"2": "policy_block",
-		"3": "rate_limited",
-		"4": "blocked",
-		"5": "logged",
+	if len(restored) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(restored))
 	}
-	expectedTags := map[string][]string{
-		"1": {"honeypot"},
-		"2": {"scanner", "bot-detection"},
-		"3": {"blocklist", "ipsum"},
-		"4": nil,
-		"5": nil,
+	if restored[0].EventType != "policy_block" || len(restored[0].Tags) != 1 || restored[0].Tags[0] != "honeypot" {
+		t.Errorf("event 1: got type=%q tags=%v", restored[0].EventType, restored[0].Tags)
 	}
-
-	for _, ev := range restored {
-		wantType := expectedTypes[ev.ID]
-		if ev.EventType != wantType {
-			t.Errorf("event %s: event_type = %q, want %q", ev.ID, ev.EventType, wantType)
-		}
-
-		wantTags := expectedTags[ev.ID]
-		if len(ev.Tags) != len(wantTags) {
-			t.Errorf("event %s (%s): tags = %v, want %v", ev.ID, ev.EventType, ev.Tags, wantTags)
-			continue
-		}
-		for i, tag := range ev.Tags {
-			if tag != wantTags[i] {
-				t.Errorf("event %s tag[%d] = %q, want %q", ev.ID, i, tag, wantTags[i])
-			}
-		}
+	if restored[1].EventType != "blocked" || len(restored[1].Tags) != 0 {
+		t.Errorf("event 2: got type=%q tags=%v", restored[1].EventType, restored[1].Tags)
 	}
-}
-
-func TestSetEventFile_DoesNotOverwriteExistingTags(t *testing.T) {
-	dir := t.TempDir()
-	eventPath := filepath.Join(dir, "events.jsonl")
-
-	// Write event with existing tags. The "honeypot" event type will be
-	// remapped to "policy_block", and the "honeypot" tag backfill should
-	// be added since it's not already present.
-	events := []Event{
-		{ID: "1", EventType: "honeypot", Tags: []string{"custom-tag"}, Timestamp: time.Now()},
-	}
-	f, _ := os.Create(eventPath)
-	for _, ev := range events {
-		data, _ := json.Marshal(ev)
-		f.Write(data)
-		f.Write([]byte{'\n'})
-	}
-	f.Close()
-
-	store := &Store{events: nil, maxAge: 24 * time.Hour}
-	store.SetEventFile(eventPath)
-
-	restored := store.SnapshotSince(24)
-	if len(restored) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(restored))
-	}
-	// Event type should be remapped from "honeypot" to "policy_block".
-	if restored[0].EventType != "policy_block" {
-		t.Errorf("event_type = %q, want policy_block", restored[0].EventType)
-	}
-	// Existing "custom-tag" should be preserved, and "honeypot" tag should be added.
-	if len(restored[0].Tags) != 2 {
-		t.Fatalf("expected 2 tags (custom-tag + honeypot), got %v", restored[0].Tags)
-	}
-	if restored[0].Tags[0] != "custom-tag" {
-		t.Errorf("tag[0] = %q, want custom-tag", restored[0].Tags[0])
-	}
-	if restored[0].Tags[1] != "honeypot" {
-		t.Errorf("tag[1] = %q, want honeypot", restored[0].Tags[1])
+	if restored[2].EventType != "rate_limited" || len(restored[2].Tags) != 2 {
+		t.Errorf("event 3: got type=%q tags=%v", restored[2].EventType, restored[2].Tags)
 	}
 }
 

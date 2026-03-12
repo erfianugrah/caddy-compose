@@ -17,6 +17,7 @@ import {
   formatSeverity,
   parseMatchedData,
   HighlightedText,
+  TruncatedCode,
   isPolicyRuleEvent,
   policyRuleLink,
 } from "./helpers";
@@ -39,11 +40,12 @@ function ExpandableSection({ title, children, defaultOpen = false }: { title: st
 }
 
 export function EventDetailPanel({ event, hideActions = false, viewInEventsHref }: { event: WAFEvent; hideActions?: boolean; viewInEventsHref?: string }) {
-  // Only show "Create Exception" for CRS WAF events (not rate-limited or policy-engine-managed)
-  // detect_block events are anomaly threshold blocks where creating allow/skip exceptions makes sense
+  // Show "Create Exception" for any event where an exception makes sense:
+  // - detect_block / policy_block / policy_skip / logged / blocked → user may want to allow or tune
+  // - NOT rate_limited (handled by rate limit rules, not WAF exceptions)
+  // - NOT policy_allow (already allowed, no exception needed)
   const isWafEvent = event.event_type !== "rate_limited"
-    && !event.event_type?.startsWith("policy_")
-    || event.event_type === "detect_block";
+    && event.event_type !== "policy_allow";
 
   return (
     <div className="space-y-3 p-4">
@@ -125,6 +127,19 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               <span className="text-muted-foreground">Event ID:</span>
               <code className="text-muted-foreground/70 font-data select-all">{event.id}</code>
             </div>
+            {event.request_id && (
+              <div className="flex gap-2 items-center">
+                <span className="text-muted-foreground">Request ID:</span>
+                <code className="text-muted-foreground/70 font-data select-all">{event.request_id}</code>
+                <a
+                  href={`/logs?q=${encodeURIComponent(event.request_id)}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[10px] text-lv-cyan hover:text-lv-green hover:underline"
+                >
+                  View in General Logs
+                </a>
+              </div>
+            )}
             <div className="flex gap-2">
               <span className="text-muted-foreground">Method:</span>
               <span className="font-medium text-lv-cyan">{event.method}</span>
@@ -418,19 +433,23 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                           {m.matched_data && (
                             <div className="flex gap-2 items-start">
                               <span className="text-muted-foreground shrink-0">Matched:</span>
-                              <code className="break-all text-lv-peach">{m.matched_data}</code>
+                              <TruncatedCode value={m.matched_data} className="text-lv-peach" />
                             </div>
                           )}
                           {m.value && m.value !== m.matched_data && (
                             <div className="flex gap-2 items-start">
                               <span className="text-muted-foreground shrink-0">Full Value:</span>
-                              <code className="break-all text-foreground/70">
-                                {m.matched_data ? (
-                                  <HighlightedText text={m.value} highlight={m.matched_data} />
-                                ) : (
-                                  m.value
-                                )}
-                              </code>
+                              {m.value.length > 200 ? (
+                                <TruncatedCode value={m.value} className="text-foreground/70" />
+                              ) : (
+                                <code className="break-all text-foreground/70">
+                                  {m.matched_data ? (
+                                    <HighlightedText text={m.value} highlight={m.matched_data} />
+                                  ) : (
+                                    m.value
+                                  )}
+                                </code>
+                              )}
                             </div>
                           )}
                         </div>

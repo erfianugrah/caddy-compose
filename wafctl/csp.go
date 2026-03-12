@@ -439,50 +439,47 @@ func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigS
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
-		// When policy engine is enabled, CSP config goes into policy-rules.json
-		// for hot-reload (no Caddy restart needed).
-		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-			allExclusions := es.EnabledExclusions()
-			rlRules := rs.EnabledRules()
-			rlGlobal := rs.GetGlobal()
-			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-			respHeaders := BuildPolicyResponseHeaders(store, secStore, svcMap)
-			wafCfg := BuildPolicyWafConfig(cs, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to generate policy rules",
-					Details: err.Error(),
-				})
-				return
-			}
-			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to apply default rule overrides",
-					Details: err.Error(),
-				})
-				return
-			}
-			if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to write policy rules file",
-					Details: err.Error(),
-				})
-				return
-			}
-			writeJSON(w, http.StatusOK, CSPDeployResponse{
-				Status:    "ok",
-				Message:   "CSP config updated in policy-rules.json (hot-reload)",
-				Reloaded:  false,
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
+		// CSP config goes into policy-rules.json for hot-reload (no Caddy restart).
+		if deployCfg.PolicyRulesFile == "" {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "policy rules file not configured",
 			})
 			return
 		}
-
-		// Policy engine is required for CSP deployment.
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error: "CSP deployment requires policy engine (WAF_POLICY_ENGINE_ENABLED=true)",
+		allExclusions := es.EnabledExclusions()
+		rlRules := rs.EnabledRules()
+		rlGlobal := rs.GetGlobal()
+		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+		respHeaders := BuildPolicyResponseHeaders(store, secStore, svcMap)
+		wafCfg := BuildPolicyWafConfig(cs, svcMap)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to generate policy rules",
+				Details: err.Error(),
+			})
+			return
+		}
+		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to apply default rule overrides",
+				Details: err.Error(),
+			})
+			return
+		}
+		if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to write policy rules file",
+				Details: err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, CSPDeployResponse{
+			Status:    "ok",
+			Message:   "CSP config updated in policy-rules.json (hot-reload)",
+			Reloaded:  false,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		})
 	}
 }

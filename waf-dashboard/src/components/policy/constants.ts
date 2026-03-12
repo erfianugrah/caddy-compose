@@ -60,6 +60,7 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "begins_with", label: "begins with" },
       { value: "ends_with", label: "ends with" },
       { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
       { value: "in", label: "is in (substring match)" },
       { value: "in_list", label: "is in list" },
       { value: "not_in_list", label: "is not in list" },
@@ -94,6 +95,7 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "eq", label: "equals" },
       { value: "contains", label: "contains" },
       { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
       { value: "in", label: "is in (substring match)" },
       { value: "in_list", label: "is in list" },
       { value: "not_in_list", label: "is not in list" },
@@ -154,6 +156,7 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "begins_with", label: "begins with" },
       { value: "ends_with", label: "ends with" },
       { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
       { value: "in_list", label: "is in list" },
       { value: "not_in_list", label: "is not in list" },
     ],
@@ -239,6 +242,10 @@ export const CONDITION_FIELDS: FieldDef[] = [
     operators: [
       { value: "eq", label: "equals" },
       { value: "neq", label: "does not equal" },
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
       { value: "in", label: "is in" },
       { value: "in_list", label: "is in list" },
       { value: "not_in_list", label: "is not in list" },
@@ -254,6 +261,185 @@ export const CONDITION_FIELDS: FieldDef[] = [
       { value: "not_in_list", label: "is not in list" },
     ],
     placeholder: "e.g., HTTP/1.0 or HTTP/2.0",
+  },
+  // ─── Aggregate Fields ────────────────────────────────────────────
+  {
+    value: "all_args", label: "All Args (names+values)",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all query/form parameter names and values",
+    hint: "Aggregate: searches all ARGS names and values in a single check.",
+  },
+  {
+    value: "all_args_names", label: "All Arg Names",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all query/form parameter names",
+    hint: "Aggregate: searches all ARGS_NAMES.",
+  },
+  {
+    value: "all_args_values", label: "All Arg Values",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all query/form parameter values",
+    hint: "Aggregate: searches all ARGS values.",
+  },
+  {
+    value: "all_headers", label: "All Headers (names+values)",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all request header names and values",
+    hint: "Aggregate: searches all REQUEST_HEADERS names and values.",
+  },
+  {
+    value: "all_headers_names", label: "All Header Names",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all request header names",
+    hint: "Aggregate: searches all REQUEST_HEADERS names.",
+  },
+  {
+    value: "all_headers_values", label: "All Header Values",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all request header values",
+    hint: "Aggregate: searches all REQUEST_HEADERS values.",
+  },
+  {
+    value: "all_cookies", label: "All Cookies (names+values)",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all cookie names and values",
+    hint: "Aggregate: searches all REQUEST_COOKIES names and values.",
+  },
+  {
+    value: "all_cookies_names", label: "All Cookie Names",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all cookie names",
+    hint: "Aggregate: searches all REQUEST_COOKIES names.",
+  },
+  {
+    value: "all_cookies_values", label: "All Cookie Values",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across all cookie values",
+    hint: "Aggregate: searches all REQUEST_COOKIES values.",
+  },
+  {
+    value: "request_combined", label: "Request Combined",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "phrase match" },
+    ],
+    placeholder: "Matches across args, headers, cookies, body, path, and user agent",
+    hint: "Aggregate: extracts values from ALL CRS variable sources for broad detection.",
+  },
+  // ─── Count Fields (numeric comparison on element count) ─────────
+  {
+    value: "count:all_args", label: "Count: All Args",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 255",
+    hint: "Number of arguments (query + form parameters). Numeric comparison only.",
+  },
+  {
+    value: "count:all_args_names", label: "Count: Arg Names",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 50",
+    hint: "Number of distinct argument names.",
+  },
+  {
+    value: "count:all_args_values", label: "Count: Arg Values",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 255",
+    hint: "Number of argument values.",
+  },
+  {
+    value: "count:all_headers", label: "Count: All Headers",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 50",
+    hint: "Number of request headers (names + values).",
+  },
+  {
+    value: "count:all_headers_names", label: "Count: Header Names",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 30",
+    hint: "Number of distinct request header names.",
+  },
+  {
+    value: "count:all_cookies", label: "Count: All Cookies",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 20",
+    hint: "Number of cookies (names + values).",
+  },
+  {
+    value: "count:all_cookies_names", label: "Count: Cookie Names",
+    operators: [
+      { value: "gt", label: "greater than" },
+      { value: "ge", label: "greater or equal" },
+      { value: "lt", label: "less than" },
+      { value: "le", label: "less or equal" },
+    ],
+    placeholder: "e.g., 10",
+    hint: "Number of distinct cookie names.",
   },
 ];
 

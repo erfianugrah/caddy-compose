@@ -25,26 +25,30 @@ export interface CRSCatalogResponse {
   total: number;
 }
 
-export interface ModSecOperator {
-  name: string;
-  label: string;
-  description: string;
-  has_arg: boolean;
-}
-
-export interface CRSAutocompleteResponse {
-  variables: string[];
-  operators: ModSecOperator[];
-  actions: string[];
-}
-
 // ─── Exclusions / Policy ────────────────────────────────────────────
 
 export type ExclusionType = "allow" | "block" | "detect";
 
 // Condition fields and operators for the dynamic rule builder
-export type ConditionField = "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query" | "country" | "cookie" | "body" | "body_json" | "body_form" | "args" | "uri_path" | "referer" | "response_header" | "response_status" | "http_version";
-export type ConditionOperator = "eq" | "neq" | "contains" | "begins_with" | "ends_with" | "regex" | "ip_match" | "not_ip_match" | "in" | "exists" | "in_list" | "not_in_list";
+export type ConditionField =
+  | "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query"
+  | "country" | "cookie" | "body" | "body_json" | "body_form" | "args"
+  | "uri_path" | "referer" | "response_header" | "response_status" | "http_version"
+  // Aggregate fields (combine multiple sources for broad matching)
+  | "all_args" | "all_args_names" | "all_args_values"
+  | "all_headers" | "all_headers_names" | "all_headers_values"
+  | "all_cookies" | "all_cookies_names" | "all_cookies_values"
+  | "request_combined"
+  // Count pseudo-fields (numeric comparison on aggregate field element count)
+  | "count:all_args" | "count:all_args_names" | "count:all_args_values"
+  | "count:all_headers" | "count:all_headers_names"
+  | "count:all_cookies" | "count:all_cookies_names";
+export type ConditionOperator =
+  | "eq" | "neq" | "contains" | "begins_with" | "ends_with"
+  | "regex" | "phrase_match"
+  | "ip_match" | "not_ip_match"
+  | "in" | "exists" | "in_list" | "not_in_list"
+  | "gt" | "ge" | "lt" | "le";
 export type GroupOperator = "and" | "or";
 
 export interface Condition {
@@ -52,6 +56,8 @@ export interface Condition {
   operator: ConditionOperator;
   value: string;
   transforms?: string[];
+  /** Inline pattern list for phrase_match operator. */
+  list_items?: string[];
 }
 
 /** All transform names supported by the policy engine plugin (v0.8.1+). */
@@ -202,10 +208,6 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
 
 export async function fetchCRSRules(): Promise<CRSCatalogResponse> {
   return fetchJSON<CRSCatalogResponse>(`${API_BASE}/crs/rules`);
-}
-
-export async function fetchCRSAutocomplete(): Promise<CRSAutocompleteResponse> {
-  return fetchJSON<CRSAutocompleteResponse>(`${API_BASE}/crs/autocomplete`);
 }
 
 export async function getExclusions(): Promise<Exclusion[]> {

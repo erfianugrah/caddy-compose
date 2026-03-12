@@ -165,7 +165,7 @@ func TestSummarizeEvents_IncludesTopCountries(t *testing.T) {
 }
 
 func TestTopBlockedIPs_IncludesCountry(t *testing.T) {
-	s := NewStore("")
+	s := NewStore()
 	s.mu.Lock()
 	s.events = []Event{
 		{ID: "1", ClientIP: "1.2.3.4", Country: "US", IsBlocked: true, Timestamp: time.Now()},
@@ -219,7 +219,7 @@ func TestRateLimitEventToEvent_PropagatesCountry(t *testing.T) {
 }
 
 func TestHandleTopCountries(t *testing.T) {
-	s := NewStore("")
+	s := NewStore()
 	s.mu.Lock()
 	s.events = []Event{
 		{ID: "1", Country: "US", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},

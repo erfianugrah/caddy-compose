@@ -44,7 +44,6 @@ func TestIsPolicyEngineType(t *testing.T) {
 	}
 }
 
-
 func TestGeneratePolicyRules(t *testing.T) {
 	t.Run("empty exclusions", func(t *testing.T) {
 		data, err := GeneratePolicyRules(nil, nil)
@@ -382,11 +381,6 @@ func TestGeneratePolicyRules(t *testing.T) {
 				Conditions: []Condition{
 					{Field: "path", Operator: "in", Value: "/wp-admin /xmlrpc.php /wp-login.php"},
 				}},
-			// These should be excluded.
-			{ID: "s1", Name: "Skip SQLi", Type: "skip_rule", Enabled: true,
-				RuleID: "942100"},
-			{ID: "r1", Name: "Custom Rule", Type: "raw", Enabled: true,
-				RawRule: "SecRule REQUEST_URI \"@contains test\" \"id:99999,phase:1,deny\""},
 		}
 		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {

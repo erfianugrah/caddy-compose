@@ -513,7 +513,7 @@ func TestAccessLogStoreRequestID_PropagatedToEvent(t *testing.T) {
 	if events[0].RequestID != "e2e-uuid-abc" {
 		t.Errorf("Event.RequestID: want %q, got %q", "e2e-uuid-abc", events[0].RequestID)
 	}
-	// Unified request ID: Event.ID should be the Caddy UUID, not an ephemeral rl- ID.
+	// Unified request ID: Event.ID should be the Caddy UUID.
 	if events[0].ID != "e2e-uuid-abc" {
 		t.Errorf("Event.ID (unified request ID): want %q, got %q", "e2e-uuid-abc", events[0].ID)
 	}

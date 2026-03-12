@@ -7,18 +7,8 @@ import (
 	"strings"
 )
 
-// SecRule field validation patterns — restrict user-supplied values that are
-// interpolated directly into ModSecurity directives to prevent injection.
+// Validation patterns for condition fields and event tags.
 var (
-	// ruleTagRe matches valid CRS tag names: letters, digits, /, _, -, .
-	// e.g. "language/php", "OWASP_CRS/WEB_ATTACK/SQL_INJECTION"
-	ruleTagRe = regexp.MustCompile(`^[a-zA-Z0-9/_.\-]+$`)
-
-	// variableRe matches valid SecRule variable expressions: letters, digits,
-	// _, :, !, |, and . — e.g. "ARGS:foo", "!REQUEST_COOKIES:/^__utm/",
-	// "REQUEST_HEADERS:User-Agent"
-	variableRe = regexp.MustCompile(`^[a-zA-Z0-9_:!.|/^\-]+$`)
-
 	// namedFieldNameRe matches the name portion of named condition fields
 	// (header, cookie, args, response_header) — the part before ':' in the
 	// value. e.g. "User-Agent", "X-Forwarded-For", "__session"
@@ -31,7 +21,7 @@ var (
 )
 
 // namedConditionFields are condition fields where the value has a "Name:value"
-// format and the Name portion is interpolated into the SecRule variable.
+// format — the part before ':' is the field name (e.g., header name, cookie name).
 var namedConditionFields = map[string]bool{
 	"header":          true,
 	"cookie":          true,
@@ -118,8 +108,8 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 			}
 		}
 		// Validate named field names (header, cookie, args, response_header, body_form).
-		// The "Name:value" format uses the Name as a SecRule variable suffix;
-		// restrict it to safe characters to prevent directive injection.
+		// The "Name:value" format uses the Name as a policy engine variable suffix;
+		// restrict it to safe characters to prevent injection.
 		if namedConditionFields[c.Field] && strings.Contains(c.Value, ":") {
 			name := c.Value[:strings.Index(c.Value, ":")]
 			if name != "" && !namedFieldNameRe.MatchString(name) {
@@ -159,7 +149,7 @@ func validateExclusion(e RuleExclusion) error {
 	if e.Name == "" {
 		return fmt.Errorf("name is required")
 	}
-	// Reject control characters in the name (used in SecRule comments and msg fields).
+	// Reject control characters in the name.
 	if strings.ContainsAny(e.Name, "\n\r") {
 		return fmt.Errorf("name must not contain newlines")
 	}
@@ -185,23 +175,13 @@ func validateExclusion(e RuleExclusion) error {
 		}
 	}
 
-	// Validate conditions — policy engine types (allow/block) only
-	// support request-phase fields; SecRule types support all fields.
+	// Validate conditions — all types only support request-phase fields.
 	var allowedFields map[string]bool
 	if IsPolicyEngineType(e.Type) {
 		allowedFields = validPolicyEngineFields
 	}
 	if err := validateConditions(e.Conditions, allowedFields); err != nil {
 		return err
-	}
-
-	// Cross-type field validation — validate SecRule-origin fields that may
-	// still be present on policy engine types for metadata purposes.
-	if e.RuleTag != "" && !ruleTagRe.MatchString(e.RuleTag) {
-		return fmt.Errorf("invalid rule_tag %q (letters, digits, slashes, underscores, hyphens, dots only)", e.RuleTag)
-	}
-	if e.Variable != "" && !variableRe.MatchString(e.Variable) {
-		return fmt.Errorf("invalid variable %q (letters, digits, colons, underscores, pipes, dots only)", e.Variable)
 	}
 
 	// Type-specific validation.

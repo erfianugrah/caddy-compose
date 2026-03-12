@@ -26,7 +26,6 @@ func main() {
 
 // runServe starts the HTTP API server. This is the default command.
 func runServe() int {
-	logPath := envOr("WAF_AUDIT_LOG", "/var/log/waf-audit.log")
 	port := envOr("WAFCTL_PORT", "8080")
 	exclusionsFile := envOr("WAF_EXCLUSIONS_FILE", "/data/exclusions.json")
 	configFile := envOr("WAF_CONFIG_FILE", "/data/waf-config.json")
@@ -39,20 +38,18 @@ func runServe() int {
 	managedListsFile := envOr("WAF_MANAGED_LISTS_FILE", "/data/lists.json")
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
 
-	policyEngineEnabled := envOr("WAF_POLICY_ENGINE_ENABLED", "false") == "true"
 	policyRulesFile := envOr("WAF_POLICY_RULES_FILE", "/data/waf/policy-rules.json")
 
 	defaultRulesFile := envOr("WAF_DEFAULT_RULES_FILE", "/etc/caddy/waf/default-rules.json")
 	defaultRulesOverridesFile := envOr("WAF_DEFAULT_RULES_OVERRIDES_FILE", "/data/default-rule-overrides.json")
 
 	deployCfg := DeployConfig{
-		WafDir:              envOr("WAF_DIR", "/data/waf"),
-		RateLimitDir:        envOr("WAF_RATELIMIT_DIR", "/data/rl"),
-		CSPDir:              envOr("WAF_CSP_DIR", "/data/csp"),
-		CaddyfilePath:       envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
-		CaddyAdminURL:       envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
-		PolicyRulesFile:     policyRulesFile,
-		PolicyEngineEnabled: policyEngineEnabled,
+		WafDir:          envOr("WAF_DIR", "/data/waf"),
+		RateLimitDir:    envOr("WAF_RATELIMIT_DIR", "/data/rl"),
+		CSPDir:          envOr("WAF_CSP_DIR", "/data/csp"),
+		CaddyfilePath:   envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
+		CaddyAdminURL:   envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
+		PolicyRulesFile: policyRulesFile,
 	}
 
 	// Ensure WAF config directory and placeholder files exist.
@@ -98,8 +95,8 @@ func runServe() int {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("wafctl starting: log=%s combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s waf_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s policy_engine=%v default_rules=%s",
-		logPath, combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.WafDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, policyEngineEnabled, defaultRulesFile)
+	log.Printf("wafctl starting: combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s waf_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s default_rules=%s",
+		combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.WafDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, defaultRulesFile)
 
 	var geoAPICfg *GeoIPAPIConfig
 	if geoAPIURL != "" {
@@ -107,12 +104,11 @@ func runServe() int {
 	}
 	geoStore := NewGeoIPStore(geoDBPath, geoAPICfg)
 
-	store := NewStore(logPath)
-	store.SetOffsetFile(envOr("WAF_AUDIT_OFFSET_FILE", "/data/.audit-log-offset"))
+	store := NewStore()
 	store.SetEventFile(envOr("WAF_EVENT_FILE", "/data/events.jsonl"))
 	store.SetMaxAge(maxAge)
 	store.SetGeoIP(geoStore)
-	store.StartTailing(tailInterval)
+	store.StartEviction(tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
 	accessLogStore.SetOffsetFile(envOr("WAF_ACCESS_OFFSET_FILE", "/data/.access-log-offset"))
@@ -170,7 +166,7 @@ func runServe() int {
 			log.Printf("warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
 		}
 	}
-	blocklistStore.StartScheduledRefresh(refreshHour, rlRuleStore, managedListStore, deployCfg)
+	blocklistStore.StartScheduledRefresh(refreshHour)
 
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
@@ -211,7 +207,6 @@ func runServe() int {
 
 	// CRS Catalog
 	mux.HandleFunc("GET /api/crs/rules", handleCRSRules)
-	mux.HandleFunc("GET /api/crs/autocomplete", handleCRSAutocomplete)
 
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
@@ -241,7 +236,7 @@ func runServe() int {
 	// Blocklist (IPsum)
 	mux.HandleFunc("GET /api/blocklist/stats", handleBlocklistStats(blocklistStore))
 	mux.HandleFunc("GET /api/blocklist/check/{ip}", handleBlocklistCheck(blocklistStore))
-	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore, rlRuleStore, managedListStore, deployCfg))
+	mux.HandleFunc("POST /api/blocklist/refresh", handleBlocklistRefresh(blocklistStore))
 
 	// CSP (Content Security Policy)
 	mux.HandleFunc("GET /api/csp", handleGetCSP(cspStore))

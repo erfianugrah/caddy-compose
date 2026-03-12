@@ -103,12 +103,14 @@ export interface WAFEvent {
   request_headers?: Record<string, string[]>;
   request_body?: string;
   request_args?: Record<string, string>;
+  // Caddy-generated UUID for request correlation
+  request_id?: string;
   tags?: string[];
 }
 
 export interface MatchedRuleDetailInfo {
   field: string;        // condition field (e.g., "all_args_values", "header")
-  var_name: string;     // SecRule-style variable name (e.g., "ARGS:username", "REQUEST_HEADERS:User-Agent")
+  var_name: string;     // CRS-style variable name (e.g., "ARGS:username", "REQUEST_HEADERS:User-Agent")
   value?: string;       // actual input value that was tested (truncated)
   matched_data?: string; // regex group 0, phrase_match hit, or matched literal
   operator?: string;     // operator name (e.g., "regex", "phrase_match")

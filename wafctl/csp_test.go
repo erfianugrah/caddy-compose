@@ -810,8 +810,8 @@ func TestHandleDeployCSPRequiresPolicyEngine(t *testing.T) {
 
 	var resp ErrorResponse
 	json.NewDecoder(w.Body).Decode(&resp)
-	if !strings.Contains(resp.Error, "policy engine") {
-		t.Errorf("error should mention policy engine, got %q", resp.Error)
+	if !strings.Contains(resp.Error, "policy rules file") {
+		t.Errorf("error should mention policy rules file, got %q", resp.Error)
 	}
 }
 

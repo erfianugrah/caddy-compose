@@ -96,79 +96,48 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigS
 		rules := rs.EnabledRules()
 		global := rs.GetGlobal()
 
-		// When policy engine is enabled, RL rules go into policy-rules.json
-		// alongside WAF exclusions. The plugin hot-reloads via mtime polling
-		// — no Caddy restart needed.
-		if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
-			allExclusions := es.EnabledExclusions()
-			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-			wafCfg := BuildPolicyWafConfig(cs, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls, svcMap, respHeaders, wafCfg)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to generate policy rules",
-					Details: err.Error(),
-				})
-				return
-			}
-			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to apply default rule overrides",
-					Details: err.Error(),
-				})
-				return
-			}
-			if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to write policy rules file",
-					Details: err.Error(),
-				})
-				return
-			}
-			log.Printf("[deploy] wrote policy rules with %d RL rules → %s", len(rules), deployCfg.PolicyRulesFile)
-
-			writeJSON(w, http.StatusOK, RateLimitDeployResponse{
-				Status:    "deployed",
-				Message:   fmt.Sprintf("Deployed %d RL rules via policy engine (hot-reload, no Caddy restart)", len(rules)),
-				Files:     []string{deployCfg.PolicyRulesFile},
-				Reloaded:  true, // Plugin hot-reloads automatically
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
+		// RL rules go into policy-rules.json alongside WAF exclusions.
+		// The plugin hot-reloads via mtime polling — no Caddy restart needed.
+		if deployCfg.PolicyRulesFile == "" {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "policy rules file not configured",
 			})
 			return
 		}
-
-		// Legacy mode: generate .caddy files and reload Caddy.
-		files := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
-
-		written, err := writeRLFiles(deployCfg.RateLimitDir, files)
+		allExclusions := es.EnabledExclusions()
+		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+		wafCfg := BuildPolicyWafConfig(cs, svcMap)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rules, global, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-				Error:   "failed to write RL files",
+				Error:   "failed to generate policy rules",
 				Details: err.Error(),
 			})
 			return
 		}
-
-		reloaded := true
-		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, written...); err != nil {
-			log.Printf("warning: Caddy reload failed after RL deploy: %v", err)
-			reloaded = false
+		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to apply default rule overrides",
+				Details: err.Error(),
+			})
+			return
 		}
-
-		status := "deployed"
-		msg := fmt.Sprintf("Wrote %d RL files and Caddy reloaded successfully", len(written))
-		if !reloaded {
-			status = "partial"
-			msg = fmt.Sprintf("Wrote %d RL files but Caddy reload failed — manual reload may be needed", len(written))
+		if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to write policy rules file",
+				Details: err.Error(),
+			})
+			return
 		}
+		log.Printf("[deploy] wrote policy rules with %d RL rules → %s", len(rules), deployCfg.PolicyRulesFile)
 
 		writeJSON(w, http.StatusOK, RateLimitDeployResponse{
-			Status:    status,
-			Message:   msg,
-			Files:     written,
-			Reloaded:  reloaded,
+			Status:    "deployed",
+			Message:   fmt.Sprintf("Deployed %d RL rules via policy engine (hot-reload, no Caddy restart)", len(rules)),
+			Files:     []string{deployCfg.PolicyRulesFile},
+			Reloaded:  true, // Plugin hot-reloads automatically
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		})
 	}

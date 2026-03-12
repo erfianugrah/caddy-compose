@@ -42,7 +42,7 @@ var sampleEvents = func() []Event {
 // storeWithEvents creates a Store pre-populated with the given events.
 func storeWithEvents(t *testing.T, events []Event) *Store {
 	t.Helper()
-	store := NewStore(filepath.Join(t.TempDir(), "waf.log"))
+	store := NewStore()
 	store.mu.Lock()
 	store.events = make([]Event, len(events))
 	copy(store.events, events)
@@ -55,7 +55,7 @@ func storeWithEvents(t *testing.T, events []Event) *Store {
 // testHealthHandler returns a handleHealth closure with minimal test stores.
 func testHealthHandler(t *testing.T) http.HandlerFunc {
 	t.Helper()
-	store := NewStore(filepath.Join(t.TempDir(), "audit.log"))
+	store := NewStore()
 	als := NewAccessLogStore(filepath.Join(t.TempDir(), "access.log"))
 	gls := NewGeneralLogStore(filepath.Join(t.TempDir(), "access.log"))
 	geoStore := NewGeoIPStore(filepath.Join(t.TempDir(), "nonexistent.mmdb"), nil)
@@ -68,10 +68,10 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 }
 
 // emptyWAFStore returns a Store with no events for tests that only need
-// an empty WAF store (no audit log parsing — policy engine handles detection).
+// an empty WAF store (policy engine handles detection via the access log).
 func emptyWAFStore(t *testing.T) *Store {
 	t.Helper()
-	return NewStore(filepath.Join(t.TempDir(), "empty-waf.log"))
+	return NewStore()
 }
 
 // emptyAccessLogStore returns an AccessLogStore with no events for tests that

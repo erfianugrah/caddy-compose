@@ -113,17 +113,58 @@ describe("extractPrefillFromEvent", () => {
     expect(countryCond!.operator).toBe("eq");
   });
 
-  it("sets action to block", () => {
+  it("sets action to allow for blocked events (false positive workflow)", () => {
     const prefill = extractPrefillFromEvent(baseEvent);
+    expect(prefill.action).toBe("allow");
+  });
+
+  it("sets action to allow for policy_block events", () => {
+    const event = { ...baseEvent, event_type: "policy_block", blocked: true };
+    const prefill = extractPrefillFromEvent(event);
+    expect(prefill.action).toBe("allow");
+  });
+
+  it("sets action to detect for policy_skip events", () => {
+    const event = { ...baseEvent, event_type: "policy_skip", blocked: false };
+    const prefill = extractPrefillFromEvent(event);
+    expect(prefill.action).toBe("detect");
+  });
+
+  it("sets action to block for logged (non-blocked) events", () => {
+    const event = { ...baseEvent, event_type: "logged", blocked: false };
+    const prefill = extractPrefillFromEvent(event);
     expect(prefill.action).toBe("block");
   });
 
-  it("auto-generates a descriptive name", () => {
+  it("sets action to allow for detect_block events", () => {
+    const event = { ...baseEvent, event_type: "detect_block", blocked: true };
+    const prefill = extractPrefillFromEvent(event);
+    expect(prefill.action).toBe("allow");
+  });
+
+  it("auto-generates a descriptive name with action label", () => {
     const prefill = extractPrefillFromEvent(baseEvent);
-    expect(prefill.name).toContain("Block");
+    expect(prefill.name).toContain("Allow");
     expect(prefill.name).toContain("942100");
     expect(prefill.name).toContain("/api/v1/upload");
     expect(prefill.name).toContain("radarr.erfi.io");
+  });
+
+  it("uses rule_msg in name when no rule IDs available (policy events)", () => {
+    const event: WAFEvent = {
+      ...baseEvent,
+      event_type: "policy_block",
+      blocked: true,
+      rule_id: 0,
+      matched_rules: undefined as any,
+      rule_msg: "Policy Block: Block bots",
+    };
+    const prefill = extractPrefillFromEvent(event);
+    expect(prefill.name).toContain("Allow");
+    expect(prefill.name).toContain("Block bots");
+    expect(prefill.name).toContain("/api/v1/upload");
+    // Should not have double spaces from missing rule IDs
+    expect(prefill.name).not.toMatch(/  /);
   });
 
   it("generates description from rule_msg", () => {
@@ -262,7 +303,7 @@ describe("consumePrefillEvent", () => {
 
     const result = consumePrefillEvent();
     expect(result).not.toBeNull();
-    expect(result!.action).toBe("block");
+    expect(result!.action).toBe("allow"); // blocked event → allow exception
     expect(result!.ruleIds).toBe("942100");
   });
 

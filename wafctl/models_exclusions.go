@@ -13,26 +13,20 @@ type Condition struct {
 	ListItems  []string `json:"list_items,omitempty"` // patterns for phrase_match (inline, not from managed list)
 }
 
-// RuleExclusion is a single WAF policy engine rule (allow, block, skip_rule, anomaly, honeypot, raw, etc.).
+// RuleExclusion is a single WAF policy engine rule (allow, block, detect).
 type RuleExclusion struct {
-	ID                   string      `json:"id"`
-	Name                 string      `json:"name"`
-	Description          string      `json:"description"`
-	Type                 string      `json:"type"`
-	Conditions           []Condition `json:"conditions,omitempty"`             // Dynamic conditions (field/operator/value)
-	GroupOp              string      `json:"group_operator,omitempty"`         // "and" (default) or "or"
-	RuleID               string      `json:"rule_id,omitempty"`                // For skip_rule + advanced types
-	RuleTag              string      `json:"rule_tag,omitempty"`               // For skip_rule + advanced types
-	Variable             string      `json:"variable,omitempty"`               // For advanced target types
-	RawRule              string      `json:"raw_rule,omitempty"`               // Raw SecRule directive for raw editor
-	AnomalyScore         int         `json:"anomaly_score,omitempty"`          // For anomaly type: score points to add (1-10)
-	AnomalyParanoiaLevel int         `json:"anomaly_paranoia_level,omitempty"` // For anomaly type: paranoia level 1-4 (default 1)
-	Severity             string      `json:"severity,omitempty"`               // For detect type: CRITICAL, ERROR, WARNING, NOTICE
-	DetectParanoiaLevel  int         `json:"detect_paranoia_level,omitempty"`  // For detect type: paranoia level 1-4 (0 = all levels)
-	Tags                 []string    `json:"tags,omitempty"`                   // Event classification tags (e.g., "scanner", "honeypot", "blocklist")
-	Enabled              bool        `json:"enabled"`
-	CreatedAt            time.Time   `json:"created_at"`
-	UpdatedAt            time.Time   `json:"updated_at"`
+	ID                  string      `json:"id"`
+	Name                string      `json:"name"`
+	Description         string      `json:"description"`
+	Type                string      `json:"type"`
+	Conditions          []Condition `json:"conditions,omitempty"`            // Dynamic conditions (field/operator/value)
+	GroupOp             string      `json:"group_operator,omitempty"`        // "and" (default) or "or"
+	Severity            string      `json:"severity,omitempty"`              // For detect type: CRITICAL, ERROR, WARNING, NOTICE
+	DetectParanoiaLevel int         `json:"detect_paranoia_level,omitempty"` // For detect type: paranoia level 1-4 (0 = all levels)
+	Tags                []string    `json:"tags,omitempty"`                  // Event classification tags (e.g., "scanner", "honeypot", "blocklist")
+	Enabled             bool        `json:"enabled"`
+	CreatedAt           time.Time   `json:"created_at"`
+	UpdatedAt           time.Time   `json:"updated_at"`
 }
 
 // ─── WAF Configuration ──────────────────────────────────────────────────────
@@ -146,7 +140,7 @@ var validRuleGroupTags = map[string]bool{
 	"attack-injection-java":   true, // Java Injection (944xxx)
 }
 
-// Valid exclusion types — policy engine only (Coraza/SecRule types removed).
+// Valid exclusion types — policy engine only.
 var validExclusionTypes = map[string]bool{
 	"allow":  true, // Whitelist — bypass WAF checks
 	"block":  true, // Deny requests

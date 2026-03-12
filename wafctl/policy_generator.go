@@ -92,8 +92,7 @@ type PolicyCondition struct {
 	ListKind   string   `json:"list_kind,omitempty"`  // "ip", "hostname", "string", "asn"
 }
 
-// policyEngineTypes are the exclusion types handled by the Caddy policy
-// engine plugin instead of Coraza SecRules.
+// policyEngineTypes are the exclusion types handled by the Caddy policy engine plugin.
 var policyEngineTypes = map[string]bool{
 	"allow":  true,
 	"block":  true,
@@ -112,8 +111,6 @@ var policyTypePriority = map[string]int{
 }
 
 // GeneratePolicyRules converts exclusions into the plugin's JSON format.
-// Only allow/block types are included. All other types remain
-// in SecRule generation (generator.go).
 //
 // This is a convenience wrapper around GeneratePolicyRulesWithRL with no
 // rate limit rules. Use GeneratePolicyRulesWithRL when RL rules should
@@ -325,7 +322,7 @@ func convertConditions(conditions []Condition, listStore *ManagedListStore) []Po
 }
 
 // IsPolicyEngineType returns true if the exclusion type is handled by
-// the Caddy policy engine plugin rather than Coraza SecRules.
+// the Caddy policy engine plugin.
 func IsPolicyEngineType(typ string) bool {
 	return policyEngineTypes[typ]
 }

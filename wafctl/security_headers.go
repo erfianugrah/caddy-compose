@@ -436,9 +436,9 @@ func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore,
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
-		if !deployCfg.PolicyEngineEnabled || deployCfg.PolicyRulesFile == "" {
+		if deployCfg.PolicyRulesFile == "" {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{
-				Error: "security headers require the policy engine to be enabled",
+				Error: "policy rules file not configured",
 			})
 			return
 		}

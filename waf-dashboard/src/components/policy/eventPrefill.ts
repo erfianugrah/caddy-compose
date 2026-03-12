@@ -70,13 +70,35 @@ export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     conditions.push({ field: "country", operator: "eq", value: event.country });
   }
 
-  // Auto-generate name
+  // Smart action default:
+  // - If the event was a block (policy_block, detect_block, blocked), the user
+  //   likely wants to CREATE AN ALLOW exception (the block was a false positive).
+  // - If the event was a skip (policy_skip), keep detect as default.
+  // - Otherwise default to block (the event was logged but should be blocked).
+  const isBlockEvent = event.event_type === "policy_block"
+    || event.event_type === "detect_block"
+    || event.blocked;
+  const isSkipEvent = event.event_type === "policy_skip";
+  const action: "allow" | "block" | "detect" = isBlockEvent ? "allow" : isSkipEvent ? "detect" : "block";
+
+  // Action label for the auto-generated name
+  const actionLabel = action === "allow" ? "Allow" : action === "detect" ? "Detect" : "Block";
+
+  // Auto-generate name — handle missing rule IDs gracefully for policy events
   const ruleSnippet = ruleIds.length > 0
     ? ruleIds.slice(0, 3).join(", ") + (ruleIds.length > 3 ? "..." : "")
     : "";
   const pathSnippet = event.uri ? event.uri.split("?")[0] : "";
   const serviceSnippet = event.service ? `on ${event.service}` : "";
-  const name = ["Block", ruleSnippet, "for", pathSnippet, serviceSnippet].filter(Boolean).join(" ");
+  // For policy events without rule IDs, use the rule_msg as context
+  const contextSnippet = !ruleSnippet && event.rule_msg
+    ? event.rule_msg.replace(/^(Policy Block|Rate Limited|Detected):\s*/i, "")
+    : ruleSnippet;
+  const name = [actionLabel, contextSnippet, "for", pathSnippet, serviceSnippet]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 
   // Description from the primary rule message
   const description = event.rule_msg
@@ -84,7 +106,7 @@ export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     : `Auto-created from event ${event.id}`;
 
   return {
-    action: "block",
+    action,
     name,
     description,
     ruleIds: ruleIds.join(" "),

@@ -25,13 +25,24 @@ func headerValue(headers map[string][]string, key string) string {
 	return ""
 }
 
-// parseTimestamp parses Coraza's "2006/01/02 15:04:05" format.
+// parseTimestamp parses "2006/01/02 15:04:05" format timestamps.
 func parseTimestamp(raw string) time.Time {
 	t, err := time.Parse("2006/01/02 15:04:05", raw)
 	if err != nil {
 		return time.Time{}
 	}
 	return t.UTC()
+}
+
+// splitNamedField splits "Name:value" into (name, value). If no colon is
+// present, returns (s, ""). Used by condition builders for named fields
+// like header, cookie, args, etc.
+func splitNamedField(s string) (string, string) {
+	idx := strings.Index(s, ":")
+	if idx < 0 {
+		return s, ""
+	}
+	return s[:idx], s[idx+1:]
 }
 
 // atomicWriteFile writes data to a file atomically by first writing to a

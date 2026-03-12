@@ -15,8 +15,8 @@ import (
 )
 
 // defaultBlocklistMinScore is the minimum IPsum score to include in the blocklist.
-// Score 1 = all 8 IPsum levels. False positives can be handled via Policy Engine
-// allow-type exclusions (ctl:ruleEngine=Off) for specific IPs or paths.
+// Score 1 = all 8 IPsum levels. False positives can be handled via policy engine
+// allow-type exclusions for specific IPs or paths.
 const defaultBlocklistMinScore = 1
 
 // BlocklistStore manages IPsum blocklist downloads and delegates blocking to
@@ -269,7 +269,7 @@ func nextRefreshTime(now time.Time, hour int) time.Time {
 // blocklist daily at the specified UTC hour. This replaces the cron-based
 // update-ipsum.sh approach, which was unreliable inside hardened containers
 // (BusyBox crond silently skips crontabs with wrong file permissions).
-func (bs *BlocklistStore) StartScheduledRefresh(hour int, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) {
+func (bs *BlocklistStore) StartScheduledRefresh(hour int) {
 	go func() {
 		for {
 			now := time.Now().UTC()
@@ -280,7 +280,6 @@ func (bs *BlocklistStore) StartScheduledRefresh(hour int, rs *RateLimitRuleStore
 			time.Sleep(delay)
 
 			log.Printf("[blocklist] starting scheduled refresh")
-			syncCaddyfileServices(rs, ls, deployCfg)
 			result := bs.Refresh()
 			log.Printf("[blocklist] scheduled refresh complete: status=%s message=%q ips=%d", result.Status, result.Message, result.BlockedIPs)
 		}
@@ -310,11 +309,8 @@ func handleBlocklistCheck(bs *BlocklistStore) http.HandlerFunc {
 	}
 }
 
-func handleBlocklistRefresh(bs *BlocklistStore, rs *RateLimitRuleStore, ls *ManagedListStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleBlocklistRefresh(bs *BlocklistStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		// Ensure any new Caddyfile services have rate limit files before Caddy reloads.
-		syncCaddyfileServices(rs, ls, deployCfg)
-
 		result := bs.Refresh()
 		status := http.StatusOK
 		if result.Status == "error" {

@@ -13,10 +13,6 @@ func handleCRSRules(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, GetCRSCatalog())
 }
 
-func handleCRSAutocomplete(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, GetCRSAutocomplete())
-}
-
 // --- Handlers: WAF Config ---
 
 func handleGetConfig(cs *ConfigStore) http.HandlerFunc {

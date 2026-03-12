@@ -8,71 +8,40 @@ import (
 	"log"
 	"os"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// Store holds the parsed events and precomputed indexes.
+// Store holds WAF events and precomputed indexes. Events are fed into this
+// store from the AccessLogStore (via the policy engine's log_append fields).
+// The Store handles JSONL persistence, eviction, and querying.
 type Store struct {
 	mu     sync.RWMutex
 	events []Event
-
-	// file tailing state
-	path       string
-	offset     atomic.Int64
-	offsetFile string // persistent offset file (empty = don't persist)
 
 	// JSONL event persistence (empty = don't persist events)
 	eventFile string
 
 	// maxAge is the maximum age of events to retain. Events older than this
-	// are evicted during each Load() call. Zero means no eviction.
+	// are evicted during each eviction cycle. Zero means no eviction.
 	maxAge time.Duration
 
 	// geoIP is an optional GeoIP store for country enrichment.
 	geoIP *GeoIPStore
 
-	// generation increments on every Load() that adds/evicts events.
+	// generation increments on every eviction that removes events.
 	// Used by responseCache to invalidate stale entries.
 	generation atomic.Int64
 }
 
-func NewStore(path string) *Store {
-	return &Store{path: path}
-}
-
-// SetOffsetFile configures a file path to persist the audit log read offset
-// across restarts. Without this, the entire log is re-parsed on each startup.
-func (s *Store) SetOffsetFile(path string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.offsetFile = path
-	// Restore offset from disk.
-	if data, err := os.ReadFile(path); err == nil {
-		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
-			s.offset.Store(v)
-			log.Printf("restored audit log offset %d from %s", v, path)
-		}
-	}
-}
-
-// saveOffset writes the current offset to the persistent offset file (if configured).
-func (s *Store) saveOffset() {
-	if s.offsetFile == "" {
-		return
-	}
-	data := []byte(strconv.FormatInt(s.offset.Load(), 10) + "\n")
-	if err := atomicWriteFile(s.offsetFile, data, 0644); err != nil {
-		log.Printf("error saving audit log offset to %s: %v", s.offsetFile, err)
-	}
+func NewStore() *Store {
+	return &Store{}
 }
 
 // SetEventFile configures a JSONL file for persistent event storage.
 // On startup, existing events are loaded from this file so that parsed
-// events survive restarts without re-parsing the raw audit log.
+// events survive restarts.
 func (s *Store) SetEventFile(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -85,62 +54,8 @@ func (s *Store) SetEventFile(path string) {
 		}
 		return
 	}
-	// Migrate: fix misclassified events where a skip_rule fired but the
-	// request was still blocked by other CRS rules. Before the fix, these
-	// were labelled "policy_skip" despite being interrupted (is_blocked=true).
-	migrated := 0
-	for i := range events {
-		if events[i].EventType == "policy_skip" && events[i].IsBlocked {
-			events[i].EventType = "blocked"
-			migrated++
-		}
-	}
-
-	// Migrate: remap removed event types to their canonical replacements
-	// and backfill tags on old events that predate the tag system.
-	tagsMigrated := 0
-	for i := range events {
-		switch events[i].EventType {
-		case "honeypot":
-			events[i].EventType = "policy_block"
-			events[i].IsBlocked = true
-			if !containsTag(events[i].Tags, "honeypot") {
-				events[i].Tags = append(events[i].Tags, "honeypot")
-			}
-			tagsMigrated++
-		case "scanner":
-			events[i].EventType = "policy_block"
-			events[i].IsBlocked = true
-			if !containsTag(events[i].Tags, "scanner") {
-				events[i].Tags = append(events[i].Tags, "scanner")
-			}
-			if !containsTag(events[i].Tags, "bot-detection") {
-				events[i].Tags = append(events[i].Tags, "bot-detection")
-			}
-			tagsMigrated++
-		case "ipsum_blocked":
-			events[i].EventType = "rate_limited"
-			if !containsTag(events[i].Tags, "blocklist") {
-				events[i].Tags = append(events[i].Tags, "blocklist")
-			}
-			if !containsTag(events[i].Tags, "ipsum") {
-				events[i].Tags = append(events[i].Tags, "ipsum")
-			}
-			tagsMigrated++
-		}
-	}
-
 	s.events = events
 	log.Printf("restored %d events from %s", len(events), path)
-	if migrated > 0 {
-		log.Printf("migrated %d misclassified policy_skip→blocked events", migrated)
-	}
-	if tagsMigrated > 0 {
-		log.Printf("backfilled tags on %d events", tagsMigrated)
-	}
-	if migrated > 0 || tagsMigrated > 0 {
-		s.compactEventFileLocked()
-	}
 }
 
 // appendEventsToJSONL appends events to the JSONL file.
@@ -282,10 +197,8 @@ func (s *Store) SetMaxAge(d time.Duration) {
 	s.maxAge = d
 }
 
-// Load runs time-based eviction of old events. Previously this also parsed
-// the Coraza audit log, but that's been removed — WAF events now come
-// exclusively from the access log via the policy engine's log_append fields.
-func (s *Store) Load() {
+// evictOld runs time-based eviction of stale events.
+func (s *Store) evictOld() {
 	s.evict()
 }
 
@@ -325,20 +238,14 @@ func (s *Store) EventCount() int {
 	return len(s.events)
 }
 
-// Stats returns health-check information about the audit log store.
+// Stats returns health-check information about the WAF event store.
 func (s *Store) Stats() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	stats := map[string]any{
 		"events":     len(s.events),
-		"log_file":   s.path,
-		"offset":     s.offset.Load(),
 		"max_age":    s.maxAge.String(),
 		"event_file": s.eventFile,
-	}
-	// Log file size for comparison with offset.
-	if fi, err := os.Stat(s.path); err == nil {
-		stats["log_size"] = fi.Size()
 	}
 	// Oldest / newest event timestamps.
 	if len(s.events) > 0 {
@@ -348,14 +255,14 @@ func (s *Store) Stats() map[string]any {
 	return stats
 }
 
-// StartTailing loads once immediately, then reloads every interval.
-func (s *Store) StartTailing(interval time.Duration) {
-	s.Load()
+// StartEviction runs eviction once immediately, then periodically at interval.
+func (s *Store) StartEviction(interval time.Duration) {
+	s.evictOld()
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {
-			s.Load()
+			s.evictOld()
 		}
 	}()
 }
@@ -479,16 +386,6 @@ func formatBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
-}
-
-// containsTag checks if a tag is present in a slice.
-func containsTag(tags []string, tag string) bool {
-	for _, t := range tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
 }
 
 // topN is a generic helper that converts a map into a sorted top-N slice.

@@ -30,7 +30,7 @@ type Event struct {
 	Tags           []string  `json:"tags,omitempty"`    // Event classification tags from matched policy rules (e.g., "scanner", "honeypot", "blocklist")
 	// How the request was blocked: "anomaly_inbound", "anomaly_outbound", "direct", or ""
 	BlockedBy string `json:"blocked_by,omitempty"`
-	// Rule match data (from audit log messages/part H)
+	// Rule match data (from policy engine detection)
 	RuleID               int      `json:"rule_id,omitempty"`
 	RuleMsg              string   `json:"rule_msg,omitempty"`
 	Severity             int      `json:"severity,omitempty"`
@@ -40,7 +40,7 @@ type Event struct {
 	RuleTags             []string `json:"rule_tags,omitempty"`
 	// All matched rules (not just the primary/best one)
 	MatchedRules []MatchedRule `json:"matched_rules,omitempty"`
-	// Caddy-generated UUID for correlating access log ↔ audit log entries
+	// Caddy-generated UUID for request correlation
 	RequestID string `json:"request_id,omitempty"`
 	// Request context for full payload inspection
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"`
@@ -61,10 +61,10 @@ type MatchedRule struct {
 }
 
 // MatchedRuleDetail represents per-condition match data from a detect rule.
-// Mirrors the policy engine's matchDetail struct for observability parity with Coraza.
+// Mirrors the policy engine's matchDetail struct.
 type MatchedRuleDetail struct {
 	Field       string `json:"field"`                  // condition field (e.g., "all_args_values", "header")
-	VarName     string `json:"var_name"`               // SecRule-style variable name (e.g., "ARGS:username", "REQUEST_HEADERS:User-Agent")
+	VarName     string `json:"var_name"`               // CRS-style variable name (e.g., "ARGS:username", "REQUEST_HEADERS:User-Agent")
 	Value       string `json:"value,omitempty"`        // actual input value that was tested (truncated)
 	MatchedData string `json:"matched_data,omitempty"` // regex group 0, phrase_match hit, or matched literal
 	Operator    string `json:"operator,omitempty"`     // operator name (e.g., "regex", "phrase_match")

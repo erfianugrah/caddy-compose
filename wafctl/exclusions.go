@@ -36,34 +36,14 @@ func NewExclusionStore(filePath string) *ExclusionStore {
 	return s
 }
 
-// storeMigration defines a single version migration step.
-type storeMigration struct {
-	toVersion int
-	name      string
-	migrate   func(exclusions []RuleExclusion) []RuleExclusion
-}
-
-// storeMigrations is the ordered list of migrations. Each runs once when the
-// store version is below its toVersion.
-var storeMigrations = []storeMigration{
-	{toVersion: 1, name: "seed heuristic bot rules", migrate: migrateV0toV1},
-	{toVersion: 2, name: "add event tags to rules", migrate: migrateV1toV2},
-	{toVersion: 3, name: "seed ipsum block rules", migrate: migrateV2toV3},
-	{toVersion: 4, name: "seed heuristic detect rules", migrate: migrateV3toV4},
-	{toVersion: 5, name: "remove heuristic detect rules (now in default-rules.json)", migrate: migrateV4toV5},
-	{toVersion: 6, name: "remove seeded bot rules (now in default-rules.json)", migrate: migrateV5toV6},
-}
-
-// load reads exclusions from the JSON file on disk. Handles both legacy
-// bare-array format (v0) and versioned storeFile format.
+// load reads exclusions from the JSON file on disk.
 func (s *ExclusionStore) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("exclusions file not found at %s, seeding defaults", s.filePath)
+			log.Printf("exclusions file not found at %s, starting empty", s.filePath)
 			s.exclusions = []RuleExclusion{}
-			s.version = 0
-			s.runMigrations()
+			s.version = currentStoreVersion
 			return
 		}
 		log.Printf("error reading exclusions file: %v", err)
@@ -72,17 +52,15 @@ func (s *ExclusionStore) load() {
 		return
 	}
 
-	// Try versioned format first.
 	var sf storeFile
 	if err := json.Unmarshal(data, &sf); err == nil && sf.Version > 0 {
 		s.exclusions = sf.Exclusions
 		s.version = sf.Version
 		log.Printf("loaded %d exclusions from %s (store v%d)", len(sf.Exclusions), s.filePath, sf.Version)
-		s.runMigrations()
 		return
 	}
 
-	// Fall back to legacy bare-array format (v0).
+	// Legacy bare-array format — treat as current version.
 	var exclusions []RuleExclusion
 	if err := json.Unmarshal(data, &exclusions); err != nil {
 		log.Printf("error parsing exclusions file: %v", err)
@@ -92,28 +70,10 @@ func (s *ExclusionStore) load() {
 	}
 
 	s.exclusions = exclusions
-	s.version = 0
-	log.Printf("loaded %d exclusions from %s (legacy format, migrating)", len(exclusions), s.filePath)
-	s.runMigrations()
-}
-
-// runMigrations applies any pending migrations and saves if changes were made.
-func (s *ExclusionStore) runMigrations() {
-	if s.version >= currentStoreVersion {
-		return
-	}
-	for _, m := range storeMigrations {
-		if s.version < m.toVersion {
-			before := len(s.exclusions)
-			s.exclusions = m.migrate(s.exclusions)
-			after := len(s.exclusions)
-			s.version = m.toVersion
-			log.Printf("migration v%d (%s): %d → %d exclusions", m.toVersion, m.name, before, after)
-		}
-	}
 	s.version = currentStoreVersion
+	log.Printf("loaded %d exclusions from %s (legacy format)", len(exclusions), s.filePath)
 	if err := s.save(); err != nil {
-		log.Printf("error saving after migration: %v", err)
+		log.Printf("error saving after format upgrade: %v", err)
 	}
 }
 
@@ -132,202 +92,6 @@ func (s *ExclusionStore) save() error {
 		return fmt.Errorf("error writing exclusions file: %w", err)
 	}
 	return nil
-}
-
-// ─── Store Migrations ──────────────────────────────────────────────
-
-// migrateV0toV1 seeds the default heuristic bot detection rules that were
-// previously baked into coraza/pre-crs.conf. These become dynamic policy
-// engine rules so they can be tuned, disabled, or extended at runtime.
-func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
-	now := time.Now().UTC()
-
-	// Scanner UA block — hard block known attack tools.
-	// Equivalent to old rule 9100032 (@pmFromFile scanner-useragents.txt).
-	scannerUAs := "sqlmap havij nikto nuclei acunetix nessus qualys arachni whatweb wapiti " +
-		"skipfish gobuster dirbuster dirb ffuf wfuzz feroxbuster nmap masscan zgrab censys " +
-		"shodan netcraft burpsuite burp zaproxy zap httprobe subfinder amass httpx"
-
-	// Generic UA anomaly — default library UAs get +5 anomaly.
-	// Equivalent to old rule 9100035 (@pmFromFile generic-useragents.txt).
-	genericUAs := "python-requests go-http-client libwww-perl lwp-trivial wget curl/ mechanize scrapy"
-
-	seeds := []RuleExclusion{
-		{
-			ID:          generateUUIDv7(),
-			Name:        "Scanner UA Block",
-			Description: "Block known scanner/attack tool User-Agents (sqlmap, nikto, nuclei, etc.)",
-			Type:        "block",
-			Conditions: []Condition{
-				{Field: "user_agent", Operator: "in", Value: scannerUAs},
-			},
-			GroupOp:   "and",
-			Tags:      []string{"scanner", "bot-detection"},
-			Enabled:   true,
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:          generateUUIDv7(),
-			Name:        "HTTP/1.0 Anomaly",
-			Description: "+2 anomaly for HTTP/1.0 — modern clients use HTTP/1.1 or HTTP/2",
-			Type:        "detect",
-			Severity:    "NOTICE",
-			Conditions: []Condition{
-				{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
-			},
-			GroupOp:              "and",
-			Tags:                 []string{"bot-signal", "protocol"},
-			AnomalyScore:         2,
-			AnomalyParanoiaLevel: 1,
-			Enabled:              true,
-			CreatedAt:            now,
-			UpdatedAt:            now,
-		},
-		{
-			ID:          generateUUIDv7(),
-			Name:        "Generic UA Anomaly",
-			Description: "+5 anomaly for generic HTTP library User-Agents (python-requests, curl/, etc.)",
-			Type:        "detect",
-			Severity:    "WARNING",
-			Conditions: []Condition{
-				{Field: "user_agent", Operator: "in", Value: genericUAs},
-			},
-			GroupOp:              "and",
-			Tags:                 []string{"bot-signal", "generic-ua"},
-			AnomalyScore:         5,
-			AnomalyParanoiaLevel: 1,
-			Enabled:              true,
-			CreatedAt:            now,
-			UpdatedAt:            now,
-		},
-	}
-
-	return append(exclusions, seeds...)
-}
-
-// migrateV1toV2 adds event classification tags to existing seeded rules and
-// converts honeypot-type rules to block type with ["honeypot"] tag.
-func migrateV1toV2(exclusions []RuleExclusion) []RuleExclusion {
-	// Well-known seeded rule names → tags to backfill.
-	seedTags := map[string][]string{
-		"Scanner UA Block":   {"scanner", "bot-detection"},
-		"HTTP/1.0 Anomaly":   {"bot-signal", "protocol"},
-		"Generic UA Anomaly": {"bot-signal", "generic-ua"},
-	}
-
-	for i := range exclusions {
-		e := &exclusions[i]
-
-		// Backfill tags on known seeded rules (idempotent — skip if already tagged).
-		if tags, ok := seedTags[e.Name]; ok && len(e.Tags) == 0 {
-			e.Tags = tags
-		}
-
-		// Convert honeypot-type exclusions to block + ["honeypot"] tag.
-		// The "honeypot" exclusion type is no longer valid; block + tag is
-		// the canonical representation.
-		if e.Type == "honeypot" {
-			e.Type = "block"
-			if !containsTag(e.Tags, "honeypot") {
-				e.Tags = append(e.Tags, "honeypot")
-			}
-		}
-	}
-
-	return exclusions
-}
-
-// migrateV2toV3 seeds per-level IPsum block rules that use the policy engine
-// plugin via in_list conditions against the ipsum-level-N managed lists.
-// This replaces the legacy Caddy ipsum_block.caddy snippet approach.
-func migrateV2toV3(exclusions []RuleExclusion) []RuleExclusion {
-	// Check if any ipsum block rules already exist (idempotent).
-	for _, e := range exclusions {
-		if e.Type == "block" && containsTag(e.Tags, "ipsum") {
-			return exclusions // already seeded
-		}
-	}
-
-	now := time.Now().UTC()
-
-	// Create one block rule per IPsum threat level (1–8).
-	// Higher levels are more malicious; they're all block rules so priority
-	// doesn't matter for behavior, but we order them level-8-first for clarity.
-	for level := 8; level >= 1; level-- {
-		name := fmt.Sprintf("IPsum Block (Level %d)", level)
-		listName := ipsumLevelName(level)
-		desc := fmt.Sprintf("Block IPs on IPsum threat level %d via managed list (auto-seeded, policy engine)", level)
-
-		exclusions = append(exclusions, RuleExclusion{
-			ID:          generateUUIDv7(),
-			Name:        name,
-			Description: desc,
-			Type:        "block",
-			Conditions: []Condition{
-				{Field: "ip", Operator: "in_list", Value: listName},
-			},
-			GroupOp:   "and",
-			Tags:      []string{"blocklist", "ipsum", listName},
-			Enabled:   true,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-	}
-
-	return exclusions
-}
-
-// migrateV3toV4 previously seeded heuristic bot detection rules (detect type)
-// for 9100030, 9100033, 9100034. These are now shipped as built-in default
-// rules in default-rules.json (loaded by the policy engine plugin). The
-// migration is kept as a no-op for version compatibility — existing stores
-// at version 3 will advance to version 4 without adding duplicate rules.
-func migrateV3toV4(exclusions []RuleExclusion) []RuleExclusion {
-	return exclusions // no-op — heuristic detect rules are now in default-rules.json
-}
-
-// migrateV4toV5 removes heuristic detect rules that were seeded by v3→v4.
-// These rules are now shipped as built-in defaults in default-rules.json
-// (9100030, 9100033, 9100034). Removing the user-store copies
-// avoids double-counting anomaly scores.
-func migrateV4toV5(exclusions []RuleExclusion) []RuleExclusion {
-	// Known names of the v4-seeded heuristic detect rules.
-	remove := map[string]bool{
-		"Missing Accept Header":          true,
-		"Missing User-Agent":             true,
-		"Missing Referer on Non-API GET": true,
-	}
-
-	filtered := make([]RuleExclusion, 0, len(exclusions))
-	for _, e := range exclusions {
-		if e.Type == "detect" && containsTag(e.Tags, "heuristic") && remove[e.Name] {
-			continue // skip — now provided by default-rules.json
-		}
-		filtered = append(filtered, e)
-	}
-	return filtered
-}
-
-// migrateV5toV6 removes the v1-seeded bot rules (Scanner UA Block, HTTP/1.0
-// Anomaly, Generic UA Anomaly) which are now shipped as built-in default rules
-// in default-rules.json (9100032, 9100035, 9100036). Keeping them in
-// the user store would cause duplicate blocking/scoring.
-func migrateV5toV6(exclusions []RuleExclusion) []RuleExclusion {
-	remove := map[string]bool{
-		"Scanner UA Block":   true,
-		"HTTP/1.0 Anomaly":   true,
-		"Generic UA Anomaly": true,
-	}
-
-	filtered := make([]RuleExclusion, 0, len(exclusions))
-	for _, e := range exclusions {
-		if remove[e.Name] {
-			continue
-		}
-		filtered = append(filtered, e)
-	}
-	return filtered
 }
 
 // List returns all exclusions.
