@@ -3024,8 +3024,10 @@ func TestRateLimitEventToEvent_DetectBlock(t *testing.T) {
 	if r1.Matches[0].MatchedData != "curl" {
 		t.Errorf("expected MatchedData 'curl', got %q", r1.Matches[0].MatchedData)
 	}
-	if r1.MatchedData != "REQUEST_HEADERS:User-Agent: curl" {
-		t.Errorf("expected enriched MatchedData on rule, got %q", r1.MatchedData)
+	// MatchedData now uses CRS-compatible format for frontend parseMatchedData().
+	wantMD := "Matched Data: curl found within REQUEST_HEADERS:User-Agent: curl/7.88"
+	if r1.MatchedData != wantMD {
+		t.Errorf("expected CRS-format MatchedData on rule, got %q", r1.MatchedData)
 	}
 
 	// Second rule.
@@ -3035,6 +3037,21 @@ func TestRateLimitEventToEvent_DetectBlock(t *testing.T) {
 	}
 	if r2.Matches[0].VarName != "REQUEST_URI" {
 		t.Errorf("expected VarName 'REQUEST_URI', got %q", r2.Matches[0].VarName)
+	}
+
+	// Top-level fields should be populated from the highest severity rule.
+	if evt.BlockedBy != "anomaly_inbound" {
+		t.Errorf("expected BlockedBy 'anomaly_inbound', got %q", evt.BlockedBy)
+	}
+	// Highest severity is CRITICAL (severity=2) — d1 rule.
+	if evt.Severity != 2 {
+		t.Errorf("expected top-level Severity 2 (CRITICAL), got %d", evt.Severity)
+	}
+	if evt.RuleMsg == "" {
+		t.Error("expected top-level RuleMsg to be set")
+	}
+	if evt.MatchedData == "" {
+		t.Error("expected top-level MatchedData to be set")
 	}
 }
 

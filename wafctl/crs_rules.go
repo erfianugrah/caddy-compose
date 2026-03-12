@@ -209,6 +209,48 @@ var crsRules = []CRSRule{
 	{ID: "944250", Description: "Remote command execution: suspicious Java method detected", Category: "java", Tags: []string{"OWASP_CRS", "attack-rce", "attack-injection-java"}, Severity: "CRITICAL", ParanoiaLvl: 1},
 }
 
+// Custom heuristic and policy engine rules (not in CRS).
+var customRules = []CRSRule{
+	// Pre-CRS baked rules
+	{ID: "9100003", Description: "XXE: DOCTYPE/ENTITY with SYSTEM or PUBLIC", Category: "protocol-attack", Tags: []string{"attack-xxe"}, Severity: "CRITICAL"},
+	{ID: "9100006", Description: "XXE: Parameter entity declaration", Category: "protocol-attack", Tags: []string{"attack-xxe"}, Severity: "CRITICAL"},
+	{ID: "9100012", Description: "CRLF injection in query string", Category: "protocol-enforcement", Tags: []string{"attack-protocol"}, Severity: "CRITICAL"},
+	{ID: "9100013", Description: "CRLF injection in request headers", Category: "protocol-enforcement", Tags: []string{"attack-protocol"}, Severity: "CRITICAL"},
+	// Bot signal / heuristic rules
+	{ID: "9100030", Description: "Empty User-Agent header", Category: "bot-detection", Tags: []string{"bot-signal", "heuristic"}, Severity: "NOTICE"},
+	{ID: "9100031", Description: "Connection header set to close", Category: "bot-detection", Tags: []string{"bot-signal", "heuristic"}, Severity: "NOTICE"},
+	{ID: "9100032", Description: "Known scanner User-Agent detected", Category: "bot-detection", Tags: []string{"bot-signal", "scanner"}, Severity: "CRITICAL"},
+	{ID: "9100033", Description: "Empty Accept header", Category: "bot-detection", Tags: []string{"bot-signal", "heuristic"}, Severity: "WARNING"},
+	{ID: "9100034", Description: "Missing common browser headers", Category: "bot-detection", Tags: []string{"bot-signal", "generic-ua"}, Severity: "NOTICE"},
+	{ID: "9100035", Description: "Generic or non-browser User-Agent", Category: "bot-detection", Tags: []string{"bot-signal", "generic-ua"}, Severity: "CRITICAL"},
+	{ID: "9100036", Description: "HTTP/1.0 protocol anomaly", Category: "protocol-enforcement", Tags: []string{"bot-signal", "protocol"}, Severity: "WARNING"},
+	// CRS rules not in the main catalog but used in default-rules.json
+	{ID: "921200", Description: "LDAP Injection Attack", Category: "protocol-attack", Tags: []string{"OWASP_CRS", "attack-protocol"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "930111", Description: "OS File Access Attempt (common files)", Category: "lfi", Tags: []string{"OWASP_CRS", "attack-lfi"}, Severity: "CRITICAL", ParanoiaLvl: 1},
+	{ID: "932270", Description: "Restricted command injection (chained)", Category: "rce", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 2},
+	{ID: "932280", Description: "OS command injection via argument manipulation", Category: "rce", Tags: []string{"OWASP_CRS", "attack-rce"}, Severity: "CRITICAL", ParanoiaLvl: 2},
+}
+
+// crsRuleIndex is a map from rule ID string to CRSRule for O(1) lookups.
+// Initialized once by init().
+var crsRuleIndex map[string]CRSRule
+
+func init() {
+	crsRuleIndex = make(map[string]CRSRule, len(crsRules)+len(customRules))
+	for _, r := range crsRules {
+		crsRuleIndex[r.ID] = r
+	}
+	for _, r := range customRules {
+		crsRuleIndex[r.ID] = r
+	}
+}
+
+// LookupCRSRule returns the CRS or custom rule for the given ID, or ok=false.
+func LookupCRSRule(id string) (CRSRule, bool) {
+	r, ok := crsRuleIndex[id]
+	return r, ok
+}
+
 // GetCRSCatalog returns the full CRS rule catalog for the UI.
 func GetCRSCatalog() CRSCatalogResponse {
 	return CRSCatalogResponse{

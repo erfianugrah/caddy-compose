@@ -22,8 +22,8 @@ import {
 } from "./helpers";
 
 /** Collapsible section for the detail panel. */
-function ExpandableSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+function ExpandableSection({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="space-y-2">
       <button
@@ -163,7 +163,8 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
             {event.event_type === "rate_limited" ? "Rate Limit Details"
-              : event.event_type?.startsWith("policy_") || event.event_type === "detect_block" ? "Policy Engine Match"
+              : event.event_type === "detect_block" ? "Anomaly Score Block"
+              : event.event_type?.startsWith("policy_") ? "Policy Engine Match"
               : event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound"
                 ? "Anomaly Score Block"
                 : "Rule Match"}
@@ -196,30 +197,15 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                   </div>
                 )}
               </>
-            ) : event.event_type?.startsWith("policy_") || event.event_type === "detect_block" ? (
+            ) : event.event_type?.startsWith("policy_") ? (
               <>
                 {/* Policy engine event — tag-aware display */}
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className={`font-medium ${event.event_type === "detect_block" ? "text-amber-400" : "text-lv-red"}`}>
-                    {event.event_type === "detect_block"
-                      ? `Detect Block — Anomaly Threshold ({event.status || 403})`
-                      : `Policy ${event.event_type.replace("policy_", "").replace(/^\w/, (c) => c.toUpperCase())} (${event.status || 403})`}
+                  <span className="font-medium text-lv-red">
+                    {`Policy ${event.event_type?.replace("policy_", "").replace(/^\w/, (c) => c.toUpperCase())} (${event.status || 403})`}
                   </span>
                 </div>
-                {/* Anomaly score for detect_block events */}
-                {event.event_type === "detect_block" && event.anomaly_score > 0 && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">Anomaly Score:</span>
-                    <span className={
-                      event.anomaly_score >= 25 ? "text-lv-red font-bold" :
-                      event.anomaly_score >= 10 ? "text-lv-peach font-medium" :
-                      "text-amber-400"
-                    }>
-                      {event.anomaly_score}
-                    </span>
-                  </div>
-                )}
                 {event.tags && event.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
                     <span className="text-muted-foreground">Tags:</span>
@@ -242,49 +228,6 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     )}
                   </div>
                 )}
-                {/* Highest Severity Rule summary for detect_block (mirrors Coraza's anomaly score block) */}
-                {event.event_type === "detect_block" && event.matched_rules && event.matched_rules.length > 0 && (() => {
-                  // Find the highest severity rule (lowest severity number = highest severity)
-                  const highest = event.matched_rules.reduce((best, r) =>
-                    r.severity > 0 && (best.severity === 0 || r.severity < best.severity) ? r : best
-                  , event.matched_rules[0]);
-                  const sev = formatSeverity(highest.severity);
-                  const ruleId = highest.name || (highest.id > 0 ? String(highest.id) : null);
-                  // Use the first match detail for matched value display
-                  const firstMatch = highest.matches?.[0];
-                  return (
-                    <div className="space-y-1 pt-1 mt-1 border-t border-lovelace-800">
-                      <div className="text-xs uppercase tracking-wider text-muted-foreground/60">
-                        Highest Severity Rule
-                      </div>
-                      {ruleId && (
-                        <div className="flex gap-2 items-center">
-                          <span className="text-muted-foreground">Rule ID:</span>
-                          <Badge variant="outline" className={T.badgeMono}>{ruleId}</Badge>
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <span className="text-muted-foreground">Message:</span>
-                        <span className="text-foreground">{highest.msg || "N/A"}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <span className="text-muted-foreground">Severity:</span>
-                        <span className={sev.color}>{sev.label}</span>
-                      </div>
-                      {firstMatch ? (
-                        <div className="flex gap-2 items-start">
-                          <span className="text-muted-foreground shrink-0">Matched:</span>
-                          <code className="break-all text-lv-peach">{firstMatch.matched_data || firstMatch.value || "—"}</code>
-                        </div>
-                      ) : highest.matched_data ? (
-                        <div className="flex gap-2 items-start">
-                          <span className="text-muted-foreground shrink-0">Matched:</span>
-                          <code className="break-all text-lv-peach">{highest.matched_data}</code>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })()}
                 {event.user_agent && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">User-Agent:</span>
@@ -442,7 +385,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
           ? event.matched_rules.length >= 1
           : event.matched_rules.length > 1
       ) && (
-        <ExpandableSection title={`All Matched Rules (${event.matched_rules.length})`}>
+        <ExpandableSection title={`All Matched Rules (${event.matched_rules.length})`} defaultOpen>
           <div className="space-y-3">
             {event.matched_rules.map((rule, idx) => {
               const sev = formatSeverity(rule.severity);

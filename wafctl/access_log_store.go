@@ -795,20 +795,21 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		evt.RuleMsg = "Policy Block: " + rle.RuleName
 	}
 	// For detect_block, include the anomaly score and matched rule details.
+	// Enrich with CRS descriptions and populate top-level fields to match
+	// Coraza event quality (rule_id, severity, rule_msg, blocked_by, matched_data, rule_tags).
 	if rle.Source == "detect_block" {
 		evt.AnomalyScore = rle.AnomalyScore
-		if rle.RuleName != "" {
-			evt.RuleMsg = rle.RuleName
-		}
+		evt.BlockedBy = "anomaly_inbound"
 		// Parse detect_rules into matched_rules for the event response.
-		// If rich match details are available (policy_detect_matches JSON),
-		// use those to enrich the MatchedRule entries with per-condition data.
 		if rle.DetectRules != "" {
 			evt.MatchedRules = parseDetectRulesDetail(rle.DetectRules)
 		}
+		// Enrich with per-condition match details from the plugin.
 		if rle.DetectMatches != "" {
 			enrichMatchedRulesWithDetails(evt.MatchedRules, rle.DetectMatches)
 		}
+		// Enrich each matched rule with CRS descriptions and build top-level fields.
+		enrichDetectBlockEvent(&evt, rle.RuleName)
 	}
 	// For policy engine rate limits, set the rule message from the rule name.
 	if rle.Source == "policy_rl" && rle.RuleName != "" {
@@ -990,6 +991,71 @@ func enrichMatchedRulesWithDetails(rules []MatchedRule, detectMatchesJSON string
 				break
 			}
 		}
+	}
+}
+
+// enrichDetectBlockEvent enriches a detect_block Event with CRS rule descriptions
+// and populates the top-level fields (RuleID, Severity, RuleMsg, MatchedData, RuleTags)
+// from the highest-severity matched rule. This brings detect_block events to parity
+// with Coraza CRS events in the event detail UI.
+func enrichDetectBlockEvent(evt *Event, rawRuleName string) {
+	if len(evt.MatchedRules) == 0 {
+		if rawRuleName != "" {
+			evt.RuleMsg = rawRuleName
+		}
+		return
+	}
+
+	// Enrich each matched rule with CRS/custom rule descriptions.
+	for i := range evt.MatchedRules {
+		r := &evt.MatchedRules[i]
+		lookupID := r.Name
+		if lookupID == "" && r.ID > 0 {
+			lookupID = strconv.Itoa(r.ID)
+		}
+		if crs, ok := LookupCRSRule(lookupID); ok {
+			// Replace generated msg with human-readable description.
+			r.Msg = crs.Description
+			// Enrich tags with CRS tags (append to existing detect/score tags).
+			if len(crs.Tags) > 0 {
+				r.Tags = append(r.Tags, crs.Tags...)
+			}
+			// Set source file equivalent from category.
+			if r.File == "" && crs.Category != "" {
+				r.File = "detect-rules/" + crs.Category
+			}
+		}
+		// Format MatchedData in CRS-compatible "Matched Data: X found within Y: Z"
+		// format so parseMatchedData() in the frontend works uniformly.
+		if len(r.Matches) > 0 {
+			m := r.Matches[0]
+			if m.MatchedData != "" && m.VarName != "" {
+				fullVal := m.Value
+				if fullVal == "" {
+					fullVal = m.MatchedData
+				}
+				r.MatchedData = "Matched Data: " + m.MatchedData + " found within " + m.VarName + ": " + fullVal
+			}
+		}
+	}
+
+	// Find the highest severity matched rule (lowest severity number = highest severity).
+	best := &evt.MatchedRules[0]
+	for i := 1; i < len(evt.MatchedRules); i++ {
+		r := &evt.MatchedRules[i]
+		if r.Severity > 0 && (best.Severity == 0 || r.Severity < best.Severity) {
+			best = r
+		}
+	}
+
+	// Populate top-level Event fields from the highest severity rule.
+	evt.RuleID = best.ID
+	evt.Severity = best.Severity
+	evt.RuleMsg = best.Msg
+	evt.MatchedData = best.MatchedData
+	// Use event-level tags as RuleTags (rule-level tags are just "detect,score:N" + CRS tags).
+	if len(evt.Tags) > 0 {
+		evt.RuleTags = evt.Tags
 	}
 }
 
