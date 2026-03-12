@@ -253,35 +253,50 @@ func mapVariablesToConditions(vars []Variable, op Operator) (fields []string, ex
 
 // consolidateFields merges multiple fields into a single multi-value
 // field when they represent a standard CRS combo.
+//
+// CRS rules typically check multiple variables with OR semantics:
+// ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES|REQUEST_BODY|
+// REQUEST_HEADERS|REQUEST_FILENAME|XML:/*|XML://@*
+//
+// These map to "request_combined" — a plugin aggregate field that
+// extracts values from all these sources and matches with OR semantics.
 func consolidateFields(fields []string) string {
 	if len(fields) == 1 {
 		return fields[0]
 	}
 
-	// Sort for canonical comparison
 	set := make(map[string]bool)
 	for _, f := range fields {
 		set[f] = true
 	}
 
-	// Most common CRS combo: ARGS + ARGS_NAMES + REQUEST_COOKIES + REQUEST_COOKIES_NAMES + XML
-	// Maps to: all_args_values (which the plugin evaluates against all request data)
-	if set["all_args_values"] && set["all_args_names"] &&
-		set["all_cookies"] && set["all_cookies_names"] {
-		return "all_args_values"
+	// Any combo involving args + cookies → request_combined
+	// This covers the ~180 CRS rules that check ARGS|ARGS_NAMES|COOKIES|...
+	// request_combined includes: args values/names, cookies values/names,
+	// form body, JSON body, raw body, headers, request basename.
+	if (set["all_args_values"] || set["all_args_names"]) &&
+		(set["all_cookies"] || set["all_cookies_names"]) {
+		return "request_combined"
 	}
 
-	// Common: ARGS + ARGS_NAMES + REQUEST_COOKIES_NAMES + XML
-	if set["all_args_values"] && set["all_cookies_names"] {
-		return "all_args_values"
+	// Args + headers (e.g., User-Agent, Referer checks)
+	if (set["all_args_values"] || set["all_args_names"]) &&
+		(set["all_headers"] || set["user_agent"] || set["referer"]) {
+		return "request_combined"
 	}
 
-	// Common: REQUEST_HEADERS + REQUEST_LINE
+	// Args + body/filename — also request_combined
+	if (set["all_args_values"] || set["all_args_names"]) &&
+		(set["body"] || set["uri_path"] || set["request_basename"]) {
+		return "request_combined"
+	}
+
+	// REQUEST_HEADERS + REQUEST_LINE
 	if set["all_headers"] && set["request_line"] {
 		return "all_headers"
 	}
 
-	// Common: just ARGS variants
+	// Just ARGS variants (without cookies/headers) — keep as all_args_values
 	if set["all_args_values"] {
 		return "all_args_values"
 	}
