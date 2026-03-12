@@ -97,7 +97,12 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
               {pageData.map((ip) => (
                 <TableRow key={ip.client_ip}>
                   <TableCell className="font-data text-xs">
-                    {ip.client_ip}
+                    <a
+                      href={`/analytics?tab=ip&q=${encodeURIComponent(ip.client_ip)}`}
+                      className="text-lv-cyan hover:underline"
+                    >
+                      {ip.client_ip}
+                    </a>
                   </TableCell>
                   <TableCell className="text-xs">
                     <CountryLabel code={ip.country ?? ""} />

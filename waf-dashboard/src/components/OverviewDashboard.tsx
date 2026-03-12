@@ -22,7 +22,6 @@ import {
   ShieldAlert,
   ShieldBan,
   ShieldCheck,
-  Tag,
   Users,
   Server,
   ChevronDown,
@@ -339,40 +338,15 @@ export default function OverviewDashboard() {
       <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} ruleNames={ruleNames} />
 
       {/* ── Stat Cards ── */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <StatCard title="Security Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
         <StatCard title="Blocked" value={data?.blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=blocked" />
         <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
         <StatCard title="Policy" value={data?.policy_events ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=policy_skip" />
-        {(data?.tag_counts ?? []).map(tc => (
-          <StatCard
-            key={tc.tag}
-            title={tc.tag.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-            value={tc.count}
-            icon={Tag}
-            color="cyan"
-            loading={loading}
-            href={`/events?tag=${tc.tag}`}
-          />
-        ))}
       </div>
 
       {/* ── Tag Breakdown ── */}
-      {(data?.tag_counts?.length ?? 0) > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Tags:</span>
-          {data!.tag_counts.map((tc) => (
-            <a
-              key={tc.tag}
-              href={`/events?tag=${encodeURIComponent(tc.tag)}&tag_op=eq`}
-              className="inline-flex items-center gap-1.5 rounded-full bg-lv-cyan/10 border border-lv-cyan/30 px-2.5 py-0.5 text-xs font-data text-lv-cyan hover:bg-lv-cyan/20 transition-colors"
-            >
-              {tc.tag}
-              <span className="text-lv-cyan/70">{tc.count}</span>
-            </a>
-          ))}
-        </div>
-      )}
+      <TagBreakdown tags={data?.tag_counts ?? []} />
 
       {/* ── Timeline Chart with Click-Drag Zoom ── */}
       <Card>
@@ -853,6 +827,51 @@ export default function OverviewDashboard() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+// ─── Tag Breakdown ────────────────────────────────────────────────
+
+const TAG_COLLAPSED_MAX = 12;
+
+function TagBreakdown({ tags }: { tags: { tag: string; count: number }[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (tags.length === 0) return null;
+
+  const visible = expanded ? tags : tags.slice(0, TAG_COLLAPSED_MAX);
+  const hasMore = tags.length > TAG_COLLAPSED_MAX;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium text-muted-foreground">Tags:</span>
+      {visible.map((tc) => (
+        <a
+          key={tc.tag}
+          href={`/events?tag=${encodeURIComponent(tc.tag)}&tag_op=eq`}
+          className="inline-flex items-center gap-1.5 rounded-full bg-lv-cyan/10 border border-lv-cyan/30 px-2.5 py-0.5 text-xs font-data text-lv-cyan hover:bg-lv-cyan/20 transition-colors"
+        >
+          {tc.tag}
+          <span className="text-lv-cyan/70">{tc.count.toLocaleString()}</span>
+        </a>
+      ))}
+      {hasMore && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="inline-flex items-center gap-1 rounded-full bg-muted/50 border border-border px-2.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          {expanded ? (
+            <>
+              <ChevronsDownUp className="h-3 w-3" />
+              Show less
+            </>
+          ) : (
+            <>
+              +{tags.length - TAG_COLLAPSED_MAX} more
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }
