@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import {
   type DefaultRule,
   type RuleSeverity,
-
   CRS_CATEGORIES,
   getCategoryForRule,
   listDefaultRules,
@@ -45,6 +44,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SortableTableHead } from "./SortableTableHead";
+import { useTableSort } from "@/hooks/useTableSort";
+import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -53,6 +55,25 @@ const SEVERITY_COLORS: Record<string, string> = {
   ERROR: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   WARNING: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   NOTICE: "bg-sky-500/20 text-sky-400 border-sky-500/30",
+};
+
+const SEVERITY_ORDER: Record<string, number> = {
+  CRITICAL: 4,
+  ERROR: 3,
+  WARNING: 2,
+  NOTICE: 1,
+};
+
+type RuleSortKey = "id" | "severity" | "category";
+
+const RULE_COMPARATORS: Record<RuleSortKey, (a: DefaultRule, b: DefaultRule) => number> = {
+  id: (a, b) => (parseInt(a.id, 10) || 0) - (parseInt(b.id, 10) || 0),
+  severity: (a, b) => (SEVERITY_ORDER[a.severity ?? ""] ?? 0) - (SEVERITY_ORDER[b.severity ?? ""] ?? 0),
+  category: (a, b) => {
+    const ca = getCategoryForRule(a.id)?.shortName ?? "ZZZ";
+    const cb = getCategoryForRule(b.id)?.shortName ?? "ZZZ";
+    return ca.localeCompare(cb);
+  },
 };
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -68,9 +89,11 @@ export default function RulesPanel() {
   // Filters
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [plFilter, setPlFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Collapsed PL sections
+  const [collapsedPLs, setCollapsedPLs] = useState<Set<number>>(new Set());
 
   // Detail dialog
   const [detailRule, setDetailRule] = useState<DefaultRule | null>(null);
@@ -163,7 +186,18 @@ export default function RulesPanel() {
     }
   }, []);
 
-  // ── Filtering + Sorting ─────────────────────────────────────────
+  // ── PL section toggle ───────────────────────────────────────────
+
+  const togglePL = useCallback((pl: number) => {
+    setCollapsedPLs((prev) => {
+      const next = new Set(prev);
+      if (next.has(pl)) next.delete(pl);
+      else next.add(pl);
+      return next;
+    });
+  }, []);
+
+  // ── Filtering ───────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     let result = rules;
@@ -186,11 +220,6 @@ export default function RulesPanel() {
       });
     }
 
-    if (plFilter !== "all") {
-      const pl = parseInt(plFilter, 10);
-      result = result.filter((r) => (r.paranoia_level ?? 1) === pl);
-    }
-
     if (severityFilter !== "all") {
       result = result.filter((r) => r.severity === severityFilter);
     }
@@ -203,15 +232,20 @@ export default function RulesPanel() {
       result = result.filter((r) => r.has_override);
     }
 
-    // Sort: by CRS ID (numeric)
-    result.sort((a, b) => {
-      const na = parseInt(a.id, 10) || 0;
-      const nb = parseInt(b.id, 10) || 0;
-      return na - nb;
-    });
-
     return result;
-  }, [rules, search, categoryFilter, plFilter, severityFilter, statusFilter]);
+  }, [rules, search, categoryFilter, severityFilter, statusFilter]);
+
+  // ── Group by PL ─────────────────────────────────────────────────
+
+  const plGroups = useMemo(() => {
+    const groups: Record<number, DefaultRule[]> = {};
+    for (const r of filtered) {
+      const pl = r.paranoia_level ?? 1;
+      if (!groups[pl]) groups[pl] = [];
+      groups[pl].push(r);
+    }
+    return groups;
+  }, [filtered]);
 
   // ── Category stats ──────────────────────────────────────────────
 
@@ -249,16 +283,24 @@ export default function RulesPanel() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="p-6 space-y-6">
-        {/* Header */}
+      <div className="space-y-6">
+        {/* Back link + Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className={T.pageTitle}>Rules</h1>
-            <p className={T.pageDescription}>
-              {rules.length} rules ({totalEnabled} enabled
-              {totalOverridden > 0 && `, ${totalOverridden} overridden`})
-              {" \u00b7 "}CRS 4.24.1
-            </p>
+          <div className="flex items-center gap-4">
+            <a
+              href="/rules"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Rules
+            </a>
+            <div>
+              <h1 className={T.pageTitle}>OWASP CRS 4.24.1</h1>
+              <p className={T.pageDescription}>
+                {rules.length} rules ({totalEnabled} enabled
+                {totalOverridden > 0 && `, ${totalOverridden} overridden`})
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {deployMsg && (
@@ -339,18 +381,6 @@ export default function RulesPanel() {
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm"
           />
-          <Select value={plFilter} onValueChange={setPlFilter}>
-            <SelectTrigger className="w-[100px]">
-              <SelectValue placeholder="PL" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All PLs</SelectItem>
-              <SelectItem value="1">PL1</SelectItem>
-              <SelectItem value="2">PL2</SelectItem>
-              <SelectItem value="3">PL3</SelectItem>
-              <SelectItem value="4">PL4</SelectItem>
-            </SelectContent>
-          </Select>
           <Select value={severityFilter} onValueChange={setSeverityFilter}>
             <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Severity" />
@@ -379,45 +409,34 @@ export default function RulesPanel() {
           </span>
         </div>
 
-        {/* Rules table */}
-        <div className="rounded-lg border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[60px]">Status</TableHead>
-                <TableHead className="w-[80px]">ID</TableHead>
-                <TableHead>Rule</TableHead>
-                <TableHead className="w-[90px]">Severity</TableHead>
-                <TableHead className="w-[60px]">PL</TableHead>
-                <TableHead className="w-[90px]">Category</TableHead>
-                <TableHead className="w-[40px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="text-center text-muted-foreground py-8"
-                  >
-                    No rules match the current filters.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((rule) => (
-                  <RuleRow
-                    key={rule.id}
-                    rule={rule}
-                    onToggle={handleToggle}
-                    onSeverityChange={handleSeverityChange}
-                    onPLChange={handlePLChange}
-                    onDetail={setDetailRule}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        {/* PL Sections */}
+        {[1, 2, 3, 4].map((pl) => {
+          const group = plGroups[pl];
+          if (!group || group.length === 0) return null;
+          const isCollapsed = collapsedPLs.has(pl);
+          const enabledCount = group.filter((r) => r.enabled).length;
+
+          return (
+            <PLSection
+              key={pl}
+              pl={pl}
+              rules={group}
+              enabledCount={enabledCount}
+              isCollapsed={isCollapsed}
+              onToggleCollapse={() => togglePL(pl)}
+              onToggleRule={handleToggle}
+              onSeverityChange={handleSeverityChange}
+              onPLChange={handlePLChange}
+              onDetail={setDetailRule}
+            />
+          );
+        })}
+
+        {filtered.length === 0 && (
+          <div className="text-center text-muted-foreground py-12">
+            No rules match the current filters.
+          </div>
+        )}
 
         {/* Detail dialog */}
         {detailRule && (
@@ -432,6 +451,123 @@ export default function RulesPanel() {
         )}
       </div>
     </TooltipProvider>
+  );
+}
+
+// ─── PL Section with Sortable Table ─────────────────────────────────
+
+const PL_DESCRIPTIONS: Record<number, string> = {
+  1: "Core rules with minimal false positives",
+  2: "Additional rules, some tuning may be needed",
+  3: "Aggressive rules, expect false positives",
+  4: "Maximum paranoia, extensive tuning required",
+};
+
+interface PLSectionProps {
+  pl: number;
+  rules: DefaultRule[];
+  enabledCount: number;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  onToggleRule: (rule: DefaultRule) => void;
+  onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
+  onPLChange: (rule: DefaultRule, pl: number) => void;
+  onDetail: (rule: DefaultRule) => void;
+}
+
+function PLSection({
+  pl,
+  rules,
+  enabledCount,
+  isCollapsed,
+  onToggleCollapse,
+  onToggleRule,
+  onSeverityChange,
+  onPLChange,
+  onDetail,
+}: PLSectionProps) {
+  const { sortState, toggleSort, sortedData } = useTableSort<DefaultRule, RuleSortKey>(
+    rules,
+    RULE_COMPARATORS,
+    { defaultDirection: "asc" },
+  );
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      {/* Section header */}
+      <button
+        onClick={onToggleCollapse}
+        className="flex w-full items-center justify-between px-4 py-3 bg-lovelace-950 hover:bg-lovelace-900/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          {isCollapsed ? (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="text-sm font-semibold">PL{pl}</span>
+          <Badge variant="outline" className="text-xs">
+            {enabledCount}/{rules.length} enabled
+          </Badge>
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            {PL_DESCRIPTIONS[pl]}
+          </span>
+        </div>
+      </button>
+
+      {/* Table */}
+      {!isCollapsed && (
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[60px]">Status</TableHead>
+              <SortableTableHead<RuleSortKey>
+                sortKey="id"
+                activeKey={sortState.key}
+                direction={sortState.direction}
+                onSort={toggleSort}
+                className="w-[80px]"
+              >
+                ID
+              </SortableTableHead>
+              <TableHead>Rule</TableHead>
+              <SortableTableHead<RuleSortKey>
+                sortKey="severity"
+                activeKey={sortState.key}
+                direction={sortState.direction}
+                onSort={toggleSort}
+                className="w-[90px]"
+              >
+                Severity
+              </SortableTableHead>
+              <TableHead className="w-[60px]">PL</TableHead>
+              <SortableTableHead<RuleSortKey>
+                sortKey="category"
+                activeKey={sortState.key}
+                direction={sortState.direction}
+                onSort={toggleSort}
+                className="w-[90px]"
+              >
+                Category
+              </SortableTableHead>
+              <TableHead className="w-[40px]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedData.map((rule) => (
+              <RuleRow
+                key={rule.id}
+                rule={rule}
+                onToggle={onToggleRule}
+                onSeverityChange={onSeverityChange}
+                onPLChange={onPLChange}
+                onDetail={onDetail}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
   );
 }
 

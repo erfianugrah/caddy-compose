@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../../layouts/DashboardLayout.astro";
+import RulesOverview from "../../components/RulesOverview";
+---
+
+<DashboardLayout title="wafctl — Rules" active="rules">
+  <RulesOverview client:load />
+</DashboardLayout>

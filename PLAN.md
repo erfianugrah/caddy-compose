@@ -864,42 +864,163 @@ Second batch of CRS rule porting. Three categories in one release — all low ef
 
 ## Deferred Work
 
-Accumulated technical debt from v0.8.0–v0.10.0 that was intentionally deferred to keep shipping backend features. None of these block CRS rule porting, but the frontend debt is growing.
+Accumulated technical debt and planned improvements. Items marked DONE were completed
+in the deep cleanup + frontend features sprint (commits `df3aa3a`, `0213932`).
 
-### Frontend — Dashboard UI (3 releases behind)
+### Frontend — Dashboard UI
 
-The waf-dashboard condition builder and event display are missing support for features shipped in v0.8.0, v0.9.0, and v0.10.0. The backend API fully supports all of these — rules can be created via CLI/API — but the dashboard UI cannot create or display them.
+| Feature | Status | Notes |
+|---------|--------|-------|
+| ~~`detect` exclusion type~~ | **DONE** | Wired in policy/constants.ts |
+| ~~`severity` + `detect_paranoia_level` fields~~ | **DONE** | Via CRS rules page |
+| ~~`detect_block` event type~~ | **DONE** | EventTypeBadge, overview cards |
+| ~~Aggregate fields (`all_args`, `all_headers`, etc.)~~ | **DONE** | 10 aggregate fields in ConditionBuilder |
+| ~~`phrase_match` operator~~ | **DONE** | Wired with list_items conversion |
+| ~~`list_items` on Condition~~ | **DONE** | PipeTagInput populates list_items for phrase_match |
+| ~~Numeric operators (`gt`/`ge`/`lt`/`le`)~~ | **DONE** | On response_status + count: fields |
+| ~~`count:` pseudo-field prefix~~ | **DONE** | 7 count: fields with numeric operators |
+| ~~Default rules list + disable/enable UI~~ | **DONE** | RulesPanel.tsx (now at /rules/crs) |
+| ~~Policy rule position indicator~~ | **DONE** | Tooltip "Rule #N of M" on globalIdx cell |
+| ~~Move to top / Move to bottom buttons~~ | **DONE** | ArrowUpToLine/ArrowDownToLine in PolicyEngine |
+| ~~Matched data fields overflow UI~~ | **DONE** | TruncatedCode component |
+| ~~Create Exception fails for detect_block~~ | **DONE** | Smart action defaulting + isWafEvent fix |
 
-| Feature | Missing From | Since | Effort |
-|---------|-------------|-------|--------|
-| `detect` exclusion type | `ExclusionType` union, `ALL_EXCLUSION_TYPES`, `QUICK_ACTIONS`, type mapping | v0.8.0 | Medium |
-| `severity` + `detect_paranoia_level` fields | `Exclusion` interface, rule form | v0.8.0 | Medium |
-| `detect_block` event type | Event classification, badges, overview cards | v0.8.0 | Low |
-| Aggregate fields (`all_args`, `all_headers`, etc.) | `CONDITION_FIELDS`, `ConditionField` type | v0.9.0 | Low |
-| `phrase_match` operator | `ConditionOperator` type, operator dropdowns | v0.9.0 | Medium |
-| `list_items` on Condition | `Condition` interface, textarea/tag input UI | v0.9.0 | Medium |
-| Numeric operators (`gt`/`ge`/`lt`/`le`) | `ConditionOperator` type, operator dropdowns | v0.9.0 | Low |
-| `count:` pseudo-field prefix | Field selector, prefix toggle/dropdown | v0.9.0 | Medium |
-| Default rules list + disable/enable UI | New panel/section in Policy page | v0.10.0 | Medium |
-| Policy rule position indicator | Edit Rule dialog should show "Rule #N of M" so user knows current position | v0.11.1 | Low |
-| Move to top / Move to bottom buttons | Drag-to-reorder breaks across paginated pages — add "Move to top", "Move to bottom", and/or position number input for cross-page reordering | v0.11.1 | Medium |
+### Frontend — Pending UI Work (pre-deploy)
 
-**What IS implemented in frontend:** `TransformSelect` component (v0.8.1), `transforms` field on `Condition` interface.
+#### Overview Stat Card Taxonomy
 
-### Frontend — UI/UX Bugs (v0.12.x)
+**Problem:** The "BLOCKED" stat card mixes `detect_block` (CRS scoring) with `policy_block`
+(policy engine explicit blocks). The "POLICY" card lumps all policy actions into one number.
+After nuking legacy JSONL files, old Coraza `blocked` events will never appear — the only
+event types are: `detect_block`, `logged`, `policy_block`, `policy_allow`, `policy_skip`,
+`rate_limited`.
 
-| Bug | Description | Severity |
-|-----|-------------|----------|
-| Matched data fields overflow UI | `detect_block` event detail: "Full Value" and "Variable" fields dump entire request body JSON blobs (e.g., `ARGS_POST_NAMES` matched data), making the event detail panel unreadable. Need truncation with `...` and full value accessible via JSON export only. | Medium |
-| Create Exception fails for detect_block | "Create Exception" on a `detect_block` event creates a Coraza SecRule exclusion, but `detect_block` comes from the policy engine's anomaly scoring (not Coraza). The exception either needs to: (a) disable specific detect rule IDs in the policy engine via `PUT /api/default-rules/{id}` with `enabled: false`, (b) raise the inbound threshold for that service/path, or (c) create an `allow` policy engine rule that bypasses scoring. Currently the button creates a useless exclusion. | High |
+**Design:** Dynamic stat cards driven by event type + tags, not a hardcoded set of 4.
+
+The existing `tag_counts` array on the summary API already provides flexible per-tag
+aggregation. Stat cards should work the same way — auto-generated from distinct event
+types present in the time window, with color and icon mapping per type. Custom actions
+added in the future automatically get their own card.
+
+**Proposed card taxonomy (current event types):**
+
+| Card | Event Type | Color | Description |
+|------|-----------|-------|-------------|
+| Security Events | (total) | green | All events combined |
+| CRS Blocked | `detect_block` | pink | CRS anomaly threshold exceeded |
+| Rate Limited | `rate_limited` | yellow | 429 responses |
+| Policy Block | `policy_block` | rose | Explicit blocks (honeypot, country, IPsum) |
+| Policy Allow | `policy_allow` | emerald | WAF bypass for trusted traffic |
+| Policy Skip | `policy_skip` | emerald | Specific rules skipped |
+| Logged | `logged` | blue | CRS detected but below threshold |
+
+Cards with zero count can be hidden or shown dimmed. Future custom action types
+would auto-appear as new cards.
+
+**Backend changes:**
+- [ ] `waf_summary.go`: Split `detect_block` out of `totalPolicyBlock` into `totalDetectBlock`
+- [ ] `models.go`: Add `DetectBlocked int json:"detect_blocked"` to `SummaryResponse`
+- [ ] `models.go`: `PolicyBlocked` only counts `policy_block` (not `detect_block`)
+- [ ] Per-hour/service/client breakdowns: add `detect_block` field alongside existing `policy_block`
+- [ ] Nuke legacy `blocked` event type handling — after JSONL cleanup, only new types exist
+
+**Frontend changes:**
+- [ ] `SummaryData`: Add `detectBlocked` field
+- [ ] `OverviewDashboard.tsx`: Replace hardcoded 4 cards with dynamic card generation
+- [ ] Timeline chart: Add `detect_block` as separate series
+- [ ] Per-service/client breakdowns: Show detect_block separately from policy_block
+- [ ] Color mapping: Add `detect_block` to `ACTION_COLORS` and `ACTION_LABELS`
+
+#### TypeScript Errors (pre-commit)
+
+- [ ] `SecurityHeadersPanel.tsx:318` — `Property 'name' does not exist on type 'ServiceDetail'`.
+  The `fetchServices()` API returns objects without a `name` field; the component accesses `.name`
+  when it should use the map key or a different field.
+- [ ] `eventPrefill.test.ts:123,129,135,141` — `Type 'string' is not assignable to type 'EventType'`.
+  Test fixtures use plain string literals for `event_type`; need `as const` or cast to `EventType`.
+
+#### Dead Code Cleanup
+
+- [ ] Delete `SettingsPanel.tsx` — no page imports it after settings→rules merge. The reused
+  sub-components (`settings/SettingsFormSections.tsx`, `settings/AdvancedSettings.tsx`,
+  `settings/ServiceSettingsCard.tsx`, `settings/constants.tsx`) are imported directly by
+  `RulesOverview.tsx` and remain alive.
+
+#### E2e Test Fixes (pre-deploy)
+
+- [ ] `test/e2e/smoke_test.go:279-282` — `TestAPIEndpoints/CRS_Autocomplete` subtests the
+  removed `/api/crs/autocomplete` endpoint. Either remove the subtest or point it at the
+  replacement endpoint.
+- [ ] `test/e2e/smoke_test.go:341-345` — `TestDeployPipeline` creates an exclusion with
+  `type: "skip_rule"` which may no longer be valid after Coraza removal. Update to a
+  policy-engine-compatible type (`allow`, `block`, `detect`).
+
+#### Rules Page Restructure (PARTIALLY DONE)
+
+**Done:**
+- [x] `/rules` → overview with WAF settings + CRS ruleset card + backup/restore (`RulesOverview.tsx`)
+- [x] `/rules/crs` → CRS rules grouped by PL with collapsible sections + sortable columns (`RulesPanel.tsx`)
+- [x] Settings page deleted (`settings.astro` removed), nav link removed from `DashboardLayout.astro`
+- [x] Settings sub-components reused in RulesOverview (ModeSelector, SensitivitySettings, etc.)
+- [x] Astro file-based routing: `src/pages/rules/index.astro` + `src/pages/rules/crs.astro`
+
+**Pending:**
+- [ ] CRS rules: Pagination per PL section (PL1 has ~160 rules — needs page size selector + page controls)
+- [ ] CRS rules: Bulk actions — checkbox column, select all in PL group/filter, toolbar with:
+  - Enable/Disable selected
+  - Set severity for selected (Critical/Error/Warning/Notice)
+  - Set PL for selected (1/2/3/4)
+  - Reset selected to defaults
+- [ ] CRS rules: Bulk action API — `POST /api/default-rules/bulk` with `{ ids: [...], override: { enabled?, severity?, paranoia_level? } }`
+- [ ] CRS rules: Global PL controls on section headers — each PL section header should have:
+  - PL-level enable/disable toggle (disable all rules at this PL)
+  - Anomaly score threshold display/edit (leverages WAF engine settings via policy engine)
+  - These controls map to the existing `WAFConfig` (paranoia_level, inbound_threshold) but
+    presented at the ruleset level as an abstraction — "PL2: Enabled | Threshold: 10"
+  - Changing PL toggle updates `paranoia_level` in WAFConfig; changing threshold updates
+    `inbound_threshold` (or per-PL thresholds if we add blocking_paranoia_level support)
+
+#### Policy Engine Bugs
+
+- [ ] Tags input missing from Create Rule quick actions form — Edit Rule (Advanced) has the
+  Tags field but Create Rule (Quick Actions) does not. Both should show the tag input.
+  Location: `PolicyForms.tsx` quick action forms for Allow/Block/Detect
+
+#### Policy Engine Bulk Actions
+
+- [ ] Checkbox column for multi-select
+- [ ] Select all in current filter / page
+- [ ] Bulk action toolbar:
+  - Enable/Disable selected
+  - Delete selected (with confirmation)
+  - Move selected to top / bottom (reorder)
+- [ ] Bulk action API — `POST /api/exclusions/bulk` with `{ ids: [...], action: "enable"|"disable"|"delete" }`
+
+#### Comprehensive Form / API Audit (pre-deploy)
+
+Review ALL forms across the dashboard for consistency, missing fields, and broken states:
+
+- [ ] Policy Engine: Create Rule (Quick Actions) — missing tags input, verify all fields match Edit Rule
+- [ ] Policy Engine: Edit Rule (Advanced) — verify all condition fields, operators, transforms work
+- [ ] CRS Rules: Override form — verify severity/PL/enabled toggles save correctly
+- [ ] Rate Limits: Rule form — verify all key types, actions, conditions
+- [ ] CSP: Directive editor — verify all source types, modes, inherit behavior
+- [ ] Security Headers: Profile editor — verify profile inheritance, per-service overrides
+- [ ] Managed Lists: CRUD — verify type validation, item format per type
+- [ ] Settings (now in Rules): WAF config — verify mode, paranoia, thresholds, per-service overrides
+- [ ] Backup/Restore — verify export/import round-trip for all 6 config stores
+- [ ] API type consistency — ensure all frontend types match Go struct JSON tags (snake_case → camelCase)
+- [ ] Error handling — verify all API error responses are displayed to user (not silently swallowed)
 
 ### Backend — wafctl API
 
 | Feature | Description | Effort |
 |---------|-------------|--------|
-| ~~Default rules list API~~ | ~~`GET /api/default-rules` — list built-in rules from default-rules.json~~ | ~~Low~~ — **DONE v0.10.2** |
-| ~~Default rules disable API~~ | ~~`PUT /api/default-rules/disabled` — manage `DisabledDefaultRules` list~~ | ~~Low~~ — **DONE v0.10.2** (via `PUT /api/default-rules/{id}` with `enabled: false`) |
+| ~~Default rules list API~~ | **DONE v0.10.2** | |
+| ~~Default rules disable API~~ | **DONE v0.10.2** | |
 | IP lookup managed-list check | Show which managed lists contain a given IP during `/api/lookup/{ip}` | Low |
+| Default rules bulk API | `POST /api/default-rules/bulk` — batch override for CRS rules bulk actions | Medium |
+| Exclusions bulk API | `POST /api/exclusions/bulk` — batch enable/disable/delete for policy engine bulk actions | Medium |
 
 ### Architecture — UI Bundling into wafctl
 
