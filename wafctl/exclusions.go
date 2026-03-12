@@ -171,7 +171,8 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 			ID:          generateUUIDv7(),
 			Name:        "HTTP/1.0 Anomaly",
 			Description: "+2 anomaly for HTTP/1.0 — modern clients use HTTP/1.1 or HTTP/2",
-			Type:        "anomaly",
+			Type:        "detect",
+			Severity:    "NOTICE",
 			Conditions: []Condition{
 				{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"},
 			},
@@ -187,7 +188,8 @@ func migrateV0toV1(exclusions []RuleExclusion) []RuleExclusion {
 			ID:          generateUUIDv7(),
 			Name:        "Generic UA Anomaly",
 			Description: "+5 anomaly for generic HTTP library User-Agents (python-requests, curl/, etc.)",
-			Type:        "anomaly",
+			Type:        "detect",
+			Severity:    "WARNING",
 			Conditions: []Condition{
 				{Field: "user_agent", Operator: "in", Value: genericUAs},
 			},

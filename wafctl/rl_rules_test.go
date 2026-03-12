@@ -872,10 +872,10 @@ func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
 		t.Errorf("want service %q, got %q", "sonarr", rules[0].Service)
 	}
 
-	// RL file should exist.
+	// Policy engine is always enabled now — RL files should be cleared.
 	entries, _ := os.ReadDir(rlDir)
-	if len(entries) == 0 {
-		t.Error("want at least one RL file in the RL dir")
+	if len(entries) != 0 {
+		t.Errorf("want 0 RL files (policy engine handles RL), got %d", len(entries))
 	}
 }
 

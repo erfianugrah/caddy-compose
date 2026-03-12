@@ -3,7 +3,7 @@ import type { WAFEvent, Condition, ConditionOperator } from "@/lib/api";
 // ─── Event Prefill ──────────────────────────────────────────────────
 
 export interface EventPrefill {
-  action: "allow" | "block" | "skip_rule";
+  action: "allow" | "block" | "detect";
   name: string;
   description: string;
   ruleIds: string;        // Space-separated rule IDs
@@ -76,7 +76,7 @@ export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     : "";
   const pathSnippet = event.uri ? event.uri.split("?")[0] : "";
   const serviceSnippet = event.service ? `on ${event.service}` : "";
-  const name = ["Skip", ruleSnippet, "for", pathSnippet, serviceSnippet].filter(Boolean).join(" ");
+  const name = ["Block", ruleSnippet, "for", pathSnippet, serviceSnippet].filter(Boolean).join(" ");
 
   // Description from the primary rule message
   const description = event.rule_msg
@@ -84,7 +84,7 @@ export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     : `Auto-created from event ${event.id}`;
 
   return {
-    action: "skip_rule",
+    action: "block",
     name,
     description,
     ruleIds: ruleIds.join(" "),

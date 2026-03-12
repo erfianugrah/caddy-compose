@@ -113,14 +113,14 @@ describe("extractPrefillFromEvent", () => {
     expect(countryCond!.operator).toBe("eq");
   });
 
-  it("sets action to skip_rule", () => {
+  it("sets action to block", () => {
     const prefill = extractPrefillFromEvent(baseEvent);
-    expect(prefill.action).toBe("skip_rule");
+    expect(prefill.action).toBe("block");
   });
 
   it("auto-generates a descriptive name", () => {
     const prefill = extractPrefillFromEvent(baseEvent);
-    expect(prefill.name).toContain("Skip");
+    expect(prefill.name).toContain("Block");
     expect(prefill.name).toContain("942100");
     expect(prefill.name).toContain("/api/v1/upload");
     expect(prefill.name).toContain("radarr.erfi.io");
@@ -262,7 +262,7 @@ describe("consumePrefillEvent", () => {
 
     const result = consumePrefillEvent();
     expect(result).not.toBeNull();
-    expect(result!.action).toBe("skip_rule");
+    expect(result!.action).toBe("block");
     expect(result!.ruleIds).toBe("942100");
   });
 

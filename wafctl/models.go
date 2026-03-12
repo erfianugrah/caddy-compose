@@ -2,34 +2,6 @@ package main
 
 import "time"
 
-// ─── CRS Scoring & Evaluation Rule IDs ──────────────────────────────────────
-// These rules perform anomaly score evaluation and are excluded from
-// per-rule analysis (they summarize, not detect).
-
-var scoringRuleIDs = map[int]bool{
-	949110: true, // Inbound Anomaly Score Exceeded
-	959100: true, // Outbound Anomaly Score Exceeded
-	980170: true, // Anomaly Scores (correlation/logging)
-}
-
-// isScoringRule returns true for CRS evaluation/scoring rule IDs that should
-// be skipped when analysing individual rule matches.
-func isScoringRule(id int) bool {
-	return id == 0 || scoringRuleIDs[id]
-}
-
-// ─── CRS Rule ID Ranges ─────────────────────────────────────────────────────
-
-const (
-	// Policy engine generated rules.
-	policyRuleIDMin = 9500000
-	policyRuleIDMax = 9599999
-
-	// CRS outbound rule range.
-	crsOutboundMin = 950000
-	crsOutboundMax = 979999
-)
-
 // ─── Top-N Result Limits ────────────────────────────────────────────────────
 
 const (
@@ -39,86 +11,6 @@ const (
 	// topNAnalytics is the number of top items returned in analytics/detail endpoints.
 	topNAnalytics = 20
 )
-
-// ─── CRS Severity-to-Score Mapping ──────────────────────────────────────────
-// Maps CRS severity levels to anomaly score points per the CRS spec.
-
-var severityScoreMap = map[int]int{
-	2: 5, // CRITICAL
-	3: 4, // ERROR
-	4: 3, // WARNING
-	5: 2, // NOTICE
-}
-
-// Raw JSON structure from Coraza audit log
-
-type AuditLogEntry struct {
-	Transaction Transaction    `json:"transaction"`
-	Messages    []AuditMessage `json:"messages,omitempty"`
-}
-
-// AuditMessage represents a matched rule in the Coraza audit log (part H).
-type AuditMessage struct {
-	Actionset string           `json:"actionset"`
-	Message   string           `json:"message"`
-	Data      AuditMessageData `json:"data"`
-}
-
-type AuditMessageData struct {
-	File     string   `json:"file"`
-	Line     int      `json:"line"`
-	ID       int      `json:"id"`
-	Rev      string   `json:"rev"`
-	Msg      string   `json:"msg"`
-	Data     string   `json:"data"`
-	Severity int      `json:"severity"`
-	Ver      string   `json:"ver"`
-	Tags     []string `json:"tags"`
-}
-
-type Transaction struct {
-	Timestamp       string   `json:"timestamp"`
-	UnixTimestamp   int64    `json:"unix_timestamp"`
-	ID              string   `json:"id"`
-	ClientIP        string   `json:"client_ip"`
-	ClientPort      int      `json:"client_port"`
-	HostIP          string   `json:"host_ip"`
-	HostPort        int      `json:"host_port"`
-	ServerID        string   `json:"server_id"`
-	Request         Request  `json:"request"`
-	Response        Response `json:"response"`
-	Producer        Producer `json:"producer"`
-	HighestSeverity string   `json:"highest_severity"`
-	IsInterrupted   bool     `json:"is_interrupted"`
-}
-
-type Request struct {
-	Method      string              `json:"method"`
-	Protocol    string              `json:"protocol"`
-	URI         string              `json:"uri"`
-	HTTPVersion string              `json:"http_version"`
-	Headers     map[string][]string `json:"headers"`
-	Body        string              `json:"body"`
-	Files       []string            `json:"files"`
-	Args        map[string]string   `json:"args"`
-	Length      int                 `json:"length"`
-}
-
-type Response struct {
-	Protocol string              `json:"protocol"`
-	Status   int                 `json:"status"`
-	Headers  map[string][]string `json:"headers"`
-	Body     string              `json:"body"`
-}
-
-type Producer struct {
-	Connector  string   `json:"connector"`
-	Version    string   `json:"version"`
-	Server     string   `json:"server"`
-	RuleEngine string   `json:"rule_engine"`
-	Stopwatch  string   `json:"stopwatch"`
-	Rulesets   []string `json:"rulesets"`
-}
 
 // Normalized internal event used for indexing
 
@@ -411,13 +303,6 @@ type IPLookupResponse struct {
 	EventsByHour []HourCount     `json:"events_by_hour"`
 	Events       []Event         `json:"events"`
 	EventsTotal  int             `json:"events_total"`
-}
-
-// Config generation response
-
-type GenerateResponse struct {
-	PreCRS  string `json:"pre_crs_conf"`
-	PostCRS string `json:"post_crs_conf"`
 }
 
 // API error response

@@ -31,7 +31,6 @@ import {
   Upload,
   Loader2,
   Check,
-  FileCode,
   Search,
   X,
 } from "lucide-react";
@@ -82,15 +81,11 @@ import {
   fetchServices,
   exportExclusions,
   importExclusions,
-  fetchCRSRules,
-  fetchCRSAutocomplete,
   fetchExclusionHits,
   type Exclusion,
   type ExclusionType,
   type ExclusionCreateData,
   type ServiceDetail,
-  type CRSCatalogResponse,
-  type CRSAutocompleteResponse,
   type ExclusionHitsResponse,
 } from "@/lib/api";
 
@@ -99,7 +94,7 @@ import type { AdvancedFormState } from "./policy/constants";
 import type { EventPrefill } from "./policy/eventPrefill";
 import { consumePrefillEvent } from "./policy/eventPrefill";
 import { conditionsSummary, exclusionTypeLabel, exclusionTypeBadgeVariant } from "./policy/exclusionHelpers";
-import { QuickActionsForm, AdvancedBuilderForm, RawEditorForm } from "./policy/PolicyForms";
+import { QuickActionsForm, AdvancedBuilderForm } from "./policy/PolicyForms";
 
 const RULES_PAGE_SIZE = 15;
 
@@ -108,8 +103,6 @@ const RULES_PAGE_SIZE = 15;
 export default function PolicyEngine() {
   const [exclusions, setExclusions] = useState<Exclusion[]>([]);
   const [services, setServices] = useState<ServiceDetail[]>([]);
-  const [crsData, setCrsData] = useState<CRSCatalogResponse | null>(null);
-  const [autocompleteData, setAutocompleteData] = useState<CRSAutocompleteResponse | null>(null);
   const [hitsData, setHitsData] = useState<ExclusionHitsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,15 +187,11 @@ export default function PolicyEngine() {
     Promise.all([
       getExclusions(),
       fetchServices(),
-      fetchCRSRules().catch(() => null),
-      fetchCRSAutocomplete().catch(() => null),
       fetchExclusionHits(24).catch(() => null),
     ])
-      .then(([excl, svcs, crs, ac, hits]) => {
+      .then(([excl, svcs, hits]) => {
         setExclusions(excl);
         setServices(svcs);
-        if (crs) setCrsData(crs);
-        if (ac) setAutocompleteData(ac);
         if (hits) setHitsData(hits);
       })
       .catch((err) => setError(err.message))
@@ -248,14 +237,8 @@ export default function PolicyEngine() {
   const isFiltered = isFilteredBase || isSorted;
   const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(sortedFilteredExclusions, rulesPage, RULES_PAGE_SIZE);
 
-  // All possible exclusion types for the filter dropdown (ordered logically)
-  const allExclusionTypes: ExclusionType[] = [
-    "allow", "block", "skip_rule", "anomaly", "raw",
-    "SecRuleRemoveById", "SecRuleRemoveByTag",
-    "SecRuleUpdateTargetById", "SecRuleUpdateTargetByTag",
-    "ctl:ruleRemoveById", "ctl:ruleRemoveByTag",
-    "ctl:ruleRemoveTargetById", "ctl:ruleRemoveTargetByTag",
-  ];
+  // All possible exclusion types for the filter dropdown
+  const allExclusionTypes: ExclusionType[] = ["allow", "block", "detect"];
 
   // Scroll to the highlighted rule once exclusions have loaded.
   useEffect(() => {
@@ -388,8 +371,8 @@ export default function PolicyEngine() {
         rule_id: exclusionToEdit.rule_id ?? "",
         rule_tag: exclusionToEdit.rule_tag ?? "",
         variable: exclusionToEdit.variable ?? "",
-        anomaly_score: exclusionToEdit.anomaly_score ?? 3,
-        anomaly_paranoia_level: exclusionToEdit.anomaly_paranoia_level ?? 1,
+        severity: exclusionToEdit.severity ?? "",
+        detect_paranoia_level: exclusionToEdit.detect_paranoia_level ?? 0,
         conditions: exclusionToEdit.conditions ?? [],
         group_operator: exclusionToEdit.group_operator ?? "and",
         tags: exclusionToEdit.tags ?? [],
@@ -397,17 +380,14 @@ export default function PolicyEngine() {
       }
     : undefined;
 
-  // Determine the editing tab — route to the correct tab based on exclusion type.
-  const isEditingRaw = exclusionToEdit?.type === "raw";
-
   // Controlled tab state — switches automatically when editing starts.
   const [activeTab, setActiveTab] = useState<string>("quick");
   useEffect(() => {
     if (editingId) {
-      setActiveTab(isEditingRaw ? "raw" : "advanced");
+      setActiveTab("advanced");
       setDialogOpen(true);
     }
-  }, [editingId, isEditingRaw]);
+  }, [editingId]);
 
   // Open create dialog
   const openCreateDialog = () => {
@@ -438,7 +418,7 @@ export default function PolicyEngine() {
         <div>
           <h2 className={T.pageTitle}>Policy Engine</h2>
           <p className={T.pageDescription}>
-            Create allow/block rules, manage CRS exclusions, or write raw SecRule directives.
+            Create allow/block/detect rules to control WAF behavior.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -681,7 +661,7 @@ export default function PolicyEngine() {
             <DialogDescription>
               {editingId
                 ? "Modify the rule below. Changes are deployed automatically on save."
-                : "Use Quick Actions for common tasks, Advanced for ModSecurity experts, or Raw Editor for full control."}
+                : "Use Quick Actions for common tasks or Advanced for full control."}
             </DialogDescription>
           </DialogHeader>
 
@@ -695,17 +675,11 @@ export default function PolicyEngine() {
                 <Code2 className="h-3.5 w-3.5" />
                 Advanced
               </TabsTrigger>
-              <TabsTrigger value="raw" className="gap-1.5" disabled={!!editingId && !isEditingRaw}>
-                <FileCode className="h-3.5 w-3.5" />
-                Raw Editor
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="quick">
               <QuickActionsForm
                 services={services}
-                crsRules={crsData?.rules ?? []}
-                crsCategories={crsData?.categories ?? []}
                 onSubmit={(data) => {
                   handleCreate(data);
                   closeDialog();
@@ -717,7 +691,7 @@ export default function PolicyEngine() {
             </TabsContent>
 
             <TabsContent value="advanced">
-              {editingId && editFormState && !isEditingRaw ? (
+              {editingId && editFormState ? (
                 <AdvancedBuilderForm
                   key={editingId}
                   initial={editFormState}
@@ -733,14 +707,6 @@ export default function PolicyEngine() {
                   submitLabel="Add Exclusion"
                 />
               )}
-            </TabsContent>
-
-            <TabsContent value="raw">
-              <RawEditorForm
-                autocompleteData={autocompleteData}
-                crsRules={crsData?.rules ?? []}
-                onSubmit={(data) => { handleCreate(data); closeDialog(); }}
-              />
             </TabsContent>
           </Tabs>
         </DialogContent>

@@ -5,10 +5,6 @@ import {
   RULE_TAGS,
   CONDITION_FIELDS,
   getFieldDef,
-  isById,
-  isByTag,
-  isTargetType,
-  isRuntimeType,
   emptyAdvancedForm,
   type AdvancedFormState,
   type QuickActionType,
@@ -17,10 +13,10 @@ import {
 // ─── QUICK_ACTIONS ──────────────────────────────────────────────────
 
 describe("QUICK_ACTIONS", () => {
-  it("has exactly 4 actions: allow, block, skip_rule, anomaly", () => {
-    expect(QUICK_ACTIONS).toHaveLength(4);
+  it("has exactly 3 actions: allow, block, detect", () => {
+    expect(QUICK_ACTIONS).toHaveLength(3);
     const values = QUICK_ACTIONS.map((a) => a.value);
-    expect(values).toEqual(["allow", "block", "skip_rule", "anomaly"]);
+    expect(values).toEqual(["allow", "block", "detect"]);
   });
 
   it("each action has label, description, and iconName", () => {
@@ -35,34 +31,14 @@ describe("QUICK_ACTIONS", () => {
 // ─── ALL_EXCLUSION_TYPES ────────────────────────────────────────────
 
 describe("ALL_EXCLUSION_TYPES", () => {
-  it("has all expected exclusion types", () => {
+  it("has exactly 3 types: allow, block, detect", () => {
     const values = ALL_EXCLUSION_TYPES.map((t) => t.value);
-    expect(values).toContain("allow");
-    expect(values).toContain("block");
-    expect(values).toContain("skip_rule");
-    expect(values).toContain("anomaly");
-    expect(values).toContain("SecRuleRemoveById");
-    expect(values).toContain("SecRuleRemoveByTag");
-    expect(values).toContain("SecRuleUpdateTargetById");
-    expect(values).toContain("SecRuleUpdateTargetByTag");
-    expect(values).toContain("ctl:ruleRemoveById");
-    expect(values).toContain("ctl:ruleRemoveByTag");
-    expect(values).toContain("ctl:ruleRemoveTargetById");
-    expect(values).toContain("ctl:ruleRemoveTargetByTag");
+    expect(values).toEqual(["allow", "block", "detect"]);
   });
 
-  it("has 3 groups: quick, advanced, runtime", () => {
+  it("all types are in the quick group", () => {
     const groups = new Set(ALL_EXCLUSION_TYPES.map((t) => t.group));
-    expect(groups).toEqual(new Set(["quick", "advanced", "runtime"]));
-  });
-
-  it("quick group has 4 items, advanced has 4, runtime has 4", () => {
-    const quick = ALL_EXCLUSION_TYPES.filter((t) => t.group === "quick");
-    const advanced = ALL_EXCLUSION_TYPES.filter((t) => t.group === "advanced");
-    const runtime = ALL_EXCLUSION_TYPES.filter((t) => t.group === "runtime");
-    expect(quick).toHaveLength(4);
-    expect(advanced).toHaveLength(4);
-    expect(runtime).toHaveLength(4);
+    expect(groups).toEqual(new Set(["quick"]));
   });
 
   it("each type has label and description", () => {
@@ -183,110 +159,18 @@ describe("getFieldDef", () => {
   });
 });
 
-// ─── isById ─────────────────────────────────────────────────────────
-
-describe("isById", () => {
-  it("returns true for ById types", () => {
-    expect(isById("SecRuleRemoveById")).toBe(true);
-    expect(isById("SecRuleUpdateTargetById")).toBe(true);
-    expect(isById("ctl:ruleRemoveById")).toBe(true);
-    expect(isById("ctl:ruleRemoveTargetById")).toBe(true);
-  });
-
-  it("returns false for ByTag types", () => {
-    expect(isById("SecRuleRemoveByTag")).toBe(false);
-    expect(isById("SecRuleUpdateTargetByTag")).toBe(false);
-  });
-
-  it("returns false for quick action types", () => {
-    expect(isById("allow")).toBe(false);
-    expect(isById("block")).toBe(false);
-    expect(isById("skip_rule")).toBe(false);
-    expect(isById("anomaly")).toBe(false);
-  });
-});
-
-// ─── isByTag ────────────────────────────────────────────────────────
-
-describe("isByTag", () => {
-  it("returns true for ByTag types", () => {
-    expect(isByTag("SecRuleRemoveByTag")).toBe(true);
-    expect(isByTag("SecRuleUpdateTargetByTag")).toBe(true);
-    expect(isByTag("ctl:ruleRemoveByTag")).toBe(true);
-    expect(isByTag("ctl:ruleRemoveTargetByTag")).toBe(true);
-  });
-
-  it("returns false for ById types", () => {
-    expect(isByTag("SecRuleRemoveById")).toBe(false);
-    expect(isByTag("ctl:ruleRemoveById")).toBe(false);
-  });
-
-  it("returns false for quick action types", () => {
-    expect(isByTag("allow")).toBe(false);
-    expect(isByTag("block")).toBe(false);
-  });
-});
-
-// ─── isTargetType ───────────────────────────────────────────────────
-
-describe("isTargetType", () => {
-  it("returns true for target/update-target types", () => {
-    expect(isTargetType("SecRuleUpdateTargetById")).toBe(true);
-    expect(isTargetType("SecRuleUpdateTargetByTag")).toBe(true);
-    expect(isTargetType("ctl:ruleRemoveTargetById")).toBe(true);
-    expect(isTargetType("ctl:ruleRemoveTargetByTag")).toBe(true);
-  });
-
-  it("returns false for non-target types", () => {
-    expect(isTargetType("SecRuleRemoveById")).toBe(false);
-    expect(isTargetType("SecRuleRemoveByTag")).toBe(false);
-    expect(isTargetType("allow")).toBe(false);
-    expect(isTargetType("block")).toBe(false);
-    expect(isTargetType("ctl:ruleRemoveById")).toBe(false);
-  });
-});
-
-// ─── isRuntimeType ──────────────────────────────────────────────────
-
-describe("isRuntimeType", () => {
-  it("returns true for ctl: runtime types", () => {
-    expect(isRuntimeType("ctl:ruleRemoveById")).toBe(true);
-    expect(isRuntimeType("ctl:ruleRemoveByTag")).toBe(true);
-    expect(isRuntimeType("ctl:ruleRemoveTargetById")).toBe(true);
-    expect(isRuntimeType("ctl:ruleRemoveTargetByTag")).toBe(true);
-  });
-
-  it("returns false for configure-time types", () => {
-    expect(isRuntimeType("SecRuleRemoveById")).toBe(false);
-    expect(isRuntimeType("SecRuleRemoveByTag")).toBe(false);
-    expect(isRuntimeType("SecRuleUpdateTargetById")).toBe(false);
-  });
-
-  it("returns false for quick action types", () => {
-    expect(isRuntimeType("allow")).toBe(false);
-    expect(isRuntimeType("block")).toBe(false);
-    expect(isRuntimeType("skip_rule")).toBe(false);
-    expect(isRuntimeType("anomaly")).toBe(false);
-  });
-
-  it("returns false for honeypot and raw", () => {
-    expect(isRuntimeType("honeypot")).toBe(false);
-    expect(isRuntimeType("raw")).toBe(false);
-  });
-});
-
 // ─── emptyAdvancedForm ──────────────────────────────────────────────
 
 describe("emptyAdvancedForm", () => {
   it("has correct default values", () => {
     expect(emptyAdvancedForm.name).toBe("");
     expect(emptyAdvancedForm.description).toBe("");
-    expect(emptyAdvancedForm.type).toBe("SecRuleRemoveById");
+    expect(emptyAdvancedForm.type).toBe("allow");
     expect(emptyAdvancedForm.rule_id).toBe("");
     expect(emptyAdvancedForm.rule_tag).toBe("");
     expect(emptyAdvancedForm.variable).toBe("");
-    expect(emptyAdvancedForm.anomaly_score).toBe(3);
-    expect(emptyAdvancedForm.anomaly_paranoia_level).toBe(1);
+    expect(emptyAdvancedForm.severity).toBe("");
+    expect(emptyAdvancedForm.detect_paranoia_level).toBe(0);
     expect(emptyAdvancedForm.conditions).toEqual([]);
     expect(emptyAdvancedForm.group_operator).toBe("and");
     expect(emptyAdvancedForm.enabled).toBe(true);

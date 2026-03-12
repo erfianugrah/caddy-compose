@@ -54,78 +54,34 @@ type DeployConfig struct {
 
 // DeployResponse is returned by the deploy endpoint.
 type DeployResponse struct {
-	Status      string `json:"status"`
-	Message     string `json:"message"`
-	PreCRS      string `json:"pre_crs_file"`
-	PostCRS     string `json:"post_crs_file"`
-	WAFSettings string `json:"waf_settings_file"`
-	Reloaded    bool   `json:"reloaded"`
-	Timestamp   string `json:"timestamp"`
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+	Reloaded  bool   `json:"reloaded"`
+	Timestamp string `json:"timestamp"`
 }
 
-// ensureWafDir creates the WAF config directory and empty placeholder
-// files if they don't exist. Called at startup.
+// ensureWafDir creates the WAF config directory if it doesn't exist.
+// The policy engine plugin reads policy-rules.json from this directory.
 func ensureWafDir(dir string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("creating waf dir %s: %w", dir, err)
 	}
-
-	placeholders := map[string]string{
-		"custom-pre-crs.conf":  "",
-		"custom-post-crs.conf": "",
-		// The WAF settings placeholder includes SecRuleEngine On as the safe
-		// default. The Caddyfile intentionally does NOT set SecRuleEngine —
-		// this file is the single source of truth, managed by the generator.
-		"custom-waf-settings.conf": "SecRuleEngine On\n",
-	}
-	for name, extra := range placeholders {
-		path := filepath.Join(dir, name)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			header := fmt.Sprintf("# Managed by wafctl\n# Created: %s\n# This file is empty until settings are deployed.\n%s",
-				time.Now().UTC().Format(time.RFC3339), extra)
-			if err := atomicWriteFile(path, []byte(header), 0644); err != nil {
-				return fmt.Errorf("creating placeholder %s: %w", path, err)
-			}
-			log.Printf("created placeholder: %s", path)
-		}
-	}
 	return nil
 }
 
-// generateOnBoot regenerates all config files from stored state at startup.
-// This ensures a stack restart always picks up the latest generator output
+// generateOnBoot regenerates the policy engine rules file from stored state
+// at startup. This ensures a stack restart always picks up the latest rules
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
 func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
-	// WAF config: generate exclusion rules + WAF settings.
-	cfg := cs.Get()
 	allExclusions := es.EnabledExclusions()
-
-	// When policy engine is enabled, allow/block/honeypot go to the plugin's
-	// JSON file instead of SecRules. Filter them out before generation.
-	exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
-	result := GenerateConfigs(cfg, exclusions, ls)
-	wafSettings := GenerateWAFSettings(cfg)
-
-	// Validate generated config at boot to catch issues early.
-	vr := ValidateGeneratedConfig(result.PreCRS, result.PostCRS, wafSettings)
-	selfRefWarnings := validateGeneratedRuleIDs(exclusions)
-	vr.Warnings = append(vr.Warnings, selfRefWarnings...)
-	logValidationResult(vr)
-
-	if err := writeConfFiles(deployCfg.WafDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
-		log.Printf("[boot] warning: failed to generate WAF configs: %v", err)
-	} else {
-		log.Printf("[boot] regenerated WAF configs (%d exclusions, mode=%s, paranoia=%d)",
-			len(exclusions), cfg.Defaults.Mode, cfg.Defaults.ParanoiaLevel)
-	}
 
 	// Rate limit rules: discover new services from the Caddyfile.
 	rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
 
 	// Policy engine: generate JSON rules file for the Caddy plugin.
-	// Includes both WAF exclusions (allow/block) and rate limit rules.
-	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
+	// Includes WAF exclusions (allow/block/detect) and rate limit rules.
+	if deployCfg.PolicyRulesFile != "" {
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
@@ -135,7 +91,6 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 		if err != nil {
 			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
 		} else {
-			// Apply default rule overrides (disabled IDs + field overrides).
 			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
 			if err != nil {
 				log.Printf("[boot] warning: failed to apply default rule overrides: %v", err)
@@ -154,32 +109,11 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 		}
 	}
 
-	// Rate limit Caddyfile generation: only needed when policy engine is
-	// disabled (legacy mode). When enabled, RL rules are in policy-rules.json
-	// and stale .caddy files are cleared to prevent double rate limiting.
-	if !deployCfg.PolicyEngineEnabled {
-		rules := rs.EnabledRules()
-		global := rs.GetGlobal()
-		rlFiles := GenerateRateLimitConfigs(rules, global, deployCfg.CaddyfilePath, ls)
-		if len(rlFiles) > 0 {
-			written, err := writeRLFiles(deployCfg.RateLimitDir, rlFiles)
-			if err != nil {
-				log.Printf("[boot] warning: failed to generate rate limit configs: %v", err)
-			} else {
-				log.Printf("[boot] regenerated %d rate limit files", len(written))
-			}
-		}
-	} else {
-		// Clear stale RL .caddy files to prevent double rate limiting
-		// (policy engine + caddy-ratelimit plugin both enforcing the same rules).
-		clearRLFiles(deployCfg.RateLimitDir)
-	}
-
-	// CSP headers are now handled by the policy engine plugin via
-	// response_headers in policy-rules.json (no .caddy file generation needed).
+	// Clear stale RL .caddy files to prevent double rate limiting.
+	clearRLFiles(deployCfg.RateLimitDir)
 }
 
-// deployAll regenerates all WAF and policy engine config files and reloads Caddy.
+// deployAll regenerates the policy engine rules file and reloads Caddy.
 // This is the programmatic equivalent of POST /api/config/deploy, used by
 // background processes (e.g. blocklist refresh) that need to trigger a full
 // regeneration + reload cycle after updating managed lists.
@@ -187,20 +121,10 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 	deployMu.Lock()
 	defer deployMu.Unlock()
 
-	cfg := cs.Get()
 	allExclusions := es.EnabledExclusions()
 
-	// SecRule generation (excluding policy engine types).
-	exclusions := FilterSecRuleExclusions(allExclusions, deployCfg.PolicyEngineEnabled)
-	result := GenerateConfigs(cfg, exclusions, ls)
-	wafSettings := GenerateWAFSettings(cfg)
-
-	if err := writeConfFiles(deployCfg.WafDir, result.PreCRS, result.PostCRS, wafSettings); err != nil {
-		return fmt.Errorf("writing WAF config files: %w", err)
-	}
-
-	// Policy engine: generate JSON rules file (includes RL rules when enabled).
-	if deployCfg.PolicyEngineEnabled && deployCfg.PolicyRulesFile != "" {
+	// Generate policy engine rules file (WAF exclusions + RL rules).
+	if deployCfg.PolicyRulesFile != "" {
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
@@ -227,38 +151,11 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 			policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 	}
 
-	// Sync rate limit Caddyfile snippets (legacy mode only).
-	if !deployCfg.PolicyEngineEnabled {
-		syncCaddyfileServices(rs, ls, deployCfg)
-	}
-
-	// Reload Caddy.
-	confFiles := []string{
-		filepath.Join(deployCfg.WafDir, "custom-pre-crs.conf"),
-		filepath.Join(deployCfg.WafDir, "custom-post-crs.conf"),
-		filepath.Join(deployCfg.WafDir, "custom-waf-settings.conf"),
-	}
-	if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL, confFiles...); err != nil {
+	// Reload Caddy to pick up the new policy rules.
+	if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
 		return fmt.Errorf("Caddy reload: %w", err)
 	}
 
-	return nil
-}
-
-// writeConfFiles writes the generated pre-CRS, post-CRS, and WAF settings configs to disk atomically.
-func writeConfFiles(dir, preCRS, postCRS, wafSettings string) error {
-	files := map[string]string{
-		"custom-pre-crs.conf":      preCRS,
-		"custom-post-crs.conf":     postCRS,
-		"custom-waf-settings.conf": wafSettings,
-	}
-	for name, content := range files {
-		path := filepath.Join(dir, name)
-		if err := atomicWriteFile(path, []byte(content), 0644); err != nil {
-			return fmt.Errorf("writing %s: %w", path, err)
-		}
-		log.Printf("wrote %s (%d bytes)", path, len(content))
-	}
 	return nil
 }
 

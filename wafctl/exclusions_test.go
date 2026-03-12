@@ -18,7 +18,7 @@ func TestExclusionStoreCRUD(t *testing.T) {
 	// Create.
 	exc := RuleExclusion{
 		Name:    "Test exclusion",
-		Type:    "remove_by_id",
+		Type:    "allow",
 		RuleID:  "920420",
 		Enabled: true,
 	}
@@ -105,7 +105,7 @@ func TestExclusionStorePersistence(t *testing.T) {
 	es1 := NewExclusionStore(path)
 	_, err := es1.Create(RuleExclusion{
 		Name:    "Persistent",
-		Type:    "remove_by_id",
+		Type:    "allow",
 		RuleID:  "920420",
 		Enabled: true,
 	})
@@ -128,8 +128,8 @@ func TestExclusionStoreImportExport(t *testing.T) {
 	es := newTestExclusionStore(t)
 
 	// Create some exclusions.
-	es.Create(RuleExclusion{Name: "First", Type: "remove_by_id", RuleID: "920420", Enabled: true})
-	es.Create(RuleExclusion{Name: "Second", Type: "remove_by_tag", RuleTag: "attack-sqli", Enabled: false})
+	es.Create(RuleExclusion{Name: "First", Type: "allow", RuleID: "920420", Enabled: true})
+	es.Create(RuleExclusion{Name: "Second", Type: "block", RuleTag: "attack-sqli", Enabled: false})
 
 	// Export.
 	export := es.Export()
@@ -155,9 +155,9 @@ func TestExclusionStoreImportExport(t *testing.T) {
 func TestExclusionStoreReorder(t *testing.T) {
 	es := newTestExclusionStore(t)
 
-	a, _ := es.Create(RuleExclusion{Name: "A", Type: "remove_by_id", RuleID: "1", Enabled: true})
-	b, _ := es.Create(RuleExclusion{Name: "B", Type: "remove_by_id", RuleID: "2", Enabled: true})
-	c, _ := es.Create(RuleExclusion{Name: "C", Type: "remove_by_id", RuleID: "3", Enabled: true})
+	a, _ := es.Create(RuleExclusion{Name: "A", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/a"}}})
+	b, _ := es.Create(RuleExclusion{Name: "B", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/b"}}})
+	c, _ := es.Create(RuleExclusion{Name: "C", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/c"}}})
 
 	// Reorder: C, A, B
 	err := es.Reorder([]string{c.ID, a.ID, b.ID})
@@ -182,8 +182,8 @@ func TestExclusionStoreReorder(t *testing.T) {
 
 func TestExclusionStoreReorderErrors(t *testing.T) {
 	es := newTestExclusionStore(t)
-	a, _ := es.Create(RuleExclusion{Name: "A", Type: "remove_by_id", RuleID: "1", Enabled: true})
-	es.Create(RuleExclusion{Name: "B", Type: "remove_by_id", RuleID: "2", Enabled: true})
+	a, _ := es.Create(RuleExclusion{Name: "A", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/a"}}})
+	es.Create(RuleExclusion{Name: "B", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/b"}}})
 
 	// Wrong count.
 	if err := es.Reorder([]string{a.ID}); err == nil {
@@ -201,8 +201,8 @@ func TestExclusionStoreReorderErrors(t *testing.T) {
 
 func TestExclusionStoreEnabledFilter(t *testing.T) {
 	es := newTestExclusionStore(t)
-	es.Create(RuleExclusion{Name: "Enabled", Type: "remove_by_id", RuleID: "1", Enabled: true})
-	es.Create(RuleExclusion{Name: "Disabled", Type: "remove_by_id", RuleID: "2", Enabled: false})
+	es.Create(RuleExclusion{Name: "Enabled", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/1"}}})
+	es.Create(RuleExclusion{Name: "Disabled", Type: "allow", Enabled: false, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/2"}}})
 
 	enabled := es.EnabledExclusions()
 	if len(enabled) != 1 {
@@ -224,33 +224,18 @@ func TestValidateExclusion(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "valid remove_by_id",
-			exc:     RuleExclusion{Name: "test", Type: "remove_by_id", RuleID: "920420"},
+			name:    "valid allow with condition",
+			exc:     RuleExclusion{Name: "test", Type: "allow", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}}},
 			wantErr: false,
 		},
 		{
-			name:    "valid remove_by_tag",
-			exc:     RuleExclusion{Name: "test", Type: "remove_by_tag", RuleTag: "attack-sqli"},
-			wantErr: false,
-		},
-		{
-			name:    "valid update_target_by_id",
-			exc:     RuleExclusion{Name: "test", Type: "update_target_by_id", RuleID: "920420", Variable: "ARGS:foo"},
-			wantErr: false,
-		},
-		{
-			name:    "valid runtime_remove_by_id",
-			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_by_id", RuleID: "920420", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}}},
-			wantErr: false,
-		},
-		{
-			name:    "valid runtime_remove_target_by_id",
-			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_target_by_id", RuleID: "920420", Variable: "ARGS:x", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}}},
+			name:    "valid block with condition",
+			exc:     RuleExclusion{Name: "test", Type: "block", Conditions: []Condition{{Field: "user_agent", Operator: "contains", Value: "BadBot"}}},
 			wantErr: false,
 		},
 		{
 			name:    "missing name",
-			exc:     RuleExclusion{Type: "remove_by_id", RuleID: "920420"},
+			exc:     RuleExclusion{Type: "allow", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}}},
 			wantErr: true,
 		},
 		{
@@ -259,60 +244,14 @@ func TestValidateExclusion(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "remove_by_id missing rule_id",
-			exc:     RuleExclusion{Name: "test", Type: "remove_by_id"},
+			name:    "allow missing conditions",
+			exc:     RuleExclusion{Name: "test", Type: "allow"},
 			wantErr: true,
 		},
 		{
-			name:    "remove_by_tag missing rule_tag",
-			exc:     RuleExclusion{Name: "test", Type: "remove_by_tag"},
+			name:    "block missing conditions",
+			exc:     RuleExclusion{Name: "test", Type: "block"},
 			wantErr: true,
-		},
-		{
-			name:    "update_target_by_id missing variable",
-			exc:     RuleExclusion{Name: "test", Type: "update_target_by_id", RuleID: "920420"},
-			wantErr: true,
-		},
-		{
-			name:    "runtime_remove_by_id missing conditions",
-			exc:     RuleExclusion{Name: "test", Type: "runtime_remove_by_id", RuleID: "920420"},
-			wantErr: true,
-		},
-		// Anomaly type validation
-		{
-			name:    "valid anomaly",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 5, Conditions: []Condition{{Field: "user_agent", Operator: "regex", Value: "BadBot.*"}}},
-			wantErr: false,
-		},
-		{
-			name:    "valid anomaly with paranoia level",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 3, AnomalyParanoiaLevel: 2, Conditions: []Condition{{Field: "http_version", Operator: "eq", Value: "HTTP/1.0"}}},
-			wantErr: false,
-		},
-		{
-			name:    "anomaly missing conditions",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 5},
-			wantErr: true,
-		},
-		{
-			name:    "anomaly score too low",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
-			wantErr: true,
-		},
-		{
-			name:    "anomaly score too high",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 11, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
-			wantErr: true,
-		},
-		{
-			name:    "anomaly invalid paranoia level",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 5, AnomalyParanoiaLevel: 5, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
-			wantErr: true,
-		},
-		{
-			name:    "anomaly paranoia level zero uses default",
-			exc:     RuleExclusion{Name: "test", Type: "anomaly", AnomalyScore: 2, AnomalyParanoiaLevel: 0, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
-			wantErr: false,
 		},
 		// Detect type validation
 		{
@@ -372,7 +311,7 @@ func TestValidateExclusion(t *testing.T) {
 func TestExclusionEndpointCreate(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
-	body := `{"name":"Test","type":"remove_by_id","rule_id":"920420","enabled":true}`
+	body := `{"name":"Test","type":"allow","enabled":true,"conditions":[{"field":"path","operator":"eq","value":"/health"}]}`
 	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -394,7 +333,7 @@ func TestExclusionEndpointCreate(t *testing.T) {
 func TestExclusionEndpointCreateInvalid(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
-	body := `{"name":"","type":"remove_by_id","rule_id":"920420"}`
+	body := `{"name":"","type":"allow","conditions":[{"field":"path","operator":"eq","value":"/"}]}`
 	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -420,7 +359,7 @@ func TestExclusionEndpointCRUDFlow(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
 
 	// Create.
-	body := `{"name":"Flow Test","type":"remove_by_id","rule_id":"920420","enabled":true}`
+	body := `{"name":"Flow Test","type":"allow","enabled":true,"conditions":[{"field":"path","operator":"eq","value":"/api"}]}`
 	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -440,7 +379,7 @@ func TestExclusionEndpointCRUDFlow(t *testing.T) {
 	}
 
 	// Update.
-	body = `{"name":"Updated Flow Test","type":"remove_by_id","rule_id":"920420","enabled":false}`
+	body = `{"name":"Updated Flow Test","type":"allow","enabled":false,"conditions":[{"field":"path","operator":"eq","value":"/api"}]}`
 	req = httptest.NewRequest("PUT", "/api/exclusions/"+created.ID, strings.NewReader(body))
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -491,8 +430,8 @@ func TestExclusionEndpointExportImport(t *testing.T) {
 	mux, es := setupExclusionMux(t)
 
 	// Create two exclusions.
-	es.Create(RuleExclusion{Name: "Export1", Type: "remove_by_id", RuleID: "1", Enabled: true})
-	es.Create(RuleExclusion{Name: "Export2", Type: "remove_by_tag", RuleTag: "sqli", Enabled: true})
+	es.Create(RuleExclusion{Name: "Export1", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/health"}}})
+	es.Create(RuleExclusion{Name: "Export2", Type: "block", Enabled: true, Conditions: []Condition{{Field: "user_agent", Operator: "contains", Value: "BadBot"}}})
 
 	// Export.
 	req := httptest.NewRequest("GET", "/api/exclusions/export", nil)
@@ -534,9 +473,9 @@ func TestExclusionEndpointImportInvalid(t *testing.T) {
 func TestExclusionEndpointReorder(t *testing.T) {
 	mux, es := setupExclusionMux(t)
 
-	a, _ := es.Create(RuleExclusion{Name: "A", Type: "remove_by_id", RuleID: "1", Enabled: true})
-	b, _ := es.Create(RuleExclusion{Name: "B", Type: "remove_by_id", RuleID: "2", Enabled: true})
-	c, _ := es.Create(RuleExclusion{Name: "C", Type: "remove_by_id", RuleID: "3", Enabled: true})
+	a, _ := es.Create(RuleExclusion{Name: "A", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/a"}}})
+	b, _ := es.Create(RuleExclusion{Name: "B", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/b"}}})
+	c, _ := es.Create(RuleExclusion{Name: "C", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/c"}}})
 
 	// Reorder: C, A, B.
 	body := `{"ids":["` + c.ID + `","` + a.ID + `","` + b.ID + `"]}`
@@ -567,86 +506,6 @@ func TestExclusionEndpointReorder(t *testing.T) {
 	}
 }
 
-func TestExclusionEndpointGenerate(t *testing.T) {
-	mux, es := setupExclusionMux(t)
-
-	es.Create(RuleExclusion{
-		Name:    "Remove rule",
-		Type:    "remove_by_id",
-		RuleID:  "920420",
-		Enabled: true,
-	})
-	es.Create(RuleExclusion{
-		Name:       "Runtime remove",
-		Type:       "runtime_remove_by_id",
-		RuleID:     "941100",
-		Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/webhook"}},
-		Enabled:    true,
-	})
-
-	req := httptest.NewRequest("POST", "/api/exclusions/generate", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-	if w.Code != 200 {
-		t.Fatalf("generate: want 200, got %d", w.Code)
-	}
-
-	var resp GenerateResponse
-	json.NewDecoder(w.Body).Decode(&resp)
-	if !strings.Contains(resp.PostCRS, "SecRuleRemoveById 920420") {
-		t.Error("post-crs should contain SecRuleRemoveById 920420")
-	}
-	if !strings.Contains(resp.PreCRS, "ruleRemoveById=941100") {
-		t.Error("pre-crs should contain runtime removal for 941100")
-	}
-}
-
-// --- Config Store tests ---
-
-func TestEscapeSecRuleValue(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"plain text", "hello", "hello"},
-		{"double quote", `say "hello"`, `say \"hello\"`},
-		{"single quote", "msg:'test'", `msg:\'test\'`},
-		{"backslash", `path\to\file`, `path\\to\\file`},
-		{"newline stripped", "line1\nline2", "line1line2"},
-		{"carriage return stripped", "line1\rline2", "line1line2"},
-		{"combined injection", "foo\"\nSecRule", `foo\"SecRule`},
-		{"backslash before quote", `\"`, `\\\"`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := escapeSecRuleValue(tt.input)
-			if got != tt.want {
-				t.Errorf("escapeSecRuleValue(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestSanitizeComment(t *testing.T) {
-	tests := []struct {
-		input, want string
-	}{
-		{"hello", "hello"},
-		{"line1\nline2", "line1 line2"},
-		{"line1\r\nline2", "line1 line2"},
-		{"no\rcarriage", "nocarriage"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := sanitizeComment(tt.input)
-			if got != tt.want {
-				t.Errorf("sanitizeComment(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -655,27 +514,27 @@ func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 	}{
 		{
 			name:    "newline in name",
-			exc:     RuleExclusion{Name: "evil\nSecRule", Type: "remove_by_id", RuleID: "920420"},
+			exc:     RuleExclusion{Name: "evil\nSecRule", Type: "allow", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}}},
 			wantErr: "newlines",
 		},
 		{
 			name:    "invalid rule_tag characters",
-			exc:     RuleExclusion{Name: "test", Type: "remove_by_tag", RuleTag: "attack-sqli\"; SecRule"},
+			exc:     RuleExclusion{Name: "test", Type: "block", RuleTag: "attack-sqli\"; SecRule", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}}},
 			wantErr: "invalid rule_tag",
 		},
 		{
 			name:    "valid rule_tag with slashes",
-			exc:     RuleExclusion{Name: "test", Type: "remove_by_tag", RuleTag: "OWASP_CRS/WEB_ATTACK/SQL_INJECTION"},
+			exc:     RuleExclusion{Name: "test", Type: "block", RuleTag: "OWASP_CRS/WEB_ATTACK/SQL_INJECTION", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}}},
 			wantErr: "",
 		},
 		{
 			name:    "invalid variable characters",
-			exc:     RuleExclusion{Name: "test", Type: "update_target_by_id", RuleID: "920420", Variable: "ARGS:foo\"; deny"},
+			exc:     RuleExclusion{Name: "test", Type: "allow", Variable: "ARGS:foo\"; deny", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}}},
 			wantErr: "invalid variable",
 		},
 		{
 			name:    "valid variable",
-			exc:     RuleExclusion{Name: "test", Type: "update_target_by_id", RuleID: "920420", Variable: "!REQUEST_COOKIES:/__session/"},
+			exc:     RuleExclusion{Name: "test", Type: "allow", Variable: "!REQUEST_COOKIES:/__session/", Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}}},
 			wantErr: "",
 		},
 		{
@@ -711,17 +570,17 @@ func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "skip_rule with invalid rule_tag",
+			name: "detect with invalid rule_tag",
 			exc: RuleExclusion{
-				Name: "test", Type: "skip_rule", RuleTag: "tag with spaces",
+				Name: "test", Type: "detect", Severity: "WARNING", RuleTag: "tag with spaces",
 				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}},
 			},
 			wantErr: "invalid rule_tag",
 		},
 		{
-			name: "skip_rule with valid rule_tag",
+			name: "detect with valid rule_tag",
 			exc: RuleExclusion{
-				Name: "test", Type: "skip_rule", RuleTag: "attack-sqli",
+				Name: "test", Type: "detect", Severity: "WARNING", RuleTag: "attack-sqli",
 				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api/"}},
 			},
 			wantErr: "",
@@ -744,55 +603,6 @@ func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 		})
 	}
 }
-
-func TestGenerateConfigs_EscapesInjection(t *testing.T) {
-	// Generate configs with a malicious exclusion name containing quotes.
-	exclusions := []RuleExclusion{
-		{
-			ID:      "test1",
-			Name:    `Test "injection`,
-			Type:    "allow",
-			Enabled: true,
-			Conditions: []Condition{
-				{Field: "path", Operator: "eq", Value: `/api/"malicious`},
-			},
-		},
-	}
-	cfg := WAFConfig{Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 10}}
-	resp := GenerateConfigs(cfg, exclusions, nil)
-
-	// The value /api/"malicious should be escaped to /api/\"malicious in the output.
-	// Verify the escaped form is present (backslash-quote before malicious).
-	if !strings.Contains(resp.PreCRS, `\/\"malicious`) && !strings.Contains(resp.PreCRS, `\"malicious`) {
-		t.Error("expected escaped quotes in generated pre-CRS config")
-	}
-
-	// Verify the name in the msg field is escaped: Test \"injection
-	if !strings.Contains(resp.PreCRS, `Test \"injection`) {
-		t.Errorf("expected escaped name in msg field, got:\n%s", resp.PreCRS)
-	}
-
-	// Verify no raw newlines that could inject new directives.
-	for i, line := range strings.Split(resp.PreCRS, "\n") {
-		if strings.Contains(line, "SecRule") && strings.Count(line, `"`)%2 != 0 {
-			// Odd number of unescaped quotes on a SecRule line means broken quoting.
-			// Count only unescaped quotes (not preceded by backslash).
-			unescaped := 0
-			for j, ch := range line {
-				if ch == '"' && (j == 0 || line[j-1] != '\\') {
-					unescaped++
-				}
-			}
-			if unescaped%2 != 0 {
-				t.Errorf("line %d has unbalanced unescaped quotes: %s", i+1, line)
-			}
-		}
-	}
-}
-
-// --- extractPolicyName tests ---
-
-// --- extractPolicyName tests ---
 
 func TestExtractPolicyName(t *testing.T) {
 	tests := []struct {
@@ -824,8 +634,8 @@ func TestExtractPolicyName(t *testing.T) {
 func TestHandleExclusionHits(t *testing.T) {
 	// Create an exclusion store with some rules.
 	es := newTestExclusionStore(t)
-	es.Create(RuleExclusion{Name: "Allow uploads", Type: "allow", Enabled: true})
-	es.Create(RuleExclusion{Name: "Skip CRS 942200", Type: "skip_rule", Enabled: true})
+	es.Create(RuleExclusion{Name: "Allow uploads", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/uploads"}}})
+	es.Create(RuleExclusion{Name: "Skip CRS 942200", Type: "detect", Severity: "WARNING", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api"}}})
 
 	// Create a Store with policy events referencing these exclusions.
 	store := &Store{}
@@ -1098,7 +908,7 @@ func TestStoreMigrationFromLegacyArray(t *testing.T) {
 	legacy := []RuleExclusion{{
 		ID:      "existing-1",
 		Name:    "Existing rule",
-		Type:    "remove_by_id",
+		Type:    "allow",
 		RuleID:  "920420",
 		Enabled: true,
 	}}
@@ -1188,11 +998,11 @@ func TestMigrateV0toV1SeedRules(t *testing.T) {
 	if types["Scanner UA Block"] != "block" {
 		t.Errorf("Scanner UA Block: want type block, got %s", types["Scanner UA Block"])
 	}
-	if types["HTTP/1.0 Anomaly"] != "anomaly" {
-		t.Errorf("HTTP/1.0 Anomaly: want type anomaly, got %s", types["HTTP/1.0 Anomaly"])
+	if types["HTTP/1.0 Anomaly"] != "detect" {
+		t.Errorf("HTTP/1.0 Anomaly: want type detect, got %s", types["HTTP/1.0 Anomaly"])
 	}
-	if types["Generic UA Anomaly"] != "anomaly" {
-		t.Errorf("Generic UA Anomaly: want type anomaly, got %s", types["Generic UA Anomaly"])
+	if types["Generic UA Anomaly"] != "detect" {
+		t.Errorf("Generic UA Anomaly: want type detect, got %s", types["Generic UA Anomaly"])
 	}
 
 	// Verify anomaly scores.
@@ -1308,8 +1118,8 @@ func TestTagValidation(t *testing.T) {
 func TestMigrateV1toV2_BackfillsSeededRuleTags(t *testing.T) {
 	exclusions := []RuleExclusion{
 		{ID: "1", Name: "Scanner UA Block", Type: "block", Enabled: true},
-		{ID: "2", Name: "HTTP/1.0 Anomaly", Type: "anomaly", Enabled: true},
-		{ID: "3", Name: "Generic UA Anomaly", Type: "anomaly", Enabled: true},
+		{ID: "2", Name: "HTTP/1.0 Anomaly", Type: "detect", Enabled: true},
+		{ID: "3", Name: "Generic UA Anomaly", Type: "detect", Enabled: true},
 	}
 
 	result := migrateV1toV2(exclusions)
@@ -1589,8 +1399,8 @@ func TestStoreMigrationV6_RemovesSeededBotRules(t *testing.T) {
 	// v6 removes the 3 v1-seeded bot rules now in default-rules.json.
 	existing := []RuleExclusion{
 		{ID: "a", Name: "Scanner UA Block", Type: "block", Tags: []string{"scanner", "bot-detection"}, Enabled: true},
-		{ID: "b", Name: "HTTP/1.0 Anomaly", Type: "anomaly", Tags: []string{"bot-signal", "protocol"}, Enabled: true},
-		{ID: "c", Name: "Generic UA Anomaly", Type: "anomaly", Tags: []string{"bot-signal", "generic-ua"}, Enabled: true},
+		{ID: "b", Name: "HTTP/1.0 Anomaly", Type: "detect", Tags: []string{"bot-signal", "protocol"}, Enabled: true},
+		{ID: "c", Name: "Generic UA Anomaly", Type: "detect", Tags: []string{"bot-signal", "generic-ua"}, Enabled: true},
 		{ID: "d", Name: "Custom Block", Type: "block", Enabled: true},
 		{ID: "e", Name: "Custom Detect", Type: "detect", Tags: []string{"custom"}, Severity: "WARNING", Enabled: true},
 	}
@@ -1607,7 +1417,7 @@ func TestStoreMigrationV6_PreservesUserRules(t *testing.T) {
 	// v6 only removes the 3 known names — user rules are preserved.
 	existing := []RuleExclusion{
 		{ID: "a", Name: "My Scanner Rule", Type: "block", Tags: []string{"scanner"}, Enabled: true},
-		{ID: "b", Name: "My Protocol Rule", Type: "anomaly", Enabled: true},
+		{ID: "b", Name: "My Protocol Rule", Type: "detect", Enabled: true},
 	}
 	result := migrateV5toV6(existing)
 	if len(result) != 2 {
@@ -1862,9 +1672,9 @@ func TestValidateExclusion_WithTransforms(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "anomaly with transforms",
+			name: "detect with transforms",
 			exc: RuleExclusion{
-				Name: "test", Type: "anomaly", AnomalyScore: 3,
+				Name: "test", Type: "detect", Severity: "ERROR",
 				Conditions: []Condition{
 					{Field: "path", Operator: "regex", Value: "(?i)\\.(php|asp)", Transforms: []string{"urlDecode", "normalizePath"}},
 				},
@@ -1882,9 +1692,9 @@ func TestValidateExclusion_WithTransforms(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "skip_rule with transforms",
+			name: "detect with transforms and rule_id",
 			exc: RuleExclusion{
-				Name: "test", Type: "skip_rule", RuleID: "920420",
+				Name: "test", Type: "detect", Severity: "NOTICE", RuleID: "920420",
 				Conditions: []Condition{
 					{Field: "path", Operator: "eq", Value: "/api", Transforms: []string{"lowercase"}},
 				},

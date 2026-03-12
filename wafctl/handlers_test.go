@@ -48,9 +48,7 @@ func TestHealthEndpoint(t *testing.T) {
 // don't care about 429 merging.
 
 func TestSummaryEndpoint(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 	als := emptyAccessLogStore(t)
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
@@ -75,9 +73,7 @@ func TestSummaryEndpoint(t *testing.T) {
 }
 
 func TestEventsEndpointWithFilters(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 	als := emptyAccessLogStore(t)
 
 	req := httptest.NewRequest("GET", "/api/events?service=radarr.erfi.io&blocked=true&limit=10", nil)
@@ -190,10 +186,9 @@ func TestCORSPreflightWildcard(t *testing.T) {
 }
 
 func TestMissingLogFile(t *testing.T) {
-	store := NewStore("/nonexistent/path/audit.log")
-	store.Load() // should not panic
+	store := emptyWAFStore(t)
 	if got := store.EventCount(); got != 0 {
-		t.Errorf("want 0 events for missing file, got %d", got)
+		t.Errorf("want 0 events for empty store, got %d", got)
 	}
 }
 
@@ -202,9 +197,7 @@ func TestMissingLogFile(t *testing.T) {
 // --- IP Lookup tests ---
 
 func TestIPLookup(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	result := store.IPLookup("10.0.0.1", 0, 50, 0, nil)
 	if result.Total != 2 {
@@ -222,9 +215,7 @@ func TestIPLookup(t *testing.T) {
 }
 
 func TestIPLookupEndpoint(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
@@ -246,9 +237,7 @@ func TestIPLookupEndpoint(t *testing.T) {
 }
 
 func TestIPLookupEndpointInvalidIP(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
@@ -264,9 +253,7 @@ func TestIPLookupEndpointInvalidIP(t *testing.T) {
 }
 
 func TestIPLookupNoResults(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	result := store.IPLookup("192.168.1.1", 0, 50, 0, nil)
 	if result.Total != 0 {
@@ -278,9 +265,7 @@ func TestIPLookupNoResults(t *testing.T) {
 }
 
 func TestIPLookupPagination(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	// 10.0.0.1 has 2 events total
 	t.Run("limit 1 offset 0", func(t *testing.T) {
@@ -366,12 +351,15 @@ func TestParseHours(t *testing.T) {
 
 func TestSummaryEndpointWithHours(t *testing.T) {
 	// Create events with timestamps that are definitely old (>168h ago).
-	oldLines := []string{
-		`{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old-agent"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`,
+	oldEvents := []Event{
+		{
+			ID: "OLD1", Timestamp: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			ClientIP: "1.1.1.1", Service: "test.erfi.io", Method: "GET", URI: "/old",
+			Protocol: "HTTP/1.1", UserAgent: "old-agent",
+			ResponseStatus: 200, IsBlocked: false, EventType: "logged",
+		},
 	}
-	path := writeTempLog(t, oldLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, oldEvents)
 	als := emptyAccessLogStore(t)
 
 	// hours=1 should filter out old events.
@@ -405,9 +393,7 @@ func TestSummaryEndpointWithHours(t *testing.T) {
 // --- Analytics endpoint tests ---
 
 func TestTopBlockedIPs(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	result := store.TopBlockedIPs(0, 10)
 
@@ -446,9 +432,7 @@ func TestTopBlockedIPs(t *testing.T) {
 }
 
 func TestTopBlockedIPsLimit(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	result := store.TopBlockedIPs(0, 1)
 	if len(result) != 1 {
@@ -457,9 +441,7 @@ func TestTopBlockedIPsLimit(t *testing.T) {
 }
 
 func TestTopTargetedURIs(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	result := store.TopTargetedURIs(0, 10)
 
@@ -494,9 +476,7 @@ func TestTopTargetedURIs(t *testing.T) {
 }
 
 func TestTopTargetedURIsLimit(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	result := store.TopTargetedURIs(0, 1)
 	if len(result) != 1 {
@@ -505,9 +485,7 @@ func TestTopTargetedURIsLimit(t *testing.T) {
 }
 
 func TestAnalyticsEndpoints(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
+	store := storeWithEvents(t, sampleEvents)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, emptyAccessLogStore(t), emptyRLRuleStore(t)))
@@ -568,7 +546,7 @@ func TestAnalyticsEndpoints(t *testing.T) {
 
 func TestDecodeJSON_ValidBody(t *testing.T) {
 	mux, _ := setupExclusionMux(t)
-	body := `{"name":"Test","type":"remove_by_id","rule_id":"920420","enabled":true}`
+	body := `{"name":"Test","type":"allow","enabled":true,"conditions":[{"field":"path","operator":"eq","value":"/health"}]}`
 	req := httptest.NewRequest("POST", "/api/exclusions", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)

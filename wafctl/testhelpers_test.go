@@ -9,40 +9,45 @@ import (
 	"time"
 )
 
-// sample log lines matching Coraza's JSON audit format.
-// Headers are now map[string][]string format.
-// sampleLines uses dynamically generated timestamps so eviction tests don't
-// break as calendar time progresses past hardcoded dates.
-var sampleLines = func() []string {
-	// Anchor to the start of the current hour to guarantee exactly 2 hour
-	// buckets regardless of when the test runs. ts1/ts2 land in the
-	// previous hour, ts3 in the current hour.
+// sampleEvents mirrors what the old Coraza audit log parsing produced:
+// 3 events — 2 blocked + 1 logged, across 2 hour buckets.
+// ts1/ts2 in previous hour, ts3 in current hour.
+var sampleEvents = func() []Event {
 	nowHour := time.Now().Truncate(time.Hour)
-	ts1 := nowHour.Add(-50 * time.Minute) // previous hour bucket (e.g., 12:10)
-	ts2 := nowHour.Add(-40 * time.Minute) // previous hour bucket (e.g., 12:20)
-	ts3 := nowHour.Add(1 * time.Second)   // current hour bucket (e.g., 13:00:01)
-	fmtTS := func(t time.Time) string { return t.UTC().Format("2006/01/02 15:04:05") }
-	fmtUnix := func(t time.Time) int64 { return t.UnixNano() }
-	return []string{
-		fmt.Sprintf(`{"transaction":{"timestamp":"%s","unix_timestamp":%d,"id":"AAA111","client_ip":"195.240.81.42","client_port":0,"host_ip":"","host_port":0,"server_id":"dockge-sg.erfi.io","request":{"method":"POST","protocol":"HTTP/2.0","uri":"/socket.io/?EIO=4","http_version":"","headers":{"User-Agent":["Mozilla/5.0"]},"body":"40","files":null,"args":{},"length":0},"response":{"protocol":"","status":0,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":["OWASP_CRS/4.15.0"]},"highest_severity":"","is_interrupted":true}}`, fmtTS(ts1), fmtUnix(ts1)),
-		fmt.Sprintf(`{"transaction":{"timestamp":"%s","unix_timestamp":%d,"id":"BBB222","client_ip":"10.0.0.1","client_port":0,"host_ip":"","host_port":0,"server_id":"radarr.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/.env","http_version":"","headers":{"User-Agent":["curl/7.68"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":403,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":["OWASP_CRS/4.15.0"]},"highest_severity":"","is_interrupted":true}}`, fmtTS(ts2), fmtUnix(ts2)),
-		fmt.Sprintf(`{"transaction":{"timestamp":"%s","unix_timestamp":%d,"id":"CCC333","client_ip":"10.0.0.1","client_port":0,"host_ip":"","host_port":0,"server_id":"radarr.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/api/v3/queue","http_version":"","headers":{"User-Agent":["Radarr/5.0"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":["OWASP_CRS/4.15.0"]},"highest_severity":"","is_interrupted":false}}`, fmtTS(ts3), fmtUnix(ts3)),
+	ts1 := nowHour.Add(-50 * time.Minute)
+	ts2 := nowHour.Add(-40 * time.Minute)
+	ts3 := nowHour.Add(1 * time.Second)
+	return []Event{
+		{
+			ID: "AAA111", Timestamp: ts1, ClientIP: "195.240.81.42",
+			Service: "dockge-sg.erfi.io", Method: "POST", URI: "/socket.io/?EIO=4",
+			Protocol: "HTTP/2.0", UserAgent: "Mozilla/5.0",
+			ResponseStatus: 0, IsBlocked: true, EventType: "blocked",
+		},
+		{
+			ID: "BBB222", Timestamp: ts2, ClientIP: "10.0.0.1",
+			Service: "radarr.erfi.io", Method: "GET", URI: "/.env",
+			Protocol: "HTTP/1.1", UserAgent: "curl/7.68",
+			ResponseStatus: 403, IsBlocked: true, EventType: "blocked",
+		},
+		{
+			ID: "CCC333", Timestamp: ts3, ClientIP: "10.0.0.1",
+			Service: "radarr.erfi.io", Method: "GET", URI: "/api/v3/queue",
+			Protocol: "HTTP/1.1", UserAgent: "Radarr/5.0",
+			ResponseStatus: 200, IsBlocked: false, EventType: "logged",
+		},
 	}
 }()
 
-func writeTempLog(t *testing.T, lines []string) string {
+// storeWithEvents creates a Store pre-populated with the given events.
+func storeWithEvents(t *testing.T, events []Event) *Store {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, l := range lines {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-	return path
+	store := NewStore(filepath.Join(t.TempDir(), "waf.log"))
+	store.mu.Lock()
+	store.events = make([]Event, len(events))
+	copy(store.events, events)
+	store.mu.Unlock()
+	return store
 }
 
 // --- HTTP handler tests ---
@@ -60,6 +65,13 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
 	secStore := NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec.json"))
 	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore, secStore)
+}
+
+// emptyWAFStore returns a Store with no events for tests that only need
+// an empty WAF store (no audit log parsing — policy engine handles detection).
+func emptyWAFStore(t *testing.T) *Store {
+	t.Helper()
+	return NewStore(filepath.Join(t.TempDir(), "empty-waf.log"))
 }
 
 // emptyAccessLogStore returns an AccessLogStore with no events for tests that
@@ -97,7 +109,6 @@ func setupExclusionMux(t *testing.T) (*http.ServeMux, *ExclusionStore) {
 	mux.HandleFunc("POST /api/exclusions", handleCreateExclusion(es))
 	mux.HandleFunc("GET /api/exclusions/export", handleExportExclusions(es))
 	mux.HandleFunc("POST /api/exclusions/import", handleImportExclusions(es))
-	mux.HandleFunc("POST /api/exclusions/generate", handleGenerateExclusions(es))
 	mux.HandleFunc("PUT /api/exclusions/reorder", handleReorderExclusions(es))
 	mux.HandleFunc("GET /api/exclusions/{id}", handleGetExclusion(es))
 	mux.HandleFunc("PUT /api/exclusions/{id}", handleUpdateExclusion(es))

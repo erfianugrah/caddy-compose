@@ -330,22 +330,6 @@ func IsPolicyEngineType(typ string) bool {
 	return policyEngineTypes[typ]
 }
 
-// FilterSecRuleExclusions returns only the exclusions that should generate
-// SecRules (i.e., NOT handled by the policy engine plugin).
-// When policyEngineEnabled is false, all exclusions are returned unchanged.
-func FilterSecRuleExclusions(exclusions []RuleExclusion, policyEngineEnabled bool) []RuleExclusion {
-	if !policyEngineEnabled {
-		return exclusions
-	}
-	filtered := make([]RuleExclusion, 0, len(exclusions))
-	for _, e := range exclusions {
-		if !policyEngineTypes[e.Type] {
-			filtered = append(filtered, e)
-		}
-	}
-	return filtered
-}
-
 // ─── Service Name Resolution ──────────────────────────────────────
 
 // siteBlockPattern matches Caddyfile top-level site addresses like:

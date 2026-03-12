@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"sort"
@@ -283,135 +282,10 @@ func (s *Store) SetMaxAge(d time.Duration) {
 	s.maxAge = d
 }
 
-// Load reads new lines appended since last offset and parses them.
+// Load runs time-based eviction of old events. Previously this also parsed
+// the Coraza audit log, but that's been removed — WAF events now come
+// exclusively from the access log via the policy engine's log_append fields.
 func (s *Store) Load() {
-	f, err := os.Open(s.path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			log.Printf("audit log not found at %s, will retry", s.path)
-			return
-		}
-		log.Printf("error opening audit log: %v", err)
-		return
-	}
-	defer f.Close()
-
-	// Check if the file was truncated/rotated (current size < last offset).
-	info, err := f.Stat()
-	if err != nil {
-		log.Printf("error stat audit log: %v", err)
-		return
-	}
-	if info.Size() < s.offset.Load() {
-		log.Printf("audit log appears rotated (size %d < offset %d), re-reading from start", info.Size(), s.offset.Load())
-		s.offset.Store(0)
-		s.saveOffset()
-		// Don't clear in-memory events — with copytruncate rotation the
-		// already-parsed events are still valid. The eviction loop will
-		// age them out naturally based on maxAge.
-	}
-
-	bytesToRead := info.Size() - s.offset.Load()
-	if bytesToRead == 0 {
-		// No new data, but still run eviction for time-based cleanup.
-		s.evict()
-		return
-	}
-
-	log.Printf("audit log: parsing %s from offset %d (%s to read)",
-		s.path, s.offset.Load(), formatBytes(bytesToRead))
-
-	// Seek to where we left off.
-	if s.offset.Load() > 0 {
-		if _, err := f.Seek(s.offset.Load(), io.SeekStart); err != nil {
-			log.Printf("error seeking audit log: %v", err)
-			return
-		}
-	}
-
-	// Snapshot geoIP reference under lock to avoid a data race with SetGeoIP.
-	s.mu.RLock()
-	geoIP := s.geoIP
-	s.mu.RUnlock()
-
-	var newEvents []Event
-	var linesRead, linesSkipped int
-	var bytesRead int64
-	startTime := time.Now()
-	lastProgress := startTime
-	reader := bufio.NewReaderSize(f, 64*1024)
-	// Use ReadBytes instead of Scanner — no line length limit.
-	// Coraza audit log entries can be arbitrarily large: request bodies up to
-	// SecRequestBodyLimit (13MB), headers, and CRS rules with full regex in
-	// the "raw" field. Scanner's fixed buffer would permanently stall on
-	// oversized lines; ReadBytes just grows the buffer as needed.
-	for {
-		line, err := reader.ReadBytes('\n')
-		bytesRead += int64(len(line))
-		if len(line) > 0 {
-			line = bytes.TrimSpace(line)
-		}
-		if len(line) > 0 {
-			linesRead++
-			var entry AuditLogEntry
-			if jsonErr := json.Unmarshal(line, &entry); jsonErr != nil {
-				linesSkipped++
-				if linesSkipped <= 5 {
-					log.Printf("skipping malformed log line: %v", jsonErr)
-				}
-			} else {
-				ev := parseEvent(entry)
-				// Enrich with country from Cf-Ipcountry header or MMDB lookup.
-				if geoIP != nil {
-					cfCountry := headerValue(entry.Transaction.Request.Headers, "Cf-Ipcountry")
-					ev.Country = geoIP.Resolve(ev.ClientIP, cfCountry)
-				}
-				newEvents = append(newEvents, ev)
-			}
-		}
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("error reading audit log: %v", err)
-			}
-			break
-		}
-
-		// Progress logging every 10s for large parses.
-		if now := time.Now(); now.Sub(lastProgress) >= 10*time.Second {
-			pct := float64(bytesRead) / float64(bytesToRead) * 100
-			log.Printf("audit log: %.1f%% (%s / %s) — %d events parsed, %s elapsed",
-				pct, formatBytes(bytesRead), formatBytes(bytesToRead),
-				len(newEvents), now.Sub(startTime).Truncate(time.Second))
-			lastProgress = now
-		}
-	}
-
-	elapsed := time.Since(startTime).Truncate(time.Millisecond)
-
-	// Update offset to current position.
-	newOffset, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		log.Printf("error getting file offset: %v", err)
-	} else {
-		s.offset.Store(newOffset)
-		s.saveOffset()
-	}
-
-	if len(newEvents) > 0 {
-		s.mu.Lock()
-		s.events = append(s.events, newEvents...)
-		s.mu.Unlock()
-		s.generation.Add(1)
-		// Persist new events to JSONL.
-		s.appendEventsToJSONL(newEvents)
-		log.Printf("audit log: loaded %d new events (%d total) from %d lines (%d skipped) in %s",
-			len(newEvents), s.EventCount(), linesRead, linesSkipped, elapsed)
-	} else if linesRead > 0 {
-		log.Printf("audit log: parsed %d lines (0 new events, %d skipped) in %s",
-			linesRead, linesSkipped, elapsed)
-	}
-
-	// Evict events older than maxAge.
 	s.evict()
 }
 

@@ -203,7 +203,6 @@ func runServe() int {
 	mux.HandleFunc("POST /api/exclusions", handleCreateExclusion(exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/export", handleExportExclusions(exclusionStore))
 	mux.HandleFunc("POST /api/exclusions/import", handleImportExclusions(exclusionStore))
-	mux.HandleFunc("POST /api/exclusions/generate", handleGenerateExclusions(exclusionStore))
 	mux.HandleFunc("PUT /api/exclusions/reorder", handleReorderExclusions(exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/hits", handleExclusionHits(store, exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/{id}", handleGetExclusion(exclusionStore))
@@ -218,7 +217,6 @@ func runServe() int {
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
 	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
-	mux.HandleFunc("POST /api/config/validate", handleValidateConfig(configStore, exclusionStore, deployCfg))
 	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
 
 	// Rate Limit Rules (policy engine)

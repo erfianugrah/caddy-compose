@@ -177,15 +177,6 @@ func handleDeleteExclusion(es *ExclusionStore) http.HandlerFunc {
 	}
 }
 
-func handleGenerateExclusions(es *ExclusionStore) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		exclusions := es.EnabledExclusions()
-		// Generate with a default config — this endpoint is exclusion-only.
-		result := GenerateConfigs(defaultConfig(), exclusions, nil)
-		writeJSON(w, http.StatusOK, result)
-	}
-}
-
 func handleExportExclusions(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, es.Export())

@@ -5,8 +5,34 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
+
+// headerValue extracts the first value for a header key from a map[string][]string.
+// Tries the exact key first, then a case-insensitive match.
+func headerValue(headers map[string][]string, key string) string {
+	if vals, ok := headers[key]; ok && len(vals) > 0 {
+		return vals[0]
+	}
+	// Case-insensitive fallback.
+	lowerKey := strings.ToLower(key)
+	for k, vals := range headers {
+		if strings.ToLower(k) == lowerKey && len(vals) > 0 {
+			return vals[0]
+		}
+	}
+	return ""
+}
+
+// parseTimestamp parses Coraza's "2006/01/02 15:04:05" format.
+func parseTimestamp(raw string) time.Time {
+	t, err := time.Parse("2006/01/02 15:04:05", raw)
+	if err != nil {
+		return time.Time{}
+	}
+	return t.UTC()
+}
 
 // atomicWriteFile writes data to a file atomically by first writing to a
 // temporary file in the same directory, then renaming it to the target path.

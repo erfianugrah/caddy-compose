@@ -1,12 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  generateConfig,
   deployConfig,
   fetchCRSRules,
-  fetchCRSAutocomplete,
-  type GeneratedConfig,
   type CRSCatalogResponse,
-  type CRSAutocompleteResponse,
 } from "@/lib/api";
 import { mockFetchResponse, setupMockFetch } from "./__test-helpers";
 
@@ -15,27 +11,29 @@ setupMockFetch();
 // ─── Exclusion type/field mapping ───────────────────────────────────
 
 describe("getExclusions", () => {
-  it("maps Go internal type names to ModSecurity names and conditions", async () => {
+  it("maps Go type names and conditions", async () => {
     const goExclusions = [
       {
         id: "exc-1",
-        name: "Remove 920420",
-        description: "Remove content-type rule",
-        type: "remove_by_id",
-        rule_id: "920420",
-        conditions: [],
-        enabled: true,
-        created_at: "2026-02-22T10:00:00Z",
-        updated_at: "2026-02-22T10:00:00Z",
-      },
-      {
-        id: "exc-2",
         name: "Block bad IP",
         description: "Block known attacker",
         type: "block",
         conditions: [
           { field: "ip", operator: "ip_match", value: "10.0.0.1" },
           { field: "path", operator: "begins_with", value: "/api/" },
+        ],
+        group_operator: "and",
+        enabled: true,
+        created_at: "2026-02-22T10:00:00Z",
+        updated_at: "2026-02-22T10:00:00Z",
+      },
+      {
+        id: "exc-2",
+        name: "Allow admin",
+        description: "",
+        type: "allow",
+        conditions: [
+          { field: "ip", operator: "eq", value: "10.0.0.2" },
         ],
         group_operator: "and",
         enabled: true,
@@ -50,26 +48,20 @@ describe("getExclusions", () => {
     const result = await getExclusions();
 
     expect(result).toHaveLength(2);
-
-    // Type mapping
-    expect(result[0].type).toBe("SecRuleRemoveById");
-    expect(result[1].type).toBe("block");
+    expect(result[0].type).toBe("block");
+    expect(result[1].type).toBe("allow");
 
     // Conditions
-    expect(result[1].conditions).toHaveLength(2);
-    expect(result[1].conditions[0].field).toBe("ip");
-    expect(result[1].conditions[0].operator).toBe("ip_match");
-    expect(result[1].conditions[0].value).toBe("10.0.0.1");
-    expect(result[1].group_operator).toBe("and");
-
-    // Empty conditions default
-    expect(result[0].conditions).toEqual([]);
+    expect(result[0].conditions).toHaveLength(2);
+    expect(result[0].conditions[0].field).toBe("ip");
+    expect(result[0].conditions[0].operator).toBe("ip_match");
+    expect(result[0].conditions[0].value).toBe("10.0.0.1");
     expect(result[0].group_operator).toBe("and");
   });
 });
 
 describe("createExclusion", () => {
-  it("maps ModSecurity type names to Go internal names with conditions", async () => {
+  it("maps type names and conditions in the request payload", async () => {
     const goCreated = {
       id: "exc-new",
       name: "Allow admin IP",
@@ -112,19 +104,21 @@ describe("createExclusion", () => {
   });
 });
 
-describe("createExclusion (anomaly type)", () => {
-  it("sends anomaly_score and anomaly_paranoia_level in payload", async () => {
+// ─── Detect type with severity ──────────────────────────────────────
+
+describe("createExclusion (detect type)", () => {
+  it("sends severity and detect_paranoia_level in payload", async () => {
     const goCreated = {
-      id: "exc-anomaly",
-      name: "HTTP/1.0 penalty",
-      description: "+2 anomaly for HTTP/1.0",
-      type: "anomaly",
+      id: "exc-detect",
+      name: "Detect missing referer",
+      description: "Detect heuristic",
+      type: "detect",
       conditions: [
-        { field: "http_version", operator: "eq", value: "HTTP/1.0" },
+        { field: "referer", operator: "eq", value: "" },
       ],
       group_operator: "and",
-      anomaly_score: 2,
-      anomaly_paranoia_level: 1,
+      severity: "WARNING",
+      detect_paranoia_level: 2,
       enabled: true,
       created_at: "2026-03-08T10:00:00Z",
       updated_at: "2026-03-08T10:00:00Z",
@@ -134,46 +128,46 @@ describe("createExclusion (anomaly type)", () => {
 
     const { createExclusion } = await import("@/lib/api");
     const result = await createExclusion({
-      name: "HTTP/1.0 penalty",
-      description: "+2 anomaly for HTTP/1.0",
-      type: "anomaly",
+      name: "Detect missing referer",
+      description: "Detect heuristic",
+      type: "detect",
       conditions: [
-        { field: "http_version", operator: "eq", value: "HTTP/1.0" },
+        { field: "referer", operator: "eq", value: "" },
       ],
       group_operator: "and",
-      anomaly_score: 2,
-      anomaly_paranoia_level: 1,
+      severity: "WARNING",
+      detect_paranoia_level: 2,
       enabled: true,
     });
 
     // Response is mapped back correctly
-    expect(result.type).toBe("anomaly");
-    expect(result.anomaly_score).toBe(2);
-    expect(result.anomaly_paranoia_level).toBe(1);
+    expect(result.type).toBe("detect");
+    expect(result.severity).toBe("WARNING");
+    expect(result.detect_paranoia_level).toBe(2);
 
-    // Verify the POST payload includes anomaly fields
+    // Verify the POST payload includes detect fields
     const postCall = vi.mocked(fetch).mock.calls[0];
     const body = JSON.parse(postCall[1]?.body as string);
-    expect(body.type).toBe("anomaly");
-    expect(body.anomaly_score).toBe(2);
-    expect(body.anomaly_paranoia_level).toBe(1);
+    expect(body.type).toBe("detect");
+    expect(body.severity).toBe("WARNING");
+    expect(body.detect_paranoia_level).toBe(2);
   });
 });
 
-describe("getExclusions (anomaly type mapping)", () => {
-  it("maps Go anomaly type and preserves score fields", async () => {
+describe("getExclusions (detect type mapping)", () => {
+  it("maps Go detect type and preserves severity fields", async () => {
     const goExclusions = [
       {
-        id: "exc-anomaly-1",
-        name: "Generic UA penalty",
+        id: "exc-detect-1",
+        name: "Generic UA detect",
         description: "",
-        type: "anomaly",
+        type: "detect",
         conditions: [
           { field: "user_agent", operator: "contains", value: "python-requests" },
         ],
         group_operator: "and",
-        anomaly_score: 5,
-        anomaly_paranoia_level: 1,
+        severity: "NOTICE",
+        detect_paranoia_level: 1,
         enabled: true,
         created_at: "2026-03-08T10:00:00Z",
         updated_at: "2026-03-08T10:00:00Z",
@@ -186,9 +180,9 @@ describe("getExclusions (anomaly type mapping)", () => {
     const result = await getExclusions();
 
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("anomaly");
-    expect(result[0].anomaly_score).toBe(5);
-    expect(result[0].anomaly_paranoia_level).toBe(1);
+    expect(result[0].type).toBe("detect");
+    expect(result[0].severity).toBe("NOTICE");
+    expect(result[0].detect_paranoia_level).toBe(1);
   });
 });
 
@@ -290,46 +284,6 @@ describe("createExclusion (conditions with transforms)", () => {
   });
 });
 
-// ─── generateConfig ─────────────────────────────────────────────────
-
-describe("generateConfig", () => {
-  it("maps pre_crs_conf/post_crs_conf to pre_crs/post_crs", async () => {
-    vi.stubGlobal(
-      "fetch",
-      mockFetchResponse({
-        pre_crs_conf: "# pre-CRS content",
-        post_crs_conf: "# post-CRS content",
-      })
-    );
-
-    const result: GeneratedConfig = await generateConfig();
-    expect(result.pre_crs).toBe("# pre-CRS content");
-    expect(result.post_crs).toBe("# post-CRS content");
-  });
-
-  it("falls back to pre_crs/post_crs field names", async () => {
-    vi.stubGlobal(
-      "fetch",
-      mockFetchResponse({
-        pre_crs: "# pre-CRS fallback",
-        post_crs: "# post-CRS fallback",
-      })
-    );
-
-    const result = await generateConfig();
-    expect(result.pre_crs).toBe("# pre-CRS fallback");
-    expect(result.post_crs).toBe("# post-CRS fallback");
-  });
-
-  it("handles missing fields", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({}));
-
-    const result = await generateConfig();
-    expect(result.pre_crs).toBe("");
-    expect(result.post_crs).toBe("");
-  });
-});
-
 // ─── deployConfig ───────────────────────────────────────────────────
 
 describe("deployConfig", () => {
@@ -337,9 +291,6 @@ describe("deployConfig", () => {
     const deployResponse = {
       status: "deployed",
       message: "Config files written and Caddy reloaded successfully",
-      pre_crs_file: "/data/waf/custom-pre-crs.conf",
-      post_crs_file: "/data/waf/custom-post-crs.conf",
-      waf_settings_file: "/data/waf/custom-waf-settings.conf",
       reloaded: true,
       timestamp: "2026-02-22T11:00:00Z",
     };
@@ -348,16 +299,12 @@ describe("deployConfig", () => {
     const result = await deployConfig();
     expect(result.status).toBe("deployed");
     expect(result.reloaded).toBe(true);
-    expect(result.pre_crs_file).toContain("custom-pre-crs");
   });
 
   it("handles partial deploy (reload failed)", async () => {
     const partialResponse = {
       status: "partial",
       message: "Config files written but Caddy reload failed",
-      pre_crs_file: "/data/waf/custom-pre-crs.conf",
-      post_crs_file: "/data/waf/custom-post-crs.conf",
-      waf_settings_file: "/data/waf/custom-waf-settings.conf",
       reloaded: false,
       timestamp: "2026-02-22T11:00:00Z",
     };
@@ -400,37 +347,5 @@ describe("fetchCRSRules", () => {
 
     await fetchCRSRules();
     expect(mockFetch).toHaveBeenCalledWith("/api/crs/rules", undefined);
-  });
-});
-
-// ─── fetchCRSAutocomplete ───────────────────────────────────────────
-
-describe("fetchCRSAutocomplete", () => {
-  it("returns autocomplete data with variables, operators, and actions", async () => {
-    const mockAutocomplete = {
-      variables: ["ARGS", "REQUEST_URI", "REQUEST_HEADERS"],
-      operators: [
-        { name: "@rx", label: "matches regex", description: "Regular expression match", has_arg: true },
-        { name: "@streq", label: "equals", description: "Exact string match", has_arg: true },
-        { name: "@detectSQLi", label: "detect SQL injection", description: "SQL injection detection", has_arg: false },
-      ],
-      actions: ["id:", "phase:", "pass", "deny", "log", "t:none"],
-    };
-    vi.stubGlobal("fetch", mockFetchResponse(mockAutocomplete));
-
-    const result: CRSAutocompleteResponse = await fetchCRSAutocomplete();
-    expect(result.variables).toContain("ARGS");
-    expect(result.operators).toHaveLength(3);
-    expect(result.operators[0].label).toBe("matches regex");
-    expect(result.operators[2].has_arg).toBe(false);
-    expect(result.actions).toContain("deny");
-  });
-
-  it("calls the correct API endpoint", async () => {
-    const mockFetch = mockFetchResponse({ variables: [], operators: [], actions: [] });
-    vi.stubGlobal("fetch", mockFetch);
-
-    await fetchCRSAutocomplete();
-    expect(mockFetch).toHaveBeenCalledWith("/api/crs/autocomplete", undefined);
   });
 });

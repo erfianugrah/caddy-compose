@@ -115,37 +115,24 @@ describe("conditionsSummary", () => {
     expect(summary.length).toBeLessThanOrEqual(103); // 100 + "..."
   });
 
-  // Anomaly rules
-  it("shows anomaly score and paranoia level for anomaly type", () => {
+  // Detect rules
+  it("shows conditions for detect type", () => {
     const excl = makeExclusion({
-      type: "anomaly",
-      anomaly_score: 5,
-      anomaly_paranoia_level: 2,
+      type: "detect",
+      severity: "WARNING",
+      detect_paranoia_level: 2,
       conditions: [
         { field: "user_agent", operator: "contains", value: "curl" },
       ],
     });
     const summary = conditionsSummary(excl);
-    expect(summary).toContain("+5 PL2");
     expect(summary).toContain("curl");
   });
 
-  it("defaults anomaly paranoia level to 1 when not set", () => {
+  // Block rules with path conditions
+  it("shows path condition for block rules", () => {
     const excl = makeExclusion({
-      type: "anomaly",
-      anomaly_score: 3,
-      conditions: [
-        { field: "method", operator: "eq", value: "GET" },
-      ],
-    });
-    const summary = conditionsSummary(excl);
-    expect(summary).toContain("+3 PL1");
-  });
-
-  // Honeypot rules (now use generic condition display)
-  it("shows path condition for honeypot rules", () => {
-    const excl = makeExclusion({
-      type: "honeypot",
+      type: "block",
       conditions: [
         { field: "path", operator: "in", value: "/wp-login.php /wp-admin/ /xmlrpc.php /.env /.git/" },
       ],
@@ -153,67 +140,22 @@ describe("conditionsSummary", () => {
     const summary = conditionsSummary(excl);
     expect(summary).toContain("/wp-login.php");
   });
-
-  it("shows all honeypot paths if 3 or fewer", () => {
-    const excl = makeExclusion({
-      type: "honeypot",
-      conditions: [
-        { field: "path", operator: "in", value: "/wp-login.php /wp-admin/" },
-      ],
-    });
-    const summary = conditionsSummary(excl);
-    expect(summary).toContain("/wp-login.php");
-    expect(summary).toContain("/wp-admin/");
-    expect(summary).not.toContain("more");
-  });
-
-  // Raw rules
-  it("shows raw_rule snippet for raw type", () => {
-    const excl = makeExclusion({
-      type: "raw",
-      raw_rule: 'SecRule REQUEST_URI "@streq /api/upload" "id:10001,phase:1,pass"',
-    });
-    const summary = conditionsSummary(excl);
-    expect(summary).toContain("SecRule REQUEST_URI");
-  });
-
-  it("truncates long raw_rule at 50 chars", () => {
-    const longRule = "SecRule " + "X".repeat(100);
-    const excl = makeExclusion({
-      type: "raw",
-      raw_rule: longRule,
-    });
-    const summary = conditionsSummary(excl);
-    expect(summary.length).toBeLessThanOrEqual(53); // 50 + "..."
-    expect(summary).toContain("...");
-  });
 });
 
 // ─── exclusionTypeLabel ─────────────────────────────────────────────
 
 describe("exclusionTypeLabel", () => {
-  const expectedLabels: Record<string, string> = {
-    allow: "Allow",
-    block: "Block",
-    skip_rule: "Skip",
-    anomaly: "Anomaly",
-    honeypot: "honeypot",
-    raw: "Raw",
-    SecRuleRemoveById: "Remove Rule",
-    SecRuleRemoveByTag: "Remove Tag",
-    SecRuleUpdateTargetById: "Excl. Var (Rule)",
-    SecRuleUpdateTargetByTag: "Excl. Var (Tag)",
-    "ctl:ruleRemoveById": "RT Remove Rule",
-    "ctl:ruleRemoveByTag": "RT Remove Tag",
-    "ctl:ruleRemoveTargetById": "RT Excl. Var (Rule)",
-    "ctl:ruleRemoveTargetByTag": "RT Excl. Var (Tag)",
-  };
+  it('returns "Allow" for allow', () => {
+    expect(exclusionTypeLabel("allow")).toBe("Allow");
+  });
 
-  for (const [type, label] of Object.entries(expectedLabels)) {
-    it(`returns "${label}" for type "${type}"`, () => {
-      expect(exclusionTypeLabel(type as ExclusionType)).toBe(label);
-    });
-  }
+  it('returns "Block" for block', () => {
+    expect(exclusionTypeLabel("block")).toBe("Block");
+  });
+
+  it('returns "Detect" for detect', () => {
+    expect(exclusionTypeLabel("detect")).toBe("Detect");
+  });
 
   it("returns the raw type string for unknown types", () => {
     expect(exclusionTypeLabel("unknown_type" as ExclusionType)).toBe("unknown_type");
@@ -223,35 +165,16 @@ describe("exclusionTypeLabel", () => {
 // ─── exclusionTypeBadgeVariant ──────────────────────────────────────
 
 describe("exclusionTypeBadgeVariant", () => {
-  it("returns 'default' for allow", () => {
-    expect(exclusionTypeBadgeVariant("allow")).toBe("default");
+  it("returns 'outline' for allow", () => {
+    expect(exclusionTypeBadgeVariant("allow")).toBe("outline");
   });
 
   it("returns 'destructive' for block", () => {
     expect(exclusionTypeBadgeVariant("block")).toBe("destructive");
   });
 
-  it("returns 'outline' for honeypot (no special case)", () => {
-    expect(exclusionTypeBadgeVariant("honeypot")).toBe("outline");
-  });
-
-  it("returns 'secondary' for skip_rule and anomaly", () => {
-    expect(exclusionTypeBadgeVariant("skip_rule")).toBe("secondary");
-    expect(exclusionTypeBadgeVariant("anomaly")).toBe("secondary");
-  });
-
-  it("returns 'outline' for configure-time types", () => {
-    expect(exclusionTypeBadgeVariant("SecRuleRemoveById")).toBe("outline");
-    expect(exclusionTypeBadgeVariant("SecRuleRemoveByTag")).toBe("outline");
-    expect(exclusionTypeBadgeVariant("SecRuleUpdateTargetById")).toBe("outline");
-    expect(exclusionTypeBadgeVariant("SecRuleUpdateTargetByTag")).toBe("outline");
-  });
-
-  it("returns 'secondary' for runtime types", () => {
-    expect(exclusionTypeBadgeVariant("ctl:ruleRemoveById")).toBe("secondary");
-    expect(exclusionTypeBadgeVariant("ctl:ruleRemoveByTag")).toBe("secondary");
-    expect(exclusionTypeBadgeVariant("ctl:ruleRemoveTargetById")).toBe("secondary");
-    expect(exclusionTypeBadgeVariant("ctl:ruleRemoveTargetByTag")).toBe("secondary");
+  it("returns 'secondary' for detect", () => {
+    expect(exclusionTypeBadgeVariant("detect")).toBe("secondary");
   });
 
   it("returns 'outline' for unknown types", () => {

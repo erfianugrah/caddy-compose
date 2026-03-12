@@ -146,25 +146,11 @@ var validRuleGroupTags = map[string]bool{
 	"attack-injection-java":   true, // Java Injection (944xxx)
 }
 
-// Valid exclusion types
+// Valid exclusion types — policy engine only (Coraza/SecRule types removed).
 var validExclusionTypes = map[string]bool{
-	// Advanced (ModSecurity directive types)
-	"remove_by_id":                 true,
-	"remove_by_tag":                true,
-	"update_target_by_id":          true,
-	"update_target_by_tag":         true,
-	"runtime_remove_by_id":         true,
-	"runtime_remove_by_tag":        true,
-	"runtime_remove_target_by_id":  true,
-	"runtime_remove_target_by_tag": true,
-	// Quick Actions (condition-based)
-	"allow":     true, // Whitelist — bypass WAF checks
-	"block":     true, // Deny requests
-	"skip_rule": true, // Skip specific CRS rules
-	"anomaly":   true, // Add anomaly score points (heuristic signal, SecRule)
-	"detect":    true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
-	// Raw editor
-	"raw": true, // Raw SecRule directive
+	"allow":  true, // Whitelist — bypass WAF checks
+	"block":  true, // Deny requests
+	"detect": true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
 }
 
 // Valid condition fields

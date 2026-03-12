@@ -49,13 +49,13 @@ func testAllowExclusion(name string) RuleExclusion {
 	}
 }
 
-// testSkipRuleExclusion returns a valid skip_rule exclusion.
-func testSkipRuleExclusion(name, ruleID string) RuleExclusion {
+// testDetectExclusion returns a valid detect exclusion.
+func testDetectExclusion(name, severity string) RuleExclusion {
 	return RuleExclusion{
-		Name:    name,
-		Type:    "skip_rule",
-		Enabled: true,
-		RuleID:  ruleID,
+		Name:     name,
+		Type:     "detect",
+		Severity: severity,
+		Enabled:  true,
 		Conditions: []Condition{
 			{Field: "path", Operator: "eq", Value: "/api"},
 		},
@@ -699,7 +699,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 			}},
 		},
 	})
-	es.Create(testSkipRuleExclusion("roundtrip-skip", "920270"))
+	es.Create(testDetectExclusion("roundtrip-detect", "WARNING"))
 	es.Create(testBlockExclusion("roundtrip-block", []string{"honeypot"}))
 	rs.Create(testRLRule("roundtrip-rl", "test"))
 	rs.Create(RateLimitRule{
@@ -801,17 +801,17 @@ func TestRestore_RoundTrip(t *testing.T) {
 			t.Errorf("exclusion %q has zero UpdatedAt", e.Name)
 		}
 	}
-	if !names["roundtrip-skip"] || !names["roundtrip-block"] {
+	if !names["roundtrip-detect"] || !names["roundtrip-block"] {
 		t.Errorf("expected both exclusions by name, got %v", names)
 	}
 
-	// Verify skip_rule details preserved.
+	// Verify detect details preserved.
 	for _, e := range excl2 {
-		if e.Name == "roundtrip-skip" {
-			if e.RuleID != "920270" {
-				t.Errorf("rule ID not preserved: got %q", e.RuleID)
+		if e.Name == "roundtrip-detect" {
+			if e.Severity != "WARNING" {
+				t.Errorf("severity not preserved: got %q", e.Severity)
 			}
-			if e.Type != "skip_rule" {
+			if e.Type != "detect" {
 				t.Errorf("type not preserved: got %q", e.Type)
 			}
 		}

@@ -44,63 +44,6 @@ func TestIsPolicyEngineType(t *testing.T) {
 	}
 }
 
-// ─── FilterSecRuleExclusions ─────────────────────────────────────────
-
-func TestFilterSecRuleExclusions(t *testing.T) {
-	allExclusions := []RuleExclusion{
-		{ID: "1", Name: "Allow all from office", Type: "allow"},
-		{ID: "2", Name: "Block bad IPs", Type: "block"},
-		{ID: "3", Name: "Skip SQL injection", Type: "skip_rule"},
-		{ID: "4", Name: "Anomaly boost", Type: "anomaly"},
-		{ID: "5", Name: "Raw rule", Type: "raw"},
-		{ID: "6", Name: "Remove rule 942100", Type: "remove_by_id"},
-		{ID: "7", Name: "Runtime remove by tag", Type: "runtime_remove_by_tag"},
-	}
-
-	t.Run("disabled returns all", func(t *testing.T) {
-		result := FilterSecRuleExclusions(allExclusions, false)
-		if len(result) != len(allExclusions) {
-			t.Errorf("expected %d exclusions, got %d", len(allExclusions), len(result))
-		}
-	})
-
-	t.Run("enabled filters out allow/block", func(t *testing.T) {
-		result := FilterSecRuleExclusions(allExclusions, true)
-		// Should have: skip_rule, anomaly, raw, remove_by_id, runtime_remove_by_tag = 5
-		if len(result) != 5 {
-			t.Errorf("expected 5 exclusions, got %d", len(result))
-			for _, e := range result {
-				t.Logf("  kept: %s (%s)", e.Name, e.Type)
-			}
-		}
-		for _, e := range result {
-			if IsPolicyEngineType(e.Type) {
-				t.Errorf("should not contain policy engine type %q (exclusion %q)", e.Type, e.Name)
-			}
-		}
-	})
-
-	t.Run("enabled with no policy types returns all", func(t *testing.T) {
-		secRuleOnly := []RuleExclusion{
-			{ID: "1", Type: "skip_rule"},
-			{ID: "2", Type: "anomaly"},
-			{ID: "3", Type: "raw"},
-		}
-		result := FilterSecRuleExclusions(secRuleOnly, true)
-		if len(result) != 3 {
-			t.Errorf("expected 3 exclusions, got %d", len(result))
-		}
-	})
-
-	t.Run("empty slice", func(t *testing.T) {
-		result := FilterSecRuleExclusions(nil, true)
-		if len(result) != 0 {
-			t.Errorf("expected 0 exclusions, got %d", len(result))
-		}
-	})
-}
-
-// ─── GeneratePolicyRules ─────────────────────────────────────────────
 
 func TestGeneratePolicyRules(t *testing.T) {
 	t.Run("empty exclusions", func(t *testing.T) {

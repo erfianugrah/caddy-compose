@@ -195,21 +195,20 @@ func validateExclusion(e RuleExclusion) error {
 		return err
 	}
 
+	// Cross-type field validation — validate SecRule-origin fields that may
+	// still be present on policy engine types for metadata purposes.
+	if e.RuleTag != "" && !ruleTagRe.MatchString(e.RuleTag) {
+		return fmt.Errorf("invalid rule_tag %q (letters, digits, slashes, underscores, hyphens, dots only)", e.RuleTag)
+	}
+	if e.Variable != "" && !variableRe.MatchString(e.Variable) {
+		return fmt.Errorf("invalid variable %q (letters, digits, colons, underscores, pipes, dots only)", e.Variable)
+	}
+
 	// Type-specific validation.
 	switch e.Type {
 	case "allow", "block":
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("%s requires at least one condition", e.Type)
-		}
-	case "anomaly":
-		if len(e.Conditions) == 0 {
-			return fmt.Errorf("anomaly requires at least one condition")
-		}
-		if e.AnomalyScore < 1 || e.AnomalyScore > 10 {
-			return fmt.Errorf("anomaly_score must be between 1 and 10, got %d", e.AnomalyScore)
-		}
-		if e.AnomalyParanoiaLevel != 0 && (e.AnomalyParanoiaLevel < 1 || e.AnomalyParanoiaLevel > 4) {
-			return fmt.Errorf("anomaly_paranoia_level must be between 1 and 4, got %d", e.AnomalyParanoiaLevel)
 		}
 	case "detect":
 		if len(e.Conditions) == 0 {
@@ -226,62 +225,6 @@ func validateExclusion(e RuleExclusion) error {
 		}
 		if e.DetectParanoiaLevel != 0 && (e.DetectParanoiaLevel < 1 || e.DetectParanoiaLevel > 4) {
 			return fmt.Errorf("detect_paranoia_level must be between 0 and 4, got %d", e.DetectParanoiaLevel)
-		}
-	case "skip_rule":
-		if e.RuleID == "" && e.RuleTag == "" {
-			return fmt.Errorf("skip_rule requires rule_id or rule_tag")
-		}
-		if e.RuleID != "" {
-			if err := validateRuleIDField(e.RuleID); err != nil {
-				return fmt.Errorf("invalid rule_id: %w", err)
-			}
-		}
-		if e.RuleTag != "" {
-			if !ruleTagRe.MatchString(e.RuleTag) {
-				return fmt.Errorf("invalid rule_tag %q (letters, digits, /, _, -, . only)", e.RuleTag)
-			}
-		}
-		if len(e.Conditions) == 0 {
-			return fmt.Errorf("skip_rule requires at least one condition")
-		}
-	case "raw":
-		if e.RawRule == "" {
-			return fmt.Errorf("raw_rule is required for type \"raw\"")
-		}
-
-	// Advanced types — these still use RuleID/RuleTag/Variable directly
-	case "remove_by_id", "update_target_by_id", "runtime_remove_by_id", "runtime_remove_target_by_id":
-		if e.RuleID == "" {
-			return fmt.Errorf("rule_id is required for type %q", e.Type)
-		}
-		if err := validateRuleIDField(e.RuleID); err != nil {
-			return fmt.Errorf("invalid rule_id: %w", err)
-		}
-	case "remove_by_tag", "update_target_by_tag", "runtime_remove_by_tag", "runtime_remove_target_by_tag":
-		if e.RuleTag == "" {
-			return fmt.Errorf("rule_tag is required for type %q", e.Type)
-		}
-		if !ruleTagRe.MatchString(e.RuleTag) {
-			return fmt.Errorf("invalid rule_tag %q (letters, digits, /, _, -, . only)", e.RuleTag)
-		}
-	}
-
-	// Variable required for update_target types.
-	switch e.Type {
-	case "update_target_by_id", "update_target_by_tag", "runtime_remove_target_by_id", "runtime_remove_target_by_tag":
-		if e.Variable == "" {
-			return fmt.Errorf("variable is required for type %q", e.Type)
-		}
-		if !variableRe.MatchString(e.Variable) {
-			return fmt.Errorf("invalid variable %q (letters, digits, _, :, !, |, ., / only)", e.Variable)
-		}
-	}
-
-	// Runtime advanced types need at least a path condition.
-	switch e.Type {
-	case "runtime_remove_by_id", "runtime_remove_by_tag", "runtime_remove_target_by_id", "runtime_remove_target_by_tag":
-		if len(e.Conditions) == 0 {
-			return fmt.Errorf("conditions required for runtime type %q (need at least a path condition)", e.Type)
 		}
 	}
 

@@ -11,416 +11,21 @@ import (
 	"time"
 )
 
-func TestStoreLoad(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
-
-	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3 events, got %d", got)
-	}
-}
-
-func TestStoreIncrementalLoad(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-
-	// Write first 2 lines.
-	f, _ := os.Create(path)
-	for _, l := range sampleLines[:2] {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	store := NewStore(path)
-	store.Load()
-	if got := store.EventCount(); got != 2 {
-		t.Fatalf("expected 2, got %d", got)
-	}
-
-	// Append third line.
-	f, _ = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
-	f.WriteString(sampleLines[2] + "\n")
-	f.Close()
-
-	store.Load()
-	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3 after append, got %d", got)
-	}
-}
-
-func TestStoreFileRotation(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-
-	// Write 3 lines.
-	f, _ := os.Create(path)
-	for _, l := range sampleLines {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	store := NewStore(path)
-	store.Load()
-	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3, got %d", got)
-	}
-
-	// Simulate rotation: truncate and write 1 line.
-	f, _ = os.Create(path) // truncates
-	f.WriteString(sampleLines[0] + "\n")
-	f.Close()
-
-	store.Load()
-	// Copytruncate rotation: existing 3 events kept + 1 new = 4.
-	if got := store.EventCount(); got != 4 {
-		t.Fatalf("expected 4 after rotation (3 kept + 1 new), got %d", got)
-	}
-}
-
-func TestStoreOffsetPersistence(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	offsetPath := filepath.Join(dir, "offset")
-
-	// Write 3 lines.
-	f, _ := os.Create(logPath)
-	for _, l := range sampleLines {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	// First store: read all events, offset is persisted.
-	store1 := NewStore(logPath)
-	store1.SetOffsetFile(offsetPath)
-	store1.Load()
-	if got := store1.EventCount(); got != 3 {
-		t.Fatalf("store1: expected 3 events, got %d", got)
-	}
-
-	// Verify offset file was written.
-	data, err := os.ReadFile(offsetPath)
-	if err != nil {
-		t.Fatalf("offset file not created: %v", err)
-	}
-	savedOffset := strings.TrimSpace(string(data))
-	if savedOffset == "" || savedOffset == "0" {
-		t.Fatalf("offset file should contain non-zero offset, got %q", savedOffset)
-	}
-
-	// Second store: restores offset from disk, reads nothing new.
-	store2 := NewStore(logPath)
-	store2.SetOffsetFile(offsetPath)
-	store2.Load()
-	if got := store2.EventCount(); got != 0 {
-		t.Fatalf("store2: expected 0 events (offset restored), got %d", got)
-	}
-
-	// Append one more line.
-	f, _ = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
-	f.WriteString(sampleLines[0] + "\n")
-	f.Close()
-
-	// Second store picks up only the new line.
-	store2.Load()
-	if got := store2.EventCount(); got != 1 {
-		t.Fatalf("store2: expected 1 new event after append, got %d", got)
-	}
-}
-
-func TestStoreOffsetPersistenceRotation(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	offsetPath := filepath.Join(dir, "offset")
-
-	// Write 3 lines.
-	f, _ := os.Create(logPath)
-	for _, l := range sampleLines {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	store := NewStore(logPath)
-	store.SetOffsetFile(offsetPath)
-	store.Load()
-	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3, got %d", got)
-	}
-
-	// Simulate rotation: truncate and write 1 line.
-	f, _ = os.Create(logPath)
-	f.WriteString(sampleLines[0] + "\n")
-	f.Close()
-
-	store.Load()
-	// Copytruncate rotation: existing 3 events kept + 1 new = 4.
-	if got := store.EventCount(); got != 4 {
-		t.Fatalf("expected 4 after rotation (3 kept + 1 new), got %d", got)
-	}
-
-	// Offset file should be updated (non-zero, but smaller than before).
-	data, err := os.ReadFile(offsetPath)
-	if err != nil {
-		t.Fatalf("offset file missing after rotation: %v", err)
-	}
-	savedOffset := strings.TrimSpace(string(data))
-	if savedOffset == "" {
-		t.Fatalf("offset file should not be empty after rotation")
-	}
-}
-
-// --- JSONL event persistence tests ---
-
-// --- JSONL event persistence tests ---
-
-func TestStoreEventFilePersistence(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	eventPath := filepath.Join(dir, "events.jsonl")
-
-	// Write 3 lines.
-	f, _ := os.Create(logPath)
-	for _, l := range sampleLines {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	// First store: parse and persist events.
-	store1 := NewStore(logPath)
-	store1.SetEventFile(eventPath)
-	store1.Load()
-	if got := store1.EventCount(); got != 3 {
-		t.Fatalf("store1: expected 3 events, got %d", got)
-	}
-
-	// Verify JSONL file was created.
-	if _, err := os.Stat(eventPath); err != nil {
-		t.Fatalf("event file not created: %v", err)
-	}
-
-	// Second store: should restore events from JSONL (not from audit log).
-	store2 := NewStore(logPath)
-	store2.SetEventFile(eventPath)
-	// Before Load(), events should already be restored from JSONL.
-	if got := store2.EventCount(); got != 3 {
-		t.Fatalf("store2: expected 3 events restored from JSONL, got %d", got)
-	}
-}
-
-func TestStoreEventFilePreservesAllFields(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	eventPath := filepath.Join(dir, "events.jsonl")
-
-	// Write a log line that would produce an event with request headers/args.
-	f, _ := os.Create(logPath)
-	f.WriteString(sampleLines[0] + "\n")
-	f.Close()
-
-	store := NewStore(logPath)
-	store.SetEventFile(eventPath)
-	store.Load()
-
-	// Read the JSONL file and verify all fields are preserved.
-	data, err := os.ReadFile(eventPath)
-	if err != nil {
-		t.Fatalf("read event file: %v", err)
-	}
-
-	// Events with request context should have those fields persisted.
-	events := store.Snapshot()
-	if len(events) == 0 {
-		t.Fatal("expected at least one event")
-	}
-	ev := events[0]
-	if ev.RequestHeaders != nil {
-		if !strings.Contains(string(data), "request_headers") {
-			t.Error("JSONL should contain request_headers when present")
-		}
-	}
-	if ev.RequestArgs != nil {
-		if !strings.Contains(string(data), "request_args") {
-			t.Error("JSONL should contain request_args when present")
-		}
-	}
-}
-
-func TestStoreEventFileIncremental(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	eventPath := filepath.Join(dir, "events.jsonl")
-
-	// Write first 2 lines.
-	f, _ := os.Create(logPath)
-	for _, l := range sampleLines[:2] {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	store := NewStore(logPath)
-	store.SetEventFile(eventPath)
-	store.Load()
-	if got := store.EventCount(); got != 2 {
-		t.Fatalf("expected 2, got %d", got)
-	}
-
-	// Append third line.
-	f, _ = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
-	f.WriteString(sampleLines[2] + "\n")
-	f.Close()
-
-	store.Load()
-	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3 after append, got %d", got)
-	}
-
-	// New store should restore all 3 from JSONL.
-	store2 := NewStore(logPath)
-	store2.SetEventFile(eventPath)
-	if got := store2.EventCount(); got != 3 {
-		t.Fatalf("store2: expected 3 from JSONL, got %d", got)
-	}
-}
-
-func TestStoreEventFileRotation(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	eventPath := filepath.Join(dir, "events.jsonl")
-	offsetPath := filepath.Join(dir, "offset")
-
-	// Write 3 lines.
-	f, _ := os.Create(logPath)
-	for _, l := range sampleLines {
-		f.WriteString(l + "\n")
-	}
-	f.Close()
-
-	store := NewStore(logPath)
-	store.SetOffsetFile(offsetPath)
-	store.SetEventFile(eventPath)
-	store.Load()
-	if got := store.EventCount(); got != 3 {
-		t.Fatalf("expected 3, got %d", got)
-	}
-
-	// Simulate rotation: truncate and write 1 line.
-	f, _ = os.Create(logPath)
-	f.WriteString(sampleLines[0] + "\n")
-	f.Close()
-
-	store.Load()
-	// Copytruncate: 3 kept + 1 new = 4.
-	if got := store.EventCount(); got != 4 {
-		t.Fatalf("expected 4 after rotation, got %d", got)
-	}
-
-	// New store should restore all 4 from JSONL.
-	store2 := NewStore(logPath)
-	store2.SetOffsetFile(offsetPath)
-	store2.SetEventFile(eventPath)
-	if got := store2.EventCount(); got != 4 {
-		t.Fatalf("store2: expected 4 from JSONL, got %d", got)
-	}
-}
-
-func TestStoreEventFileEvictionCompaction(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	eventPath := filepath.Join(dir, "events.jsonl")
-
-	// Write one old event (2020) and one recent event.
-	oldLine := `{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`
-	f, _ := os.Create(logPath)
-	f.WriteString(oldLine + "\n")
-	f.WriteString(sampleLines[0] + "\n")
-	f.Close()
-
-	store := NewStore(logPath)
-	store.SetEventFile(eventPath)
-	store.Load()
-	if got := store.EventCount(); got != 2 {
-		t.Fatalf("expected 2 events before eviction, got %d", got)
-	}
-
-	// JSONL should have 2 events.
-	events, _ := loadEventsFromJSONL(eventPath)
-	if len(events) != 2 {
-		t.Fatalf("JSONL should have 2 events before eviction, got %d", len(events))
-	}
-
-	// Now set maxAge to 168h and trigger eviction via a second Load.
-	store.SetMaxAge(168 * time.Hour)
-	store.Load() // triggers evict() which compacts
-
-	// In-memory: old event evicted, only recent remains.
+// TestStoreEviction verifies that events older than maxAge are removed.
+func TestStoreEviction(t *testing.T) {
+	store := storeWithEvents(t, []Event{
+		{ID: "old", Timestamp: time.Now().UTC().Add(-200 * time.Hour), EventType: "blocked"},
+		{ID: "new", Timestamp: time.Now().UTC().Add(-1 * time.Hour), EventType: "blocked"},
+	})
+	store.SetMaxAge(168 * time.Hour) // 7 days
+	store.Load()                     // triggers eviction
 	if got := store.EventCount(); got != 1 {
 		t.Fatalf("expected 1 event after eviction, got %d", got)
 	}
-
-	// Wait briefly for async compaction goroutine.
-	time.Sleep(50 * time.Millisecond)
-
-	// JSONL should also be compacted to 1 event.
-	events, _ = loadEventsFromJSONL(eventPath)
-	if len(events) != 1 {
-		t.Fatalf("JSONL should have 1 event after compaction, got %d", len(events))
+	snap := store.Snapshot()
+	if snap[0].ID != "new" {
+		t.Errorf("expected 'new' event to survive, got %q", snap[0].ID)
 	}
-	if events[0].ID != "AAA111" {
-		t.Errorf("expected recent event AAA111 to survive, got %s", events[0].ID)
-	}
-}
-
-func TestStoreEventFileDataIntegrity(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "audit.log")
-	eventPath := filepath.Join(dir, "events.jsonl")
-
-	f, _ := os.Create(logPath)
-	f.WriteString(sampleLines[1] + "\n") // BBB222: 10.0.0.1, radarr, /.env, blocked
-	f.Close()
-
-	store := NewStore(logPath)
-	store.SetEventFile(eventPath)
-	store.Load()
-
-	// Restore into a new store and verify field values, not just count.
-	store2 := NewStore(logPath)
-	store2.SetEventFile(eventPath)
-	if got := store2.EventCount(); got != 1 {
-		t.Fatalf("expected 1 event, got %d", got)
-	}
-
-	events := store2.Snapshot()
-	ev := events[0]
-	if ev.ID != "BBB222" {
-		t.Errorf("ID: want BBB222, got %s", ev.ID)
-	}
-	if ev.ClientIP != "10.0.0.1" {
-		t.Errorf("ClientIP: want 10.0.0.1, got %s", ev.ClientIP)
-	}
-	if ev.Service != "radarr.erfi.io" {
-		t.Errorf("Service: want radarr.erfi.io, got %s", ev.Service)
-	}
-	if ev.URI != "/.env" {
-		t.Errorf("URI: want /.env, got %s", ev.URI)
-	}
-	if !ev.IsBlocked {
-		t.Error("expected IsBlocked=true")
-	}
-	if ev.Method != "GET" {
-		t.Errorf("Method: want GET, got %s", ev.Method)
-	}
-	if ev.UserAgent != "curl/7.68" {
-		t.Errorf("UserAgent: want curl/7.68, got %s", ev.UserAgent)
-	}
-	if ev.ResponseStatus != 403 {
-		t.Errorf("ResponseStatus: want 403, got %d", ev.ResponseStatus)
-	}
-	// All fields should survive JSONL round-trip (no stripping).
-	// (RequestHeaders/Body/Args may be nil/empty for this particular
-	// test event depending on the sample data, so we just verify the
-	// other fields are intact — the PreservesAllFields test above
-	// verifies payload fields are not stripped.)
 }
 
 func TestStoreEventFileMalformedLines(t *testing.T) {
@@ -528,83 +133,6 @@ func TestStoreEventFileMigratesMisclassifiedPolicySkip(t *testing.T) {
 	}
 }
 
-func TestSummary(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
-
-	s := store.Summary(0) // 0 = all time
-
-	if s.TotalEvents != 3 {
-		t.Errorf("total: want 3, got %d", s.TotalEvents)
-	}
-	if s.BlockedEvents != 2 {
-		t.Errorf("blocked: want 2, got %d", s.BlockedEvents)
-	}
-	if s.LoggedEvents != 1 {
-		t.Errorf("logged: want 1, got %d", s.LoggedEvents)
-	}
-	if s.UniqueClients != 2 {
-		t.Errorf("unique clients: want 2, got %d", s.UniqueClients)
-	}
-	if s.UniqueServices != 2 {
-		t.Errorf("unique services: want 2, got %d", s.UniqueServices)
-	}
-	if len(s.EventsByHour) != 2 {
-		t.Errorf("events_by_hour: want 2 buckets, got %d", len(s.EventsByHour))
-	}
-}
-
-func TestFilteredEvents(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
-
-	// Filter by service.
-	resp := store.FilteredEvents("radarr.erfi.io", "", "", nil, 50, 0, 0)
-	if resp.Total != 2 {
-		t.Errorf("filter by service: want 2, got %d", resp.Total)
-	}
-
-	// Filter by blocked.
-	blocked := true
-	resp = store.FilteredEvents("", "", "", &blocked, 50, 0, 0)
-	if resp.Total != 2 {
-		t.Errorf("filter by blocked=true: want 2, got %d", resp.Total)
-	}
-
-	// Pagination.
-	resp = store.FilteredEvents("", "", "", nil, 1, 0, 0)
-	if len(resp.Events) != 1 || resp.Total != 3 {
-		t.Errorf("pagination: want 1 event of 3 total, got %d/%d", len(resp.Events), resp.Total)
-	}
-
-	// Verify newest-first ordering.
-	if resp.Events[0].ID != "CCC333" {
-		t.Errorf("newest-first: want CCC333, got %s", resp.Events[0].ID)
-	}
-}
-
-func TestServices(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
-
-	resp := store.Services(0)
-	if len(resp.Services) != 2 {
-		t.Fatalf("want 2 services, got %d", len(resp.Services))
-	}
-
-	// Sorted by total desc: radarr=2, dockge=1.
-	if resp.Services[0].Service != "radarr.erfi.io" {
-		t.Errorf("top service: want radarr.erfi.io, got %s", resp.Services[0].Service)
-	}
-	if resp.Services[0].Blocked != 1 || resp.Services[0].Logged != 1 {
-		t.Errorf("radarr: want blocked=1 logged=1, got blocked=%d logged=%d",
-			resp.Services[0].Blocked, resp.Services[0].Logged)
-	}
-}
-
 func TestParseTimestamp(t *testing.T) {
 	ts := parseTimestamp("2026/02/22 07:19:01")
 	expected := time.Date(2026, 2, 22, 7, 19, 1, 0, time.UTC)
@@ -642,75 +170,6 @@ func TestHeaderValueExtraction(t *testing.T) {
 // testHealthHandler returns a handleHealth closure with minimal test stores.
 
 // --- SnapshotSince test ---
-
-func TestSnapshotSince(t *testing.T) {
-	// Use old events that are definitely outside any hours window.
-	oldLines := []string{
-		`{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`,
-	}
-	path := writeTempLog(t, oldLines)
-	store := NewStore(path)
-	store.Load()
-
-	// hours=0 (all time) should return everything.
-	all := store.SnapshotSince(0)
-	if len(all) != 1 {
-		t.Errorf("all: want 1, got %d", len(all))
-	}
-
-	// hours=1 should filter out old events.
-	recent := store.SnapshotSince(1)
-	if len(recent) != 0 {
-		t.Errorf("hours=1 for old events: want 0, got %d", len(recent))
-	}
-
-	// Now test with the standard sample lines (recent events).
-	path2 := writeTempLog(t, sampleLines)
-	store2 := NewStore(path2)
-	store2.Load()
-	all2 := store2.SnapshotSince(0)
-	if len(all2) != 3 {
-		t.Errorf("all sampleLines: want 3, got %d", len(all2))
-	}
-}
-
-// --- Enhanced generator tests (method chaining, path operators) ---
-
-// ─── Event Type + Merge tests ───────────────────────────────────────
-
-func TestParseEventSetsEventType(t *testing.T) {
-	path := writeTempLog(t, sampleLines)
-	store := NewStore(path)
-	store.Load()
-
-	events := store.Snapshot()
-	for _, ev := range events {
-		if ev.IsBlocked && ev.EventType != "blocked" {
-			t.Errorf("event %s: is_blocked=true but event_type=%q", ev.ID, ev.EventType)
-		}
-		if !ev.IsBlocked && ev.EventType != "logged" {
-			t.Errorf("event %s: is_blocked=false but event_type=%q", ev.ID, ev.EventType)
-		}
-	}
-
-	// AAA111 and BBB222 are blocked, CCC333 is logged.
-	blocked := 0
-	logged := 0
-	for _, ev := range events {
-		switch ev.EventType {
-		case "blocked":
-			blocked++
-		case "logged":
-			logged++
-		}
-	}
-	if blocked != 2 {
-		t.Errorf("expected 2 blocked, got %d", blocked)
-	}
-	if logged != 1 {
-		t.Errorf("expected 1 logged, got %d", logged)
-	}
-}
 
 func TestRateLimitEventToEvent(t *testing.T) {
 	rle := RateLimitEvent{
@@ -770,9 +229,7 @@ func TestSnapshotAsEvents(t *testing.T) {
 
 func TestSummaryMergesRateLimitedEvents(t *testing.T) {
 	// WAF events.
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	// 429 events.
 	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
@@ -790,25 +247,23 @@ func TestSummaryMergesRateLimitedEvents(t *testing.T) {
 	var resp SummaryResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 3 WAF events + 3 429 events = 6 total.
-	if resp.TotalEvents != 6 {
-		t.Errorf("total_events: want 6 (3 WAF + 3 RL), got %d", resp.TotalEvents)
+	// 0 WAF events + 3 429 events = 3 total.
+	if resp.TotalEvents != 3 {
+		t.Errorf("total_events: want 3 (0 WAF + 3 RL), got %d", resp.TotalEvents)
 	}
 	if resp.RateLimited != 3 {
 		t.Errorf("rate_limited: want 3, got %d", resp.RateLimited)
 	}
-	if resp.BlockedEvents != 2 {
-		t.Errorf("blocked_events: want 2 (WAF only), got %d", resp.BlockedEvents)
+	if resp.BlockedEvents != 0 {
+		t.Errorf("blocked_events: want 0, got %d", resp.BlockedEvents)
 	}
-	if resp.LoggedEvents != 1 {
-		t.Errorf("logged_events: want 1, got %d", resp.LoggedEvents)
+	if resp.LoggedEvents != 0 {
+		t.Errorf("logged_events: want 0, got %d", resp.LoggedEvents)
 	}
 }
 
 func TestEventsMergesRateLimitedEvents(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -821,8 +276,8 @@ func TestEventsMergesRateLimitedEvents(t *testing.T) {
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
-	if resp.Total != 6 {
-		t.Errorf("total: want 6 (3 WAF + 3 RL), got %d", resp.Total)
+	if resp.Total != 3 {
+		t.Errorf("total: want 3 (0 WAF + 3 RL), got %d", resp.Total)
 	}
 
 	// Verify newest-first ordering.
@@ -837,9 +292,7 @@ func TestEventsMergesRateLimitedEvents(t *testing.T) {
 }
 
 func TestEventsEventTypeFilter(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -849,8 +302,8 @@ func TestEventsEventTypeFilter(t *testing.T) {
 		eventType string
 		want      int
 	}{
-		{"blocked", 2},      // 2 WAF blocked events
-		{"logged", 1},       // 1 WAF logged event
+		{"blocked", 0},      // 0 WAF blocked events (empty WAF store)
+		{"logged", 0},       // 0 WAF logged events
 		{"rate_limited", 3}, // 3 429 events
 	}
 
@@ -877,45 +330,8 @@ func TestEventsEventTypeFilter(t *testing.T) {
 
 // --- Eviction tests ---
 
-func TestStoreEviction(t *testing.T) {
-	// Create events: one old (2020), one recent (2026).
-	lines := []string{
-		`{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`,
-	}
-	// Append one of the recent sample lines.
-	lines = append(lines, sampleLines[0])
-
-	path := writeTempLog(t, lines)
-	store := NewStore(path)
-	// Set max age to 168 hours (7 days) — the 2020 event should be evicted, but today's event kept.
-	store.SetMaxAge(168 * time.Hour)
-	store.Load()
-
-	// The old event from 2020 should have been evicted, leaving only the recent one.
-	if got := store.EventCount(); got != 1 {
-		t.Errorf("expected 1 event after eviction, got %d", got)
-	}
-}
-
-func TestStoreEvictionNoMaxAge(t *testing.T) {
-	// With no maxAge set, nothing should be evicted.
-	lines := []string{
-		`{"transaction":{"timestamp":"2020/01/01 00:00:00","unix_timestamp":1577836800000000000,"id":"OLD1","client_ip":"1.1.1.1","client_port":0,"host_ip":"","host_port":0,"server_id":"test.erfi.io","request":{"method":"GET","protocol":"HTTP/1.1","uri":"/old","http_version":"","headers":{"User-Agent":["old"]},"body":"","files":null,"args":{},"length":0},"response":{"protocol":"","status":200,"headers":{},"body":""},"producer":{"connector":"","version":"","server":"","rule_engine":"On","stopwatch":"","rulesets":[]},"highest_severity":"","is_interrupted":false}}`,
-	}
-	path := writeTempLog(t, lines)
-	store := NewStore(path)
-	// No SetMaxAge call — default is zero (no eviction).
-	store.Load()
-
-	if got := store.EventCount(); got != 1 {
-		t.Errorf("expected 1 event (no eviction), got %d", got)
-	}
-}
-
 func TestServicesMergesRateLimitedCounts(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, sampleAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -928,11 +344,9 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// WAF has: radarr.erfi.io (2), dockge-sg.erfi.io (1).
-	// 429s have: sonarr.erfi.io (2), radarr.erfi.io (1).
-	// Merged: radarr.erfi.io (3), sonarr.erfi.io (2), dockge-sg.erfi.io (1).
-	if len(resp.Services) != 3 {
-		t.Fatalf("want 3 services, got %d", len(resp.Services))
+	// Empty WAF store + 429s: sonarr.erfi.io (2), radarr.erfi.io (1).
+	if len(resp.Services) != 2 {
+		t.Fatalf("want 2 services, got %d", len(resp.Services))
 	}
 
 	svcMap := make(map[string]ServiceDetail)
@@ -941,8 +355,8 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 	}
 
 	radarr := svcMap["radarr.erfi.io"]
-	if radarr.Total != 3 {
-		t.Errorf("radarr total: want 3 (2 WAF + 1 RL), got %d", radarr.Total)
+	if radarr.Total != 1 {
+		t.Errorf("radarr total: want 1 (1 RL), got %d", radarr.Total)
 	}
 	if radarr.RateLimited != 1 {
 		t.Errorf("radarr rate_limited: want 1, got %d", radarr.RateLimited)
@@ -954,14 +368,6 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 	}
 	if sonarr.RateLimited != 2 {
 		t.Errorf("sonarr rate_limited: want 2, got %d", sonarr.RateLimited)
-	}
-
-	dockge := svcMap["dockge-sg.erfi.io"]
-	if dockge.Total != 1 {
-		t.Errorf("dockge total: want 1, got %d", dockge.Total)
-	}
-	if dockge.RateLimited != 0 {
-		t.Errorf("dockge rate_limited: want 0, got %d", dockge.RateLimited)
 	}
 }
 
@@ -1670,9 +1076,7 @@ func TestPolicyRLEventsAsUnifiedEvents(t *testing.T) {
 }
 
 func TestSummaryMergesPolicyEvents(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	wafStore := NewStore(wafPath)
-	wafStore.Load()
+	wafStore := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, samplePolicyAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -1689,9 +1093,9 @@ func TestSummaryMergesPolicyEvents(t *testing.T) {
 	var resp SummaryResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 3 WAF events + 3 policy_block + 1 RL(429) = 7 total.
-	if resp.TotalEvents != 7 {
-		t.Errorf("total_events: want 7 (3 WAF + 3 policy + 1 RL), got %d", resp.TotalEvents)
+	// 0 WAF events + 3 policy_block + 1 RL(429) = 4 total.
+	if resp.TotalEvents != 4 {
+		t.Errorf("total_events: want 4 (0 WAF + 3 policy + 1 RL), got %d", resp.TotalEvents)
 	}
 	// rate_limited = 1 RL only (ipsum blocks are now policy_block).
 	if resp.RateLimited != 1 {
@@ -1700,9 +1104,7 @@ func TestSummaryMergesPolicyEvents(t *testing.T) {
 }
 
 func TestEventsPolicyBlockFilter(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	wafStore := NewStore(wafPath)
-	wafStore.Load()
+	wafStore := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, samplePolicyAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -1726,9 +1128,7 @@ func TestEventsPolicyBlockFilter(t *testing.T) {
 }
 
 func TestSummaryMergesPolicyBlockEvents(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, sampleIpsumAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -1745,23 +1145,21 @@ func TestSummaryMergesPolicyBlockEvents(t *testing.T) {
 	var resp SummaryResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	// 3 WAF events + 1 RL(429) + 2 policy_block = 6 total.
-	if resp.TotalEvents != 6 {
-		t.Errorf("total_events: want 6 (3 WAF + 1 RL + 2 policy_block), got %d", resp.TotalEvents)
+	// 0 WAF events + 1 RL(429) + 2 policy_block = 3 total.
+	if resp.TotalEvents != 3 {
+		t.Errorf("total_events: want 3 (0 WAF + 1 RL + 2 policy_block), got %d", resp.TotalEvents)
 	}
 	// Only 1 rate_limited (the actual 429).
 	if resp.RateLimited != 1 {
 		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
 	}
-	if resp.BlockedEvents != 2 {
-		t.Errorf("blocked_events: want 2 (WAF only), got %d", resp.BlockedEvents)
+	if resp.BlockedEvents != 0 {
+		t.Errorf("blocked_events: want 0 (empty WAF store), got %d", resp.BlockedEvents)
 	}
 }
 
 func TestEventsRateLimitedFilterExcludesPolicyBlocks(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, sampleIpsumAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -1787,9 +1185,7 @@ func TestEventsRateLimitedFilterExcludesPolicyBlocks(t *testing.T) {
 }
 
 func TestServicesMergesPolicyBlockCounts(t *testing.T) {
-	wafPath := writeTempLog(t, sampleLines)
-	store := NewStore(wafPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	alsPath := writeTempAccessLog(t, sampleIpsumAccessLogLines)
 	als := NewAccessLogStore(alsPath)
@@ -1827,9 +1223,7 @@ func TestServicesMergesPolicyBlockCounts(t *testing.T) {
 
 func TestSummaryMergesClientCounts(t *testing.T) {
 	// WAF store with events from 10.0.0.1
-	logPath := writeTempLog(t, sampleLines)
-	store := NewStore(logPath)
-	store.Load()
+	store := emptyWAFStore(t)
 
 	// Access log with RL + policy engine block events
 	accessLines := []string{
@@ -1871,399 +1265,6 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 	c2 := clientMap["99.99.99.99"]
 	if c2.RateLimited != 1 {
 		t.Errorf("99.99.99.99 rate_limited: want 1, got %d", c2.RateLimited)
-	}
-}
-
-// --- Tests: extractAnomalyScore ---
-
-// --- Tests: extractAnomalyScore ---
-
-func TestExtractAnomalyScore(t *testing.T) {
-	tests := []struct {
-		name string
-		msg  string
-		want int
-	}{
-		{"inbound score 5", "Inbound Anomaly Score Exceeded (Total Score: 5)", 5},
-		{"inbound score 25", "Inbound Anomaly Score Exceeded (Total Score: 25)", 25},
-		{"inbound score 100", "Inbound Anomaly Score Exceeded (Total Score: 100)", 100},
-		{"outbound score 3", "Outbound Anomaly Score Exceeded (Total Score: 3)", 3},
-		{"zero score", "Inbound Anomaly Score Exceeded (Total Score: 0)", 0},
-		{"no match empty", "", 0},
-		{"no match unrelated", "Remote Command Execution detected", 0},
-		{"partial prefix", "Total Score: ", 0},
-		{"no digits after prefix", "Total Score: abc)", 0},
-		{"score in middle of text", "foo Total Score: 42 bar", 42},
-		{"large score", "Inbound Anomaly Score Exceeded (Total Score: 99999)", 99999},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractAnomalyScore(tt.msg)
-			if got != tt.want {
-				t.Errorf("extractAnomalyScore(%q) = %d, want %d", tt.msg, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestAnomalyScoreInParsedEvent(t *testing.T) {
-	// Construct a minimal audit log entry with rule 949110 carrying a score.
-	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test1","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":403},"producer":{"rule_engine":"On"}},"messages":[{"message":"SQL Injection","data":{"id":942100,"msg":"SQL Injection","severity":2,"tags":["attack-sqli"]}},{"message":"Inbound Anomaly Score Exceeded (Total Score: 15)","data":{"id":949110,"msg":"Inbound Anomaly Score Exceeded (Total Score: 15)","severity":0,"tags":["anomaly-evaluation"]}}]}`
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-	os.WriteFile(path, []byte(entry+"\n"), 0644)
-
-	store := NewStore(path)
-	store.Load()
-	events := store.Snapshot()
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
-	}
-	if events[0].AnomalyScore != 15 {
-		t.Errorf("expected anomaly score 15, got %d", events[0].AnomalyScore)
-	}
-	// Best rule should be 942100 (not the 949110 scoring rule).
-	if events[0].RuleID != 942100 {
-		t.Errorf("expected rule ID 942100, got %d", events[0].RuleID)
-	}
-}
-
-func TestComputeAnomalyScoreByPhase(t *testing.T) {
-	tests := []struct {
-		name     string
-		messages []AuditMessage
-		outbound bool
-		want     int
-	}{
-		{"empty inbound", nil, false, 0},
-		{"empty outbound", nil, true, 0},
-		{"single inbound critical", []AuditMessage{{Data: AuditMessageData{ID: 942100, Severity: 2}}}, false, 5},
-		{"single inbound notice", []AuditMessage{{Data: AuditMessageData{ID: 920330, Severity: 5}}}, false, 2},
-		{"inbound critical + notice", []AuditMessage{
-			{Data: AuditMessageData{ID: 942100, Severity: 2}},
-			{Data: AuditMessageData{ID: 920330, Severity: 5}},
-		}, false, 7},
-		{"dedup chain rules", []AuditMessage{
-			{Data: AuditMessageData{ID: 932240, Severity: 2}},
-			{Data: AuditMessageData{ID: 932240, Severity: 2}}, // chain duplicate
-		}, false, 5},
-		{"skip scoring rules", []AuditMessage{
-			{Data: AuditMessageData{ID: 942100, Severity: 2}},
-			{Data: AuditMessageData{ID: 949110, Severity: 0}},
-			{Data: AuditMessageData{ID: 959100, Severity: 0}},
-			{Data: AuditMessageData{ID: 980170, Severity: 0}},
-		}, false, 5},
-		{"skip id 0", []AuditMessage{
-			{Data: AuditMessageData{ID: 0, Severity: 2}},
-			{Data: AuditMessageData{ID: 920330, Severity: 5}},
-		}, false, 2},
-		{"all inbound severities", []AuditMessage{
-			{Data: AuditMessageData{ID: 910100, Severity: 2}}, // CRITICAL = 5
-			{Data: AuditMessageData{ID: 920100, Severity: 3}}, // ERROR = 4
-			{Data: AuditMessageData{ID: 930100, Severity: 4}}, // WARNING = 3
-			{Data: AuditMessageData{ID: 941100, Severity: 5}}, // NOTICE = 2
-		}, false, 14},
-		// Outbound tests
-		{"single outbound critical", []AuditMessage{{Data: AuditMessageData{ID: 950100, Severity: 2}}}, true, 5},
-		{"outbound SQL leak", []AuditMessage{{Data: AuditMessageData{ID: 951100, Severity: 2}}}, true, 5},
-		{"outbound multiple", []AuditMessage{
-			{Data: AuditMessageData{ID: 950100, Severity: 4}}, // WARNING = 3
-			{Data: AuditMessageData{ID: 951100, Severity: 2}}, // CRITICAL = 5
-		}, true, 8},
-		// Phase separation
-		{"inbound ignores outbound rules", []AuditMessage{
-			{Data: AuditMessageData{ID: 942100, Severity: 2}}, // inbound
-			{Data: AuditMessageData{ID: 950100, Severity: 2}}, // outbound - should be ignored
-		}, false, 5},
-		{"outbound ignores inbound rules", []AuditMessage{
-			{Data: AuditMessageData{ID: 942100, Severity: 2}}, // inbound - should be ignored
-			{Data: AuditMessageData{ID: 950100, Severity: 2}}, // outbound
-		}, true, 5},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := computeAnomalyScoreByPhase(tt.messages, tt.outbound)
-			if got != tt.want {
-				t.Errorf("computeAnomalyScoreByPhase(outbound=%v) = %d, want %d", tt.outbound, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsScoringRule(t *testing.T) {
-	// These should all be treated as scoring/evaluation rules.
-	scoringIDs := []int{0, 949110, 959100, 980170}
-	for _, id := range scoringIDs {
-		if !isScoringRule(id) {
-			t.Errorf("isScoringRule(%d) = false, want true", id)
-		}
-	}
-
-	// These should NOT be scoring rules.
-	normalIDs := []int{942100, 930120, 920420, 950100, 9500001, 9100021}
-	for _, id := range normalIDs {
-		if isScoringRule(id) {
-			t.Errorf("isScoringRule(%d) = true, want false", id)
-		}
-	}
-}
-
-func TestComputeAnomalyScoreCombined(t *testing.T) {
-	// computeAnomalyScore should sum both inbound and outbound.
-	messages := []AuditMessage{
-		{Data: AuditMessageData{ID: 942100, Severity: 2}}, // inbound CRITICAL = 5
-		{Data: AuditMessageData{ID: 950100, Severity: 4}}, // outbound WARNING = 3
-	}
-	got := computeAnomalyScore(messages)
-	if got != 8 {
-		t.Errorf("computeAnomalyScore() = %d, want 8", got)
-	}
-}
-
-func TestExtractScoresFrom980170(t *testing.T) {
-	tests := []struct {
-		name         string
-		msg          string
-		wantInbound  int
-		wantOutbound int
-	}{
-		{
-			"full CRS 4.x message",
-			"Anomaly Scores: (Inbound Scores: blocking=15, detection=15, per_pl=15-0-0-0, threshold=5) - (Outbound Scores: blocking=3, detection=3, per_pl=3-0-0-0, threshold=4)",
-			15, 3,
-		},
-		{
-			"zero outbound",
-			"Anomaly Scores: (Inbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=5) - (Outbound Scores: blocking=0, detection=0, per_pl=0-0-0-0, threshold=4)",
-			5, 0,
-		},
-		{
-			"zero inbound",
-			"Anomaly Scores: (Inbound Scores: blocking=0, detection=0, per_pl=0-0-0-0, threshold=5) - (Outbound Scores: blocking=8, detection=8, per_pl=8-0-0-0, threshold=4)",
-			0, 8,
-		},
-		{"empty", "", 0, 0},
-		{"unrelated", "Remote Command Execution detected", 0, 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotIn, gotOut := extractScoresFrom980170(tt.msg)
-			if gotIn != tt.wantInbound {
-				t.Errorf("inbound = %d, want %d", gotIn, tt.wantInbound)
-			}
-			if gotOut != tt.wantOutbound {
-				t.Errorf("outbound = %d, want %d", gotOut, tt.wantOutbound)
-			}
-		})
-	}
-}
-
-func TestOutboundAnomalyScoreInParsedEvent(t *testing.T) {
-	// Audit log with both inbound (949110) and outbound (959100) scoring rules.
-	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test-outbound","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":403},"producer":{"rule_engine":"On"}},"messages":[{"message":"SQL Injection","data":{"id":942100,"msg":"SQL Injection","severity":2,"tags":["attack-sqli"]}},{"message":"SQL Information Leakage","data":{"id":951100,"msg":"SQL Information Leakage","severity":2,"tags":["leakage-sql"]}},{"message":"Inbound Anomaly Score Exceeded (Total Score: 5)","data":{"id":949110,"msg":"Inbound Anomaly Score Exceeded (Total Score: 5)","severity":0,"tags":["anomaly-evaluation"]}},{"message":"Outbound Anomaly Score Exceeded (Total Score: 5)","data":{"id":959100,"msg":"Outbound Anomaly Score Exceeded (Total Score: 5)","severity":0,"tags":["anomaly-evaluation"]}}]}`
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-	os.WriteFile(path, []byte(entry+"\n"), 0644)
-
-	store := NewStore(path)
-	store.Load()
-	events := store.Snapshot()
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
-	}
-	if events[0].AnomalyScore != 5 {
-		t.Errorf("expected inbound anomaly score 5, got %d", events[0].AnomalyScore)
-	}
-	if events[0].OutboundAnomalyScore != 5 {
-		t.Errorf("expected outbound anomaly score 5, got %d", events[0].OutboundAnomalyScore)
-	}
-}
-
-func TestOutboundScoreFrom980170Fallback(t *testing.T) {
-	// When 949110/959100 don't fire but 980170 provides the full breakdown.
-	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test-980170","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":200},"producer":{"rule_engine":"DetectionOnly"}},"messages":[{"message":"SQL Injection","data":{"id":942100,"msg":"SQL Injection","severity":2,"tags":["attack-sqli"]}},{"message":"SQL Information Leakage","data":{"id":951100,"msg":"SQL Information Leakage","severity":2,"tags":["leakage-sql"]}},{"message":"Anomaly Scores: (Inbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000) - (Outbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000)","data":{"id":980170,"msg":"Anomaly Scores: (Inbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000) - (Outbound Scores: blocking=5, detection=5, per_pl=5-0-0-0, threshold=10000)","severity":0,"tags":["reporting"]}}]}`
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-	os.WriteFile(path, []byte(entry+"\n"), 0644)
-
-	store := NewStore(path)
-	store.Load()
-	events := store.Snapshot()
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
-	}
-	if events[0].AnomalyScore != 5 {
-		t.Errorf("expected inbound anomaly score 5, got %d", events[0].AnomalyScore)
-	}
-	if events[0].OutboundAnomalyScore != 5 {
-		t.Errorf("expected outbound anomaly score 5, got %d", events[0].OutboundAnomalyScore)
-	}
-}
-
-func TestAnomalyScoreFallbackComputed(t *testing.T) {
-	// DetectionOnly mode: rule 949110 doesn't fire (score below threshold).
-	// Score should be computed from individual rule severities.
-	entry := `{"transaction":{"timestamp":"2026/01/01 00:00:00","unix_timestamp":1,"id":"test2","client_ip":"1.2.3.4","server_id":"test.erfi.io","request":{"method":"GET","uri":"/test","headers":{}},"response":{"status":200},"producer":{"rule_engine":"DetectionOnly"}},"messages":[{"message":"Empty User Agent Header","data":{"id":920330,"msg":"Empty User Agent Header","severity":5,"tags":["attack-protocol"]}}]}`
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-	os.WriteFile(path, []byte(entry+"\n"), 0644)
-
-	store := NewStore(path)
-	store.Load()
-	events := store.Snapshot()
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
-	}
-	// NOTICE severity = 2 points.
-	if events[0].AnomalyScore != 2 {
-		t.Errorf("expected computed anomaly score 2, got %d", events[0].AnomalyScore)
-	}
-}
-
-// ─── End-to-End Deploy Pipeline Tests ───────────────────────────────
-
-// TestDeployEndToEnd_ExclusionAndSettings simulates the full user flow:
-// 1. Create an exclusion via POST /api/exclusions
-// 2. Update WAF settings via PUT /api/config
-// 3. Deploy via POST /api/config/deploy
-// 4. Verify all three generated files contain correct content
-// 5. Verify exclusions are NOT lost when settings deploy, and vice versa
-
-func TestParseEvent_PolicyEventType(t *testing.T) {
-	// When the audit log contains a rule in the 9500000-9599999 range
-	// with a "Policy ..." msg, parseEvent should set the correct event_type.
-
-	tests := []struct {
-		name          string
-		ruleID        int
-		msg           string
-		isInterrupted bool
-		wantType      string
-	}{
-		{"policy skip", 9500001, "Policy Skip: Skip 920420", false, "policy_skip"},
-		{"policy allow", 9500002, "Policy Allow: Allow my IP", false, "policy_allow"},
-		{"policy block", 9500003, "Policy Block: Block bad actor", true, "policy_block"},
-		{"normal CRS rule", 932235, "Remote Command Execution", false, "logged"},
-		{"blocked CRS rule (needs IsInterrupted)", 932235, "Remote Command Execution", false, "logged"},
-		// Skip rule fired but request was still blocked by other CRS rules.
-		// Should classify as "blocked", not "policy_skip".
-		{"policy skip still blocked", 9500001, "Policy Skip: Skip 920420", true, "blocked"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			entry := AuditLogEntry{
-				Transaction: Transaction{
-					Timestamp:     "2026-01-01T00:00:00Z",
-					ID:            "test-" + tt.name,
-					IsInterrupted: tt.isInterrupted,
-				},
-				Messages: []AuditMessage{
-					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},
-				},
-			}
-			ev := parseEvent(entry)
-			if ev.EventType != tt.wantType {
-				t.Errorf("parseEvent() event_type = %q, want %q", ev.EventType, tt.wantType)
-			}
-		})
-	}
-}
-
-func TestParseEvent_HoneypotRuleIDsNoLongerSpecial(t *testing.T) {
-	// Honeypot rule IDs (9100020–9100029) are no longer special-cased by
-	// parseEvent. They are plain custom rules — blocked if IsInterrupted,
-	// logged otherwise.
-	tests := []struct {
-		name          string
-		ruleID        int
-		msg           string
-		isInterrupted bool
-		wantType      string
-	}{
-		{"honeypot rule interrupted", 9100020, "Honeypot: known-bad path probe", true, "blocked"},
-		{"honeypot rule high ID interrupted", 9100029, "Honeypot: some other path", true, "blocked"},
-		{"below range interrupted", 9100019, "Post-CRS rule", true, "blocked"},
-		{"above range not interrupted", 9100030, "Heuristic: missing Accept header", false, "logged"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			entry := AuditLogEntry{
-				Transaction: Transaction{
-					Timestamp:     "2026-01-15T12:00:00Z",
-					ID:            "honeypot-" + tt.name,
-					IsInterrupted: tt.isInterrupted,
-				},
-				Messages: []AuditMessage{
-					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},
-				},
-			}
-			ev := parseEvent(entry)
-			if ev.EventType != tt.wantType {
-				t.Errorf("parseEvent() event_type = %q, want %q", ev.EventType, tt.wantType)
-			}
-		})
-	}
-}
-
-func TestParseEvent_ScannerRuleIDNoLongerSpecial(t *testing.T) {
-	// Scanner UA rule ID 9100032 is no longer special-cased by parseEvent.
-	// These are plain custom rules — blocked if IsInterrupted, logged otherwise.
-	tests := []struct {
-		name          string
-		ruleID        int
-		msg           string
-		isInterrupted bool
-		wantType      string
-	}{
-		{"scanner UA drop (now blocked)", 9100032, "Heuristic: known scanner User-Agent", true, "blocked"},
-		{"heuristic missing Accept", 9100030, "Heuristic: missing Accept header", false, "logged"},
-		{"heuristic HTTP/1.0", 9100031, "Heuristic: HTTP/1.0 protocol", false, "logged"},
-		{"heuristic empty UA", 9100033, "Heuristic: empty or missing User-Agent", false, "logged"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			entry := AuditLogEntry{
-				Transaction: Transaction{
-					Timestamp:     "2026-01-15T12:00:00Z",
-					ID:            "scanner-" + tt.name,
-					IsInterrupted: tt.isInterrupted,
-				},
-				Messages: []AuditMessage{
-					{Data: AuditMessageData{ID: tt.ruleID, Msg: tt.msg}},
-				},
-			}
-			ev := parseEvent(entry)
-			if ev.EventType != tt.wantType {
-				t.Errorf("parseEvent() event_type = %q, want %q", ev.EventType, tt.wantType)
-			}
-		})
-	}
-}
-
-func TestParseEvent_PolicyTakesPriorityOverCustomRules(t *testing.T) {
-	// If both a policy rule and a custom rule match, policy classification
-	// should win (policy rules are in the 9500000-9599999 range).
-	entry := AuditLogEntry{
-		Transaction: Transaction{
-			Timestamp:     "2026-01-15T12:00:00Z",
-			ID:            "priority-test",
-			IsInterrupted: true,
-		},
-		Messages: []AuditMessage{
-			{Data: AuditMessageData{ID: 9100020, Msg: "Custom rule: known-bad path probe"}},
-			{Data: AuditMessageData{ID: 9500001, Msg: "Policy Block: Block bad paths"}},
-		},
-	}
-	ev := parseEvent(entry)
-	if ev.EventType != "policy_block" {
-		t.Errorf("parseEvent() event_type = %q, want %q (policy should take priority)", ev.EventType, "policy_block")
 	}
 }
 
@@ -2534,176 +1535,6 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 }
 
 // --- RequestID Extraction Tests ---
-
-func TestParseEvent_RequestID(t *testing.T) {
-	// Event with X-Request-Id header
-	entry := AuditLogEntry{
-		Transaction: Transaction{
-			Timestamp:     "2026/03/07 12:00:00",
-			ID:            "reqid-test",
-			ClientIP:      "10.0.0.1",
-			HostIP:        "127.0.0.1",
-			IsInterrupted: false,
-			Request: Request{
-				Method:   "GET",
-				Protocol: "HTTP/2.0",
-				URI:      "/test",
-				Headers: map[string][]string{
-					"User-Agent":   {"TestBot/1.0"},
-					"X-Request-Id": {"caddy-uuid-abc123"},
-				},
-			},
-			Response: Response{Status: 200},
-		},
-	}
-	ev := parseEvent(entry)
-	if ev.RequestID != "caddy-uuid-abc123" {
-		t.Errorf("request_id: got %q, want %q", ev.RequestID, "caddy-uuid-abc123")
-	}
-	// Unified request ID: Event.ID should be the Caddy UUID, not the Coraza transaction ID.
-	if ev.ID != "caddy-uuid-abc123" {
-		t.Errorf("ID (unified request ID): got %q, want %q (should use Caddy UUID, not Coraza tx ID)", ev.ID, "caddy-uuid-abc123")
-	}
-}
-
-func TestParseEvent_RequestID_Missing(t *testing.T) {
-	entry := AuditLogEntry{
-		Transaction: Transaction{
-			Timestamp:     "2026/03/07 12:00:00",
-			ID:            "no-reqid",
-			ClientIP:      "10.0.0.1",
-			HostIP:        "127.0.0.1",
-			IsInterrupted: false,
-			Request: Request{
-				Method:   "GET",
-				Protocol: "HTTP/2.0",
-				URI:      "/test",
-				Headers:  map[string][]string{"User-Agent": {"TestBot/1.0"}},
-			},
-			Response: Response{Status: 200},
-		},
-	}
-	ev := parseEvent(entry)
-	if ev.RequestID != "" {
-		t.Errorf("request_id should be empty, got %q", ev.RequestID)
-	}
-	// Without X-Request-Id, falls back to Coraza transaction ID.
-	if ev.ID != "no-reqid" {
-		t.Errorf("ID should fall back to Coraza tx ID %q, got %q", "no-reqid", ev.ID)
-	}
-}
-
-// ─── Event Tags Extraction Tests ────────────────────────────────────
-
-func TestParseEvent_ExtractsPolicyTags(t *testing.T) {
-	entry := AuditLogEntry{
-		Transaction: Transaction{
-			ID:            "tag-test-1",
-			Timestamp:     "01/Jan/2025:00:00:00 +0000",
-			ClientIP:      "1.2.3.4",
-			IsInterrupted: true,
-			Request: Request{
-				Method:   "GET",
-				URI:      "/test",
-				Protocol: "HTTP/1.1",
-			},
-		},
-		Messages: []AuditMessage{
-			{
-				Data: AuditMessageData{
-					ID:       9500001,
-					Msg:      "Policy Block: Scanner Block",
-					Severity: 2,
-					Tags:     []string{"policy:scanner", "policy:bot-detection", "custom-rules"},
-				},
-			},
-		},
-	}
-	ev := parseEvent(entry)
-	if ev.EventType != "policy_block" {
-		t.Errorf("event_type = %q, want policy_block", ev.EventType)
-	}
-	// Should extract policy:* tags, strip prefix, and skip non-policy tags.
-	if len(ev.Tags) != 2 {
-		t.Fatalf("expected 2 tags, got %v", ev.Tags)
-	}
-	if ev.Tags[0] != "scanner" || ev.Tags[1] != "bot-detection" {
-		t.Errorf("tags = %v, want [scanner bot-detection]", ev.Tags)
-	}
-}
-
-func TestParseEvent_NoTagsWhenNoPolicyPrefix(t *testing.T) {
-	entry := AuditLogEntry{
-		Transaction: Transaction{
-			ID:            "tag-test-2",
-			Timestamp:     "01/Jan/2025:00:00:00 +0000",
-			ClientIP:      "1.2.3.4",
-			IsInterrupted: true,
-			Request: Request{
-				Method:   "GET",
-				URI:      "/test",
-				Protocol: "HTTP/1.1",
-			},
-		},
-		Messages: []AuditMessage{
-			{
-				Data: AuditMessageData{
-					ID:       920420,
-					Msg:      "Some CRS Rule",
-					Severity: 3,
-					Tags:     []string{"OWASP_CRS", "attack-sqli", "PCI/6.5.2"},
-				},
-			},
-		},
-	}
-	ev := parseEvent(entry)
-	if len(ev.Tags) != 0 {
-		t.Errorf("expected no tags for CRS-only rules, got %v", ev.Tags)
-	}
-}
-
-func TestParseEvent_DeduplicatesPolicyTags(t *testing.T) {
-	entry := AuditLogEntry{
-		Transaction: Transaction{
-			ID:            "tag-test-3",
-			Timestamp:     "01/Jan/2025:00:00:00 +0000",
-			ClientIP:      "1.2.3.4",
-			IsInterrupted: true,
-			Request: Request{
-				Method:   "GET",
-				URI:      "/test",
-				Protocol: "HTTP/1.1",
-			},
-		},
-		Messages: []AuditMessage{
-			{
-				Data: AuditMessageData{
-					ID:   9500001,
-					Msg:  "Policy Block: First",
-					Tags: []string{"policy:scanner", "policy:bot"},
-				},
-			},
-			{
-				Data: AuditMessageData{
-					ID:   9500002,
-					Msg:  "Policy Block: Second",
-					Tags: []string{"policy:scanner", "policy:custom"},
-				},
-			},
-		},
-	}
-	ev := parseEvent(entry)
-	// Should deduplicate "scanner" from two rules.
-	seen := make(map[string]int)
-	for _, tag := range ev.Tags {
-		seen[tag]++
-	}
-	if seen["scanner"] != 1 {
-		t.Errorf("scanner tag should appear once, got %d times in %v", seen["scanner"], ev.Tags)
-	}
-}
-
-// ─── JSONL Tag Backfill Tests ───────────────────────────────────────
 
 func TestSetEventFile_BackfillsTagsAndRemapsEventTypes(t *testing.T) {
 	dir := t.TempDir()

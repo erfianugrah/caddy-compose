@@ -4,21 +4,12 @@ import { CONDITION_FIELDS } from "./constants";
 // ─── Exclusion Display Helpers ──────────────────────────────────────
 
 export function conditionsSummary(excl: Exclusion): string {
-  // For raw rules, show raw_rule snippet
-  if (excl.type === "raw" && excl.raw_rule) {
-    return excl.raw_rule.length > 50 ? excl.raw_rule.slice(0, 50) + "..." : excl.raw_rule;
-  }
-
-  // Build composite summary: rule scope + variable + anomaly + conditions
+  // Build composite summary: rule scope + variable + conditions
   const segments: string[] = [];
 
   if (excl.rule_id) segments.push(`Rule ${excl.rule_id}`);
   if (excl.rule_tag) segments.push(`Tag: ${excl.rule_tag}`);
   if (excl.variable) segments.push(`Var: ${excl.variable}`);
-  if (excl.type === "anomaly" && excl.anomaly_score) {
-    const pl = excl.anomaly_paranoia_level ?? 1;
-    segments.push(`+${excl.anomaly_score} PL${pl}`);
-  }
 
   if (excl.conditions && excl.conditions.length > 0) {
     const parts = excl.conditions.map((c) => {
@@ -41,41 +32,16 @@ export function exclusionTypeLabel(type: ExclusionType): string {
   switch (type) {
     case "allow": return "Allow";
     case "block": return "Block";
-    case "skip_rule": return "Skip";
-    case "anomaly": return "Anomaly";
-    case "raw": return "Raw";
-    // Configure-time
-    case "SecRuleRemoveById": return "Remove Rule";
-    case "SecRuleRemoveByTag": return "Remove Tag";
-    case "SecRuleUpdateTargetById": return "Excl. Var (Rule)";
-    case "SecRuleUpdateTargetByTag": return "Excl. Var (Tag)";
-    // Runtime
-    case "ctl:ruleRemoveById": return "RT Remove Rule";
-    case "ctl:ruleRemoveByTag": return "RT Remove Tag";
-    case "ctl:ruleRemoveTargetById": return "RT Excl. Var (Rule)";
-    case "ctl:ruleRemoveTargetByTag": return "RT Excl. Var (Tag)";
+    case "detect": return "Detect";
     default: return type;
   }
 }
 
 export function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "outline" | "secondary" | "destructive" {
   switch (type) {
-    case "allow": return "default";
+    case "allow": return "outline";
     case "block": return "destructive";
-    case "anomaly": return "secondary";
-    case "skip_rule": return "secondary";
-    // Configure-time types
-    case "SecRuleRemoveById":
-    case "SecRuleRemoveByTag":
-    case "SecRuleUpdateTargetById":
-    case "SecRuleUpdateTargetByTag":
-      return "outline";
-    // Runtime types
-    case "ctl:ruleRemoveById":
-    case "ctl:ruleRemoveByTag":
-    case "ctl:ruleRemoveTargetById":
-    case "ctl:ruleRemoveTargetByTag":
-      return "secondary";
+    case "detect": return "secondary";
     default: return "outline";
   }
 }
