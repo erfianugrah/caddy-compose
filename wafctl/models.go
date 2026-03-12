@@ -156,9 +156,10 @@ type Event struct {
 	RequestArgs    map[string]string   `json:"request_args,omitempty"`
 }
 
-// MatchedRule represents a single CRS rule match from the audit log.
+// MatchedRule represents a single CRS or policy engine rule match.
 type MatchedRule struct {
 	ID          int                 `json:"id"`
+	Name        string              `json:"name,omitempty"` // rule name/ID string (e.g., "9100034", "920350") — used for PE detect rules
 	Msg         string              `json:"msg"`
 	Severity    int                 `json:"severity"`
 	MatchedData string              `json:"matched_data,omitempty"`

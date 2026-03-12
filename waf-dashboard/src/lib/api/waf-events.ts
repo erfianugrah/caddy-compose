@@ -116,6 +116,7 @@ export interface MatchedRuleDetailInfo {
 
 export interface MatchedRuleInfo {
   id: number;
+  name?: string;   // rule ID string (e.g., "920350", "9100034") — used for PE detect rules
   msg: string;
   severity: number;
   matched_data?: string;

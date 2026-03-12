@@ -1100,14 +1100,53 @@ block rates (<100/day for legitimate traffic) this is negligible.
 2. ~~Port Protocol Enforcement (920xxx)~~ — **DONE** (v0.10.4, 14 rules)
 3. ~~Port LFI + Response Splitting + Session Fixation~~ — **DONE** (v0.11.0)
 4. ~~Port RCE (932xxx)~~ — **DONE** (v0.12.0, 11 rules)
-5. **Matched payload observability** (plugin v0.11.x) — CRITICAL, biggest regression from Coraza — **NEXT**
-6. **Unified Event ID** — deploy alongside #5 (same wafctl release)
-7. **Full request context for policy engine events** — deploy alongside #5 (same plugin + wafctl release); without this, event detail is bare compared to Coraza
-8. **Build CRS auto-converter** (`tools/crs-converter/`) — replaces all remaining manual porting
-9. **Add missing plugin features** (transforms, operators, condition enhancements) — parallel with 8
-10. **Run converter + validate against CRS regression tests** — validates correctness
-11. Frontend catch-up sprint (matched payload display, CRS categories, request ID cross-links, request context) — can happen in parallel
-12. Remove Coraza from Docker image (v1.0)
+5. ~~Matched payload observability~~ — **DONE** (plugin v0.11.0, per-condition match detail)
+6. ~~Unified Event ID~~ — **DONE** (wafctl 2.15.0, Caddy UUID as Event.ID)
+7. ~~Full request context for policy engine events~~ — **DONE** (plugin v0.11.0, request headers + body capture)
+8. **Event detail parity + PE- prefix removal** — **IN PROGRESS** (see below)
+9. **Build CRS auto-converter** (`tools/crs-converter/`) — replaces all remaining manual porting
+10. **Add missing plugin features** (transforms, operators, condition enhancements) — parallel with 9
+11. **Run converter + validate against CRS regression tests** — validates correctness
+12. Frontend catch-up sprint (request ID cross-links to general logs) — can happen in parallel
+13. Remove Coraza from Docker image (v1.0)
+
+### Event Detail Parity + Rule ID Cleanup (step 8)
+
+**Problem:** Deployed v0.11.0 revealed several gaps vs Coraza's event detail:
+
+1. **PE- prefix on rule IDs** — Rules in `default-rules.json` use `PE-920350` format.
+   These should just be `920350` to align with CRS numbering and work with skip_rule
+   exclusions. The `PE-` prefix was added during manual porting but serves no purpose
+   now that the policy engine is the primary WAF.
+
+2. **Matched rules displayed twice** — The detect_block event detail shows matched rules
+   in the "Policy Engine Match" summary section AND again in the "All Matched Rules"
+   expandable section. Should only show in the expandable section with full detail.
+
+3. **Missing highest severity rule summary** — Coraza events show a prominent block with:
+   Rule ID, Message, Severity, Variable, Trigger value, Full Value. The detect_block
+   event detail needs an equivalent "Highest Severity Rule" summary.
+
+4. **Create Exception doesn't pre-fill rule IDs** — `MatchedRule.ID` is `int` (always 0
+   for PE rules since IDs are strings like `PE-920350`). The eventPrefill extracts
+   `matched_rules[].id` and gets nothing useful. Need a `Name` string field.
+
+5. **Missing per-rule human-readable message** — Coraza shows "Found User-Agent associated
+   with security scanner". PE rules show "PE-9100034 (NOTICE, score 2)" which is a
+   formatted msg string, not the description. Need to include the rule description.
+
+**Tasks:**
+- [ ] Remove `PE-` prefix from all 45 rule IDs in `default-rules.json` (version bump to 6)
+- [ ] Update plugin tests that reference PE- IDs
+- [ ] Add `Name string` field to `MatchedRule` model in wafctl
+- [ ] `parseDetectRulesDetail()`: store rule ID string in `Name`, strip `PE-` for backward compat
+- [ ] `enrichMatchedRulesWithDetails()`: also set `Name` from detectMatchEntry
+- [ ] Frontend `MatchedRuleInfo`: add `name` field
+- [ ] Frontend `EventDetailPanel`: remove doubled matched rules display
+- [ ] Frontend `EventDetailPanel`: add highest severity rule summary for detect_block
+- [ ] Frontend `EventDetailPanel`: show rule name + description in expandable section
+- [ ] Frontend `eventPrefill`: use `name` field for Create Exception rule ID pre-fill
+- [ ] Update wafctl tests, frontend tests, e2e tests
 
 ---
 

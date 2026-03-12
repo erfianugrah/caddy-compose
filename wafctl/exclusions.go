@@ -287,7 +287,7 @@ func migrateV3toV4(exclusions []RuleExclusion) []RuleExclusion {
 
 // migrateV4toV5 removes heuristic detect rules that were seeded by v3→v4.
 // These rules are now shipped as built-in defaults in default-rules.json
-// (PE-9100030, PE-9100033, PE-9100034). Removing the user-store copies
+// (9100030, 9100033, 9100034). Removing the user-store copies
 // avoids double-counting anomaly scores.
 func migrateV4toV5(exclusions []RuleExclusion) []RuleExclusion {
 	// Known names of the v4-seeded heuristic detect rules.
@@ -309,7 +309,7 @@ func migrateV4toV5(exclusions []RuleExclusion) []RuleExclusion {
 
 // migrateV5toV6 removes the v1-seeded bot rules (Scanner UA Block, HTTP/1.0
 // Anomaly, Generic UA Anomaly) which are now shipped as built-in default rules
-// in default-rules.json (PE-9100032, PE-9100035, PE-9100036). Keeping them in
+// in default-rules.json (9100032, 9100035, 9100036). Keeping them in
 // the user store would cause duplicate blocking/scoring.
 func migrateV5toV6(exclusions []RuleExclusion) []RuleExclusion {
 	remove := map[string]bool{

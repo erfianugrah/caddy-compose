@@ -1,8 +1,8 @@
 {
-  "version": 5,
+  "version": 6,
   "rules": [
     {
-      "id": "PE-9100003",
+      "id": "9100003",
       "name": "XXE: DOCTYPE/ENTITY with SYSTEM or PUBLIC",
       "type": "detect",
       "conditions": [
@@ -20,7 +20,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100006",
+      "id": "9100006",
       "name": "XXE: Parameter entity declaration",
       "type": "detect",
       "conditions": [
@@ -38,7 +38,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932100",
+      "id": "932100",
       "name": "Unix command injection after shell metacharacter",
       "description": "Detects Unix command names following shell metacharacters (;|&$) in arguments. Replaces PE-9100010 with broader coverage: all common shell prefixes, not just pipe. Comprehensive command wordlist via phrase_match. CRS 932100/932230/932235/932250/932260 combined.",
       "type": "detect",
@@ -57,7 +57,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932120",
+      "id": "932120",
       "name": "Windows PowerShell command found",
       "description": "Detects Windows PowerShell cmdlets and keywords in arguments. Uses phrase_match for efficient Aho-Corasick matching against common dangerous cmdlets. CRS 932120.",
       "type": "detect",
@@ -100,7 +100,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932130",
+      "id": "932130",
       "name": "Unix shell expression found",
       "description": "Detects shell expression syntax: $() command substitution, ${} parameter expansion, <() >() process substitution, $[] arithmetic, heredocs, and backtick substitution. Replaces PE-9100011 with broader coverage. Essential for Log4Shell defense. CRS 932130.",
       "type": "detect",
@@ -119,7 +119,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932140",
+      "id": "932140",
       "name": "Windows FOR/IF command found",
       "description": "Detects Windows batch flow control used in command injection: FOR /F %a IN ... DO, IF EXIST, IF DEFINED, batch variable expansion. CRS 932140.",
       "type": "detect",
@@ -138,7 +138,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932150",
+      "id": "932150",
       "name": "Direct Unix command path execution",
       "description": "Detects direct execution via absolute paths to common Unix commands (/bin/bash, /usr/bin/wget, etc.). CRS 932150.",
       "type": "detect",
@@ -175,7 +175,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932160",
+      "id": "932160",
       "name": "Unix shell code fragment found",
       "description": "Detects shell script fragments in arguments: shebang lines, exec/eval builtins, source command, function definitions, and common shell scripting constructs. CRS 932160.",
       "type": "detect",
@@ -194,7 +194,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932170",
+      "id": "932170",
       "name": "Shellshock CVE-2014-6271",
       "description": "Detects Shellshock-style function definition in arguments/headers: () { pattern. The original Shellshock vulnerability allowed remote code execution through environment variables containing function definitions. CRS 932170/932171.",
       "type": "detect",
@@ -213,7 +213,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932171",
+      "id": "932171",
       "name": "Shellshock in request headers",
       "description": "Detects Shellshock-style function definition in request headers (the original attack vector was via CGI environment variables derived from headers). CRS 932171.",
       "type": "detect",
@@ -232,7 +232,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932180",
+      "id": "932180",
       "name": "Restricted file upload attempt",
       "description": "Detects uploads of files with dangerous extensions that could enable code execution on the server. CRS 932180.",
       "type": "detect",
@@ -266,7 +266,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932270",
+      "id": "932270",
       "name": "Bash tilde expansion",
       "description": "Detects bash tilde expansion shortcuts (~+, ~-, ~+N, ~-N) used to access directory stack entries. CRS 932270.",
       "type": "detect",
@@ -285,7 +285,7 @@
       "priority": 400
     },
     {
-      "id": "PE-932280",
+      "id": "932280",
       "name": "Brace expansion found",
       "description": "Detects shell brace expansion ({cmd1,cmd2}) used to construct and execute commands. Common evasion technique: {c,url} expands to 'curl'. CRS 932280.",
       "type": "detect",
@@ -304,7 +304,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100012",
+      "id": "9100012",
       "name": "CRLF injection in query string",
       "type": "detect",
       "conditions": [
@@ -322,7 +322,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100013",
+      "id": "9100013",
       "name": "CRLF injection in request headers",
       "type": "detect",
       "conditions": [
@@ -340,7 +340,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100030",
+      "id": "9100030",
       "name": "Missing Accept header",
       "type": "detect",
       "conditions": [
@@ -358,7 +358,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100033",
+      "id": "9100033",
       "name": "Missing or empty User-Agent",
       "type": "detect",
       "conditions": [
@@ -376,7 +376,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100034",
+      "id": "9100034",
       "name": "Missing Referer on non-API GET",
       "type": "detect",
       "conditions": [
@@ -399,7 +399,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100032",
+      "id": "9100032",
       "name": "Scanner UA Block",
       "description": "Block known scanner/attack tool User-Agents. Case-insensitive substring match via Aho-Corasick.",
       "type": "block",
@@ -423,7 +423,7 @@
       "priority": 100
     },
     {
-      "id": "PE-9100035",
+      "id": "9100035",
       "name": "Generic UA Anomaly",
       "description": "+5 anomaly for generic HTTP library User-Agents (python-requests, curl/, etc.). Combined with other signals to detect automated tools.",
       "type": "detect",
@@ -445,7 +445,7 @@
       "priority": 400
     },
     {
-      "id": "PE-9100036",
+      "id": "9100036",
       "name": "HTTP/1.0 Anomaly",
       "description": "+2 anomaly for HTTP/1.0 requests. Modern clients use HTTP/1.1 or HTTP/2.",
       "type": "detect",
@@ -465,7 +465,7 @@
     },
 
     {
-      "id": "PE-920350",
+      "id": "920350",
       "name": "Host header is a numeric IP address",
       "description": "Host header contains an IP address instead of a hostname. Often indicates direct IP scanning or automated tools. CRS 920350.",
       "type": "detect",
@@ -484,7 +484,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920170",
+      "id": "920170",
       "name": "GET or HEAD request with body content",
       "description": "GET and HEAD requests should not have a body. Presence of Content-Length on these methods suggests an attack or misconfigured client. CRS 920170.",
       "type": "detect",
@@ -508,7 +508,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920180",
+      "id": "920180",
       "name": "POST request missing Content-Type header",
       "description": "POST requests should include a Content-Type header to describe the body format. CRS 920180.",
       "type": "detect",
@@ -532,7 +532,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920160",
+      "id": "920160",
       "name": "Content-Length header is not numeric",
       "description": "Content-Length must be a non-negative integer. Non-numeric values may indicate request smuggling attempts. CRS 920160.",
       "type": "detect",
@@ -551,7 +551,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920210",
+      "id": "920210",
       "name": "Multiple or conflicting Connection header values",
       "description": "Multiple Connection header values or unexpected combinations may indicate smuggling attempts. CRS 920210.",
       "type": "detect",
@@ -571,7 +571,7 @@
     },
 
     {
-      "id": "PE-920270",
+      "id": "920270",
       "name": "Null byte in request arguments",
       "description": "Null bytes in arguments are used to exploit C-based string handling (truncation attacks). CRS 920270.",
       "type": "detect",
@@ -590,7 +590,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920220",
+      "id": "920220",
       "name": "URL encoding abuse in path",
       "description": "Invalid URL encoding sequences in the request path may indicate evasion attempts. Matches percent sign at end of string, followed by non-hex, or followed by only one hex digit at end. CRS 920220.",
       "type": "detect",
@@ -610,7 +610,7 @@
     },
 
     {
-      "id": "PE-920430",
+      "id": "920430",
       "name": "HTTP version not allowed by policy",
       "description": "Restricts HTTP protocol versions. Only HTTP/1.1, HTTP/2, and HTTP/3 are allowed. HTTP/0.9 and HTTP/1.0 are blocked. CRS 920430.",
       "type": "detect",
@@ -629,7 +629,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920440",
+      "id": "920440",
       "name": "URL file extension restricted by policy",
       "description": "Blocks requests for file extensions commonly associated with sensitive files. Override list_items to customize. CRS 920440.",
       "type": "detect",
@@ -659,7 +659,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920450",
+      "id": "920450",
       "name": "HTTP header restricted by policy",
       "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded — they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450.",
       "type": "detect",
@@ -681,7 +681,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920300",
+      "id": "920300",
       "name": "Max number of request arguments exceeded",
       "description": "Requests with an excessive number of parameters may indicate HashDoS or parameter pollution attacks. Default limit: 255. CRS 920300.",
       "type": "detect",
@@ -700,7 +700,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920310",
+      "id": "920310",
       "name": "Argument name too long",
       "description": "Excessively long parameter names may indicate buffer overflow or fuzzing attempts. Default limit: 100 characters. CRS 920310.",
       "type": "detect",
@@ -720,7 +720,7 @@
       "priority": 400
     },
     {
-      "id": "PE-920311",
+      "id": "920311",
       "name": "Argument value too long",
       "description": "Excessively long parameter values may indicate buffer overflow or payload injection. Default limit: 400 characters. CRS 920311.",
       "type": "detect",
@@ -741,7 +741,7 @@
     },
 
     {
-      "id": "PE-930110",
+      "id": "930110",
       "name": "Path traversal attack (decoded)",
       "description": "Detects decoded directory traversal sequences (../ or ..\\ variants). Go's net/http URL-decodes paths before they reach the handler, so we match the decoded form. CRS 930110.",
       "type": "detect",
@@ -761,7 +761,7 @@
       "priority": 400
     },
     {
-      "id": "PE-930111",
+      "id": "930111",
       "name": "Path traversal in URI path (decoded)",
       "description": "Detects decoded directory traversal sequences in the URI path itself. Separate from PE-930110 which checks argument values. CRS 930110.",
       "type": "detect",
@@ -781,7 +781,7 @@
       "priority": 400
     },
     {
-      "id": "PE-930120",
+      "id": "930120",
       "name": "OS file access attempt",
       "description": "Detects attempts to access sensitive OS files (passwd, shadow, SSH keys, cloud credentials, etc.) via argument values. Curated from CRS lfi-os-files.data. CRS 930120.",
       "type": "detect",
@@ -822,7 +822,7 @@
       "priority": 400
     },
     {
-      "id": "PE-930130",
+      "id": "930130",
       "name": "Restricted file access in URI",
       "description": "Detects direct requests for files that should never be publicly accessible (version control, configs, credentials, backups). Curated from CRS restricted-files.data. CRS 930130.",
       "type": "detect",
@@ -863,7 +863,7 @@
     },
 
     {
-      "id": "PE-921110",
+      "id": "921110",
       "name": "HTTP request smuggling attack",
       "description": "Detects HTTP request smuggling attempts — embedded HTTP method and version string in argument values. CRS 921110.",
       "type": "detect",
@@ -883,7 +883,7 @@
       "priority": 400
     },
     {
-      "id": "PE-921120",
+      "id": "921120",
       "name": "HTTP response splitting in arguments",
       "description": "Detects CRLF injection followed by HTTP response header names (Content-Type, Set-Cookie, Location, etc.) in argument values. CRS 921120.",
       "type": "detect",
@@ -903,7 +903,7 @@
       "priority": 400
     },
     {
-      "id": "PE-921130",
+      "id": "921130",
       "name": "HTTP response splitting — embedded response body",
       "description": "Detects embedded HTTP response or HTML body in arguments, indicating response splitting or header injection. CRS 921130.",
       "type": "detect",
@@ -923,7 +923,7 @@
       "priority": 400
     },
     {
-      "id": "PE-921150",
+      "id": "921150",
       "name": "CRLF in argument names",
       "description": "Detects carriage return or line feed characters in argument names. These are never valid and indicate header/parameter injection attempts. CRS 921150.",
       "type": "detect",
@@ -942,7 +942,7 @@
       "priority": 400
     },
     {
-      "id": "PE-921200",
+      "id": "921200",
       "name": "LDAP injection attack",
       "description": "Detects LDAP injection patterns in arguments — LDAP filter syntax, distinguished name components, and common search operations. CRS 921200.",
       "type": "detect",
@@ -963,7 +963,7 @@
     },
 
     {
-      "id": "PE-943100",
+      "id": "943100",
       "name": "Session fixation — cookie setting via HTML",
       "description": "Detects attempts to set cookies through HTML content in arguments (JavaScript document.cookie or HTTP-EQUIV Set-Cookie). CRS 943100.",
       "type": "detect",
@@ -983,7 +983,7 @@
       "priority": 400
     },
     {
-      "id": "PE-943120",
+      "id": "943120",
       "name": "Session fixation — session ID parameter without referer",
       "description": "Detects common session ID parameter names in requests with no Referer header — suggests an attacker is injecting a session token via a crafted link. CRS 943110/943120.",
       "type": "detect",

@@ -2846,21 +2846,45 @@ func TestSummarizeEvents_TagCountsEmpty(t *testing.T) {
 // --- Detect Block Match Details Tests ---
 
 func TestParseDetectRulesDetail(t *testing.T) {
-	rules := parseDetectRulesDetail("PE-920350:WARNING:3,PE-941100:CRITICAL:5")
+	// New format: rule IDs without PE- prefix.
+	rules := parseDetectRulesDetail("920350:WARNING:3,941100:CRITICAL:5")
 	if len(rules) != 2 {
 		t.Fatalf("expected 2 rules, got %d", len(rules))
 	}
-	if rules[0].Msg != "PE-920350 (WARNING, score 3)" {
-		t.Errorf("expected msg 'PE-920350 (WARNING, score 3)', got %q", rules[0].Msg)
+	if rules[0].Name != "920350" {
+		t.Errorf("expected Name '920350', got %q", rules[0].Name)
+	}
+	if rules[0].ID != 920350 {
+		t.Errorf("expected numeric ID 920350, got %d", rules[0].ID)
+	}
+	if rules[0].Msg != "920350 (WARNING, score 3)" {
+		t.Errorf("expected msg '920350 (WARNING, score 3)', got %q", rules[0].Msg)
 	}
 	if rules[0].Severity != 4 { // WARNING = 4
 		t.Errorf("expected severity 4 (WARNING), got %d", rules[0].Severity)
 	}
-	if rules[1].Msg != "PE-941100 (CRITICAL, score 5)" {
-		t.Errorf("expected msg 'PE-941100 (CRITICAL, score 5)', got %q", rules[1].Msg)
+	if rules[1].Name != "941100" {
+		t.Errorf("expected Name '941100', got %q", rules[1].Name)
+	}
+	if rules[1].Msg != "941100 (CRITICAL, score 5)" {
+		t.Errorf("expected msg '941100 (CRITICAL, score 5)', got %q", rules[1].Msg)
 	}
 	if rules[1].Severity != 2 { // CRITICAL = 2
 		t.Errorf("expected severity 2 (CRITICAL), got %d", rules[1].Severity)
+	}
+}
+
+func TestParseDetectRulesDetail_BackwardCompat(t *testing.T) {
+	// Old format: PE- prefixed IDs should be stripped.
+	rules := parseDetectRulesDetail("PE-920350:WARNING:3")
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(rules))
+	}
+	if rules[0].Name != "920350" {
+		t.Errorf("expected Name '920350' (PE- stripped), got %q", rules[0].Name)
+	}
+	if rules[0].ID != 920350 {
+		t.Errorf("expected numeric ID 920350, got %d", rules[0].ID)
 	}
 }
 
@@ -2873,12 +2897,12 @@ func TestParseDetectRulesDetail_Empty(t *testing.T) {
 
 func TestEnrichMatchedRulesWithDetails(t *testing.T) {
 	rules := []MatchedRule{
-		{Msg: "PE-920350 (WARNING, score 3)", Severity: 4},
-		{Msg: "PE-941100 (CRITICAL, score 5)", Severity: 2},
+		{Name: "920350", Msg: "920350 (WARNING, score 3)", Severity: 4},
+		{Name: "941100", Msg: "941100 (CRITICAL, score 5)", Severity: 2},
 	}
 	matchesJSON := `[
 		{
-			"rule_id": "PE-920350",
+			"rule_id": "920350",
 			"rule_name": "Missing Host header",
 			"severity": "WARNING",
 			"score": 3,
@@ -2892,7 +2916,7 @@ func TestEnrichMatchedRulesWithDetails(t *testing.T) {
 			]
 		},
 		{
-			"rule_id": "PE-941100",
+			"rule_id": "941100",
 			"rule_name": "XSS via User-Agent",
 			"severity": "CRITICAL",
 			"score": 5,
@@ -2918,7 +2942,6 @@ func TestEnrichMatchedRulesWithDetails(t *testing.T) {
 		t.Errorf("expected VarName 'REQUEST_HEADERS:Host', got %q", rules[0].Matches[0].VarName)
 	}
 	// First rule has empty value (missing Host header), so MatchedData stays empty.
-	// This is correct — there's nothing to summarize.
 	if rules[0].MatchedData != "" {
 		t.Errorf("expected empty MatchedData for empty value match, got %q", rules[0].MatchedData)
 	}
@@ -2935,8 +2958,20 @@ func TestEnrichMatchedRulesWithDetails(t *testing.T) {
 	}
 }
 
+func TestEnrichMatchedRulesWithDetails_BackwardCompat(t *testing.T) {
+	// Old PE- prefixed rules should still match against PE- prefixed JSON entries.
+	rules := []MatchedRule{
+		{Name: "920350", Msg: "920350 (WARNING, score 3)", Severity: 4},
+	}
+	matchesJSON := `[{"rule_id": "PE-920350", "severity": "WARNING", "score": 3, "matches": [{"field": "header", "var_name": "REQUEST_HEADERS:Host", "operator": "eq"}]}]`
+	enrichMatchedRulesWithDetails(rules, matchesJSON)
+	if len(rules[0].Matches) != 1 {
+		t.Fatalf("expected 1 match (backward compat PE- prefix), got %d", len(rules[0].Matches))
+	}
+}
+
 func TestEnrichMatchedRulesWithDetails_InvalidJSON(t *testing.T) {
-	rules := []MatchedRule{{Msg: "PE-920350 (WARNING, score 3)"}}
+	rules := []MatchedRule{{Name: "920350", Msg: "920350 (WARNING, score 3)"}}
 	// Should not panic, just log a warning.
 	enrichMatchedRulesWithDetails(rules, "invalid json{{{")
 	if len(rules[0].Matches) != 0 {
@@ -2945,7 +2980,7 @@ func TestEnrichMatchedRulesWithDetails_InvalidJSON(t *testing.T) {
 }
 
 func TestEnrichMatchedRulesWithDetails_Empty(t *testing.T) {
-	rules := []MatchedRule{{Msg: "PE-920350 (WARNING, score 3)"}}
+	rules := []MatchedRule{{Name: "920350", Msg: "920350 (WARNING, score 3)"}}
 	enrichMatchedRulesWithDetails(rules, "")
 	if len(rules[0].Matches) != 0 {
 		t.Error("expected no matches for empty string")

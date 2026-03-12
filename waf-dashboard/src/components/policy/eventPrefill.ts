@@ -15,12 +15,17 @@ export interface EventPrefill {
  *  Populates ALL available conditions from the event JSON so the user
  *  can remove the ones they don't need via the "X" buttons. */
 export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
-  // Collect rule IDs from matched_rules, or fall back to primary rule_id
+  // Collect rule IDs from matched_rules, or fall back to primary rule_id.
+  // Prefer the string `name` field (e.g., "920350") over numeric `id` (which
+  // is 0 for legacy PE events). Strip any "PE-" prefix for clean display.
   const ruleIds: string[] = [];
   if (event.matched_rules && event.matched_rules.length > 0) {
     for (const r of event.matched_rules) {
-      if (r.id && !ruleIds.includes(String(r.id))) {
-        ruleIds.push(String(r.id));
+      const rid = r.name
+        ? r.name.replace(/^PE-/, "")
+        : r.id ? String(r.id) : "";
+      if (rid && rid !== "0" && !ruleIds.includes(rid)) {
+        ruleIds.push(rid);
       }
     }
   } else if (event.rule_id) {

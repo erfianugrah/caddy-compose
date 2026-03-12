@@ -242,61 +242,49 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     )}
                   </div>
                 )}
-                {/* Matched rules for detect_block with per-condition match details */}
-                {event.event_type === "detect_block" && event.matched_rules && event.matched_rules.length > 0 && (
-                  <div className="space-y-2 pt-1">
-                    <span className="text-muted-foreground text-xs uppercase tracking-wider">Matched Rules ({event.matched_rules.length})</span>
-                    {event.matched_rules.map((rule, idx) => {
-                      const sev = formatSeverity(rule.severity);
-                      return (
-                        <div key={rule.id || idx} className="rounded border border-lovelace-800 bg-lovelace-950/50 p-2 space-y-1.5 text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className={sev.color + " text-xs font-semibold"}>{sev.label}</span>
-                            <span className="text-foreground/80">{rule.msg}</span>
-                          </div>
-                          {/* Per-condition match details (new: plugin v0.11+) */}
-                          {rule.matches && rule.matches.length > 0 ? (
-                            <div className="pl-2 space-y-1">
-                              {rule.matches.map((m, mIdx) => (
-                                <div key={mIdx} className="space-y-0.5">
-                                  <div className="flex gap-2">
-                                    <span className="text-muted-foreground shrink-0">Variable:</span>
-                                    <code className="text-lv-cyan">{m.var_name}</code>
-                                    {m.operator && (
-                                      <Badge variant="outline" className="text-[10px] px-1 py-0 text-muted-foreground">{m.operator}</Badge>
-                                    )}
-                                  </div>
-                                  {m.matched_data && (
-                                    <div className="flex gap-2 items-start">
-                                      <span className="text-muted-foreground shrink-0">Matched:</span>
-                                      <code className="break-all text-lv-peach">{m.matched_data}</code>
-                                    </div>
-                                  )}
-                                  {m.value && m.value !== m.matched_data && (
-                                    <div className="flex gap-2 items-start">
-                                      <span className="text-muted-foreground shrink-0">Full Value:</span>
-                                      <code className="break-all text-foreground/70">
-                                        {m.matched_data ? (
-                                          <HighlightedText text={m.value} highlight={m.matched_data} />
-                                        ) : (
-                                          m.value
-                                        )}
-                                      </code>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : rule.matched_data ? (
-                            <div className="pl-2">
-                              <code className="break-all text-lv-peach text-xs">{rule.matched_data}</code>
-                            </div>
-                          ) : null}
+                {/* Highest Severity Rule summary for detect_block (mirrors Coraza's anomaly score block) */}
+                {event.event_type === "detect_block" && event.matched_rules && event.matched_rules.length > 0 && (() => {
+                  // Find the highest severity rule (lowest severity number = highest severity)
+                  const highest = event.matched_rules.reduce((best, r) =>
+                    r.severity > 0 && (best.severity === 0 || r.severity < best.severity) ? r : best
+                  , event.matched_rules[0]);
+                  const sev = formatSeverity(highest.severity);
+                  const ruleId = highest.name || (highest.id > 0 ? String(highest.id) : null);
+                  // Use the first match detail for matched value display
+                  const firstMatch = highest.matches?.[0];
+                  return (
+                    <div className="space-y-1 pt-1 mt-1 border-t border-lovelace-800">
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground/60">
+                        Highest Severity Rule
+                      </div>
+                      {ruleId && (
+                        <div className="flex gap-2 items-center">
+                          <span className="text-muted-foreground">Rule ID:</span>
+                          <Badge variant="outline" className={T.badgeMono}>{ruleId}</Badge>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                      <div className="flex gap-2">
+                        <span className="text-muted-foreground">Message:</span>
+                        <span className="text-foreground">{highest.msg || "N/A"}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-muted-foreground">Severity:</span>
+                        <span className={sev.color}>{sev.label}</span>
+                      </div>
+                      {firstMatch ? (
+                        <div className="flex gap-2 items-start">
+                          <span className="text-muted-foreground shrink-0">Matched:</span>
+                          <code className="break-all text-lv-peach">{firstMatch.matched_data || firstMatch.value || "—"}</code>
+                        </div>
+                      ) : highest.matched_data ? (
+                        <div className="flex gap-2 items-start">
+                          <span className="text-muted-foreground shrink-0">Matched:</span>
+                          <code className="break-all text-lv-peach">{highest.matched_data}</code>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
                 {event.user_agent && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">User-Agent:</span>
@@ -448,21 +436,59 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
         </div>
       </div>
 
-      {/* All Matched Rules (when multiple rules fired) */}
-      {event.matched_rules && event.matched_rules.length > 1 && (
+      {/* All Matched Rules — show for detect_block (any count) and CRS events (>1) */}
+      {event.matched_rules && (
+        event.event_type === "detect_block"
+          ? event.matched_rules.length >= 1
+          : event.matched_rules.length > 1
+      ) && (
         <ExpandableSection title={`All Matched Rules (${event.matched_rules.length})`}>
           <div className="space-y-3">
-            {event.matched_rules.map((rule) => {
+            {event.matched_rules.map((rule, idx) => {
               const sev = formatSeverity(rule.severity);
+              const ruleId = rule.name || (rule.id > 0 ? String(rule.id) : null);
               const parsed = rule.matched_data ? parseMatchedData(rule.matched_data) : null;
               return (
-                <div key={rule.id} className="rounded border border-lovelace-800 bg-lovelace-950/50 p-2 space-y-1 text-xs">
+                <div key={rule.name || rule.id || idx} className="rounded border border-lovelace-800 bg-lovelace-950/50 p-2 space-y-1.5 text-xs">
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className={T.badgeMono}>{rule.id}</Badge>
+                    {ruleId && <Badge variant="outline" className={T.badgeMono}>{ruleId}</Badge>}
                     <span className={sev.color + " text-xs font-medium"}>{sev.label}</span>
                     <span className="text-foreground/80 truncate">{rule.msg}</span>
                   </div>
-                  {parsed ? (
+                  {/* Per-condition match details (detect rules via plugin v0.11+) */}
+                  {rule.matches && rule.matches.length > 0 ? (
+                    <div className="pl-2 space-y-1">
+                      {rule.matches.map((m, mIdx) => (
+                        <div key={mIdx} className="space-y-0.5">
+                          <div className="flex gap-2">
+                            <span className="text-muted-foreground shrink-0">Variable:</span>
+                            <code className="text-lv-cyan">{m.var_name}</code>
+                            {m.operator && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 text-muted-foreground">{m.operator}</Badge>
+                            )}
+                          </div>
+                          {m.matched_data && (
+                            <div className="flex gap-2 items-start">
+                              <span className="text-muted-foreground shrink-0">Matched:</span>
+                              <code className="break-all text-lv-peach">{m.matched_data}</code>
+                            </div>
+                          )}
+                          {m.value && m.value !== m.matched_data && (
+                            <div className="flex gap-2 items-start">
+                              <span className="text-muted-foreground shrink-0">Full Value:</span>
+                              <code className="break-all text-foreground/70">
+                                {m.matched_data ? (
+                                  <HighlightedText text={m.value} highlight={m.matched_data} />
+                                ) : (
+                                  m.value
+                                )}
+                              </code>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : parsed ? (
                     <div className="pl-2 space-y-0.5">
                       <div className="flex gap-2">
                         <span className="text-muted-foreground">Variable:</span>

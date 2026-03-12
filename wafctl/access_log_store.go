@@ -907,7 +907,7 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		if p == "" {
 			continue
 		}
-		// Format: "PE-920350:WARNING:3"
+		// Format: "920350:WARNING:3" (or legacy "PE-920350:WARNING:3")
 		fields := strings.SplitN(p, ":", 3)
 		if len(fields) < 3 {
 			continue
@@ -915,6 +915,10 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		ruleID := fields[0]
 		severity := fields[1]
 		score, _ := strconv.Atoi(fields[2])
+		// Strip PE- prefix if present (backward compat with pre-v6 default rules).
+		cleanID := strings.TrimPrefix(ruleID, "PE-")
+		// Try to parse as numeric rule ID for the int field.
+		numID, _ := strconv.Atoi(cleanID)
 		// Map severity string to numeric (matches Coraza convention).
 		sevNum := 0
 		switch severity {
@@ -928,7 +932,9 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 			sevNum = 5
 		}
 		rules = append(rules, MatchedRule{
-			Msg:      ruleID + " (" + severity + ", score " + strconv.Itoa(score) + ")",
+			ID:       numID,
+			Name:     cleanID,
+			Msg:      cleanID + " (" + severity + ", score " + strconv.Itoa(score) + ")",
 			Severity: sevNum,
 			Tags:     []string{"detect", "score:" + strconv.Itoa(score)},
 		})
@@ -960,13 +966,17 @@ func enrichMatchedRulesWithDetails(rules []MatchedRule, detectMatchesJSON string
 		return
 	}
 
-	// Build a lookup by rule_id prefix (detect_rules "Msg" starts with the rule ID).
-	// MatchedRule.Msg format: "PE-920350 (WARNING, score 3)"
-	// detectMatchEntry.RuleID: "PE-920350"
+	// Match by rule name: MatchedRule.Name is the clean rule ID (e.g., "920350").
+	// detectMatchEntry.RuleID may have PE- prefix (pre-v6) or be clean.
 	for i := range rules {
 		for _, entry := range entries {
-			if strings.HasPrefix(rules[i].Msg, entry.RuleID+" ") {
+			entryCleanID := strings.TrimPrefix(entry.RuleID, "PE-")
+			if rules[i].Name == entryCleanID || strings.HasPrefix(rules[i].Msg, entry.RuleID+" ") {
 				rules[i].Matches = entry.Matches
+				// Ensure Name is set from the match entry if not already.
+				if rules[i].Name == "" {
+					rules[i].Name = entryCleanID
+				}
 				// Also set MatchedData to a summary if the rule has match details.
 				if len(entry.Matches) > 0 && rules[i].MatchedData == "" {
 					// Use the first match's data as the primary MatchedData.

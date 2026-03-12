@@ -2844,7 +2844,7 @@ func TestDefaultRulesAPI(t *testing.T) {
 		t.Fatalf("unmarshal default rules: %v", err)
 	}
 
-	// Should have 45 default rules (36 from v4 + 11 new 932xxx RCE - 2 replaced PE-9100010/PE-9100011)
+	// Should have 45 default rules (36 from v4 + 11 new 932xxx RCE - 2 replaced 9100010/9100011)
 	if len(rules) != 45 {
 		t.Errorf("expected 45 default rules, got %d", len(rules))
 	}
@@ -2855,74 +2855,74 @@ func TestDefaultRulesAPI(t *testing.T) {
 		ruleIDs[jsonField(raw, "id")] = true
 	}
 	// v0.10.3 scanner/generic UA rules
-	for _, id := range []string{"PE-9100032", "PE-9100035", "PE-9100036"} {
+	for _, id := range []string{"9100032", "9100035", "9100036"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing default rule %s", id)
 		}
 	}
 	// v0.10.4 920xxx Protocol Enforcement rules (spot check)
-	for _, id := range []string{"PE-920170", "PE-920440", "PE-920300", "PE-920311"} {
+	for _, id := range []string{"920170", "920440", "920300", "920311"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing 920xxx default rule %s", id)
 		}
 	}
 	// v0.11.0 LFI / Path Traversal (930xxx)
-	for _, id := range []string{"PE-930110", "PE-930111", "PE-930120", "PE-930130"} {
+	for _, id := range []string{"930110", "930111", "930120", "930130"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing 930xxx default rule %s", id)
 		}
 	}
 	// v0.11.0 Protocol Attack / HTTP Response Splitting (921xxx)
-	for _, id := range []string{"PE-921110", "PE-921120", "PE-921130", "PE-921150", "PE-921200"} {
+	for _, id := range []string{"921110", "921120", "921130", "921150", "921200"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing 921xxx default rule %s", id)
 		}
 	}
 	// v0.11.0 Session Fixation (943xxx)
-	for _, id := range []string{"PE-943100", "PE-943120"} {
+	for _, id := range []string{"943100", "943120"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing 943xxx default rule %s", id)
 		}
 	}
-	// v0.12.0 RCE (932xxx) — replaced PE-9100010/PE-9100011
-	for _, id := range []string{"PE-932100", "PE-932120", "PE-932130", "PE-932140", "PE-932150", "PE-932160", "PE-932170", "PE-932171", "PE-932180", "PE-932270", "PE-932280"} {
+	// v0.12.0 RCE (932xxx) — replaced 9100010/9100011
+	for _, id := range []string{"932100", "932120", "932130", "932140", "932150", "932160", "932170", "932171", "932180", "932270", "932280"} {
 		if !ruleIDs[id] {
 			t.Errorf("missing 932xxx default rule %s", id)
 		}
 	}
 	// Verify old rules were replaced
-	for _, id := range []string{"PE-9100010", "PE-9100011"} {
+	for _, id := range []string{"9100010", "9100011"} {
 		if ruleIDs[id] {
 			t.Errorf("old rule %s should have been replaced by 932xxx equivalents", id)
 		}
 	}
 
-	// Verify PE-9100032 is a block rule with phrase_match.
-	resp2, body2 := httpGet(t, wafctlURL+"/api/default-rules/PE-9100032")
+	// Verify 9100032 is a block rule with phrase_match.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/default-rules/9100032")
 	assertCode(t, "get scanner rule", 200, resp2)
 	if typ := jsonField(body2, "type"); typ != "block" {
-		t.Errorf("PE-9100032 type: want block, got %s", typ)
+		t.Errorf("9100032 type: want block, got %s", typ)
 	}
 
-	// Verify PE-920440 is a detect rule with phrase_match (restricted extensions).
-	resp3, body3 := httpGet(t, wafctlURL+"/api/default-rules/PE-920440")
+	// Verify 920440 is a detect rule with phrase_match (restricted extensions).
+	resp3, body3 := httpGet(t, wafctlURL+"/api/default-rules/920440")
 	assertCode(t, "get restricted extensions rule", 200, resp3)
 	if typ := jsonField(body3, "type"); typ != "detect" {
-		t.Errorf("PE-920440 type: want detect, got %s", typ)
+		t.Errorf("920440 type: want detect, got %s", typ)
 	}
 
-	// Verify PE-930120 is a detect rule with phrase_match (OS file access).
-	resp4, body4 := httpGet(t, wafctlURL+"/api/default-rules/PE-930120")
+	// Verify 930120 is a detect rule with phrase_match (OS file access).
+	resp4, body4 := httpGet(t, wafctlURL+"/api/default-rules/930120")
 	assertCode(t, "get OS file access rule", 200, resp4)
 	if typ := jsonField(body4, "type"); typ != "detect" {
-		t.Errorf("PE-930120 type: want detect, got %s", typ)
+		t.Errorf("930120 type: want detect, got %s", typ)
 	}
 
-	// Verify PE-943120 is a detect rule with AND group (session param + no referer).
-	resp5, body5 := httpGet(t, wafctlURL+"/api/default-rules/PE-943120")
+	// Verify 943120 is a detect rule with AND group (session param + no referer).
+	resp5, body5 := httpGet(t, wafctlURL+"/api/default-rules/943120")
 	assertCode(t, "get session fixation rule", 200, resp5)
 	if typ := jsonField(body5, "type"); typ != "detect" {
-		t.Errorf("PE-943120 type: want detect, got %s", typ)
+		t.Errorf("943120 type: want detect, got %s", typ)
 	}
 
 	t.Log("confirmed: default rules API returns all 45 rules including 930xxx/921xxx/932xxx/943xxx")
@@ -3645,7 +3645,7 @@ func TestPolicyEngineDetectMatchDetails(t *testing.T) {
 		}
 
 		// If the plugin is < v0.11 (no detect_matches), we may not find a rule by name.
-		// The older format only has "PE-xxx (SEVERITY, score N)" in msg.
+		// The older format only has "xxx (SEVERITY, score N)" in msg.
 		// In that case, just check that matched_rules exist and skip detail checks.
 		if targetRule == nil {
 			t.Log("custom rule not found by name in matched_rules (may be older format) — checking any rule has msg")
