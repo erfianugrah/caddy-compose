@@ -96,8 +96,17 @@ func parseEvent(entry AuditLogEntry) Event {
 		status = 403
 	}
 
+	// Use the Caddy request UUID (X-Request-Id) as the event ID when available.
+	// This gives every request a single ID shared across security events
+	// and general logs. Falls back to Coraza's transaction ID for audit log
+	// entries that predate the X-Request-Id header injection.
+	eventID := tx.ID
+	if rid := headerValue(tx.Request.Headers, "X-Request-Id"); rid != "" {
+		eventID = rid
+	}
+
 	ev := Event{
-		ID:             tx.ID,
+		ID:             eventID,
 		Timestamp:      ts,
 		ClientIP:       tx.ClientIP,
 		Service:        tx.ServerID,
@@ -205,7 +214,8 @@ func parseEvent(entry AuditLogEntry) Event {
 		}
 	}
 
-	// Extract Caddy-generated request ID for cross-log correlation.
+	// RequestID = Caddy UUID for cross-log correlation. When the unified
+	// request ID is active (eventID != tx.ID), both fields carry the same value.
 	if rid := headerValue(tx.Request.Headers, "X-Request-Id"); rid != "" {
 		ev.RequestID = rid
 	}

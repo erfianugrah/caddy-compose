@@ -242,18 +242,59 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     )}
                   </div>
                 )}
-                {/* Matched rules for detect_block (e.g. "PE-920350 (WARNING, score 3)") */}
+                {/* Matched rules for detect_block with per-condition match details */}
                 {event.event_type === "detect_block" && event.matched_rules && event.matched_rules.length > 0 && (
-                  <div className="space-y-1 pt-1">
+                  <div className="space-y-2 pt-1">
                     <span className="text-muted-foreground text-xs uppercase tracking-wider">Matched Rules ({event.matched_rules.length})</span>
-                    {event.matched_rules.map((rule, idx) => (
-                      <div key={rule.id || idx} className="flex items-center gap-2 text-xs">
-                        {rule.id > 0 && (
-                          <Badge variant="outline" className={T.badgeMono}>{rule.id}</Badge>
-                        )}
-                        <span className="text-foreground/80">{rule.msg}</span>
-                      </div>
-                    ))}
+                    {event.matched_rules.map((rule, idx) => {
+                      const sev = formatSeverity(rule.severity);
+                      return (
+                        <div key={rule.id || idx} className="rounded border border-lovelace-800 bg-lovelace-950/50 p-2 space-y-1.5 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={sev.color + " text-xs font-semibold"}>{sev.label}</span>
+                            <span className="text-foreground/80">{rule.msg}</span>
+                          </div>
+                          {/* Per-condition match details (new: plugin v0.11+) */}
+                          {rule.matches && rule.matches.length > 0 ? (
+                            <div className="pl-2 space-y-1">
+                              {rule.matches.map((m, mIdx) => (
+                                <div key={mIdx} className="space-y-0.5">
+                                  <div className="flex gap-2">
+                                    <span className="text-muted-foreground shrink-0">Variable:</span>
+                                    <code className="text-lv-cyan">{m.var_name}</code>
+                                    {m.operator && (
+                                      <Badge variant="outline" className="text-[10px] px-1 py-0 text-muted-foreground">{m.operator}</Badge>
+                                    )}
+                                  </div>
+                                  {m.matched_data && (
+                                    <div className="flex gap-2 items-start">
+                                      <span className="text-muted-foreground shrink-0">Matched:</span>
+                                      <code className="break-all text-lv-peach">{m.matched_data}</code>
+                                    </div>
+                                  )}
+                                  {m.value && m.value !== m.matched_data && (
+                                    <div className="flex gap-2 items-start">
+                                      <span className="text-muted-foreground shrink-0">Full Value:</span>
+                                      <code className="break-all text-foreground/70">
+                                        {m.matched_data ? (
+                                          <HighlightedText text={m.value} highlight={m.matched_data} />
+                                        ) : (
+                                          m.value
+                                        )}
+                                      </code>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : rule.matched_data ? (
+                            <div className="pl-2">
+                              <code className="break-all text-lv-peach text-xs">{rule.matched_data}</code>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {event.user_agent && (

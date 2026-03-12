@@ -106,6 +106,14 @@ export interface WAFEvent {
   tags?: string[];
 }
 
+export interface MatchedRuleDetailInfo {
+  field: string;        // condition field (e.g., "all_args_values", "header")
+  var_name: string;     // SecRule-style variable name (e.g., "ARGS:username", "REQUEST_HEADERS:User-Agent")
+  value?: string;       // actual input value that was tested (truncated)
+  matched_data?: string; // regex group 0, phrase_match hit, or matched literal
+  operator?: string;     // operator name (e.g., "regex", "phrase_match")
+}
+
 export interface MatchedRuleInfo {
   id: number;
   msg: string;
@@ -113,6 +121,7 @@ export interface MatchedRuleInfo {
   matched_data?: string;
   file?: string;
   tags?: string[];
+  matches?: MatchedRuleDetailInfo[]; // per-condition match details (detect rules only)
 }
 
 export interface EventsResponse {

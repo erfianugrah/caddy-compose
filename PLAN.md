@@ -965,20 +965,149 @@ Default rules ship with hardcoded `list_items` from CRS 4.23.0 (restricted exten
 
 **Effort:** Medium (parser + store + periodic goroutine + deploy integration)
 
+### Unified Event ID
+
+Currently every request can generate multiple unrelated IDs across subsystems:
+
+| Subsystem | ID Source | Format | Example |
+|-----------|----------|--------|---------|
+| Caddy | `{http.request.uuid}` | UUID | `a1b2c3d4-e5f6-4789-abcd-0123456789ab` |
+| Coraza audit log | `transaction.id` | Opaque hex | `AAA111BBB222` |
+| wafctl access events | `ephemeralID()` | `rl-<millis>-<counter>` | `rl-1773299701769-362807` |
+| wafctl WAF events | Coraza passthrough | Same as Coraza | `AAA111BBB222` |
+
+The same HTTP request produces a Caddy UUID, a Coraza transaction ID, and an ephemeral
+`rl-` ID — three different identifiers for one request. There is no single request ID to
+correlate a security event in the events page with the same request in general logs.
+
+**Goal:** One request = one ID everywhere (similar concept to Cloudflare's `cf-ray`). Caddy's
+`{http.request.uuid}` is the natural choice — it's per-request, unique, and already
+available to all middleware (policy engine, Coraza, access log, general log).
+
+**Current state (partial):**
+- Caddy already emits `{http.request.uuid}` as `X-Request-Id` header AND `log_append request_id`
+- Access log events already parse `RequestID` from the log (via `accessLogRequestID()`)
+- WAF events extract `RequestID` from the `X-Request-Id` request header (Coraza sees it)
+- General log events carry `RequestID` from the same header
+- BUT: `Event.ID` is a SEPARATE field from `Event.RequestID` — the "event ID" shown in
+  the UI is the ephemeral `rl-` or Coraza transaction ID, not the Caddy UUID
+
+**Design:**
+- `Event.ID` = Caddy request UUID. One field, one source of truth.
+- Drop `ephemeralID()` entirely — access log events use `RequestID` as their `Event.ID`
+- WAF events (transitional, until Coraza removal): use `RequestID` (from `X-Request-Id`
+  header) as `Event.ID`, fall back to Coraza transaction ID only if header is missing
+  (shouldn't happen since the header is set in the Caddyfile before Coraza runs)
+- `Event.RequestID` field: keep for backward compat but it equals `Event.ID` — eventually
+  deprecate and remove in a breaking API version
+- General logs already have `RequestID` — clicking a security event can jump to the
+  general log entry for the same request (cross-reference by ID)
+- Frontend: event detail panel shows the request ID prominently; "View in General Logs" link
+  filters by `request_id=<event_id>`
+
+**Migration:**
+- Existing JSONL events on disk have old-format IDs — these are fine, they age out
+  naturally via `WAF_EVENT_MAX_AGE` (90 days). No backfill needed.
+- API consumers see UUID-format IDs going forward. The `rl-` prefix disappears.
+
+**Tasks:**
+- [x] wafctl: `RateLimitEventToEvent()` — uses `rle.RequestID` as `Event.ID`, falls back to `ephemeralID()`
+- [x] wafctl: `parseEvent()` — uses `X-Request-Id` header as `Event.ID`, falls back to `tx.ID`
+- [x] wafctl: Updated tests — unified request ID assertions in `TestParseEvent_RequestID`, `TestRateLimitEventToEvent_RequestID`, `TestAccessLogStoreRequestID_PropagatedToEvent`
+- [ ] wafctl: Remove `ephemeralID()` and `ephemeralCounter` once Coraza is fully removed (v1.0)
+- [ ] Frontend: Show unified request ID prominently in event detail, add "View in General Logs" cross-link
+- [x] E2e: `TestPolicyBlockEvent_RequestContext` verifies non-`rl-` event ID
+
+**Effort:** Low-Medium. The plumbing exists; this is mostly wiring `RequestID` into `Event.ID`.
+
+### Full Request Context for Policy Engine Events
+
+Policy engine events (block, allow, rate_limit, detect_block) arrive via the Caddy access
+log. Unlike Coraza's audit log — which includes the complete request payload (all headers,
+body, args, response headers) — the access log only contains what Caddy logs by default
+plus `log_append` fields. This means policy engine events are missing:
+
+| Data | Coraza Had It | Policy Engine Has It | Source |
+|------|:---:|:---:|--------|
+| Request headers (all) | Yes | No | Audit log part B |
+| Request body | Yes | No | Audit log part I |
+| Request args (parsed) | Yes | No | Audit log part C |
+| Response headers (all) | Yes | Partial (`resp_headers`) | Caddy logs selected |
+| Matched rule details | Yes | Yes (v0.11.0) | `policy_detect_matches` |
+| Anomaly score | Yes | Yes | `policy_anomaly_score` |
+| Client IP, method, URI, UA | Yes | Yes | Standard access log fields |
+
+**Impact:** The event detail panel for policy engine events shows only basic request
+info (method, URI, client, status, user-agent). No request headers, no body, no args.
+For investigating why a rule fired, operators need the full request context — especially
+headers (which trigger many CRS rules like restricted headers, missing Host, etc.).
+
+**Design — Plugin-side header capture:**
+
+The policy engine plugin already has access to the full `*http.Request`. When a request
+matches any rule (block, detect, rate_limit), the plugin can serialize the request headers
+and body excerpt into Caddy variables for `log_append`:
+
+- `{http.vars.policy_engine.request_headers}` — JSON-serialized request headers (all)
+- `{http.vars.policy_engine.request_body}` — first N bytes of request body (capped,
+  same 13 MiB limit as existing body reading, but truncated for logging — e.g., 8 KB)
+
+These are only populated for requests that actually trigger a rule action (not every
+request — that would bloat access logs). The plugin already reads the body when
+`needsBody` is true; for header capture there's zero overhead since `r.Header` is
+already available.
+
+**Alternatively — selective header capture:** Only emit headers for block/detect_block
+events (not allow/rate_limit) to keep log volume reasonable. Or emit a configurable
+subset (e.g., all request headers minus large Cookie values).
+
+**wafctl changes:**
+- `AccessLogEntry` gets `PolicyRequestHeaders` field (parsed from log_append JSON)
+- `RateLimitEvent` gets `RequestHeaders` field, propagated through `RateLimitEventToEvent()`
+- `Event` already has `RequestHeaders`, `RequestBody`, `RequestArgs` fields from Coraza — just wire them up
+
+**Caddyfile changes:**
+- Add `log_append policy_request_headers {http.vars.policy_engine.request_headers}`
+- Add `log_append policy_request_body {http.vars.policy_engine.request_body}` (optional)
+
+**Frontend changes:**
+- Event detail panel already renders headers/body/args when present — no UI changes needed
+- Policy engine events will show the same rich detail as Coraza events once the data flows through
+
+**Tasks:**
+- [x] Plugin: `serializeRequestHeaders()` — JSON-serializes `r.Header` with 500-char truncation per value
+- [x] Plugin: `captureRequestContext()` — sets `policy_engine.request_headers` + `policy_engine.request_body` vars
+- [x] Plugin: Wired into block/honeypot (line 527) and detect_block (line 645) emit paths
+- [x] Plugin: Body excerpt capture from `parsedBody.raw` (only if already read for body conditions)
+- [x] Plugin: 7 new tests — header serialization, truncation, block/detect_block capture, allow/below-threshold don't capture
+- [x] Caddyfile: Added `log_append policy_request_headers` + `log_append policy_request_body` to `(site_log)`
+- [x] E2e Caddyfile: Same log_append additions
+- [x] wafctl: `parsePolicyRequestHeaders()` + `RequestHeaders`/`RequestBody` on `RateLimitEvent`
+- [x] wafctl: Wired through access log parsing and `RateLimitEventToEvent()` → `Event.RequestHeaders`/`RequestBody`
+- [x] wafctl: 5 new tests (propagation, parse, empty, invalid JSON)
+- [x] E2e: `TestPolicyBlockEvent_RequestContext` — full pipeline test
+- [ ] Frontend: Already renders `request_headers` when present — no changes needed
+
+**Effort:** Medium. Plugin changes are straightforward (serialize `r.Header`). Main risk is
+log volume — full headers per blocked request could add 1-2 KB per event line. At typical
+block rates (<100/day for legitimate traffic) this is negligible.
+
 ### Recommended Order
 
-**Revised 2026-03-11**: Manual porting replaced by automated CRS converter.
+**Revised 2026-03-12**: Manual porting replaced by automated CRS converter. Added unified event ID and request context.
 
 1. ~~Port existing custom rules → `default-rules.json`~~ — **DONE** (v0.10.1, proof of concept)
 2. ~~Port Protocol Enforcement (920xxx)~~ — **DONE** (v0.10.4, 14 rules)
 3. ~~Port LFI + Response Splitting + Session Fixation~~ — **DONE** (v0.11.0)
 4. ~~Port RCE (932xxx)~~ — **DONE** (v0.12.0, 11 rules)
 5. **Matched payload observability** (plugin v0.11.x) — CRITICAL, biggest regression from Coraza — **NEXT**
-6. **Build CRS auto-converter** (`tools/crs-converter/`) — replaces all remaining manual porting
-7. **Add missing plugin features** (transforms, operators, condition enhancements) — parallel with 6
-8. **Run converter + validate against CRS regression tests** — validates correctness
-9. Frontend catch-up sprint (matched payload display, CRS categories) — can happen in parallel
-10. Remove Coraza from Docker image (v1.0)
+6. **Unified Event ID** — deploy alongside #5 (same wafctl release)
+7. **Full request context for policy engine events** — deploy alongside #5 (same plugin + wafctl release); without this, event detail is bare compared to Coraza
+8. **Build CRS auto-converter** (`tools/crs-converter/`) — replaces all remaining manual porting
+9. **Add missing plugin features** (transforms, operators, condition enhancements) — parallel with 8
+10. **Run converter + validate against CRS regression tests** — validates correctness
+11. Frontend catch-up sprint (matched payload display, CRS categories, request ID cross-links, request context) — can happen in parallel
+12. Remove Coraza from Docker image (v1.0)
 
 ---
 

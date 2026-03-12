@@ -20,22 +20,25 @@ import (
 
 // AccessLogEntry is the JSON structure Caddy writes for each request.
 type AccessLogEntry struct {
-	Level             string              `json:"level"`
-	Ts                string              `json:"ts"` // wall clock format: "2026/02/22 12:43:20"
-	Logger            string              `json:"logger"`
-	Msg               string              `json:"msg"`
-	Request           AccessLogReq        `json:"request"`
-	RespHeaders       map[string][]string `json:"resp_headers"`
-	Status            int                 `json:"status"`
-	Size              int                 `json:"size"`
-	Duration          float64             `json:"duration"`
-	BytesRead         int                 `json:"bytes_read"`                    // request body bytes consumed
-	RequestID         string              `json:"request_id,omitempty"`          // Caddy UUID via log_append
-	PolicyAction      string              `json:"policy_action,omitempty"`       // log_append: policy engine action (allow/block/honeypot/detect_block)
-	PolicyRule        string              `json:"policy_rule,omitempty"`         // log_append: matched policy engine rule name
-	PolicyTags        string              `json:"policy_tags,omitempty"`         // log_append: comma-separated tags from matched rule(s)
-	PolicyScore       string              `json:"policy_score,omitempty"`        // log_append: anomaly score (detect rules only)
-	PolicyDetectRules string              `json:"policy_detect_rules,omitempty"` // log_append: matched detect rule details "id:severity:score,..."
+	Level                string              `json:"level"`
+	Ts                   string              `json:"ts"` // wall clock format: "2026/02/22 12:43:20"
+	Logger               string              `json:"logger"`
+	Msg                  string              `json:"msg"`
+	Request              AccessLogReq        `json:"request"`
+	RespHeaders          map[string][]string `json:"resp_headers"`
+	Status               int                 `json:"status"`
+	Size                 int                 `json:"size"`
+	Duration             float64             `json:"duration"`
+	BytesRead            int                 `json:"bytes_read"`                       // request body bytes consumed
+	RequestID            string              `json:"request_id,omitempty"`             // Caddy UUID via log_append
+	PolicyAction         string              `json:"policy_action,omitempty"`          // log_append: policy engine action (allow/block/honeypot/detect_block)
+	PolicyRule           string              `json:"policy_rule,omitempty"`            // log_append: matched policy engine rule name
+	PolicyTags           string              `json:"policy_tags,omitempty"`            // log_append: comma-separated tags from matched rule(s)
+	PolicyScore          string              `json:"policy_score,omitempty"`           // log_append: anomaly score (detect rules only)
+	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`    // log_append: matched detect rule details "id:severity:score,..."
+	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`  // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
+	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"` // log_append: JSON-serialized request headers (block/detect_block only)
+	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`    // log_append: truncated request body excerpt (block/detect_block only)
 }
 
 type AccessLogReq struct {
@@ -63,20 +66,23 @@ type AccessLogTLS struct {
 // ─── Rate Limit Event (parsed 429) ─────────────────────────────────
 
 type RateLimitEvent struct {
-	Timestamp    time.Time `json:"timestamp"`
-	ClientIP     string    `json:"client_ip"`
-	Country      string    `json:"country,omitempty"`
-	Service      string    `json:"service"`
-	Method       string    `json:"method"`
-	URI          string    `json:"uri"`
-	Protocol     string    `json:"protocol,omitempty"` // e.g. "HTTP/2.0"
-	UserAgent    string    `json:"user_agent"`
-	Source       string    `json:"source,omitempty"`        // "" = rate_limited, "ipsum" = ipsum_blocked, "policy" = policy engine block, "detect_block" = anomaly threshold
-	RuleName     string    `json:"rule_name,omitempty"`     // policy engine: X-Blocked-Rule header value or detect summary
-	RequestID    string    `json:"request_id,omitempty"`    // Caddy UUID for cross-log correlation
-	AnomalyScore int       `json:"anomaly_score,omitempty"` // detect_block: total anomaly score
-	DetectRules  string    `json:"detect_rules,omitempty"`  // detect_block: "id:severity:score,..." detail string
-	InlineTags   []string  `json:"inline_tags,omitempty"`   // detect_block: tags from policy_tags log_append field
+	Timestamp      time.Time           `json:"timestamp"`
+	ClientIP       string              `json:"client_ip"`
+	Country        string              `json:"country,omitempty"`
+	Service        string              `json:"service"`
+	Method         string              `json:"method"`
+	URI            string              `json:"uri"`
+	Protocol       string              `json:"protocol,omitempty"` // e.g. "HTTP/2.0"
+	UserAgent      string              `json:"user_agent"`
+	Source         string              `json:"source,omitempty"`          // "" = rate_limited, "ipsum" = ipsum_blocked, "policy" = policy engine block, "detect_block" = anomaly threshold
+	RuleName       string              `json:"rule_name,omitempty"`       // policy engine: X-Blocked-Rule header value or detect summary
+	RequestID      string              `json:"request_id,omitempty"`      // Caddy UUID for cross-log correlation
+	AnomalyScore   int                 `json:"anomaly_score,omitempty"`   // detect_block: total anomaly score
+	DetectRules    string              `json:"detect_rules,omitempty"`    // detect_block: "id:severity:score,..." detail string
+	DetectMatches  string              `json:"detect_matches,omitempty"`  // detect_block: raw JSON of per-rule match details
+	InlineTags     []string            `json:"inline_tags,omitempty"`     // detect_block: tags from policy_tags log_append field
+	RequestHeaders map[string][]string `json:"request_headers,omitempty"` // block/detect_block: captured request headers
+	RequestBody    string              `json:"request_body,omitempty"`    // block/detect_block: truncated body excerpt
 }
 
 // headerValuesCI does a case-insensitive header lookup on a map[string][]string
@@ -498,6 +504,7 @@ func (s *AccessLogStore) Load() {
 						evt.Source = "detect_block"
 						evt.RuleName = policyBlockedRuleName(entry)
 						evt.DetectRules = entry.PolicyDetectRules
+						evt.DetectMatches = entry.PolicyDetectMatches
 						if entry.PolicyScore != "" {
 							evt.AnomalyScore, _ = strconv.Atoi(entry.PolicyScore)
 						} else if s := headerValueCI(entry.RespHeaders, "X-Anomaly-Score"); s != "" {
@@ -509,6 +516,13 @@ func (s *AccessLogStore) Load() {
 					} else if isPolicy {
 						evt.Source = "policy"
 						evt.RuleName = policyBlockedRuleName(entry)
+					}
+					// Capture request context from policy engine (block/detect_block only).
+					if isPolicy {
+						evt.RequestHeaders = parsePolicyRequestHeaders(entry.PolicyRequestHeaders)
+						if entry.PolicyRequestBody != "" {
+							evt.RequestBody = entry.PolicyRequestBody
+						}
 					} else if isRateLimit && isPolicyRateLimit(entry) {
 						// Policy engine rate limit — has rule name attribution.
 						evt.Source = "policy_rl"
@@ -700,6 +714,20 @@ func (s *AccessLogStore) snapshotRange(start, end time.Time) []RateLimitEvent {
 	return cp
 }
 
+// parsePolicyRequestHeaders parses the JSON-serialized request headers
+// from the policy_request_headers log_append field. Returns nil on empty
+// input or parse failure (graceful degradation for older plugin versions).
+func parsePolicyRequestHeaders(raw string) map[string][]string {
+	if raw == "" {
+		return nil
+	}
+	var hdrs map[string][]string
+	if err := json.Unmarshal([]byte(raw), &hdrs); err != nil {
+		return nil
+	}
+	return hdrs
+}
+
 // ─── Converter: RateLimitEvent → Event ──────────────────────────────
 
 // ephemeralCounter generates fast sequential IDs for ephemeral RL→Event conversions.
@@ -738,8 +766,16 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
 	}
+	// Use the Caddy request UUID as the unified event ID.
+	// This ensures the same request has one ID across security events and
+	// general logs. Fall back to ephemeralID() only for legacy log entries
+	// that pre-date the log_append request_id directive.
+	eventID := rle.RequestID
+	if eventID == "" {
+		eventID = ephemeralID()
+	}
 	evt := Event{
-		ID:             ephemeralID(),
+		ID:             eventID,
 		Timestamp:      rle.Timestamp,
 		ClientIP:       rle.ClientIP,
 		Country:        rle.Country,
@@ -765,13 +801,25 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 			evt.RuleMsg = rle.RuleName
 		}
 		// Parse detect_rules into matched_rules for the event response.
+		// If rich match details are available (policy_detect_matches JSON),
+		// use those to enrich the MatchedRule entries with per-condition data.
 		if rle.DetectRules != "" {
 			evt.MatchedRules = parseDetectRulesDetail(rle.DetectRules)
+		}
+		if rle.DetectMatches != "" {
+			enrichMatchedRulesWithDetails(evt.MatchedRules, rle.DetectMatches)
 		}
 	}
 	// For policy engine rate limits, set the rule message from the rule name.
 	if rle.Source == "policy_rl" && rle.RuleName != "" {
 		evt.RuleMsg = "Rate Limited: " + rle.RuleName
+	}
+	// Propagate request context (headers/body) for block/detect_block events.
+	if len(rle.RequestHeaders) > 0 {
+		evt.RequestHeaders = rle.RequestHeaders
+	}
+	if rle.RequestBody != "" {
+		evt.RequestBody = rle.RequestBody
 	}
 	return evt
 }
@@ -886,6 +934,53 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		})
 	}
 	return rules
+}
+
+// detectMatchEntry mirrors the plugin's detectMatchEntry struct for JSON deserialization.
+type detectMatchEntry struct {
+	RuleID   string              `json:"rule_id"`
+	RuleName string              `json:"rule_name,omitempty"`
+	Severity string              `json:"severity"`
+	Score    int                 `json:"score"`
+	Matches  []MatchedRuleDetail `json:"matches,omitempty"`
+}
+
+// enrichMatchedRulesWithDetails parses the policy_detect_matches JSON and enriches
+// the MatchedRule slice with per-condition match details (field, var_name, value,
+// matched_data, operator). This provides Coraza-style MATCHED_VAR_NAME / MATCHED_VAR
+// observability for detect rules.
+func enrichMatchedRulesWithDetails(rules []MatchedRule, detectMatchesJSON string) {
+	if detectMatchesJSON == "" || len(rules) == 0 {
+		return
+	}
+
+	var entries []detectMatchEntry
+	if err := json.Unmarshal([]byte(detectMatchesJSON), &entries); err != nil {
+		log.Printf("[WARN] failed to parse policy_detect_matches JSON: %v", err)
+		return
+	}
+
+	// Build a lookup by rule_id prefix (detect_rules "Msg" starts with the rule ID).
+	// MatchedRule.Msg format: "PE-920350 (WARNING, score 3)"
+	// detectMatchEntry.RuleID: "PE-920350"
+	for i := range rules {
+		for _, entry := range entries {
+			if strings.HasPrefix(rules[i].Msg, entry.RuleID+" ") {
+				rules[i].Matches = entry.Matches
+				// Also set MatchedData to a summary if the rule has match details.
+				if len(entry.Matches) > 0 && rules[i].MatchedData == "" {
+					// Use the first match's data as the primary MatchedData.
+					m := entry.Matches[0]
+					if m.MatchedData != "" {
+						rules[i].MatchedData = m.VarName + ": " + m.MatchedData
+					} else if m.Value != "" {
+						rules[i].MatchedData = m.VarName + ": " + m.Value
+					}
+				}
+				break
+			}
+		}
+	}
 }
 
 // sortRulesByPriority returns a priority-sorted copy of rules for evaluation.

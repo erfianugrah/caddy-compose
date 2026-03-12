@@ -158,12 +158,23 @@ type Event struct {
 
 // MatchedRule represents a single CRS rule match from the audit log.
 type MatchedRule struct {
-	ID          int      `json:"id"`
-	Msg         string   `json:"msg"`
-	Severity    int      `json:"severity"`
-	MatchedData string   `json:"matched_data,omitempty"`
-	File        string   `json:"file,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	ID          int                 `json:"id"`
+	Msg         string              `json:"msg"`
+	Severity    int                 `json:"severity"`
+	MatchedData string              `json:"matched_data,omitempty"`
+	File        string              `json:"file,omitempty"`
+	Tags        []string            `json:"tags,omitempty"`
+	Matches     []MatchedRuleDetail `json:"matches,omitempty"` // per-condition match details (detect rules only)
+}
+
+// MatchedRuleDetail represents per-condition match data from a detect rule.
+// Mirrors the policy engine's matchDetail struct for observability parity with Coraza.
+type MatchedRuleDetail struct {
+	Field       string `json:"field"`                  // condition field (e.g., "all_args_values", "header")
+	VarName     string `json:"var_name"`               // SecRule-style variable name (e.g., "ARGS:username", "REQUEST_HEADERS:User-Agent")
+	Value       string `json:"value,omitempty"`        // actual input value that was tested (truncated)
+	MatchedData string `json:"matched_data,omitempty"` // regex group 0, phrase_match hit, or matched literal
+	Operator    string `json:"operator,omitempty"`     // operator name (e.g., "regex", "phrase_match")
 }
 
 // API response types

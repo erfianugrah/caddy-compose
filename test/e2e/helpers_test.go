@@ -209,6 +209,48 @@ func jsonArrayLen(body []byte) int {
 	return len(arr)
 }
 
+// jsonFieldBool returns a bool field from a JSON object.
+func jsonFieldBool(body []byte, field string) (bool, bool) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return false, false
+	}
+	parts := strings.SplitN(field, ".", 2)
+	raw, ok := m[parts[0]]
+	if !ok {
+		return false, false
+	}
+	if len(parts) == 2 {
+		return jsonFieldBool(raw, parts[1])
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return false, false
+	}
+	return b, true
+}
+
+// jsonFieldArray returns a raw JSON array field.
+func jsonFieldArray(body []byte, field string) []json.RawMessage {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil
+	}
+	parts := strings.SplitN(field, ".", 2)
+	raw, ok := m[parts[0]]
+	if !ok {
+		return nil
+	}
+	if len(parts) == 2 {
+		return jsonFieldArray(raw, parts[1])
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		return nil
+	}
+	return arr
+}
+
 // ── Assertions ─────────────────────────────────────────────────────
 
 func assertCode(t *testing.T, name string, expected int, resp *http.Response) {

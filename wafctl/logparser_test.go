@@ -1082,6 +1082,10 @@ func TestRateLimitEventToEvent_RequestID(t *testing.T) {
 	if ev.RequestID != "caddy-uuid-test-123" {
 		t.Errorf("request_id: want caddy-uuid-test-123, got %q", ev.RequestID)
 	}
+	// Unified request ID: Event.ID should be the Caddy request UUID, not an ephemeral rl- ID.
+	if ev.ID != "caddy-uuid-test-123" {
+		t.Errorf("ID (unified request ID): want caddy-uuid-test-123, got %q", ev.ID)
+	}
 }
 
 func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
@@ -1097,6 +1101,10 @@ func TestRateLimitEventToEvent_RequestID_Empty(t *testing.T) {
 
 	if ev.RequestID != "" {
 		t.Errorf("request_id should be empty for events without it, got %q", ev.RequestID)
+	}
+	// Without a Caddy request UUID, falls back to ephemeral rl- ID.
+	if !strings.HasPrefix(ev.ID, "rl-") {
+		t.Errorf("ID without RequestID should fall back to rl- prefix, got %q", ev.ID)
 	}
 }
 
@@ -2552,6 +2560,10 @@ func TestParseEvent_RequestID(t *testing.T) {
 	if ev.RequestID != "caddy-uuid-abc123" {
 		t.Errorf("request_id: got %q, want %q", ev.RequestID, "caddy-uuid-abc123")
 	}
+	// Unified request ID: Event.ID should be the Caddy UUID, not the Coraza transaction ID.
+	if ev.ID != "caddy-uuid-abc123" {
+		t.Errorf("ID (unified request ID): got %q, want %q (should use Caddy UUID, not Coraza tx ID)", ev.ID, "caddy-uuid-abc123")
+	}
 }
 
 func TestParseEvent_RequestID_Missing(t *testing.T) {
@@ -2574,6 +2586,10 @@ func TestParseEvent_RequestID_Missing(t *testing.T) {
 	ev := parseEvent(entry)
 	if ev.RequestID != "" {
 		t.Errorf("request_id should be empty, got %q", ev.RequestID)
+	}
+	// Without X-Request-Id, falls back to Coraza transaction ID.
+	if ev.ID != "no-reqid" {
+		t.Errorf("ID should fall back to Coraza tx ID %q, got %q", "no-reqid", ev.ID)
 	}
 }
 
@@ -2824,6 +2840,274 @@ func TestSummarizeEvents_TagCountsEmpty(t *testing.T) {
 	summary := summarizeEvents(events)
 	if len(summary.TagCounts) != 0 {
 		t.Errorf("TagCounts should be empty for events without tags, got %v", summary.TagCounts)
+	}
+}
+
+// --- Detect Block Match Details Tests ---
+
+func TestParseDetectRulesDetail(t *testing.T) {
+	rules := parseDetectRulesDetail("PE-920350:WARNING:3,PE-941100:CRITICAL:5")
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(rules))
+	}
+	if rules[0].Msg != "PE-920350 (WARNING, score 3)" {
+		t.Errorf("expected msg 'PE-920350 (WARNING, score 3)', got %q", rules[0].Msg)
+	}
+	if rules[0].Severity != 4 { // WARNING = 4
+		t.Errorf("expected severity 4 (WARNING), got %d", rules[0].Severity)
+	}
+	if rules[1].Msg != "PE-941100 (CRITICAL, score 5)" {
+		t.Errorf("expected msg 'PE-941100 (CRITICAL, score 5)', got %q", rules[1].Msg)
+	}
+	if rules[1].Severity != 2 { // CRITICAL = 2
+		t.Errorf("expected severity 2 (CRITICAL), got %d", rules[1].Severity)
+	}
+}
+
+func TestParseDetectRulesDetail_Empty(t *testing.T) {
+	rules := parseDetectRulesDetail("")
+	if len(rules) != 0 {
+		t.Errorf("expected 0 rules for empty string, got %d", len(rules))
+	}
+}
+
+func TestEnrichMatchedRulesWithDetails(t *testing.T) {
+	rules := []MatchedRule{
+		{Msg: "PE-920350 (WARNING, score 3)", Severity: 4},
+		{Msg: "PE-941100 (CRITICAL, score 5)", Severity: 2},
+	}
+	matchesJSON := `[
+		{
+			"rule_id": "PE-920350",
+			"rule_name": "Missing Host header",
+			"severity": "WARNING",
+			"score": 3,
+			"matches": [
+				{
+					"field": "header",
+					"var_name": "REQUEST_HEADERS:Host",
+					"value": "",
+					"operator": "eq"
+				}
+			]
+		},
+		{
+			"rule_id": "PE-941100",
+			"rule_name": "XSS via User-Agent",
+			"severity": "CRITICAL",
+			"score": 5,
+			"matches": [
+				{
+					"field": "user_agent",
+					"var_name": "REQUEST_HEADERS:User-Agent",
+					"value": "<script>alert(1)</script>",
+					"matched_data": "<script>",
+					"operator": "regex"
+				}
+			]
+		}
+	]`
+
+	enrichMatchedRulesWithDetails(rules, matchesJSON)
+
+	// First rule should have match details.
+	if len(rules[0].Matches) != 1 {
+		t.Fatalf("expected 1 match for rule 0, got %d", len(rules[0].Matches))
+	}
+	if rules[0].Matches[0].VarName != "REQUEST_HEADERS:Host" {
+		t.Errorf("expected VarName 'REQUEST_HEADERS:Host', got %q", rules[0].Matches[0].VarName)
+	}
+	// First rule has empty value (missing Host header), so MatchedData stays empty.
+	// This is correct — there's nothing to summarize.
+	if rules[0].MatchedData != "" {
+		t.Errorf("expected empty MatchedData for empty value match, got %q", rules[0].MatchedData)
+	}
+
+	// Second rule should have match details with matched_data.
+	if len(rules[1].Matches) != 1 {
+		t.Fatalf("expected 1 match for rule 1, got %d", len(rules[1].Matches))
+	}
+	if rules[1].Matches[0].MatchedData != "<script>" {
+		t.Errorf("expected MatchedData '<script>', got %q", rules[1].Matches[0].MatchedData)
+	}
+	if rules[1].MatchedData != "REQUEST_HEADERS:User-Agent: <script>" {
+		t.Errorf("expected enriched MatchedData, got %q", rules[1].MatchedData)
+	}
+}
+
+func TestEnrichMatchedRulesWithDetails_InvalidJSON(t *testing.T) {
+	rules := []MatchedRule{{Msg: "PE-920350 (WARNING, score 3)"}}
+	// Should not panic, just log a warning.
+	enrichMatchedRulesWithDetails(rules, "invalid json{{{")
+	if len(rules[0].Matches) != 0 {
+		t.Error("expected no matches after invalid JSON")
+	}
+}
+
+func TestEnrichMatchedRulesWithDetails_Empty(t *testing.T) {
+	rules := []MatchedRule{{Msg: "PE-920350 (WARNING, score 3)"}}
+	enrichMatchedRulesWithDetails(rules, "")
+	if len(rules[0].Matches) != 0 {
+		t.Error("expected no matches for empty string")
+	}
+}
+
+func TestRateLimitEventToEvent_DetectBlock(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp:     time.Now(),
+		ClientIP:      "1.2.3.4",
+		Service:       "test",
+		Method:        "GET",
+		URI:           "/admin",
+		UserAgent:     "curl/7.88",
+		Source:        "detect_block",
+		RuleName:      "Detect Block (score 8/5, 2 rules)",
+		AnomalyScore:  8,
+		DetectRules:   "d1:CRITICAL:5,d2:WARNING:3",
+		DetectMatches: `[{"rule_id":"d1","severity":"CRITICAL","score":5,"matches":[{"field":"user_agent","var_name":"REQUEST_HEADERS:User-Agent","value":"curl/7.88","matched_data":"curl","operator":"contains"}]},{"rule_id":"d2","severity":"WARNING","score":3,"matches":[{"field":"path","var_name":"REQUEST_URI","value":"/admin","matched_data":"/admin","operator":"contains"}]}]`,
+	}
+
+	evt := RateLimitEventToEvent(rle, nil)
+	if evt.EventType != "detect_block" {
+		t.Errorf("expected event_type 'detect_block', got %q", evt.EventType)
+	}
+	if evt.AnomalyScore != 8 {
+		t.Errorf("expected anomaly_score 8, got %d", evt.AnomalyScore)
+	}
+	if len(evt.MatchedRules) != 2 {
+		t.Fatalf("expected 2 matched rules, got %d", len(evt.MatchedRules))
+	}
+
+	// First rule should have enriched match details.
+	r1 := evt.MatchedRules[0]
+	if len(r1.Matches) != 1 {
+		t.Fatalf("expected 1 match detail for rule 0, got %d", len(r1.Matches))
+	}
+	if r1.Matches[0].VarName != "REQUEST_HEADERS:User-Agent" {
+		t.Errorf("expected VarName 'REQUEST_HEADERS:User-Agent', got %q", r1.Matches[0].VarName)
+	}
+	if r1.Matches[0].MatchedData != "curl" {
+		t.Errorf("expected MatchedData 'curl', got %q", r1.Matches[0].MatchedData)
+	}
+	if r1.MatchedData != "REQUEST_HEADERS:User-Agent: curl" {
+		t.Errorf("expected enriched MatchedData on rule, got %q", r1.MatchedData)
+	}
+
+	// Second rule.
+	r2 := evt.MatchedRules[1]
+	if len(r2.Matches) != 1 {
+		t.Fatalf("expected 1 match detail for rule 1, got %d", len(r2.Matches))
+	}
+	if r2.Matches[0].VarName != "REQUEST_URI" {
+		t.Errorf("expected VarName 'REQUEST_URI', got %q", r2.Matches[0].VarName)
+	}
+}
+
+func TestRateLimitEventToEvent_DetectBlock_NoMatches(t *testing.T) {
+	// Older plugin versions don't emit detect_matches — should still work.
+	rle := RateLimitEvent{
+		Timestamp:    time.Now(),
+		ClientIP:     "1.2.3.4",
+		Service:      "test",
+		Method:       "GET",
+		URI:          "/admin",
+		Source:       "detect_block",
+		RuleName:     "Detect Block (score 5/3, 1 rules)",
+		AnomalyScore: 5,
+		DetectRules:  "d1:CRITICAL:5",
+	}
+
+	evt := RateLimitEventToEvent(rle, nil)
+	if len(evt.MatchedRules) != 1 {
+		t.Fatalf("expected 1 matched rule, got %d", len(evt.MatchedRules))
+	}
+	// No matches enrichment — Matches should be nil.
+	if len(evt.MatchedRules[0].Matches) != 0 {
+		t.Error("expected no matches without detect_matches JSON")
+	}
+}
+
+// --- Request Context Propagation Tests ---
+
+func TestRateLimitEventToEvent_RequestContext(t *testing.T) {
+	hdrs := map[string][]string{
+		"User-Agent":    {"Mozilla/5.0"},
+		"Accept":        {"text/html"},
+		"Authorization": {"Bearer secret"},
+	}
+	rle := RateLimitEvent{
+		Timestamp:      time.Now(),
+		ClientIP:       "10.0.0.1",
+		Service:        "test.erfi.io",
+		Method:         "POST",
+		URI:            "/api/data",
+		UserAgent:      "Mozilla/5.0",
+		Source:         "policy",
+		RuleName:       "Block Scanner",
+		RequestID:      "caddy-uuid-reqctx",
+		RequestHeaders: hdrs,
+		RequestBody:    `{"action":"test"}`,
+	}
+
+	evt := RateLimitEventToEvent(rle, nil)
+
+	// Headers should be propagated.
+	if len(evt.RequestHeaders) != 3 {
+		t.Errorf("expected 3 request headers, got %d", len(evt.RequestHeaders))
+	}
+	if evt.RequestHeaders["User-Agent"][0] != "Mozilla/5.0" {
+		t.Errorf("User-Agent not propagated: %v", evt.RequestHeaders["User-Agent"])
+	}
+	// Body should be propagated.
+	if evt.RequestBody != `{"action":"test"}` {
+		t.Errorf("request_body not propagated: %q", evt.RequestBody)
+	}
+	// Unified request ID should match the Caddy UUID.
+	if evt.ID != "caddy-uuid-reqctx" {
+		t.Errorf("ID (unified request ID): want caddy-uuid-reqctx, got %q", evt.ID)
+	}
+}
+
+func TestRateLimitEventToEvent_NoRequestContext(t *testing.T) {
+	rle := RateLimitEvent{
+		Timestamp: time.Now(),
+		ClientIP:  "10.0.0.1",
+		Service:   "test.erfi.io",
+		Method:    "GET",
+		URI:       "/",
+		UserAgent: "curl/7.68",
+	}
+
+	evt := RateLimitEventToEvent(rle, nil)
+
+	if evt.RequestHeaders != nil {
+		t.Errorf("expected nil request headers for events without context, got %v", evt.RequestHeaders)
+	}
+	if evt.RequestBody != "" {
+		t.Errorf("expected empty request body, got %q", evt.RequestBody)
+	}
+}
+
+func TestParsePolicyRequestHeaders(t *testing.T) {
+	raw := `{"User-Agent":["Mozilla/5.0"],"Accept":["text/html"]}`
+	hdrs := parsePolicyRequestHeaders(raw)
+	if hdrs == nil {
+		t.Fatal("expected non-nil headers")
+	}
+	if hdrs["User-Agent"][0] != "Mozilla/5.0" {
+		t.Errorf("User-Agent: got %v", hdrs["User-Agent"])
+	}
+}
+
+func TestParsePolicyRequestHeaders_Empty(t *testing.T) {
+	if hdrs := parsePolicyRequestHeaders(""); hdrs != nil {
+		t.Errorf("expected nil for empty input, got %v", hdrs)
+	}
+}
+
+func TestParsePolicyRequestHeaders_InvalidJSON(t *testing.T) {
+	if hdrs := parsePolicyRequestHeaders("{invalid"); hdrs != nil {
+		t.Errorf("expected nil for invalid JSON, got %v", hdrs)
 	}
 }
 

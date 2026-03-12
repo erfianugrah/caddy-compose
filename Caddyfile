@@ -190,6 +190,9 @@
 # - policy_tags: comma-separated tags from matched rule(s)
 # - policy_score: anomaly score (detect rules only, empty if no detect rules fired)
 # - policy_detect_rules: matched detect rule details "id:severity:score,..." (detect_block only)
+# - policy_detect_matches: JSON array of per-rule match details with field/var_name/value/matched_data
+# - policy_request_headers: JSON-serialized request headers (only set on block/detect_block events)
+# - policy_request_body: truncated request body excerpt (only set on block/detect_block when body was read)
 (site_log) {
 	log_append request_id {http.request.uuid}
 	log_append policy_action {http.vars.policy_engine.action}
@@ -197,6 +200,9 @@
 	log_append policy_tags {http.vars.policy_engine.tags}
 	log_append policy_score {http.vars.policy_engine.anomaly_score}
 	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
+	log_append policy_detect_matches {http.vars.policy_engine.detect_matches}
+	log_append policy_request_headers {http.vars.policy_engine.request_headers}
+	log_append policy_request_body {http.vars.policy_engine.request_body}
 	log {
 		level INFO
 		output file /var/log/{args[0]}-access.log {
