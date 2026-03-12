@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.15.1-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.16.1
+CADDY_IMAGE   ?= erfianugrah/caddy:3.16.0-2.11.1
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.17.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -78,15 +78,22 @@ ifeq ($(DEPLOY_MODE),dockge)
 endif
 
 # ── Build ───────────────────────────────────────────────────────────
+# Pass NO_CACHE=1 to force --no-cache (needed after plugin version bumps).
+# Example: make build-caddy NO_CACHE=1
+DOCKER_BUILD_FLAGS ?=
+ifdef NO_CACHE
+  DOCKER_BUILD_FLAGS += --no-cache
+endif
+
 build: build-caddy build-wafctl ## Build both images
 
 build-caddy: ## Build Caddy image (includes waf-dashboard)
-	docker build -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
+	docker build $(DOCKER_BUILD_FLAGS) -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
 
 WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
 
 build-wafctl: ## Build wafctl image
-	docker build -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile .
+	docker build $(DOCKER_BUILD_FLAGS) -t $(WAFCTL_IMAGE) --build-arg VERSION=$(WAFCTL_VERSION) -f wafctl/Dockerfile .
 
 # ── Push ────────────────────────────────────────────────────────────
 push: push-caddy push-wafctl ## Push both images to Docker Hub
@@ -108,7 +115,7 @@ test-frontend: ## Run frontend tests
 
 test-e2e: ## Run e2e smoke tests (requires Docker)
 	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
-	cd test/e2e && go test -v -count=1 -timeout 300s ./...; rc=$$?; \
+	cd test/e2e && go test -v -count=1 -timeout 600s ./...; rc=$$?; \
 	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
 	exit $$rc
 

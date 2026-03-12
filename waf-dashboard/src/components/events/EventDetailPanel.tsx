@@ -363,16 +363,21 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     ))}
                   </div>
                 )}
-                {event.tags && event.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    <span className="text-muted-foreground">Labels:</span>
-                    {event.tags.map((tag) => (
-                      <span key={tag} className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-2 py-0.5 text-xs font-data text-lv-cyan">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {/* Only show Labels that aren't already in rule_tags */}
+                {(() => {
+                  const ruleTagSet = new Set(event.rule_tags ?? []);
+                  const uniqueLabels = (event.tags ?? []).filter((t) => !ruleTagSet.has(t));
+                  return uniqueLabels.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      <span className="text-muted-foreground">Labels:</span>
+                      {uniqueLabels.map((tag) => (
+                        <span key={tag} className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-2 py-0.5 text-xs font-data text-lv-cyan">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
               </>
             )}
           </div>

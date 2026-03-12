@@ -18,9 +18,11 @@ import (
 
 // DefaultRulesFile is the on-disk format for default-rules.json
 // (baked into the Docker image by the Dockerfile COPY).
+// Supports both "rules" (legacy v1-v6) and "default_rules" (v7+ converter output).
 type DefaultRulesFile struct {
-	Version int          `json:"version"`
-	Rules   []PolicyRule `json:"rules"`
+	Version      int          `json:"version"`
+	Rules        []PolicyRule `json:"rules"`
+	DefaultRules []PolicyRule `json:"default_rules"`
 }
 
 // defaultRuleOverridesFile is the on-disk format for user overrides.
@@ -56,11 +58,16 @@ func NewDefaultRuleStore(defaultsPath, overridesPath string) *DefaultRuleStore {
 			if err := json.Unmarshal(data, &f); err != nil {
 				log.Printf("[default-rules] invalid JSON in %s: %v", defaultsPath, err)
 			} else {
-				ds.defaults = f.Rules
-				for _, r := range f.Rules {
+				// Support both "rules" (legacy) and "default_rules" (v7+ converter).
+				rules := f.Rules
+				if len(rules) == 0 && len(f.DefaultRules) > 0 {
+					rules = f.DefaultRules
+				}
+				ds.defaults = rules
+				for _, r := range rules {
 					ds.defaultsByID[r.ID] = r
 				}
-				log.Printf("[default-rules] loaded %d baked default rules from %s (version %d)", len(f.Rules), defaultsPath, f.Version)
+				log.Printf("[default-rules] loaded %d baked default rules from %s (version %d)", len(rules), defaultsPath, f.Version)
 			}
 		}
 	}

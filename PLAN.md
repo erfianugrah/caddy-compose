@@ -886,6 +886,13 @@ The waf-dashboard condition builder and event display are missing support for fe
 
 **What IS implemented in frontend:** `TransformSelect` component (v0.8.1), `transforms` field on `Condition` interface.
 
+### Frontend — UI/UX Bugs (v0.12.x)
+
+| Bug | Description | Severity |
+|-----|-------------|----------|
+| Matched data fields overflow UI | `detect_block` event detail: "Full Value" and "Variable" fields dump entire request body JSON blobs (e.g., `ARGS_POST_NAMES` matched data), making the event detail panel unreadable. Need truncation with `...` and full value accessible via JSON export only. | Medium |
+| Create Exception fails for detect_block | "Create Exception" on a `detect_block` event creates a Coraza SecRule exclusion, but `detect_block` comes from the policy engine's anomaly scoring (not Coraza). The exception either needs to: (a) disable specific detect rule IDs in the policy engine via `PUT /api/default-rules/{id}` with `enabled: false`, (b) raise the inbound threshold for that service/path, or (c) create an `allow` policy engine rule that bypasses scoring. Currently the button creates a useless exclusion. | High |
+
 ### Backend — wafctl API
 
 | Feature | Description | Effort |
@@ -1514,8 +1521,8 @@ type Operator struct {
    f. Resolve chains → multi-condition rules
       └─ SecRule A chain → SecRule B
       └─ Becomes: conditions: [A_condition, B_condition], group_operator: "AND"
-   g. Map CRS rule ID to PE rule ID
-      └─ CRS 932120 → PE-932120 (preserve original ID)
+    g. Map CRS rule ID to policy engine rule ID
+       └─ CRS 932120 → 932120 (plain numeric ID, no prefix)
    h. Build tags from CRS tag hierarchy
       └─ tag:'attack-rce' → "attack-rce"
       └─ tag:'OWASP_CRS/ATTACK-RCE' → "crs-rce"
@@ -1542,23 +1549,27 @@ type Operator struct {
 
 #### PCRE → RE2 Conversion
 
-CRS regexes occasionally use PCRE features not in RE2:
+**CONFIRMED: All 210 CRS regex rules compile cleanly in Go RE2.**
 
-| PCRE Feature | CRS Usage | RE2 Equivalent |
-|--------------|-----------|----------------|
-| `(?!...)` negative lookahead | ~5 rules | Restructure regex or split into two conditions |
-| `(?<=...)` positive lookbehind | ~2 rules | Restructure or use `begins_with` + `regex` combo |
-| `(?:...)` non-capturing group | Extensive | ✅ Supported in RE2 |
-| `\b` word boundary | Extensive | ✅ Supported in RE2 |
-| `(?i)` case-insensitive | Extensive | ✅ Supported in RE2 |
-| `(?s)` dotall mode | Some | ✅ Supported in RE2 |
-| Backreferences `\1` | ~1 rule | Manual rewrite |
-| Possessive quantifiers `++` | ~2 rules | Convert to greedy `+` (safe for detection) |
-| Atomic groups `(?>...)` | ~1 rule | Convert to non-capturing group |
+The initial converter run showed 76 "PCRE-only" failures, but these were caused by a
+parser bug: `extractQuotedString()` was stripping backslashes (treating `\x5c` as an
+escape sequence), corrupting regex patterns. After fixing to only treat `\"` as escape,
+all 210 regex conditions compile without error.
 
-The converter validates each regex against `regexp.Compile()` and flags failures for
-manual review. Most CRS regexes are RE2-compatible (we confirmed this during manual
-porting — only PE-920220 had the `(?!...)` issue out of 45 rules).
+The converter auto-fixes possessive quantifiers (`++` → `+`) and atomic groups
+(`(?>...)` → `(?:...)`), but no CRS 4.24.1 rules needed these fixes.
+
+CRS regexes use PCRE syntax that is fully RE2-compatible:
+
+| PCRE Feature | CRS Usage | RE2 Status |
+|--------------|-----------|------------|
+| `(?:...)` non-capturing group | Extensive | ✅ Supported |
+| `\b` word boundary | Extensive | ✅ Supported |
+| `(?i)` case-insensitive | Extensive | ✅ Supported |
+| `(?s)` dotall mode | Some | ✅ Supported |
+| `\x5c`, `\x0b` hex escapes | Extensive | ✅ Supported |
+| `{1,10}` bounded repetition | Common | ✅ Supported |
+| Character classes `[...]` | Extensive | ✅ Supported |
 
 #### @pmFromFile Data File Resolution
 
@@ -1901,9 +1912,9 @@ Usage:
 | v0.10.2 | + default rule override API (list/get/set/reset) | Remaining CRS categories |
 | v0.10.3 | + scanner/generic UA as phrase_match default rules, v6 migration | Remaining CRS categories |
 | v0.10.4 | + 14 CRS 920xxx Protocol Enforcement rules (26 defaults total) | Remaining CRS categories (930–944xxx) |
-| v0.11.0 (current) | + LFI (930xxx, 4 rules), Protocol Attack (921xxx, 5 rules), Session Fixation (943xxx, 2 rules) — 37 defaults total | RCE, RFI, injection, XSS, SQLi |
-| v0.12.x | + RCE (932xxx), RFI (931xxx), PHP/Node/Java injection (933/934/944xxx) | XSS, SQLi (hardest categories) |
-| v1.0 | + XSS (941xxx), SQLi (942xxx) with libinjection | Nothing — Coraza can be removed |
+| v0.11.1 (current) | + per-condition match detail, request context, PE- prefix removed, detect_block parity | CRS auto-converter integration |
+| v0.12.x | + CRS auto-converter output (233 rules from CRS 4.24.1), `cmdLine`/`escapeSeqDecode`/`removeCommentsChar` transforms, `validate_byte_range`/`validate_url_encoding` operators | libinjection operators |
+| v1.0 | + `detect_sqli`/`detect_xss` (libinjection), full CRS 4.24.1 coverage | Nothing — Coraza can be removed |
 
 At each phase, you can compare scores between the policy engine's `detect` rules and Coraza's CRS rules to validate detection parity before removing Coraza.
 
@@ -1912,20 +1923,23 @@ At each phase, you can compare scores between the policy engine's `detect` rules
 Before removing Coraza entirely:
 
 **Automated conversion (replaces manual porting):**
-- [ ] CRS converter tool built and tested (`tools/crs-converter/`)
+- [x] CRS converter tool built and tested (`tools/crs-converter/`, 28 tests)
+- [x] Converter successfully parses CRS 4.24.1 (623 rules parsed, 233 converted = **85% of convertible request-phase rules**)
+- [x] All regex patterns compile in Go RE2 (the 76 "PCRE failures" were a parser bug, now fixed)
+- [x] All 20 CRS `.data` files inlined as `phrase_match` arrays
 - [ ] Converter output validates against CRS regression test suite (≥80% pass rate)
-- [ ] All PCRE-only regex patterns converted to RE2 or flagged with workarounds
-- [ ] All 19 CRS `.data` files inlined as `phrase_match` arrays
+- Remaining 41 unconverted rules: 15 use numeric operators (@gt/@eq/@ge/@within on content-length, arg counts — these are protocol enforcement, not pattern detection), 16 are chains with MATCHED_VARS refinement (second condition checks against the first match — would need plugin support for match-back-reference), 10 are chains with TX variable state checks
 
 **Plugin feature parity:**
-- [ ] Matched payload observability: `matched_var`, `matched_data`, `matched_field` per rule match
-- [ ] `detect_sqli` operator (libinjection — `corazawaf/libinjection-go`)
-- [ ] `detect_xss` operator (libinjection)
-- [ ] `validate_byte_range` operator
-- [ ] `cmdLine` transform
-- [ ] `replaceComments` transform
-- [ ] `escapeSeqDecode` transform
-- [ ] `negate: true` on conditions
+- [x] Matched payload observability: `matched_var`, `matched_data`, `matched_field` per rule match (v0.11.1)
+- [x] `negate: true` on conditions (v0.11.1)
+- [ ] `detect_sqli` operator (libinjection — `corazawaf/libinjection-go`) — 2 rules
+- [ ] `detect_xss` operator (libinjection) — 2 rules
+- [ ] `validate_byte_range` operator — 6 rules
+- [ ] `validate_url_encoding` operator — 1 rule
+- [ ] `cmdLine` transform — 13 rules
+- [ ] `escapeSeqDecode` transform — 7 rules
+- [ ] `removeCommentsChar` transform — 1 rule
 - [ ] `multiMatch` support (run operator at each transform stage)
 
 **Validation:**

@@ -34,5 +34,8 @@ ipsum_block.caddy
 # Docker
 .dockerignore
 
+# CRS source (downloaded by converter, not committed)
+tools/coreruleset/
+
 # OS
 .DS_Store
