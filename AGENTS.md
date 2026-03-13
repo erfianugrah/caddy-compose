@@ -860,8 +860,8 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 
 ## Test Patterns
 
-### Go (1425 tests across 26 files)
-- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `validate_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `security_headers_test.go`, `backup_test.go`, `testhelpers_test.go`
+### Go (1082 tests across 25 files)
+- Tests split into domain-specific files: `logparser_test.go`, `exclusions_test.go`, `config_test.go`, `deploy_test.go`, `geoip_test.go`, `blocklist_test.go`, `rl_analytics_test.go`, `rl_advisor_test.go`, `rl_rules_test.go`, `rl_handlers_test.go`, `crs_rules_test.go`, `csp_test.go`, `handlers_test.go`, `cli_test.go`, `cfproxy_test.go`, `default_rules_test.go`, `general_logs_test.go`, `ip_intel_test.go`, `tls_helpers_test.go`, `policy_generator_test.go`, `managed_lists_test.go`, `security_headers_test.go`, `backup_test.go`, `ui_server_test.go`, `testhelpers_test.go`
 - All `package main` (whitebox)
 - Table-driven tests with `t.Run()` subtests
 - `httptest.NewRequest` + `httptest.NewRecorder` for handler tests
@@ -869,10 +869,10 @@ In the plugin repo (`/home/erfi/caddy-policy-engine`):
 - Temp file helpers in `testhelpers_test.go`: `writeTempLog`, `newTestExclusionStore`, `newTestConfigStore`, `emptyAccessLogStore`, `writeTempAccessLog`
 - `handlers_test.go` covers operator-aware filtering (`fieldFilter`/`matchField` unit tests + handler integration tests)
 
-### Frontend (332 tests across 16 files)
+### Frontend (322 tests across 17 files)
 - Vitest with `vi.fn()` mock fetch, `describe`/`it` blocks
 - `beforeEach`/`afterEach` for setup/teardown
-- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (33), `rate-limits.test.ts` (31), `managed-lists.test.ts` (14), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `security-headers.test.ts` (11), `config.test.ts` (9), `backup.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
+- API tests split by domain in `src/lib/api/`: `waf-events.test.ts` (33), `rate-limits.test.ts` (31), `default-rules.test.ts` (17), `managed-lists.test.ts` (14), `general-logs.test.ts` (13), `exclusions.test.ts` (13), `analytics.test.ts` (13), `security-headers.test.ts` (11), `config.test.ts` (9), `backup.test.ts` (9), `blocklist.test.ts` (6), `shared.test.ts` (3)
 - Component tests: `DashboardFilterBar.test.ts` (63)
 - Policy sub-module tests in `components/policy/`: `constants.test.ts` (33), `exclusionHelpers.test.ts` (38), `eventPrefill.test.ts` (24), `TagInputs.test.ts` (19)
 

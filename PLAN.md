@@ -1991,7 +1991,7 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Build rules management UI — **COMPLETED**: `/rules` page with `RulesPanel.tsx`, category pill filters, search, per-rule toggle/override, Save & Deploy
 - [x] Clean up dead wafctl code — **COMPLETED**: 43 files changed, -8,287 net lines. Go: deleted 7 files, cleaned 18+ files. Frontend: deleted SecRuleEditor.tsx, rewrote PolicyForms.tsx, trimmed to 3 exclusion types (allow/block/detect)
 - [x] Fix "Create Exception" for policy engine events — **COMPLETED**: button was hidden for all `policy_*` events, action defaulted wrong, name generation broke on empty rule IDs
-- [x] Pre-deploy cleanup sprint — **COMPLETED** (2026-03-13): All code review findings (CR-1 through CR-26) addressed, 13 deferred items completed, 117 E2E tests pass. See [Code Review Cleanup Sprint](#code-review-cleanup-sprint-2026-03-13).
+- [x] Pre-deploy cleanup sprint — **COMPLETED** (2026-03-13): All code review findings (CR-1 through CR-26) addressed, 13 deferred items completed, multiMatch/negate condition support, backup/restore all-stores E2E, version bumps to 3.19.0/2.20.0, 120 E2E tests pass. See [Code Review Cleanup Sprint](#code-review-cleanup-sprint-2026-03-13).
 - [ ] Deploy to production
 - [ ] Response-phase detection (Phase 2 — deferred)
 
@@ -2036,7 +2036,7 @@ Usage:
 - [x] Implement `detect_sqli` operator — using `corazawaf/libinjection-go`, captures fingerprint as matched_data
 - [x] Implement `detect_xss` operator — same library
 - [ ] Evaluate accuracy against CRS test suite (deferred)
-- [ ] Benchmark: latency impact per request with libinjection enabled (deferred)
+- [x] Benchmark: latency impact per request with libinjection enabled — **COMPLETED** (plugin commit `cb63ad8`): detect_sqli ~410ns positive / ~1.0µs negative, detect_xss ~137ns positive / ~650ns negative (AMD Ryzen 7 7800X3D)
 - [ ] Compare detection rates: regex-only vs. regex+libinjection (deferred)
 
 ---
@@ -2097,7 +2097,7 @@ Usage:
 
 **Deferred:**
 - [x] `detect_sqli` / `detect_xss` operators (libinjection) — implemented in plugin v0.12.x
-- [ ] `multiMatch` support — ~15 CRS rules; regex patterns already match post-transform
+- [x] `multiMatch` support — **COMPLETED** (plugin v0.13.0): evaluates operator at each transform stage. 7 CRS rules use multi_match in default-rules.json. E2E test `TestPolicyEngineMultiMatch` verifies behavior
 - [ ] Response-phase detection (Phase 2) — 100+ CRS outbound rules
 - [x] Dead code cleanup in wafctl — **COMPLETED**: SecRule generators, audit log parser, SecRule exclusion types in frontend. 43 files, -8,287 net lines
 - [x] Rules management UI — **COMPLETED**: `/rules` page with CF-style browse/toggle/override
@@ -2371,9 +2371,9 @@ All 13 deferred work items completed in a single sprint on branch `fix/code-revi
 - GitHub Actions SHA pinning (CR-17, CR-26)
 
 **Test verification:**
-- 1425 Go unit tests pass
-- 332 frontend (Vitest) tests pass
-- 117 E2E tests pass (20 test files, including 7 new expanded smoke test groups):
+- 1082 Go unit tests pass (subtests included)
+- 322 frontend (Vitest) tests pass
+- 120 E2E tests pass (21 test files, including 7 expanded smoke test groups + 3 condition feature tests):
   - `TestDefaultRulesBulkBehavior` — CRS rule disable/re-enable via bulk API
   - `TestExclusionBulkBehavior` — block rule bulk disable/re-enable
   - `TestCaddyNonRoot` — admin API + log pipeline + UI serving as non-root
@@ -2381,6 +2381,9 @@ All 13 deferred work items completed in a single sprint on branch `fix/code-revi
   - `TestBackupRestoreIntegrity` — create → backup → delete → restore → verify by name
   - `TestSecurityHeadersDeploy` — custom header + profile switch with response verification
   - `TestDashboardContent` — HTML validity, static assets, proxy parity, 404 handling
+  - `TestPolicyEngineMultiMatch` — multi_match=true with lowercase transform, raw stage vs final-only matching
+  - `TestPolicyEngineNegate` — negate inverts operator for method allowlist block rules
+  - `TestBackupRestoreAllStores` — round-trip exclusions + RL rules + managed lists + CSP through backup/restore
 
 ---
 
