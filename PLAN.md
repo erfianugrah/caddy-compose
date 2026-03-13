@@ -963,6 +963,33 @@ would auto-appear as new cards.
   var is set. Without this, the 3925-test CRS suite blocks all `t.Parallel()` smoke tests
   (Go runs all sequential tests before releasing parallel ones), causing 600s timeouts.
 
+#### E2e Test Runtime Optimization (post-deploy)
+
+**Problem:** Full smoke suite takes ~600s. 44 sequential mutating tests run one-by-one,
+each with generous sleep waits. The biggest time sinks:
+
+| Source | Cost | Count | Total |
+|--------|------|-------|-------|
+| `setCRSv7TestConfig` + `restoreCRSv7TestConfig` | 10s+10s | 5 tests | ~100s |
+| `verifyDetectBlockEvent` event tailing sleep | 12s | 5 tests | ~60s |
+| Policy engine hot-reload sleep (8s) | 8s | ~10 deploys | ~80s |
+| Rate limit window recovery | 22s | 1 test | ~22s |
+| Other deploy + sleep waits | 2-3s | ~15 | ~40s |
+
+**Fixes (in priority order):**
+
+- [ ] **Share CRSv7 config across tests** — `setCRSv7TestConfig` + `restoreCRSv7TestConfig`
+  each take ~10s (deploy + 8s hot-reload wait). All 5 CRSv7 tests use the same config.
+  Instead: set once, run all 5, restore once. Saves ~80s.
+- [ ] **Reduce hot-reload sleep from 8s to 6s** — plugin polls every 5s, so 6s is safe.
+  Saves ~20s across all deploy waits.
+- [ ] **Reduce event tailing sleep** — 12s is very conservative. `WAF_TAIL_INTERVAL` is 5s,
+  so 7s should be sufficient. Or better: poll the events API until the sentinel appears
+  (retry loop with 500ms intervals, 10s timeout). Saves ~25s.
+- [ ] **Group mutating tests that share config** — tests that use the same WAF config
+  (e.g., all detect scoring tests) can share one setup/teardown cycle.
+- [ ] **Target: <300s** for the full smoke suite (currently ~600s).
+
 #### Rules Page Restructure (PARTIALLY DONE)
 
 **Done:**

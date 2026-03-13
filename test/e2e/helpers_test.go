@@ -440,3 +440,261 @@ func deployWAF(t *testing.T) string {
 	}
 	return jsonField(body, "status")
 }
+
+// ── Poll-based wait helpers ───────────────────────────────────────
+
+// waitForCondition polls fn every interval until it returns true or timeout
+// expires. Much faster than fixed time.Sleep for hot-reload waits.
+func waitForCondition(t *testing.T, desc string, timeout time.Duration, fn func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fn() {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for %s after %v", desc, timeout)
+}
+
+// waitForStatus polls url until the response status matches expected or timeout.
+func waitForStatus(t *testing.T, url string, expected int, timeout time.Duration) {
+	t.Helper()
+	waitForCondition(t, fmt.Sprintf("status %d from %s", expected, url), timeout, func() bool {
+		resp, err := client.Do(mustNewRequest(t, "GET", url))
+		if err != nil {
+			return false
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode == expected
+	})
+}
+
+// waitForHeader polls url until the response contains the expected header value.
+func waitForHeader(t *testing.T, url, header, substr string, timeout time.Duration) {
+	t.Helper()
+	waitForCondition(t, fmt.Sprintf("header %s containing %q from %s", header, substr, url), timeout, func() bool {
+		resp, err := client.Do(mustNewRequest(t, "GET", url))
+		if err != nil {
+			return false
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return strings.Contains(resp.Header.Get(header), substr)
+	})
+}
+
+// waitForNoHeader polls url until the named header is absent.
+func waitForNoHeader(t *testing.T, url, header string, timeout time.Duration) {
+	t.Helper()
+	waitForCondition(t, fmt.Sprintf("header %s absent from %s", header, url), timeout, func() bool {
+		resp, err := client.Do(mustNewRequest(t, "GET", url))
+		if err != nil {
+			return false
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.Header.Get(header) == ""
+	})
+}
+
+// waitForEvent polls the events API until an event matching the sentinel UA appears.
+func waitForEvent(t *testing.T, sentinel string, timeout time.Duration) map[string]any {
+	t.Helper()
+	var found map[string]any
+	waitForCondition(t, fmt.Sprintf("event with UA %q", sentinel), timeout, func() bool {
+		found = findEventBySentinel(t, sentinel)
+		return found != nil
+	})
+	return found
+}
+
+func mustNewRequest(t *testing.T, method, url string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		t.Fatalf("creating request: %v", err)
+	}
+	return req
+}
+
+// deployAndWaitForStatus deploys WAF config, then polls until url returns
+// the expected status. Replaces the pattern: deploy + time.Sleep(8s).
+func deployAndWaitForStatus(t *testing.T, url string, expected int) {
+	t.Helper()
+	time.Sleep(1 * time.Second) // mtime boundary
+	deployWAF(t)
+	waitForStatus(t, url, expected, 10*time.Second)
+}
+
+// ── Event helpers ─────────────────────────────────────────────────
+
+// findEventBySentinel queries the events API and returns the first event
+// matching the given User-Agent sentinel value.
+func findEventBySentinel(t *testing.T, sentinel string) map[string]any {
+	t.Helper()
+	_, eventsBody := httpGet(t, wafctlURL+"/api/events?hours=1&limit=100")
+	events := jsonFieldArray(eventsBody, "events")
+
+	for _, e := range events {
+		var evtMap map[string]any
+		if err := json.Unmarshal(e, &evtMap); err != nil {
+			continue
+		}
+		if ua, _ := evtMap["user_agent"].(string); ua == sentinel {
+			return evtMap
+		}
+	}
+	return nil
+}
+
+// verifyDetectBlockEvent asserts that a detect_block event exists for the
+// sentinel UA, was triggered by the policy engine (not Coraza), and contains
+// the expected rule ID in matched_rules.
+func verifyDetectBlockEvent(t *testing.T, sentinel string, expectedRuleID string, expectedMsgSubstr string) {
+	t.Helper()
+
+	evt := findEventBySentinel(t, sentinel)
+	if evt == nil {
+		t.Fatalf("no event found with sentinel UA %q", sentinel)
+	}
+
+	// Must be detect_block — not "blocked" (Coraza) or "policy_block" (custom rule).
+	eventType, _ := evt["event_type"].(string)
+	if eventType != "detect_block" {
+		t.Errorf("event_type: want detect_block, got %q (Coraza=%q means isolation failed)", eventType, eventType)
+	}
+
+	// Verify blocked_by indicates anomaly scoring.
+	blockedBy, _ := evt["blocked_by"].(string)
+	t.Logf("event_type=%s blocked_by=%s anomaly_score=%v", eventType, blockedBy, evt["anomaly_score"])
+
+	// Verify matched_rules contains the expected rule with proper detail.
+	matchedRulesRaw, _ := json.Marshal(evt["matched_rules"])
+	var matchedRules []map[string]any
+	json.Unmarshal(matchedRulesRaw, &matchedRules)
+
+	if len(matchedRules) == 0 {
+		t.Fatal("expected matched_rules non-empty")
+	}
+
+	foundRule := false
+	for _, rule := range matchedRules {
+		// Rule IDs come as float64 from JSON unmarshalling.
+		var ruleIDStr string
+		switch v := rule["id"].(type) {
+		case float64:
+			ruleIDStr = fmt.Sprintf("%d", int(v))
+		case string:
+			ruleIDStr = v
+		}
+		if ruleIDStr == expectedRuleID {
+			foundRule = true
+			// Verify msg is present and contains expected substring.
+			msg, _ := rule["msg"].(string)
+			if msg == "" {
+				t.Errorf("rule %s: msg should not be empty", expectedRuleID)
+			}
+			if expectedMsgSubstr != "" && !strings.Contains(strings.ToLower(msg), strings.ToLower(expectedMsgSubstr)) {
+				t.Errorf("rule %s msg: want substring %q, got %q", expectedRuleID, expectedMsgSubstr, msg)
+			}
+			// Verify matched_data is present (the operator's match output).
+			matches, _ := rule["matches"].([]any)
+			if len(matches) > 0 {
+				firstMatch, _ := matches[0].(map[string]any)
+				matchedData, _ := firstMatch["matched_data"].(string)
+				t.Logf("rule %s: msg=%q matched_data=%q", expectedRuleID, msg, matchedData)
+			} else {
+				// Fall back to top-level matched_data for Coraza-format events.
+				md, _ := rule["matched_data"].(string)
+				t.Logf("rule %s: msg=%q matched_data=%q", expectedRuleID, msg, md)
+			}
+			break
+		}
+	}
+	if !foundRule {
+		for _, rule := range matchedRules {
+			t.Logf("  matched rule: id=%v msg=%v", rule["id"], rule["msg"])
+		}
+		t.Errorf("expected rule %s in matched_rules", expectedRuleID)
+	}
+}
+
+// verifyDetectBlockEventFromMap is like verifyDetectBlockEvent but takes a
+// pre-fetched event map (from waitForEvent) instead of looking up by sentinel.
+func verifyDetectBlockEventFromMap(t *testing.T, evt map[string]any, expectedRuleID string, expectedMsgSubstr string) {
+	t.Helper()
+
+	if evt == nil {
+		t.Fatal("event map is nil")
+	}
+
+	// Must be detect_block — not "blocked" (Coraza) or "policy_block" (custom rule).
+	eventType, _ := evt["event_type"].(string)
+	if eventType != "detect_block" {
+		t.Errorf("event_type: want detect_block, got %q", eventType)
+	}
+
+	// Verify blocked_by indicates anomaly scoring.
+	blockedBy, _ := evt["blocked_by"].(string)
+	t.Logf("event_type=%s blocked_by=%s anomaly_score=%v", eventType, blockedBy, evt["anomaly_score"])
+
+	// Verify matched_rules contains the expected rule with proper detail.
+	matchedRulesRaw, _ := json.Marshal(evt["matched_rules"])
+	var matchedRules []map[string]any
+	json.Unmarshal(matchedRulesRaw, &matchedRules)
+
+	if len(matchedRules) == 0 {
+		t.Fatal("expected matched_rules non-empty")
+	}
+
+	foundRule := false
+	for _, rule := range matchedRules {
+		var ruleIDStr string
+		switch v := rule["id"].(type) {
+		case float64:
+			ruleIDStr = fmt.Sprintf("%d", int(v))
+		case string:
+			ruleIDStr = v
+		}
+		if ruleIDStr == expectedRuleID {
+			foundRule = true
+			msg, _ := rule["msg"].(string)
+			if msg == "" {
+				t.Errorf("rule %s: msg should not be empty", expectedRuleID)
+			}
+			if expectedMsgSubstr != "" && !strings.Contains(strings.ToLower(msg), strings.ToLower(expectedMsgSubstr)) {
+				t.Errorf("rule %s msg: want substring %q, got %q", expectedRuleID, expectedMsgSubstr, msg)
+			}
+			matches, _ := rule["matches"].([]any)
+			if len(matches) > 0 {
+				firstMatch, _ := matches[0].(map[string]any)
+				matchedData, _ := firstMatch["matched_data"].(string)
+				t.Logf("rule %s: msg=%q matched_data=%q", expectedRuleID, msg, matchedData)
+			} else {
+				md, _ := rule["matched_data"].(string)
+				t.Logf("rule %s: msg=%q matched_data=%q", expectedRuleID, msg, md)
+			}
+			break
+		}
+	}
+	if !foundRule {
+		for _, rule := range matchedRules {
+			t.Logf("  matched rule: id=%v msg=%v", rule["id"], rule["msg"])
+		}
+		t.Errorf("expected rule %s in matched_rules", expectedRuleID)
+	}
+}
+
+// setBrowserHeaders adds standard browser-like headers to a request to avoid
+// false positives from CRS protocol enforcement rules (920310 empty Accept,
+// 920470 no Content-Type, 9100034 missing browser headers, etc.).
+func setBrowserHeaders(req *http.Request) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "E2E-Browser/1.0")
+	}
+	req.Header.Set("Accept", "text/html,*/*")
+	req.Header.Set("Accept-Language", "en")
+	req.Header.Set("Accept-Encoding", "gzip")
+}
