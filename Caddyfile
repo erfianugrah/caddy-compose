@@ -97,30 +97,26 @@
 }
 
 # WAF — policy engine as sole WAF (CRS rules baked into default-rules.json).
-# WebSocket upgrades are skipped — CRS rules block the Upgrade handshake.
-#
 # (waf)     — Unified WAF snippet. Per-service settings (paranoia level,
 #             thresholds, mode) are managed via the wafctl Settings page.
+#             WebSocket upgrade requests ARE inspected — the policy engine
+#             implements http.Hijacker (v0.12.6+) so WS connections pass
+#             through safely after the upgrade request is evaluated.
 # (waf_off) — No WAF processing. For metrics-only or respond-only services.
 (waf) {
 	# Inject Caddy-generated request UUID for all requests (including WebSocket)
 	# so it appears in access logs for cross-log correlation.
 	request_header X-Request-Id {http.request.uuid}
-	@not_websocket {
-		not {
-			header Connection *Upgrade*
-			header Upgrade    websocket
-		}
-	}
-	route @not_websocket {
-		# Policy engine evaluates all WAF rules: allow/block/honeypot,
-		# CRS detection (anomaly scoring), rate limiting.
-		# Rules are hot-reloaded from JSON files written by wafctl.
-		policy_engine {
-			rules_file /data/waf/policy-rules.json
-			default_rules_file /etc/caddy/waf/default-rules.json
-			reload_interval 5s
-		}
+	# Policy engine evaluates all WAF rules: allow/block/honeypot,
+	# CRS detection (anomaly scoring), rate limiting.
+	# Rules are hot-reloaded from JSON files written by wafctl.
+	# WebSocket upgrade requests are scored normally — the plugin's
+	# responseHeaderWriter implements http.Hijacker so the WS upgrade
+	# succeeds after evaluation (plugin v0.12.6+).
+	policy_engine {
+		rules_file /data/waf/policy-rules.json
+		default_rules_file /etc/caddy/waf/default-rules.json
+		reload_interval 5s
 	}
 	handle_errors 400 403 429 {
 		root * /etc/caddy/errors
