@@ -272,7 +272,12 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 			continue
 		}
 
-		stats := result[ruleName]
+		stats, ok := result[ruleName]
+		if !ok {
+			// Event references a rule no longer in the active list —
+			// initialize a fresh entry so the sparkline slice is non-nil.
+			stats = RLRuleHitStats{Sparkline: make([]int, numBuckets)}
+		}
 		stats.Total++
 
 		// Sparkline bucket.

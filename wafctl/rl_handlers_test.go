@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ─── Rate Limit Rule Handler Tests ──────────────────────────────────
@@ -263,6 +264,41 @@ func TestRLRuleHandlerHits(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("hits: want 200, got %d", w.Code)
+	}
+}
+
+func TestRLRuleHits_OrphanedEventNoPanic(t *testing.T) {
+	// Regression: RuleHits panicked with "index out of range" when an event
+	// referenced a rule name not present in the current rules list, because
+	// the zero-value RLRuleHitStats has a nil Sparkline slice.
+	als := emptyAccessLogStore(t)
+	rs := newTestRLRuleStore(t)
+
+	// Create a rule, then inject an event referencing a DIFFERENT rule name.
+	rs.Create(RateLimitRule{
+		Name: "active-rule", Service: "s.io",
+		Key: "client_ip", Events: 10, Window: "1m", Enabled: true,
+	})
+	als.mu.Lock()
+	als.events = append(als.events, RateLimitEvent{
+		Timestamp: time.Now().UTC(),
+		Source:    "policy_rl",
+		RuleName:  "deleted-rule", // not in current rules list
+		Service:   "s.io",
+		ClientIP:  "1.2.3.4",
+	})
+	als.mu.Unlock()
+
+	// This must not panic.
+	hits := als.RuleHits(rs.List(), 24)
+	if _, ok := hits["deleted-rule"]; !ok {
+		t.Error("expected orphaned rule name to appear in hits map")
+	}
+	if hits["deleted-rule"].Total != 1 {
+		t.Errorf("expected total=1 for orphaned rule, got %d", hits["deleted-rule"].Total)
+	}
+	if len(hits["deleted-rule"].Sparkline) != 24 {
+		t.Errorf("expected sparkline len=24, got %d", len(hits["deleted-rule"].Sparkline))
 	}
 }
 

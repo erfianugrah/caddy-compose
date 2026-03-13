@@ -955,6 +955,13 @@ would auto-appear as new cards.
 - [x] `test/e2e/smoke_test.go:341-345` — `TestDeployPipeline` creates an exclusion with
   `type: "skip_rule"` which may no longer be valid after Coraza removal. Update to a
   policy-engine-compatible type (`allow`, `block`, `detect`).
+- [x] `RuleHits` panic — `AccessLogStore.RuleHits()` panicked with `index out of range [23]
+  with length 0` when an event referenced a rule name not in the current rules list. The
+  zero-value `RLRuleHitStats` has `Sparkline: nil`. Fixed by initializing a fresh entry
+  for orphaned rule names. Regression test added in `rl_handlers_test.go`.
+- [x] CRS regression gating — `TestCRSRegression` now skips unless `CRS_REGRESSION=1` env
+  var is set. Without this, the 3925-test CRS suite blocks all `t.Parallel()` smoke tests
+  (Go runs all sequential tests before releasing parallel ones), causing 600s timeouts.
 
 #### Rules Page Restructure (PARTIALLY DONE)
 

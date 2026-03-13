@@ -423,6 +423,10 @@ func buildOverrides() map[string]testOverride {
 // ── Main Test Function ──────────────────────────────────────────────
 
 func TestCRSRegression(t *testing.T) {
+	if os.Getenv("CRS_REGRESSION") == "" {
+		t.Skip("skipping CRS regression (set CRS_REGRESSION=1 to enable)")
+	}
+
 	// Paths.
 	defaultRulesPath := envOr("CRS_DEFAULT_RULES", "../../waf/default-rules.json")
 	crsTestsDir := envOr("CRS_TESTS_DIR", "../../tools/coreruleset/tests/regression/tests")
