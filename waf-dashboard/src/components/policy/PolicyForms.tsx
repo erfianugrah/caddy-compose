@@ -471,9 +471,6 @@ export function AdvancedBuilderForm({
       type: form.type,
       enabled: form.enabled,
     };
-    if (form.rule_id) data.rule_id = form.rule_id;
-    if (form.rule_tag) data.rule_tag = form.rule_tag;
-    if (form.variable) data.variable = form.variable;
     if (isDetect) {
       data.severity = form.severity;
       if (form.detect_paranoia_level > 0) data.detect_paranoia_level = form.detect_paranoia_level;

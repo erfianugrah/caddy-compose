@@ -436,13 +436,6 @@ func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore,
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
-		if deployCfg.PolicyRulesFile == "" {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{
-				Error: "policy rules file not configured",
-			})
-			return
-		}
-
 		allExclusions := es.EnabledExclusions()
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()

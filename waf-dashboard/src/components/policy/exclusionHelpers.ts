@@ -7,10 +7,6 @@ export function conditionsSummary(excl: Exclusion): string {
   // Build composite summary: rule scope + variable + conditions
   const segments: string[] = [];
 
-  if (excl.rule_id) segments.push(`Rule ${excl.rule_id}`);
-  if (excl.rule_tag) segments.push(`Tag: ${excl.rule_tag}`);
-  if (excl.variable) segments.push(`Var: ${excl.variable}`);
-
   if (excl.conditions && excl.conditions.length > 0) {
     const parts = excl.conditions.map((c) => {
       const fieldLabel = CONDITION_FIELDS.find((f) => f.value === c.field)?.label ?? c.field;

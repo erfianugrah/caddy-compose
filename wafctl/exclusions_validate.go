@@ -211,49 +211,6 @@ func validateExclusion(e RuleExclusion) error {
 	return nil
 }
 
-// validateRuleIDField checks that a rule_id field contains valid IDs.
-// Accepts a single ID (e.g. "932235"), a range (e.g. "932000-932999"),
-// or multiple space/comma-separated IDs and ranges.
-func validateRuleIDField(field string) error {
-	normalized := strings.ReplaceAll(field, ",", " ")
-	tokens := strings.Fields(normalized)
-	if len(tokens) == 0 {
-		return fmt.Errorf("empty rule_id")
-	}
-	for _, tok := range tokens {
-		if !isValidRuleIDToken(tok) {
-			return fmt.Errorf("invalid rule ID %q (must be a number or a range like 932000-932999)", tok)
-		}
-	}
-	return nil
-}
-
-// isValidRuleIDToken returns true if the token is a valid rule ID (all digits)
-// or a valid range (digits-digits).
-func isValidRuleIDToken(tok string) bool {
-	if tok == "" {
-		return false
-	}
-	// Check for range: digits-digits
-	if idx := strings.Index(tok, "-"); idx > 0 && idx < len(tok)-1 {
-		return isAllDigits(tok[:idx]) && isAllDigits(tok[idx+1:])
-	}
-	return isAllDigits(tok)
-}
-
-// isAllDigits returns true if every byte in s is an ASCII digit.
-func isAllDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
 // splitPipe splits a pipe-delimited string and trims whitespace.
 func splitPipe(s string) []string {
 	var parts []string

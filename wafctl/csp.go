@@ -440,12 +440,6 @@ func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigS
 		defer deployMu.Unlock()
 
 		// CSP config goes into policy-rules.json for hot-reload (no Caddy restart).
-		if deployCfg.PolicyRulesFile == "" {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{
-				Error: "policy rules file not configured",
-			})
-			return
-		}
 		allExclusions := es.EnabledExclusions()
 		rlRules := rs.EnabledRules()
 		rlGlobal := rs.GetGlobal()

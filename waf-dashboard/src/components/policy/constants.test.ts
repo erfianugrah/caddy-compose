@@ -166,9 +166,6 @@ describe("emptyAdvancedForm", () => {
     expect(emptyAdvancedForm.name).toBe("");
     expect(emptyAdvancedForm.description).toBe("");
     expect(emptyAdvancedForm.type).toBe("allow");
-    expect(emptyAdvancedForm.rule_id).toBe("");
-    expect(emptyAdvancedForm.rule_tag).toBe("");
-    expect(emptyAdvancedForm.variable).toBe("");
     expect(emptyAdvancedForm.severity).toBe("");
     expect(emptyAdvancedForm.detect_paranoia_level).toBe(0);
     expect(emptyAdvancedForm.conditions).toEqual([]);

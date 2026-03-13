@@ -455,9 +455,6 @@ export interface AdvancedFormState {
   name: string;
   description: string;
   type: ExclusionType;
-  rule_id: string;
-  rule_tag: string;
-  variable: string;
   severity: string;
   detect_paranoia_level: number;
   conditions: import("@/lib/api").Condition[];
@@ -470,9 +467,6 @@ export const emptyAdvancedForm: AdvancedFormState = {
   name: "",
   description: "",
   type: "allow",
-  rule_id: "",
-  rule_tag: "",
-  variable: "",
   severity: "",
   detect_paranoia_level: 0,
   conditions: [],

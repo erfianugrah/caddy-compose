@@ -98,12 +98,6 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigS
 
 		// RL rules go into policy-rules.json alongside WAF exclusions.
 		// The plugin hot-reloads via mtime polling — no Caddy restart needed.
-		if deployCfg.PolicyRulesFile == "" {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{
-				Error: "policy rules file not configured",
-			})
-			return
-		}
 		allExclusions := es.EnabledExclusions()
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)

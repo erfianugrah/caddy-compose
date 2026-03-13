@@ -276,10 +276,6 @@ func TestCRSRulesCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("autocomplete", func(t *testing.T) {
-		resp, _ := httpGet(t, wafctlURL+"/api/crs/autocomplete")
-		assertCode(t, "autocomplete", 200, resp)
-	})
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -338,10 +334,9 @@ func TestDeployPipeline(t *testing.T) {
 	// Create a test exclusion to include in deploy.
 	payload := map[string]any{
 		"name":        "e2e-deploy-test",
-		"type":        "skip_rule",
+		"type":        "allow",
 		"description": "Deploy test",
 		"enabled":     true,
-		"rule_id":     "942100",
 		"conditions":  []map[string]string{{"field": "path", "operator": "begins_with", "value": "/api/"}},
 	}
 	resp, body := httpPost(t, wafctlURL+"/api/exclusions", payload)
@@ -3384,20 +3379,6 @@ func TestV090ValidationEndpoints(t *testing.T) {
 		assertCode(t, "aggregate accepted", 201, resp)
 		id := mustGetID(t, body)
 		cleanup(t, wafctlURL+"/api/exclusions/"+id)
-	})
-
-	t.Run("aggregate field rejected for SecRule type", func(t *testing.T) {
-		payload := map[string]any{
-			"name":    "e2e-val-agg-secrule",
-			"type":    "skip_rule",
-			"rule_id": "942100",
-			"enabled": true,
-			"conditions": []map[string]any{
-				{"field": "all_headers", "operator": "contains", "value": "test"},
-			},
-		}
-		resp, _ := httpPost(t, wafctlURL+"/api/exclusions", payload)
-		assertCode(t, "aggregate rejected for SecRule", 400, resp)
 	})
 
 	t.Run("phrase_match without list_items rejected", func(t *testing.T) {

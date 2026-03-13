@@ -243,8 +243,6 @@ export default function PolicyEngine() {
       result = result.filter((e) =>
         e.name.toLowerCase().includes(q) ||
         e.description.toLowerCase().includes(q) ||
-        (e.rule_id && e.rule_id.toLowerCase().includes(q)) ||
-        (e.rule_tag && e.rule_tag.toLowerCase().includes(q)) ||
         (e.conditions && e.conditions.some((c) => c.value.toLowerCase().includes(q)))
       );
     }
@@ -398,9 +396,6 @@ export default function PolicyEngine() {
         name: exclusionToEdit.name,
         description: exclusionToEdit.description,
         type: exclusionToEdit.type,
-        rule_id: exclusionToEdit.rule_id ?? "",
-        rule_tag: exclusionToEdit.rule_tag ?? "",
-        variable: exclusionToEdit.variable ?? "",
         severity: exclusionToEdit.severity ?? "",
         detect_paranoia_level: exclusionToEdit.detect_paranoia_level ?? 0,
         conditions: exclusionToEdit.conditions ?? [],

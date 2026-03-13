@@ -74,31 +74,29 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 
 	// Policy engine: generate JSON rules file for the Caddy plugin.
 	// Includes WAF exclusions (allow/block/detect) and rate limit rules.
-	if deployCfg.PolicyRulesFile != "" {
-		rlRules := rs.EnabledRules()
-		rlGlobal := rs.GetGlobal()
-		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+	rlRules := rs.EnabledRules()
+	rlGlobal := rs.GetGlobal()
+	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+	wafCfg := BuildPolicyWafConfig(cs, svcMap)
+	policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+	if err != nil {
+		log.Printf("[boot] warning: failed to generate policy rules: %v", err)
+	} else {
+		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
 		if err != nil {
-			log.Printf("[boot] warning: failed to generate policy rules: %v", err)
+			log.Printf("[boot] warning: failed to apply default rule overrides: %v", err)
+		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+			log.Printf("[boot] warning: failed to write policy rules file: %v", err)
 		} else {
-			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-			if err != nil {
-				log.Printf("[boot] warning: failed to apply default rule overrides: %v", err)
-			} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-				log.Printf("[boot] warning: failed to write policy rules file: %v", err)
-			} else {
-				policyCount := 0
-				for _, e := range allExclusions {
-					if IsPolicyEngineType(e.Type) {
-						policyCount++
-					}
+			policyCount := 0
+			for _, e := range allExclusions {
+				if IsPolicyEngineType(e.Type) {
+					policyCount++
 				}
-				log.Printf("[boot] regenerated policy rules (%d WAF + %d RL rules) → %s",
-					policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 			}
+			log.Printf("[boot] regenerated policy rules (%d WAF + %d RL rules) → %s",
+				policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 		}
 	}
 
@@ -115,32 +113,30 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 	allExclusions := es.EnabledExclusions()
 
 	// Generate policy engine rules file (WAF exclusions + RL rules).
-	if deployCfg.PolicyRulesFile != "" {
-		rlRules := rs.EnabledRules()
-		rlGlobal := rs.GetGlobal()
-		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
-		if err != nil {
-			return fmt.Errorf("generating policy rules: %w", err)
-		}
-		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-		if err != nil {
-			return fmt.Errorf("applying default rule overrides: %w", err)
-		}
-		if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-			return fmt.Errorf("writing policy rules file: %w", err)
-		}
-		policyCount := 0
-		for _, e := range allExclusions {
-			if IsPolicyEngineType(e.Type) {
-				policyCount++
-			}
-		}
-		log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
-			policyCount, len(rlRules), deployCfg.PolicyRulesFile)
+	rlRules := rs.EnabledRules()
+	rlGlobal := rs.GetGlobal()
+	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+	wafCfg := BuildPolicyWafConfig(cs, svcMap)
+	policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+	if err != nil {
+		return fmt.Errorf("generating policy rules: %w", err)
 	}
+	policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+	if err != nil {
+		return fmt.Errorf("applying default rule overrides: %w", err)
+	}
+	if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+		return fmt.Errorf("writing policy rules file: %w", err)
+	}
+	policyCount := 0
+	for _, e := range allExclusions {
+		if IsPolicyEngineType(e.Type) {
+			policyCount++
+		}
+	}
+	log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
+		policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 
 	// Reload Caddy to pick up the new policy rules.
 	if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {

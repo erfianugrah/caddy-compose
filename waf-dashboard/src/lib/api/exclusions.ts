@@ -92,9 +92,6 @@ export interface Exclusion {
   type: ExclusionType;
   conditions: Condition[];
   group_operator: GroupOperator;
-  rule_id?: string;
-  rule_tag?: string;
-  variable?: string;
   severity?: string;
   detect_paranoia_level?: number;
   tags?: string[];
@@ -109,9 +106,6 @@ export interface ExclusionCreateData {
   type: ExclusionType;
   conditions?: Condition[];
   group_operator?: GroupOperator;
-  rule_id?: string;
-  rule_tag?: string;
-  variable?: string;
   severity?: string;
   detect_paranoia_level?: number;
   tags?: string[];
@@ -156,9 +150,6 @@ interface RawExclusion {
   type: string;
   conditions?: Condition[];
   group_operator?: string;
-  rule_id?: string;
-  rule_tag?: string;
-  variable?: string;
   severity?: string;
   detect_paranoia_level?: number;
   tags?: string[];
@@ -175,9 +166,6 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     type: typeFromGo[raw.type] ?? ("allow" as ExclusionType),
     conditions: raw.conditions ?? [],
     group_operator: (raw.group_operator as GroupOperator) || "and",
-    rule_id: raw.rule_id || undefined,
-    rule_tag: raw.rule_tag || undefined,
-    variable: raw.variable || undefined,
     severity: raw.severity || undefined,
     detect_paranoia_level: raw.detect_paranoia_level ?? undefined,
     tags: raw.tags,
@@ -194,9 +182,6 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.type !== undefined) result.type = typeToGo[data.type] ?? data.type;
   if (data.conditions !== undefined) result.conditions = data.conditions;
   if (data.group_operator !== undefined) result.group_operator = data.group_operator;
-  if (data.rule_id !== undefined) result.rule_id = data.rule_id;
-  if (data.rule_tag !== undefined) result.rule_tag = data.rule_tag;
-  if (data.variable !== undefined) result.variable = data.variable;
   if (data.severity !== undefined) result.severity = data.severity;
   if (data.detect_paranoia_level !== undefined) result.detect_paranoia_level = data.detect_paranoia_level;
   if (data.tags !== undefined) result.tags = data.tags;
@@ -251,9 +236,6 @@ export async function importExclusions(data: Exclusion[]): Promise<{ imported: n
     type: e.type,
     conditions: e.conditions,
     group_operator: e.group_operator,
-    rule_id: e.rule_id,
-    rule_tag: e.rule_tag,
-    variable: e.variable,
     tags: e.tags,
     enabled: e.enabled,
   }));

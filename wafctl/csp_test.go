@@ -786,35 +786,6 @@ func TestHandlePreviewCSPEmptyGlobals(t *testing.T) {
 	}
 }
 
-func TestHandleDeployCSPRequiresPolicyEngine(t *testing.T) {
-	mux, store := setupCSPMux(t)
-
-	cfg := store.Get()
-	cfg.Services["test"] = CSPServiceConfig{
-		Mode:    "set",
-		Inherit: false,
-		Policy: CSPPolicy{
-			DefaultSrc: []string{"'none'"},
-		},
-	}
-	store.Update(cfg)
-
-	req := httptest.NewRequest("POST", "/api/csp/deploy", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	// Without policy engine enabled, deploy should return 400.
-	if w.Code != 400 {
-		t.Fatalf("status = %d, want 400, body: %s", w.Code, w.Body.String())
-	}
-
-	var resp ErrorResponse
-	json.NewDecoder(w.Body).Decode(&resp)
-	if !strings.Contains(resp.Error, "policy rules file") {
-		t.Errorf("error should mention policy rules file, got %q", resp.Error)
-	}
-}
-
 // ─── Default Config Tests ───────────────────────────────────────────────────
 
 func TestDefaultCSPConfig(t *testing.T) {

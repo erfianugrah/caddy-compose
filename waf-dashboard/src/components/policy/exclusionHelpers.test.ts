@@ -25,21 +25,6 @@ describe("conditionsSummary", () => {
     expect(conditionsSummary(excl)).toBe("-");
   });
 
-  it("shows rule_id", () => {
-    const excl = makeExclusion({ rule_id: "942100" });
-    expect(conditionsSummary(excl)).toContain("Rule 942100");
-  });
-
-  it("shows rule_tag", () => {
-    const excl = makeExclusion({ rule_tag: "attack-sqli" });
-    expect(conditionsSummary(excl)).toContain("Tag: attack-sqli");
-  });
-
-  it("shows variable", () => {
-    const excl = makeExclusion({ variable: "ARGS:foo" });
-    expect(conditionsSummary(excl)).toContain("Var: ARGS:foo");
-  });
-
   it("shows conditions with field labels and operator labels", () => {
     const excl = makeExclusion({
       conditions: [
@@ -76,19 +61,6 @@ describe("conditionsSummary", () => {
     expect(summary).toContain(" OR ");
   });
 
-  it("combines rule_id and conditions with separator", () => {
-    const excl = makeExclusion({
-      rule_id: "942100",
-      conditions: [
-        { field: "path", operator: "eq", value: "/api/test" },
-      ],
-    });
-    const summary = conditionsSummary(excl);
-    expect(summary).toContain("Rule 942100");
-    expect(summary).toContain("·");
-    expect(summary).toContain("/api/test");
-  });
-
   it("truncates long condition values at 30 chars", () => {
     const longValue = "a".repeat(50);
     const excl = makeExclusion({
@@ -103,12 +75,10 @@ describe("conditionsSummary", () => {
 
   it("truncates entire summary at 100 chars", () => {
     const excl = makeExclusion({
-      rule_id: "942100 942200 942300",
-      rule_tag: "attack-sqli",
-      variable: "ARGS:very_long_variable_name",
       conditions: [
-        { field: "path", operator: "eq", value: "/very/long/path/to/something" },
+        { field: "path", operator: "eq", value: "/very/long/path/to/something/that/is/quite/lengthy" },
         { field: "host", operator: "eq", value: "very-long-hostname.example.com" },
+        { field: "user_agent", operator: "contains", value: "some-long-user-agent-string" },
       ],
     });
     const summary = conditionsSummary(excl);

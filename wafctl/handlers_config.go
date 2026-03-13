@@ -83,44 +83,42 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		allExclusions := es.EnabledExclusions()
 
 		// Generate policy engine rules file (WAF exclusions + RL rules).
-		if deployCfg.PolicyRulesFile != "" {
-			rlRules := rs.EnabledRules()
-			rlGlobal := rs.GetGlobal()
-			svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-			respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
-			wafCfg := BuildPolicyWafConfig(cs, svcMap)
-			policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to generate policy rules",
-					Details: err.Error(),
-				})
-				return
-			}
-			policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to apply default rule overrides",
-					Details: err.Error(),
-				})
-				return
-			}
-			if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-				writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-					Error:   "failed to write policy rules file",
-					Details: err.Error(),
-				})
-				return
-			}
-			policyCount := 0
-			for _, e := range allExclusions {
-				if IsPolicyEngineType(e.Type) {
-					policyCount++
-				}
-			}
-			log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
-				policyCount, len(rlRules), deployCfg.PolicyRulesFile)
+		rlRules := rs.EnabledRules()
+		rlGlobal := rs.GetGlobal()
+		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+		wafCfg := BuildPolicyWafConfig(cs, svcMap)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to generate policy rules",
+				Details: err.Error(),
+			})
+			return
 		}
+		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to apply default rule overrides",
+				Details: err.Error(),
+			})
+			return
+		}
+		if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Error:   "failed to write policy rules file",
+				Details: err.Error(),
+			})
+			return
+		}
+		policyCount := 0
+		for _, e := range allExclusions {
+			if IsPolicyEngineType(e.Type) {
+				policyCount++
+			}
+		}
+		log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
+			policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 
 		// Reload Caddy via admin API to pick up the new policy rules.
 		reloaded := true
