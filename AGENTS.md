@@ -440,16 +440,18 @@ Components over ~500 lines are split into feature subdirectories following the `
 ### Static MPA Routing
 
 The dashboard is an Astro `output: "static"` multi-page application (MPA), **not** an SPA.
-Each page is a pre-rendered HTML file (`<route>/index.html`). Caddy serves these via:
+Each page is a pre-rendered HTML file (`<route>/index.html`). The dashboard is served by
+wafctl's `uiFileServer` (`ui_server.go`) which implements try_files semantics:
 
-```
-try_files {path} {path}/index.html
-```
+1. Serve the exact file if it exists (e.g. `/_astro/foo.js`)
+2. Try `path/index.html` for directory-style routes (e.g. `/events` → `events/index.html`)
+3. Return `404.html` with a 404 status for anything else
+
+Caddy reverse-proxies all non-API paths to wafctl, which handles both API and UI serving.
 
 There is intentionally **no** `/index.html` catch-all fallback — that is an SPA pattern
 and would cause Web Cache Deception vulnerabilities (e.g., `/blocklist;test.png` would
-serve authenticated HTML with `.png` cache headers). Unknown paths fall through to
-Caddy's `handle_errors` which serves the custom `404.html` page.
+serve authenticated HTML with `.png` cache headers).
 
 A custom `src/pages/404.astro` generates `dist/404.html` for proper 404 responses.
 
@@ -896,9 +898,13 @@ for conditional content (different messages per status code). `file_server` insi
 
 ### Dynamic vs Baked-in Config
 
-Files baked into the image at build time (in `/etc/caddy/`):
+Files baked into the Caddy image at build time (in `/etc/caddy/`):
 - `cf_trusted_proxies.caddy` — Cloudflare IP ranges
-- `waf-ui/` — dashboard static files, `errors/error.html`
+- `errors/error.html` — custom error page template
+
+Files baked into the wafctl image at build time:
+- `/app/waf-ui/` — dashboard static files (Astro MPA build output)
+- `/etc/caddy/waf/default-rules.json` — CRS default rules
 
 Files written at runtime by wafctl (in `/data/caddy/` volumes):
 - `policy-rules.json` — policy engine plugin rules (WAF exclusions + rate limits + CSP + security headers)

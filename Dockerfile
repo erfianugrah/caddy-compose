@@ -20,14 +20,6 @@ RUN apk add --no-cache curl \
 	     echo; \
 	   } > /tmp/cf_trusted_proxies.caddy
 
-# Build WAF dashboard static site
-FROM node:22-alpine AS waf-dashboard
-WORKDIR /build
-COPY waf-dashboard/package.json waf-dashboard/package-lock.json ./
-RUN npm ci
-COPY waf-dashboard/ ./
-RUN npm run build
-
 # Build wafctl sidecar
 FROM golang:1.24-alpine AS wafctl
 ARG WAFCTL_VERSION=dev
@@ -40,7 +32,6 @@ FROM caddy:${VERSION}-alpine
 RUN apk upgrade --no-cache && apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
-COPY --from=waf-dashboard /build/dist/ /etc/caddy/waf-ui/
 COPY errors/ /etc/caddy/errors/
 COPY waf/default-rules.json /etc/caddy/waf/default-rules.json
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh

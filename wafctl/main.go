@@ -288,6 +288,16 @@ func runServe() int {
 	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, rlRuleStore, managedListStore))
 	mux.HandleFunc("POST /api/backup/restore", handleRestore(configStore, cspStore, secHeaderStore, exclusionStore, rlRuleStore, managedListStore))
 
+	// Dashboard UI: serve static files from the embedded waf-dashboard build.
+	// The UI dir is configurable so it can be disabled or relocated.
+	uiDir := envOr("WAF_UI_DIR", "/app/waf-ui")
+	if fi, err := os.Stat(uiDir); err == nil && fi.IsDir() {
+		mux.Handle("/", uiFileServer(uiDir))
+		log.Printf("serving dashboard UI from %s", uiDir)
+	} else {
+		log.Printf("dashboard UI dir %s not found, API-only mode", uiDir)
+	}
+
 	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
 	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
 	allowedOrigins := strings.Split(corsOrigins, ",")

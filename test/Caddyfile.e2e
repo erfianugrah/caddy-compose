@@ -118,10 +118,8 @@
 	import site_log httpbun
 }
 
-# WAF dashboard UI
+# WAF dashboard UI — served by wafctl sidecar
 :8081 {
-	root * /etc/caddy/waf-ui
-	try_files {path} {path}/index.html
-	file_server
+	reverse_proxy wafctl:8080
 	import error_pages
 }

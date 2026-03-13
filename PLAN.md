@@ -1050,22 +1050,17 @@ Review ALL forms across the dashboard for consistency, missing fields, and broke
 | Default rules bulk API | `POST /api/default-rules/bulk` — batch override for CRS rules bulk actions | Medium |
 | Exclusions bulk API | `POST /api/exclusions/bulk` — batch enable/disable/delete for policy engine bulk actions | Medium |
 
-### Architecture — UI Bundling into wafctl
+### Architecture — UI Bundling into wafctl — DONE
 
-Currently the waf-dashboard is built as static files and baked into the **Caddy** image (`COPY --from=frontend /app/dist /etc/caddy/waf-ui/` in the Dockerfile). This means any dashboard change (even a typo fix) requires rebuilding and redeploying the Caddy image, which restarts the reverse proxy and interrupts all traffic.
+Dashboard moved from Caddy image to wafctl sidecar. Changes:
 
-**Goal:** Move the dashboard into the wafctl sidecar image instead. wafctl serves the static files via `http.FileServer`, and Caddy reverse-proxies the UI path to wafctl. Dashboard changes only restart the sidecar, not the proxy.
-
-**Changes required:**
-- [ ] Dockerfile: Move `frontend` build stage and `COPY --from=frontend` from caddy image to wafctl image
-- [ ] wafctl `main.go`: Add `http.FileServer(http.Dir("/app/waf-ui"))` handler for `/` path (or a configurable `WAF_UI_DIR`)
-- [ ] Caddyfile: Replace `root * /etc/caddy/waf-ui` + `file_server` with `reverse_proxy wafctl:8080` for the dashboard route
-- [ ] Ensure `try_files {path} {path}/index.html` logic moves to wafctl (Astro MPA routing)
-- [ ] Ensure `404.html` is served correctly from wafctl for unknown paths
-- [ ] Update `compose.yaml` build contexts if needed
-- [ ] Test: dashboard loads, all pages work, no Web Cache Deception vulnerability (no catch-all `/index.html` fallback)
-
-**Effort:** Medium. The main risk is getting the MPA routing right in wafctl's file server (Caddy's `try_files` is doing heavy lifting today).
+- [x] Dockerfile: Removed `waf-dashboard` build stage and `COPY --from=waf-dashboard` from caddy image
+- [x] wafctl/Dockerfile: Added `frontend` build stage, `COPY --from=frontend /build/dist/ /app/waf-ui/`
+- [x] wafctl `main.go`: Added `uiFileServer` handler for `/` (configurable via `WAF_UI_DIR`)
+- [x] wafctl `ui_server.go`: MPA file server with try_files semantics (exact → path/index.html → 404.html), path traversal rejection, no SPA catch-all
+- [x] Caddyfile: Replaced `root * /etc/caddy/waf-ui` + `file_server` with single `reverse_proxy` to wafctl
+- [x] E2E Caddyfile updated: `:8081` block now proxies to wafctl
+- [x] Tests: `ui_server_test.go` — exact file, root index, directory routes, 404, path traversal, Web Cache Deception prevention
 
 ### Plugin — WebSocket / HTTP Upgrade Support
 
