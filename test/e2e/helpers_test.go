@@ -33,9 +33,9 @@ var (
 
 // browserTransport wraps the default transport to inject browser-like headers
 // on every request. Without these, the policy engine's default detect rules
-// (PE-9100030 Missing Accept, PE-9100033 Missing User-Agent, PE-9100034
-// Missing Referer, PE-920280 Missing Host) accumulate anomaly scores that
-// exceed the default threshold of 5, blocking bare Go http.Client requests.
+// (9100030 Missing Accept, 9100033 Missing User-Agent, 9100034 Missing
+// Referer, 920280 Missing Host) accumulate anomaly scores that exceed the
+// default threshold of 5, blocking bare Go http.Client requests.
 type browserTransport struct {
 	base http.RoundTripper
 }

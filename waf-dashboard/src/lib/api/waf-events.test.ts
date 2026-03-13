@@ -178,7 +178,7 @@ describe("fetchSummary", () => {
       service: "cdn.erfi.io",
       client: "1.2.3.4",
       method: "GET",
-      event_type: "blocked",
+      event_type: "detect_block",
       rule_name: "My Rule",
     });
 
@@ -188,7 +188,7 @@ describe("fetchSummary", () => {
     expect(params.get("service")).toBe("cdn.erfi.io");
     expect(params.get("client")).toBe("1.2.3.4");
     expect(params.get("method")).toBe("GET");
-    expect(params.get("event_type")).toBe("blocked");
+    expect(params.get("event_type")).toBe("detect_block");
     expect(params.get("rule_name")).toBe("My Rule");
   });
 
@@ -564,7 +564,7 @@ describe("country field mapping", () => {
 
 describe("event_type mapping in fetchEvents", () => {
   const eventTypes = [
-    "blocked", "logged", "rate_limited",
+    "detect_block", "logged", "rate_limited",
     "policy_skip", "policy_allow", "policy_block",
   ] as const;
 
@@ -591,7 +591,7 @@ describe("event_type mapping in fetchEvents", () => {
     });
   }
 
-  it("falls back to 'blocked' when event_type is missing and is_blocked=true", async () => {
+  it("falls back to 'detect_block' when event_type is missing and is_blocked=true", async () => {
     const goResponse = {
       total: 1,
       events: [{
@@ -608,7 +608,7 @@ describe("event_type mapping in fetchEvents", () => {
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await fetchEvents();
-    expect(result.events[0].event_type).toBe("blocked");
+    expect(result.events[0].event_type).toBe("detect_block");
   });
 
   it("falls back to 'logged' when event_type is missing and is_blocked=false", async () => {
@@ -649,7 +649,7 @@ describe("event_type mapping in fetchEvents", () => {
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
 
     const result = await fetchEvents();
-    expect(result.events[0].event_type).toBe("blocked");
+    expect(result.events[0].event_type).toBe("detect_block");
   });
 });
 

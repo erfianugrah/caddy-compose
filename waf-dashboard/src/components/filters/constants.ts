@@ -14,13 +14,12 @@ export const OP_META: Record<FilterOp, OpMeta> = {
 // ─── Shared option lists ────────────────────────────────────────────
 
 export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "blocked", label: "CRS Blocked" },
+  { value: "detect_block", label: "CRS Blocked" },
   { value: "logged", label: "Logged" },
   { value: "rate_limited", label: "Rate Limited" },
   { value: "policy_skip", label: "Policy Skip" },
   { value: "policy_allow", label: "Policy Allow" },
   { value: "policy_block", label: "Policy Block" },
-  { value: "detect_block", label: "Detect Block" },
 ];
 
 export const METHOD_OPTIONS: { value: string; label: string }[] = [

@@ -14,8 +14,8 @@ import (
 // TestStoreEviction verifies that events older than maxAge are removed.
 func TestStoreEviction(t *testing.T) {
 	store := storeWithEvents(t, []Event{
-		{ID: "old", Timestamp: time.Now().UTC().Add(-200 * time.Hour), EventType: "blocked"},
-		{ID: "new", Timestamp: time.Now().UTC().Add(-1 * time.Hour), EventType: "blocked"},
+		{ID: "old", Timestamp: time.Now().UTC().Add(-200 * time.Hour), EventType: "detect_block"},
+		{ID: "new", Timestamp: time.Now().UTC().Add(-1 * time.Hour), EventType: "detect_block"},
 	})
 	store.SetMaxAge(168 * time.Hour) // 7 days
 	store.evictOld()                 // triggers eviction
@@ -91,8 +91,8 @@ func TestStoreEventFileLoadsEvents(t *testing.T) {
 	}
 
 	events := store.Snapshot()
-	if events[0].ID != "E1" || events[0].EventType != "blocked" {
-		t.Errorf("event 0: want E1/blocked, got %s/%s", events[0].ID, events[0].EventType)
+	if events[0].ID != "E1" || events[0].EventType != "detect_block" {
+		t.Errorf("event 0: want E1/detect_block, got %s/%s", events[0].ID, events[0].EventType)
 	}
 	if events[1].ID != "E2" || events[1].EventType != "policy_skip" {
 		t.Errorf("event 1: want E2/policy_skip, got %s/%s", events[1].ID, events[1].EventType)
@@ -268,7 +268,7 @@ func TestEventsEventTypeFilter(t *testing.T) {
 		eventType string
 		want      int
 	}{
-		{"blocked", 0},      // 0 WAF blocked events (empty WAF store)
+		{"detect_block", 0}, // 0 WAF detect_block events (empty WAF store)
 		{"logged", 0},       // 0 WAF logged events
 		{"rate_limited", 3}, // 3 429 events
 	}
@@ -1237,7 +1237,7 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 func TestSummarizeEvents_PolicyBlockAndRateLimitedCounts(t *testing.T) {
 	// Old honeypot/scanner events are now policy_block; ipsum is rate_limited.
 	events := []Event{
-		{ID: "1", EventType: "blocked", IsBlocked: true},
+		{ID: "1", EventType: "detect_block", IsBlocked: true},
 		{ID: "2", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{ID: "3", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{ID: "4", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
@@ -1247,11 +1247,11 @@ func TestSummarizeEvents_PolicyBlockAndRateLimitedCounts(t *testing.T) {
 	summary := summarizeEvents(events)
 
 	// policy_block events count toward both PolicyEvents and BlockedEvents.
-	// PolicyEvents: policy_block(3) + policy_skip(1) = 4
-	if summary.PolicyEvents != 4 {
-		t.Errorf("PolicyEvents = %d, want 4", summary.PolicyEvents)
+	// PolicyEvents: policy_block(3) + detect_block(1) + policy_skip(1) = 5
+	if summary.PolicyEvents != 5 {
+		t.Errorf("PolicyEvents = %d, want 5", summary.PolicyEvents)
 	}
-	// BlockedEvents: regular blocked(1) + policy_block(3) = 4
+	// BlockedEvents: detect_block(1, IsBlocked) + policy_block(3, IsBlocked) = 4
 	if summary.BlockedEvents != 4 {
 		t.Errorf("BlockedEvents = %d, want 4", summary.BlockedEvents)
 	}
@@ -1267,7 +1267,7 @@ func TestSummarizeEvents_PolicyBlockAndRateLimitedCounts(t *testing.T) {
 func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
 	ts := time.Date(2026, 2, 22, 10, 0, 0, 0, time.UTC)
 	events := []Event{
-		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "blocked", IsBlocked: true},
+		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "detect_block", IsBlocked: true},
 		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "2.2.2.2", EventType: "policy_skip", IsBlocked: false},
@@ -1283,11 +1283,15 @@ func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
 	if h.Count != 6 {
 		t.Errorf("hour.Count = %d, want 6", h.Count)
 	}
-	// Blocked = only plain "blocked" events (not policy_*).
-	if h.Blocked != 1 {
-		t.Errorf("hour.Blocked = %d, want 1", h.Blocked)
+	// Blocked = only generic IsBlocked fallback (not policy_* or detect_block).
+	// detect_block goes to DetectBlock, not Blocked.
+	if h.Blocked != 0 {
+		t.Errorf("hour.Blocked = %d, want 0", h.Blocked)
 	}
-	// Logged = total - blocked - rateLimited - policy = 6 - 1 - 0 - 4 = 1
+	if h.DetectBlock != 1 {
+		t.Errorf("hour.DetectBlock = %d, want 1", h.DetectBlock)
+	}
+	// Logged = total - blocked - rateLimited - policyBlock - detectBlock - policyAllow - policySkip = 6 - 0 - 0 - 3 - 1 - 0 - 1 = 1
 	if h.Logged != 1 {
 		t.Errorf("hour.Logged = %d, want 1", h.Logged)
 	}
@@ -1341,7 +1345,7 @@ func TestSummarizeEvents_PerServiceBreakdown(t *testing.T) {
 	if svc1.PolicySkip != 0 {
 		t.Errorf("svc1.PolicySkip = %d, want 0", svc1.PolicySkip)
 	}
-	// svc1: blocked = 0 (policy_ events don't count as plain "blocked" in per-service)
+	// svc1: blocked = 0 (policy_ events don't count as detect_block in per-service)
 	if svc1.Blocked != 0 {
 		t.Errorf("svc1.Blocked = %d, want 0", svc1.Blocked)
 	}
@@ -1357,7 +1361,7 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 		{ID: "1", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{ID: "2", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "3", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.1", EventType: "policy_skip", IsBlocked: false},
-		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.2", EventType: "blocked", IsBlocked: true},
+		{ID: "4", Timestamp: ts, Service: "a.io", ClientIP: "10.0.0.2", EventType: "detect_block", IsBlocked: true},
 	}
 	summary := summarizeEvents(events)
 
@@ -1386,7 +1390,7 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 	if c1.Count != 3 {
 		t.Errorf("client.Count = %d, want 3", c1.Count)
 	}
-	// Blocked only counts plain "blocked" type, not policy_* events.
+	// Blocked only counts "detect_block" type, not policy_* events.
 	if c1.Blocked != 0 {
 		t.Errorf("client.Blocked = %d, want 0", c1.Blocked)
 	}
@@ -1394,7 +1398,7 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 
 func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 	events := []Event{
-		{Service: "web.io", EventType: "blocked", IsBlocked: true},
+		{Service: "web.io", EventType: "detect_block", IsBlocked: true},
 		{Service: "web.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{Service: "web.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{Service: "web.io", EventType: "policy_skip", IsBlocked: false},
@@ -1457,7 +1461,7 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 		{ID: "2", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "3", Timestamp: time.Now(), Service: "web.io", ClientIP: "10.0.0.1", EventType: "policy_allow", IsBlocked: false},
 		{ID: "4", Timestamp: time.Now(), Service: "api.io", ClientIP: "10.0.0.1", EventType: "policy_block", IsBlocked: true},
-		{ID: "5", Timestamp: time.Now(), Service: "web.io", ClientIP: "99.99.99.99", EventType: "blocked", IsBlocked: true},
+		{ID: "5", Timestamp: time.Now(), Service: "web.io", ClientIP: "99.99.99.99", EventType: "detect_block", IsBlocked: true},
 	}
 	s.mu.Unlock()
 
@@ -1508,7 +1512,7 @@ func TestSetEventFile_PreservesTagsAndTypes(t *testing.T) {
 
 	events := []Event{
 		{ID: "1", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}, Timestamp: time.Now()},
-		{ID: "2", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "2", EventType: "detect_block", IsBlocked: true, Timestamp: time.Now()},
 		{ID: "3", EventType: "rate_limited", IsBlocked: true, Tags: []string{"blocklist", "ipsum"}, Timestamp: time.Now()},
 	}
 	f, _ := os.Create(eventPath)
@@ -1529,7 +1533,7 @@ func TestSetEventFile_PreservesTagsAndTypes(t *testing.T) {
 	if restored[0].EventType != "policy_block" || len(restored[0].Tags) != 1 || restored[0].Tags[0] != "honeypot" {
 		t.Errorf("event 1: got type=%q tags=%v", restored[0].EventType, restored[0].Tags)
 	}
-	if restored[1].EventType != "blocked" || len(restored[1].Tags) != 0 {
+	if restored[1].EventType != "detect_block" || len(restored[1].Tags) != 0 {
 		t.Errorf("event 2: got type=%q tags=%v", restored[1].EventType, restored[1].Tags)
 	}
 	if restored[2].EventType != "rate_limited" || len(restored[2].Tags) != 2 {
@@ -1542,7 +1546,7 @@ func TestSummarizeEvents_TagCounts(t *testing.T) {
 	events := []Event{
 		{ID: "1", Timestamp: ts, Service: "a.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "2", Timestamp: ts, Service: "a.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner"}},
-		{ID: "3", Timestamp: ts, Service: "a.io", EventType: "blocked", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "3", Timestamp: ts, Service: "a.io", EventType: "detect_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{ID: "4", Timestamp: ts, Service: "a.io", EventType: "logged"},
 	}
 	summary := summarizeEvents(events)
@@ -1564,7 +1568,7 @@ func TestSummarizeEvents_TagCounts(t *testing.T) {
 
 func TestSummarizeEvents_TagCountsEmpty(t *testing.T) {
 	events := []Event{
-		{ID: "1", EventType: "blocked", IsBlocked: true},
+		{ID: "1", EventType: "detect_block", IsBlocked: true},
 		{ID: "2", EventType: "logged"},
 	}
 	summary := summarizeEvents(events)

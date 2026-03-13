@@ -918,26 +918,27 @@ Cards with zero count can be hidden or shown dimmed. Future custom action types
 would auto-appear as new cards.
 
 **Backend changes:**
-- [ ] `waf_summary.go`: Split `detect_block` out of `totalPolicyBlock` into `totalDetectBlock`
-- [ ] `models.go`: Add `DetectBlocked int json:"detect_blocked"` to `SummaryResponse`
-- [ ] `models.go`: `PolicyBlocked` only counts `policy_block` (not `detect_block`)
-- [ ] Per-hour/service/client breakdowns: add `detect_block` field alongside existing `policy_block`
+- [x] `waf_summary.go`: Split `detect_block` out of `totalPolicyBlock` into `totalDetectBlock`
+- [x] `models.go`: Add `DetectBlocked int json:"detect_blocked"` to `SummaryResponse`
+- [x] `models.go`: `PolicyBlocked` only counts `policy_block` (not `detect_block`)
+- [x] Per-hour/service/client breakdowns: add `detect_block` field alongside existing `policy_block`
 - [ ] Nuke legacy `blocked` event type handling — after JSONL cleanup, only new types exist
 
 **Frontend changes:**
-- [ ] `SummaryData`: Add `detectBlocked` field
+- [x] `SummaryData`: Add `detectBlocked` field
 - [ ] `OverviewDashboard.tsx`: Replace hardcoded 4 cards with dynamic card generation
-- [ ] Timeline chart: Add `detect_block` as separate series
-- [ ] Per-service/client breakdowns: Show detect_block separately from policy_block
-- [ ] Color mapping: Add `detect_block` to `ACTION_COLORS` and `ACTION_LABELS`
+- [x] Timeline chart: Add `detect_block` as separate series
+- [x] Per-service/client breakdowns: Show detect_block separately from policy_block
+- [x] Color mapping: Add `detect_block` to `ACTION_COLORS` and `ACTION_LABELS`
 
 #### TypeScript Errors (pre-commit)
 
-- [ ] `SecurityHeadersPanel.tsx:318` — `Property 'name' does not exist on type 'ServiceDetail'`.
+- [x] `SecurityHeadersPanel.tsx:318` — `Property 'name' does not exist on type 'ServiceDetail'`.
   The `fetchServices()` API returns objects without a `name` field; the component accesses `.name`
-  when it should use the map key or a different field.
-- [ ] `eventPrefill.test.ts:123,129,135,141` — `Type 'string' is not assignable to type 'EventType'`.
+  when it should use the map key or a different field. (Fixed — `tsc --noEmit` passes clean.)
+- [x] `eventPrefill.test.ts:123,129,135,141` — `Type 'string' is not assignable to type 'EventType'`.
   Test fixtures use plain string literals for `event_type`; need `as const` or cast to `EventType`.
+  (Fixed — `tsc --noEmit` passes clean.)
 
 #### Dead Code Cleanup
 
@@ -982,7 +983,7 @@ would auto-appear as new cards.
 
 #### Policy Engine Bugs
 
-- [ ] Tags input missing from Create Rule quick actions form — Edit Rule (Advanced) has the
+- [x] Tags input missing from Create Rule quick actions form — Edit Rule (Advanced) has the
   Tags field but Create Rule (Quick Actions) does not. Both should show the tag input.
   Location: `PolicyForms.tsx` quick action forms for Allow/Block/Detect
 
@@ -1264,17 +1265,18 @@ block rates (<100/day for legitimate traffic) this is negligible.
    formatted msg string, not the description. Need to include the rule description.
 
 **Tasks:**
-- [ ] Remove `PE-` prefix from all 45 rule IDs in `default-rules.json` (version bump to 6)
-- [ ] Update plugin tests that reference PE- IDs
-- [ ] Add `Name string` field to `MatchedRule` model in wafctl
-- [ ] `parseDetectRulesDetail()`: store rule ID string in `Name`, strip `PE-` for backward compat
-- [ ] `enrichMatchedRulesWithDetails()`: also set `Name` from detectMatchEntry
-- [ ] Frontend `MatchedRuleInfo`: add `name` field
+- [x] Remove `PE-` prefix from all rule IDs in `default-rules.json` (done — CRS auto-converter
+  generated 254 clean-ID rules, superseding the old 45 manually-ported PE- rules)
+- [x] Update plugin tests that reference PE- IDs (plugin repo uses clean IDs)
+- [x] Add `Name string` field to `MatchedRule` model in wafctl (already present)
+- [x] `parseDetectRulesDetail()`: store rule ID string in `Name`, strip `PE-` for backward compat
+- [x] `enrichMatchedRulesWithDetails()`: also set `Name` from detectMatchEntry
+- [x] Frontend `MatchedRuleInfo`: add `name` field (already present)
 - [ ] Frontend `EventDetailPanel`: remove doubled matched rules display
 - [ ] Frontend `EventDetailPanel`: add highest severity rule summary for detect_block
 - [ ] Frontend `EventDetailPanel`: show rule name + description in expandable section
-- [ ] Frontend `eventPrefill`: use `name` field for Create Exception rule ID pre-fill
-- [ ] Update wafctl tests, frontend tests, e2e tests
+- [x] Frontend `eventPrefill`: use `name` field for Create Exception rule ID pre-fill
+- [x] Update wafctl tests, frontend tests, e2e tests (backward compat tests in place)
 
 ---
 

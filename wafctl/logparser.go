@@ -173,6 +173,12 @@ func loadEventsFromJSONL(path string) ([]Event, error) {
 		if len(line) > 0 {
 			var ev Event
 			if jsonErr := json.Unmarshal(line, &ev); jsonErr == nil {
+				// Migrate legacy "blocked" event type to "detect_block".
+				// Coraza (which generated "blocked" events) has been removed;
+				// CRS anomaly threshold blocks are now "detect_block".
+				if ev.EventType == "blocked" {
+					ev.EventType = "detect_block"
+				}
 				events = append(events, ev)
 			}
 		}

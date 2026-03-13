@@ -634,7 +634,7 @@ func TestHandleExclusionHits(t *testing.T) {
 		{
 			ID:        "ev4",
 			Timestamp: now.Add(-1 * time.Hour),
-			EventType: "blocked",
+			EventType: "detect_block",
 			RuleID:    942100,
 		},
 	}
@@ -784,7 +784,7 @@ func TestMatchesPolicyRuleNameFilter(t *testing.T) {
 func TestMatchesPolicyRuleNameFilter_NoPolicyRules(t *testing.T) {
 	// Event with only CRS rules (no policy rules) should never match
 	ev := Event{
-		EventType: "blocked",
+		EventType: "detect_block",
 		MatchedRules: []MatchedRule{
 			{ID: 942100, Msg: "OWASP CRS 942100"},
 		},

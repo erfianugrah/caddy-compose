@@ -204,8 +204,10 @@ func (f *fieldFilter) matchField(target string) bool {
 // ─── Event Source Routing ────────────────────────────────────────────
 
 // wafEventTypes lists event types originating from the WAF (policy engine) event store.
+// "detect_block" appears in both stores: WAF store (migrated from legacy "blocked" JSONL)
+// and RL/access log store (new events from access log parsing).
 var wafEventTypes = map[string]bool{
-	"blocked": true, "logged": true,
+	"detect_block": true, "logged": true,
 	"policy_skip": true, "policy_allow": true, "policy_block": true,
 }
 

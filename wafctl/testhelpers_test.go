@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// sampleEvents mirrors what the old Coraza audit log parsing produced:
-// 3 events — 2 blocked + 1 logged, across 2 hour buckets.
+// sampleEvents provides 3 events for summary tests:
+// 2 detect_block + 1 logged, across 2 hour buckets.
 // ts1/ts2 in previous hour, ts3 in current hour.
 var sampleEvents = func() []Event {
 	nowHour := time.Now().Truncate(time.Hour)
@@ -22,13 +22,13 @@ var sampleEvents = func() []Event {
 			ID: "AAA111", Timestamp: ts1, ClientIP: "195.240.81.42",
 			Service: "dockge-sg.erfi.io", Method: "POST", URI: "/socket.io/?EIO=4",
 			Protocol: "HTTP/2.0", UserAgent: "Mozilla/5.0",
-			ResponseStatus: 0, IsBlocked: true, EventType: "blocked",
+			ResponseStatus: 0, IsBlocked: true, EventType: "detect_block",
 		},
 		{
 			ID: "BBB222", Timestamp: ts2, ClientIP: "10.0.0.1",
 			Service: "radarr.erfi.io", Method: "GET", URI: "/.env",
 			Protocol: "HTTP/1.1", UserAgent: "curl/7.68",
-			ResponseStatus: 403, IsBlocked: true, EventType: "blocked",
+			ResponseStatus: 403, IsBlocked: true, EventType: "detect_block",
 		},
 		{
 			ID: "CCC333", Timestamp: ts3, ClientIP: "10.0.0.1",

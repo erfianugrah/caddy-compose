@@ -1745,7 +1745,7 @@
     {
       "id": "930111",
       "name": "Path traversal in URI path (decoded)",
-      "description": "Detects decoded directory traversal sequences in the URI path itself. Separate from PE-930110 which checks argument values. CRS 930110.",
+      "description": "Detects decoded directory traversal sequences in the URI path itself. Separate from 930110 which checks argument values. CRS 930110.",
       "type": "detect",
       "conditions": [
         {
@@ -4502,7 +4502,7 @@
     {
       "id": "932100",
       "name": "Unix command injection after shell metacharacter",
-      "description": "Detects Unix command names following shell metacharacters (;|&$) in arguments. Replaces PE-9100010 with broader coverage: all common shell prefixes, not just pipe. Comprehensive command wordlist via phrase_match. CRS 932100/932230/932235/932250/932260 combined.",
+      "description": "Detects Unix command names following shell metacharacters (;|&$) in arguments. Replaces 9100010 with broader coverage: all common shell prefixes, not just pipe. Comprehensive command wordlist via phrase_match. CRS 932100/932230/932235/932250/932260 combined.",
       "type": "detect",
       "conditions": [
         {

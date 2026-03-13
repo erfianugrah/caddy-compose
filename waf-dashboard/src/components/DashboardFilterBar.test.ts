@@ -42,8 +42,8 @@ describe("parseFiltersFromURL", () => {
   });
 
   it("parses event_type param", () => {
-    const result = parseFiltersFromURL("?event_type=blocked");
-    expect(result).toEqual([{ field: "event_type", operator: "eq", value: "blocked" }]);
+    const result = parseFiltersFromURL("?event_type=detect_block");
+    expect(result).toEqual([{ field: "event_type", operator: "eq", value: "detect_block" }]);
   });
 
   it("parses type param as event_type (alias)", () => {
@@ -52,8 +52,8 @@ describe("parseFiltersFromURL", () => {
   });
 
   it("prefers event_type over type if both present", () => {
-    const result = parseFiltersFromURL("?event_type=blocked&type=logged");
-    expect(result).toEqual([{ field: "event_type", operator: "eq", value: "blocked" }]);
+    const result = parseFiltersFromURL("?event_type=detect_block&type=logged");
+    expect(result).toEqual([{ field: "event_type", operator: "eq", value: "detect_block" }]);
   });
 
   it("parses method param", () => {
@@ -67,11 +67,11 @@ describe("parseFiltersFromURL", () => {
   });
 
   it("parses multiple params at once", () => {
-    const result = parseFiltersFromURL("?service=cdn.erfi.io&client=1.2.3.4&event_type=blocked");
+    const result = parseFiltersFromURL("?service=cdn.erfi.io&client=1.2.3.4&event_type=detect_block");
     expect(result).toHaveLength(3);
     expect(result).toContainEqual({ field: "service", operator: "eq", value: "cdn.erfi.io" });
     expect(result).toContainEqual({ field: "client", operator: "eq", value: "1.2.3.4" });
-    expect(result).toContainEqual({ field: "event_type", operator: "eq", value: "blocked" });
+    expect(result).toContainEqual({ field: "event_type", operator: "eq", value: "detect_block" });
   });
 
   it("parses all eight params together", () => {
@@ -134,8 +134,8 @@ describe("parseFiltersFromURL", () => {
   });
 
   it("parses _op=in for event_type", () => {
-    const result = parseFiltersFromURL("?event_type=blocked,logged&event_type_op=in");
-    expect(result).toEqual([{ field: "event_type", operator: "in", value: "blocked,logged" }]);
+    const result = parseFiltersFromURL("?event_type=detect_block,logged&event_type_op=in");
+    expect(result).toEqual([{ field: "event_type", operator: "in", value: "detect_block,logged" }]);
   });
 
   it("parses _op=regex for rule_name", () => {
@@ -183,8 +183,8 @@ describe("filtersToSummaryParams", () => {
   });
 
   it("maps event_type filter", () => {
-    const filters: DashboardFilter[] = [{ field: "event_type", operator: "eq", value: "blocked" }];
-    expect(filtersToSummaryParams(filters)).toEqual({ event_type: "blocked", event_type_op: "eq" });
+    const filters: DashboardFilter[] = [{ field: "event_type", operator: "eq", value: "detect_block" }];
+    expect(filtersToSummaryParams(filters)).toEqual({ event_type: "detect_block", event_type_op: "eq" });
   });
 
   it("maps method filter", () => {
@@ -272,7 +272,7 @@ describe("filtersToEventsParams", () => {
 
 describe("filterDisplayValue", () => {
   it("returns option label for event_type values", () => {
-    expect(filterDisplayValue("event_type", "blocked")).toBe("CRS Blocked");
+    expect(filterDisplayValue("event_type", "detect_block")).toBe("CRS Blocked");
     expect(filterDisplayValue("event_type", "rate_limited")).toBe("Rate Limited");
     expect(filterDisplayValue("event_type", "policy_skip")).toBe("Policy Skip");
     expect(filterDisplayValue("event_type", "policy_allow")).toBe("Policy Allow");
@@ -296,7 +296,7 @@ describe("filterDisplayValue", () => {
   });
 
   it("resolves comma-separated IN values to labels", () => {
-    expect(filterDisplayValue("event_type", "blocked,logged")).toBe("CRS Blocked, Logged");
+    expect(filterDisplayValue("event_type", "detect_block,logged")).toBe("CRS Blocked, Logged");
     expect(filterDisplayValue("method", "GET,POST,DELETE")).toBe("GET, POST, DELETE");
   });
 
@@ -344,8 +344,8 @@ describe("FILTER_FIELDS", () => {
     expect(fields).toContain("country");
   });
 
-  it("event_type has 7 options", () => {
-    expect(FILTER_FIELDS.event_type.options).toHaveLength(7);
+  it("event_type has 6 options", () => {
+    expect(FILTER_FIELDS.event_type.options).toHaveLength(6);
   });
 
   it("method has 7 options", () => {

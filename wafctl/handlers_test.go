@@ -608,7 +608,7 @@ func TestHandleEventsRuleNameFilter(t *testing.T) {
 			MatchedRules: []MatchedRule{{ID: 9500002, Msg: "Policy Skip: Block bots"}},
 		},
 		{
-			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "blocked",
+			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "detect_block",
 			Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", URI: "/login",
 			RuleID: 942100,
 		},
@@ -686,7 +686,7 @@ func TestHandleEventsRuleNameFilterOperators(t *testing.T) {
 			MatchedRules: []MatchedRule{{ID: 9500002, Msg: "Policy Block: Block bots"}},
 		},
 		{
-			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "blocked",
+			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "detect_block",
 			Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST",
 			RuleID: 942100,
 		},
@@ -757,7 +757,7 @@ func TestHandleSummaryRuleNameFilterOperators(t *testing.T) {
 			MatchedRules: []MatchedRule{{ID: 9500002, Msg: "Policy Block: Block bots"}},
 		},
 		{
-			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "blocked",
+			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "detect_block",
 			Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST",
 			RuleID: 942100,
 		},
@@ -816,7 +816,7 @@ func TestHandleSummaryRuleNameFilter(t *testing.T) {
 			MatchedRules: []MatchedRule{{ID: 9500001, Msg: "Policy Skip: My rule"}},
 		},
 		{
-			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "blocked",
+			ID: "ev3", Timestamp: now.Add(-30 * time.Minute), EventType: "detect_block",
 			Service: "cdn.erfi.io", ClientIP: "9.0.1.2", Method: "GET",
 			RuleID: 942100,
 		},
@@ -877,9 +877,9 @@ func TestHandleSummaryServiceFilter(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -917,7 +917,7 @@ func TestHandleSummaryClientFilter(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
 		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "logged"},
 	}
@@ -956,7 +956,7 @@ func TestHandleSummaryMethodFilter(t *testing.T) {
 	store.events = []Event{
 		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "logged"},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "9.0.1.2", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "9.0.1.2", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -985,17 +985,17 @@ func TestHandleSummaryEventTypeFilter(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "9.0.1.2", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "9.0.1.2", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
 	handler := handleSummary(store, als, emptyRLRuleStore(t))
 
-	// Filter by event_type=blocked — should return 2 events
-	req := httptest.NewRequest("GET", "/api/summary?hours=24&event_type=blocked", nil)
+	// Filter by event_type=detect_block — should return 2 events
+	req := httptest.NewRequest("GET", "/api/summary?hours=24&event_type=detect_block", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1019,9 +1019,9 @@ func TestHandleSummaryMultipleFilters(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
-		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "blocked", IsBlocked: true},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
+		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "detect_block", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e4", Timestamp: now.Add(-4 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "logged"},
 	}
 	store.mu.Unlock()
@@ -1029,8 +1029,8 @@ func TestHandleSummaryMultipleFilters(t *testing.T) {
 	als := NewAccessLogStore("")
 	handler := handleSummary(store, als, emptyRLRuleStore(t))
 
-	// service=cdn.erfi.io + event_type=blocked + method=GET — should match only e1
-	req := httptest.NewRequest("GET", "/api/summary?hours=24&service=cdn.erfi.io&event_type=blocked&method=GET", nil)
+	// service=cdn.erfi.io + event_type=detect_block + method=GET — should match only e1
+	req := httptest.NewRequest("GET", "/api/summary?hours=24&service=cdn.erfi.io&event_type=detect_block&method=GET", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1059,7 +1059,7 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "w1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "w1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -1102,7 +1102,7 @@ func TestHandleSummaryNoFilterFallsThrough(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "w1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "w1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -1261,9 +1261,9 @@ func TestHandleSummaryContainsOperator(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "app.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -1292,9 +1292,9 @@ func TestHandleSummaryInOperator(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "app.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "DELETE", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "DELETE", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -1323,9 +1323,9 @@ func TestHandleSummaryNeqOperator(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "9.0.0.1", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "app.erfi.io", ClientIP: "9.0.0.1", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -1354,9 +1354,9 @@ func TestHandleSummaryRegexOperator(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "app.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "GET", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
@@ -1385,16 +1385,16 @@ func TestHandleEventsInOperator(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "app.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "DELETE", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "other.com", ClientIP: "9.0.0.1", Method: "DELETE", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
 	handler := handleEvents(store, als, emptyRLRuleStore(t))
 
-	req := httptest.NewRequest("GET", "/api/events?hours=24&event_type=blocked,logged&event_type_op=in", nil)
+	req := httptest.NewRequest("GET", "/api/events?hours=24&event_type=detect_block,logged&event_type_op=in", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1419,7 +1419,7 @@ func TestHandleEventsNoOpDefaultsToEq(t *testing.T) {
 	now := time.Now().UTC()
 	store.mu.Lock()
 	store.events = []Event{
-		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "blocked", IsBlocked: true},
+		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.2.3.4", Method: "GET", EventType: "detect_block", IsBlocked: true},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "app.erfi.io", ClientIP: "5.6.7.8", Method: "POST", EventType: "logged"},
 	}
 	store.mu.Unlock()
@@ -1453,7 +1453,7 @@ func TestHandleSummaryTagFilter(t *testing.T) {
 	store.events = []Event{
 		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", ClientIP: "3.3.3.3", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", ClientIP: "3.3.3.3", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 	als := NewAccessLogStore("")
@@ -1497,7 +1497,7 @@ func TestHandleSummaryTagCounts(t *testing.T) {
 	store.events = []Event{
 		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner"}},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", EventType: "blocked", IsBlocked: true, Tags: []string{"honeypot"}},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", EventType: "detect_block", IsBlocked: true, Tags: []string{"honeypot"}},
 		{ID: "e4", Timestamp: now.Add(-4 * time.Hour), Service: "cdn.erfi.io", EventType: "logged"},
 	}
 	store.mu.Unlock()
@@ -1539,7 +1539,7 @@ func TestHandleEventsTagFilter(t *testing.T) {
 	store.events = []Event{
 		{ID: "e1", Timestamp: now.Add(-1 * time.Hour), Service: "cdn.erfi.io", ClientIP: "1.1.1.1", EventType: "policy_block", IsBlocked: true, Tags: []string{"scanner", "bot-detection"}},
 		{ID: "e2", Timestamp: now.Add(-2 * time.Hour), Service: "cdn.erfi.io", ClientIP: "2.2.2.2", EventType: "policy_block", IsBlocked: true, Tags: []string{"honeypot"}},
-		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", ClientIP: "3.3.3.3", EventType: "blocked", IsBlocked: true},
+		{ID: "e3", Timestamp: now.Add(-3 * time.Hour), Service: "cdn.erfi.io", ClientIP: "3.3.3.3", EventType: "detect_block", IsBlocked: true},
 	}
 	store.mu.Unlock()
 	als := NewAccessLogStore("")

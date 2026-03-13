@@ -148,7 +148,7 @@ func TestTopCountries_EmptyCountryBecomesXX(t *testing.T) {
 
 func TestSummarizeEvents_IncludesTopCountries(t *testing.T) {
 	events := []Event{
-		{ID: "1", Country: "US", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "1", Country: "US", EventType: "detect_block", IsBlocked: true, Timestamp: time.Now()},
 		{ID: "2", Country: "DE", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
 		{ID: "3", Country: "US", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
 	}
@@ -190,7 +190,7 @@ func TestTopBlockedIPs_IncludesCountry(t *testing.T) {
 
 func TestSummaryClientCountsIncludeCountry(t *testing.T) {
 	events := []Event{
-		{ID: "1", ClientIP: "1.2.3.4", Country: "JP", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "1", ClientIP: "1.2.3.4", Country: "JP", EventType: "detect_block", IsBlocked: true, Timestamp: time.Now()},
 		{ID: "2", ClientIP: "1.2.3.4", Country: "JP", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
 	}
 	summary := summarizeEvents(events)
@@ -222,9 +222,9 @@ func TestHandleTopCountries(t *testing.T) {
 	s := NewStore()
 	s.mu.Lock()
 	s.events = []Event{
-		{ID: "1", Country: "US", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "1", Country: "US", EventType: "detect_block", IsBlocked: true, Timestamp: time.Now()},
 		{ID: "2", Country: "US", EventType: "logged", IsBlocked: false, Timestamp: time.Now()},
-		{ID: "3", Country: "DE", EventType: "blocked", IsBlocked: true, Timestamp: time.Now()},
+		{ID: "3", Country: "DE", EventType: "detect_block", IsBlocked: true, Timestamp: time.Now()},
 	}
 	s.mu.Unlock()
 

@@ -25,7 +25,7 @@ describe("extractPrefillFromEvent", () => {
       { id: 942200, msg: "SQL Injection Attack Detected via libinjection", severity: 5 },
     ],
     user_agent: "Mozilla/5.0 (compatible; BadBot/1.0)",
-    event_type: "blocked",
+    event_type: "detect_block",
   };
 
   it("extracts rule IDs from matched_rules", () => {
@@ -201,7 +201,7 @@ describe("extractPrefillFromEvent", () => {
       anomaly_score: 0,
       outbound_anomaly_score: 0,
       user_agent: "",
-      event_type: "blocked",
+      event_type: "detect_block",
     };
     const prefill = extractPrefillFromEvent(minimalEvent);
     expect(prefill.conditions).toHaveLength(0);
@@ -295,7 +295,7 @@ describe("consumePrefillEvent", () => {
       anomaly_score: 10,
       outbound_anomaly_score: 0,
       user_agent: "",
-      event_type: "blocked",
+      event_type: "detect_block",
     };
     mockSessionStorage.set("waf:prefill-event", JSON.stringify(event));
     mockLocation.search = "?from_event=1";
@@ -324,7 +324,7 @@ describe("consumePrefillEvent", () => {
       anomaly_score: 0,
       outbound_anomaly_score: 0,
       user_agent: "",
-      event_type: "blocked",
+      event_type: "detect_block",
     };
     mockSessionStorage.set("waf:prefill-event", JSON.stringify(event));
     mockLocation.search = "?from_event=1";
@@ -351,7 +351,7 @@ describe("consumePrefillEvent", () => {
       anomaly_score: 0,
       outbound_anomaly_score: 0,
       user_agent: "",
-      event_type: "blocked",
+      event_type: "detect_block",
     };
     mockSessionStorage.set("waf:prefill-event", JSON.stringify(event));
     mockLocation.search = "?from_event=1";

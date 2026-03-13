@@ -7,15 +7,14 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   policy_skip: "SKIPPED",
   policy_allow: "ALLOWED",
   policy_block: "POLICY BLOCK",
-  detect_block: "DETECT BLOCK",
-  blocked: "CRS BLOCKED",
+  detect_block: "CRS BLOCKED",
   logged: "LOGGED",
 };
 
 interface EventTypeBadgeProps {
   /** The event_type string from the WAF event. */
   eventType: string;
-  /** Fallback: if true and eventType isn't "blocked", still show BLOCKED. */
+  /** Fallback: if true and eventType isn't recognized, show BLOCKED. */
   blocked?: boolean;
 }
 
@@ -25,11 +24,11 @@ interface EventTypeBadgeProps {
  * OverviewDashboard, AnalyticsDashboard, and EventsTable.
  */
 export function EventTypeBadge({ eventType, blocked }: EventTypeBadgeProps) {
-  // Resolve the key: use event_type directly, fallback to "blocked" if
+  // Resolve the key: use event_type directly, fallback to "detect_block" if
   // the boolean flag is set, otherwise "logged".
   let key = eventType;
   if (!EVENT_TYPE_LABELS[key]) {
-    key = blocked ? "blocked" : "logged";
+    key = blocked ? "detect_block" : "logged";
   }
 
   const label = EVENT_TYPE_LABELS[key] ?? "LOGGED";

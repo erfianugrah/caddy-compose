@@ -17,7 +17,8 @@ export interface EventPrefill {
 export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
   // Collect rule IDs from matched_rules, or fall back to primary rule_id.
   // Prefer the string `name` field (e.g., "920350") over numeric `id` (which
-  // is 0 for legacy PE events). Strip any "PE-" prefix for clean display.
+  // is 0 for legacy PE events). Strip any "PE-" prefix for backward compat
+  // with JSONL events persisted before the prefix was removed (age out ~90d).
   const ruleIds: string[] = [];
   if (event.matched_rules && event.matched_rules.length > 0) {
     for (const r of event.matched_rules) {

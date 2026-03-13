@@ -80,7 +80,7 @@ export interface ServiceBreakdown {
 
 // ─── Events ─────────────────────────────────────────────────────────
 
-export type EventType = "blocked" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block" | "detect_block";
+export type EventType = "detect_block" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block";
 
 export interface WAFEvent {
   id: string;
@@ -229,8 +229,8 @@ interface RawEvent {
 
 export function mapEvent(raw: RawEvent): WAFEvent {
   // Derive event_type from the API field, falling back to is_blocked.
-  let eventType: EventType = raw.is_blocked ? "blocked" : "logged";
-  const validEventTypes: string[] = ["blocked", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block", "detect_block"];
+  let eventType: EventType = raw.is_blocked ? "detect_block" : "logged";
+  const validEventTypes: string[] = ["detect_block", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block"];
   if (raw.event_type && validEventTypes.includes(raw.event_type)) {
     eventType = raw.event_type as EventType;
   }
