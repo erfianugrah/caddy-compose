@@ -941,17 +941,17 @@ would auto-appear as new cards.
 
 #### Dead Code Cleanup
 
-- [ ] Delete `SettingsPanel.tsx` — no page imports it after settings→rules merge. The reused
+- [x] Delete `SettingsPanel.tsx` — no page imports it after settings→rules merge. The reused
   sub-components (`settings/SettingsFormSections.tsx`, `settings/AdvancedSettings.tsx`,
   `settings/ServiceSettingsCard.tsx`, `settings/constants.tsx`) are imported directly by
   `RulesOverview.tsx` and remain alive.
 
 #### E2e Test Fixes (pre-deploy)
 
-- [ ] `test/e2e/smoke_test.go:279-282` — `TestAPIEndpoints/CRS_Autocomplete` subtests the
+- [x] `test/e2e/smoke_test.go:279-282` — `TestAPIEndpoints/CRS_Autocomplete` subtests the
   removed `/api/crs/autocomplete` endpoint. Either remove the subtest or point it at the
   replacement endpoint.
-- [ ] `test/e2e/smoke_test.go:341-345` — `TestDeployPipeline` creates an exclusion with
+- [x] `test/e2e/smoke_test.go:341-345` — `TestDeployPipeline` creates an exclusion with
   `type: "skip_rule"` which may no longer be valid after Coraza removal. Update to a
   policy-engine-compatible type (`allow`, `block`, `detect`).
 
@@ -2097,10 +2097,10 @@ Usage:
 | SecRule exclusion types in frontend | ✅ Cleaned (3 types only) |
 | Coraza audit log parsing (`logparser.go`) | ✅ Gutted to eviction-only |
 | `ephemeralID()` / `ephemeralCounter` | ✅ Removed (Caddy request UUID is sole event ID) |
-| `PolicyEngineEnabled` flag | Pending cleanup (always `true`) |
-| Legacy RL `.caddy` generator (`rl_generator.go`) | Pending cleanup (dead code, policy engine handles RL) |
-| CRS autocomplete data (`crs_rules.go` lines 263-345) | Pending cleanup (SecRule editor removed) |
-| `RawRule`, `RuleID`, `RuleTag`, `Variable` fields on `RuleExclusion` | Pending cleanup (SecRule types removed) |
+| `PolicyEngineEnabled` flag | ✅ Removed (guards deleted, always policy engine) |
+| Legacy RL `.caddy` generator (`rl_generator.go`) | ✅ Deleted (policy engine handles RL) |
+| CRS autocomplete data (`crs_rules.go` lines 263-345) | ✅ Deleted (SecRule editor removed) |
+| `RawRule`, `RuleID`, `RuleTag`, `Variable` fields on `RuleExclusion` | ✅ Removed from Go + frontend |
 | JSONL migration code (6 exclusion versions, RL v1, config old format) | Kept (handles existing production stores) |
 
 ---
@@ -2144,8 +2144,8 @@ import, SyncIPsum) are blocked for the entire duration.
 `srv.ListenAndServe()` blocks with no signal handler for SIGTERM/SIGINT. Container stop
 kills in-flight requests abruptly, potentially corrupting partially-written atomic files.
 
-- [ ] Add `signal.NotifyContext` for SIGTERM/SIGINT and call `srv.Shutdown(ctx)`
-- [ ] Pass context to background goroutines for clean cancellation
+- [x] Add `signal.NotifyContext` for SIGTERM/SIGINT and call `srv.Shutdown(ctx)`
+- [x] Pass context to background goroutines for clean cancellation
 
 #### CR-4: Store Getters Return Shallow Copies — `wafctl/exclusions.go:107-116`
 
@@ -2161,14 +2161,14 @@ backing arrays with the store's internal data. Same issue in `RateLimitRuleStore
 `StartEviction`, `StartTailing`, `StartScheduledRefresh` all launch goroutines with
 `time.NewTicker` loops that run forever with no `context.Context` cancellation.
 
-- [ ] Accept `context.Context` in all `Start*` methods, select on `ctx.Done()`
+- [x] Accept `context.Context` in all `Start*` methods, select on `ctx.Done()`
 
 #### CR-6: `MergeCaddyfileServices` Doesn't Roll Back on Save Failure — `wafctl/rl_rules.go:437-439`
 
 When auto-discovered services are added to memory and `save()` fails, in-memory state
 diverges from on-disk state.
 
-- [ ] Save original rules slice, restore on `save()` failure
+- [x] Save original rules slice, restore on `save()` failure
 
 #### CR-7: Final Docker Image Runs as Root — `Dockerfile:39-49`
 
@@ -2201,7 +2201,7 @@ concerning — gives Docker control.
 `r.URL.RawQuery` as cache key. Attackers can craft unique query strings to thrash the
 cache (max 50 entries, but each `SummaryResponse` can be large).
 
-- [ ] Add cache key normalization (sort params, strip unknown keys)
+- [x] Add cache key normalization (sort params, strip unknown keys)
 
 #### CR-11: Missing `Access-Control-Max-Age` on CORS Preflight — `wafctl/main.go:332-338`
 
@@ -2214,25 +2214,25 @@ No `Max-Age` header. Browsers send preflight for every cross-origin request.
 Managed list creation returns 400 for all failures (including disk I/O). Exclusion
 creation returns 500. Should distinguish validation (400) from server errors (500).
 
-- [ ] Return 500 for store persistence failures in `handlers_lists.go`
+- [x] Return 500 for store persistence failures in `handlers_lists.go`
 
 #### CR-13: `handleUpdateRLRule` Requires Full Object — `wafctl/handlers_ratelimit.go:49-70`
 
 Unlike exclusions (partial JSON merge), RL rules require full object. Inconsistent API.
 
-- [ ] Add JSON merge partial update for RL rules (match exclusion pattern)
+- [x] Add JSON merge partial update for RL rules (match exclusion pattern)
 
 #### CR-14: `handleDeployRLRules` Claims `Reloaded: true` Without Verification — `wafctl/handlers_ratelimit.go:140`
 
 Assumes plugin hot-reload polling is active. No verification.
 
-- [ ] Document assumption in response or add health check
+- [x] Document assumption in response or add health check
 
 #### CR-15: Deep Copy via JSON Round-Trip — `wafctl/csp.go:367-382`
 
 `CSPStore.deepCopy()` uses `json.Marshal/Unmarshal` for every `Get()`. Expensive.
 
-- [ ] Consider manual clone for hot path (low priority)
+- [x] Consider manual clone for hot path (low priority)
 
 #### CR-16: Unbounded `io.ReadAll` on Error — `wafctl/deploy.go:207`
 
@@ -2295,7 +2295,7 @@ WAF/RL type routing maps duplicated between `handleSummary` and `handleEvents`.
 
 No upper bound vs 720 cap in `handleExclusionHits`.
 
-- [ ] Add consistent upper bound across all endpoints
+- [x] Add consistent upper bound across all endpoints
 
 #### CR-26: `softprops/action-gh-release@v2` Mutable Tag — `.github/workflows/release.yml:49`
 
