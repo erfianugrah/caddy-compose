@@ -29,10 +29,7 @@ COPY wafctl/*.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o wafctl .
 
 FROM caddy:${VERSION}-alpine
-RUN apk upgrade --no-cache && apk add --no-cache curl su-exec \
-	&& addgroup -S caddy && adduser -S -G caddy -u 10000 -h /home/caddy caddy \
-	&& mkdir -p /data /config /var/log \
-	&& chown -R caddy:caddy /data /config /var/log
+RUN apk upgrade --no-cache && apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY errors/ /etc/caddy/errors/
