@@ -43,6 +43,9 @@ func TestConvertSimpleRule(t *testing.T) {
 	if cond.Value != "(?i)etc/passwd" {
 		t.Errorf("Value: got %q", cond.Value)
 	}
+	if cond.MultiMatch {
+		t.Error("MultiMatch should be false for rule without multiMatch action")
+	}
 
 	// Tags should exclude OWASP_CRS and paranoia-level
 	for _, tag := range pr.Tags {
@@ -316,5 +319,74 @@ SecRule RESPONSE_BODY "@rx leak" "id:950001,phase:4,block,msg:'Leak',severity:'E
 	}
 	if r.SkippedRules != 2 {
 		t.Errorf("SkippedRules: got %d, want 2", r.SkippedRules)
+	}
+}
+
+func TestConvertMultiMatch(t *testing.T) {
+	// Rule with multiMatch action flag — should set multi_match on condition
+	input := `SecRule ARGS "@detectSQLi" "id:942100,phase:2,deny,status:403,capture,multiMatch,t:none,t:urlDecodeUni,t:removeComments,msg:'SQL injection detected via libinjection',tag:'attack-sqli',tag:'paranoia-level/1',severity:'CRITICAL'"`
+
+	rules, err := ParseFile(input, "REQUEST-942-APPLICATION-ATTACK-SQLI.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-942-APPLICATION-ATTACK-SQLI.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	if pr.ID != "942100" {
+		t.Errorf("ID: got %q, want 942100", pr.ID)
+	}
+	if len(pr.Conditions) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(pr.Conditions))
+	}
+
+	cond := pr.Conditions[0]
+	if cond.Operator != "detect_sqli" {
+		t.Errorf("Operator: got %q, want detect_sqli", cond.Operator)
+	}
+	if !cond.MultiMatch {
+		t.Error("MultiMatch should be true for rule with multiMatch action")
+	}
+	// Should have transforms (urlDecodeUni, removeComments — t:none is stripped)
+	if len(cond.Transforms) == 0 {
+		t.Error("expected transforms on multiMatch rule")
+	}
+}
+
+func TestConvertMultiMatchChain(t *testing.T) {
+	// Head rule with multiMatch, chained to a second rule without it
+	input := `SecRule ARGS "@rx evil" "id:900001,phase:2,block,multiMatch,t:none,t:lowercase,msg:'Test chain multiMatch',tag:'paranoia-level/1',severity:'WARNING',chain"
+SecRule REQUEST_URI "@rx /target" "t:none"`
+
+	rules, err := ParseFile(input, "test.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "test.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	if len(pr.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions (head + chain), got %d", len(pr.Conditions))
+	}
+
+	// Head condition should have multiMatch
+	if !pr.Conditions[0].MultiMatch {
+		t.Error("head condition should have MultiMatch=true")
+	}
+	// Chain condition should NOT have multiMatch (it's on the chain link's own actions)
+	if pr.Conditions[1].MultiMatch {
+		t.Error("chain condition should have MultiMatch=false (not in its actions)")
 	}
 }

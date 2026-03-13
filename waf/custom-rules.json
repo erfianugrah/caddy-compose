@@ -1,0 +1,808 @@
+[
+  {
+    "id": "9100003",
+    "name": "XXE: DOCTYPE/ENTITY with SYSTEM or PUBLIC",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "body",
+        "operator": "regex",
+        "value": "(?i:<!(?:DOCTYPE|ENTITY)[^>]*(?:SYSTEM|PUBLIC))"
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-xxe",
+      "custom-rules"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100006",
+    "name": "XXE: Parameter entity declaration",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "body",
+        "operator": "regex",
+        "value": "(?i:<!ENTITY\\s+%)"
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-xxe",
+      "custom-rules"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100012",
+    "name": "CRLF injection in query string",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "query",
+        "operator": "regex",
+        "value": "(?:%0[dD]%0[aA]|\\r\\n)"
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-protocol",
+      "custom-rules"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100013",
+    "name": "CRLF injection in request headers",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_headers",
+        "operator": "regex",
+        "value": "(?:%0[dD]%0[aA]|\\r\\n)"
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-protocol",
+      "custom-rules"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100030",
+    "name": "Missing Accept header",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "header",
+        "operator": "eq",
+        "value": "Accept:"
+      }
+    ],
+    "group_op": "and",
+    "severity": "NOTICE",
+    "paranoia_level": 1,
+    "tags": [
+      "heuristic",
+      "bot-signal"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100032",
+    "name": "Scanner UA Block",
+    "description": "Block known scanner/attack tool User-Agents. Case-insensitive substring match via Aho-Corasick.",
+    "type": "block",
+    "conditions": [
+      {
+        "field": "user_agent",
+        "operator": "phrase_match",
+        "list_items": [
+          "sqlmap",
+          "havij",
+          "nikto",
+          "nuclei",
+          "acunetix",
+          "nessus",
+          "qualys",
+          "arachni",
+          "whatweb",
+          "wapiti",
+          "skipfish",
+          "gobuster",
+          "dirbuster",
+          "dirb",
+          "ffuf",
+          "wfuzz",
+          "feroxbuster",
+          "nmap",
+          "masscan",
+          "zgrab",
+          "censys",
+          "shodan",
+          "netcraft",
+          "burpsuite",
+          "burp",
+          "zaproxy",
+          "zap",
+          "httprobe",
+          "subfinder",
+          "amass",
+          "httpx"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "tags": [
+      "scanner",
+      "bot-detection"
+    ],
+    "enabled": true,
+    "priority": 100
+  },
+  {
+    "id": "9100033",
+    "name": "Missing or empty User-Agent",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "user_agent",
+        "operator": "eq",
+        "value": ""
+      }
+    ],
+    "group_op": "and",
+    "severity": "WARNING",
+    "paranoia_level": 1,
+    "tags": [
+      "heuristic",
+      "bot-signal"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100034",
+    "name": "Missing Referer on non-API GET",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "method",
+        "operator": "eq",
+        "value": "GET"
+      },
+      {
+        "field": "referer",
+        "operator": "eq",
+        "value": ""
+      }
+    ],
+    "group_op": "and",
+    "severity": "NOTICE",
+    "paranoia_level": 1,
+    "tags": [
+      "heuristic",
+      "bot-signal"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100035",
+    "name": "Generic UA Anomaly",
+    "description": "+5 anomaly for generic HTTP library User-Agents (python-requests, curl/, etc.). Combined with other signals to detect automated tools.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "user_agent",
+        "operator": "phrase_match",
+        "list_items": [
+          "python-requests",
+          "go-http-client",
+          "libwww-perl",
+          "lwp-trivial",
+          "wget",
+          "curl/",
+          "mechanize",
+          "scrapy"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "heuristic",
+      "bot-signal",
+      "generic-ua"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "9100036",
+    "name": "HTTP/1.0 Anomaly",
+    "description": "+2 anomaly for HTTP/1.0 requests. Modern clients use HTTP/1.1 or HTTP/2.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "http_version",
+        "operator": "eq",
+        "value": "HTTP/1.0"
+      }
+    ],
+    "group_op": "and",
+    "severity": "NOTICE",
+    "paranoia_level": 1,
+    "tags": [
+      "heuristic",
+      "bot-signal",
+      "protocol"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920180",
+    "name": "POST request missing Content-Type header",
+    "description": "POST requests should include a Content-Type header to describe the body format. CRS 920180.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "method",
+        "operator": "eq",
+        "value": "POST"
+      },
+      {
+        "field": "header",
+        "operator": "eq",
+        "value": "Content-Type:"
+      }
+    ],
+    "group_op": "and",
+    "severity": "NOTICE",
+    "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920220",
+    "name": "URL encoding abuse in path",
+    "description": "Invalid URL encoding sequences in the request path may indicate evasion attempts. Matches percent sign at end of string, followed by non-hex, or followed by only one hex digit at end. CRS 920220.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "uri_path",
+        "operator": "regex",
+        "value": "%(?:$|[^0-9a-fA-F]|[0-9a-fA-F](?:$|[^0-9a-fA-F]))"
+      }
+    ],
+    "group_op": "and",
+    "severity": "WARNING",
+    "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920300",
+    "name": "Max number of request arguments exceeded",
+    "description": "Requests with an excessive number of parameters may indicate HashDoS or parameter pollution attacks. Default limit: 255. CRS 920300.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "count:all_args_names",
+        "operator": "gt",
+        "value": "255"
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx",
+      "policy"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920311",
+    "name": "Argument value too long",
+    "description": "Excessively long parameter values may indicate buffer overflow or payload injection. Default limit: 400 characters. CRS 920311.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_args_values",
+        "operator": "gt",
+        "value": "400",
+        "transforms": [
+          "length"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 2,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx",
+      "policy"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920430",
+    "name": "HTTP version not allowed by policy",
+    "description": "Restricts HTTP protocol versions. Only HTTP/1.1, HTTP/2, and HTTP/3 are allowed. HTTP/0.9 and HTTP/1.0 are blocked. CRS 920430.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "http_version",
+        "operator": "regex",
+        "value": "^HTTP/(?:0\\.9|1\\.0)$"
+      }
+    ],
+    "group_op": "and",
+    "severity": "WARNING",
+    "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx",
+      "policy"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920440",
+    "name": "URL file extension restricted by policy",
+    "description": "Blocks requests for file extensions commonly associated with sensitive files. Override list_items to customize. CRS 920440.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "uri_path",
+        "operator": "phrase_match",
+        "list_items": [
+          ".asa",
+          ".asax",
+          ".ascx",
+          ".backup",
+          ".bak",
+          ".bat",
+          ".cdx",
+          ".cer",
+          ".cfg",
+          ".cmd",
+          ".com",
+          ".config",
+          ".conf",
+          ".cs",
+          ".csproj",
+          ".csr",
+          ".dat",
+          ".db",
+          ".dbf",
+          ".dll",
+          ".dos",
+          ".htr",
+          ".htw",
+          ".ida",
+          ".idc",
+          ".idq",
+          ".inc",
+          ".ini",
+          ".key",
+          ".licx",
+          ".lnk",
+          ".log",
+          ".mdb",
+          ".old",
+          ".pass",
+          ".pdb",
+          ".pol",
+          ".printer",
+          ".pwd",
+          ".rdb",
+          ".resources",
+          ".resx",
+          ".sql",
+          ".swp",
+          ".sys",
+          ".vb",
+          ".vbs",
+          ".vbproj",
+          ".vsdisco",
+          ".webinfo",
+          ".xsd",
+          ".xsx"
+        ],
+        "transforms": [
+          "lowercase"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx",
+      "policy"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920450",
+    "name": "HTTP header restricted by policy",
+    "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded \u2014 they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_headers_names",
+        "operator": "phrase_match",
+        "list_items": [
+          "proxy",
+          "lock-token",
+          "content-range",
+          "if",
+          "translate"
+        ],
+        "transforms": [
+          "lowercase"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "WARNING",
+    "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx",
+      "policy"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "921170",
+    "name": "HTTP/1.0 Protocol Detected",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_args_names",
+        "operator": "regex",
+        "value": "."
+      }
+    ],
+    "group_op": "and",
+    "tags": [
+      "application-multi",
+      "language-multi",
+      "platform-multi",
+      "attack-protocol"
+    ],
+    "enabled": false,
+    "priority": 400,
+    "category": "REQUEST-921-PROTOCOL-ATTACK",
+    "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf",
+    "severity": "NOTICE",
+    "paranoia_level": 1
+  },
+  {
+    "id": "930111",
+    "name": "Path traversal in URI path (decoded)",
+    "description": "Detects decoded directory traversal sequences in the URI path itself. Separate from 930110 which checks argument values. CRS 930110.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "uri_path",
+        "operator": "regex",
+        "value": "(?:^|[/;\\\\])\\.{2,3}[/;\\\\]",
+        "transforms": [
+          "urlDecodeUni",
+          "normalizePath",
+          "removeNulls"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-lfi",
+      "930xxx"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "932100",
+    "name": "Unix command injection after shell metacharacter",
+    "description": "Detects Unix command names following shell metacharacters (;|&$) in arguments. Replaces 9100010 with broader coverage: all common shell prefixes, not just pipe. Comprehensive command wordlist via phrase_match. CRS 932100/932230/932235/932250/932260 combined.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_args",
+        "operator": "regex",
+        "value": "(?:[;|&`$({]|\\|\\||&&)\\s*(?:(?:/(?:usr/)?(?:s?bin|local/bin)/)?(?:id|cat|ls|whoami|curl|wget|bash|sh|nc|ncat|python[23]?|perl|ruby|php|node|tee|head|tail|less|more|dd|base64|xxd|rev|env|printenv|uname|hostname|ifconfig|ip|ping|traceroute|nslookup|dig|find|grep|egrep|awk|sed|sort|uniq|wc|chmod|chown|chgrp|mkdir|rmdir|rm|cp|mv|touch|kill|pkill|ps|top|netstat|ss|lsof|mount|umount|chroot|sudo|su|apt|yum|dnf|dpkg|rpm|pip|gem|npm|docker|kubectl|systemctl|service|crontab|at|nmap|socat|openssl|ssh|scp|sftp|rsync|tar|gzip|gunzip|bzip2|xz|unzip|nc\\.openbsd|nc\\.traditional)\\b)"
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-rce",
+      "932xxx",
+      "platform-unix"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "932150",
+    "name": "Direct Unix command path execution",
+    "description": "Detects direct execution via absolute paths to common Unix commands (/bin/bash, /usr/bin/wget, etc.). CRS 932150.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_args",
+        "operator": "phrase_match",
+        "list_items": [
+          "/bin/bash",
+          "/bin/sh",
+          "/bin/dash",
+          "/bin/zsh",
+          "/bin/csh",
+          "/bin/tcsh",
+          "/bin/cat",
+          "/bin/ls",
+          "/bin/rm",
+          "/bin/cp",
+          "/bin/mv",
+          "/bin/chmod",
+          "/bin/chown",
+          "/bin/mkdir",
+          "/bin/rmdir",
+          "/bin/kill",
+          "/bin/ps",
+          "/bin/mount",
+          "/bin/umount",
+          "/bin/dd",
+          "/bin/grep",
+          "/bin/sed",
+          "/bin/awk",
+          "/bin/tar",
+          "/bin/gzip",
+          "/bin/gunzip",
+          "/usr/bin/id",
+          "/usr/bin/whoami",
+          "/usr/bin/curl",
+          "/usr/bin/wget",
+          "/usr/bin/python",
+          "/usr/bin/perl",
+          "/usr/bin/ruby",
+          "/usr/bin/php",
+          "/usr/bin/gcc",
+          "/usr/bin/make",
+          "/usr/bin/find",
+          "/usr/bin/xargs",
+          "/usr/bin/head",
+          "/usr/bin/tail",
+          "/usr/bin/sort",
+          "/usr/bin/uniq",
+          "/usr/bin/wc",
+          "/usr/bin/tee",
+          "/usr/bin/base64",
+          "/usr/bin/xxd",
+          "/usr/bin/nc",
+          "/usr/bin/ncat",
+          "/usr/bin/nmap",
+          "/usr/bin/socat",
+          "/usr/bin/ssh",
+          "/usr/bin/scp",
+          "/usr/bin/sftp",
+          "/usr/bin/env",
+          "/usr/bin/printenv",
+          "/usr/bin/uname",
+          "/usr/bin/passwd",
+          "/usr/bin/sudo",
+          "/usr/bin/su",
+          "/usr/local/bin/",
+          "/usr/sbin/",
+          "/sbin/",
+          "/etc/init.d/",
+          "/etc/cron",
+          "/etc/passwd",
+          "/etc/shadow",
+          "/proc/self/",
+          "/dev/tcp/",
+          "/dev/udp/",
+          "/dev/null"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-rce",
+      "932xxx",
+      "platform-unix"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "932180",
+    "name": "Restricted file upload attempt",
+    "description": "Detects uploads of files with dangerous extensions that could enable code execution on the server. CRS 932180.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_args",
+        "operator": "phrase_match",
+        "list_items": [
+          ".php",
+          ".phtml",
+          ".php3",
+          ".php4",
+          ".php5",
+          ".phps",
+          ".phar",
+          ".jsp",
+          ".jspx",
+          ".jsw",
+          ".jsv",
+          ".jspf",
+          ".java",
+          ".asp",
+          ".aspx",
+          ".asa",
+          ".asax",
+          ".ascx",
+          ".ashx",
+          ".asmx",
+          ".cer",
+          ".shtml",
+          ".exe",
+          ".com",
+          ".bat",
+          ".cmd",
+          ".vbs",
+          ".vbe",
+          ".js",
+          ".wsf",
+          ".wsh",
+          ".ps1",
+          ".psm1",
+          ".psd1",
+          ".sh",
+          ".bash",
+          ".csh",
+          ".ksh",
+          ".zsh",
+          ".py",
+          ".pyc",
+          ".pyo",
+          ".pl",
+          ".pm",
+          ".cgi",
+          ".rb",
+          ".war",
+          ".ear",
+          ".jar",
+          ".htaccess",
+          ".htpasswd",
+          ".swp",
+          ".bak",
+          ".config"
+        ],
+        "transforms": [
+          "lowercase"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-rce",
+      "932xxx",
+      "file-upload"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "941010",
+    "name": "Verify Content Type is not text/html for API endpoints",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "uri_path",
+        "operator": "validate_byte_range",
+        "value": "20,45-47,48-57,65-90,95,97-122",
+        "negate": true
+      }
+    ],
+    "group_op": "and",
+    "enabled": false,
+    "priority": 400,
+    "category": "REQUEST-941-APPLICATION-ATTACK-XSS",
+    "crs_file": "REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+    "severity": "NOTICE",
+    "paranoia_level": 1
+  },
+  {
+    "id": "943120",
+    "name": "Session fixation \u2014 session ID parameter without referer",
+    "description": "Detects common session ID parameter names in requests with no Referer header \u2014 suggests an attacker is injecting a session token via a crafted link. CRS 943110/943120.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_args_names",
+        "operator": "phrase_match",
+        "list_items": [
+          "jsessionid",
+          "aspsessionid",
+          "asp.net_sessionid",
+          "phpsessid",
+          "phpsessionid",
+          "weblogicsession",
+          "session_id",
+          "sessionid",
+          "cfid",
+          "cftoken",
+          "cfsid",
+          "sid",
+          "sessid",
+          "zenid"
+        ],
+        "transforms": [
+          "lowercase"
+        ]
+      },
+      {
+        "field": "referer",
+        "operator": "eq",
+        "value": ""
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "attack-session-fixation",
+      "943xxx"
+    ],
+    "enabled": true,
+    "priority": 400
+  }
+]

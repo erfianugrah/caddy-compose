@@ -26,6 +26,7 @@ func main() {
 	crsDir := flag.String("crs-dir", "", "Path to CRS rules directory (containing *.conf and *.data files)")
 	output := flag.String("output", "default-rules.json", "Output file path")
 	version := flag.String("crs-version", "", "CRS version string (e.g., 4.8.0)")
+	customRules := flag.String("custom-rules", "", "Path to custom rules JSON file to merge into output")
 	reportOnly := flag.Bool("report", false, "Print conversion report without generating output")
 	flag.Parse()
 
@@ -86,6 +87,20 @@ func main() {
 
 		rules := converter.Convert(parsed, confFile)
 		allRules = append(allRules, rules...)
+	}
+
+	// Merge custom rules if provided
+	if *customRules != "" {
+		data, err := os.ReadFile(*customRules)
+		if err != nil {
+			log.Fatalf("Reading custom rules: %v", err)
+		}
+		var custom []PolicyRule
+		if err := json.Unmarshal(data, &custom); err != nil {
+			log.Fatalf("Parsing custom rules: %v", err)
+		}
+		allRules = append(allRules, custom...)
+		fmt.Printf("Merged %d custom rules from %s\n", len(custom), *customRules)
 	}
 
 	// Sort by rule ID

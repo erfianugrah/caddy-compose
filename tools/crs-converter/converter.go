@@ -262,6 +262,7 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		Operator:   opName,
 		Value:      operatorValue,
 		Negate:     rule.Operator.Negated,
+		MultiMatch: hasAction(rule.Actions, "multiMatch"),
 		Transforms: transforms,
 		ListItems:  listItems,
 	}
@@ -350,6 +351,7 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 		Operator:   opName,
 		Value:      operatorValue,
 		Negate:     rule.Operator.Negated,
+		MultiMatch: hasAction(rule.Actions, "multiMatch"),
 		Transforms: transforms,
 		ListItems:  listItems,
 	}

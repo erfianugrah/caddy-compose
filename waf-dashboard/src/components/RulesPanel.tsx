@@ -12,7 +12,7 @@ import {
   bulkOverrideDefaultRules,
   bulkResetDefaultRules,
 } from "@/lib/api";
-import { postJSON } from "@/lib/api/shared";
+import { deployConfig } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -132,6 +132,7 @@ export default function RulesPanel() {
           enabled: !rule.enabled,
         });
         setRules((prev) => prev.map((r) => (r.id === rule.id ? updated : r)));
+        setDetailRule((prev) => (prev?.id === rule.id ? updated : prev));
         setDirty(true);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -145,6 +146,7 @@ export default function RulesPanel() {
       try {
         const updated = await overrideDefaultRule(rule.id, { severity });
         setRules((prev) => prev.map((r) => (r.id === rule.id ? updated : r)));
+        setDetailRule((prev) => (prev?.id === rule.id ? updated : prev));
         setDirty(true);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -158,6 +160,7 @@ export default function RulesPanel() {
       try {
         const updated = await overrideDefaultRule(rule.id, { paranoia_level });
         setRules((prev) => prev.map((r) => (r.id === rule.id ? updated : r)));
+        setDetailRule((prev) => (prev?.id === rule.id ? updated : prev));
         setDirty(true);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -191,7 +194,7 @@ export default function RulesPanel() {
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   const handleBulkAction = useCallback(
-    async (action: "enable" | "disable" | "reset", severity?: RuleSeverity) => {
+    async (action: "enable" | "disable" | "reset") => {
       if (selected.size === 0) return;
       try {
         setBulkBusy(true);
@@ -202,9 +205,6 @@ export default function RulesPanel() {
           await bulkOverrideDefaultRules(ids, { enabled: false });
         } else if (action === "reset") {
           await bulkResetDefaultRules(ids);
-        }
-        if (severity) {
-          await bulkOverrideDefaultRules(ids, { severity });
         }
         setDirty(true);
         setSelected(new Set());
@@ -263,7 +263,7 @@ export default function RulesPanel() {
     try {
       setDeploying(true);
       setDeployMsg(null);
-      await postJSON("/api/config/deploy", {});
+      await deployConfig();
       setDeployMsg("Deployed successfully");
       setDirty(false);
       if (deployTimerRef.current) clearTimeout(deployTimerRef.current);
@@ -433,6 +433,7 @@ export default function RulesPanel() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setCategoryFilter("all")}
+            aria-pressed={categoryFilter === "all"}
             className={cn(
               "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
               categoryFilter === "all"
@@ -453,6 +454,7 @@ export default function RulesPanel() {
                     categoryFilter === cat.prefix ? "all" : cat.prefix,
                   )
                 }
+                aria-pressed={categoryFilter === cat.prefix}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
                   categoryFilter === cat.prefix
@@ -525,7 +527,11 @@ export default function RulesPanel() {
                 <SelectItem value="NOTICE">Notice</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="xs" onClick={() => handleBulkAction("reset")} disabled={bulkBusy}>
+            <Button variant="outline" size="xs" onClick={() => {
+              if (window.confirm(`Reset ${selected.size} rule(s) to defaults? This will remove all overrides.`)) {
+                handleBulkAction("reset");
+              }
+            }} disabled={bulkBusy}>
               Reset to Default
             </Button>
             <div className="ml-auto flex items-center gap-2">
@@ -649,6 +655,7 @@ function PLSection({
       <div className="flex w-full items-center justify-between px-4 py-3 bg-lovelace-950">
         <button
           onClick={onToggleCollapse}
+          aria-expanded={!isCollapsed}
           className="flex items-center gap-3 hover:text-foreground transition-colors"
         >
           {isCollapsed ? (
@@ -686,7 +693,11 @@ function PLSection({
                 variant="ghost"
                 size="xs"
                 className="text-xs text-muted-foreground hover:text-rose-400"
-                onClick={() => onBulkPL(plRuleIds, "disable")}
+                onClick={() => {
+                  if (window.confirm(`Disable all ${rules.length} PL${pl} rules?`)) {
+                    onBulkPL(plRuleIds, "disable");
+                  }
+                }}
                 disabled={enabledCount === 0}
               >
                 Disable All
@@ -845,6 +856,7 @@ function RuleRow({
           type="checkbox"
           checked={isSelected}
           onChange={() => onToggleSelect(rule.id)}
+          aria-label={`Select rule ${rule.id}`}
           className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
         />
       </TableCell>
@@ -867,7 +879,10 @@ function RuleRow({
             )}
           </span>
           {rule.description && (
-            <span className="text-xs text-muted-foreground truncate max-w-[500px]">
+            <span
+              className="text-xs text-muted-foreground truncate max-w-[500px]"
+              title={rule.description}
+            >
               {rule.description}
             </span>
           )}
