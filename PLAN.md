@@ -978,17 +978,11 @@ each with generous sleep waits. The biggest time sinks:
 
 **Fixes (in priority order):**
 
-- [ ] **Share CRSv7 config across tests** — `setCRSv7TestConfig` + `restoreCRSv7TestConfig`
-  each take ~10s (deploy + 8s hot-reload wait). All 5 CRSv7 tests use the same config.
-  Instead: set once, run all 5, restore once. Saves ~80s.
-- [ ] **Reduce hot-reload sleep from 8s to 6s** — plugin polls every 5s, so 6s is safe.
-  Saves ~20s across all deploy waits.
-- [ ] **Reduce event tailing sleep** — 12s is very conservative. `WAF_TAIL_INTERVAL` is 5s,
-  so 7s should be sufficient. Or better: poll the events API until the sentinel appears
-  (retry loop with 500ms intervals, 10s timeout). Saves ~25s.
-- [ ] **Group mutating tests that share config** — tests that use the same WAF config
-  (e.g., all detect scoring tests) can share one setup/teardown cycle.
-- [ ] **Target: <300s** for the full smoke suite (currently ~600s).
+- [x] **Share CRSv7 config across tests** — **DONE**: `TestCRSv7` wraps all 5 subtests in single setup/teardown cycle (~80s saved)
+- [x] **Reduce hot-reload sleep from 8s to 6s** — **DONE** (exceeded): all hot-reload waits converted to `waitForStatus()` polling (500ms intervals, 10s timeout)
+- [x] **Reduce event tailing sleep** — **DONE** (exceeded): replaced with `waitForEvent()` polling in helpers
+- [x] **Group mutating tests that share config** — **DONE**: CRSv7 tests grouped; `crs_regression_test.go` still has fixed sleeps but is separately gated
+- [x] **Target: <300s** — **DONE** (exceeded): suite runs in ~111s, down from ~600s (5.4x speedup)
 
 #### Rules Page Restructure (PARTIALLY DONE)
 
@@ -1000,7 +994,7 @@ each with generous sleep waits. The biggest time sinks:
 - [x] Astro file-based routing: `src/pages/rules/index.astro` + `src/pages/rules/crs.astro`
 
 **Pending:**
-- [ ] CRS rules: Pagination per PL section (PL1 has ~160 rules — needs page size selector + page controls)
+- [x] CRS rules: Pagination per PL section — **DONE**: 50 rules/page with First/Prev/Next/Last controls in `PLSection` component
 - [x] CRS rules: Bulk actions — checkbox column, select all, bulk toolbar (enable/disable/severity/reset)
 - [x] CRS rules: Bulk action API — `POST /api/default-rules/bulk` with `{ ids, action: "override"|"reset", override }` + tests
 - [ ] CRS rules: Global PL controls on section headers — each PL section header should have:
@@ -1086,9 +1080,7 @@ The policy engine's `responseHeaderWriter` (used for CSP `default` mode and secu
 - [x] Implement `http.Hijacker` on `responseHeaderWriter` — delegates to underlying `ResponseWriter` if it implements `Hijacker`
 - [x] Implement `http.Flusher` on `responseHeaderWriter` — required for SSE streams
 - [x] `Unwrap()` already present for Caddy's interface detection chain
-- [ ] Decide: should `detect` rules evaluate on WebSocket upgrade requests? The initial HTTP upgrade request is a normal HTTP request that could carry attack payloads in headers/query params. CRS currently does NOT inspect it (bypassed by `@not_websocket`). Options:
-  - **Inspect upgrade request** (stricter) — evaluate rules normally, only skip response-phase logic after hijack
-  - **Skip entirely** (current behavior) — maintain backward compat, WebSocket traffic is never scored
+- [x] Decide: should `detect` rules evaluate on WebSocket upgrade requests? — **DONE**: chose "inspect upgrade request" (the stricter option) by removing `@not_websocket` bypass (commit `12004ce`). Policy engine evaluates all rules including detect on WS upgrade requests. E2E verified.
 - [x] Test: WebSocket connections work through the policy engine — E2E `TestWebSocketPolicyEngineHijack` verifies block rule active (responseHeaderWriter wraps w) + WS upgrade succeeds + multi-frame echo
 
 **Effort:** Low for Phase 1 (just implement the interface). Medium for Phase 2 (needs design decision on upgrade request inspection + integration testing).
@@ -1166,8 +1158,8 @@ available to all middleware (policy engine, Coraza, access log, general log).
 - [x] wafctl: `RateLimitEventToEvent()` — uses `rle.RequestID` as `Event.ID`, falls back to `ephemeralID()`
 - [x] wafctl: `parseEvent()` — uses `X-Request-Id` header as `Event.ID`, falls back to `tx.ID`
 - [x] wafctl: Updated tests — unified request ID assertions in `TestParseEvent_RequestID`, `TestRateLimitEventToEvent_RequestID`, `TestAccessLogStoreRequestID_PropagatedToEvent`
-- [ ] wafctl: Remove `ephemeralID()` and `ephemeralCounter` once Coraza is fully removed (v1.0)
-- [ ] Frontend: Show unified request ID prominently in event detail, add "View in General Logs" cross-link
+- [x] wafctl: Remove `ephemeralID()` and `ephemeralCounter` — **DONE**: removed during Coraza cleanup
+- [x] Frontend: Show unified request ID prominently in event detail, add "View in General Logs" cross-link — **DONE**: `EventDetailPanel.tsx:312-324`, links to `/logs?q=<request_id>`
 - [x] E2e: `TestPolicyBlockEvent_RequestContext` verifies non-`rl-` event ID
 
 **Effort:** Low-Medium. The plumbing exists; this is mostly wiring `RequestID` into `Event.ID`.
@@ -1238,7 +1230,7 @@ subset (e.g., all request headers minus large Cookie values).
 - [x] wafctl: Wired through access log parsing and `RateLimitEventToEvent()` → `Event.RequestHeaders`/`RequestBody`
 - [x] wafctl: 5 new tests (propagation, parse, empty, invalid JSON)
 - [x] E2e: `TestPolicyBlockEvent_RequestContext` — full pipeline test
-- [ ] Frontend: Already renders `request_headers` when present — no changes needed
+- [x] Frontend: Already renders `request_headers` when present — **DONE**: `EventDetailPanel.tsx:535-589`, expandable "Request Context" section with highlighted matched_data
 
 **Effort:** Medium. Plugin changes are straightforward (serialize `r.Header`). Main risk is
 log volume — full headers per blocked request could add 1-2 KB per event line. At typical
@@ -1992,7 +1984,7 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Clean up dead wafctl code — **COMPLETED**: 43 files changed, -8,287 net lines. Go: deleted 7 files, cleaned 18+ files. Frontend: deleted SecRuleEditor.tsx, rewrote PolicyForms.tsx, trimmed to 3 exclusion types (allow/block/detect)
 - [x] Fix "Create Exception" for policy engine events — **COMPLETED**: button was hidden for all `policy_*` events, action defaulted wrong, name generation broke on empty rule IDs
 - [x] Pre-deploy cleanup sprint — **COMPLETED** (2026-03-13): All code review findings (CR-1 through CR-26) addressed, 13 deferred items completed, multiMatch/negate condition support, backup/restore all-stores E2E, version bumps to 3.19.0/2.20.0, 120 E2E tests pass. See [Code Review Cleanup Sprint](#code-review-cleanup-sprint-2026-03-13).
-- [ ] Deploy to production
+- [x] Deploy to production — **DONE** (2026-03-13): caddy 3.19.0-2.11.1 + wafctl 2.20.0, plugin v0.13.0, 0 Trivy vulns, all containers healthy
 - [ ] Response-phase detection (Phase 2 — deferred)
 
 ---
@@ -2384,6 +2376,102 @@ All 13 deferred work items completed in a single sprint on branch `fix/code-revi
   - `TestPolicyEngineMultiMatch` — multi_match=true with lowercase transform, raw stage vs final-only matching
   - `TestPolicyEngineNegate` — negate inverts operator for method allowlist block rules
   - `TestBackupRestoreAllStores` — round-trip exclusions + RL rules + managed lists + CSP through backup/restore
+
+---
+
+## Post-Deploy Cleanup: Dead Settings & UI Polish
+
+Identified during 2026-03-13 production deploy review. The Coraza removal left behind
+several UI settings that persist values but have no backend effect, plus UI rough edges.
+
+### Dead Settings Audit (Coraza Leftovers)
+
+After Coraza removal, the policy engine plugin only consumes three WAF config values:
+`paranoia_level`, `inbound_threshold`, and per-service overrides of these two. Everything
+else in `WAFConfig` / `WAFServiceSettings` is validated and stored but never read by the
+policy generator (`BuildPolicyWafConfig()`) or the plugin.
+
+| Setting | Frontend Location | Backend Effect |
+|---------|------------------|---------------|
+| **Mode (Enabled/Detection/Disabled)** | `ModeSelector` in `SettingsFormSections.tsx` | **DEAD** — plugin has no mode concept, always evaluates all rules |
+| **Outbound Threshold** | `SensitivitySettings` input | **DEAD** — no response-phase scoring exists in plugin |
+| **CRS Rule Group Toggles** | `RuleGroupToggles` in `SettingsFormSections.tsx` | **DEAD** — `disabled_groups` never read by generator |
+| **CRS Exclusion Profiles** | `CRSExclusionProfiles` in `AdvancedSettings.tsx` | **DEAD** — `crs_exclusions` never read by generator |
+| **Blocking/Detection PL Split** | `AdvancedSettings.tsx` | **DEAD** — `blocking_paranoia_level`, `detection_paranoia_level` not propagated |
+| **Early Blocking** | `AdvancedSettings.tsx` | **DEAD** — `early_blocking` not propagated |
+| **Sampling Percentage** | `AdvancedSettings.tsx` | **DEAD** — `sampling_percentage` not propagated |
+| **Reporting Level** | `AdvancedSettings.tsx` | **DEAD** — `reporting_level` not propagated |
+| **Enforce URL-Encoded Body** | `AdvancedSettings.tsx` | **DEAD** — `enforce_bodyproc_urlencoded` not propagated |
+| **Request Policy (methods, versions, content types, etc.)** | `AdvancedSettings.tsx` | **DEAD** — `allowed_methods`, `allowed_http_versions`, etc. not propagated |
+| **Argument & File Limits** | `AdvancedSettings.tsx` | **DEAD** — `max_num_args`, `arg_length`, etc. not propagated |
+
+**Working settings:** `paranoia_level` (controls which PL detect rules fire), `inbound_threshold`
+(anomaly score blocking threshold), sensitivity presets (frontend shortcut that sets PL + threshold).
+
+#### Tasks
+
+- [ ] Remove dead settings from Rules page UI — hide or remove Mode selector, Outbound Threshold,
+  CRS Rule Group Toggles, CRS Exclusion Profiles, and all Advanced CRS v4 settings
+- [ ] Decide: either implement Mode in the plugin (detection-only mode = log but don't block on
+  threshold) or remove the field from `WAFConfig` entirely
+- [ ] Decide: either implement CRS Rule Group disabling in the policy generator (filter
+  `default-rules.json` by tag at generation time) or remove `disabled_groups` from config
+- [ ] Remove `outbound_threshold` from UI (response-phase detection is Phase 2; keep the field
+  in the model for forward compatibility but don't expose it)
+- [ ] Remove or collapse `AdvancedSettings.tsx` — all CRS v4 extended settings are dead
+
+### UI Polish Issues
+
+#### Transforms Dropdown (Policy Create/Edit Dialog)
+
+The "Add transforms" dropdown in the condition builder is poorly styled:
+- Description text wraps inconsistently, some descriptions overflow
+- Two-column layout (name + description) has misaligned columns
+- No max-height / scroll container — long list extends off-screen
+- Monospace names have inconsistent widths causing jagged alignment
+
+**Fix:** Use a proper `Popover` + `Command` (shadcn) for the transform picker with
+consistent layout, search/filter, and scroll container. Group by category
+(decode, normalize, whitespace, other).
+
+- [ ] Redesign transforms dropdown — use shadcn Command/Popover pattern with search, categories, and consistent layout
+
+#### CRS Rules Back Navigation (`/rules/crs` → `/rules`)
+
+The "← Rules" back link at the top of the CRS rules page is minimal and disconnected
+from the page design. Needs better visual integration.
+
+**Fix:** Replace plain text link with a proper breadcrumb or a styled back button that
+matches the page header design. Consider a breadcrumb pattern: `Rules / OWASP CRS 4.24.1`
+with the first segment as a link.
+
+- [ ] Redesign CRS rules back navigation — breadcrumb or styled back button integrated with page header
+
+#### Policy Create/Edit Dialog — Stale Design
+
+The Create Rule dialog on the Policy page has not been updated to match the latest
+design language used on other pages. Specific issues:
+- Quick Actions / Advanced toggle feels disconnected
+- Action type cards (Allow/Block/Detect) could use better visual hierarchy
+- Form layout doesn't match the tighter, more consistent style of newer pages
+
+- [ ] Review and refresh Policy Create/Edit dialog design for consistency with current UI patterns
+
+### Response-Phase Detection (Phase 2)
+
+The policy engine currently only evaluates request-phase conditions. This means:
+- `outbound_threshold` in WAFConfig has no effect
+- ~100+ CRS outbound rules (response body inspection) cannot be ported
+- Response-phase fields (`response_header`, `response_status`) are excluded from
+  policy engine conditions
+
+This is explicitly deferred. When implemented, it would require:
+- Plugin: add response body buffering + inspection after `next.ServeHTTP()`
+- Plugin: add outbound anomaly scoring with separate threshold
+- wafctl: wire `outbound_threshold` through `BuildPolicyWafConfig()`
+- CRS converter: port outbound rule categories
+
+- [ ] Response-phase detection — deferred to Phase 2
 
 ---
 
