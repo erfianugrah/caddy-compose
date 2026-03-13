@@ -239,6 +239,26 @@ export default function RulesPanel() {
   const deployTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (deployTimerRef.current) clearTimeout(deployTimerRef.current); }, []);
 
+  const handleBulkPL = useCallback(
+    async (ids: string[], action: "enable" | "disable") => {
+      try {
+        setBulkBusy(true);
+        if (action === "enable") {
+          await bulkOverrideDefaultRules(ids, { enabled: true });
+        } else {
+          await bulkOverrideDefaultRules(ids, { enabled: false });
+        }
+        setDirty(true);
+        await load();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [load],
+  );
+
   const handleDeploy = useCallback(async () => {
     try {
       setDeploying(true);
@@ -540,6 +560,7 @@ export default function RulesPanel() {
               onPLChange={handlePLChange}
               onDetail={setDetailRule}
               onToggleSelect={toggleSelect}
+              onBulkPL={handleBulkPL}
             />
           );
         })}
@@ -575,6 +596,8 @@ const PL_DESCRIPTIONS: Record<number, string> = {
   4: "Maximum paranoia, extensive tuning required",
 };
 
+const PAGE_SIZE = 50;
+
 interface PLSectionProps {
   pl: number;
   rules: DefaultRule[];
@@ -587,6 +610,7 @@ interface PLSectionProps {
   onPLChange: (rule: DefaultRule, pl: number) => void;
   onDetail: (rule: DefaultRule) => void;
   onToggleSelect: (id: string) => void;
+  onBulkPL: (ids: string[], action: "enable" | "disable") => void;
 }
 
 function PLSection({
@@ -601,21 +625,32 @@ function PLSection({
   onPLChange,
   onDetail,
   onToggleSelect,
+  onBulkPL,
 }: PLSectionProps) {
+  const [page, setPage] = useState(0);
   const { sortState, toggleSort, sortedData } = useTableSort<DefaultRule, RuleSortKey>(
     rules,
     RULE_COMPARATORS,
     { defaultDirection: "asc" },
   );
 
+  const totalPages = Math.ceil(sortedData.length / PAGE_SIZE);
+  const pageData = sortedData.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // Reset page when rules change (e.g. filter applied)
+  useEffect(() => { setPage(0); }, [rules.length]);
+
+  const allEnabled = rules.length > 0 && enabledCount === rules.length;
+  const plRuleIds = rules.map((r) => r.id);
+
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       {/* Section header */}
-      <button
-        onClick={onToggleCollapse}
-        className="flex w-full items-center justify-between px-4 py-3 bg-lovelace-950 hover:bg-lovelace-900/50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex w-full items-center justify-between px-4 py-3 bg-lovelace-950">
+        <button
+          onClick={onToggleCollapse}
+          className="flex items-center gap-3 hover:text-foreground transition-colors"
+        >
           {isCollapsed ? (
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           ) : (
@@ -628,63 +663,145 @@ function PLSection({
           <span className="text-xs text-muted-foreground hidden sm:inline">
             {PL_DESCRIPTIONS[pl]}
           </span>
+        </button>
+        {/* PL-level controls */}
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-xs text-muted-foreground hover:text-emerald-400"
+                onClick={() => onBulkPL(plRuleIds, "enable")}
+                disabled={allEnabled}
+              >
+                Enable All
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Enable all {rules.length} PL{pl} rules</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-xs text-muted-foreground hover:text-rose-400"
+                onClick={() => onBulkPL(plRuleIds, "disable")}
+                disabled={enabledCount === 0}
+              >
+                Disable All
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Disable all {rules.length} PL{pl} rules</TooltipContent>
+          </Tooltip>
         </div>
-      </button>
+      </div>
 
       {/* Table */}
       {!isCollapsed && (
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[36px] px-2" />
-              <TableHead className="w-[60px]">Status</TableHead>
-              <SortableTableHead<RuleSortKey>
-                sortKey="id"
-                activeKey={sortState.key}
-                direction={sortState.direction}
-                onSort={toggleSort}
-                className="w-[80px]"
-              >
-                ID
-              </SortableTableHead>
-              <TableHead>Rule</TableHead>
-              <SortableTableHead<RuleSortKey>
-                sortKey="severity"
-                activeKey={sortState.key}
-                direction={sortState.direction}
-                onSort={toggleSort}
-                className="w-[90px]"
-              >
-                Severity
-              </SortableTableHead>
-              <TableHead className="w-[60px]">PL</TableHead>
-              <SortableTableHead<RuleSortKey>
-                sortKey="category"
-                activeKey={sortState.key}
-                direction={sortState.direction}
-                onSort={toggleSort}
-                className="w-[90px]"
-              >
-                Category
-              </SortableTableHead>
-              <TableHead className="w-[40px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedData.map((rule) => (
-              <RuleRow
-                key={rule.id}
-                rule={rule}
-                isSelected={selected.has(rule.id)}
-                onToggle={onToggleRule}
-                onSeverityChange={onSeverityChange}
-                onPLChange={onPLChange}
-                onDetail={onDetail}
-                onToggleSelect={onToggleSelect}
-              />
-            ))}
-          </TableBody>
-        </Table>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[36px] px-2" />
+                <TableHead className="w-[60px]">Status</TableHead>
+                <SortableTableHead<RuleSortKey>
+                  sortKey="id"
+                  activeKey={sortState.key}
+                  direction={sortState.direction}
+                  onSort={toggleSort}
+                  className="w-[80px]"
+                >
+                  ID
+                </SortableTableHead>
+                <TableHead>Rule</TableHead>
+                <SortableTableHead<RuleSortKey>
+                  sortKey="severity"
+                  activeKey={sortState.key}
+                  direction={sortState.direction}
+                  onSort={toggleSort}
+                  className="w-[90px]"
+                >
+                  Severity
+                </SortableTableHead>
+                <TableHead className="w-[60px]">PL</TableHead>
+                <SortableTableHead<RuleSortKey>
+                  sortKey="category"
+                  activeKey={sortState.key}
+                  direction={sortState.direction}
+                  onSort={toggleSort}
+                  className="w-[90px]"
+                >
+                  Category
+                </SortableTableHead>
+                <TableHead className="w-[40px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pageData.map((rule) => (
+                <RuleRow
+                  key={rule.id}
+                  rule={rule}
+                  isSelected={selected.has(rule.id)}
+                  onToggle={onToggleRule}
+                  onSeverityChange={onSeverityChange}
+                  onPLChange={onPLChange}
+                  onDetail={onDetail}
+                  onToggleSelect={onToggleSelect}
+                />
+              ))}
+            </TableBody>
+          </Table>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-lovelace-950/50 text-xs text-muted-foreground">
+              <span>
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sortedData.length)} of {sortedData.length} rules
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setPage(0)}
+                  disabled={page === 0}
+                  className="text-xs"
+                >
+                  First
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="text-xs"
+                >
+                  Prev
+                </Button>
+                <span className="px-2">
+                  {page + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="text-xs"
+                >
+                  Next
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setPage(totalPages - 1)}
+                  disabled={page >= totalPages - 1}
+                  className="text-xs"
+                >
+                  Last
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

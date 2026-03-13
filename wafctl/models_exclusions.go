@@ -9,8 +9,10 @@ type Condition struct {
 	Field      string   `json:"field"`    // single: "ip", "path", "host", etc. | aggregate: "all_args", "all_headers", etc. | count: "count:all_args", etc.
 	Operator   string   `json:"operator"` // "eq", "neq", "contains", "begins_with", "ends_with", "regex", "ip_match", "not_ip_match", "in", "phrase_match", "gt", "ge", "lt", "le"
 	Value      string   `json:"value"`
-	Transforms []string `json:"transforms,omitempty"` // ordered transform chain: "lowercase", "urlDecode", "htmlEntityDecode", etc.
-	ListItems  []string `json:"list_items,omitempty"` // patterns for phrase_match (inline, not from managed list)
+	Transforms []string `json:"transforms,omitempty"`  // ordered transform chain: "lowercase", "urlDecode", "htmlEntityDecode", etc.
+	Negate     bool     `json:"negate,omitempty"`      // CRS !@ prefix — inverts operator result
+	MultiMatch bool     `json:"multi_match,omitempty"` // CRS multiMatch — run operator at each transform stage
+	ListItems  []string `json:"list_items,omitempty"`  // patterns for phrase_match (inline, not from managed list)
 }
 
 // RuleExclusion is a single WAF policy engine rule (allow, block, detect).

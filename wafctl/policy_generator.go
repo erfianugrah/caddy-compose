@@ -87,9 +87,11 @@ type PolicyCondition struct {
 	Field      string   `json:"field"`
 	Operator   string   `json:"operator"`
 	Value      string   `json:"value"`
-	Transforms []string `json:"transforms,omitempty"` // ordered transform chain applied before operator
-	ListItems  []string `json:"list_items,omitempty"` // resolved by wafctl before writing
-	ListKind   string   `json:"list_kind,omitempty"`  // "ip", "hostname", "string", "asn"
+	Transforms []string `json:"transforms,omitempty"`  // ordered transform chain applied before operator
+	Negate     bool     `json:"negate,omitempty"`      // CRS !@ prefix — inverts operator result
+	MultiMatch bool     `json:"multi_match,omitempty"` // CRS multiMatch — run operator at each transform stage
+	ListItems  []string `json:"list_items,omitempty"`  // resolved by wafctl before writing
+	ListKind   string   `json:"list_kind,omitempty"`   // "ip", "hostname", "string", "asn"
 }
 
 // policyEngineTypes are the exclusion types handled by the Caddy policy engine plugin.
@@ -307,6 +309,8 @@ func convertConditions(conditions []Condition, listStore *ManagedListStore) []Po
 			Operator:   c.Operator,
 			Value:      c.Value,
 			Transforms: c.Transforms,
+			Negate:     c.Negate,
+			MultiMatch: c.MultiMatch,
 		}
 		// Resolve managed list references.
 		if (c.Operator == "in_list" || c.Operator == "not_in_list") && listStore != nil {

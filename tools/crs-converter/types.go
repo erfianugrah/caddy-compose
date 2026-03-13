@@ -82,6 +82,7 @@ type PolicyCondition struct {
 	Operator   string   `json:"operator"`
 	Value      string   `json:"value,omitempty"`
 	Negate     bool     `json:"negate,omitempty"`
+	MultiMatch bool     `json:"multi_match,omitempty"`
 	Transforms []string `json:"transforms,omitempty"`
 	ListItems  []string `json:"list_items,omitempty"`
 }

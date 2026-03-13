@@ -5,7 +5,7 @@ RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.12.6
+	--with github.com/erfianugrah/caddy-policy-engine@v0.13.0
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
