@@ -1083,8 +1083,9 @@ The policy engine's `responseHeaderWriter` (used for CSP `default` mode and secu
 **Phase 1 (pre-Coraza removal):** The `@not_websocket` bypass is still in the Caddyfile, so WebSocket traffic never hits either engine. No action needed yet, but the `responseHeaderWriter` should still implement `http.Hijacker` for correctness when CSP `default` mode is active.
 
 **Phase 2 (post-Coraza removal, v1.0):** Remove `@not_websocket` bypass. The policy engine must:
-- [ ] Implement `http.Hijacker` on `responseHeaderWriter` — delegate to underlying `ResponseWriter` if it implements `Hijacker`
-- [ ] Skip response header injection (`WriteHeader` interception) on hijacked connections — track hijack state like coraza-caddy's `hijackTracker`
+- [x] Implement `http.Hijacker` on `responseHeaderWriter` — delegates to underlying `ResponseWriter` if it implements `Hijacker`
+- [x] Implement `http.Flusher` on `responseHeaderWriter` — required for SSE streams
+- [x] `Unwrap()` already present for Caddy's interface detection chain
 - [ ] Decide: should `detect` rules evaluate on WebSocket upgrade requests? The initial HTTP upgrade request is a normal HTTP request that could carry attack payloads in headers/query params. CRS currently does NOT inspect it (bypassed by `@not_websocket`). Options:
   - **Inspect upgrade request** (stricter) — evaluate rules normally, only skip response-phase logic after hijack
   - **Skip entirely** (current behavior) — maintain backward compat, WebSocket traffic is never scored
