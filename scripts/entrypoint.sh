@@ -20,6 +20,22 @@ mkdir -p "${CSP_DIR}"
 # Ensure policy engine data directory exists.
 mkdir -p /data/waf
 
+# Load file-based secrets into environment (not visible in docker inspect).
+# Supports both Docker secrets (/run/secrets/) and bind-mounted files.
+CF_TOKEN_FILE="${CF_API_TOKEN_FILE:-/run/secrets/cf_api_token}"
+if [ -f "${CF_TOKEN_FILE}" ]; then
+    CF_API_TOKEN="$(cat "${CF_TOKEN_FILE}")"
+    export CF_API_TOKEN
+    echo "[entrypoint] Loaded CF_API_TOKEN from ${CF_TOKEN_FILE}"
+fi
+
+EMAIL_FILE="${EMAIL_FILE:-/run/secrets/email}"
+if [ -f "${EMAIL_FILE}" ]; then
+    EMAIL="$(cat "${EMAIL_FILE}")"
+    export EMAIL
+    echo "[entrypoint] Loaded EMAIL from ${EMAIL_FILE}"
+fi
+
 # Fix ownership of writable volumes so the non-root caddy user can write.
 chown -R caddy:caddy /data /config /var/log 2>/dev/null || true
 

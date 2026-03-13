@@ -54,10 +54,11 @@ services:
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
       - tmpfs_caddy:/var/run
+      # Secrets — loaded from files for security (not visible in docker inspect/proc)
+      - /mnt/user/data/caddy/secrets/cf_api_token:/run/secrets/cf_api_token:ro
+      - /mnt/user/data/caddy/secrets/email:/run/secrets/email:ro
     environment:
       - TZ=Asia/Singapore
-      - CF_API_TOKEN=${CF_API_TOKEN}
-      - EMAIL=${EMAIL}
 
   authelia:
     image: docker.io/authelia/authelia:4.39

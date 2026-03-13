@@ -2207,7 +2207,7 @@ The `caddy:2.11.1-alpine` base runs as root. `DAC_OVERRIDE` capability added bac
 Visible in `docker inspect` and `/proc/1/environ`. Authelia correctly uses file-based
 secrets pattern.
 
-- [ ] Move `CF_API_TOKEN` to file-based secret matching Authelia's pattern
+- [x] Move `CF_API_TOKEN` to file-based secret matching Authelia's pattern (entrypoint reads from /run/secrets/)
 
 #### CR-9: Services Without `forward_auth` — `Caddyfile:300-540`
 
