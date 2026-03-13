@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -487,35 +488,47 @@ func TestCRSRegression(t *testing.T) {
 
 	overrides := buildOverrides()
 
-	// Counters.
-	var totalTests, passed, failed, skipped int
+	// Atomic counters for parallel-safe aggregation.
+	var totalTests, passed, failed, skipped atomic.Int64
 
-	// Run each test file as a subtest.
-	for _, filePath := range testFiles {
-		data, err := os.ReadFile(filePath)
+	// Pre-parse all test files before entering subtests (avoids I/O in parallel goroutines).
+	type parsedFile struct {
+		file CRSTestFile
+		path string
+	}
+	var parsed []parsedFile
+	for _, fp := range testFiles {
+		data, err := os.ReadFile(fp)
 		if err != nil {
-			t.Errorf("reading %s: %v", filePath, err)
+			t.Errorf("reading %s: %v", fp, err)
 			continue
 		}
-		var testFile CRSTestFile
-		if err := yaml.Unmarshal(data, &testFile); err != nil {
-			t.Errorf("parsing %s: %v", filePath, err)
+		var tf CRSTestFile
+		if err := yaml.Unmarshal(data, &tf); err != nil {
+			t.Errorf("parsing %s: %v", fp, err)
 			continue
 		}
+		parsed = append(parsed, parsedFile{file: tf, path: fp})
+	}
 
-		ruleID := testFile.RuleID
+	// Run each rule file as a parallel subtest.
+	for _, pf := range parsed {
+		ruleID := pf.file.RuleID
 		ruleIDStr := strconv.Itoa(ruleID)
+		tests := pf.file.Tests
 
 		t.Run(ruleIDStr, func(t *testing.T) {
-			for _, tc := range testFile.Tests {
+			t.Parallel()
+			for _, tc := range tests {
 				testKey := fmt.Sprintf("%d:%d", ruleID, tc.TestID)
-				totalTests++
+				totalTests.Add(1)
 
 				t.Run(fmt.Sprintf("test_%d", tc.TestID), func(t *testing.T) {
+					t.Parallel()
 					// Check overrides.
 					if ov, ok := overrides[testKey]; ok {
 						if ov.Skip {
-							skipped++
+							skipped.Add(1)
 							t.Skipf("override: %s", ov.Reason)
 						}
 					}
@@ -523,12 +536,12 @@ func TestCRSRegression(t *testing.T) {
 					result := runCRSTest(ruleID, tc, caddyURL)
 
 					if result.Skipped {
-						skipped++
+						skipped.Add(1)
 						t.Skipf("skipped: %s", result.Reason)
 					} else if result.Passed {
-						passed++
+						passed.Add(1)
 					} else {
-						failed++
+						failed.Add(1)
 						t.Errorf("FAIL rule %d test %d: %s", ruleID, tc.TestID, result.Reason)
 					}
 				})
@@ -536,17 +549,23 @@ func TestCRSRegression(t *testing.T) {
 		})
 	}
 
-	// Print summary.
-	t.Logf("\n════════════════════════════════════════════")
-	t.Logf("CRS Regression Test Summary")
-	t.Logf("════════════════════════════════════════════")
-	t.Logf("Total tests:  %d", totalTests)
-	t.Logf("Passed:       %d", passed)
-	t.Logf("Failed:       %d", failed)
-	t.Logf("Skipped:      %d", skipped)
-	if totalTests-skipped > 0 {
-		passRate := float64(passed) / float64(totalTests-skipped) * 100
-		t.Logf("Pass rate:    %.1f%% (of non-skipped)", passRate)
-	}
-	t.Logf("════════════════════════════════════════════")
+	// Print summary via t.Cleanup — runs after all parallel subtests complete.
+	t.Cleanup(func() {
+		total := totalTests.Load()
+		skip := skipped.Load()
+		pass := passed.Load()
+		fail := failed.Load()
+		t.Logf("\n════════════════════════════════════════════")
+		t.Logf("CRS Regression Test Summary")
+		t.Logf("════════════════════════════════════════════")
+		t.Logf("Total tests:  %d", total)
+		t.Logf("Passed:       %d", pass)
+		t.Logf("Failed:       %d", fail)
+		t.Logf("Skipped:      %d", skip)
+		if total-skip > 0 {
+			passRate := float64(pass) / float64(total-skip) * 100
+			t.Logf("Pass rate:    %.1f%% (of non-skipped)", passRate)
+		}
+		t.Logf("════════════════════════════════════════════")
+	})
 }

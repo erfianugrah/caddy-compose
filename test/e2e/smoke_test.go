@@ -88,28 +88,34 @@ func TestBlocklistRefresh(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestHealthAndBasics(t *testing.T) {
+	t.Parallel()
 	t.Run("wafctl health", func(t *testing.T) {
+		t.Parallel()
 		resp, body := httpGet(t, wafctlURL+"/api/health")
 		assertCode(t, "health", 200, resp)
 		assertField(t, "health", body, "status", "ok")
 	})
 
 	t.Run("Caddy admin", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpGet(t, caddyAdmin+"/config/")
 		assertCode(t, "caddy admin", 200, resp)
 	})
 
 	t.Run("proxy GET", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpGet(t, caddyURL+"/get")
 		assertCode(t, "proxy GET", 200, resp)
 	})
 
 	t.Run("proxy POST", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpPost(t, caddyURL+"/post", map[string]string{"hello": "world"})
 		assertCode(t, "proxy POST", 200, resp)
 	})
 
 	t.Run("security headers", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpGet(t, caddyURL+"/get")
 		if !headerContains(resp, "X-Content-Type-Options", "nosniff") {
 			t.Error("missing X-Content-Type-Options: nosniff")
@@ -125,6 +131,7 @@ func TestHealthAndBasics(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestWAFBlocking(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		url  string
@@ -137,6 +144,7 @@ func TestWAFBlocking(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			code, err := httpGetCode(tt.url)
 			if err != nil {
 				t.Fatalf("request failed: %v", err)
@@ -153,6 +161,7 @@ func TestWAFBlocking(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestWAFEventsAndSummary(t *testing.T) {
+	t.Parallel()
 	// Give the log tailer time to pick up the blocked requests from TestWAFBlocking.
 	time.Sleep(4 * time.Second)
 
@@ -186,6 +195,7 @@ func TestWAFEventsAndSummary(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestAnalytics(t *testing.T) {
+	t.Parallel()
 	endpoints := []string{
 		"/api/analytics/top-ips?hours=1",
 		"/api/analytics/top-uris?hours=1",
@@ -194,6 +204,7 @@ func TestAnalytics(t *testing.T) {
 	}
 	for _, ep := range endpoints {
 		t.Run(ep, func(t *testing.T) {
+			t.Parallel()
 			resp, _ := httpGet(t, wafctlURL+ep)
 			assertCode(t, ep, 200, resp)
 		})
@@ -266,6 +277,7 @@ func TestExclusionCRUD(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestCRSRulesCatalog(t *testing.T) {
+	t.Parallel()
 	t.Run("rules", func(t *testing.T) {
 		resp, body := httpGet(t, wafctlURL+"/api/crs/rules")
 		assertCode(t, "rules", 200, resp)
@@ -758,12 +770,15 @@ func TestCSPHotReload(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestBlocklist(t *testing.T) {
+	t.Parallel()
 	t.Run("stats", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpGet(t, wafctlURL+"/api/blocklist/stats")
 		assertCode(t, "stats", 200, resp)
 	})
 
 	t.Run("check clean IP", func(t *testing.T) {
+		t.Parallel()
 		resp, body := httpGet(t, wafctlURL+"/api/blocklist/check/8.8.8.8")
 		assertCode(t, "check", 200, resp)
 		assertField(t, "check", body, "blocked", "false")
@@ -775,12 +790,15 @@ func TestBlocklist(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestGeneralLogs(t *testing.T) {
+	t.Parallel()
 	t.Run("logs", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpGet(t, wafctlURL+"/api/logs?hours=1")
 		assertCode(t, "logs", 200, resp)
 	})
 
 	t.Run("summary", func(t *testing.T) {
+		t.Parallel()
 		resp, _ := httpGet(t, wafctlURL+"/api/logs/summary?hours=1")
 		assertCode(t, "summary", 200, resp)
 	})
@@ -791,6 +809,7 @@ func TestGeneralLogs(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestExclusionOperations(t *testing.T) {
+	t.Parallel()
 	endpoints := []struct {
 		method string
 		path   string
@@ -800,6 +819,7 @@ func TestExclusionOperations(t *testing.T) {
 	}
 	for _, ep := range endpoints {
 		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
+			t.Parallel()
 			var resp *http.Response
 			if ep.method == "POST" {
 				resp, _ = httpPost(t, wafctlURL+ep.path, struct{}{})
@@ -816,7 +836,9 @@ func TestExclusionOperations(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestWAFDashboardUI(t *testing.T) {
+	t.Parallel()
 	t.Run("index", func(t *testing.T) {
+		t.Parallel()
 		resp, body := httpGet(t, dashURL+"/")
 		assertCode(t, "index", 200, resp)
 		if !strings.Contains(string(body), "_astro/") {
@@ -830,12 +852,14 @@ func TestWAFDashboardUI(t *testing.T) {
 	}
 	for _, page := range pages {
 		t.Run(page, func(t *testing.T) {
+			t.Parallel()
 			resp, _ := httpGet(t, dashURL+"/"+page+"/")
 			assertCode(t, page, 200, resp)
 		})
 	}
 
 	t.Run("404", func(t *testing.T) {
+		t.Parallel()
 		code, err := httpGetCode(dashURL + "/nonexistent-page-xyz")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -851,7 +875,9 @@ func TestWAFDashboardUI(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestErrorHandling(t *testing.T) {
+	t.Parallel()
 	t.Run("invalid exclusion type", func(t *testing.T) {
+		t.Parallel()
 		resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{"name": "bad", "type": "invalid_type"})
 		if resp.StatusCode != 400 {
 			t.Errorf("expected 400 for invalid type, got %d", resp.StatusCode)
@@ -863,6 +889,7 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
+		t.Parallel()
 		code, err := httpPostRaw(wafctlURL+"/api/exclusions", []byte("{invalid json}"))
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -873,6 +900,7 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("non-existent exclusion", func(t *testing.T) {
+		t.Parallel()
 		code, err := httpGetCode(wafctlURL + "/api/exclusions/nonexistent-id-12345")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -883,6 +911,7 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("oversized body rejected", func(t *testing.T) {
+		t.Parallel()
 		// MaxBytesReader is set to 5MB. Send 6MB.
 		largeBody := generateLargeBody(6_000_000)
 		code, err := httpPostRaw(wafctlURL+"/api/exclusions", largeBody)
@@ -2410,8 +2439,10 @@ func TestPolicyEngineDetectCRUD(t *testing.T) {
 }
 
 func TestPolicyEngineDetectValidation(t *testing.T) {
+	t.Parallel()
 	// Missing severity — should fail.
 	t.Run("missing severity rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":       "e2e-bad-detect",
 			"type":       "detect",
@@ -2429,6 +2460,7 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 
 	// Invalid severity — should fail.
 	t.Run("invalid severity rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":       "e2e-bad-detect2",
 			"type":       "detect",
@@ -2446,6 +2478,7 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 
 	// Invalid paranoia level — should fail.
 	t.Run("invalid PL rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":                  "e2e-bad-detect3",
 			"type":                  "detect",
@@ -2464,6 +2497,7 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 
 	// Empty value with eq operator — should succeed (matching missing headers).
 	t.Run("empty value with eq allowed", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":       "e2e-detect-empty-val",
 			"type":       "detect",
@@ -2802,6 +2836,7 @@ func TestPolicyEngineDetectWafConfig(t *testing.T) {
 }
 
 func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
+	t.Parallel()
 	// v4 migration is now a no-op and v5 removes previously-seeded heuristic
 	// detect rules. These rules now ship in default-rules.json instead.
 	// Verify the user store has zero seeded detect rules.
@@ -2837,6 +2872,7 @@ func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
 }
 
 func TestDefaultRulesAPI(t *testing.T) {
+	t.Parallel()
 	// Verify the default rules API returns all baked-in rules.
 	// v7: 255 rules (233 auto-converted CRS 4.24.1 + 12 hand-ported CRS + 10 custom 9100xxx)
 	resp, body := httpGet(t, wafctlURL+"/api/default-rules")
@@ -3373,9 +3409,11 @@ func TestPolicyEngineCountField(t *testing.T) {
 }
 
 func TestV090ValidationEndpoints(t *testing.T) {
+	t.Parallel()
 	// Test that wafctl validation correctly accepts and rejects v0.9.0 features.
 
 	t.Run("aggregate field accepted for policy engine type", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-aggregate",
 			"type":    "block",
@@ -3391,6 +3429,7 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("phrase_match without list_items rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-pm-no-items",
 			"type":    "block",
@@ -3404,6 +3443,7 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("count: with non-aggregate field rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-count-bad",
 			"type":    "block",
@@ -3417,6 +3457,7 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("count: with non-numeric operator rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-count-op",
 			"type":    "block",
@@ -3430,6 +3471,7 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("numeric operator with non-numeric value rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-numeric-bad",
 			"type":    "block",
@@ -3443,6 +3485,7 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("numeric operator on named field accepted", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-numeric-named",
 			"type":    "block",
@@ -3460,9 +3503,11 @@ func TestV090ValidationEndpoints(t *testing.T) {
 }
 
 func TestPolicyEngineTransformValidation(t *testing.T) {
+	t.Parallel()
 	// Test that wafctl rejects unknown transform names via the API.
 
 	t.Run("invalid transform name rejected", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-bad-transform",
 			"type":    "block",
@@ -3485,6 +3530,7 @@ func TestPolicyEngineTransformValidation(t *testing.T) {
 	})
 
 	t.Run("valid transforms accepted", func(t *testing.T) {
+		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-valid-transforms",
 			"type":    "block",
@@ -4089,6 +4135,7 @@ func TestPolicyBlockEvent_RequestContext(t *testing.T) {
 // in the summary.
 
 func TestDetectBlockSummarySplit(t *testing.T) {
+	t.Parallel()
 	// Wait for wafctl to parse the access log entries from earlier tests.
 	// The tail interval is 2s in e2e, so 6s gives 3 parse cycles.
 	time.Sleep(6 * time.Second)
