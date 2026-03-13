@@ -10,7 +10,7 @@ export interface TagCount {
 
 export interface SummaryData {
   total_events: number;
-  blocked: number;
+  total_blocked: number;
   logged: number;
   rate_limited: number;
   policy_events: number;
@@ -32,7 +32,7 @@ export interface SummaryData {
 export interface TimelinePoint {
   hour: string;
   total: number;
-  blocked: number;
+  total_blocked: number;
   logged: number;
   rate_limited: number;
   policy_block: number;
@@ -44,7 +44,7 @@ export interface TimelinePoint {
 export interface ServiceStat {
   service: string;
   total: number;
-  blocked: number;
+  total_blocked: number;
   logged: number;
   rate_limited: number;
   policy_block: number;
@@ -58,7 +58,7 @@ export interface ClientStat {
   client_ip: string;
   country?: string;
   total: number;
-  blocked: number;
+  total_blocked: number;
   rate_limited: number;
   policy_block: number;
   detect_block: number;
@@ -69,7 +69,7 @@ export interface ClientStat {
 export interface ServiceBreakdown {
   service: string;
   total: number;
-  blocked: number;
+  total_blocked: number;
   logged: number;
   rate_limited: number;
   policy_block: number;
@@ -154,7 +154,7 @@ export interface EventsParams extends FilterableParams {
 export interface ServiceDetail {
   service: string;
   total_events: number;
-  blocked: number;
+  total_blocked: number;
   logged: number;
   rate_limited: number;
   policy_block: number;
@@ -162,7 +162,7 @@ export interface ServiceDetail {
   policy_allow: number;
   policy_skip: number;
   block_rate: number;
-  top_uris: { uri: string; count: number; blocked: number }[];
+  top_uris: { uri: string; count: number; total_blocked: number }[];
   top_rules: { rule_id: string; rule_msg: string; count: number }[];
 }
 
@@ -171,7 +171,7 @@ export interface ServiceDetail {
 export interface CountryCount {
   country: string;
   count: number;
-  blocked: number;
+  total_blocked: number;
 }
 
 // ─── Raw types & mappers ────────────────────────────────────────────
@@ -179,7 +179,7 @@ export interface CountryCount {
 // Go API returns different field names — transform to match frontend types.
 interface RawSummary {
   total_events: number;
-  blocked_events: number;
+  total_blocked: number;
   logged_events: number;
   rate_limited: number;
   policy_events: number;
@@ -190,12 +190,12 @@ interface RawSummary {
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
-  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
-  top_countries: { country: string; count: number; blocked: number }[];
+  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  top_countries: { country: string; count: number; total_blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   recent_events: RawEvent[];
 }
 
@@ -272,7 +272,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
   const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`);
   return {
     total_events: raw.total_events ?? 0,
-    blocked: raw.blocked_events ?? 0,
+    total_blocked: raw.total_blocked ?? 0,
     logged: raw.logged_events ?? 0,
     rate_limited: raw.rate_limited ?? 0,
     policy_events: raw.policy_events ?? 0,
@@ -286,7 +286,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     timeline: (raw.events_by_hour ?? []).map((h) => ({
       hour: h.hour,
       total: h.count ?? 0,
-      blocked: h.blocked ?? 0,
+      total_blocked: h.total_blocked ?? 0,
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
       policy_block: h.policy_block ?? 0,
@@ -297,20 +297,20 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,
       total: s.count ?? 0,
-      blocked: s.blocked ?? 0,
+      total_blocked: s.total_blocked ?? 0,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
       detect_block: s.detect_block ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
-      block_rate: s.count > 0 ? (s.blocked / s.count) * 100 : 0,
+      block_rate: s.count > 0 ? ((s.total_blocked ?? 0) / s.count) * 100 : 0,
     })),
     top_clients: (raw.top_clients ?? []).map((c) => ({
       client_ip: c.client,
       country: c.country,
       total: c.count ?? 0,
-      blocked: c.blocked ?? 0,
+      total_blocked: c.total_blocked ?? 0,
       rate_limited: c.rate_limited ?? 0,
       policy_block: c.policy_block ?? 0,
       detect_block: c.detect_block ?? 0,
@@ -320,13 +320,13 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     top_countries: (raw.top_countries ?? []).map((c) => ({
       country: c.country,
       count: c.count ?? 0,
-      blocked: c.blocked ?? 0,
+      total_blocked: c.total_blocked ?? 0,
     })),
     recent_events: (raw.recent_events ?? []).map(mapEvent),
     service_breakdown: (raw.service_breakdown ?? []).map((s) => ({
       service: s.service,
       total: s.total ?? 0,
-      blocked: s.blocked ?? 0,
+      total_blocked: s.total_blocked ?? 0,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
@@ -383,24 +383,24 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 }
 
 // Services
-// Go API returns {"services":[{service, total, blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
+// Go API returns {"services":[{service, total, total_blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
   const qs = hours ? `?hours=${hours}` : "";
-  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
+  const raw = await fetchJSON<{ services: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number; top_uris?: { uri: string; count: number; total_blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
     `${API_BASE}/services${qs}`
   );
   return (raw.services ?? []).map((s) => ({
     service: s.service,
     total_events: s.total,
-    blocked: s.blocked,
+    total_blocked: s.total_blocked,
     logged: s.logged,
     rate_limited: s.rate_limited ?? 0,
     policy_block: s.policy_block ?? 0,
     detect_block: s.detect_block ?? 0,
     policy_allow: s.policy_allow ?? 0,
     policy_skip: s.policy_skip ?? 0,
-    block_rate: s.total > 0 ? (s.blocked / s.total) * 100 : 0,
-    top_uris: (s.top_uris ?? []).map((u) => ({ uri: u.uri, count: u.count, blocked: u.blocked })),
+    block_rate: s.total > 0 ? (s.total_blocked / s.total) * 100 : 0,
+    top_uris: (s.top_uris ?? []).map((u) => ({ uri: u.uri, count: u.count, total_blocked: u.total_blocked })),
     top_rules: (s.top_rules ?? []).map((r) => ({ rule_id: String(r.rule_id), rule_msg: r.rule_msg, count: r.count })),
   }));
 }

@@ -18,14 +18,14 @@ func (s *Store) ServicesRange(start, end time.Time) ServicesResponse {
 
 func computeServices(events []Event) ServicesResponse {
 	type uriStats struct {
-		count, blocked int
+		count, totalBlocked int
 	}
 	type ruleKey struct {
 		id  int
 		msg string
 	}
 	type svcData struct {
-		total, blocked                                    int
+		total, totalBlocked                               int
 		policyBlock, detectBlock, policyAllow, policySkip int
 		uris                                              map[string]*uriStats
 		rules                                             map[ruleKey]int
@@ -44,7 +44,7 @@ func computeServices(events []Event) ServicesResponse {
 		}
 		d.total++
 		if ev.IsBlocked {
-			d.blocked++
+			d.totalBlocked++
 		}
 		switch ev.EventType {
 		case "policy_block":
@@ -66,7 +66,7 @@ func computeServices(events []Event) ServicesResponse {
 			}
 			us.count++
 			if ev.IsBlocked {
-				us.blocked++
+				us.totalBlocked++
 			}
 		}
 
@@ -85,20 +85,20 @@ func computeServices(events []Event) ServicesResponse {
 	result := make([]ServiceDetail, 0, len(m))
 	for svc, d := range m {
 		sd := ServiceDetail{
-			Service:     svc,
-			Total:       d.total,
-			Blocked:     d.blocked,
-			Logged:      d.total - d.blocked,
-			PolicyBlock: d.policyBlock,
-			DetectBlock: d.detectBlock,
-			PolicyAllow: d.policyAllow,
-			PolicySkip:  d.policySkip,
+			Service:      svc,
+			Total:        d.total,
+			TotalBlocked: d.totalBlocked,
+			Logged:       d.total - d.totalBlocked,
+			PolicyBlock:  d.policyBlock,
+			DetectBlock:  d.detectBlock,
+			PolicyAllow:  d.policyAllow,
+			PolicySkip:   d.policySkip,
 		}
 
 		// Build top URIs.
 		uriList := make([]ServiceURI, 0, len(d.uris))
 		for uri, us := range d.uris {
-			uriList = append(uriList, ServiceURI{URI: uri, Count: us.count, Blocked: us.blocked})
+			uriList = append(uriList, ServiceURI{URI: uri, Count: us.count, TotalBlocked: us.totalBlocked})
 		}
 		sort.Slice(uriList, func(i, j int) bool { return uriList[i].Count > uriList[j].Count })
 		if len(uriList) > topNSummary {
@@ -186,9 +186,9 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		EventsTotal: len(combined),
 	}
 
-	// Compute per-service breakdown, hourly timeline, first/last seen, blocked count.
+	// Compute per-service breakdown, hourly timeline, first/last seen, total blocked count.
 	type counts struct {
-		total, blocked, logged, rateLimited               int
+		total, totalBlocked, logged, rateLimited          int
 		policyBlock, detectBlock, policyAllow, policySkip int
 	}
 	svcMap := make(map[string]*counts)
@@ -197,7 +197,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 	for i := range combined {
 		ev := &combined[i]
 		if ev.IsBlocked {
-			resp.Blocked++
+			resp.TotalBlocked++
 		}
 
 		// First/last seen (combined is newest-first).
@@ -215,7 +215,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		}
 		c.total++
 		if ev.IsBlocked {
-			c.blocked++
+			c.totalBlocked++
 		}
 
 		// Per-hour bucketing for timeline.
@@ -227,7 +227,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		}
 		hc.total++
 		if ev.IsBlocked {
-			hc.blocked++
+			hc.totalBlocked++
 		}
 
 		switch {
@@ -266,15 +266,15 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 	svcList := make([]ServiceDetail, 0, len(svcMap))
 	for svc, c := range svcMap {
 		svcList = append(svcList, ServiceDetail{
-			Service:     svc,
-			Total:       c.total,
-			Blocked:     c.blocked,
-			Logged:      c.logged,
-			PolicyBlock: c.policyBlock,
-			DetectBlock: c.detectBlock,
-			PolicyAllow: c.policyAllow,
-			PolicySkip:  c.policySkip,
-			RateLimited: c.rateLimited,
+			Service:      svc,
+			Total:        c.total,
+			TotalBlocked: c.totalBlocked,
+			Logged:       c.logged,
+			PolicyBlock:  c.policyBlock,
+			DetectBlock:  c.detectBlock,
+			PolicyAllow:  c.policyAllow,
+			PolicySkip:   c.policySkip,
+			RateLimited:  c.rateLimited,
 		})
 	}
 	sort.Slice(svcList, func(i, j int) bool {
@@ -285,20 +285,20 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 	// Build sorted hourly timeline.
 	hourCounts := make([]HourCount, 0, len(hourMap))
 	for k, v := range hourMap {
-		logged := v.total - v.blocked - v.rateLimited - v.policyBlock - v.detectBlock - v.policyAllow - v.policySkip
+		logged := v.total - v.totalBlocked - v.rateLimited - v.policyAllow - v.policySkip
 		if logged < 0 {
 			logged = 0
 		}
 		hourCounts = append(hourCounts, HourCount{
-			Hour:        k,
-			Count:       v.total,
-			Blocked:     v.blocked,
-			Logged:      logged,
-			RateLimited: v.rateLimited,
-			PolicyBlock: v.policyBlock,
-			DetectBlock: v.detectBlock,
-			PolicyAllow: v.policyAllow,
-			PolicySkip:  v.policySkip,
+			Hour:         k,
+			Count:        v.total,
+			TotalBlocked: v.totalBlocked,
+			Logged:       logged,
+			RateLimited:  v.rateLimited,
+			PolicyBlock:  v.policyBlock,
+			DetectBlock:  v.detectBlock,
+			PolicyAllow:  v.policyAllow,
+			PolicySkip:   v.policySkip,
 		})
 	}
 	sort.Slice(hourCounts, func(i, j int) bool {
@@ -324,9 +324,9 @@ func (s *Store) TopTargetedURIs(hours, n int) []TopTargetedURI {
 // topBlockedIPs aggregates the top N IPs by blocked count from a pre-filtered event slice.
 func topBlockedIPs(events []Event, n int) []TopBlockedIP {
 	type ipStats struct {
-		total, blocked int
-		first, last    time.Time
-		country        string
+		total, totalBlocked int
+		first, last         time.Time
+		country             string
 	}
 	m := make(map[string]*ipStats)
 
@@ -339,7 +339,7 @@ func topBlockedIPs(events []Event, n int) []TopBlockedIP {
 		}
 		st.total++
 		if ev.IsBlocked {
-			st.blocked++
+			st.totalBlocked++
 		}
 		if ev.Timestamp.Before(st.first) {
 			st.first = ev.Timestamp
@@ -354,26 +354,26 @@ func topBlockedIPs(events []Event, n int) []TopBlockedIP {
 
 	result := make([]TopBlockedIP, 0, len(m))
 	for ip, st := range m {
-		if st.blocked == 0 {
+		if st.totalBlocked == 0 {
 			continue // only include IPs that have at least one block
 		}
 		rate := 0.0
 		if st.total > 0 {
-			rate = float64(st.blocked) / float64(st.total) * 100
+			rate = float64(st.totalBlocked) / float64(st.total) * 100
 		}
 		result = append(result, TopBlockedIP{
-			ClientIP:  ip,
-			Country:   st.country,
-			Total:     st.total,
-			Blocked:   st.blocked,
-			BlockRate: rate,
-			FirstSeen: st.first.Format(time.RFC3339),
-			LastSeen:  st.last.Format(time.RFC3339),
+			ClientIP:     ip,
+			Country:      st.country,
+			Total:        st.total,
+			TotalBlocked: st.totalBlocked,
+			BlockRate:    rate,
+			FirstSeen:    st.first.Format(time.RFC3339),
+			LastSeen:     st.last.Format(time.RFC3339),
 		})
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Blocked > result[j].Blocked
+		return result[i].TotalBlocked > result[j].TotalBlocked
 	})
 	if len(result) > n {
 		result = result[:n]
@@ -384,8 +384,8 @@ func topBlockedIPs(events []Event, n int) []TopBlockedIP {
 // topTargetedURIs aggregates the top N URIs by total event count from a pre-filtered event slice.
 func topTargetedURIs(events []Event, n int) []TopTargetedURI {
 	type uriStats struct {
-		total, blocked int
-		services       map[string]bool
+		total, totalBlocked int
+		services            map[string]bool
 	}
 	m := make(map[string]*uriStats)
 
@@ -398,7 +398,7 @@ func topTargetedURIs(events []Event, n int) []TopTargetedURI {
 		}
 		st.total++
 		if ev.IsBlocked {
-			st.blocked++
+			st.totalBlocked++
 		}
 		if ev.Service != "" {
 			st.services[ev.Service] = true
@@ -413,10 +413,10 @@ func topTargetedURIs(events []Event, n int) []TopTargetedURI {
 		}
 		sort.Strings(svcs)
 		result = append(result, TopTargetedURI{
-			URI:      uri,
-			Total:    st.total,
-			Blocked:  st.blocked,
-			Services: svcs,
+			URI:          uri,
+			Total:        st.total,
+			TotalBlocked: st.totalBlocked,
+			Services:     svcs,
 		})
 	}
 

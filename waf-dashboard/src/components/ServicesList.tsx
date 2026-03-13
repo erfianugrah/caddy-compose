@@ -65,9 +65,9 @@ function ServiceDetailPanel({ service }: { service: ServiceDetail }) {
                 <span className="tabular-nums text-muted-foreground">
                   {u.count}
                 </span>
-                {u.blocked > 0 && (
+                {u.total_blocked > 0 && (
                   <Badge variant="destructive" className="text-xs px-1.5 py-0">
-                    {u.blocked} blocked
+                    {u.total_blocked} blocked
                   </Badge>
                 )}
               </div>
@@ -135,7 +135,7 @@ export default function ServicesList() {
   const svcSortComparators = useMemo(() => ({
     service: (a: ServiceDetail, b: ServiceDetail) => a.service.localeCompare(b.service),
     total: (a: ServiceDetail, b: ServiceDetail) => a.total_events - b.total_events,
-    blocked: (a: ServiceDetail, b: ServiceDetail) => a.blocked - b.blocked,
+    total_blocked: (a: ServiceDetail, b: ServiceDetail) => a.total_blocked - b.total_blocked,
     logged: (a: ServiceDetail, b: ServiceDetail) => a.logged - b.logged,
     block_rate: (a: ServiceDetail, b: ServiceDetail) => a.block_rate - b.block_rate,
   }), []);
@@ -172,7 +172,7 @@ export default function ServicesList() {
                 <TableHead className="w-8" />
                 <SortableTableHead sortKey="service" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort}>Service</SortableTableHead>
                 <SortableTableHead sortKey="total" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Total</SortableTableHead>
-                <SortableTableHead sortKey="blocked" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="total_blocked" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Blocked</SortableTableHead>
                 <SortableTableHead sortKey="logged" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort} className="text-right">Logged</SortableTableHead>
                 <SortableTableHead sortKey="block_rate" activeKey={svcSort.sortState.key} direction={svcSort.sortState.direction} onSort={svcSort.toggleSort}>Block Rate</SortableTableHead>
               </TableRow>
@@ -221,7 +221,7 @@ export default function ServicesList() {
                         {svc.total_events.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-lv-red">
-                        {svc.blocked.toLocaleString()}
+                        {svc.total_blocked.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-lv-green">
                         {svc.logged.toLocaleString()}

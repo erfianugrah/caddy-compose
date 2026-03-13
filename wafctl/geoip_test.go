@@ -106,8 +106,8 @@ func TestTopCountries(t *testing.T) {
 	if result[0].Count != 3 {
 		t.Errorf("result[0].Count = %d, want 3", result[0].Count)
 	}
-	if result[0].Blocked != 2 {
-		t.Errorf("result[0].Blocked = %d, want 2", result[0].Blocked)
+	if result[0].TotalBlocked != 2 {
+		t.Errorf("result[0].TotalBlocked = %d, want 2", result[0].TotalBlocked)
 	}
 
 	// US should be second (2 events)

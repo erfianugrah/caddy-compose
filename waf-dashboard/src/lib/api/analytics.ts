@@ -73,7 +73,7 @@ export interface IPLookupData {
   total_events: number;
   blocked_count: number;
   events_total: number;
-  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  services: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   timeline: TimelinePoint[];
   recent_events: WAFEvent[];
 }
@@ -82,7 +82,7 @@ export interface TopBlockedIP {
   client_ip: string;
   country?: string;
   total: number;
-  blocked: number;
+  total_blocked: number;
   block_rate: number;
   first_seen: string;
   last_seen: string;
@@ -91,24 +91,24 @@ export interface TopBlockedIP {
 export interface TopTargetedURI {
   uri: string;
   total: number;
-  blocked: number;
+  total_blocked: number;
   services: string[];
 }
 
 // ─── Raw types ──────────────────────────────────────────────────────
 
-// Go API returns {ip, geoip?, intelligence?, total, blocked, first_seen, last_seen, services:[ServiceDetail], events_by_hour:[HourCount], events:[RawEvent]}
+// Go API returns {ip, geoip?, intelligence?, total, total_blocked, first_seen, last_seen, services:[ServiceDetail], events_by_hour:[HourCount], events:[RawEvent]}
 interface RawIPLookup {
   ip: string;
   geoip?: GeoIPInfo;
   intelligence?: IPIntelligence;
   total: number;
-  blocked: number;
+  total_blocked: number;
   events_total: number;
   first_seen: string | null;
   last_seen: string | null;
-  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
-  events_by_hour?: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  services: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour?: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   events: {
     id: string;
     timestamp: string;
@@ -150,12 +150,12 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
     first_seen: raw.first_seen ?? "",
     last_seen: raw.last_seen ?? "",
     total_events: raw.total ?? 0,
-    blocked_count: raw.blocked ?? 0,
+    blocked_count: raw.total_blocked ?? 0,
     events_total: raw.events_total ?? raw.total ?? 0,
     services: (raw.services ?? []).map((s) => ({
       service: s.service,
       total: s.total,
-      blocked: s.blocked,
+      total_blocked: s.total_blocked,
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
@@ -166,7 +166,7 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
     timeline: (raw.events_by_hour ?? []).map((h) => ({
       hour: h.hour,
       total: h.count ?? 0,
-      blocked: h.blocked ?? 0,
+      total_blocked: h.total_blocked ?? 0,
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
       policy_block: h.policy_block ?? 0,

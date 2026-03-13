@@ -16,6 +16,7 @@ export const ACTION_COLORS = {
   policy_allow: "#5adecd", // lv-green    — policy engine allows (safe bypass)
   policy_skip:  "#8796f4", // lv-blue     — policy engine rule skips (tuning)
   logged:       "#79e6f3", // lv-cyan     — benign baseline (high volume, calm)
+  total_blocked: "#f37e96", // lv-red     — aggregate blocked (detect_block + policy_block + residual)
 } as const;
 
 // Human-readable labels for chart legends (keyed same as ACTION_COLORS)
@@ -26,6 +27,7 @@ export const ACTION_LABELS: Record<string, string> = {
   policy_block: "Policy Block",
   policy_allow: "Policy Allow",
   policy_skip:  "Policy Skip",
+  total_blocked: "Total Blocked",
 };
 
 // Tailwind badge classes per event type — frosted-glass pattern

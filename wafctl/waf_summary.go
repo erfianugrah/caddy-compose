@@ -27,21 +27,21 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 
 	// Per-hour breakdown with action type counters.
 	type hourStats struct {
-		total, blocked, rateLimited                       int
+		total, totalBlocked, rateLimited                  int
 		policyBlock, detectBlock, policyAllow, policySkip int
 	}
 	hourMap := make(map[string]*hourStats)
 
 	// Per-service breakdown with action type counters.
 	type svcStats struct {
-		total, blocked, rateLimited                       int
+		total, totalBlocked, rateLimited                  int
 		policyBlock, detectBlock, policyAllow, policySkip int
 	}
 	svcMap := make(map[string]*svcStats)
 
 	// Per-client breakdown with action type counters.
 	type clientStats struct {
-		total, blocked, rateLimited                       int
+		total, totalBlocked, rateLimited                  int
 		policyBlock, detectBlock, policyAllow, policySkip int
 		country                                           string
 	}
@@ -94,19 +94,20 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 			hourMap[hourKey] = hs
 		}
 		hs.total++
-		switch {
-		case ev.EventType == "rate_limited":
+		if ev.IsBlocked {
+			hs.totalBlocked++
+		}
+		switch ev.EventType {
+		case "rate_limited":
 			hs.rateLimited++
-		case ev.EventType == "policy_block":
+		case "policy_block":
 			hs.policyBlock++
-		case ev.EventType == "detect_block":
+		case "detect_block":
 			hs.detectBlock++
-		case ev.EventType == "policy_allow":
+		case "policy_allow":
 			hs.policyAllow++
-		case ev.EventType == "policy_skip":
+		case "policy_skip":
 			hs.policySkip++
-		case ev.IsBlocked:
-			hs.blocked++
 		}
 
 		// Per-service.
@@ -116,19 +117,20 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 			svcMap[ev.Service] = ss
 		}
 		ss.total++
-		switch {
-		case ev.EventType == "rate_limited":
+		if ev.IsBlocked {
+			ss.totalBlocked++
+		}
+		switch ev.EventType {
+		case "rate_limited":
 			ss.rateLimited++
-		case ev.EventType == "policy_block":
+		case "policy_block":
 			ss.policyBlock++
-		case ev.EventType == "detect_block":
+		case "detect_block":
 			ss.detectBlock++
-		case ev.EventType == "policy_allow":
+		case "policy_allow":
 			ss.policyAllow++
-		case ev.EventType == "policy_skip":
+		case "policy_skip":
 			ss.policySkip++
-		case ev.IsBlocked:
-			ss.blocked++
 		}
 
 		// Per-client.
@@ -138,19 +140,20 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 			clientMap[ev.ClientIP] = cs
 		}
 		cs.total++
-		switch {
-		case ev.EventType == "rate_limited":
+		if ev.IsBlocked {
+			cs.totalBlocked++
+		}
+		switch ev.EventType {
+		case "rate_limited":
 			cs.rateLimited++
-		case ev.EventType == "policy_block":
+		case "policy_block":
 			cs.policyBlock++
-		case ev.EventType == "detect_block":
+		case "detect_block":
 			cs.detectBlock++
-		case ev.EventType == "policy_allow":
+		case "policy_allow":
 			cs.policyAllow++
-		case ev.EventType == "policy_skip":
+		case "policy_skip":
 			cs.policySkip++
-		case ev.IsBlocked:
-			cs.blocked++
 		}
 		if cs.country == "" && ev.Country != "" {
 			cs.country = ev.Country
@@ -175,7 +178,7 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 		}
 		entry.Count++
 		if ev.IsBlocked {
-			entry.Blocked++
+			entry.TotalBlocked++
 		}
 	}
 
@@ -192,23 +195,23 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 	}
 
 	// Build sorted hour buckets.
-	// logged = total - blocked - rateLimited - policyBlock - policyAllow - policySkip
+	// logged = total - totalBlocked - rateLimited - policyAllow - policySkip
 	hourCounts := make([]HourCount, 0, len(hourMap))
 	for k, v := range hourMap {
-		logged := v.total - v.blocked - v.rateLimited - v.policyBlock - v.detectBlock - v.policyAllow - v.policySkip
+		logged := v.total - v.totalBlocked - v.rateLimited - v.policyAllow - v.policySkip
 		if logged < 0 {
 			logged = 0
 		}
 		hourCounts = append(hourCounts, HourCount{
-			Hour:        k,
-			Count:       v.total,
-			Blocked:     v.blocked,
-			Logged:      logged,
-			RateLimited: v.rateLimited,
-			PolicyBlock: v.policyBlock,
-			DetectBlock: v.detectBlock,
-			PolicyAllow: v.policyAllow,
-			PolicySkip:  v.policySkip,
+			Hour:         k,
+			Count:        v.total,
+			TotalBlocked: v.totalBlocked,
+			Logged:       logged,
+			RateLimited:  v.rateLimited,
+			PolicyBlock:  v.policyBlock,
+			DetectBlock:  v.detectBlock,
+			PolicyAllow:  v.policyAllow,
+			PolicySkip:   v.policySkip,
 		})
 	}
 	sort.Slice(hourCounts, func(i, j int) bool {
@@ -218,21 +221,20 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 	// Build service counts (for top_services).
 	svcCounts := make([]ServiceCount, 0, len(svcMap))
 	for k, v := range svcMap {
-		policyTotal := v.policyBlock + v.detectBlock + v.policyAllow + v.policySkip
-		logged := v.total - v.blocked - v.rateLimited - policyTotal
+		logged := v.total - v.totalBlocked - v.rateLimited - v.policyAllow - v.policySkip
 		if logged < 0 {
 			logged = 0
 		}
 		svcCounts = append(svcCounts, ServiceCount{
-			Service:     k,
-			Count:       v.total,
-			Blocked:     v.blocked,
-			Logged:      logged,
-			RateLimited: v.rateLimited,
-			PolicyBlock: v.policyBlock,
-			DetectBlock: v.detectBlock,
-			PolicyAllow: v.policyAllow,
-			PolicySkip:  v.policySkip,
+			Service:      k,
+			Count:        v.total,
+			TotalBlocked: v.totalBlocked,
+			Logged:       logged,
+			RateLimited:  v.rateLimited,
+			PolicyBlock:  v.policyBlock,
+			DetectBlock:  v.detectBlock,
+			PolicyAllow:  v.policyAllow,
+			PolicySkip:   v.policySkip,
 		})
 	}
 	sort.Slice(svcCounts, func(i, j int) bool {
@@ -245,21 +247,20 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 	// Build service breakdown (same data, different type for convenience).
 	svcBreakdown := make([]ServiceDetail, 0, len(svcMap))
 	for k, v := range svcMap {
-		policyTotal := v.policyBlock + v.detectBlock + v.policyAllow + v.policySkip
-		svcLogged := v.total - v.blocked - v.rateLimited - policyTotal
+		svcLogged := v.total - v.totalBlocked - v.rateLimited - v.policyAllow - v.policySkip
 		if svcLogged < 0 {
 			svcLogged = 0
 		}
 		svcBreakdown = append(svcBreakdown, ServiceDetail{
-			Service:     k,
-			Total:       v.total,
-			Blocked:     v.blocked,
-			Logged:      svcLogged,
-			RateLimited: v.rateLimited,
-			PolicyBlock: v.policyBlock,
-			DetectBlock: v.detectBlock,
-			PolicyAllow: v.policyAllow,
-			PolicySkip:  v.policySkip,
+			Service:      k,
+			Total:        v.total,
+			TotalBlocked: v.totalBlocked,
+			Logged:       svcLogged,
+			RateLimited:  v.rateLimited,
+			PolicyBlock:  v.policyBlock,
+			DetectBlock:  v.detectBlock,
+			PolicyAllow:  v.policyAllow,
+			PolicySkip:   v.policySkip,
 		})
 	}
 	sort.Slice(svcBreakdown, func(i, j int) bool {
@@ -270,15 +271,15 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 	clientCounts := make([]ClientCount, 0, len(clientMap))
 	for k, v := range clientMap {
 		clientCounts = append(clientCounts, ClientCount{
-			Client:      k,
-			Country:     v.country,
-			Count:       v.total,
-			Blocked:     v.blocked,
-			RateLimited: v.rateLimited,
-			PolicyBlock: v.policyBlock,
-			DetectBlock: v.detectBlock,
-			PolicyAllow: v.policyAllow,
-			PolicySkip:  v.policySkip,
+			Client:       k,
+			Country:      v.country,
+			Count:        v.total,
+			TotalBlocked: v.totalBlocked,
+			RateLimited:  v.rateLimited,
+			PolicyBlock:  v.policyBlock,
+			DetectBlock:  v.detectBlock,
+			PolicyAllow:  v.policyAllow,
+			PolicySkip:   v.policySkip,
 		})
 	}
 	sort.Slice(clientCounts, func(i, j int) bool {
@@ -314,7 +315,7 @@ func summarizeEventsWithSets(events []Event) summaryResult {
 	return summaryResult{
 		SummaryResponse: SummaryResponse{
 			TotalEvents:      len(events),
-			BlockedEvents:    totalBlocked,
+			TotalBlocked:     totalBlocked,
 			LoggedEvents:     totalLogged,
 			RateLimited:      totalRateLimited,
 			PolicyEvents:     totalPolicy,

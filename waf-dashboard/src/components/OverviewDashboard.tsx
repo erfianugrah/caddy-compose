@@ -278,9 +278,9 @@ export default function OverviewDashboard() {
 
   // ── Donut data (action-based slices only) ──
   const donutData =
-    data && (data.blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.policy_events > 0)
+    data && (data.total_blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.policy_events > 0)
       ? [
-          ...(data.blocked > 0 ? [{ name: "WAF Blocked", value: data.blocked }] : []),
+          ...(data.total_blocked > 0 ? [{ name: "WAF Blocked", value: data.total_blocked }] : []),
           ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
           ...(data.policy_blocked > 0 ? [{ name: "Policy Block", value: data.policy_blocked }] : []),
           ...(data.detect_blocked > 0 ? [{ name: "Detect Block", value: data.detect_blocked }] : []),
@@ -341,7 +341,7 @@ export default function OverviewDashboard() {
       {/* ── Stat Cards ── */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <StatCard title="Security Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
-        <StatCard title="Blocked" value={data?.blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=blocked" />
+        <StatCard title="Blocked" value={data?.total_blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=detect_block" />
         <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
         <StatCard title="Policy" value={data?.policy_events ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=policy_skip" />
       </div>
@@ -387,8 +387,8 @@ export default function OverviewDashboard() {
               >
                 <defs>
                   <linearGradient id="gradBlocked" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={ACTION_COLORS.blocked} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={ACTION_COLORS.blocked} stopOpacity={0} />
+                    <stop offset="5%" stopColor={ACTION_COLORS.total_blocked} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={ACTION_COLORS.total_blocked} stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="gradLogged" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={ACTION_COLORS.logged} stopOpacity={0.3} />
@@ -441,7 +441,7 @@ export default function OverviewDashboard() {
                 />
                 <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} />
                 <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} />
-                <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#gradBlocked)" strokeWidth={2} />
+                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" />
                 <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" />
                 <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" />
                 <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" />
@@ -549,7 +549,7 @@ export default function OverviewDashboard() {
                         data={(data?.top_clients ?? []).slice(0, 8).map((c) => ({
                           ...c,
                           label: c.client_ip,
-                          logged: Math.max(c.total - c.blocked - c.rate_limited - c.policy_block - c.detect_block - c.policy_allow - c.policy_skip, 0),
+                          logged: Math.max(c.total - c.total_blocked - c.rate_limited - c.policy_block - c.detect_block - c.policy_allow - c.policy_skip, 0),
                         }))}
                         layout="vertical"
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
@@ -581,7 +581,7 @@ export default function OverviewDashboard() {
                           }}
                         />
                         <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }} />
-                        <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
+                        <Bar dataKey="total_blocked" name="Total Blocked" fill={ACTION_COLORS.total_blocked} stackId="a" />
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                         <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
                         <Bar dataKey="detect_block" name="Detect Block" fill={ACTION_COLORS.detect_block} stackId="a" />
@@ -636,7 +636,7 @@ export default function OverviewDashboard() {
                       />
                       <Tooltip {...chartTooltipStyle} />
                       <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }} />
-                      <Bar dataKey="blocked" name="Blocked" fill={ACTION_COLORS.blocked} stackId="a" />
+                      <Bar dataKey="total_blocked" name="Total Blocked" fill={ACTION_COLORS.total_blocked} stackId="a" />
                       <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                       <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
                       <Bar dataKey="detect_block" name="Detect Block" fill={ACTION_COLORS.detect_block} stackId="a" />

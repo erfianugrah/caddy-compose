@@ -79,7 +79,7 @@ type TagCount struct {
 
 type SummaryResponse struct {
 	TotalEvents      int             `json:"total_events"`
-	BlockedEvents    int             `json:"blocked_events"`
+	TotalBlocked     int             `json:"total_blocked"`
 	LoggedEvents     int             `json:"logged_events"`
 	RateLimited      int             `json:"rate_limited"`
 	PolicyEvents     int             `json:"policy_events"`
@@ -100,39 +100,39 @@ type SummaryResponse struct {
 }
 
 type HourCount struct {
-	Hour        string `json:"hour"`
-	Count       int    `json:"count"`
-	Blocked     int    `json:"blocked"`
-	Logged      int    `json:"logged"`
-	RateLimited int    `json:"rate_limited"`
-	PolicyBlock int    `json:"policy_block"`
-	DetectBlock int    `json:"detect_block"`
-	PolicyAllow int    `json:"policy_allow"`
-	PolicySkip  int    `json:"policy_skip"`
+	Hour         string `json:"hour"`
+	Count        int    `json:"count"`
+	TotalBlocked int    `json:"total_blocked"`
+	Logged       int    `json:"logged"`
+	RateLimited  int    `json:"rate_limited"`
+	PolicyBlock  int    `json:"policy_block"`
+	DetectBlock  int    `json:"detect_block"`
+	PolicyAllow  int    `json:"policy_allow"`
+	PolicySkip   int    `json:"policy_skip"`
 }
 
 type ServiceCount struct {
-	Service     string `json:"service"`
-	Count       int    `json:"count"`
-	Blocked     int    `json:"blocked"`
-	Logged      int    `json:"logged"`
-	RateLimited int    `json:"rate_limited"`
-	PolicyBlock int    `json:"policy_block"`
-	DetectBlock int    `json:"detect_block"`
-	PolicyAllow int    `json:"policy_allow"`
-	PolicySkip  int    `json:"policy_skip"`
+	Service      string `json:"service"`
+	Count        int    `json:"count"`
+	TotalBlocked int    `json:"total_blocked"`
+	Logged       int    `json:"logged"`
+	RateLimited  int    `json:"rate_limited"`
+	PolicyBlock  int    `json:"policy_block"`
+	DetectBlock  int    `json:"detect_block"`
+	PolicyAllow  int    `json:"policy_allow"`
+	PolicySkip   int    `json:"policy_skip"`
 }
 
 type ClientCount struct {
-	Client      string `json:"client"`
-	Country     string `json:"country,omitempty"`
-	Count       int    `json:"count"`
-	Blocked     int    `json:"blocked"`
-	RateLimited int    `json:"rate_limited"`
-	PolicyBlock int    `json:"policy_block"`
-	DetectBlock int    `json:"detect_block"`
-	PolicyAllow int    `json:"policy_allow"`
-	PolicySkip  int    `json:"policy_skip"`
+	Client       string `json:"client"`
+	Country      string `json:"country,omitempty"`
+	Count        int    `json:"count"`
+	TotalBlocked int    `json:"total_blocked"`
+	RateLimited  int    `json:"rate_limited"`
+	PolicyBlock  int    `json:"policy_block"`
+	DetectBlock  int    `json:"detect_block"`
+	PolicyAllow  int    `json:"policy_allow"`
+	PolicySkip   int    `json:"policy_skip"`
 }
 
 // Blocklist API response types
@@ -191,9 +191,9 @@ type EventsResponse struct {
 }
 
 type ServiceURI struct {
-	URI     string `json:"uri"`
-	Count   int    `json:"count"`
-	Blocked int    `json:"blocked"`
+	URI          string `json:"uri"`
+	Count        int    `json:"count"`
+	TotalBlocked int    `json:"total_blocked"`
 }
 
 type ServiceRule struct {
@@ -203,17 +203,17 @@ type ServiceRule struct {
 }
 
 type ServiceDetail struct {
-	Service     string        `json:"service"`
-	Total       int           `json:"total"`
-	Blocked     int           `json:"blocked"`
-	Logged      int           `json:"logged"`
-	RateLimited int           `json:"rate_limited"`
-	PolicyBlock int           `json:"policy_block"`
-	DetectBlock int           `json:"detect_block"`
-	PolicyAllow int           `json:"policy_allow"`
-	PolicySkip  int           `json:"policy_skip"`
-	TopURIs     []ServiceURI  `json:"top_uris,omitempty"`
-	TopRules    []ServiceRule `json:"top_rules,omitempty"`
+	Service      string        `json:"service"`
+	Total        int           `json:"total"`
+	TotalBlocked int           `json:"total_blocked"`
+	Logged       int           `json:"logged"`
+	RateLimited  int           `json:"rate_limited"`
+	PolicyBlock  int           `json:"policy_block"`
+	DetectBlock  int           `json:"detect_block"`
+	PolicyAllow  int           `json:"policy_allow"`
+	PolicySkip   int           `json:"policy_skip"`
+	TopURIs      []ServiceURI  `json:"top_uris,omitempty"`
+	TopRules     []ServiceRule `json:"top_rules,omitempty"`
 }
 
 type ServicesResponse struct {
@@ -301,7 +301,7 @@ type IPLookupResponse struct {
 	GeoIP        *GeoIPInfo      `json:"geoip,omitempty"`
 	Intelligence *IPIntelligence `json:"intelligence,omitempty"`
 	Total        int             `json:"total"`
-	Blocked      int             `json:"blocked"`
+	TotalBlocked int             `json:"total_blocked"`
 	FirstSeen    *time.Time      `json:"first_seen"`
 	LastSeen     *time.Time      `json:"last_seen"`
 	Services     []ServiceDetail `json:"services"`
@@ -328,25 +328,25 @@ type ExclusionExport struct {
 // Analytics response types
 
 type TopBlockedIP struct {
-	ClientIP  string  `json:"client_ip"`
-	Country   string  `json:"country,omitempty"`
-	Total     int     `json:"total"`
-	Blocked   int     `json:"blocked"`
-	BlockRate float64 `json:"block_rate"`
-	FirstSeen string  `json:"first_seen"`
-	LastSeen  string  `json:"last_seen"`
+	ClientIP     string  `json:"client_ip"`
+	Country      string  `json:"country,omitempty"`
+	Total        int     `json:"total"`
+	TotalBlocked int     `json:"total_blocked"`
+	BlockRate    float64 `json:"block_rate"`
+	FirstSeen    string  `json:"first_seen"`
+	LastSeen     string  `json:"last_seen"`
 }
 
 // CountryCount represents request counts grouped by country code.
 type CountryCount struct {
-	Country string `json:"country"`
-	Count   int    `json:"count"`
-	Blocked int    `json:"blocked"`
+	Country      string `json:"country"`
+	Count        int    `json:"count"`
+	TotalBlocked int    `json:"total_blocked"`
 }
 
 type TopTargetedURI struct {
-	URI      string   `json:"uri"`
-	Total    int      `json:"total"`
-	Blocked  int      `json:"blocked"`
-	Services []string `json:"services"`
+	URI          string   `json:"uri"`
+	Total        int      `json:"total"`
+	TotalBlocked int      `json:"total_blocked"`
+	Services     []string `json:"services"`
 }

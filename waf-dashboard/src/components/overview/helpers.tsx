@@ -67,7 +67,7 @@ export function LinkTickRenderer({
 export const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
 export const DONUT_COLOR_MAP: Record<string, string> = {
-  [ACTION_LABELS.blocked]:      ACTION_COLORS.blocked,
+  "WAF Blocked":                ACTION_COLORS.total_blocked,
   [ACTION_LABELS.logged]:       ACTION_COLORS.logged,
   [ACTION_LABELS.rate_limited]: ACTION_COLORS.rate_limited,
   [ACTION_LABELS.policy_block]: ACTION_COLORS.policy_block,

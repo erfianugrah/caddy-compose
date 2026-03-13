@@ -203,8 +203,8 @@ func TestIPLookup(t *testing.T) {
 	if result.Total != 2 {
 		t.Errorf("want 2 events for 10.0.0.1, got %d", result.Total)
 	}
-	if result.Blocked != 1 {
-		t.Errorf("want 1 blocked for 10.0.0.1, got %d", result.Blocked)
+	if result.TotalBlocked != 1 {
+		t.Errorf("want 1 blocked for 10.0.0.1, got %d", result.TotalBlocked)
 	}
 	if result.FirstSeen == nil || result.LastSeen == nil {
 		t.Fatal("first_seen/last_seen should not be nil")
@@ -410,16 +410,16 @@ func TestTopBlockedIPs(t *testing.T) {
 		switch ip.ClientIP {
 		case "195.240.81.42":
 			found42 = true
-			if ip.Total != 1 || ip.Blocked != 1 {
-				t.Errorf("195.240.81.42: expected total=1 blocked=1, got total=%d blocked=%d", ip.Total, ip.Blocked)
+			if ip.Total != 1 || ip.TotalBlocked != 1 {
+				t.Errorf("195.240.81.42: expected total=1 blocked=1, got total=%d blocked=%d", ip.Total, ip.TotalBlocked)
 			}
 			if ip.BlockRate != 100 {
 				t.Errorf("195.240.81.42: expected block_rate=100, got %f", ip.BlockRate)
 			}
 		case "10.0.0.1":
 			found001 = true
-			if ip.Total != 2 || ip.Blocked != 1 {
-				t.Errorf("10.0.0.1: expected total=2 blocked=1, got total=%d blocked=%d", ip.Total, ip.Blocked)
+			if ip.Total != 2 || ip.TotalBlocked != 1 {
+				t.Errorf("10.0.0.1: expected total=2 blocked=1, got total=%d blocked=%d", ip.Total, ip.TotalBlocked)
 			}
 			if ip.BlockRate != 50 {
 				t.Errorf("10.0.0.1: expected block_rate=50, got %f", ip.BlockRate)
@@ -459,8 +459,8 @@ func TestTopTargetedURIs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing /.env in results")
 	}
-	if env.Total != 1 || env.Blocked != 1 {
-		t.Errorf("/.env: expected total=1 blocked=1, got total=%d blocked=%d", env.Total, env.Blocked)
+	if env.Total != 1 || env.TotalBlocked != 1 {
+		t.Errorf("/.env: expected total=1 blocked=1, got total=%d blocked=%d", env.Total, env.TotalBlocked)
 	}
 	if len(env.Services) != 1 || env.Services[0] != "radarr.erfi.io" {
 		t.Errorf("/.env: expected services=[radarr.erfi.io], got %v", env.Services)
@@ -470,8 +470,8 @@ func TestTopTargetedURIs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing /api/v3/queue in results")
 	}
-	if queue.Total != 1 || queue.Blocked != 0 {
-		t.Errorf("/api/v3/queue: expected total=1 blocked=0, got total=%d blocked=%d", queue.Total, queue.Blocked)
+	if queue.Total != 1 || queue.TotalBlocked != 0 {
+		t.Errorf("/api/v3/queue: expected total=1 blocked=0, got total=%d blocked=%d", queue.Total, queue.TotalBlocked)
 	}
 }
 
@@ -850,8 +850,8 @@ func TestHandleSummaryRuleNameFilter(t *testing.T) {
 		t.Errorf("rule_name filtered summary: unique_services = %d, want 2", resp.UniqueServices)
 	}
 	// Blocked count should be 0 (these are policy_skip, not blocked)
-	if resp.BlockedEvents != 0 {
-		t.Errorf("rule_name filtered summary: blocked = %d, want 0", resp.BlockedEvents)
+	if resp.TotalBlocked != 0 {
+		t.Errorf("rule_name filtered summary: blocked = %d, want 0", resp.TotalBlocked)
 	}
 
 	// Without rule_name filter: should see all 3 events
@@ -901,8 +901,8 @@ func TestHandleSummaryServiceFilter(t *testing.T) {
 	if resp.TotalEvents != 2 {
 		t.Errorf("service filter: total_events = %d, want 2", resp.TotalEvents)
 	}
-	if resp.BlockedEvents != 1 {
-		t.Errorf("service filter: blocked = %d, want 1", resp.BlockedEvents)
+	if resp.TotalBlocked != 1 {
+		t.Errorf("service filter: blocked = %d, want 1", resp.TotalBlocked)
 	}
 	if resp.UniqueClients != 2 {
 		t.Errorf("service filter: unique_clients = %d, want 2", resp.UniqueClients)
@@ -1009,8 +1009,8 @@ func TestHandleSummaryEventTypeFilter(t *testing.T) {
 	if resp.TotalEvents != 2 {
 		t.Errorf("event_type filter: total_events = %d, want 2", resp.TotalEvents)
 	}
-	if resp.BlockedEvents != 2 {
-		t.Errorf("event_type filter: blocked = %d, want 2", resp.BlockedEvents)
+	if resp.TotalBlocked != 2 {
+		t.Errorf("event_type filter: blocked = %d, want 2", resp.TotalBlocked)
 	}
 }
 

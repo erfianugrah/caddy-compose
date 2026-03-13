@@ -19,16 +19,16 @@ describe("lookupIP", () => {
     const goResponse = {
       ip: "10.0.0.1",
       total: 50,
-      blocked: 10,
+      total_blocked: 10,
       first_seen: "2026-02-22T07:00:00Z",
       last_seen: "2026-02-22T09:00:00Z",
       services: [
-        { service: "radarr.erfi.io", total: 30, blocked: 5, logged: 25 },
-        { service: "sonarr.erfi.io", total: 20, blocked: 5, logged: 15 },
+        { service: "radarr.erfi.io", total: 30, total_blocked: 5, logged: 25 },
+        { service: "sonarr.erfi.io", total: 20, total_blocked: 5, logged: 15 },
       ],
       events_by_hour: [
-        { hour: "2026-02-22T07:00:00Z", count: 20, blocked: 5, logged: 15, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
-        { hour: "2026-02-22T08:00:00Z", count: 30, blocked: 5, logged: 25, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
+        { hour: "2026-02-22T07:00:00Z", count: 20, total_blocked: 5, logged: 15, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
+        { hour: "2026-02-22T08:00:00Z", count: 30, total_blocked: 5, logged: 25, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
       ],
       events: [
         {
@@ -56,7 +56,7 @@ describe("lookupIP", () => {
     expect(result.services).toHaveLength(2);
     expect(result.timeline).toHaveLength(2);
     expect(result.timeline[0]).toEqual({
-      hour: "2026-02-22T07:00:00Z", total: 20, blocked: 5, logged: 15,
+      hour: "2026-02-22T07:00:00Z", total: 20, total_blocked: 5, logged: 15,
       rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0,
     });
 
@@ -72,7 +72,7 @@ describe("lookupIP", () => {
       mockFetchResponse({
         ip: "1.2.3.4",
         total: 0,
-        blocked: 0,
+        total_blocked: 0,
         first_seen: null,
         last_seen: null,
         services: null,
@@ -93,7 +93,7 @@ describe("lookupIP", () => {
       mockFetchResponse({
         ip: "10.0.0.1",
         total: 100,
-        blocked: 0,
+        total_blocked: 0,
         events_total: 100,
         first_seen: "2026-02-22T07:00:00Z",
         last_seen: "2026-02-22T09:00:00Z",
@@ -125,7 +125,7 @@ describe("fetchTopBlockedIPs", () => {
       {
         client_ip: "10.0.0.1",
         total: 100,
-        blocked: 50,
+        total_blocked: 50,
         block_rate: 50.0,
         first_seen: "2026-02-22T07:00:00Z",
         last_seen: "2026-02-22T09:00:00Z",
@@ -152,8 +152,8 @@ describe("fetchTopTargetedURIs", () => {
 describe("fetchTopCountries", () => {
   it("returns country data from API", async () => {
     const data: CountryCount[] = [
-      { country: "US", count: 100, blocked: 30 },
-      { country: "DE", count: 50, blocked: 10 },
+      { country: "US", count: 100, total_blocked: 30 },
+      { country: "DE", count: 50, total_blocked: 10 },
     ];
     vi.stubGlobal("fetch", mockFetchResponse(data));
 
@@ -230,7 +230,7 @@ describe("lookupIP intelligence", () => {
         },
       },
       total: 10,
-      blocked: 2,
+      total_blocked: 2,
       first_seen: "2026-03-01T00:00:00Z",
       last_seen: "2026-03-07T12:00:00Z",
       services: [],
@@ -273,7 +273,7 @@ describe("lookupIP intelligence", () => {
     const goResponse = {
       ip: "192.168.1.1",
       total: 0,
-      blocked: 0,
+      total_blocked: 0,
       first_seen: null,
       last_seen: null,
       services: [],
@@ -299,7 +299,7 @@ describe("lookupIP intelligence", () => {
         },
       },
       total: 5,
-      blocked: 0,
+      total_blocked: 0,
       first_seen: "2026-03-07T00:00:00Z",
       last_seen: "2026-03-07T00:00:00Z",
       services: [],
@@ -321,13 +321,13 @@ describe("lookupIP service breakdown fields", () => {
     const goResponse = {
       ip: "10.0.0.1",
       total: 10,
-      blocked: 5,
+      total_blocked: 5,
       first_seen: "2026-02-22T10:00:00Z",
       last_seen: "2026-02-22T12:00:00Z",
       services: [{
         service: "web.io",
         total: 8,
-        blocked: 4,
+        total_blocked: 4,
         logged: 4,
         rate_limited: 1,
         policy_block: 2,

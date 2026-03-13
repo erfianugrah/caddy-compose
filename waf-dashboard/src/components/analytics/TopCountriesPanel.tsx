@@ -56,10 +56,10 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
   const countrySortComparators = useMemo(() => ({
     country: (a: CountryCount, b: CountryCount) => a.country.localeCompare(b.country),
     total: (a: CountryCount, b: CountryCount) => a.count - b.count,
-    blocked: (a: CountryCount, b: CountryCount) => a.blocked - b.blocked,
+    total_blocked: (a: CountryCount, b: CountryCount) => a.total_blocked - b.total_blocked,
     block_rate: (a: CountryCount, b: CountryCount) => {
-      const rateA = a.count > 0 ? a.blocked / a.count : 0;
-      const rateB = b.count > 0 ? b.blocked / b.count : 0;
+      const rateA = a.count > 0 ? a.total_blocked / a.count : 0;
+      const rateB = b.count > 0 ? b.total_blocked / b.count : 0;
       return rateA - rateB;
     },
   }), []);
@@ -90,13 +90,13 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
                 <SortableTableHead sortKey="country" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort}>Country</SortableTableHead>
                 <TableHead>Requests</TableHead>
                 <SortableTableHead sortKey="total" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Total</SortableTableHead>
-                <SortableTableHead sortKey="blocked" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="total_blocked" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Blocked</SortableTableHead>
                 <SortableTableHead sortKey="block_rate" activeKey={countrySort.sortState.key} direction={countrySort.sortState.direction} onSort={countrySort.toggleSort} className="text-right">Block Rate</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pageData.map((c) => {
-                const blockRate = c.count > 0 ? (c.blocked / c.count) * 100 : 0;
+                const blockRate = c.count > 0 ? (c.total_blocked / c.count) * 100 : 0;
                 return (
                   <TableRow key={c.country}>
                     <TableCell className="text-xs">
@@ -116,7 +116,7 @@ export function TopCountriesPanel({ hours, refreshKey }: { hours?: number; refre
                       {formatNumber(c.count)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-xs text-lv-red">
-                      {c.blocked > 0 ? formatNumber(c.blocked) : "-"}
+                      {c.total_blocked > 0 ? formatNumber(c.total_blocked) : "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={`text-xs tabular-nums ${

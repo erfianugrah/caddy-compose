@@ -220,8 +220,8 @@ func TestSummaryMergesRateLimitedEvents(t *testing.T) {
 	if resp.RateLimited != 3 {
 		t.Errorf("rate_limited: want 3, got %d", resp.RateLimited)
 	}
-	if resp.BlockedEvents != 0 {
-		t.Errorf("blocked_events: want 0, got %d", resp.BlockedEvents)
+	if resp.TotalBlocked != 0 {
+		t.Errorf("total_blocked: want 0, got %d", resp.TotalBlocked)
 	}
 	if resp.LoggedEvents != 0 {
 		t.Errorf("logged_events: want 0, got %d", resp.LoggedEvents)
@@ -1119,8 +1119,8 @@ func TestSummaryMergesPolicyBlockEvents(t *testing.T) {
 	if resp.RateLimited != 1 {
 		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
 	}
-	if resp.BlockedEvents != 0 {
-		t.Errorf("blocked_events: want 0 (empty WAF store), got %d", resp.BlockedEvents)
+	if resp.TotalBlocked != 0 {
+		t.Errorf("total_blocked: want 0 (empty WAF store), got %d", resp.TotalBlocked)
 	}
 }
 
@@ -1246,14 +1246,10 @@ func TestSummarizeEvents_PolicyBlockAndRateLimitedCounts(t *testing.T) {
 	}
 	summary := summarizeEvents(events)
 
-	// policy_block events count toward both PolicyEvents and BlockedEvents.
-	// PolicyEvents: policy_block(3) + detect_block(1) + policy_skip(1) = 5
-	if summary.PolicyEvents != 5 {
-		t.Errorf("PolicyEvents = %d, want 5", summary.PolicyEvents)
-	}
-	// BlockedEvents: detect_block(1, IsBlocked) + policy_block(3, IsBlocked) = 4
-	if summary.BlockedEvents != 4 {
-		t.Errorf("BlockedEvents = %d, want 4", summary.BlockedEvents)
+	// policy_block events count toward both PolicyEvents and TotalBlocked.
+	// TotalBlocked: detect_block(1, IsBlocked) + policy_block(3, IsBlocked) = 4
+	if summary.TotalBlocked != 4 {
+		t.Errorf("TotalBlocked = %d, want 4", summary.TotalBlocked)
 	}
 	if summary.LoggedEvents != 1 {
 		t.Errorf("LoggedEvents = %d, want 1", summary.LoggedEvents)
@@ -1283,15 +1279,14 @@ func TestSummarizeEvents_PerHourBreakdown(t *testing.T) {
 	if h.Count != 6 {
 		t.Errorf("hour.Count = %d, want 6", h.Count)
 	}
-	// Blocked = only generic IsBlocked fallback (not policy_* or detect_block).
-	// detect_block goes to DetectBlock, not Blocked.
-	if h.Blocked != 0 {
-		t.Errorf("hour.Blocked = %d, want 0", h.Blocked)
+	// TotalBlocked = ALL events with IsBlocked=true: detect_block(1) + policy_block(3) = 4.
+	if h.TotalBlocked != 4 {
+		t.Errorf("hour.TotalBlocked = %d, want 4", h.TotalBlocked)
 	}
 	if h.DetectBlock != 1 {
 		t.Errorf("hour.DetectBlock = %d, want 1", h.DetectBlock)
 	}
-	// Logged = total - blocked - rateLimited - policyBlock - detectBlock - policyAllow - policySkip = 6 - 0 - 0 - 3 - 1 - 0 - 1 = 1
+	// Logged = total - totalBlocked - rateLimited - policyAllow - policySkip = 6 - 4 - 0 - 0 - 1 = 1
 	if h.Logged != 1 {
 		t.Errorf("hour.Logged = %d, want 1", h.Logged)
 	}
@@ -1345,9 +1340,9 @@ func TestSummarizeEvents_PerServiceBreakdown(t *testing.T) {
 	if svc1.PolicySkip != 0 {
 		t.Errorf("svc1.PolicySkip = %d, want 0", svc1.PolicySkip)
 	}
-	// svc1: blocked = 0 (policy_ events don't count as detect_block in per-service)
-	if svc1.Blocked != 0 {
-		t.Errorf("svc1.Blocked = %d, want 0", svc1.Blocked)
+	// svc1: TotalBlocked = ALL IsBlocked events: policy_block(2) = 2
+	if svc1.TotalBlocked != 2 {
+		t.Errorf("svc1.TotalBlocked = %d, want 2", svc1.TotalBlocked)
 	}
 	// svc2: policy_block(1)
 	if svc2.PolicyBlock != 1 {
@@ -1390,9 +1385,9 @@ func TestSummarizeEvents_PerClientBreakdown(t *testing.T) {
 	if c1.Count != 3 {
 		t.Errorf("client.Count = %d, want 3", c1.Count)
 	}
-	// Blocked only counts "detect_block" type, not policy_* events.
-	if c1.Blocked != 0 {
-		t.Errorf("client.Blocked = %d, want 0", c1.Blocked)
+	// TotalBlocked = ALL IsBlocked events: policy_block(2) = 2
+	if c1.TotalBlocked != 2 {
+		t.Errorf("client.TotalBlocked = %d, want 2", c1.TotalBlocked)
 	}
 }
 
@@ -1425,8 +1420,8 @@ func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 		t.Errorf("web.Total = %d, want 6", web.Total)
 	}
 	// Blocked = all IsBlocked=true events: blocked(1) + policy_block(3) = 4
-	if web.Blocked != 4 {
-		t.Errorf("web.Blocked = %d, want 4", web.Blocked)
+	if web.TotalBlocked != 4 {
+		t.Errorf("web.TotalBlocked = %d, want 4", web.TotalBlocked)
 	}
 	// Logged = Total - Blocked = 6 - 4 = 2
 	if web.Logged != 2 {
@@ -1448,8 +1443,8 @@ func TestComputeServices_TracksAllEventTypes(t *testing.T) {
 	if api.PolicyBlock != 1 {
 		t.Errorf("api.PolicyBlock = %d, want 1", api.PolicyBlock)
 	}
-	if api.Blocked != 1 {
-		t.Errorf("api.Blocked = %d, want 1", api.Blocked)
+	if api.TotalBlocked != 1 {
+		t.Errorf("api.TotalBlocked = %d, want 1", api.TotalBlocked)
 	}
 }
 
@@ -1471,8 +1466,8 @@ func TestIPLookup_TracksAllEventTypes(t *testing.T) {
 		t.Errorf("Total = %d, want 4", resp.Total)
 	}
 	// Blocked = all IsBlocked=true: policy_block(3) = 3
-	if resp.Blocked != 3 {
-		t.Errorf("Blocked = %d, want 3", resp.Blocked)
+	if resp.TotalBlocked != 3 {
+		t.Errorf("Blocked = %d, want 3", resp.TotalBlocked)
 	}
 
 	var web, api *ServiceDetail

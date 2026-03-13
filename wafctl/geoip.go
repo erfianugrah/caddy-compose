@@ -478,7 +478,7 @@ func TopCountries(events []Event, n int) []CountryCount {
 		}
 		entry.Count++
 		if events[i].IsBlocked {
-			entry.Blocked++
+			entry.TotalBlocked++
 		}
 	}
 

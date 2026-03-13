@@ -151,7 +151,7 @@ func (s *AccessLogStore) Summary(hours int) RLSummaryResponse {
 
 	var hourCounts []HourCount
 	for h, c := range hourBuckets {
-		hourCounts = append(hourCounts, HourCount{Hour: h, Count: c, Blocked: c})
+		hourCounts = append(hourCounts, HourCount{Hour: h, Count: c, TotalBlocked: c})
 	}
 	sort.Slice(hourCounts, func(i, j int) bool { return hourCounts[i].Hour < hourCounts[j].Hour })
 

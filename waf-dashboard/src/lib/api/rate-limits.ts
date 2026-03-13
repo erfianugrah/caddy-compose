@@ -169,7 +169,7 @@ export async function reorderRLRules(ids: string[]): Promise<RateLimitRule[]> {
 export interface RLTimelinePoint {
   hour: string;
   count: number;
-  blocked: number;
+  total_blocked: number;
 }
 
 export interface RLClientCount {

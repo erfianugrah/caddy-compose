@@ -277,12 +277,12 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                             <span className="tabular-nums text-muted-foreground">
                               {svc.total} total
                             </span>
-                            {svc.blocked > 0 && (
+                            {svc.total_blocked > 0 && (
                               <Badge
                                 variant="destructive"
                                 className="text-xs px-1.5 py-0"
                               >
-                                {svc.blocked} blocked
+                                {svc.total_blocked} blocked
                               </Badge>
                             )}
                           </div>
@@ -309,8 +309,8 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                     >
                       <defs>
                         <linearGradient id="ipGradBlocked" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={ACTION_COLORS.blocked} stopOpacity={0.3} />
-                          <stop offset="95%" stopColor={ACTION_COLORS.blocked} stopOpacity={0} />
+                          <stop offset="5%" stopColor={ACTION_COLORS.total_blocked} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={ACTION_COLORS.total_blocked} stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="ipGradLogged" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={ACTION_COLORS.logged} stopOpacity={0.3} />
@@ -321,7 +321,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                       <XAxis dataKey="hour" stroke="#bdbdc1" fontSize={T.chartAxisTick} tickLine={false} axisLine={false} tickFormatter={formatIPTimelineTick} interval="preserveStartEnd" />
                       <YAxis stroke="#bdbdc1" fontSize={T.chartAxisTick} tickLine={false} axisLine={false} />
                       <Tooltip {...chartTooltipStyle} labelFormatter={formatIPTimelineTooltip} />
-                      <Area type="monotone" dataKey="blocked" stroke={ACTION_COLORS.blocked} fill="url(#ipGradBlocked)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#ipGradBlocked)" strokeWidth={2} name="Total Blocked" />
                       <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>

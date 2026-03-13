@@ -55,7 +55,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
     ip: (a: TopBlockedIP, b: TopBlockedIP) => a.client_ip.localeCompare(b.client_ip),
     country: (a: TopBlockedIP, b: TopBlockedIP) => (a.country ?? "").localeCompare(b.country ?? ""),
     events: (a: TopBlockedIP, b: TopBlockedIP) => a.total - b.total,
-    blocked: (a: TopBlockedIP, b: TopBlockedIP) => a.blocked - b.blocked,
+    total_blocked: (a: TopBlockedIP, b: TopBlockedIP) => a.total_blocked - b.total_blocked,
     block_rate: (a: TopBlockedIP, b: TopBlockedIP) => a.block_rate - b.block_rate,
     first_seen: (a: TopBlockedIP, b: TopBlockedIP) => a.first_seen.localeCompare(b.first_seen),
     last_seen: (a: TopBlockedIP, b: TopBlockedIP) => a.last_seen.localeCompare(b.last_seen),
@@ -87,7 +87,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
                 <SortableTableHead sortKey="ip" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>IP Address</SortableTableHead>
                 <SortableTableHead sortKey="country" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>Country</SortableTableHead>
                 <SortableTableHead sortKey="events" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort} className="text-right">Events</SortableTableHead>
-                <SortableTableHead sortKey="blocked" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="total_blocked" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort} className="text-right">Blocked</SortableTableHead>
                 <SortableTableHead sortKey="block_rate" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>Block Rate</SortableTableHead>
                 <SortableTableHead sortKey="first_seen" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>First Seen</SortableTableHead>
                 <SortableTableHead sortKey="last_seen" activeKey={ipSort.sortState.key} direction={ipSort.sortState.direction} onSort={ipSort.toggleSort}>Last Seen</SortableTableHead>
@@ -111,7 +111,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
                     {ip.total.toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs text-lv-red">
-                    {ip.blocked.toLocaleString()}
+                    {ip.total_blocked.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

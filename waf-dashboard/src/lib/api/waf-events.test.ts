@@ -17,26 +17,26 @@ describe("fetchSummary", () => {
   it("transforms Go API response to frontend SummaryData shape", async () => {
     const goResponse = {
       total_events: 100,
-      blocked_events: 30,
+      total_blocked: 30,
       logged_events: 70,
       unique_clients: 5,
       unique_services: 3,
       events_by_hour: [
-        { hour: "2026-02-22T07:00:00Z", count: 40, blocked: 10, logged: 30 },
-        { hour: "2026-02-22T08:00:00Z", count: 60, blocked: 20, logged: 40 },
+        { hour: "2026-02-22T07:00:00Z", count: 40, total_blocked: 10, logged: 30 },
+        { hour: "2026-02-22T08:00:00Z", count: 60, total_blocked: 20, logged: 40 },
       ],
       top_services: [
-        { service: "radarr.erfi.io", count: 60, blocked: 15, logged: 45 },
-        { service: "sonarr.erfi.io", count: 40, blocked: 15, logged: 25 },
+        { service: "radarr.erfi.io", count: 60, total_blocked: 15, logged: 45 },
+        { service: "sonarr.erfi.io", count: 40, total_blocked: 15, logged: 25 },
       ],
       top_clients: [
-        { client: "10.0.0.1", count: 50, blocked: 20 },
-        { client: "10.0.0.2", count: 50, blocked: 10 },
+        { client: "10.0.0.1", count: 50, total_blocked: 20 },
+        { client: "10.0.0.2", count: 50, total_blocked: 10 },
       ],
       top_uris: [{ uri: "/.env", count: 20 }],
       service_breakdown: [
-        { service: "radarr.erfi.io", total: 60, blocked: 15, logged: 45 },
-        { service: "sonarr.erfi.io", total: 40, blocked: 15, logged: 25 },
+        { service: "radarr.erfi.io", total: 60, total_blocked: 15, logged: 45 },
+        { service: "sonarr.erfi.io", total: 40, total_blocked: 15, logged: 25 },
       ],
       recent_events: [
         {
@@ -57,7 +57,7 @@ describe("fetchSummary", () => {
     const result: SummaryData = await fetchSummary({ hours: 24 });
 
     expect(result.total_events).toBe(100);
-    expect(result.blocked).toBe(30);
+    expect(result.total_blocked).toBe(30);
     expect(result.logged).toBe(70);
     expect(result.unique_clients).toBe(5);
     expect(result.unique_services).toBe(3);
@@ -67,7 +67,7 @@ describe("fetchSummary", () => {
     expect(result.timeline[0]).toEqual({
       hour: "2026-02-22T07:00:00Z",
       total: 40,
-      blocked: 10,
+      total_blocked: 10,
       logged: 30,
       rate_limited: 0,
       policy_block: 0,
@@ -80,14 +80,14 @@ describe("fetchSummary", () => {
     expect(result.top_services).toHaveLength(2);
     expect(result.top_services[0].service).toBe("radarr.erfi.io");
     expect(result.top_services[0].total).toBe(60);
-    expect(result.top_services[0].blocked).toBe(15);
+    expect(result.top_services[0].total_blocked).toBe(15);
     expect(result.top_services[0].logged).toBe(45);
 
     // Top clients mapped (client -> client_ip, now includes blocked)
     expect(result.top_clients).toHaveLength(2);
     expect(result.top_clients[0].client_ip).toBe("10.0.0.1");
     expect(result.top_clients[0].total).toBe(50);
-    expect(result.top_clients[0].blocked).toBe(20);
+    expect(result.top_clients[0].total_blocked).toBe(20);
 
     // Top clients now include rate_limited, policy breakdown
     expect(result.top_clients[0].rate_limited).toBe(0);
@@ -100,7 +100,7 @@ describe("fetchSummary", () => {
     expect(result.service_breakdown[0]).toEqual({
       service: "radarr.erfi.io",
       total: 60,
-      blocked: 15,
+      total_blocked: 15,
       logged: 45,
       rate_limited: 0,
       policy_block: 0,
@@ -120,7 +120,7 @@ describe("fetchSummary", () => {
       "fetch",
       mockFetchResponse({
         total_events: 0,
-        blocked_events: 0,
+        total_blocked: 0,
         logged_events: 0,
         unique_clients: 0,
         unique_services: 0,
@@ -143,7 +143,7 @@ describe("fetchSummary", () => {
   it("passes hours query parameter", async () => {
     const mockFetch = mockFetchResponse({
       total_events: 0,
-      blocked_events: 0,
+      total_blocked: 0,
       logged_events: 0,
       unique_clients: 0,
       unique_services: 0,
@@ -162,7 +162,7 @@ describe("fetchSummary", () => {
   it("passes filter query parameters (service, client, method, event_type, rule_name)", async () => {
     const mockFetch = mockFetchResponse({
       total_events: 0,
-      blocked_events: 0,
+      total_blocked: 0,
       logged_events: 0,
       unique_clients: 0,
       unique_services: 0,
@@ -195,7 +195,7 @@ describe("fetchSummary", () => {
   it("omits undefined filter params from URL", async () => {
     const mockFetch = mockFetchResponse({
       total_events: 0,
-      blocked_events: 0,
+      total_blocked: 0,
       logged_events: 0,
       unique_clients: 0,
       unique_services: 0,
@@ -220,7 +220,7 @@ describe("fetchSummary", () => {
 
   it("sends _op params when operator is not eq", async () => {
     const mockFetch = mockFetchResponse({
-      total_events: 0, blocked_events: 0, logged_events: 0,
+      total_events: 0, total_blocked: 0, logged_events: 0,
       rate_limited: 0, ipsum_blocked: 0, policy_events: 0,
       honeypot_events: 0, scanner_events: 0,
       unique_clients: 0, unique_services: 0,
@@ -246,7 +246,7 @@ describe("fetchSummary", () => {
 
   it("omits _op params when operator is eq (default)", async () => {
     const mockFetch = mockFetchResponse({
-      total_events: 0, blocked_events: 0, logged_events: 0,
+      total_events: 0, total_blocked: 0, logged_events: 0,
       rate_limited: 0, ipsum_blocked: 0, policy_events: 0,
       honeypot_events: 0, scanner_events: 0,
       unique_clients: 0, unique_services: 0,
@@ -409,8 +409,8 @@ describe("fetchServices", () => {
   it("unwraps services wrapper and computes derived fields", async () => {
     const goResponse = {
       services: [
-        { service: "radarr.erfi.io", total: 100, blocked: 25, logged: 75 },
-        { service: "sonarr.erfi.io", total: 50, blocked: 0, logged: 50 },
+        { service: "radarr.erfi.io", total: 100, total_blocked: 25, logged: 75 },
+        { service: "sonarr.erfi.io", total: 50, total_blocked: 0, logged: 50 },
       ],
     };
 
@@ -423,7 +423,7 @@ describe("fetchServices", () => {
     // First service
     expect(result[0].service).toBe("radarr.erfi.io");
     expect(result[0].total_events).toBe(100); // total -> total_events
-    expect(result[0].blocked).toBe(25);
+    expect(result[0].total_blocked).toBe(25);
     expect(result[0].logged).toBe(75);
     expect(result[0].block_rate).toBe(25); // (25/100)*100
     expect(result[0].top_uris).toEqual([]);
@@ -444,7 +444,7 @@ describe("fetchServices", () => {
     vi.stubGlobal(
       "fetch",
       mockFetchResponse({
-        services: [{ service: "test", total: 0, blocked: 0, logged: 0 }],
+        services: [{ service: "test", total: 0, total_blocked: 0, logged: 0 }],
       })
     );
 
@@ -472,18 +472,18 @@ describe("country field mapping", () => {
   it("maps country in summary top_clients", async () => {
     const goResponse = {
       total_events: 1,
-      blocked_events: 0,
+      total_blocked: 0,
       logged_events: 1,
       unique_clients: 1,
       unique_services: 1,
       events_by_hour: [],
       top_services: [],
       top_clients: [
-        { client: "1.2.3.4", country: "US", count: 5, blocked: 2, rate_limited: 0, ipsum_blocked: 0 },
+        { client: "1.2.3.4", country: "US", count: 5, total_blocked: 2, rate_limited: 0, ipsum_blocked: 0 },
       ],
       top_countries: [
-        { country: "US", count: 5, blocked: 2 },
-        { country: "DE", count: 3, blocked: 1 },
+        { country: "US", count: 5, total_blocked: 2 },
+        { country: "DE", count: 3, total_blocked: 1 },
       ],
       top_uris: [],
       service_breakdown: [],
@@ -496,13 +496,13 @@ describe("country field mapping", () => {
     expect(result.top_countries).toHaveLength(2);
     expect(result.top_countries[0].country).toBe("US");
     expect(result.top_countries[0].count).toBe(5);
-    expect(result.top_countries[0].blocked).toBe(2);
+    expect(result.top_countries[0].total_blocked).toBe(2);
   });
 
   it("handles missing top_countries gracefully", async () => {
     vi.stubGlobal("fetch", mockFetchResponse({
       total_events: 0,
-      blocked_events: 0,
+      total_blocked: 0,
       logged_events: 0,
       unique_clients: 0,
       unique_services: 0,
@@ -661,7 +661,7 @@ describe("fetchServices breakdown fields", () => {
       services: [{
         service: "web.erfi.io",
         total: 100,
-        blocked: 40,
+        total_blocked: 40,
         logged: 60,
         rate_limited: 5,
         policy_block: 3,
@@ -684,7 +684,7 @@ describe("fetchServices breakdown fields", () => {
       services: [{
         service: "old.erfi.io",
         total: 50,
-        blocked: 10,
+        total_blocked: 10,
         logged: 40,
       }],
     };

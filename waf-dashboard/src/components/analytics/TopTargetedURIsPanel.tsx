@@ -54,7 +54,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
   const uriSortComparators = useMemo(() => ({
     uri: (a: TopTargetedURI, b: TopTargetedURI) => a.uri.localeCompare(b.uri),
     total: (a: TopTargetedURI, b: TopTargetedURI) => a.total - b.total,
-    blocked: (a: TopTargetedURI, b: TopTargetedURI) => a.blocked - b.blocked,
+    total_blocked: (a: TopTargetedURI, b: TopTargetedURI) => a.total_blocked - b.total_blocked,
   }), []);
   const uriSort = useTableSort(data, uriSortComparators);
   const { items: pageData, totalPages } = paginateArray(uriSort.sortedData, page, ANALYTICS_PAGE_SIZE);
@@ -82,7 +82,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
               <TableRow className="hover:bg-transparent">
                 <SortableTableHead sortKey="uri" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="max-w-[300px]">URI</SortableTableHead>
                 <SortableTableHead sortKey="total" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="text-right">Total</SortableTableHead>
-                <SortableTableHead sortKey="blocked" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="text-right">Blocked</SortableTableHead>
+                <SortableTableHead sortKey="total_blocked" activeKey={uriSort.sortState.key} direction={uriSort.sortState.direction} onSort={uriSort.toggleSort} className="text-right">Blocked</SortableTableHead>
                 <TableHead>Services</TableHead>
               </TableRow>
             </TableHeader>
@@ -96,7 +96,7 @@ export function TopTargetedURIsPanel({ hours, refreshKey }: { hours?: number; re
                     {uri.total.toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs text-lv-red">
-                    {uri.blocked.toLocaleString()}
+                    {uri.total_blocked.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
