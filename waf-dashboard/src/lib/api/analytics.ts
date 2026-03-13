@@ -73,7 +73,7 @@ export interface IPLookupData {
   total_events: number;
   blocked_count: number;
   events_total: number;
-  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   timeline: TimelinePoint[];
   recent_events: WAFEvent[];
 }
@@ -107,8 +107,8 @@ interface RawIPLookup {
   events_total: number;
   first_seen: string | null;
   last_seen: string | null;
-  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
-  events_by_hour?: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour?: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   events: {
     id: string;
     timestamp: string;
@@ -159,6 +159,7 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
+      detect_block: s.detect_block ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
     })),
@@ -169,6 +170,7 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
       policy_block: h.policy_block ?? 0,
+      detect_block: h.detect_block ?? 0,
       policy_allow: h.policy_allow ?? 0,
       policy_skip: h.policy_skip ?? 0,
     })),

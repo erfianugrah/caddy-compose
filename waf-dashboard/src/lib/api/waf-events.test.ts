@@ -71,6 +71,7 @@ describe("fetchSummary", () => {
       logged: 30,
       rate_limited: 0,
       policy_block: 0,
+      detect_block: 0,
       policy_allow: 0,
       policy_skip: 0,
     });
@@ -103,6 +104,7 @@ describe("fetchSummary", () => {
       logged: 45,
       rate_limited: 0,
       policy_block: 0,
+      detect_block: 0,
       policy_allow: 0,
       policy_skip: 0,
     });

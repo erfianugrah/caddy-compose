@@ -2309,6 +2309,1051 @@ With 90-day event retention + MMDB + access log stores, may be tight under load.
 
 - [ ] Monitor and document sizing guidance
 
+---
+
+## Design Spec: Unified Policy Pipeline (allow/skip Refactor)
+
+### Motivation
+
+The current policy engine has a flat 4-pass evaluation model: block → allow → detect → rate_limit.
+The `allow` action only bypasses CRS detect rules — it does NOT bypass block rules below it or
+rate limit rules. This differs from Cloudflare's model where the **Skip** action can selectively
+bypass any downstream phase (remaining custom rules, rate limiting, managed rules, or all).
+
+Real-world use cases require more granular control:
+- "This IP is my monitoring service — skip ALL security" (full bypass)
+- "This API path is a health check — skip CRS and rate limits, but still honor block rules"
+- "This partner's API key — skip rate limits only"
+- "Skip specific CRS rules for this path" (selective rule exception)
+
+### Cloudflare's Model (Reference)
+
+Cloudflare evaluates security in sequential **phases**. Terminating actions stop the request:
+
+```
+DDoS (L7) → Custom Rules (block/skip) → Rate Limiting → Managed Rules (CRS) → SBFM
+```
+
+Their **Skip** action (replacement for old Allow + Bypass) can selectively bypass:
+1. All remaining custom rules
+2. Entire rate limiting phase
+3. Entire managed rules phase
+4. Specific managed ruleset rules
+5. Any combination of the above
+
+### New Model
+
+Two new semantics replacing the current `allow`:
+
+| Action | Behavior | CF Equivalent |
+|--------|----------|---------------|
+| `allow` | **Full bypass** — terminates evaluation immediately. No blocks, CRS, or rate limits below it fire. "I trust this traffic completely." | Skip (all remaining + all phases) |
+| `skip` | **Selective bypass** — carries a `skip_targets` field specifying what to skip. Non-terminating (evaluation continues for non-skipped rule types). | Skip (selective phases/rules) |
+| `block` | Terminates with 403 (unchanged) | Block |
+| `honeypot` | Terminates with 403 + honeypot tag (unchanged) | Block (custom) |
+| `detect` | Anomaly scoring accumulation (unchanged) | N/A (managed rules) |
+| `rate_limit` | Sliding window counter (unchanged) | Rate Limiting Rules |
+
+### Priority Bands (New)
+
+```
+allow  = 50-99     ← Full bypass, evaluated FIRST (terminates on match)
+block  = 100-199   ← Deny list (terminates on match)
+skip   = 200-299   ← Selective bypass (non-terminating, sets skip flags)
+rate_limit = 300-399   ← Rate limiting (skippable via skip_targets)
+detect = 400-499   ← CRS anomaly scoring (skippable via skip_targets)
+```
+
+This mirrors CF: skip-all rules at the top of custom rules, then blocks, then selective
+exceptions, then rate limiting, then managed rules.
+
+### `skip` Rule Data Model
+
+```json
+{
+  "id": "skip-health-check",
+  "name": "Skip CRS for health checks",
+  "type": "skip",
+  "conditions": [
+    { "field": "path", "operator": "eq", "value": "/health" }
+  ],
+  "group_op": "and",
+  "skip_targets": {
+    "rules": ["932120", "941100"],
+    "phases": ["detect", "rate_limit"],
+    "all_remaining": false
+  },
+  "enabled": true,
+  "priority": 200,
+  "tags": ["health-check"]
+}
+```
+
+**`skip_targets` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rules` | `[]string` | Specific rule IDs to skip (detect rules by CRS ID, RL rules by ID, block rules by ID) |
+| `phases` | `[]string` | Entire phases to skip: `"detect"`, `"rate_limit"`, `"block"` (remaining blocks) |
+| `all_remaining` | `bool` | Skip everything below this rule (equivalent to CF "Skip all remaining custom rules + all phases") |
+
+If `all_remaining` is true, `rules` and `phases` are ignored (everything is skipped).
+
+### Plugin Evaluation Loop (New 5-Pass)
+
+```
+for each rule (sorted by priority):
+  Pass 1 — Allow (priority 50-99):
+    If conditions match → set allow vars, RETURN (terminate, full bypass)
+
+  Pass 2 — Block/Honeypot (priority 100-199):
+    If skipAllRemaining → skip
+    If this rule's ID is in skipRuleIDs → skip
+    If "block" phase is in skipPhases → skip
+    If conditions match → set block vars, RETURN 403
+
+  Pass 3 — Skip (priority 200-299):
+    If conditions match → merge skip_targets into running skip state:
+      - Add rule IDs to skipRuleIDs set
+      - Add phases to skipPhases set
+      - Set skipAllRemaining flag if all_remaining=true
+    Continue (non-terminating)
+
+  Pass 4 — Rate Limit (priority 300-399):
+    If skipAllRemaining → skip
+    If this rule's ID is in skipRuleIDs → skip
+    If "rate_limit" phase is in skipPhases → skip
+    Evaluate normally (counters tick, 429 if exceeded)
+
+  Pass 5 — Detect (priority 400-499):
+    If skipAllRemaining → skip
+    If this rule's ID is in skipRuleIDs → skip
+    If "detect" phase is in skipPhases → skip
+    Evaluate normally (accumulate score)
+
+Post-loop: anomaly threshold check (unchanged, but respects skip flags)
+```
+
+### Backward Compatibility
+
+The current `allow` action (skips detect only) maps to the new `skip` with
+`skip_targets: { phases: ["detect"] }`. Migration:
+
+1. On plugin upgrade, existing rules with `type: "allow"` that were generated by wafctl
+   keep working because wafctl regenerates `policy-rules.json` on every deploy.
+2. wafctl migration: existing exclusions with `type: "allow"` become `type: "skip"` with
+   `skip_targets: { phases: ["detect"] }` (preserves current behavior).
+3. New `allow` type is the full-bypass action (no existing rules use this semantic).
+
+### UI Layout
+
+**Policy Rules** (unified tab at `/policy`):
+- Contains `allow`, `skip`, `block`, `honeypot`, and `rate_limit` rules in one ordered list.
+- Users see the full evaluation pipeline and can drag-reorder within priority bands.
+- When the user picks `rate_limit` as the action type, rate-limit-specific fields appear
+  (window, events, key, action).
+- When the user picks `skip`, skip_targets fields appear (rule picker, phase checkboxes,
+  all_remaining toggle).
+- When the user picks `allow`, no extra fields needed — it's a simple condition → full bypass.
+
+**CRS Settings** (separate tab at `/rules/crs`):
+- Global CRS configuration: paranoia level, thresholds, per-service overrides.
+- CRS rule list with enable/disable, severity overrides, PL assignment.
+- This is the "managed ruleset" — always evaluated last, configurable globally.
+- Per-service CRS profiles (see below) allow running modified CRS variants per service.
+- Only if a user wants a fully custom detect rule with arbitrary conditions would they
+  create a `detect` rule in Policy Rules (rare — most users use CRS profiles).
+
+### Per-Service CRS Profiles (Account Ruleset Model)
+
+Cloudflare allows deploying the same managed ruleset (OWASP CRS) multiple times at the
+account level with different per-zone overrides — each deployment can disable categories,
+change rule actions, override severity, etc. Our equivalent: **per-service CRS profiles**
+that override the global default-rules behavior.
+
+#### Current State (Limited)
+
+- Global `WAFConfig`: paranoia_level, inbound_threshold, outbound_threshold
+- Per-service overrides: can only change PL and thresholds (3 numbers)
+- Default rules (DefaultRuleStore): global enable/disable and severity overrides (apply to ALL services)
+- No way to say "disable XSS rules for my API" or "use wordpress exclusion profile for my blog"
+
+#### Use Cases Not Currently Possible
+
+- "For my API service, disable all XSS rules (category `attack-xss`)"
+- "For my WordPress service, apply the `wordpress` CRS exclusion profile and lower threshold to 5"
+- "For my upload endpoint, disable request body rules (category `attack-rfi`) at PL2+"
+- "For my admin panel, bump all SQLi rules to CRITICAL severity"
+- "For my static site, only run PL1 rules with a high threshold (lenient)"
+
+#### CRS Service Profile Data Model
+
+```json
+{
+  "service": "api.example.com",
+  "paranoia_level": 3,
+  "inbound_threshold": 15,
+  "rule_overrides": {
+    "941100": { "enabled": false },
+    "941110": { "enabled": false },
+    "932120": { "severity": "CRITICAL" }
+  },
+  "category_overrides": {
+    "attack-xss": { "enabled": false },
+    "attack-sqli": { "severity": "CRITICAL" },
+    "attack-rce": { "paranoia_level": 2 }
+  },
+  "crs_exclusions": ["wordpress"],
+  "description": "API service — no XSS, strict SQLi, PL3"
+}
+```
+
+**Field definitions:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `service` | `string` | Service name or FQDN (resolved via serviceMap like other rules) |
+| `paranoia_level` | `int` | Override global PL for this service (0 = inherit global) |
+| `inbound_threshold` | `int` | Override global threshold for this service (0 = inherit) |
+| `rule_overrides` | `map[string]RuleOverride` | Per-rule overrides keyed by CRS rule ID |
+| `category_overrides` | `map[string]CategoryOverride` | Per-category overrides keyed by CRS tag (e.g., `attack-xss`) |
+| `crs_exclusions` | `[]string` | Named exclusion profiles: `wordpress`, `nextcloud`, `drupal`, etc. |
+| `description` | `string` | Human-readable description of what this profile does |
+
+**`RuleOverride` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `*bool` | nil = inherit, false = disable, true = force-enable |
+| `severity` | `string` | Override severity: `CRITICAL`/`ERROR`/`WARNING`/`NOTICE` (empty = inherit) |
+| `paranoia_level` | `int` | Override PL assignment (0 = inherit) |
+
+**`CategoryOverride` fields:** Same as `RuleOverride`. Applied to all rules with the matching
+CRS tag. Individual rule overrides take precedence over category overrides.
+
+#### Three-Level Override Resolution
+
+This is strictly more powerful than CF's model because we override at three specificity levels:
+
+```
+Layer 1: Plugin default rule (baked into default-rules.json at build time)
+  ↓ merged with
+Layer 2: Global override (DefaultRuleStore — applies to ALL services)
+  ↓ merged with
+Layer 3: Service profile override (CRS Service Profile — specific service only)
+```
+
+Resolution rules (CSS specificity model):
+- Service profile `rule_overrides` beat category overrides beat global overrides beat defaults
+- `nil`/zero values mean "inherit from layer above" — only non-nil values override
+- `crs_exclusions` profiles are additive (service inherits global + adds its own)
+- Per-service PL and threshold override the global WAFConfig per-service settings
+  (single source of truth — migrate existing WAFConfig.Services into CRS profiles)
+
+**Example resolution for rule 941100 on service `api.example.com`:**
+```
+Default:        enabled=true,  severity=WARNING, PL=1
+Global override: (none for 941100)
+Category override: attack-xss → enabled=false
+Rule override:  (none for 941100)
+→ Effective:    enabled=false  (XSS disabled for this service)
+```
+
+**Example resolution for rule 932120 on service `api.example.com`:**
+```
+Default:        enabled=true,  severity=WARNING, PL=2
+Global override: severity=ERROR (someone bumped it globally)
+Category override: (none for attack-rce)
+Rule override:  severity=CRITICAL (service profile bumps it further)
+→ Effective:    enabled=true, severity=CRITICAL, PL=2
+```
+
+#### Plugin Implementation
+
+The plugin already has `WafConfig` with `PerService map[string]PolicyWafServiceConfig`
+for PL/threshold. Extend to carry the full profile:
+
+```go
+// PolicyWafServiceConfig — extended for CRS profiles
+type PolicyWafServiceConfig struct {
+    ParanoiaLevel     int                        `json:"paranoia_level,omitempty"`
+    InboundThreshold  int                        `json:"inbound_threshold,omitempty"`
+    OutboundThreshold int                        `json:"outbound_threshold,omitempty"`
+    RuleOverrides     map[string]RuleOverride    `json:"rule_overrides,omitempty"`
+    CategoryOverrides map[string]CategoryOverride `json:"category_overrides,omitempty"`
+    CRSExclusions     []string                   `json:"crs_exclusions,omitempty"`
+}
+
+type RuleOverride struct {
+    Enabled       *bool  `json:"enabled,omitempty"`
+    Severity      string `json:"severity,omitempty"`
+    ParanoiaLevel int    `json:"paranoia_level,omitempty"`
+}
+type CategoryOverride = RuleOverride // same shape
+```
+
+**Compile-time resolution** (during rule load / hot-reload):
+- For each service with a profile, pre-compute a `serviceRuleMask`:
+  ```go
+  type serviceRuleMask struct {
+      disabledRules map[string]bool          // rule ID → disabled
+      severityMap   map[string]string        // rule ID → effective severity
+      plMap         map[string]int           // rule ID → effective PL
+      pl            int                      // effective PL for this service
+      threshold     int                      // effective threshold
+  }
+  ```
+- Build once at compile time, stored in `map[string]*serviceRuleMask` keyed by hostname.
+- At request time: `host := stripPort(r.Host)` → lookup mask → O(1) per-rule checks.
+- If no mask exists for this host, fall back to global defaults (current behavior).
+
+**Evaluation changes in `ServeHTTP`:**
+```go
+// Current (detect rule skip check):
+if cr.rule.Type == "detect" && cr.rule.ParanoiaLevel > 0 && cr.rule.ParanoiaLevel > servicePL {
+    continue
+}
+// New (also check service mask):
+if cr.rule.Type == "detect" {
+    if mask != nil && mask.disabledRules[cr.rule.ID] {
+        continue // disabled for this service
+    }
+    if cr.rule.ParanoiaLevel > 0 && cr.rule.ParanoiaLevel > effectivePL {
+        continue // above effective PL for this service
+    }
+    // Use effective severity for scoring (mask.severityMap overrides cr.score)
+}
+```
+
+#### CRS Exclusion Profiles
+
+CRS v4 ships named exclusion profiles (wordpress, nextcloud, drupal, etc.) that disable
+specific rules known to cause false positives with those applications. Currently we support
+these globally via `WAFConfig.CRSExclusions`. Per-service profiles extend this:
+
+- Global `crs_exclusions: ["wordpress"]` → applies wordpress exclusions to all services
+- Service profile `crs_exclusions: ["nextcloud"]` → adds nextcloud exclusions for that service only
+- Profiles are additive: service gets `wordpress + nextcloud`
+- The plugin resolves named profiles to rule ID sets at compile time using a built-in
+  profile registry (same CRS exclusion data we already have in `crs_rules.go`)
+
+#### UI Design (CRS Tab)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  CRS Managed Rules                                       │
+│                                                          │
+│  Service: [▾ Global (all services)  ]   [Deploy]        │
+│           │  Global (all services)  │                    │
+│           │  api.example.com        │                    │
+│           │  blog.example.com       │                    │
+│           │  + Add service profile  │                    │
+│           └─────────────────────────┘                    │
+│                                                          │
+│  Paranoia Level: [▾ 2 ]   Threshold: [▾ 10 ]           │
+│  CRS Exclusions: [wordpress] [× ] [+ Add]               │
+│                                                          │
+│  ┌─ PL1 (Core Rules) ─────────── 87 rules ────────────┐ │
+│  │ ☑ 920170  GET/HEAD with body   WARNING    PL1       │ │
+│  │ ☑ 920270  Invalid character     WARNING    PL1       │ │
+│  │ ☐ 941100  XSS via libinjection  WARNING●   PL1      │ │
+│  │           ↑ overridden (disabled for this service)   │ │
+│  │ ☑ 932120  RCE: Unix command     CRITICAL●  PL2      │ │
+│  │           ↑ overridden (severity bumped)             │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                          │
+│  ┌─ Category Overrides ────────────────────────────────┐ │
+│  │ attack-xss:   Disabled ●                            │ │
+│  │ attack-sqli:  Severity → CRITICAL ●                 │ │
+│  │ [+ Add category override]                            │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                          │
+│  [Reset to Global Defaults]                              │
+└─────────────────────────────────────────────────────────┘
+```
+
+- **Service selector** at top — "Global" shows base config, selecting a service shows
+  the effective merged state with override indicators (● dot on changed rules/categories).
+- **Per-rule toggles** — clicking a rule in service view creates a service-specific override,
+  not modifying the global. A "Reset to Global Defaults" button clears all service overrides.
+- **Category overrides section** — bulk operations by CRS category tag.
+- **Diff view** (optional) — "Show changes from global" toggle highlights only the deltas.
+
+#### API Endpoints (New)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/crs/profiles` | List all service profiles |
+| `GET` | `/api/crs/profiles/{service}` | Get profile for a service (returns effective merged state) |
+| `PUT` | `/api/crs/profiles/{service}` | Create/update profile for a service |
+| `DELETE` | `/api/crs/profiles/{service}` | Delete profile (revert to global defaults) |
+| `GET` | `/api/crs/profiles/{service}/effective` | Get fully resolved rule list (all 3 layers merged) |
+| `POST` | `/api/crs/profiles/deploy` | Deploy profiles to plugin (writes to policy-rules.json) |
+
+#### Data Storage
+
+- New `CRSProfileStore` (or extend `DefaultRuleStore` with `ServiceProfiles map[string]CRSProfile`)
+- Persisted to `/data/crs-profiles.json` (env: `WAF_CRS_PROFILES_FILE`)
+- On deploy, wafctl resolves all profiles and passes them to the plugin via the
+  `waf_config.per_service` field in `policy-rules.json`
+- The plugin never sees "profiles" directly — it gets pre-resolved `PolicyWafServiceConfig`
+  objects with `RuleOverrides` already merged from category → rule specificity
+
+#### Comparison to Cloudflare
+
+| Feature | Cloudflare | Our Model |
+|---------|------------|-----------|
+| Deploy same ruleset multiple times | Yes (per-zone or per-expression) | Yes (per-service profiles) |
+| Override individual rule action | Yes (action override) | Yes (enable/disable + severity) |
+| Override rule category | Yes (category override) | Yes (category_overrides) |
+| Named exclusion profiles | No (manual per-rule) | Yes (wordpress, nextcloud, etc.) |
+| Per-zone paranoia level | No (global setting) | Yes (per-service PL) |
+| Per-zone anomaly threshold | No (global setting) | Yes (per-service threshold) |
+| Diff view (changes from base) | No | Yes (override indicators in UI) |
+| Three-level specificity | Two (account + zone) | Three (default + global + service) |
+
+### Event Type Taxonomy (New Model)
+
+With the new allow/skip split, the event classification changes:
+
+| Event Type | Source | HTTP Status | Description |
+|------------|--------|-------------|-------------|
+| `policy_allow` | Allow rule match | 200 (pass) | Full bypass — request fully trusted, all evaluation stopped |
+| `policy_skip` | Skip rule match | 200 (pass) | Selective bypass — specific phases/rules skipped |
+| `policy_block` | Block/honeypot rule match | 403 | Explicit deny — terminated by policy rule |
+| `detect_block` | CRS anomaly score >= threshold | 403 | CRS blocked — accumulated score exceeded threshold |
+| `logged` | CRS anomaly score > 0, < threshold | 200 (pass) | CRS detected but below threshold — informational |
+| `rate_limited` | Rate limit counter exceeded | 429 | Rate limited — sliding window counter exceeded |
+
+**`policy_skip` event details should include what was skipped** for observability:
+- `skip_phases`: which phases were skipped (e.g., `["detect", "rate_limit"]`)
+- `skip_rules`: which specific rules were skipped (e.g., `["941100", "rl-api-1"]`)
+- `skip_all`: whether all_remaining was used
+
+This enables the dashboard to show "this request skipped CRS and rate limiting because
+it matched the health-check skip rule" in the event detail panel.
+
+### Unified Store Design
+
+Currently there are two separate stores:
+- `ExclusionStore` — allow/block/detect rules (`exclusions.json`)
+- `RateLimitRuleStore` — rate_limit rules (`ratelimit.json`)
+
+**Option A: Merge into single store** (clean but breaking)
+- All rule types in one `PolicyRuleStore` with one JSON file
+- Simplifies ordering — one drag-reorder list
+- Breaking: API endpoints change, migration needed
+
+**Option B: Keep separate stores, virtual merge at render time** (non-breaking)
+- Stores stay separate, existing APIs unchanged
+- UI fetches both, interleaves by priority for display
+- New `GET /api/policy/pipeline` endpoint returns merged view
+- Deploy still merges both into `policy-rules.json` (current behavior)
+
+**Recommended: Option B for Phase 2, Option A for Phase 3.**
+Option B ships faster, doesn't break existing API consumers, and the UI can still show
+a unified pipeline. The `skip` type goes into ExclusionStore alongside allow/block/detect.
+Rate limit rules stay in their own store. The unified pipeline view is a read-only merge.
+
+### wafctl Changes (Complete)
+
+| File | Change | Effort |
+|------|--------|--------|
+| `models_exclusions.go` | Add `SkipTargets` struct: `Rules []string`, `Phases []string`, `AllRemaining bool`. Add to `RuleExclusion`. | Low |
+| `models_exclusions.go` | Add `skip` to `validExclusionTypes`. Update `policyEngineTypes` map. | Low |
+| `exclusions_validate.go` | Validate `skip_targets`: phases in `["detect", "rate_limit", "block"]`, rule IDs exist in default-rules or RL store, reject empty skip_targets. | Medium |
+| `policy_generator.go` | New `policyTypePriority["allow"] = 50`, `policyTypePriority["skip"] = 200`. Convert skip_targets to `PolicyRule.SkipTargets`. | Medium |
+| `policy_generator.go` | Exclusion migration: type `"allow"` → `"skip"` with `phases: ["detect"]` on store load. | Low |
+| `handlers_exclusions.go` | Accept `skip_targets` in create/update JSON payloads. Return in GET responses. | Low |
+| `handlers_events.go` | Handle new `policy_allow` (full bypass) vs `policy_skip` (selective) event classification. | Medium |
+| `access_log_store.go` | Detect allow vs skip from `policy_engine.action` var: `"allow"` → `policy_allow`, `"skip"` → `policy_skip`. | Low |
+| `waf_summary.go` | No change needed if allow/skip both map to non-terminating event types. The summary already splits policy_allow and policy_skip. | None |
+
+**CRS Profiles (new files):**
+
+| File | Description | Effort |
+|------|-------------|--------|
+| `crs_profiles.go` (~300 lines) | `CRSProfileStore`: CRUD, validation, persistence, merge resolution | Medium |
+| `handlers_crs_profiles.go` (~200 lines) | HTTP handlers for `/api/crs/profiles` endpoints | Medium |
+| `policy_generator.go` | Extend `PolicyWafConfig` generation to include resolved per-service profiles | Medium |
+
+### Plugin Changes (caddy-policy-engine — Complete)
+
+| File | Change | Effort |
+|------|--------|--------|
+| `policyengine.go` | Add `SkipTargets` to `PolicyRule` type: `Rules []string`, `Phases []string`, `AllRemaining bool` | Low |
+| `policyengine.go` | Compile step: build skip target index (which rules can be skipped) | Low |
+| `policyengine.go` | New 5-pass `ServeHTTP`: allow terminates, skip accumulates flags, block/RL/detect check flags | Medium |
+| `policyengine.go` | `serviceRuleMask` compile-time resolution from `PolicyWafServiceConfig.RuleOverrides`/`CategoryOverrides` | Medium |
+| `policyengine.go` | Effective severity lookup: `mask.severityMap[ruleID]` → override `cr.score` at eval time | Low |
+| `policyengine_test.go` | Allow-terminates, skip-phases, skip-rules, skip-all-remaining tests | Medium |
+| `policyengine_test.go` | Skip+block interaction (skip doesn't override blocks above it) | Low |
+| `policyengine_test.go` | Skip+RL interaction (skipped RL counters don't tick) | Low |
+| `policyengine_test.go` | Per-service rule mask tests (disabled rules, severity override, category override) | Medium |
+| `policyengine_test.go` | Service profile + global override merge tests | Medium |
+
+### Frontend Changes (Complete)
+
+**Policy Rules page (`/policy`):**
+
+| Component | Change | Effort |
+|-----------|--------|--------|
+| `PolicyEngine.tsx` | Add `skip` and `rate_limit` to rule type selector. Show RL-specific fields when rate_limit selected. Show skip_targets fields when skip selected. | High |
+| `policy/PolicyForms.tsx` | Skip form: phase checkboxes (detect, rate_limit, block), rule ID multi-select, all_remaining toggle | Medium |
+| `policy/PolicyForms.tsx` | Rate limit form: key selector, events, window, action (reuse from current `RuleForm.tsx`) | Medium |
+| `policy/constants.ts` | Add `skip` type with color/label/description. Update priority band labels. | Low |
+| `RateLimitsPanel.tsx` | Deprecate as standalone page OR keep as "RL-focused view" that filters the unified pipeline | TBD |
+
+**CRS Settings page (`/rules/crs`):**
+
+| Component | Change | Effort |
+|-----------|--------|--------|
+| `RulesPanel.tsx` | Add service selector dropdown at top. Fetch/display per-service profile. | Medium |
+| `RulesPanel.tsx` | Override indicators (● dot) on rules/categories that differ from global. | Medium |
+| `RulesPanel.tsx` | Category overrides section with bulk enable/disable/severity per category tag. | Medium |
+| `RulesPanel.tsx` | "Reset to Global Defaults" button per service. | Low |
+| `lib/api/config.ts` | New `fetchCRSProfiles`, `updateCRSProfile`, `deleteCRSProfile` API functions. | Medium |
+
+### Edge Cases and Invariants
+
+1. **Allow above block**: An `allow` rule at priority 50 fires before blocks at priority 100.
+   If a request matches both the allow condition AND a block condition, allow wins (terminates
+   first). This is intentional — it's the "trusted traffic" escape hatch. If the user wants
+   blocks to still apply, they should use `skip` instead of `allow`.
+
+2. **Multiple skip rules**: If two skip rules match the same request, their skip_targets are
+   merged (union). Skip rule A skips `["detect"]`, skip rule B skips `["rate_limit"]` → both
+   detect and rate_limit are skipped. This is non-terminating merge behavior.
+
+3. **Skip targeting a rule that doesn't exist**: Validation warns but doesn't reject — rules
+   may be added later, or IDs may reference default rules not yet loaded. At eval time,
+   skipping a non-existent rule is a no-op.
+
+4. **Skip + detect scoring**: If a skip rule says `skip_targets.rules: ["941100"]` and detect
+   rule 941100 would have matched, it's skipped (score not accumulated). Other detect rules
+   still fire. The post-loop threshold check uses the reduced score.
+
+5. **Skip + RL counter ticking**: If a skip rule skips a rate_limit rule, the counter does NOT
+   tick for that request. This is different from the current `allow` behavior where RL counters
+   always tick. When you skip an RL rule, you're saying "this traffic is exempt."
+
+6. **Service profile + skip interaction**: A skip rule that skips `phases: ["detect"]` bypasses
+   ALL detect rules including those modified by service profiles. Service profiles only affect
+   which detect rules are active and their severity — they don't override skip decisions.
+
+7. **Drag-reorder in unified UI**: Users can reorder within their priority band but NOT across
+   bands (allow rules can't be dragged below blocks). The UI enforces band boundaries visually
+   with section headers and prevents cross-band drops.
+
+8. **Backward compat for API consumers**: The existing `/api/exclusions` and `/api/rate-rules`
+   endpoints continue to work unchanged. The unified pipeline view is a new read-only endpoint
+   (`GET /api/policy/pipeline`) that merges both stores for display purposes.
+
+### Migration Plan (Detailed)
+
+**Step 1 — Plugin v0.7.0** (caddy-policy-engine):
+- Add `SkipTargets` to `PolicyRule` type
+- Add `skip` to action handler in `ServeHTTP` (accumulate flags, non-terminating)
+- Change `allow` to terminate immediately (breaking change — but wafctl regenerates rules)
+- Add skip flag checks to block/RL/detect evaluation
+- Extend `PolicyWafServiceConfig` with `RuleOverrides`/`CategoryOverrides`
+- Build `serviceRuleMask` at compile time
+- All new tests
+
+**Step 2 — wafctl + frontend** (caddy-compose):
+- Add `skip` exclusion type to models + validation + handlers
+- Store migration: existing `allow` exclusions → `skip` with `phases: ["detect"]`
+- New `allow` type = full bypass (priority 50)
+- `CRSProfileStore` + handlers + API endpoints
+- Policy generator: emit new priority bands, include service profiles in waf_config
+- Frontend: unified pipeline UI, CRS tab service selector
+
+**Step 3 — RL store merge** (optional, Phase 3):
+- Merge `RateLimitRuleStore` into `ExclusionStore` (or rename to `PolicyRuleStore`)
+- Single ordered list, single JSON file
+- Simplify deploy pipeline (one store → one generator call)
+
+### Implementation Priority
+
+This is a **Phase 2** feature — implement after the current deploy cycle. The current
+detect_block split and existing code review fixes ship first. This design spec ensures
+the architecture is documented before we start building.
+
+Estimated effort: ~3-4 days for plugin + wafctl + frontend for the allow/skip refactor
+(Steps 1-2 without CRS profiles). CRS profiles add ~2-3 days. RL store merge is Phase 3.
+
+---
+
+## Design Spec: Rate Limiting Algorithm Improvements
+
+### Current State
+
+The plugin uses **fixed-window interpolation** (sliding window counter), the same algorithm
+used by nginx, envoy, and Cloudflare:
+
+```
+effectiveCount = prevCount × (1 - elapsed/window) + currCount
+```
+
+State per key: two counters + two timestamps (32 bytes). 16-shard concurrent map for
+lock contention reduction. Sweep goroutine evicts expired counters.
+
+**Strengths:**
+- O(1) per-request (no timestamp lists, no sorted sets)
+- Minimal memory (32 bytes per key vs token bucket's ~24 or GCRA's ~16)
+- Smooth interpolation — no hard window boundary spikes
+- Counter preservation across hot-reloads (zone config unchanged → keep counters)
+- Well-understood — same algorithm as the major CDNs
+
+**Weaknesses:**
+- No burst allowance — can't express "100/min with burst of 20"
+- No graduated response — hard cliff from "allowed" to "denied"
+- No response-aware counting — can't count only errors (e.g., "10 failed logins/5min")
+- No compound keys with independent limits — can't say "100/IP/min AND 1000/path/min"
+- No backoff escalation — repeat offenders get the same Retry-After every time
+- Slight over-counting at interpolation boundaries (ceil rounds up)
+- No penalty box / timeout — once the window slides past, offender is immediately back
+
+### Algorithm Improvements
+
+#### 1. Token Bucket Mode (Burst Support)
+
+**Problem:** The sliding window treats all traffic uniformly. APIs often need to allow
+short bursts (e.g., a batch of requests on page load) while still enforcing a sustained
+rate. Currently, a client sending 10 requests in 1 second hits the limit even if the
+rule allows 100/min — the window hasn't accumulated enough capacity.
+
+**Solution:** Add a token bucket mode alongside the existing sliding window. Users choose
+per-rule which algorithm to use.
+
+```go
+type counter struct {
+    // Sliding window fields (existing)
+    prevCount int64
+    prevStart int64
+    currCount int64
+    currStart int64
+
+    // Token bucket fields (new)
+    tokens     float64  // current tokens available
+    lastRefill int64    // last refill timestamp (unix nanos)
+}
+```
+
+**Token bucket algorithm:**
+```
+On each request:
+  1. elapsed = now - lastRefill
+  2. tokens = min(tokens + elapsed × refillRate, burst)
+  3. lastRefill = now
+  4. if tokens >= 1.0: tokens -= 1.0; ALLOW
+     else: DENY
+```
+
+Where: `refillRate = events / window` (tokens per nanosecond), `burst` = configurable
+maximum token accumulation (defaults to `events` if not set).
+
+**Data model extension:**
+
+```json
+{
+  "rate_limit": {
+    "key": "client_ip",
+    "events": 100,
+    "window": "1m",
+    "burst": 20,
+    "algorithm": "token_bucket",
+    "action": "deny"
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `algorithm` | `string` | `"sliding_window"` | `"sliding_window"` or `"token_bucket"` |
+| `burst` | `int` | `events` | Max burst size (token bucket only). Must be >= 1 and <= events. |
+
+When `algorithm` is omitted or `"sliding_window"`, existing behavior is unchanged.
+When `"token_bucket"`, the counter uses token bucket logic. Both share the same `zone`
+infrastructure, `shard` map, and sweep goroutine.
+
+**Memory:** Token bucket is actually smaller per key — `float64 + int64` = 16 bytes vs
+sliding window's 32 bytes. Both fit in the same `counter` struct (union-style, fields
+unused by the other algorithm are zero).
+
+#### 2. Response-Aware Counting
+
+**Problem:** Rate limiting counts all requests equally. For login endpoints, you want
+to count only failed attempts (4xx responses), not successful ones. For APIs, you might
+want to count only 5xx responses to detect backend overload.
+
+**Solution:** Add optional `count_on` field that filters which responses increment
+the counter. This requires a response-phase hook — the counter increments after the
+upstream responds, not on request receipt.
+
+```json
+{
+  "rate_limit": {
+    "key": "client_ip",
+    "events": 5,
+    "window": "15m",
+    "count_on": "response_status:4xx",
+    "action": "deny"
+  }
+}
+```
+
+**`count_on` values:**
+
+| Value | Counts When |
+|-------|-------------|
+| (empty/omitted) | Every request (current behavior) |
+| `response_status:4xx` | Response status 400-499 |
+| `response_status:5xx` | Response status 500-599 |
+| `response_status:401,403` | Response status exactly 401 or 403 |
+| `response_status:!2xx` | Response status NOT 200-299 |
+
+**Implementation:** This requires the plugin to wrap `next.ServeHTTP()` with a
+`ResponseRecorder` to capture the status code, then conditionally increment the counter.
+The deny check still happens on request receipt (using the current count), but the
+increment happens after the response:
+
+```go
+// Pseudo-code for response-aware counting
+if rl.countOn != "" {
+    // Don't increment on request — just check current count
+    if !z.check(key, now) {  // check without increment
+        return 429
+    }
+    // Wrap next handler to capture response status
+    recorder := newResponseRecorder(w)
+    err := next.ServeHTTP(recorder, r)
+    recorder.Flush()
+    if matchesCountOn(recorder.Status(), rl.countOn) {
+        z.increment(key, now)  // only count matching responses
+    }
+    return err
+} else {
+    // Current behavior — count on request
+    allowed, count, limit := z.allow(key, now)
+    ...
+}
+```
+
+**Caveat:** Response-aware counting adds latency (must buffer response to check status)
+and memory (ResponseRecorder). Only enable when `count_on` is configured. The `zone.allow`
+method splits into `zone.check` (read-only) and `zone.increment` (write) for this mode.
+
+#### 3. Penalty Box / Timeout Escalation
+
+**Problem:** Repeat offenders get the same treatment on every window. A scanner that
+triggers rate limits every 60 seconds just waits 60 seconds and tries again. There's no
+escalation or cooling-off period.
+
+**Solution:** Add an optional penalty box that extends the deny duration for repeat
+offenders using exponential backoff.
+
+```json
+{
+  "rate_limit": {
+    "key": "client_ip",
+    "events": 100,
+    "window": "1m",
+    "action": "deny",
+    "penalty": {
+      "enabled": true,
+      "initial_timeout": "1m",
+      "max_timeout": "1h",
+      "multiplier": 2.0,
+      "decay_after": "10m"
+    }
+  }
+}
+```
+
+**Penalty algorithm:**
+```
+On rate limit exceeded:
+  1. Look up penalty state for this key
+  2. If no penalty state or expired: timeout = initial_timeout, strikes = 1
+  3. If existing penalty: timeout = min(prev_timeout × multiplier, max_timeout), strikes++
+  4. Deny until: now + timeout
+  5. Set Retry-After header to timeout seconds
+  6. If no requests for decay_after duration: reset penalty state
+
+On request within penalty period:
+  1. Deny immediately (don't even check counter)
+  2. DO NOT reset the penalty timer (prevent reset attacks)
+```
+
+**State per key:** Add to `counter`:
+```go
+type counter struct {
+    // ... existing fields ...
+
+    // Penalty box fields
+    penaltyUntil int64   // unix nanos — deny all requests before this time
+    penaltyLevel int     // current escalation level (0 = none, 1 = first strike, ...)
+    lastDenied   int64   // last time a deny was issued (for decay)
+}
+```
+
+**Memory impact:** +24 bytes per key. Only populated for keys that exceed the rate limit.
+Swept alongside normal counter expiry.
+
+**Interaction with skip rules:** A `skip` rule that skips a rate_limit rule also skips
+its penalty box. Penalty state is per-zone, not global — different RL rules have
+independent penalty tracking.
+
+#### 4. Compound Rate Limits (Multi-Key)
+
+**Problem:** Can't express "100 requests per IP per minute AND 1000 requests per path per
+minute." Currently each rule has one key. To achieve multi-dimensional limiting, you need
+multiple rules, and they're evaluated independently (no AND relationship).
+
+**Solution:** Add `compound_keys` field — an array of key specs that must ALL be under
+their respective limits for the request to pass.
+
+```json
+{
+  "rate_limit": {
+    "key": "compound",
+    "compound_keys": [
+      { "key": "client_ip", "events": 100, "window": "1m" },
+      { "key": "path", "events": 1000, "window": "1m" }
+    ],
+    "action": "deny"
+  }
+}
+```
+
+**Evaluation:** Each compound key gets its own zone (sub-zone). ALL must allow for the
+request to pass. If ANY denies, the request is denied. Counter increment happens only if
+all allow (atomic-style — either all tick or none tick, preventing one dimension from
+unfairly counting requests that the other dimension blocked).
+
+**Implementation:** The `zone` struct gets an optional `subZones` slice. The `allow` method
+iterates all sub-zones, checks all, then increments all if all passed.
+
+```go
+func (z *zone) allowCompound(keys []string, now time.Time) (bool, int64, int) {
+    // Phase 1: check all sub-zones (read-only)
+    for i, sub := range z.subZones {
+        if !sub.check(keys[i], now) {
+            return false, 0, sub.events
+        }
+    }
+    // Phase 2: all passed — increment all
+    for i, sub := range z.subZones {
+        sub.increment(keys[i], now)
+    }
+    return true, 0, 0
+}
+```
+
+**Use cases:**
+- Per-IP + per-path: prevent one IP from hammering one endpoint, AND prevent any endpoint
+  from being overwhelmed regardless of IP distribution (DDoS with many IPs)
+- Per-IP + per-API-key: shared API key shouldn't allow unlimited IPs
+- Per-IP + global: individual limit + total capacity limit
+
+#### 5. Graduated Response (Soft → Hard)
+
+**Problem:** Rate limiting is binary — you're either allowed or denied. No middle ground.
+Many APIs benefit from graduated degradation: warn the client they're approaching the limit,
+then throttle (add delay), then deny.
+
+**Solution:** Add `thresholds` array with escalating actions:
+
+```json
+{
+  "rate_limit": {
+    "key": "client_ip",
+    "events": 100,
+    "window": "1m",
+    "thresholds": [
+      { "at": 80, "action": "warn" },
+      { "at": 95, "action": "throttle", "delay_ms": 500 },
+      { "at": 100, "action": "deny" }
+    ]
+  }
+}
+```
+
+**Threshold actions:**
+
+| Action | Behavior | Headers |
+|--------|----------|---------|
+| `warn` | Allow but add warning headers | `X-RateLimit-Warning: approaching limit` |
+| `throttle` | Allow after artificial delay | `X-RateLimit-Throttled: 500ms` |
+| `deny` | Block with 429 (current behavior) | Standard rate limit headers |
+| `challenge` | Return 429 with captcha hint | `X-RateLimit-Challenge: true` (future) |
+
+**Implementation:** After computing `effective` count, walk thresholds in reverse order
+(highest first) to find the applicable action. The `throttle` action uses `time.Sleep()`
+before calling `next.ServeHTTP()` — simple but effective for small delays.
+
+```go
+if effective >= threshold.at {
+    switch threshold.action {
+    case "warn":
+        w.Header().Set("X-RateLimit-Warning", "approaching limit")
+        // allow through
+    case "throttle":
+        time.Sleep(time.Duration(threshold.delayMs) * time.Millisecond)
+        // allow through (after delay)
+    case "deny":
+        return 429
+    }
+    break // only apply highest matching threshold
+}
+```
+
+**Caveat:** `throttle` holds a goroutine for the delay duration. Under attack, this could
+exhaust goroutines. Add a max-concurrent-throttles limit (e.g., 1000) — if exceeded, escalate
+to deny. This prevents throttle from becoming a resource exhaustion vector.
+
+#### 6. Adaptive Rate Limiting (Backend Health)
+
+**Problem:** Static rate limits don't account for backend health. If the origin server is
+struggling (high latency, error rate), the rate limit should tighten automatically. If the
+backend is healthy, limits can be relaxed.
+
+**Solution:** Monitor upstream response latency and error rate, adjust effective rate limit
+dynamically within a configured range.
+
+```json
+{
+  "rate_limit": {
+    "key": "client_ip",
+    "events": 100,
+    "window": "1m",
+    "adaptive": {
+      "enabled": true,
+      "min_events": 20,
+      "max_events": 200,
+      "latency_target_ms": 200,
+      "error_rate_target": 0.05,
+      "adjustment_interval": "10s"
+    }
+  }
+}
+```
+
+**Algorithm (AIMD — Additive Increase, Multiplicative Decrease):**
+```
+Every adjustment_interval:
+  1. Sample upstream P95 latency and error rate over the interval
+  2. If latency > target OR error_rate > target:
+     effective_events = max(effective_events × 0.75, min_events)   ← multiplicative decrease
+  3. Else if latency < target × 0.5 AND error_rate < target × 0.5:
+     effective_events = min(effective_events + 5, max_events)       ← additive increase
+  4. Otherwise: hold steady
+```
+
+**Implementation complexity:** High. Requires:
+- Response latency sampling (wrap `next.ServeHTTP()` with timer)
+- Error rate tracking (count 5xx responses)
+- Per-service health metrics aggregation
+- Thread-safe effective_events updates
+- Hysteresis to prevent oscillation
+
+**This is a Phase 3+ feature.** The sliding window and token bucket improvements should
+ship first. Adaptive RL is a significant subsystem addition.
+
+#### 7. Distributed Rate Limiting (Multi-Instance)
+
+**Problem:** In a multi-instance deployment (e.g., Kubernetes with multiple Caddy pods),
+each instance maintains independent counters. A client sending requests round-robin across
+N instances effectively gets N× the rate limit.
+
+**Current state:** The plugin has `RateLimitGlobalConfig` with `read_interval` and
+`write_interval` fields that were designed for distributed sync but are not implemented.
+
+**Solution options:**
+
+| Approach | Complexity | Accuracy | Latency Impact |
+|----------|------------|----------|----------------|
+| Redis backend | Medium | High | +1-2ms per request (network hop) |
+| Gossip protocol (Serf/memberlist) | High | Medium | +0-1ms (async) |
+| Shared volume counter files | Low | Low | ~seconds delay |
+| Accept over-counting (document it) | None | Low | None |
+
+**Recommended: Redis backend (Phase 3+)**
+
+```json
+{
+  "rate_limit_config": {
+    "distributed": {
+      "backend": "redis",
+      "url": "redis://redis:6379/0",
+      "key_prefix": "rl:",
+      "sync_mode": "full"
+    }
+  }
+}
+```
+
+Two sync modes:
+- `full`: Every allow/deny check hits Redis (accurate, +latency)
+- `approximate`: Local counter + periodic sync to Redis (fast, eventual consistency)
+
+The approximate mode uses the same sliding window algorithm locally but periodically
+(every `write_interval`) flushes local counts to Redis and reads the global count. The
+effective limit is `events / num_instances` locally, with periodic global reconciliation.
+
+**This is Phase 3+.** Single-instance deployment (current) works fine with local counters.
+
+### Priority and Phasing
+
+| Feature | Phase | Effort | Value |
+|---------|-------|--------|-------|
+| Token bucket mode (burst) | **Phase 2** | Medium | High — burst support is the most requested RL feature |
+| Response-aware counting | **Phase 2** | Medium | High — login brute-force protection needs this |
+| Penalty box / timeout | **Phase 2** | Low-Medium | Medium — scanner deterrence |
+| Compound keys | **Phase 3** | Medium | Medium — DDoS scenarios need multi-dimensional limits |
+| Graduated response | **Phase 3** | Medium | Medium — better UX for API rate limiting |
+| Adaptive RL | **Phase 3+** | High | Medium — nice-to-have for auto-scaling scenarios |
+| Distributed RL | **Phase 3+** | High | High for multi-instance, N/A for single-instance |
+
+### Data Model Summary (All Features)
+
+```json
+{
+  "rate_limit": {
+    "key": "client_ip",
+    "events": 100,
+    "window": "1m",
+    "action": "deny",
+    "algorithm": "sliding_window",
+    "burst": 20,
+    "count_on": "response_status:4xx",
+    "penalty": {
+      "enabled": true,
+      "initial_timeout": "1m",
+      "max_timeout": "1h",
+      "multiplier": 2.0,
+      "decay_after": "10m"
+    },
+    "compound_keys": [
+      { "key": "client_ip", "events": 100, "window": "1m" },
+      { "key": "path", "events": 1000, "window": "1m" }
+    ],
+    "thresholds": [
+      { "at": 80, "action": "warn" },
+      { "at": 95, "action": "throttle", "delay_ms": 500 },
+      { "at": 100, "action": "deny" }
+    ]
+  }
+}
+```
+
+All new fields are optional with backward-compatible defaults. Existing rules continue
+to work unchanged. New features are orthogonal — can be combined (e.g., token bucket +
+penalty + response-aware).
+
+---
+
 ### Deploy-time Actions (First Coraza-Free Deploy)
 
 On first production deploy after Coraza removal, manually clean up on the remote host:

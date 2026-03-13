@@ -15,6 +15,7 @@ export interface SummaryData {
   rate_limited: number;
   policy_events: number;
   policy_blocked: number;
+  detect_blocked: number;
   policy_allowed: number;
   policy_skipped: number;
   unique_clients: number;
@@ -35,6 +36,7 @@ export interface TimelinePoint {
   logged: number;
   rate_limited: number;
   policy_block: number;
+  detect_block: number;
   policy_allow: number;
   policy_skip: number;
 }
@@ -46,6 +48,7 @@ export interface ServiceStat {
   logged: number;
   rate_limited: number;
   policy_block: number;
+  detect_block: number;
   policy_allow: number;
   policy_skip: number;
   block_rate: number;
@@ -58,6 +61,7 @@ export interface ClientStat {
   blocked: number;
   rate_limited: number;
   policy_block: number;
+  detect_block: number;
   policy_allow: number;
   policy_skip: number;
 }
@@ -69,6 +73,7 @@ export interface ServiceBreakdown {
   logged: number;
   rate_limited: number;
   policy_block: number;
+  detect_block: number;
   policy_allow: number;
   policy_skip: number;
 }
@@ -153,6 +158,7 @@ export interface ServiceDetail {
   logged: number;
   rate_limited: number;
   policy_block: number;
+  detect_block: number;
   policy_allow: number;
   policy_skip: number;
   block_rate: number;
@@ -178,17 +184,18 @@ interface RawSummary {
   rate_limited: number;
   policy_events: number;
   policy_blocked: number;
+  detect_blocked: number;
   policy_allowed: number;
   policy_skipped: number;
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
-  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
-  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour: { hour: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  top_services: { service: string; count: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  top_clients: { client: string; country?: string; count: number; blocked: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   top_countries: { country: string; count: number; blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number }[];
+  service_breakdown: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   recent_events: RawEvent[];
 }
 
@@ -270,6 +277,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
     rate_limited: raw.rate_limited ?? 0,
     policy_events: raw.policy_events ?? 0,
     policy_blocked: raw.policy_blocked ?? 0,
+    detect_blocked: raw.detect_blocked ?? 0,
     policy_allowed: raw.policy_allowed ?? 0,
     policy_skipped: raw.policy_skipped ?? 0,
     unique_clients: raw.unique_clients ?? 0,
@@ -282,6 +290,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       logged: h.logged ?? 0,
       rate_limited: h.rate_limited ?? 0,
       policy_block: h.policy_block ?? 0,
+      detect_block: h.detect_block ?? 0,
       policy_allow: h.policy_allow ?? 0,
       policy_skip: h.policy_skip ?? 0,
     })),
@@ -292,6 +301,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
+      detect_block: s.detect_block ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
       block_rate: s.count > 0 ? (s.blocked / s.count) * 100 : 0,
@@ -303,6 +313,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       blocked: c.blocked ?? 0,
       rate_limited: c.rate_limited ?? 0,
       policy_block: c.policy_block ?? 0,
+      detect_block: c.detect_block ?? 0,
       policy_allow: c.policy_allow ?? 0,
       policy_skip: c.policy_skip ?? 0,
     })),
@@ -319,6 +330,7 @@ export async function fetchSummary(params?: FilterableParams): Promise<SummaryDa
       logged: s.logged ?? 0,
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
+      detect_block: s.detect_block ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
     })),
@@ -374,7 +386,7 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 // Go API returns {"services":[{service, total, blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
   const qs = hours ? `?hours=${hours}` : "";
-  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; policy_allow: number; policy_skip: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
+  const raw = await fetchJSON<{ services: { service: string; total: number; blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number; top_uris?: { uri: string; count: number; blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
     `${API_BASE}/services${qs}`
   );
   return (raw.services ?? []).map((s) => ({
@@ -384,6 +396,7 @@ export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
     logged: s.logged,
     rate_limited: s.rate_limited ?? 0,
     policy_block: s.policy_block ?? 0,
+    detect_block: s.detect_block ?? 0,
     policy_allow: s.policy_allow ?? 0,
     policy_skip: s.policy_skip ?? 0,
     block_rate: s.total > 0 ? (s.blocked / s.total) * 100 : 0,

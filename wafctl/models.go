@@ -84,6 +84,7 @@ type SummaryResponse struct {
 	RateLimited      int             `json:"rate_limited"`
 	PolicyEvents     int             `json:"policy_events"`
 	PolicyBlocked    int             `json:"policy_blocked"`
+	DetectBlocked    int             `json:"detect_blocked"`
 	PolicyAllowed    int             `json:"policy_allowed"`
 	PolicySkipped    int             `json:"policy_skipped"`
 	UniqueClients    int             `json:"unique_clients"`
@@ -105,6 +106,7 @@ type HourCount struct {
 	Logged      int    `json:"logged"`
 	RateLimited int    `json:"rate_limited"`
 	PolicyBlock int    `json:"policy_block"`
+	DetectBlock int    `json:"detect_block"`
 	PolicyAllow int    `json:"policy_allow"`
 	PolicySkip  int    `json:"policy_skip"`
 }
@@ -116,6 +118,7 @@ type ServiceCount struct {
 	Logged      int    `json:"logged"`
 	RateLimited int    `json:"rate_limited"`
 	PolicyBlock int    `json:"policy_block"`
+	DetectBlock int    `json:"detect_block"`
 	PolicyAllow int    `json:"policy_allow"`
 	PolicySkip  int    `json:"policy_skip"`
 }
@@ -127,6 +130,7 @@ type ClientCount struct {
 	Blocked     int    `json:"blocked"`
 	RateLimited int    `json:"rate_limited"`
 	PolicyBlock int    `json:"policy_block"`
+	DetectBlock int    `json:"detect_block"`
 	PolicyAllow int    `json:"policy_allow"`
 	PolicySkip  int    `json:"policy_skip"`
 }
@@ -205,6 +209,7 @@ type ServiceDetail struct {
 	Logged      int           `json:"logged"`
 	RateLimited int           `json:"rate_limited"`
 	PolicyBlock int           `json:"policy_block"`
+	DetectBlock int           `json:"detect_block"`
 	PolicyAllow int           `json:"policy_allow"`
 	PolicySkip  int           `json:"policy_skip"`
 	TopURIs     []ServiceURI  `json:"top_uris,omitempty"`

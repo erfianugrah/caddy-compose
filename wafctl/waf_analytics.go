@@ -25,10 +25,10 @@ func computeServices(events []Event) ServicesResponse {
 		msg string
 	}
 	type svcData struct {
-		total, blocked                       int
-		policyBlock, policyAllow, policySkip int
-		uris                                 map[string]*uriStats
-		rules                                map[ruleKey]int
+		total, blocked                                    int
+		policyBlock, detectBlock, policyAllow, policySkip int
+		uris                                              map[string]*uriStats
+		rules                                             map[ruleKey]int
 	}
 	m := make(map[string]*svcData)
 
@@ -47,8 +47,10 @@ func computeServices(events []Event) ServicesResponse {
 			d.blocked++
 		}
 		switch ev.EventType {
-		case "policy_block", "detect_block":
+		case "policy_block":
 			d.policyBlock++
+		case "detect_block":
+			d.detectBlock++
 		case "policy_allow":
 			d.policyAllow++
 		case "policy_skip":
@@ -88,6 +90,7 @@ func computeServices(events []Event) ServicesResponse {
 			Blocked:     d.blocked,
 			Logged:      d.total - d.blocked,
 			PolicyBlock: d.policyBlock,
+			DetectBlock: d.detectBlock,
 			PolicyAllow: d.policyAllow,
 			PolicySkip:  d.policySkip,
 		}
@@ -185,8 +188,8 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 
 	// Compute per-service breakdown, hourly timeline, first/last seen, blocked count.
 	type counts struct {
-		total, blocked, logged, rateLimited  int
-		policyBlock, policyAllow, policySkip int
+		total, blocked, logged, rateLimited               int
+		policyBlock, detectBlock, policyAllow, policySkip int
 	}
 	svcMap := make(map[string]*counts)
 	hourMap := make(map[string]*counts)
@@ -231,9 +234,12 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		case ev.EventType == "rate_limited":
 			c.rateLimited++
 			hc.rateLimited++
-		case ev.EventType == "policy_block" || ev.EventType == "detect_block":
+		case ev.EventType == "policy_block":
 			c.policyBlock++
 			hc.policyBlock++
+		case ev.EventType == "detect_block":
+			c.detectBlock++
+			hc.detectBlock++
 		case ev.EventType == "policy_allow":
 			c.policyAllow++
 			hc.policyAllow++
@@ -265,6 +271,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 			Blocked:     c.blocked,
 			Logged:      c.logged,
 			PolicyBlock: c.policyBlock,
+			DetectBlock: c.detectBlock,
 			PolicyAllow: c.policyAllow,
 			PolicySkip:  c.policySkip,
 			RateLimited: c.rateLimited,
@@ -278,7 +285,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 	// Build sorted hourly timeline.
 	hourCounts := make([]HourCount, 0, len(hourMap))
 	for k, v := range hourMap {
-		logged := v.total - v.blocked - v.rateLimited - v.policyBlock - v.policyAllow - v.policySkip
+		logged := v.total - v.blocked - v.rateLimited - v.policyBlock - v.detectBlock - v.policyAllow - v.policySkip
 		if logged < 0 {
 			logged = 0
 		}
@@ -289,6 +296,7 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 			Logged:      logged,
 			RateLimited: v.rateLimited,
 			PolicyBlock: v.policyBlock,
+			DetectBlock: v.detectBlock,
 			PolicyAllow: v.policyAllow,
 			PolicySkip:  v.policySkip,
 		})
