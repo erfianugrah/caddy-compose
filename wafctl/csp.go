@@ -365,19 +365,50 @@ func (s *CSPStore) ResolvePolicy(service string) (CSPPolicy, CSPServiceConfig) {
 }
 
 func (s *CSPStore) deepCopy() CSPConfig {
-	data, err := json.Marshal(s.cfg)
-	if err != nil {
-		log.Printf("warning: CSP deepCopy marshal failed: %v", err)
-		return CSPConfig{Services: make(map[string]CSPServiceConfig)}
+	cp := CSPConfig{
+		Enabled:        s.cfg.Enabled,
+		GlobalDefaults: cloneCSPPolicy(s.cfg.GlobalDefaults),
+		Services:       make(map[string]CSPServiceConfig, len(s.cfg.Services)),
 	}
-	var cp CSPConfig
-	if err := json.Unmarshal(data, &cp); err != nil {
-		log.Printf("warning: CSP deepCopy unmarshal failed: %v", err)
-		return CSPConfig{Services: make(map[string]CSPServiceConfig)}
+	for k, sc := range s.cfg.Services {
+		cp.Services[k] = CSPServiceConfig{
+			Mode:       sc.Mode,
+			ReportOnly: sc.ReportOnly,
+			Inherit:    sc.Inherit,
+			Policy:     cloneCSPPolicy(sc.Policy),
+		}
 	}
-	if cp.Services == nil {
-		cp.Services = make(map[string]CSPServiceConfig)
+	return cp
+}
+
+func cloneCSPPolicy(p CSPPolicy) CSPPolicy {
+	return CSPPolicy{
+		DefaultSrc:              cloneStrings(p.DefaultSrc),
+		ScriptSrc:               cloneStrings(p.ScriptSrc),
+		StyleSrc:                cloneStrings(p.StyleSrc),
+		ImgSrc:                  cloneStrings(p.ImgSrc),
+		FontSrc:                 cloneStrings(p.FontSrc),
+		ConnectSrc:              cloneStrings(p.ConnectSrc),
+		MediaSrc:                cloneStrings(p.MediaSrc),
+		FrameSrc:                cloneStrings(p.FrameSrc),
+		WorkerSrc:               cloneStrings(p.WorkerSrc),
+		ObjectSrc:               cloneStrings(p.ObjectSrc),
+		ChildSrc:                cloneStrings(p.ChildSrc),
+		ManifestSrc:             cloneStrings(p.ManifestSrc),
+		BaseURI:                 cloneStrings(p.BaseURI),
+		FormAction:              cloneStrings(p.FormAction),
+		FrameAnc:                cloneStrings(p.FrameAnc),
+		UpgradeInsecureRequests: p.UpgradeInsecureRequests,
+		RawDirectives:           p.RawDirectives,
 	}
+}
+
+func cloneStrings(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	cp := make([]string, len(s))
+	copy(cp, s)
 	return cp
 }
 

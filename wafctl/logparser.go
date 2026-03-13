@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -256,13 +257,19 @@ func (s *Store) Stats() map[string]any {
 }
 
 // StartEviction runs eviction once immediately, then periodically at interval.
-func (s *Store) StartEviction(interval time.Duration) {
+// The goroutine exits when ctx is cancelled.
+func (s *Store) StartEviction(ctx context.Context, interval time.Duration) {
 	s.evictOld()
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for range ticker.C {
-			s.evictOld()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.evictOld()
+			}
 		}
 	}()
 }

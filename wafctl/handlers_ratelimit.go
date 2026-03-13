@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,15 +50,32 @@ func handleCreateRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 func handleUpdateRLRule(rs *RateLimitRuleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		var rule RateLimitRule
-		if _, failed := decodeJSON(w, r, &rule); failed {
+
+		// Decode into a map first to detect which fields were sent.
+		var raw map[string]json.RawMessage
+		if _, failed := decodeJSON(w, r, &raw); failed {
 			return
 		}
-		if err := validateRateLimitRule(rule); err != nil {
+
+		// Fetch existing rule to use as base for merge.
+		existing := rs.Get(id)
+		if existing == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "rule not found"})
+			return
+		}
+
+		// Marshal existing to JSON, then overlay the incoming fields.
+		base, _ := json.Marshal(existing)
+		var merged RateLimitRule
+		_ = json.Unmarshal(base, &merged)
+		overlay, _ := json.Marshal(raw)
+		_ = json.Unmarshal(overlay, &merged)
+
+		if err := validateRateLimitRule(merged); err != nil {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
 			return
 		}
-		updated, found, err := rs.Update(id, rule)
+		updated, found, err := rs.Update(id, merged)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update rule", Details: err.Error()})
 			return
@@ -129,9 +147,9 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigS
 
 		writeJSON(w, http.StatusOK, RateLimitDeployResponse{
 			Status:    "deployed",
-			Message:   fmt.Sprintf("Deployed %d RL rules via policy engine (hot-reload, no Caddy restart)", len(rules)),
+			Message:   fmt.Sprintf("Deployed %d RL rules to %s (plugin polls mtime for hot-reload)", len(rules), deployCfg.PolicyRulesFile),
 			Files:     []string{deployCfg.PolicyRulesFile},
-			Reloaded:  true, // Plugin hot-reloads automatically
+			Reloaded:  false, // Plugin detects mtime change asynchronously; not verified here
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		})
 	}

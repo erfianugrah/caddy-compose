@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -608,13 +609,19 @@ func (s *AccessLogStore) evict() {
 }
 
 // StartTailing periodically loads new 429 events.
-func (s *AccessLogStore) StartTailing(interval time.Duration) {
+// The goroutine exits when ctx is cancelled.
+func (s *AccessLogStore) StartTailing(ctx context.Context, interval time.Duration) {
 	s.Load()
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for range ticker.C {
-			s.Load()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.Load()
+			}
 		}
 	}()
 }

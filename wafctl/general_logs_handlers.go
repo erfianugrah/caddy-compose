@@ -355,7 +355,7 @@ func handleGeneralLogs(gls *GeneralLogStore) http.HandlerFunc {
 		hours := parseHours(r)
 		q := r.URL.Query()
 
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		gen := gls.generation.Load()
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
@@ -466,7 +466,7 @@ func handleGeneralLogsSummary(gls *GeneralLogStore) http.HandlerFunc {
 		hours := parseHours(r)
 		q := r.URL.Query()
 
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		gen := gls.generation.Load()
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)

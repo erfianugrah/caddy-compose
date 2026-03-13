@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -221,7 +222,8 @@ func downloadCFIPs(client *http.Client, url string) ([]string, error) {
 
 // StartScheduledRefresh launches a background goroutine that refreshes
 // CF IPs weekly at the specified UTC hour.
-func (s *CFProxyStore) StartScheduledRefresh(hour int, deployCfg DeployConfig) {
+// The goroutine exits when ctx is cancelled.
+func (s *CFProxyStore) StartScheduledRefresh(ctx context.Context, hour int, deployCfg DeployConfig) {
 	go func() {
 		for {
 			now := time.Now().UTC()
@@ -229,7 +231,13 @@ func (s *CFProxyStore) StartScheduledRefresh(hour int, deployCfg DeployConfig) {
 			delay := next.Sub(now)
 			log.Printf("[cfproxy] next scheduled refresh at %s (in %s)", next.Format(time.RFC3339), delay.Round(time.Second))
 
-			time.Sleep(delay)
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
 
 			log.Printf("[cfproxy] starting scheduled refresh")
 			result := s.Refresh(deployCfg)

@@ -13,7 +13,7 @@ func handleTopBlockedIPs(store *Store, als *AccessLogStore, rs *RateLimitRuleSto
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
 			return
@@ -39,7 +39,7 @@ func handleTopTargetedURIs(store *Store, als *AccessLogStore, rs *RateLimitRuleS
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
 			return
@@ -65,7 +65,7 @@ func handleTopCountries(store *Store, als *AccessLogStore, rs *RateLimitRuleStor
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
 			return

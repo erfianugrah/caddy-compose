@@ -12,8 +12,7 @@ import (
 
 // parseHours extracts and validates the ?hours= query parameter.
 // Returns 0 (meaning "all time") if not provided or invalid.
-// Accepts any positive integer; the validHours allowlist is only used
-// by the frontend to populate quick-range pickers.
+// Capped at 2160 (90 days) to match the default event retention period.
 func parseHours(r *http.Request) int {
 	s := r.URL.Query().Get("hours")
 	if s == "" {
@@ -22,6 +21,9 @@ func parseHours(r *http.Request) int {
 	h, err := strconv.Atoi(s)
 	if err != nil || h < 0 {
 		return 0
+	}
+	if h > 2160 {
+		h = 2160
 	}
 	return h
 }

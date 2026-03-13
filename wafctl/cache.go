@@ -1,6 +1,9 @@
 package main
 
 import (
+	"net/url"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,4 +86,33 @@ func (c *responseCache) set(key string, value interface{}, gen int64, ttl time.D
 // A change in either store invalidates the cache.
 func combinedGeneration(a, b *atomic.Int64) int64 {
 	return a.Load()*1_000_000 + b.Load()
+}
+
+// normalizeCacheKey sorts query parameters to produce a canonical cache key.
+// This prevents cache-key splitting attacks where reordering the same parameters
+// (e.g. "hours=24&service=foo" vs "service=foo&hours=24") creates separate entries.
+func normalizeCacheKey(rawQuery string) string {
+	params, err := url.ParseQuery(rawQuery)
+	if err != nil || len(params) == 0 {
+		return rawQuery
+	}
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for i, k := range keys {
+		vals := params[k]
+		sort.Strings(vals)
+		for j, v := range vals {
+			if i > 0 || j > 0 {
+				b.WriteByte('&')
+			}
+			b.WriteString(url.QueryEscape(k))
+			b.WriteByte('=')
+			b.WriteString(url.QueryEscape(v))
+		}
+	}
+	return b.String()
 }

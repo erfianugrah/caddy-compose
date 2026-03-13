@@ -48,9 +48,9 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		hours := parseHours(r)
 		q := r.URL.Query()
 
-		// Check response cache — keyed on the raw query string, invalidated by
+		// Check response cache — keyed on normalized query string, invalidated by
 		// data generation changes (new events or evictions in either store).
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		gen := combinedGeneration(&store.generation, &als.generation)
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
@@ -486,7 +486,7 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
-		cacheKey := r.URL.RawQuery
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
 		if cached, ok := cache.get(cacheKey, gen); ok {
 			writeJSON(w, http.StatusOK, cached)
 			return

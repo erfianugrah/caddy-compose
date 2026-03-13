@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -269,7 +270,8 @@ func nextRefreshTime(now time.Time, hour int) time.Time {
 // blocklist daily at the specified UTC hour. This replaces the cron-based
 // update-ipsum.sh approach, which was unreliable inside hardened containers
 // (BusyBox crond silently skips crontabs with wrong file permissions).
-func (bs *BlocklistStore) StartScheduledRefresh(hour int) {
+// The goroutine exits when ctx is cancelled.
+func (bs *BlocklistStore) StartScheduledRefresh(ctx context.Context, hour int) {
 	go func() {
 		for {
 			now := time.Now().UTC()
@@ -277,7 +279,13 @@ func (bs *BlocklistStore) StartScheduledRefresh(hour int) {
 			delay := next.Sub(now)
 			log.Printf("[blocklist] next scheduled refresh at %s (in %s)", next.Format(time.RFC3339), delay.Round(time.Second))
 
-			time.Sleep(delay)
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
 
 			log.Printf("[blocklist] starting scheduled refresh")
 			result := bs.Refresh()

@@ -107,11 +107,15 @@ func runServe() int {
 	}
 	geoStore := NewGeoIPStore(geoDBPath, geoAPICfg)
 
+	// Create shutdown context early so background goroutines can be cancelled.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
 	store := NewStore()
 	store.SetEventFile(envOr("WAF_EVENT_FILE", "/data/events.jsonl"))
 	store.SetMaxAge(maxAge)
 	store.SetGeoIP(geoStore)
-	store.StartEviction(tailInterval)
+	store.StartEviction(ctx, tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
 	accessLogStore.SetOffsetFile(envOr("WAF_ACCESS_OFFSET_FILE", "/data/.access-log-offset"))
@@ -125,11 +129,11 @@ func runServe() int {
 	generalLogStore.SetEventFile(envOr("WAF_GENERAL_LOG_FILE", "/data/general-events.jsonl"))
 	generalLogStore.SetMaxAge(generalMaxAge)
 	generalLogStore.SetGeoIP(geoStore)
-	generalLogStore.StartTailing(tailInterval)
+	generalLogStore.StartTailing(ctx, tailInterval)
 
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	accessLogStore.SetExclusionStore(exclusionStore)
-	accessLogStore.StartTailing(tailInterval)
+	accessLogStore.StartTailing(ctx, tailInterval)
 
 	configStore := NewConfigStore(configFile)
 	rlRuleStore := NewRateLimitRuleStore(rateLimitFile)
@@ -169,7 +173,7 @@ func runServe() int {
 			log.Printf("warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
 		}
 	}
-	blocklistStore.StartScheduledRefresh(refreshHour)
+	blocklistStore.StartScheduledRefresh(ctx, refreshHour)
 
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
@@ -179,7 +183,7 @@ func runServe() int {
 	cfProxyStore := NewCFProxyStore(cfProxyPath)
 
 	// Schedule weekly CF IP refresh (Monday at the same hour as blocklist).
-	cfProxyStore.StartScheduledRefresh(refreshHour, deployCfg)
+	cfProxyStore.StartScheduledRefresh(ctx, refreshHour, deployCfg)
 
 	mux := http.NewServeMux()
 
@@ -294,10 +298,6 @@ func runServe() int {
 		WriteTimeout: 150 * time.Second, // Must exceed Caddy reload client timeout (120s)
 		IdleTimeout:  60 * time.Second,
 	}
-
-	// Graceful shutdown: listen for SIGTERM/SIGINT and drain in-flight requests.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
 
 	go func() {
 		log.Printf("listening on :%s", port)

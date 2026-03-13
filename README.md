@@ -170,9 +170,7 @@ WebSocket connections bypass WAF entirely via a `@not_websocket` matcher in the 
 
 A custom [caddy-body-matcher](https://github.com/erfianugrah/caddy-body-matcher) plugin provides request body matching (raw, JSON, form) and a `body_vars` handler that extracts body field values as Caddy placeholders. This enables body-aware rate limiting (e.g., rate limit by a JSON API key field) and body-based WAF conditions.
 
-A custom [caddy-policy-engine](https://github.com/erfianugrah/caddy-policy-engine) plugin evaluates allow/block/honeypot rules with exact matching semantics — fixing the core security bug where Coraza's `@pm` substring match causes `/admin` to match `/administrator`. The plugin uses hash-set lookups for `in` operator matching. When enabled (`WAF_POLICY_ENGINE_ENABLED=true`), allow/block rules are handled by the plugin before Coraza runs; allowed requests skip WAF entirely. Behind a feature flag with safe default (`false`).
-
-Multi-condition policy rules generate chained SecRules. Due to a Coraza quirk, `ctl:` actions (like `ruleRemoveById` and `ruleEngine=Off`) must be placed on the **last** rule of a chain — Coraza silently ignores `ctl:` on the first rule. The generator handles this automatically via `splitCTLActions()`. Commas in rule names are also escaped to semicolons in `msg:` fields, since Coraza's seclang parser silently stops loading subsequent rules when it encounters an unescaped comma inside a quoted `msg:` value.
+A custom [caddy-policy-engine](https://github.com/erfianugrah/caddy-policy-engine) plugin evaluates allow/block/honeypot/detect rules and handles rate limiting — replacing Coraza entirely. The plugin uses hash-set lookups for `in` operator matching, fixing the core security bug where Coraza's `@pm` substring match causes `/admin` to match `/administrator`. Rules are hot-reloaded from `policy-rules.json` without Caddy restarts.
 
 ### WAF modes
 
@@ -328,7 +326,6 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_BLOCKLIST_REFRESH_HOUR` | `6` | UTC hour (0–23) for daily IPsum blocklist refresh |
 | `WAF_MANAGED_LISTS_FILE` | `/data/lists.json` | Managed lists store path |
 | `WAF_MANAGED_LISTS_DIR` | `/data/lists` | Output dir for managed list files |
-| `WAF_POLICY_ENGINE_ENABLED` | `false` | Enable policy engine plugin (allow/block via Caddy plugin) |
 | `WAF_POLICY_RULES_FILE` | `/data/coraza/policy-rules.json` | Policy engine rules JSON output path |
 
 ## Site block patterns
@@ -429,7 +426,7 @@ Every site block should include these, in order:
 | `import error_pages` | yes | Custom error page templates |
 | `import site_log <name>` | yes | JSON access log + combined log for analytics |
 
-Rate limit rules are managed by wafctl. When the policy engine is enabled (`WAF_POLICY_ENGINE_ENABLED=true`), rate limiting is handled by the policy engine plugin via `policy-rules.json` hot-reload — no Caddy restart needed. Rules support condition-based matching (per-path, per-method, per-header), flexible rate keys (client IP, path, header values), and auto-deploy on save.
+Rate limit rules are managed by wafctl. Rate limiting is handled by the policy engine plugin via `policy-rules.json` hot-reload — no Caddy restart needed. Rules support condition-based matching (per-path, per-method, per-header), flexible rate keys (client IP, path, header values), and auto-deploy on save.
 
 ## Security hardening
 
@@ -530,7 +527,6 @@ caddy-compose/
     json_helpers.go      # writeJSON, decodeJSON, queryInt
     query_helpers.go     # parseHours, parseTimeRange, fieldFilter
     rl_rules.go          # Rate limit rule store (CRUD, validation, v1 migration)
-    rl_generator.go      # Rate limit Caddyfile generation
     rl_matchers.go       # Caddy matcher syntax generation from conditions
     rl_analytics.go      # Rate limit analytics, condition-based 429 attribution
     rl_advisor.go        # Rate advisor (anomaly detection, recommendations)
