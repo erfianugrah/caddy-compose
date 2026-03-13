@@ -2032,11 +2032,11 @@ Usage:
 
 ### Tasks
 
-- [ ] Evaluate `go-libinjection` accuracy against CRS test suite
-- [ ] Implement `detect_sqli` operator
-- [ ] Implement `detect_xss` operator
-- [ ] Benchmark: latency impact per request with libinjection enabled
-- [ ] Compare detection rates: regex-only vs. regex+libinjection
+- [x] Implement `detect_sqli` operator — using `corazawaf/libinjection-go`, captures fingerprint as matched_data
+- [x] Implement `detect_xss` operator — same library
+- [ ] Evaluate accuracy against CRS test suite (deferred)
+- [ ] Benchmark: latency impact per request with libinjection enabled (deferred)
+- [ ] Compare detection rates: regex-only vs. regex+libinjection (deferred)
 
 ---
 
@@ -2095,7 +2095,7 @@ Usage:
 - [x] Frontend displays matched payload detail (variable name, matched value, rule message)
 
 **Deferred:**
-- [ ] `detect_sqli` / `detect_xss` operators (libinjection) — 4 CRS rules use these; regex alternatives cover the same attacks
+- [x] `detect_sqli` / `detect_xss` operators (libinjection) — implemented in plugin v0.12.x
 - [ ] `multiMatch` support — ~15 CRS rules; regex patterns already match post-transform
 - [ ] Response-phase detection (Phase 2) — 100+ CRS outbound rules
 - [x] Dead code cleanup in wafctl — **COMPLETED**: SecRule generators, audit log parser, SecRule exclusion types in frontend. 43 files, -8,287 net lines
