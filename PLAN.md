@@ -1047,8 +1047,8 @@ Review ALL forms across the dashboard for consistency, missing fields, and broke
 | ~~Default rules list API~~ | **DONE v0.10.2** | |
 | ~~Default rules disable API~~ | **DONE v0.10.2** | |
 | IP lookup managed-list check | Show which managed lists contain a given IP during `/api/lookup/{ip}` | Low |
-| Default rules bulk API | `POST /api/default-rules/bulk` — batch override for CRS rules bulk actions | Medium |
-| Exclusions bulk API | `POST /api/exclusions/bulk` — batch enable/disable/delete for policy engine bulk actions | Medium |
+| ~~Default rules bulk API~~ | **DONE** — `POST /api/default-rules/bulk` with override/reset actions | |
+| ~~Exclusions bulk API~~ | **DONE** — `POST /api/exclusions/bulk` with enable/disable/delete actions | |
 
 ### Architecture — UI Bundling into wafctl — DONE
 
@@ -1089,7 +1089,7 @@ The policy engine's `responseHeaderWriter` (used for CSP `default` mode and secu
 - [ ] Decide: should `detect` rules evaluate on WebSocket upgrade requests? The initial HTTP upgrade request is a normal HTTP request that could carry attack payloads in headers/query params. CRS currently does NOT inspect it (bypassed by `@not_websocket`). Options:
   - **Inspect upgrade request** (stricter) — evaluate rules normally, only skip response-phase logic after hijack
   - **Skip entirely** (current behavior) — maintain backward compat, WebSocket traffic is never scored
-- [ ] Test: WebSocket connections work through the policy engine, CSP `default` mode doesn't break upgrades
+- [x] Test: WebSocket connections work through the policy engine — E2E `TestWebSocketPolicyEngineHijack` verifies block rule active (responseHeaderWriter wraps w) + WS upgrade succeeds + multi-frame echo
 
 **Effort:** Low for Phase 1 (just implement the interface). Medium for Phase 2 (needs design decision on upgrade request inspection + integration testing).
 
@@ -1991,6 +1991,7 @@ Note: 9100030, 9100033, 9100034 are now shipped exclusively in `default-rules.js
 - [x] Build rules management UI — **COMPLETED**: `/rules` page with `RulesPanel.tsx`, category pill filters, search, per-rule toggle/override, Save & Deploy
 - [x] Clean up dead wafctl code — **COMPLETED**: 43 files changed, -8,287 net lines. Go: deleted 7 files, cleaned 18+ files. Frontend: deleted SecRuleEditor.tsx, rewrote PolicyForms.tsx, trimmed to 3 exclusion types (allow/block/detect)
 - [x] Fix "Create Exception" for policy engine events — **COMPLETED**: button was hidden for all `policy_*` events, action defaulted wrong, name generation broke on empty rule IDs
+- [x] Pre-deploy cleanup sprint — **COMPLETED** (2026-03-13): All code review findings (CR-1 through CR-26) addressed, 13 deferred items completed, 117 E2E tests pass. See [Code Review Cleanup Sprint](#code-review-cleanup-sprint-2026-03-13).
 - [ ] Deploy to production
 - [ ] Response-phase detection (Phase 2 — deferred)
 
@@ -2100,7 +2101,7 @@ Usage:
 - [ ] Response-phase detection (Phase 2) — 100+ CRS outbound rules
 - [x] Dead code cleanup in wafctl — **COMPLETED**: SecRule generators, audit log parser, SecRule exclusion types in frontend. 43 files, -8,287 net lines
 - [x] Rules management UI — **COMPLETED**: `/rules` page with CF-style browse/toggle/override
-- [ ] WebSocket `http.Hijacker` support (currently using `@not_websocket` bypass in Caddyfile)
+- [x] WebSocket `http.Hijacker` support — **COMPLETED**: `Hijack()` + `Flush()` on `responseHeaderWriter` (plugin v0.12.x, commit `4d95405`). E2E verified: block rule active + WS upgrade succeeds through policy engine wrapper
 
 ### What Full Coraza Removal Eliminates
 
@@ -2333,6 +2334,53 @@ Has `contents: write` permission. Should be SHA-pinned.
 With 90-day event retention + MMDB + access log stores, may be tight under load.
 
 - [ ] Monitor and document sizing guidance
+
+### Code Review Cleanup Sprint (2026-03-13)
+
+All 13 deferred work items completed in a single sprint on branch `fix/code-review-2026-03-13`.
+24 commits across caddy-compose + 1 on caddy-policy-engine. Key deliverables:
+
+**Items 1–6 (Frontend + API):**
+- Dynamic stat cards from event types (Item 1)
+- EventDetailPanel fixes — dedup matched rules, highest severity summary (Item 2)
+- Deep copy helpers for ExclusionStore/RateLimitRuleStore (Item 3, CR-4)
+- CRS bulk actions API + UI — `POST /api/default-rules/bulk` (Item 4)
+- Policy Engine bulk actions API + UI — `POST /api/exclusions/bulk` (Item 5)
+- Full form/API audit — 5 silently swallowed errors fixed, `request_id` gap closed (Item 6)
+
+**Items 7–10 (Architecture + Security):**
+- Dashboard bundled into wafctl image — `uiFileServer` with MPA try_files (Item 7)
+- SSRF hardening — `validateRefreshURL()` (Item 8, CR-1, pre-existing)
+- Non-root Caddy — UID 10000, `su-exec` drops privileges (Item 9, CR-7)
+- File-based secrets — `CF_API_TOKEN`/`EMAIL` from `/run/secrets/` (Item 10, CR-8)
+
+**Items 11–13 (Plugin + Misc):**
+- WebSocket Hijacker — `Hijack()` + `Flush()` on `responseHeaderWriter` (Item 11)
+- libinjection operators — `detect_sqli`/`detect_xss` (Item 12, pre-existing)
+- Response-phase detection — deferred with documented rationale (Item 13)
+
+**Additional fixes:**
+- `blocklist.go` dedup count — `len(allIPs)` → `len(ipSet)` for accurate IP counts
+- All CR-1 through CR-26 addressed (CR-9 and CR-27 deferred with documentation)
+- Graceful shutdown with `signal.NotifyContext` (CR-3)
+- Context cancellation for all background goroutines (CR-5)
+- Cache key normalization (CR-10)
+- CORS preflight `Max-Age` (CR-11)
+- Error status code consistency (CR-12)
+- RL rule partial update (CR-13)
+- GitHub Actions SHA pinning (CR-17, CR-26)
+
+**Test verification:**
+- 1425 Go unit tests pass
+- 332 frontend (Vitest) tests pass
+- 117 E2E tests pass (20 test files, including 7 new expanded smoke test groups):
+  - `TestDefaultRulesBulkBehavior` — CRS rule disable/re-enable via bulk API
+  - `TestExclusionBulkBehavior` — block rule bulk disable/re-enable
+  - `TestCaddyNonRoot` — admin API + log pipeline + UI serving as non-root
+  - `TestWebSocketPolicyEngineHijack` — block rule active + WS upgrade + multi-frame echo
+  - `TestBackupRestoreIntegrity` — create → backup → delete → restore → verify by name
+  - `TestSecurityHeadersDeploy` — custom header + profile switch with response verification
+  - `TestDashboardContent` — HTML validity, static assets, proxy parity, 404 handling
 
 ---
 

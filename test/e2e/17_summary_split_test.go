@@ -23,11 +23,16 @@ import (
 func TestDetectBlockSummarySplit(t *testing.T) {
 	t.Parallel()
 	// Wait for wafctl to parse the access log entries from earlier tests.
-	// The tail interval is 2s in e2e, so 3s gives at least 1 full parse cycle.
-	time.Sleep(3 * time.Second)
-
-	resp, body := httpGet(t, wafctlURL+"/api/summary?hours=1")
-	assertCode(t, "summary", 200, resp)
+	// Poll until detect_blocked > 0 appears (replaces fixed 3s sleep).
+	var body []byte
+	waitForCondition(t, "detect_blocked events in summary", 10*time.Second, func() bool {
+		resp, b := httpGet(t, wafctlURL+"/api/summary?hours=1")
+		if resp.StatusCode != 200 {
+			return false
+		}
+		body = b
+		return jsonInt(b, "detect_blocked") > 0
+	})
 
 	// Parse the full summary response.
 	var summary map[string]json.RawMessage

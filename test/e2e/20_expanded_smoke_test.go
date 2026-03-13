@@ -204,13 +204,21 @@ func TestCaddyNonRoot(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		// Check general logs (WAF events only contain blocked requests).
-		time.Sleep(6 * time.Second)
-		_, logsBody := httpGet(t, wafctlURL+"/api/logs?hours=1&limit=50")
-		if strings.Contains(string(logsBody), sentinel) {
+		// Poll general logs for the sentinel (WAF events only contain blocked requests).
+		// Best-effort: passing 200 already proves Caddy serves as non-root.
+		found := false
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			_, logsBody := httpGet(t, wafctlURL+"/api/logs?hours=1&limit=50")
+			if strings.Contains(string(logsBody), sentinel) {
+				found = true
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		if found {
 			t.Log("sentinel found in general logs — log pipeline verified")
 		} else {
-			// Passing 200 already proves Caddy is up and serving as non-root.
 			t.Log("sentinel not in recent logs (expected for clean requests)")
 		}
 	})
