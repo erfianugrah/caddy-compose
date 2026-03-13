@@ -39,6 +39,188 @@ function ExpandableSection({ title, children, defaultOpen = false }: { title: st
   );
 }
 
+/** Find the highest-severity matched rule for detect_block summary. */
+function highestSeverityRule(rules: WAFEvent["matched_rules"]): NonNullable<WAFEvent["matched_rules"]>[number] | null {
+  if (!rules || rules.length === 0) return null;
+  return rules.reduce((best, r) => {
+    // Lower severity number = higher severity (2=critical, 3=error, 4=warning, 5=notice)
+    if (r.severity > 0 && (best.severity === 0 || r.severity < best.severity)) return r;
+    return best;
+  }, rules[0]);
+}
+
+/** CRS/anomaly event details — shown for detect_block, logged, and legacy events. */
+function CRSEventDetails({ event }: { event: WAFEvent }) {
+  const isAnomaly = event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound";
+  const isDetectBlock = event.event_type === "detect_block";
+
+  // For detect_block events: derive summary from highest severity matched rule
+  // when the event itself doesn't carry a primary rule_id
+  const summaryRule = isDetectBlock && event.rule_id === 0
+    ? highestSeverityRule(event.matched_rules)
+    : null;
+
+  return (
+    <>
+      {/* Anomaly score block: show the blocking reason prominently */}
+      {isAnomaly && (
+        <div className="flex gap-2 items-center pb-1 mb-1 border-b border-lovelace-800">
+          <span className="text-muted-foreground">Blocked By:</span>
+          <span className="text-lv-red font-medium">
+            {event.blocked_by === "anomaly_inbound"
+              ? `Inbound Anomaly Score (${event.anomaly_score}) exceeded threshold`
+              : `Outbound Anomaly Score (${event.outbound_anomaly_score}) exceeded threshold`}
+          </span>
+        </div>
+      )}
+
+      {/* Detect block summary — highest severity rule from matched_rules */}
+      {isDetectBlock && summaryRule && (
+        <div className="flex gap-2 items-center pb-1 mb-1 border-b border-lovelace-800">
+          <span className="text-muted-foreground">Highest Severity:</span>
+          <Badge variant="outline" className={T.badgeMono}>
+            {summaryRule.name || summaryRule.id}
+          </Badge>
+          <span className={formatSeverity(summaryRule.severity).color + " text-xs font-medium"}>
+            {formatSeverity(summaryRule.severity).label}
+          </span>
+          <span className="text-foreground/80 truncate text-xs">{summaryRule.msg}</span>
+        </div>
+      )}
+
+      {/* Scores */}
+      {(event.anomaly_score > 0 || event.outbound_anomaly_score > 0) && (
+        <div className="flex gap-4">
+          {event.anomaly_score > 0 && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground">Inbound Score:</span>
+              <span className={
+                event.anomaly_score >= 25 ? "text-lv-red font-bold" :
+                event.anomaly_score >= 10 ? "text-lv-peach font-medium" :
+                "text-lv-cyan"
+              }>
+                {event.anomaly_score}
+              </span>
+            </div>
+          )}
+          {event.outbound_anomaly_score > 0 && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground">Outbound Score:</span>
+              <span className={
+                event.outbound_anomaly_score >= 25 ? "text-lv-red font-bold" :
+                event.outbound_anomaly_score >= 10 ? "text-lv-peach font-medium" :
+                "text-lv-cyan"
+              }>
+                {event.outbound_anomaly_score}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Primary rule — labeled differently for anomaly vs direct blocks */}
+      {event.rule_id > 0 && (
+        <>
+          {isAnomaly && (
+            <div className="text-xs uppercase tracking-wider text-muted-foreground/60 pt-1">
+              Highest Severity Rule
+            </div>
+          )}
+          <div className="flex gap-2 items-center">
+            <span className="text-muted-foreground">Rule ID:</span>
+            {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
+              <a href={policyRuleLink(event.rule_msg)!} className="inline-flex items-center gap-1 group" onClick={(e) => e.stopPropagation()}>
+                <Badge variant="outline" className={`${T.badgeMono} group-hover:border-lv-green/50 group-hover:text-lv-green transition-colors`}>
+                  {event.rule_id}
+                </Badge>
+                <ExternalLink className="h-3 w-3 text-muted-foreground group-hover:text-lv-green transition-colors" />
+              </a>
+            ) : (
+              <Badge variant="outline" className={T.badgeMono}>
+                {event.rule_id}
+              </Badge>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground">Message:</span>
+            {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
+              <a href={policyRuleLink(event.rule_msg)!} className="text-lv-green hover:text-lv-green-bright hover:underline transition-colors" onClick={(e) => e.stopPropagation()}>
+                {event.rule_msg}
+              </a>
+            ) : (
+              <span className="text-foreground">{event.rule_msg || "N/A"}</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground">Severity:</span>
+            {(() => {
+              const sev = formatSeverity(event.severity);
+              return <span className={sev.color}>{sev.label}</span>;
+            })()}
+          </div>
+        </>
+      )}
+
+      {/* Matched data with parsing and highlighting */}
+      {event.matched_data && (() => {
+        const parsed = parseMatchedData(event.matched_data);
+        if (parsed) {
+          return (
+            <div className="space-y-1">
+              <div className="flex gap-2">
+                <span className="text-muted-foreground">Variable:</span>
+                <code className="text-lv-cyan">{parsed.variable}</code>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-muted-foreground">Trigger:</span>
+                <code className="text-lv-peach">{parsed.trigger}</code>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="text-muted-foreground shrink-0">Full Value:</span>
+                <code className="break-all text-foreground/80">
+                  <HighlightedText text={parsed.fullValue} highlight={parsed.trigger} />
+                </code>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="flex gap-2">
+            <span className="text-muted-foreground">Matched:</span>
+            <code className="break-all text-lv-peach">{event.matched_data}</code>
+          </div>
+        );
+      })()}
+
+      {event.rule_tags && event.rule_tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1">
+          <span className="text-muted-foreground">Tags:</span>
+          {event.rule_tags.map((tag) => (
+            <Badge key={tag} variant="outline" className={`${T.badgeMono} text-muted-foreground`}>
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {/* Only show Labels that aren't already in rule_tags */}
+      {(() => {
+        const ruleTagSet = new Set(event.rule_tags ?? []);
+        const uniqueLabels = (event.tags ?? []).filter((t) => !ruleTagSet.has(t));
+        return uniqueLabels.length > 0 ? (
+          <div className="flex flex-wrap gap-1 pt-1">
+            <span className="text-muted-foreground">Labels:</span>
+            {uniqueLabels.map((tag) => (
+              <span key={tag} className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-2 py-0.5 text-xs font-data text-lv-cyan">
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null;
+      })()}
+    </>
+  );
+}
+
 export function EventDetailPanel({ event, hideActions = false, viewInEventsHref }: { event: WAFEvent; hideActions?: boolean; viewInEventsHref?: string }) {
   // Show "Create Exception" for any event where an exception makes sense:
   // - detect_block / policy_block / policy_skip / logged / blocked → user may want to allow or tune
@@ -251,172 +433,37 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 )}
               </>
             ) : (
-              <>
-                {/* Anomaly score block: show the blocking reason prominently */}
-                {(event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound") && (
-                  <div className="flex gap-2 items-center pb-1 mb-1 border-b border-lovelace-800">
-                    <span className="text-muted-foreground">Blocked By:</span>
-                    <span className="text-lv-red font-medium">
-                      {event.blocked_by === "anomaly_inbound"
-                        ? `Inbound Anomaly Score (${event.anomaly_score}) exceeded threshold`
-                        : `Outbound Anomaly Score (${event.outbound_anomaly_score}) exceeded threshold`}
-                    </span>
-                  </div>
-                )}
-
-                {/* Scores */}
-                {(event.anomaly_score > 0 || event.outbound_anomaly_score > 0) && (
-                  <div className="flex gap-4">
-                    {event.anomaly_score > 0 && (
-                      <div className="flex gap-2">
-                        <span className="text-muted-foreground">Inbound Score:</span>
-                        <span className={
-                          event.anomaly_score >= 25 ? "text-lv-red font-bold" :
-                          event.anomaly_score >= 10 ? "text-lv-peach font-medium" :
-                          "text-lv-cyan"
-                        }>
-                          {event.anomaly_score}
-                        </span>
-                      </div>
-                    )}
-                    {event.outbound_anomaly_score > 0 && (
-                      <div className="flex gap-2">
-                        <span className="text-muted-foreground">Outbound Score:</span>
-                        <span className={
-                          event.outbound_anomaly_score >= 25 ? "text-lv-red font-bold" :
-                          event.outbound_anomaly_score >= 10 ? "text-lv-peach font-medium" :
-                          "text-lv-cyan"
-                        }>
-                          {event.outbound_anomaly_score}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Primary rule — labeled differently for anomaly vs direct blocks */}
-                {event.rule_id > 0 && (
-                  <>
-                    {(event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound") && (
-                      <div className="text-xs uppercase tracking-wider text-muted-foreground/60 pt-1">
-                        Highest Severity Rule
-                      </div>
-                    )}
-                    <div className="flex gap-2 items-center">
-                      <span className="text-muted-foreground">Rule ID:</span>
-                      {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
-                        <a href={policyRuleLink(event.rule_msg)!} className="inline-flex items-center gap-1 group" onClick={(e) => e.stopPropagation()}>
-                          <Badge variant="outline" className={`${T.badgeMono} group-hover:border-lv-green/50 group-hover:text-lv-green transition-colors`}>
-                            {event.rule_id}
-                          </Badge>
-                          <ExternalLink className="h-3 w-3 text-muted-foreground group-hover:text-lv-green transition-colors" />
-                        </a>
-                      ) : (
-                        <Badge variant="outline" className={T.badgeMono}>
-                          {event.rule_id}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="text-muted-foreground">Message:</span>
-                      {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
-                        <a href={policyRuleLink(event.rule_msg)!} className="text-lv-green hover:text-lv-green-bright hover:underline transition-colors" onClick={(e) => e.stopPropagation()}>
-                          {event.rule_msg}
-                        </a>
-                      ) : (
-                        <span className="text-foreground">{event.rule_msg || "N/A"}</span>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="text-muted-foreground">Severity:</span>
-                      {(() => {
-                        const sev = formatSeverity(event.severity);
-                        return <span className={sev.color}>{sev.label}</span>;
-                      })()}
-                    </div>
-                  </>
-                )}
-
-                {/* Matched data with parsing and highlighting */}
-                {event.matched_data && (() => {
-                  const parsed = parseMatchedData(event.matched_data);
-                  if (parsed) {
-                    return (
-                      <div className="space-y-1">
-                        <div className="flex gap-2">
-                          <span className="text-muted-foreground">Variable:</span>
-                          <code className="text-lv-cyan">{parsed.variable}</code>
-                        </div>
-                        <div className="flex gap-2">
-                          <span className="text-muted-foreground">Trigger:</span>
-                          <code className="text-lv-peach">{parsed.trigger}</code>
-                        </div>
-                        <div className="flex gap-2 items-start">
-                          <span className="text-muted-foreground shrink-0">Full Value:</span>
-                          <code className="break-all text-foreground/80">
-                            <HighlightedText text={parsed.fullValue} highlight={parsed.trigger} />
-                          </code>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="flex gap-2">
-                      <span className="text-muted-foreground">Matched:</span>
-                      <code className="break-all text-lv-peach">{event.matched_data}</code>
-                    </div>
-                  );
-                })()}
-
-                {event.rule_tags && event.rule_tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    <span className="text-muted-foreground">Tags:</span>
-                    {event.rule_tags.map((tag) => (
-                      <Badge key={tag} variant="outline" className={`${T.badgeMono} text-muted-foreground`}>
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {/* Only show Labels that aren't already in rule_tags */}
-                {(() => {
-                  const ruleTagSet = new Set(event.rule_tags ?? []);
-                  const uniqueLabels = (event.tags ?? []).filter((t) => !ruleTagSet.has(t));
-                  return uniqueLabels.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      <span className="text-muted-foreground">Labels:</span>
-                      {uniqueLabels.map((tag) => (
-                        <span key={tag} className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-2 py-0.5 text-xs font-data text-lv-cyan">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-              </>
+              <CRSEventDetails event={event} />
             )}
           </div>
         </div>
       </div>
 
-      {/* All Matched Rules — show for detect_block (any count) and CRS events (>1) */}
-      {event.matched_rules && (
-        event.event_type === "detect_block"
-          ? event.matched_rules.length >= 1
-          : event.matched_rules.length > 1
-      ) && (
-        <ExpandableSection title={`All Matched Rules (${event.matched_rules.length})`} defaultOpen>
+      {/* All Matched Rules — deduplicated against the primary rule shown above */}
+      {event.matched_rules && event.matched_rules.length > 0 && (() => {
+        // For non-detect_block events, skip the first matched rule if it duplicates
+        // the primary rule already displayed in the right column.
+        const dedupedRules = event.event_type !== "detect_block" && event.rule_id > 0
+          ? event.matched_rules.filter((r) => r.id !== event.rule_id)
+          : event.matched_rules;
+        if (dedupedRules.length === 0) return null;
+        return (
+        <ExpandableSection title={`All Matched Rules (${dedupedRules.length})`} defaultOpen={event.event_type === "detect_block"}>
           <div className="space-y-3">
-            {event.matched_rules.map((rule, idx) => {
+            {dedupedRules.map((rule, idx) => {
               const sev = formatSeverity(rule.severity);
               const ruleId = rule.name || (rule.id > 0 ? String(rule.id) : null);
               const parsed = rule.matched_data ? parseMatchedData(rule.matched_data) : null;
               return (
                 <div key={rule.name || rule.id || idx} className="rounded border border-lovelace-800 bg-lovelace-950/50 p-2 space-y-1.5 text-xs">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {ruleId && <Badge variant="outline" className={T.badgeMono}>{ruleId}</Badge>}
+                    {/* Show numeric ID separately when name is a non-numeric string */}
+                    {rule.name && rule.id > 0 && rule.name !== String(rule.id) && (
+                      <Badge variant="outline" className={`${T.badgeMono} text-muted-foreground/60`}>{rule.id}</Badge>
+                    )}
                     <span className={sev.color + " text-xs font-medium"}>{sev.label}</span>
-                    <span className="text-foreground/80 truncate">{rule.msg}</span>
+                    <span className="text-foreground/80 truncate" title={rule.msg}>{rule.msg}</span>
                   </div>
                   {/* Per-condition match details (detect rules via plugin v0.11+) */}
                   {rule.matches && rule.matches.length > 0 ? (
@@ -481,7 +528,8 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
             })}
           </div>
         </ExpandableSection>
-      )}
+        );
+      })()}
 
       {/* Request Context */}
       {(event.request_args && Object.keys(event.request_args).length > 0) ||

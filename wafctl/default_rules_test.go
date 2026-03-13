@@ -637,3 +637,162 @@ func TestHandleResetDefaultRule(t *testing.T) {
 		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
+
+// ─── Bulk Actions Tests ───────────────────────────────────────────
+
+func TestBulkOverride(t *testing.T) {
+	rules := sampleDefaultRules()
+	defaultsPath := writeTestDefaultRules(t, rules)
+	ds := NewDefaultRuleStore(defaultsPath, filepath.Join(t.TempDir(), "overrides.json"))
+
+	// Bulk override: disable two rules at once.
+	changed, err := ds.BulkOverride(
+		[]string{"9100030", "9100033"},
+		json.RawMessage(`{"enabled":false}`),
+	)
+	if err != nil {
+		t.Fatalf("BulkOverride: %v", err)
+	}
+	if changed != 2 {
+		t.Errorf("expected 2 changed, got %d", changed)
+	}
+
+	// Verify both are disabled.
+	for _, id := range []string{"9100030", "9100033"} {
+		r, ok := ds.Get(id)
+		if !ok {
+			t.Fatalf("rule %s not found", id)
+		}
+		if r.Enabled {
+			t.Errorf("rule %s should be disabled", id)
+		}
+		if !r.HasOverride {
+			t.Errorf("rule %s should have override", id)
+		}
+	}
+
+	// Unknown IDs are skipped.
+	changed, err = ds.BulkOverride(
+		[]string{"nonexistent", "9100030"},
+		json.RawMessage(`{"severity":"ERROR"}`),
+	)
+	if err != nil {
+		t.Fatalf("BulkOverride with unknown: %v", err)
+	}
+	if changed != 1 {
+		t.Errorf("expected 1 changed (unknown skipped), got %d", changed)
+	}
+
+	// Verify merge: 9100030 should have both enabled=false AND severity=ERROR.
+	r, _ := ds.Get("9100030")
+	if r.Enabled {
+		t.Error("9100030 should still be disabled after merge")
+	}
+	if r.Severity != "ERROR" {
+		t.Errorf("9100030 severity should be ERROR, got %s", r.Severity)
+	}
+}
+
+func TestBulkReset(t *testing.T) {
+	rules := sampleDefaultRules()
+	defaultsPath := writeTestDefaultRules(t, rules)
+	ds := NewDefaultRuleStore(defaultsPath, filepath.Join(t.TempDir(), "overrides.json"))
+
+	// Set overrides first.
+	ds.BulkOverride(
+		[]string{"9100030", "9100033"},
+		json.RawMessage(`{"enabled":false}`),
+	)
+
+	// Bulk reset.
+	removed, err := ds.BulkReset([]string{"9100030", "9100033", "nonexistent"})
+	if err != nil {
+		t.Fatalf("BulkReset: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("expected 2 removed, got %d", removed)
+	}
+
+	// Verify both are back to defaults.
+	for _, id := range []string{"9100030", "9100033"} {
+		r, ok := ds.Get(id)
+		if !ok {
+			t.Fatalf("rule %s not found", id)
+		}
+		if !r.Enabled {
+			t.Errorf("rule %s should be enabled after reset", id)
+		}
+		if r.HasOverride {
+			t.Errorf("rule %s should not have override after reset", id)
+		}
+	}
+}
+
+func TestHandleBulkDefaultRules(t *testing.T) {
+	rules := sampleDefaultRules()
+	defaultsPath := writeTestDefaultRules(t, rules)
+	ds := NewDefaultRuleStore(defaultsPath, filepath.Join(t.TempDir(), "overrides.json"))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/default-rules/bulk", handleBulkDefaultRules(ds))
+
+	t.Run("override", func(t *testing.T) {
+		body := `{"ids":["9100030","9100033"],"action":"override","override":{"enabled":false}}`
+		req := httptest.NewRequest("POST", "/api/default-rules/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp map[string]int
+		json.NewDecoder(w.Body).Decode(&resp)
+		if resp["changed"] != 2 {
+			t.Errorf("expected changed=2, got %d", resp["changed"])
+		}
+	})
+
+	t.Run("reset", func(t *testing.T) {
+		body := `{"ids":["9100030","9100033"],"action":"reset"}`
+		req := httptest.NewRequest("POST", "/api/default-rules/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp map[string]int
+		json.NewDecoder(w.Body).Decode(&resp)
+		if resp["removed"] != 2 {
+			t.Errorf("expected removed=2, got %d", resp["removed"])
+		}
+	})
+
+	t.Run("empty_ids", func(t *testing.T) {
+		body := `{"ids":[],"action":"override","override":{"enabled":false}}`
+		req := httptest.NewRequest("POST", "/api/default-rules/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 400 {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid_action", func(t *testing.T) {
+		body := `{"ids":["9100030"],"action":"delete"}`
+		req := httptest.NewRequest("POST", "/api/default-rules/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 400 {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("override_without_body", func(t *testing.T) {
+		body := `{"ids":["9100030"],"action":"override"}`
+		req := httptest.NewRequest("POST", "/api/default-rules/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 400 {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+}

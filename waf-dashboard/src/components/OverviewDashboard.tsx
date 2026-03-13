@@ -338,13 +338,8 @@ export default function OverviewDashboard() {
       {/* ── Dashboard Filter Bar ── */}
       <DashboardFilterBar filters={filters} onChange={setFilters} services={serviceNames} ruleNames={ruleNames} />
 
-      {/* ── Stat Cards ── */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-        <StatCard title="Security Events" value={data?.total_events ?? 0} icon={Shield} color="green" loading={loading} href="/events" />
-        <StatCard title="Blocked" value={data?.total_blocked ?? 0} icon={ShieldAlert} color="pink" loading={loading} href="/events?type=detect_block" />
-        <StatCard title="Rate Limited" value={data?.rate_limited ?? 0} icon={ShieldBan} color="yellow" loading={loading} href="/events?type=rate_limited" />
-        <StatCard title="Policy" value={data?.policy_events ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=policy_skip" />
-      </div>
+      {/* ── Stat Cards (dynamic) ── */}
+      <DynamicStatCards data={data} loading={loading} />
 
       {/* ── Tag Breakdown ── */}
       <TagBreakdown tags={data?.tag_counts ?? []} />
@@ -835,6 +830,64 @@ export default function OverviewDashboard() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+// ─── Dynamic Stat Cards ───────────────────────────────────────────
+
+/** Event-type stat card definitions — order determines display priority. */
+const STAT_CARD_DEFS: {
+  key: keyof SummaryData;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  href: string;
+}[] = [
+  { key: "total_events",    label: "Security Events",  icon: Shield,      color: "green",  href: "/events" },
+  { key: "total_blocked",   label: "CRS Blocked",      icon: ShieldAlert, color: "pink",   href: "/events?type=detect_block" },
+  { key: "rate_limited",    label: "Rate Limited",      icon: ShieldBan,   color: "yellow", href: "/events?type=rate_limited" },
+  { key: "policy_blocked",  label: "Policy Block",      icon: ShieldBan,   color: "red",    href: "/events?type=policy_block" },
+  { key: "detect_blocked",  label: "Detect Block",      icon: ShieldAlert, color: "orange", href: "/events?type=detect_block" },
+  { key: "policy_allowed",  label: "Policy Allow",      icon: ShieldCheck, color: "green",  href: "/events?type=policy_allow" },
+  { key: "policy_skipped",  label: "Policy Skip",       icon: ShieldCheck, color: "blue",   href: "/events?type=policy_skip" },
+  { key: "logged",          label: "Logged",            icon: Shield,      color: "cyan",   href: "/events?type=logged" },
+];
+
+/**
+ * Renders stat cards dynamically: always shows "Security Events" first,
+ * then all event-type cards with non-zero counts. Adapts grid columns
+ * to the number of visible cards.
+ */
+function DynamicStatCards({ data, loading }: { data: SummaryData | null; loading: boolean }) {
+  const cards = useMemo(() => {
+    if (!data) return STAT_CARD_DEFS.slice(0, 4); // Show first 4 as skeletons while loading
+    // Always include "Security Events" (index 0), then filter the rest for non-zero values
+    const rest = STAT_CARD_DEFS.slice(1).filter((def) => {
+      const val = data[def.key];
+      return typeof val === "number" && val > 0;
+    });
+    return [STAT_CARD_DEFS[0], ...rest];
+  }, [data]);
+
+  // Adaptive grid: 2 cols on mobile, up to 5 on desktop depending on card count
+  const gridCols = cards.length <= 4
+    ? "grid-cols-2 md:grid-cols-4"
+    : "grid-cols-2 md:grid-cols-4 lg:grid-cols-5";
+
+  return (
+    <div className={`grid gap-4 ${gridCols}`}>
+      {cards.map((def) => (
+        <StatCard
+          key={def.key}
+          title={def.label}
+          value={data ? (data[def.key] as number) ?? 0 : 0}
+          icon={def.icon}
+          color={def.color}
+          loading={loading}
+          href={def.href}
+        />
+      ))}
     </div>
   );
 }

@@ -98,3 +98,40 @@ export async function overrideDefaultRule(
 export async function resetDefaultRule(id: string): Promise<DefaultRule> {
   return deleteJSON<DefaultRule>(`${API_BASE}/default-rules/${encodeURIComponent(id)}/override`);
 }
+
+// ─── Bulk Actions ───────────────────────────────────────────────────
+
+export interface BulkOverrideResult {
+  changed: number;
+}
+
+export interface BulkResetResult {
+  removed: number;
+}
+
+/** Apply an override to multiple rules at once. */
+export async function bulkOverrideDefaultRules(
+  ids: string[],
+  override: DefaultRuleOverride,
+): Promise<BulkOverrideResult> {
+  const resp = await fetch(`${API_BASE}/default-rules/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, action: "override", override }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}
+
+/** Reset overrides for multiple rules at once. */
+export async function bulkResetDefaultRules(
+  ids: string[],
+): Promise<BulkResetResult> {
+  const resp = await fetch(`${API_BASE}/default-rules/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, action: "reset" }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}

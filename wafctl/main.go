@@ -277,6 +277,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/default-rules/{id}", handleGetDefaultRule(defaultRuleStore))
 	mux.HandleFunc("PUT /api/default-rules/{id}", handleOverrideDefaultRule(defaultRuleStore))
 	mux.HandleFunc("DELETE /api/default-rules/{id}/override", handleResetDefaultRule(defaultRuleStore))
+	mux.HandleFunc("POST /api/default-rules/bulk", handleBulkDefaultRules(defaultRuleStore))
 
 	// General Logs (all access log entries)
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))

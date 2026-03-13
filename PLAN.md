@@ -922,11 +922,11 @@ would auto-appear as new cards.
 - [x] `models.go`: Add `DetectBlocked int json:"detect_blocked"` to `SummaryResponse`
 - [x] `models.go`: `PolicyBlocked` only counts `policy_block` (not `detect_block`)
 - [x] Per-hour/service/client breakdowns: add `detect_block` field alongside existing `policy_block`
-- [ ] Nuke legacy `blocked` event type handling — after JSONL cleanup, only new types exist
+- [x] Nuke legacy `blocked` field → `total_blocked` rename across full stack (commit `6381245`)
 
 **Frontend changes:**
 - [x] `SummaryData`: Add `detectBlocked` field
-- [ ] `OverviewDashboard.tsx`: Replace hardcoded 4 cards with dynamic card generation
+- [x] `OverviewDashboard.tsx`: Replace hardcoded 4 cards with dynamic card generation from `STAT_CARD_DEFS`
 - [x] Timeline chart: Add `detect_block` as separate series
 - [x] Per-service/client breakdowns: Show detect_block separately from policy_block
 - [x] Color mapping: Add `detect_block` to `ACTION_COLORS` and `ACTION_LABELS`
@@ -1001,12 +1001,8 @@ each with generous sleep waits. The biggest time sinks:
 
 **Pending:**
 - [ ] CRS rules: Pagination per PL section (PL1 has ~160 rules — needs page size selector + page controls)
-- [ ] CRS rules: Bulk actions — checkbox column, select all in PL group/filter, toolbar with:
-  - Enable/Disable selected
-  - Set severity for selected (Critical/Error/Warning/Notice)
-  - Set PL for selected (1/2/3/4)
-  - Reset selected to defaults
-- [ ] CRS rules: Bulk action API — `POST /api/default-rules/bulk` with `{ ids: [...], override: { enabled?, severity?, paranoia_level? } }`
+- [x] CRS rules: Bulk actions — checkbox column, select all, bulk toolbar (enable/disable/severity/reset)
+- [x] CRS rules: Bulk action API — `POST /api/default-rules/bulk` with `{ ids, action: "override"|"reset", override }` + tests
 - [ ] CRS rules: Global PL controls on section headers — each PL section header should have:
   - PL-level enable/disable toggle (disable all rules at this PL)
   - Anomaly score threshold display/edit (leverages WAF engine settings via policy engine)
@@ -1306,9 +1302,9 @@ block rates (<100/day for legitimate traffic) this is negligible.
 - [x] `parseDetectRulesDetail()`: store rule ID string in `Name`, strip `PE-` for backward compat
 - [x] `enrichMatchedRulesWithDetails()`: also set `Name` from detectMatchEntry
 - [x] Frontend `MatchedRuleInfo`: add `name` field (already present)
-- [ ] Frontend `EventDetailPanel`: remove doubled matched rules display
-- [ ] Frontend `EventDetailPanel`: add highest severity rule summary for detect_block
-- [ ] Frontend `EventDetailPanel`: show rule name + description in expandable section
+- [x] Frontend `EventDetailPanel`: remove doubled matched rules display (dedupe by `rule_id`)
+- [x] Frontend `EventDetailPanel`: add highest severity rule summary for detect_block
+- [x] Frontend `EventDetailPanel`: show rule name + description in expandable section
 - [x] Frontend `eventPrefill`: use `name` field for Create Exception rule ID pre-fill
 - [x] Update wafctl tests, frontend tests, e2e tests (backward compat tests in place)
 
@@ -2189,8 +2185,8 @@ kills in-flight requests abruptly, potentially corrupting partially-written atom
 backing arrays with the store's internal data. Same issue in `RateLimitRuleStore.listLocked()`
 (`rl_rules.go:147`).
 
-- [ ] Add deep copy helper for `RuleExclusion` (clone Conditions/Tags slices)
-- [ ] Add deep copy for `RateLimitRule` in `listLocked()`
+- [x] Add deep copy helper for `RuleExclusion` (clone Conditions/Tags slices) — `deepCopyExclusion()` in exclusions.go
+- [x] Add deep copy for `RateLimitRule` in `listLocked()` — `deepCopyRLRule()` in rl_rules.go
 
 #### CR-5: Background Goroutines Have No Cancellation — `wafctl/logparser.go:261`
 

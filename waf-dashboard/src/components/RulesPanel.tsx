@@ -9,6 +9,8 @@ import {
   listDefaultRules,
   overrideDefaultRule,
   resetDefaultRule,
+  bulkOverrideDefaultRules,
+  bulkResetDefaultRules,
 } from "@/lib/api";
 import { postJSON } from "@/lib/api/shared";
 import { Badge } from "@/components/ui/badge";
@@ -95,6 +97,10 @@ export default function RulesPanel() {
   // Collapsed PL sections
   const [collapsedPLs, setCollapsedPLs] = useState<Set<number>>(new Set());
 
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   // Detail dialog
   const [detailRule, setDetailRule] = useState<DefaultRule | null>(null);
 
@@ -171,6 +177,65 @@ export default function RulesPanel() {
     }
   }, []);
 
+  // ── Bulk actions ─────────────────────────────────────────────────
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  const handleBulkAction = useCallback(
+    async (action: "enable" | "disable" | "reset", severity?: RuleSeverity) => {
+      if (selected.size === 0) return;
+      try {
+        setBulkBusy(true);
+        const ids = [...selected];
+        if (action === "enable") {
+          await bulkOverrideDefaultRules(ids, { enabled: true });
+        } else if (action === "disable") {
+          await bulkOverrideDefaultRules(ids, { enabled: false });
+        } else if (action === "reset") {
+          await bulkResetDefaultRules(ids);
+        }
+        if (severity) {
+          await bulkOverrideDefaultRules(ids, { severity });
+        }
+        setDirty(true);
+        setSelected(new Set());
+        await load();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selected, load],
+  );
+
+  const handleBulkSeverity = useCallback(
+    async (severity: RuleSeverity) => {
+      if (selected.size === 0) return;
+      try {
+        setBulkBusy(true);
+        await bulkOverrideDefaultRules([...selected], { severity });
+        setDirty(true);
+        setSelected(new Set());
+        await load();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selected, load],
+  );
+
   const deployTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (deployTimerRef.current) clearTimeout(deployTimerRef.current); }, []);
 
@@ -238,6 +303,10 @@ export default function RulesPanel() {
 
     return result;
   }, [rules, search, categoryFilter, severityFilter, statusFilter]);
+
+  const selectAllVisible = useCallback(() => {
+    setSelected(new Set(filtered.map((r) => r.id)));
+  }, [filtered]);
 
   // ── Group by PL ─────────────────────────────────────────────────
 
@@ -413,6 +482,43 @@ export default function RulesPanel() {
           </span>
         </div>
 
+        {/* Bulk action toolbar */}
+        {selected.size > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-lv-cyan/30 bg-lv-cyan/5 px-4 py-2">
+            <span className="text-xs font-medium text-lv-cyan mr-2">
+              {selected.size} selected
+            </span>
+            <Button variant="outline" size="xs" onClick={() => handleBulkAction("enable")} disabled={bulkBusy}>
+              Enable
+            </Button>
+            <Button variant="outline" size="xs" onClick={() => handleBulkAction("disable")} disabled={bulkBusy}>
+              Disable
+            </Button>
+            <Select onValueChange={(v) => handleBulkSeverity(v as RuleSeverity)} disabled={bulkBusy}>
+              <SelectTrigger className="h-7 w-[110px] text-xs">
+                <SelectValue placeholder="Set Severity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CRITICAL">Critical</SelectItem>
+                <SelectItem value="ERROR">Error</SelectItem>
+                <SelectItem value="WARNING">Warning</SelectItem>
+                <SelectItem value="NOTICE">Notice</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="xs" onClick={() => handleBulkAction("reset")} disabled={bulkBusy}>
+              Reset to Default
+            </Button>
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="ghost" size="xs" onClick={selectAllVisible} className="text-xs text-muted-foreground">
+                Select All ({filtered.length})
+              </Button>
+              <Button variant="ghost" size="xs" onClick={clearSelection} className="text-xs text-muted-foreground">
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* PL Sections */}
         {[1, 2, 3, 4].map((pl) => {
           const group = plGroups[pl];
@@ -427,11 +533,13 @@ export default function RulesPanel() {
               rules={group}
               enabledCount={enabledCount}
               isCollapsed={isCollapsed}
+              selected={selected}
               onToggleCollapse={() => togglePL(pl)}
               onToggleRule={handleToggle}
               onSeverityChange={handleSeverityChange}
               onPLChange={handlePLChange}
               onDetail={setDetailRule}
+              onToggleSelect={toggleSelect}
             />
           );
         })}
@@ -472,11 +580,13 @@ interface PLSectionProps {
   rules: DefaultRule[];
   enabledCount: number;
   isCollapsed: boolean;
+  selected: Set<string>;
   onToggleCollapse: () => void;
   onToggleRule: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
   onPLChange: (rule: DefaultRule, pl: number) => void;
   onDetail: (rule: DefaultRule) => void;
+  onToggleSelect: (id: string) => void;
 }
 
 function PLSection({
@@ -484,11 +594,13 @@ function PLSection({
   rules,
   enabledCount,
   isCollapsed,
+  selected,
   onToggleCollapse,
   onToggleRule,
   onSeverityChange,
   onPLChange,
   onDetail,
+  onToggleSelect,
 }: PLSectionProps) {
   const { sortState, toggleSort, sortedData } = useTableSort<DefaultRule, RuleSortKey>(
     rules,
@@ -524,6 +636,7 @@ function PLSection({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[36px] px-2" />
               <TableHead className="w-[60px]">Status</TableHead>
               <SortableTableHead<RuleSortKey>
                 sortKey="id"
@@ -562,10 +675,12 @@ function PLSection({
               <RuleRow
                 key={rule.id}
                 rule={rule}
+                isSelected={selected.has(rule.id)}
                 onToggle={onToggleRule}
                 onSeverityChange={onSeverityChange}
                 onPLChange={onPLChange}
                 onDetail={onDetail}
+                onToggleSelect={onToggleSelect}
               />
             ))}
           </TableBody>
@@ -579,18 +694,22 @@ function PLSection({
 
 interface RuleRowProps {
   rule: DefaultRule;
+  isSelected: boolean;
   onToggle: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
   onPLChange: (rule: DefaultRule, pl: number) => void;
   onDetail: (rule: DefaultRule) => void;
+  onToggleSelect: (id: string) => void;
 }
 
 function RuleRow({
   rule,
+  isSelected,
   onToggle,
   onSeverityChange,
   onPLChange,
   onDetail,
+  onToggleSelect,
 }: RuleRowProps) {
   const category = getCategoryForRule(rule.id);
 
@@ -600,9 +719,18 @@ function RuleRow({
         "group cursor-pointer",
         !rule.enabled && "opacity-50",
         rule.has_override && "bg-lv-cyan/5",
+        isSelected && "bg-lv-purple/10",
       )}
       onClick={() => onDetail(rule)}
     >
+      <TableCell className="px-2" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(rule.id)}
+          className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
+        />
+      </TableCell>
       <TableCell onClick={(e) => e.stopPropagation()}>
         <Switch
           checked={rule.enabled}
