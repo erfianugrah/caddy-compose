@@ -211,6 +211,32 @@ func handleImportExclusions(es *ExclusionStore) http.HandlerFunc {
 	}
 }
 
+func handleBulkExclusions(es *ExclusionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			IDs    []string `json:"ids"`
+			Action string   `json:"action"` // "enable", "disable", "delete"
+		}
+		if _, failed := decodeJSON(w, r, &req); failed {
+			return
+		}
+		if len(req.IDs) == 0 {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "ids array is required"})
+			return
+		}
+		if len(req.IDs) > 1000 {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "max 1000 IDs per bulk request"})
+			return
+		}
+		changed, err := es.BulkUpdate(req.IDs, req.Action)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "bulk action failed", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"changed": changed})
+	}
+}
+
 func handleReorderExclusions(es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

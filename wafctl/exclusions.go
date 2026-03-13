@@ -278,6 +278,64 @@ func (s *ExclusionStore) Export() ExclusionExport {
 	}
 }
 
+// BulkUpdate applies an action to multiple exclusions by ID.
+// Supported actions: "enable", "disable", "delete".
+// Returns the count of exclusions actually changed.
+func (s *ExclusionStore) BulkUpdate(ids []string, action string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[id] = true
+	}
+
+	old := make([]RuleExclusion, len(s.exclusions))
+	copy(old, s.exclusions)
+
+	changed := 0
+	now := time.Now().UTC()
+
+	switch action {
+	case "enable":
+		for i := range s.exclusions {
+			if idSet[s.exclusions[i].ID] && !s.exclusions[i].Enabled {
+				s.exclusions[i].Enabled = true
+				s.exclusions[i].UpdatedAt = now
+				changed++
+			}
+		}
+	case "disable":
+		for i := range s.exclusions {
+			if idSet[s.exclusions[i].ID] && s.exclusions[i].Enabled {
+				s.exclusions[i].Enabled = false
+				s.exclusions[i].UpdatedAt = now
+				changed++
+			}
+		}
+	case "delete":
+		var kept []RuleExclusion
+		for _, e := range s.exclusions {
+			if idSet[e.ID] {
+				changed++
+			} else {
+				kept = append(kept, e)
+			}
+		}
+		s.exclusions = kept
+	default:
+		return 0, fmt.Errorf("unsupported bulk action: %s", action)
+	}
+
+	if changed > 0 {
+		if err := s.save(); err != nil {
+			s.exclusions = old
+			return 0, err
+		}
+	}
+	return changed, nil
+}
+
 // EnabledExclusions returns only enabled exclusions (deep copies).
 func (s *ExclusionStore) EnabledExclusions() []RuleExclusion {
 	s.mu.RLock()

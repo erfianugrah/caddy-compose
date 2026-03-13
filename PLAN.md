@@ -1019,13 +1019,10 @@ each with generous sleep waits. The biggest time sinks:
 
 #### Policy Engine Bulk Actions
 
-- [ ] Checkbox column for multi-select
-- [ ] Select all in current filter / page
-- [ ] Bulk action toolbar:
-  - Enable/Disable selected
-  - Delete selected (with confirmation)
-  - Move selected to top / bottom (reorder)
-- [ ] Bulk action API — `POST /api/exclusions/bulk` with `{ ids: [...], action: "enable"|"disable"|"delete" }`
+- [x] Checkbox column for multi-select
+- [x] Select all in current filter / page
+- [x] Bulk action toolbar (enable/disable/delete with confirmation)
+- [x] Bulk action API — `POST /api/exclusions/bulk` with `{ ids, action: "enable"|"disable"|"delete" }` + tests
 
 #### Comprehensive Form / API Audit (pre-deploy)
 

@@ -253,3 +253,21 @@ export async function reorderExclusions(ids: string[]): Promise<Exclusion[]> {
   const raw = await putJSON<RawExclusion[]>(`${API_BASE}/exclusions/reorder`, { ids });
   return raw.map(mapExclusionFromGo);
 }
+
+// ─── Bulk Actions ───────────────────────────────────────────────────
+
+export type BulkExclusionAction = "enable" | "disable" | "delete";
+
+/** Apply a bulk action to multiple exclusions. */
+export async function bulkUpdateExclusions(
+  ids: string[],
+  action: BulkExclusionAction,
+): Promise<{ changed: number }> {
+  const resp = await fetch(`${API_BASE}/exclusions/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, action }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}

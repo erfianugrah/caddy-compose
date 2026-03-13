@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1425,4 +1426,133 @@ func TestConvertConditions_PhraseMatch(t *testing.T) {
 	if result[0].ListItems[0] != "select" {
 		t.Errorf("ListItems[0] = %q, want select", result[0].ListItems[0])
 	}
+}
+
+// ─── Bulk Actions Tests ───────────────────────────────────────────
+
+func TestExclusionBulkUpdate(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	// Create 3 exclusions.
+	ids := make([]string, 3)
+	for i := 0; i < 3; i++ {
+		e, err := es.Create(RuleExclusion{
+			Name:       fmt.Sprintf("test-%d", i),
+			Type:       "allow",
+			Conditions: []Condition{{Field: "path", Operator: "eq", Value: fmt.Sprintf("/test%d", i)}},
+			Enabled:    true,
+		})
+		if err != nil {
+			t.Fatalf("create %d: %v", i, err)
+		}
+		ids[i] = e.ID
+	}
+
+	t.Run("disable", func(t *testing.T) {
+		changed, err := es.BulkUpdate(ids[:2], "disable")
+		if err != nil {
+			t.Fatalf("BulkUpdate disable: %v", err)
+		}
+		if changed != 2 {
+			t.Errorf("expected 2 changed, got %d", changed)
+		}
+		for _, id := range ids[:2] {
+			e, ok := es.Get(id)
+			if !ok {
+				t.Fatalf("exclusion %s not found", id)
+			}
+			if e.Enabled {
+				t.Errorf("exclusion %s should be disabled", id)
+			}
+		}
+		// Third should still be enabled.
+		e, _ := es.Get(ids[2])
+		if !e.Enabled {
+			t.Error("third exclusion should still be enabled")
+		}
+	})
+
+	t.Run("enable", func(t *testing.T) {
+		changed, err := es.BulkUpdate(ids[:2], "enable")
+		if err != nil {
+			t.Fatalf("BulkUpdate enable: %v", err)
+		}
+		if changed != 2 {
+			t.Errorf("expected 2 changed, got %d", changed)
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		changed, err := es.BulkUpdate(ids[:2], "delete")
+		if err != nil {
+			t.Fatalf("BulkUpdate delete: %v", err)
+		}
+		if changed != 2 {
+			t.Errorf("expected 2 changed, got %d", changed)
+		}
+		if len(es.List()) != 1 {
+			t.Errorf("expected 1 remaining, got %d", len(es.List()))
+		}
+	})
+
+	t.Run("invalid_action", func(t *testing.T) {
+		_, err := es.BulkUpdate([]string{"x"}, "invalid")
+		if err == nil {
+			t.Error("expected error for invalid action")
+		}
+	})
+}
+
+func TestHandleBulkExclusions(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	// Create test exclusions.
+	ids := make([]string, 2)
+	for i := 0; i < 2; i++ {
+		e, _ := es.Create(RuleExclusion{
+			Name:       fmt.Sprintf("test-%d", i),
+			Type:       "allow",
+			Conditions: []Condition{{Field: "path", Operator: "eq", Value: fmt.Sprintf("/test%d", i)}},
+			Enabled:    true,
+		})
+		ids[i] = e.ID
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/exclusions/bulk", handleBulkExclusions(es))
+
+	t.Run("disable", func(t *testing.T) {
+		body := fmt.Sprintf(`{"ids":[%q,%q],"action":"disable"}`, ids[0], ids[1])
+		req := httptest.NewRequest("POST", "/api/exclusions/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp map[string]int
+		json.NewDecoder(w.Body).Decode(&resp)
+		if resp["changed"] != 2 {
+			t.Errorf("expected changed=2, got %d", resp["changed"])
+		}
+	})
+
+	t.Run("empty_ids", func(t *testing.T) {
+		body := `{"ids":[],"action":"disable"}`
+		req := httptest.NewRequest("POST", "/api/exclusions/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 400 {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid_action", func(t *testing.T) {
+		body := `{"ids":["x"],"action":"nuke"}`
+		req := httptest.NewRequest("POST", "/api/exclusions/bulk", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != 400 {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
 }

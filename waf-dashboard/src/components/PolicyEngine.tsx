@@ -84,11 +84,13 @@ import {
   exportExclusions,
   importExclusions,
   fetchExclusionHits,
+  bulkUpdateExclusions,
   type Exclusion,
   type ExclusionType,
   type ExclusionCreateData,
   type ServiceDetail,
   type ExclusionHitsResponse,
+  type BulkExclusionAction,
 } from "@/lib/api";
 
 import { T } from "@/lib/typography";
@@ -115,6 +117,10 @@ export default function PolicyEngine() {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ExclusionType | "all">("all");
   const [rulesPage, setRulesPage] = useState(1);
+
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [deployStep, setDeployStep] = useState<string | null>(null);
 
@@ -248,6 +254,10 @@ export default function PolicyEngine() {
     }
     return result;
   }, [exclusions, searchQuery, typeFilter]);
+
+  const selectAllVisible = useCallback(() => {
+    setSelected(new Set(filteredExclusions.map((e) => e.id)));
+  }, [filteredExclusions]);
 
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [searchQuery, typeFilter]);
@@ -384,6 +394,41 @@ export default function PolicyEngine() {
     };
     input.click();
   };
+
+  // ─── Bulk actions ─────────────────────────────────────────────────
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  const handleBulkAction = useCallback(
+    async (action: BulkExclusionAction) => {
+      if (selected.size === 0) return;
+      const confirmMsg = action === "delete"
+        ? `Delete ${selected.size} rule(s)? This cannot be undone.`
+        : undefined;
+      if (confirmMsg && !window.confirm(confirmMsg)) return;
+      try {
+        setBulkBusy(true);
+        await bulkUpdateExclusions([...selected], action);
+        setSelected(new Set());
+        await loadData();
+        await autoDeploy(`Bulk ${action}: ${selected.size} rules`);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : `Bulk ${action} failed`);
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selected, loadData, autoDeploy],
+  );
 
   // ─── Dialog state for create/edit ──────────────────────────────────
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -543,10 +588,35 @@ export default function PolicyEngine() {
             </div>
           ) : exclusions.length > 0 ? (
             <>
+            {selected.size > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-lv-cyan/30 bg-lv-cyan/5">
+                <span className="text-xs font-medium text-lv-cyan mr-2">
+                  {selected.size} selected
+                </span>
+                <Button variant="outline" size="xs" onClick={() => handleBulkAction("enable")} disabled={bulkBusy}>
+                  Enable
+                </Button>
+                <Button variant="outline" size="xs" onClick={() => handleBulkAction("disable")} disabled={bulkBusy}>
+                  Disable
+                </Button>
+                <Button variant="outline" size="xs" className="text-lv-red hover:text-lv-red" onClick={() => handleBulkAction("delete")} disabled={bulkBusy}>
+                  Delete
+                </Button>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button variant="ghost" size="xs" onClick={selectAllVisible} className="text-xs text-muted-foreground">
+                    Select All ({filteredExclusions.length})
+                  </Button>
+                  <Button variant="ghost" size="xs" onClick={clearSelection} className="text-xs text-muted-foreground">
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            )}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[36px] px-2" />
                   <TableHead className="w-[52px] px-1">#</TableHead>
                   <SortableTableHead sortKey="name" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Name</SortableTableHead>
                   <SortableTableHead sortKey="type" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Type</SortableTableHead>
@@ -567,8 +637,16 @@ export default function PolicyEngine() {
                     id={excl.id}
                     disabled={isFiltered}
                     rowRef={isHighlighted ? highlightedRef : undefined}
-                    className={isHighlighted ? "ring-1 ring-emerald-500/60 bg-lv-green/5 transition-all duration-700" : undefined}
+                    className={`${isHighlighted ? "ring-1 ring-emerald-500/60 bg-lv-green/5 transition-all duration-700" : ""}${selected.has(excl.id) ? " bg-lv-purple/10" : ""}`}
                   >
+                    <TableCell className="px-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(excl.id)}
+                        onChange={() => toggleSelect(excl.id)}
+                        className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
+                      />
+                    </TableCell>
                     <TableCell className="text-xs tabular-nums text-muted-foreground/60" title={`Rule ${globalIdx} of ${filteredExclusions.length}`}>
                       {globalIdx}
                     </TableCell>
