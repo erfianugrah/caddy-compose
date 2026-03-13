@@ -2148,7 +2148,7 @@ resp, err := client.Get(l.URL)  // l.URL is user-controlled
 **Fix**: Validate URL scheme (allow `https://` only or whitelist), reject private/loopback
 IP ranges via custom `net.Dialer`, or restrict to known external domains.
 
-- [ ] Add URL validation to `RefreshURL` (scheme allowlist + private IP rejection)
+- [x] Add URL validation to `RefreshURL` (scheme allowlist + private IP rejection) — already implemented in `validateRefreshURL()`
 
 #### CR-2: HTTP Request Under Exclusive Mutex Lock — `wafctl/managed_lists.go:388-412`
 
@@ -2159,7 +2159,7 @@ import, SyncIPsum) are blocked for the entire duration.
 **Fix**: Read list metadata under `RLock`, release, perform HTTP request, then re-acquire
 `Lock` for the mutation.
 
-- [ ] Restructure `RefreshURL` to release lock during HTTP request
+- [x] Restructure `RefreshURL` to release lock during HTTP request — already implemented (Phase 1: RLock, Phase 2: no lock)
 
 ### HIGH
 
@@ -2199,8 +2199,8 @@ diverges from on-disk state.
 The `caddy:2.11.1-alpine` base runs as root. `DAC_OVERRIDE` capability added back.
 `wafctl/Dockerfile` correctly uses `USER 65534:65534`.
 
-- [ ] Add dedicated caddy user, run as non-root after entrypoint setup
-- [ ] Drop `DAC_OVERRIDE` capability
+- [x] Add dedicated caddy user (UID 10000), run as non-root after entrypoint setup via su-exec
+- [x] Drop `DAC_OVERRIDE` capability from compose.yaml
 
 #### CR-8: `CF_API_TOKEN` as Environment Variable — `compose.yaml:60`
 

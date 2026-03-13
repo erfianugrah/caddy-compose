@@ -1,5 +1,5 @@
 #!/bin/sh
-# entrypoint.sh — Seed configs, then exec caddy.
+# entrypoint.sh — Seed configs, fix ownership, then drop to non-root user.
 # IPsum blocking is done via the policy engine plugin (managed lists).
 set -eu
 
@@ -16,10 +16,12 @@ fi
 # Ensure CSP config directory is writable by caddy.
 CSP_DIR="/data/caddy/csp"
 mkdir -p "${CSP_DIR}"
-chmod 755 "${CSP_DIR}" 2>/dev/null || true
 
 # Ensure policy engine data directory exists.
 mkdir -p /data/waf
 
-# Exec into caddy — becomes PID 1, receives SIGTERM on container stop
-exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+# Fix ownership of writable volumes so the non-root caddy user can write.
+chown -R caddy:caddy /data /config /var/log 2>/dev/null || true
+
+# Drop to non-root caddy user and exec into caddy (PID 1, receives SIGTERM)
+exec su-exec caddy:caddy caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
