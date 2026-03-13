@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // --- Handlers: Managed Lists CRUD ---
@@ -38,7 +39,13 @@ func handleCreateManagedList(ls *ManagedListStore) http.HandlerFunc {
 		}
 		created, err := ls.Create(list)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to create list", Details: err.Error()})
+			status := http.StatusInternalServerError
+			msg := "failed to create list"
+			if strings.Contains(err.Error(), "already exists") {
+				status = http.StatusBadRequest
+				msg = "duplicate name"
+			}
+			writeJSON(w, status, ErrorResponse{Error: msg, Details: err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusCreated, created)

@@ -1,6 +1,7 @@
 {
 	admin localhost:2019
-	order policy_engine first
+	order log_append first
+	order policy_engine after log_append
 	log {
 		level INFO
 		output stdout

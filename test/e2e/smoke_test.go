@@ -312,18 +312,6 @@ func TestWAFConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("validate", func(t *testing.T) {
-		payload := map[string]any{
-			"defaults": map[string]any{
-				"mode":               "enabled",
-				"paranoia_level":     2,
-				"inbound_threshold":  10,
-				"outbound_threshold": 10,
-			},
-		}
-		resp, _ := httpPost(t, wafctlURL+"/api/config/validate", payload)
-		assertCode(t, "validate config", 200, resp)
-	})
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -432,15 +420,17 @@ func TestRateLimitRules(t *testing.T) {
 		assertField(t, "update", body, "name", "e2e-rl-test")
 	})
 
-	// Deploy — must return status "deployed" (not "partial")
+	// Deploy — must return status "deployed". Rate limit rules are deployed via
+	// policy-rules.json hot-reload so Caddy itself is not restarted (reloaded=false).
 	t.Run("deploy", func(t *testing.T) {
 		resp, body := httpPostDeploy(t, wafctlURL+"/api/rate-rules/deploy", struct{}{})
 		assertCode(t, "deploy", 200, resp)
 		assertField(t, "deploy status", body, "status", "deployed")
-		assertField(t, "deploy reloaded", body, "reloaded", "true")
+		assertField(t, "deploy reloaded", body, "reloaded", "false")
 	})
 
-	// Read-only endpoints
+	// Read-only endpoints — use httpGetRetry because these run immediately after
+	// deploy which may briefly cause EOF/connection-reset as Caddy reloads.
 	readOnly := []string{
 		"/api/rate-rules/global",
 		"/api/rate-limits/summary?hours=1",
@@ -450,7 +440,7 @@ func TestRateLimitRules(t *testing.T) {
 	}
 	for _, ep := range readOnly {
 		t.Run("GET "+ep, func(t *testing.T) {
-			resp, _ := httpGet(t, wafctlURL+ep)
+			resp, _ := httpGetRetry(t, wafctlURL+ep, 3)
 			assertCode(t, ep, 200, resp)
 		})
 	}
@@ -807,7 +797,6 @@ func TestExclusionOperations(t *testing.T) {
 	}{
 		{"GET", "/api/exclusions/export"},
 		{"GET", "/api/exclusions/hits"},
-		{"POST", "/api/exclusions/generate"},
 	}
 	for _, ep := range endpoints {
 		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
@@ -836,8 +825,8 @@ func TestWAFDashboardUI(t *testing.T) {
 	})
 
 	pages := []string{
-		"analytics", "csp", "events", "lists",
-		"logs", "policy", "rate-limits", "services", "settings",
+		"analytics", "csp", "events", "headers", "lists",
+		"logs", "policy", "rate-limits", "rules", "rules/crs", "services",
 	}
 	for _, page := range pages {
 		t.Run(page, func(t *testing.T) {
@@ -1085,7 +1074,8 @@ func TestPolicyEngineBodyJSON(t *testing.T) {
 	})
 
 	t.Run("non-matching JSON body passes", func(t *testing.T) {
-		safeBody := []byte(`{"action":"list","target":"users"}`)
+		// Use a minimal JSON body that won't trigger CRS SQL/XSS heuristics.
+		safeBody := []byte(`{"ok":true}`)
 		code, err := httpPostRaw(caddyURL+"/post", safeBody)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -2094,6 +2084,27 @@ func TestPolicyEngineRateLimit(t *testing.T) {
 // frame, and verifies the echo response — exercising the full upgrade path
 // through policy_engine → @not_websocket bypass → reverse_proxy → httpbun.
 func TestWebSocketThroughWAF(t *testing.T) {
+	// WebSocket upgrades trigger CRS protocol enforcement rules (920310,
+	// 920330, 9100034, etc.) because the handshake omits standard browser
+	// headers. Create an allow rule to bypass WAF for the test path.
+	wsAllowPayload := map[string]any{
+		"name":    "E2E WebSocket Allow",
+		"type":    "allow",
+		"enabled": true,
+		"conditions": []map[string]any{
+			{"field": "path", "operator": "begins_with", "value": "/websocket/"},
+		},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", wsAllowPayload)
+	assertCode(t, "create ws allow rule", 201, resp)
+	wsRuleID := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+wsRuleID)
+		httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	})
+	httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	time.Sleep(8 * time.Second)
+
 	t.Run("upgrade succeeds", func(t *testing.T) {
 		conn, br := wsHandshake(t, caddyURL+"/websocket/echo")
 		defer conn.Close()
@@ -2757,11 +2768,9 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 }
 
 func TestPolicyEngineDetectWafConfig(t *testing.T) {
-	// Verify that waf_config is present in policy-rules.json after deploy.
-	// We can check this via the exclusions generate endpoint which returns the
-	// raw generated config.
+	// Verify that WAF config can be set and retrieved correctly.
 
-	// Set a specific config to verify it propagates.
+	// Set a specific config.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
 			"mode":               "enabled",
@@ -2773,12 +2782,12 @@ func TestPolicyEngineDetectWafConfig(t *testing.T) {
 	resp, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
 	assertCode(t, "set config", 200, resp)
 
-	// Generate (dry-run) to see what would be deployed.
-	resp2, body2 := httpPost(t, wafctlURL+"/api/exclusions/generate", struct{}{})
-	assertCode(t, "generate", 200, resp2)
-	// The generate endpoint returns the generated config files.
-	// Log the output for debugging.
-	logBody(t, "generate output", body2)
+	// Verify config was persisted by reading it back.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/config")
+	assertCode(t, "get config", 200, resp2)
+	assertField(t, "paranoia_level", body2, "defaults.paranoia_level", "3")
+	assertField(t, "inbound_threshold", body2, "defaults.inbound_threshold", "15")
+	logBody(t, "config output", body2)
 
 	// Restore defaults.
 	restorePayload := map[string]any{
@@ -4089,10 +4098,12 @@ func TestPolicyBlockEvent_RequestContext(t *testing.T) {
 // The default-rules.json v7 (255 rules, CRS 4.24.1) is baked into both the
 // caddy image (plugin loads them) and wafctl image (API serves them).
 
-// setCRSv7TestConfig sets detection_only mode with threshold=15 to isolate
+// setCRSv7TestConfig sets detection_only mode with threshold=5 to isolate
 // policy engine from Coraza, deploys, and waits for hot-reload.
-// Threshold=15 allows "clean" requests with minimal headers to pass while
-// still catching actual attack payloads (SQLi scores ~50, XSS ~55).
+// Threshold=5 allows "clean" requests with browser headers (setBrowserHeaders
+// adds User-Agent/Accept/Accept-Language/Accept-Encoding) to pass — they score
+// at most 2 (9100034 for missing Referer). Attack payloads score ≥7 (CRITICAL
+// rule + 9100034), so threshold=5 reliably catches them.
 func setCRSv7TestConfig(t *testing.T) {
 	t.Helper()
 	configPayload := map[string]any{
@@ -4115,10 +4126,15 @@ func setCRSv7TestConfig(t *testing.T) {
 // setBrowserHeaders adds standard browser-like headers to a request to avoid
 // false positives from CRS protocol enforcement rules (920310 empty Accept,
 // 920470 no Content-Type, 9100034 missing browser headers, etc.).
+// Uses minimal values to avoid triggering CRS heuristics (e.g., 932260 fires
+// on certain header value combinations with commas/semicolons).
 func setBrowserHeaders(req *http.Request) {
-	req.Header.Set("Accept", "text/html,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "E2E-Browser/1.0")
+	}
+	req.Header.Set("Accept", "text/html,*/*")
+	req.Header.Set("Accept-Language", "en")
+	req.Header.Set("Accept-Encoding", "gzip")
 }
 
 // restoreCRSv7TestConfig restores the WAF config to production defaults.

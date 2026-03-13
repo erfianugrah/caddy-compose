@@ -18,7 +18,14 @@
 	# Policy engine handles all WAF processing (allow/block/detect/rate_limit).
 	# Caddy's order directive controls handler execution order globally —
 	# textual position in site blocks is irrelevant.
-	order policy_engine first
+	# log_append must run before policy_engine so that its middleware wraps the
+	# policy engine handler chain. This ensures log fields (policy_action,
+	# detect_rules, request_headers, etc.) are captured even when policy_engine
+	# blocks the request (returning an error that short-circuits the chain).
+	# Placeholders like {http.vars.policy_engine.action} are resolved lazily at
+	# log-write time, so they pick up vars set by policy_engine downstream.
+	order log_append first
+	order policy_engine after log_append
 
 	log {
 		level INFO

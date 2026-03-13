@@ -1,7 +1,9 @@
 # E2E test Caddyfile — policy engine as sole WAF
 {
 	admin :2019
-	order policy_engine first
+	# log_append must wrap policy_engine so fields are captured on blocked requests.
+	order log_append first
+	order policy_engine after log_append
 	log {
 		level INFO
 		output stdout

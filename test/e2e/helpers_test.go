@@ -149,6 +149,10 @@ func httpPostRaw(url string, body []byte) (int, error) {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Add browser-like headers to avoid CRS protocol enforcement false positives
+	// (920310 missing Accept, 9100035 missing UA on POST, etc.).
+	req.Header.Set("User-Agent", "E2E-Browser/1.0")
+	req.Header.Set("Accept", "*/*")
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
@@ -266,6 +270,45 @@ func assertField(t *testing.T, name string, body []byte, field, expected string)
 	if got != expected {
 		t.Errorf("%s: expected %s=%q, got %q", name, field, expected, got)
 	}
+}
+
+// httpGetRetry is like httpGet but retries on transient errors (EOF, connection
+// reset) up to maxRetries times with a brief pause between attempts. Use this
+// for endpoints hit immediately after a deploy/reload that may briefly drop
+// connections. On each retry, idle connections are closed to avoid reusing a
+// stale connection from the pool.
+func httpGetRetry(t *testing.T, url string, maxRetries int) (*http.Response, []byte) {
+	t.Helper()
+	var lastErr error
+	for i := 0; i <= maxRetries; i++ {
+		if i > 0 {
+			// Purge stale connections — earlier Caddy reloads may have closed
+			// the server side of a keep-alive connection, leaving the pool with
+			// a dead socket that surfaces as EOF on the next request.
+			client.CloseIdleConnections()
+			time.Sleep(500 * time.Millisecond)
+		}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			t.Fatalf("GET %s: %v", url, err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			t.Logf("GET %s attempt %d/%d: %v", url, i+1, maxRetries+1, err)
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			t.Logf("GET %s attempt %d/%d read body: %v", url, i+1, maxRetries+1, err)
+			continue
+		}
+		return resp, body
+	}
+	t.Fatalf("GET %s: failed after %d attempts, last error: %v", url, maxRetries+1, lastErr)
+	return nil, nil // unreachable
 }
 
 // ── Wait helpers ───────────────────────────────────────────────────
