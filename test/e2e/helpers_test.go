@@ -698,3 +698,30 @@ func setBrowserHeaders(req *http.Request) {
 	req.Header.Set("Accept-Language", "en")
 	req.Header.Set("Accept-Encoding", "gzip")
 }
+
+// cleanupByName finds a resource by name in a list endpoint, then DELETEs it.
+// This handles stores that assign fresh UUIDs on import (backup/restore).
+func cleanupByName(t *testing.T, listURL, name string) {
+	t.Helper()
+	resp, err := client.Do(mustNewRequest(t, "GET", listURL))
+	if err != nil {
+		t.Logf("cleanupByName GET %s: %v", listURL, err)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	// Parse as array of objects, find any with matching "name" field.
+	var items []map[string]interface{}
+	if err := json.Unmarshal(body, &items); err != nil {
+		t.Logf("cleanupByName unmarshal %s: %v", listURL, err)
+		return
+	}
+	for _, item := range items {
+		if n, ok := item["name"].(string); ok && n == name {
+			if id, ok := item["id"].(string); ok {
+				cleanup(t, listURL+"/"+id)
+			}
+		}
+	}
+}

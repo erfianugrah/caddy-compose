@@ -210,11 +210,11 @@ func (bs *BlocklistStore) Refresh() BlocklistRefreshResponse {
 	}
 	bs.mu.Lock()
 	bs.ips = ipSet
-	bs.ipCount = len(allIPs)
+	bs.ipCount = len(ipSet)
 	bs.lastUpdated = now
 	bs.mu.Unlock()
 
-	log.Printf("[blocklist] downloaded %d IPs from IPsum", len(allIPs))
+	log.Printf("[blocklist] downloaded %d IPs from IPsum (%d unique)", len(allIPs), len(ipSet))
 
 	// Sync managed lists with the refreshed IPs (grouped by score).
 	bs.mu.RLock()
@@ -238,7 +238,7 @@ func (bs *BlocklistStore) Refresh() BlocklistRefreshResponse {
 	}
 
 	status := "updated"
-	msg := fmt.Sprintf("Downloaded %d IPs and updated blocklist", len(allIPs))
+	msg := fmt.Sprintf("Downloaded %d IPs and updated blocklist", len(ipSet))
 	if !reloaded {
 		status = "partial"
 		msg += " (deploy failed — manual deploy may be needed)"
@@ -247,7 +247,7 @@ func (bs *BlocklistStore) Refresh() BlocklistRefreshResponse {
 	return BlocklistRefreshResponse{
 		Status:      status,
 		Message:     msg,
-		BlockedIPs:  len(allIPs),
+		BlockedIPs:  len(ipSet),
 		MinScore:    minScore,
 		LastUpdated: now,
 		Reloaded:    reloaded,
