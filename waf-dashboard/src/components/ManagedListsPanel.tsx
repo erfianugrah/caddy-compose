@@ -404,7 +404,7 @@ function IpsumSection({
   const [refreshResult, setRefreshResult] = useState<BlocklistRefreshResult | null>(null);
 
   useEffect(() => {
-    getBlocklistStats().then(setStats).catch(() => {});
+    getBlocklistStats().then(setStats).catch((err) => { console.error("Failed to load blocklist stats:", err); });
   }, []);
 
   // Clear refresh result after 10s
@@ -427,7 +427,8 @@ function IpsumSection({
     try {
       const result = await checkBlocklistIP(trimmed);
       setCheckResult(result);
-    } catch {
+    } catch (err) {
+      console.error("Blocklist IP check failed:", err);
       setCheckResult(null);
     } finally {
       setChecking(false);
@@ -441,7 +442,7 @@ function IpsumSection({
       const result = await refreshBlocklist();
       setRefreshResult(result);
       // Reload stats and parent list
-      getBlocklistStats().then(setStats).catch(() => {});
+      getBlocklistStats().then(setStats).catch((err) => { console.error("Failed to reload blocklist stats:", err); });
       onRefreshDone();
     } catch {
       setRefreshResult({ status: "error", message: "Refresh request failed", blocked_ips: 0, min_score: 1, last_updated: "", reloaded: false });

@@ -224,6 +224,7 @@ interface RawEvent {
   request_headers?: Record<string, string[]>;
   request_body?: string;
   request_args?: Record<string, string>;
+  request_id?: string;
   tags?: string[];
 }
 
@@ -259,6 +260,7 @@ export function mapEvent(raw: RawEvent): WAFEvent {
     request_headers: raw.request_headers,
     request_body: raw.request_body,
     request_args: raw.request_args,
+    request_id: raw.request_id,
     tags: raw.tags,
   };
 }

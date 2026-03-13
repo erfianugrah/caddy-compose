@@ -120,6 +120,7 @@ export default function OverviewDashboard() {
   const [events, setEvents] = useState<WAFEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsTotal, setEventsTotal] = useState(0);
+  const [eventsError, setEventsError] = useState<string | null>(null);
   const [eventsPage, setEventsPage] = useState(1);
   const eventsPerPage = 20;
 
@@ -207,10 +208,13 @@ export default function OverviewDashboard() {
       .then((resp) => {
         setEvents(resp.events);
         setEventsTotal(resp.total);
+        setEventsError(null);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Failed to fetch events:", err);
         setEvents([]);
         setEventsTotal(0);
+        setEventsError("Failed to load events");
       })
       .finally(() => setEventsLoading(false));
   }, [eventsPage, timeRange, zoomTimeParams, filters]);
@@ -799,7 +803,7 @@ export default function OverviewDashboard() {
               {!loading && !eventsLoading && events.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                    No events in this time range
+                    {eventsError ? eventsError : "No events in this time range"}
                   </TableCell>
                 </TableRow>
               )}

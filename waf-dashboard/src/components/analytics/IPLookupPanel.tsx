@@ -133,7 +133,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
         // Keep summary data, update only events
         setData((prev) => prev ? { ...prev, recent_events: result.recent_events } : result);
       })
-      .catch(() => {}) // silently fail pagination
+      .catch((err) => { console.error("IP lookup pagination failed:", err); })
       .finally(() => setEventsLoading(false));
   }, [data]);
 

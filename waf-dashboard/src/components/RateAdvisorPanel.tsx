@@ -56,6 +56,7 @@ export function RateAdvisorPanel({
 }) {
   const [data, setData] = useState<RateAdvisorResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [window, setWindow] = useState("1m");
   const [service, setService] = useState("");
   const [path, setPath] = useState("");
@@ -81,6 +82,7 @@ export function RateAdvisorPanel({
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const result = await getRateAdvisor({
         window,
@@ -97,8 +99,10 @@ export function RateAdvisorPanel({
       }
       const topRate = result.clients.length > 0 ? result.clients[0].requests : 100;
       setMaxRate(Math.max(topRate, 10));
-    } catch {
+    } catch (err) {
+      console.error("Rate advisor load failed:", err);
       setData(null);
+      setError("Failed to load advisor data");
     } finally {
       setLoading(false);
     }
@@ -562,7 +566,15 @@ export function RateAdvisorPanel({
         </div>
       )}
 
-      {!loading && data && data.total_requests === 0 && (
+      {!loading && error && (
+        <Card className="border-lv-red/20">
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            {error}
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && !error && data && data.total_requests === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             No traffic found in the selected time window. Try a longer window or remove filters.

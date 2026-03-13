@@ -1024,21 +1024,21 @@ each with generous sleep waits. The biggest time sinks:
 - [x] Bulk action toolbar (enable/disable/delete with confirmation)
 - [x] Bulk action API — `POST /api/exclusions/bulk` with `{ ids, action: "enable"|"disable"|"delete" }` + tests
 
-#### Comprehensive Form / API Audit (pre-deploy)
+#### Comprehensive Form / API Audit (pre-deploy) — DONE
 
 Review ALL forms across the dashboard for consistency, missing fields, and broken states:
 
-- [ ] Policy Engine: Create Rule (Quick Actions) — missing tags input, verify all fields match Edit Rule
-- [ ] Policy Engine: Edit Rule (Advanced) — verify all condition fields, operators, transforms work
-- [ ] CRS Rules: Override form — verify severity/PL/enabled toggles save correctly
-- [ ] Rate Limits: Rule form — verify all key types, actions, conditions
-- [ ] CSP: Directive editor — verify all source types, modes, inherit behavior
-- [ ] Security Headers: Profile editor — verify profile inheritance, per-service overrides
-- [ ] Managed Lists: CRUD — verify type validation, item format per type
-- [ ] Settings (now in Rules): WAF config — verify mode, paranoia, thresholds, per-service overrides
-- [ ] Backup/Restore — verify export/import round-trip for all 6 config stores
-- [ ] API type consistency — ensure all frontend types match Go struct JSON tags (snake_case → camelCase)
-- [ ] Error handling — verify all API error responses are displayed to user (not silently swallowed)
+- [x] Policy Engine: Create Rule (Quick Actions) — tags input already present, all fields match Edit Rule
+- [x] Policy Engine: Edit Rule (Advanced) — all condition fields, operators, transforms verified working
+- [x] CRS Rules: Override form — severity/PL/enabled toggles save correctly
+- [x] Rate Limits: Rule form — all key types, actions, conditions verified
+- [x] CSP: Directive editor — all source types, modes, inherit behavior verified
+- [x] Security Headers: Profile editor — profile inheritance, per-service overrides verified
+- [x] Managed Lists: CRUD — type validation, item format per type verified
+- [x] Settings (now in Rules): WAF config — mode, paranoia, thresholds, per-service overrides verified
+- [x] Backup/Restore — export/import round-trip for all 6 config stores verified
+- [x] API type consistency — all frontend types match Go struct JSON tags; fixed `RawEvent.request_id` gap
+- [x] Error handling — fixed 5 silently swallowed errors (OverviewDashboard events, IPLookupPanel pagination, RateAdvisorPanel load, ManagedListsPanel stats/check)
 
 ### Backend — wafctl API
 
