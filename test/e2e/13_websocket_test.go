@@ -16,14 +16,13 @@ import (
 )
 
 // TestWebSocketThroughWAF verifies that WebSocket connections work through the
-// Caddy reverse proxy with Coraza WAF enabled. The coraza-caddy fork includes
-// a hijack tracking fix that prevents panics on upgraded connections. Without
-// the @not_websocket bypass and the fork fix, WebSocket connections would fail
-// with NS_ERROR_WEBSOCKET_CONNECTION_REFUSED or cause panics in Caddy.
+// Caddy reverse proxy with the policy engine active. The policy engine's
+// responseHeaderWriter implements http.Hijacker so WebSocket upgrades succeed
+// even when the middleware wraps the response writer.
 //
 // This test does a raw WebSocket handshake (no external deps), sends a text
 // frame, and verifies the echo response — exercising the full upgrade path
-// through policy_engine → @not_websocket bypass → reverse_proxy → httpbun.
+// through policy_engine → reverse_proxy → httpbun.
 func TestWebSocketThroughWAF(t *testing.T) {
 	// WebSocket upgrades trigger CRS protocol enforcement rules (920310,
 	// 920330, 9100034, etc.) because the handshake omits standard browser
