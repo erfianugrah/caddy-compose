@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { T } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import {
@@ -171,6 +171,9 @@ export default function RulesPanel() {
     }
   }, []);
 
+  const deployTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (deployTimerRef.current) clearTimeout(deployTimerRef.current); }, []);
+
   const handleDeploy = useCallback(async () => {
     try {
       setDeploying(true);
@@ -178,7 +181,8 @@ export default function RulesPanel() {
       await postJSON("/api/config/deploy", {});
       setDeployMsg("Deployed successfully");
       setDirty(false);
-      setTimeout(() => setDeployMsg(null), 3000);
+      if (deployTimerRef.current) clearTimeout(deployTimerRef.current);
+      deployTimerRef.current = setTimeout(() => setDeployMsg(null), 3000);
     } catch (e: unknown) {
       setDeployMsg(e instanceof Error ? e.message : String(e));
     } finally {

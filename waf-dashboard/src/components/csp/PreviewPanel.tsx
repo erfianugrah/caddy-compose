@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Check,
   ChevronDown,
@@ -158,6 +158,8 @@ export function PreviewPanel({ preview }: { preview: CSPPreviewResponse | null }
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState("");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
 
   if (!preview || Object.keys(preview.services).length === 0) {
     return (
@@ -172,7 +174,8 @@ export function PreviewPanel({ preview }: { preview: CSPPreviewResponse | null }
   const copyHeader = (service: string, header: string) => {
     navigator.clipboard.writeText(header).catch(() => {});
     setCopied(service);
-    setTimeout(() => setCopied(null), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(null), 2000);
   };
 
   const toggleRow = (service: string) => {

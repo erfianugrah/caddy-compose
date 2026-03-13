@@ -179,7 +179,7 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     rule_tag: raw.rule_tag || undefined,
     variable: raw.variable || undefined,
     severity: raw.severity || undefined,
-    detect_paranoia_level: raw.detect_paranoia_level || undefined,
+    detect_paranoia_level: raw.detect_paranoia_level ?? undefined,
     tags: raw.tags,
     enabled: raw.enabled,
     created_at: raw.created_at,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Shield,
   ShieldOff,
@@ -100,10 +100,13 @@ export default function SecurityHeadersPanel() {
   const [newServiceName, setNewServiceName] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showFlash = useCallback((type: "success" | "error", msg: string) => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     setFlash({ type, msg });
-    setTimeout(() => setFlash(null), 4000);
+    flashTimerRef.current = setTimeout(() => setFlash(null), 4000);
   }, []);
+  useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); }, []);
 
   // Load config, profiles, and services
   useEffect(() => {
@@ -315,7 +318,7 @@ export default function SecurityHeadersPanel() {
   const profileName = config.profile || "default";
   const serviceNames = Object.keys(config.services || {}).sort();
   const availableServices = services
-    .map((s) => s.name)
+    .map((s) => s.service)
     .filter((s) => !config.services?.[s]);
 
   return (

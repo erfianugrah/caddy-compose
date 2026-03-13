@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1265,29 +1264,5 @@ func TestRestore_ManagedListDetailsPreserved(t *testing.T) {
 		if ips.Kind != "ip" {
 			t.Errorf("kind: got %q", ips.Kind)
 		}
-	}
-}
-
-// ─── itoa ───────────────────────────────────────────────────────────────────
-
-func TestItoa(t *testing.T) {
-	tests := []struct {
-		input int
-		want  string
-	}{
-		{0, "0"},
-		{1, "1"},
-		{42, "42"},
-		{100, "100"},
-		{-5, "-5"},
-		{999999, "999999"},
-	}
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("itoa(%d)", tt.input), func(t *testing.T) {
-			got := itoa(tt.input)
-			if got != tt.want {
-				t.Errorf("itoa(%d) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
 	}
 }

@@ -204,7 +204,7 @@ func reloadCaddy(caddyfilePath, adminURL string, configFiles ...string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Caddy reload failed (status %d): %s", resp.StatusCode, string(body))
 	}
 

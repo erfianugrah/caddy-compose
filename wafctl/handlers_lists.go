@@ -38,7 +38,7 @@ func handleCreateManagedList(ls *ManagedListStore) http.HandlerFunc {
 		}
 		created, err := ls.Create(list)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "failed to create list", Details: err.Error()})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to create list", Details: err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusCreated, created)

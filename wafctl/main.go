@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -292,11 +295,28 @@ func runServe() int {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("listening on :%s", port)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Printf("server error: %v", err)
+	// Graceful shutdown: listen for SIGTERM/SIGINT and drain in-flight requests.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	go func() {
+		log.Printf("listening on :%s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("server error: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Printf("shutdown signal received, draining connections...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown error: %v", err)
 		return 1
 	}
+	log.Printf("server stopped gracefully")
 	return 0
 }
 
@@ -331,11 +351,13 @@ func newCORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler 
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Max-Age", "86400")
 			} else if origin != "" && originSet[origin] {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Max-Age", "86400")
 			} else if origin != "" {
 				// Origin not allowed — reject preflight, still serve GET/POST
 				// (browser will block the response due to missing CORS header).

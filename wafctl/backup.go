@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -121,7 +122,7 @@ func handleRestore(
 		} else {
 			for i, exc := range backup.Exclusions {
 				if err := validateExclusion(exc); err != nil {
-					results["exclusions"] = "failed: exclusion " + itoa(i) + ": " + err.Error()
+					results["exclusions"] = "failed: exclusion " + strconv.Itoa(i) + ": " + err.Error()
 					break
 				}
 			}
@@ -129,7 +130,7 @@ func handleRestore(
 				if err := es.Import(backup.Exclusions); err != nil {
 					results["exclusions"] = "failed: " + err.Error()
 				} else {
-					results["exclusions"] = "restored " + itoa(len(backup.Exclusions)) + " exclusions"
+					results["exclusions"] = "restored " + strconv.Itoa(len(backup.Exclusions)) + " exclusions"
 				}
 			}
 		}
@@ -140,7 +141,7 @@ func handleRestore(
 		} else {
 			for i, rule := range backup.RateLimits.Rules {
 				if err := validateRateLimitRule(rule); err != nil {
-					results["rate_limits"] = "failed: rule " + itoa(i) + ": " + err.Error()
+					results["rate_limits"] = "failed: rule " + strconv.Itoa(i) + ": " + err.Error()
 					break
 				}
 			}
@@ -148,7 +149,7 @@ func handleRestore(
 				if err := rs.Import(backup.RateLimits.Rules); err != nil {
 					results["rate_limits"] = "failed: " + err.Error()
 				} else {
-					results["rate_limits"] = "restored " + itoa(len(backup.RateLimits.Rules)) + " rules"
+					results["rate_limits"] = "restored " + strconv.Itoa(len(backup.RateLimits.Rules)) + " rules"
 				}
 			}
 		}
@@ -162,7 +163,7 @@ func handleRestore(
 					continue // skip validation for ipsum (they're ignored on import anyway)
 				}
 				if err := validateManagedList(list); err != nil {
-					results["lists"] = "failed: list " + itoa(i) + ": " + err.Error()
+					results["lists"] = "failed: list " + strconv.Itoa(i) + ": " + err.Error()
 					break
 				}
 			}
@@ -170,7 +171,7 @@ func handleRestore(
 				if err := ls.Import(backup.Lists); err != nil {
 					results["lists"] = "failed: " + err.Error()
 				} else {
-					results["lists"] = "restored " + itoa(len(backup.Lists)) + " lists"
+					results["lists"] = "restored " + strconv.Itoa(len(backup.Lists)) + " lists"
 				}
 			}
 		}
@@ -189,27 +190,4 @@ func handleRestore(
 			"results": results,
 		})
 	}
-}
-
-// itoa is a tiny int-to-string helper (avoids importing strconv just for this).
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

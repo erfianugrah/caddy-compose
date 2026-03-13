@@ -228,10 +228,12 @@ release: deploy-all sign sbom ## Full deploy + sign + SBOM
 	@echo "Full release complete (signed + SBOM attached)."
 
 # ── Caddy operations ────────────────────────────────────────────────
-caddy-reload: ## SCP Caddyfile, deploy WAF + RL configs, reload Caddy
+caddy-reload: ## SCP Caddyfile, deploy WAF + RL + CSP + security headers, reload Caddy
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/config/deploy --post-data=""
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/rate-rules/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/csp/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/security-headers/deploy --post-data=""
 
 caddy-quick-reload: ## SCP Caddyfile and reload Caddy (no WAF/RL regeneration)
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)

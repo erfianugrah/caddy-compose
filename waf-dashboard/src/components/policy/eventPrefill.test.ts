@@ -119,25 +119,25 @@ describe("extractPrefillFromEvent", () => {
   });
 
   it("sets action to allow for policy_block events", () => {
-    const event = { ...baseEvent, event_type: "policy_block", blocked: true };
+    const event = { ...baseEvent, event_type: "policy_block" as const, blocked: true };
     const prefill = extractPrefillFromEvent(event);
     expect(prefill.action).toBe("allow");
   });
 
   it("sets action to detect for policy_skip events", () => {
-    const event = { ...baseEvent, event_type: "policy_skip", blocked: false };
+    const event = { ...baseEvent, event_type: "policy_skip" as const, blocked: false };
     const prefill = extractPrefillFromEvent(event);
     expect(prefill.action).toBe("detect");
   });
 
   it("sets action to block for logged (non-blocked) events", () => {
-    const event = { ...baseEvent, event_type: "logged", blocked: false };
+    const event = { ...baseEvent, event_type: "logged" as const, blocked: false };
     const prefill = extractPrefillFromEvent(event);
     expect(prefill.action).toBe("block");
   });
 
   it("sets action to allow for detect_block events", () => {
-    const event = { ...baseEvent, event_type: "detect_block", blocked: true };
+    const event = { ...baseEvent, event_type: "detect_block" as const, blocked: true };
     const prefill = extractPrefillFromEvent(event);
     expect(prefill.action).toBe("allow");
   });

@@ -2103,6 +2103,212 @@ Usage:
 | `RawRule`, `RuleID`, `RuleTag`, `Variable` fields on `RuleExclusion` | Pending cleanup (SecRule types removed) |
 | JSONL migration code (6 exclusion versions, RL v1, config old format) | Kept (handles existing production stores) |
 
+---
+
+## Code Review Findings (2026-03-13)
+
+Full codebase review: 62,762 lines across 178 files (Go 34.6k, TypeScript 27k, infra configs).
+
+### CRITICAL
+
+#### CR-1: SSRF in `ManagedListStore.RefreshURL` — `wafctl/managed_lists.go:412`
+
+User-controlled `l.URL` passed directly to `http.Client.Get()` with no validation of
+scheme or target. An attacker who can create a managed list with `source: "url"` can
+target internal services (`http://169.254.169.254/`, `http://localhost:8080/api/...`).
+
+```go
+resp, err := client.Get(l.URL)  // l.URL is user-controlled
+```
+
+**Fix**: Validate URL scheme (allow `https://` only or whitelist), reject private/loopback
+IP ranges via custom `net.Dialer`, or restrict to known external domains.
+
+- [ ] Add URL validation to `RefreshURL` (scheme allowlist + private IP rejection)
+
+#### CR-2: HTTP Request Under Exclusive Mutex Lock — `wafctl/managed_lists.go:388-412`
+
+`RefreshURL()` acquires `s.mu.Lock()` at line 388, then performs a 60-second HTTP GET at
+line 412 while holding the exclusive lock. All concurrent managed list operations (CRUD,
+import, SyncIPsum) are blocked for the entire duration.
+
+**Fix**: Read list metadata under `RLock`, release, perform HTTP request, then re-acquire
+`Lock` for the mutation.
+
+- [ ] Restructure `RefreshURL` to release lock during HTTP request
+
+### HIGH
+
+#### CR-3: No Graceful Shutdown — `wafctl/main.go:296`
+
+`srv.ListenAndServe()` blocks with no signal handler for SIGTERM/SIGINT. Container stop
+kills in-flight requests abruptly, potentially corrupting partially-written atomic files.
+
+- [ ] Add `signal.NotifyContext` for SIGTERM/SIGINT and call `srv.Shutdown(ctx)`
+- [ ] Pass context to background goroutines for clean cancellation
+
+#### CR-4: Store Getters Return Shallow Copies — `wafctl/exclusions.go:107-116`
+
+`ExclusionStore.Get()` returns a struct copy, but slices (`Conditions`, `Tags`) share
+backing arrays with the store's internal data. Same issue in `RateLimitRuleStore.listLocked()`
+(`rl_rules.go:147`).
+
+- [ ] Add deep copy helper for `RuleExclusion` (clone Conditions/Tags slices)
+- [ ] Add deep copy for `RateLimitRule` in `listLocked()`
+
+#### CR-5: Background Goroutines Have No Cancellation — `wafctl/logparser.go:261`
+
+`StartEviction`, `StartTailing`, `StartScheduledRefresh` all launch goroutines with
+`time.NewTicker` loops that run forever with no `context.Context` cancellation.
+
+- [ ] Accept `context.Context` in all `Start*` methods, select on `ctx.Done()`
+
+#### CR-6: `MergeCaddyfileServices` Doesn't Roll Back on Save Failure — `wafctl/rl_rules.go:437-439`
+
+When auto-discovered services are added to memory and `save()` fails, in-memory state
+diverges from on-disk state.
+
+- [ ] Save original rules slice, restore on `save()` failure
+
+#### CR-7: Final Docker Image Runs as Root — `Dockerfile:39-49`
+
+The `caddy:2.11.1-alpine` base runs as root. `DAC_OVERRIDE` capability added back.
+`wafctl/Dockerfile` correctly uses `USER 65534:65534`.
+
+- [ ] Add dedicated caddy user, run as non-root after entrypoint setup
+- [ ] Drop `DAC_OVERRIDE` capability
+
+#### CR-8: `CF_API_TOKEN` as Environment Variable — `compose.yaml:60`
+
+Visible in `docker inspect` and `/proc/1/environ`. Authelia correctly uses file-based
+secrets pattern.
+
+- [ ] Move `CF_API_TOKEN` to file-based secret matching Authelia's pattern
+
+#### CR-9: Services Without `forward_auth` — `Caddyfile:300-540`
+
+Dockge (Docker management), sonarr, radarr, bazarr, prowlarr, sabnzbd, qbit, copyparty
+exposed without Authelia forward auth. Some have their own auth. **Dockge** is particularly
+concerning — gives Docker control.
+
+- [ ] Audit each service's built-in auth and document decisions
+- [ ] Add `forward_auth` to dockge at minimum
+
+### MEDIUM
+
+#### CR-10: Response Cache Key Abuse — `wafctl/cache.go`
+
+`r.URL.RawQuery` as cache key. Attackers can craft unique query strings to thrash the
+cache (max 50 entries, but each `SummaryResponse` can be large).
+
+- [ ] Add cache key normalization (sort params, strip unknown keys)
+
+#### CR-11: Missing `Access-Control-Max-Age` on CORS Preflight — `wafctl/main.go:332-338`
+
+No `Max-Age` header. Browsers send preflight for every cross-origin request.
+
+- [x] Add `Access-Control-Max-Age: 86400` to CORS preflight response
+
+#### CR-12: Inconsistent Error Status Codes — `handlers_lists.go:41` vs `handlers_exclusions.go:116`
+
+Managed list creation returns 400 for all failures (including disk I/O). Exclusion
+creation returns 500. Should distinguish validation (400) from server errors (500).
+
+- [ ] Return 500 for store persistence failures in `handlers_lists.go`
+
+#### CR-13: `handleUpdateRLRule` Requires Full Object — `wafctl/handlers_ratelimit.go:49-70`
+
+Unlike exclusions (partial JSON merge), RL rules require full object. Inconsistent API.
+
+- [ ] Add JSON merge partial update for RL rules (match exclusion pattern)
+
+#### CR-14: `handleDeployRLRules` Claims `Reloaded: true` Without Verification — `wafctl/handlers_ratelimit.go:140`
+
+Assumes plugin hot-reload polling is active. No verification.
+
+- [ ] Document assumption in response or add health check
+
+#### CR-15: Deep Copy via JSON Round-Trip — `wafctl/csp.go:367-382`
+
+`CSPStore.deepCopy()` uses `json.Marshal/Unmarshal` for every `Get()`. Expensive.
+
+- [ ] Consider manual clone for hot path (low priority)
+
+#### CR-16: Unbounded `io.ReadAll` on Error — `wafctl/deploy.go:207`
+
+No `LimitReader` on Caddy admin error response body.
+
+- [x] Add `io.LimitReader(resp.Body, 1024)` to error body read in deploy.go
+
+#### CR-17: `dorny/paths-filter@v3` Not SHA-Pinned — `.github/workflows/build.yml:41`
+
+Mutable tag while all other third-party actions are SHA-pinned.
+
+- [x] Pin `dorny/paths-filter` to SHA
+
+#### CR-18: `caddy-reload` Makefile Target Incomplete — `Makefile:231-234`
+
+Deploys WAF config and rate rules but skips CSP and security headers.
+
+- [x] Add CSP and security headers deploy to `caddy-reload` target
+
+#### CR-19: Timer Leaks in Frontend (4 components)
+
+`SecurityHeadersPanel.tsx:105`, `RulesPanel.tsx:181`, `policy/TagInputs.tsx:28`,
+`csp/PreviewPanel.tsx:175` — bare `setTimeout` without cleanup on unmount.
+
+- [x] Add ref-based timer cleanup to all 4 components
+
+#### CR-20: `exclusions.ts:182` — `||` vs `??` for Paranoia Level
+
+`||` treats `0` as falsy. Should use `??`.
+
+- [x] Change to `??` operator
+
+#### CR-21: `default-rules.ts:88,95,99` — Missing `encodeURIComponent`
+
+URL-interpolated IDs not encoded.
+
+- [x] Add `encodeURIComponent(id)` to all 3 functions
+
+#### CR-22: Missing `role="button"` on Expandable Rows — `EventsTable.tsx:393`
+
+Clickable `<tr>` elements lacked keyboard accessibility.
+
+- [x] Add `role="button"`, `tabIndex={0}`, `aria-expanded`, `onKeyDown`
+
+### LOW
+
+#### CR-23: `itoa` Reimplements `strconv.Itoa` — `wafctl/backup.go:194`
+
+Custom implementation despite `strconv` already linked in the binary.
+
+- [x] Replace with `strconv.Itoa`
+
+#### CR-24: Duplicated Event Type Routing Logic — `wafctl/handlers_events.go:79-106,428-452`
+
+WAF/RL type routing maps duplicated between `handleSummary` and `handleEvents`.
+
+- [x] Extract to shared helper function
+
+#### CR-25: `parseHours` Inconsistent Upper Bound — `wafctl/query_helpers.go:23`
+
+No upper bound vs 720 cap in `handleExclusionHits`.
+
+- [ ] Add consistent upper bound across all endpoints
+
+#### CR-26: `softprops/action-gh-release@v2` Mutable Tag — `.github/workflows/release.yml:49`
+
+Has `contents: write` permission. Should be SHA-pinned.
+
+- [x] Pin to SHA
+
+#### CR-27: wafctl Memory Limit 128M — `compose.yaml:131`
+
+With 90-day event retention + MMDB + access log stores, may be tight under load.
+
+- [ ] Monitor and document sizing guidance
+
 ### Deploy-time Actions (First Coraza-Free Deploy)
 
 On first production deploy after Coraza removal, manually clean up on the remote host:

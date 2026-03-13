@@ -85,16 +85,16 @@ export async function listDefaultRules(): Promise<DefaultRule[]> {
 }
 
 export async function getDefaultRule(id: string): Promise<DefaultRule> {
-  return fetchJSON<DefaultRule>(`${API_BASE}/default-rules/${id}`);
+  return fetchJSON<DefaultRule>(`${API_BASE}/default-rules/${encodeURIComponent(id)}`);
 }
 
 export async function overrideDefaultRule(
   id: string,
   override: DefaultRuleOverride,
 ): Promise<DefaultRule> {
-  return putJSON<DefaultRule>(`${API_BASE}/default-rules/${id}`, override);
+  return putJSON<DefaultRule>(`${API_BASE}/default-rules/${encodeURIComponent(id)}`, override);
 }
 
 export async function resetDefaultRule(id: string): Promise<DefaultRule> {
-  return deleteJSON<DefaultRule>(`${API_BASE}/default-rules/${id}/override`);
+  return deleteJSON<DefaultRule>(`${API_BASE}/default-rules/${encodeURIComponent(id)}/override`);
 }

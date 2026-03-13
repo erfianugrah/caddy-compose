@@ -142,11 +142,39 @@ func (s *RateLimitRuleStore) List() []RateLimitRule {
 	return s.listLocked()
 }
 
-// listLocked returns a shallow copy of rules. Caller must hold s.mu (read or write).
+// listLocked returns a deep copy of rules. Caller must hold s.mu (read or write).
 func (s *RateLimitRuleStore) listLocked() []RateLimitRule {
 	cp := make([]RateLimitRule, len(s.config.Rules))
-	copy(cp, s.config.Rules)
+	for i, r := range s.config.Rules {
+		cp[i] = deepCopyRLRule(r)
+	}
 	return cp
+}
+
+// deepCopyRLRule returns a deep copy of a RateLimitRule, cloning all slices
+// to prevent shared backing arrays from causing concurrent mutation bugs.
+func deepCopyRLRule(r RateLimitRule) RateLimitRule {
+	if r.Conditions != nil {
+		conds := make([]Condition, len(r.Conditions))
+		for i, c := range r.Conditions {
+			conds[i] = c
+			if c.Transforms != nil {
+				conds[i].Transforms = make([]string, len(c.Transforms))
+				copy(conds[i].Transforms, c.Transforms)
+			}
+			if c.ListItems != nil {
+				conds[i].ListItems = make([]string, len(c.ListItems))
+				copy(conds[i].ListItems, c.ListItems)
+			}
+		}
+		r.Conditions = conds
+	}
+	if r.Tags != nil {
+		tags := make([]string, len(r.Tags))
+		copy(tags, r.Tags)
+		r.Tags = tags
+	}
+	return r
 }
 
 // Get returns a single rule by ID (deep copy), or nil if not found.
@@ -155,7 +183,7 @@ func (s *RateLimitRuleStore) Get(id string) *RateLimitRule {
 	defer s.mu.RUnlock()
 	for _, r := range s.config.Rules {
 		if r.ID == id {
-			cp := r
+			cp := deepCopyRLRule(r)
 			return &cp
 		}
 	}
@@ -436,10 +464,12 @@ func (s *RateLimitRuleStore) MergeCaddyfileServices(caddyfilePath string) int {
 
 	if added > 0 {
 		if err := s.save(); err != nil {
-			log.Printf("warning: failed to persist %d new RL rules: %v", added, err)
-		} else {
-			log.Printf("merged %d service(s) from Caddyfile into rate limit rules (%d total)", added, len(s.config.Rules))
+			// Roll back: remove the appended rules to keep memory consistent with disk.
+			s.config.Rules = s.config.Rules[:len(s.config.Rules)-added]
+			log.Printf("warning: failed to persist %d new RL rules (rolled back): %v", added, err)
+			return 0
 		}
+		log.Printf("merged %d service(s) from Caddyfile into rate limit rules (%d total)", added, len(s.config.Rules))
 	}
 
 	return added

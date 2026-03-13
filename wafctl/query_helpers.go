@@ -198,3 +198,42 @@ func (f *fieldFilter) matchField(target string) bool {
 	}
 	return true
 }
+
+// ─── Event Source Routing ────────────────────────────────────────────
+
+// wafEventTypes lists event types originating from the WAF (policy engine) event store.
+var wafEventTypes = map[string]bool{
+	"blocked": true, "logged": true,
+	"policy_skip": true, "policy_allow": true, "policy_block": true,
+}
+
+// rlEventTypes lists event types originating from the access log (RL/policy) event store.
+var rlEventTypes = map[string]bool{
+	"rate_limited": true, "policy_block": true, "detect_block": true,
+}
+
+// eventSourcesNeeded determines which event stores to query based on the event_type filter.
+// Returns (needWAF, needRL). When no filter is active, both are true.
+func eventSourcesNeeded(eventTypeF *fieldFilter) (needWAF, needRL bool) {
+	if eventTypeF == nil {
+		return true, true
+	}
+	switch eventTypeF.op {
+	case "eq":
+		return wafEventTypes[eventTypeF.value], rlEventTypes[eventTypeF.value]
+	case "in":
+		for _, v := range strings.Split(eventTypeF.value, ",") {
+			v = strings.TrimSpace(v)
+			if wafEventTypes[v] {
+				needWAF = true
+			}
+			if rlEventTypes[v] {
+				needRL = true
+			}
+		}
+		return needWAF, needRL
+	default:
+		// neq, contains, regex — can't prune safely, fetch both
+		return true, true
+	}
+}

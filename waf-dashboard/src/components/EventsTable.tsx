@@ -393,7 +393,16 @@ export default function EventsTable() {
                     <TableRow
                       className="cursor-pointer"
                       data-event-id={evt.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={expanded.has(evt.id)}
                       onClick={() => toggleExpand(evt.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleExpand(evt.id);
+                        }
+                      }}
                     >
                       <TableCell className="w-8">
                         {expanded.has(evt.id) ? (

@@ -77,33 +77,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 		if hasFilter {
 			var allEvents []Event
 			// Optimization: skip event sources that can't match the event_type filter.
-			// policy_block appears in both maps: WAF store has detect-based policy events,
-			// access log store has policy engine blocks and rate limit events.
-			wafTypes := map[string]bool{
-				"blocked": true, "logged": true,
-				"policy_skip": true, "policy_allow": true, "policy_block": true,
-			}
-			rlTypes := map[string]bool{"rate_limited": true, "policy_block": true, "detect_block": true}
-			needWAF, needRL := true, true
-			if eventTypeF != nil {
-				switch eventTypeF.op {
-				case "eq":
-					needWAF = wafTypes[eventTypeF.value]
-					needRL = rlTypes[eventTypeF.value]
-				case "in":
-					needWAF, needRL = false, false
-					for _, v := range strings.Split(eventTypeF.value, ",") {
-						if wafTypes[strings.TrimSpace(v)] {
-							needWAF = true
-						}
-						if rlTypes[strings.TrimSpace(v)] {
-							needRL = true
-						}
-					}
-				default:
-					// neq, contains, regex — can't prune safely, fetch both
-				}
-			}
+			needWAF, needRL := eventSourcesNeeded(eventTypeF)
 			if needWAF {
 				allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
 			}
@@ -422,34 +396,8 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
 
-		// Collect WAF events (unless filtering to only rate_limited).
-		// policy_block appears in both maps: WAF store has detect-based policy events,
-		// access log store has policy engine blocks and rate limit events.
-		wafTypes := map[string]bool{
-			"blocked": true, "logged": true,
-			"policy_skip": true, "policy_allow": true, "policy_block": true,
-		}
-		rlTypes := map[string]bool{"rate_limited": true, "policy_block": true, "detect_block": true}
-		needWAF, needRL := true, true
-		if eventTypeF != nil {
-			switch eventTypeF.op {
-			case "eq":
-				needWAF = wafTypes[eventTypeF.value]
-				needRL = rlTypes[eventTypeF.value]
-			case "in":
-				needWAF, needRL = false, false
-				for _, v := range strings.Split(eventTypeF.value, ",") {
-					if wafTypes[strings.TrimSpace(v)] {
-						needWAF = true
-					}
-					if rlTypes[strings.TrimSpace(v)] {
-						needRL = true
-					}
-				}
-			default:
-				// neq, contains, regex — can't prune safely, fetch both
-			}
-		}
+		// Collect events from both sources, optimizing by event_type filter.
+		needWAF, needRL := eventSourcesNeeded(eventTypeF)
 		// Collect events from both sources (already in chronological order).
 		var wafEvents, rlEvts []Event
 		if needWAF {

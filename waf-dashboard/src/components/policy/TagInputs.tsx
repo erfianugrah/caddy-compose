@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, X, Check, Copy, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,8 @@ import { VALID_TRANSFORMS } from "@/lib/api";
 
 export function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   const handleCopy = async () => {
     try {
@@ -25,7 +27,8 @@ export function CopyButton({ text, label }: { text: string; label?: string }) {
       document.body.removeChild(textarea);
     }
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   return (

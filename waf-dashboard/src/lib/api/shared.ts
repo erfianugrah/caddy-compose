@@ -23,7 +23,7 @@ export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> 
   }
   // 204 No Content — used by DELETE endpoints. Callers expecting void
   // discard the return value; callers expecting data never get 204.
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return undefined as unknown as T;
   return res.json();
 }
 

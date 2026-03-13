@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,10 +29,11 @@ var asnRe = regexp.MustCompile(`^AS\d+$`)
 // ManagedListStore manages named, reusable collections of items (IPs,
 // hostnames, strings, ASNs) with file-backed persistence.
 type ManagedListStore struct {
-	mu       sync.RWMutex
-	lists    []ManagedList
-	filePath string // metadata JSON path (e.g., /data/lists.json)
-	listsDir string // directory for large list item files (e.g., /data/lists/)
+	mu                sync.RWMutex
+	lists             []ManagedList
+	filePath          string // metadata JSON path (e.g., /data/lists.json)
+	listsDir          string // directory for large list item files (e.g., /data/lists/)
+	skipURLValidation bool   // test-only: bypass SSRF validation for httptest servers
 }
 
 // NewManagedListStore creates a store and loads existing data from disk.
@@ -383,8 +385,109 @@ func (s *ManagedListStore) Export() ManagedListExport {
 
 // ─── URL Refresh ────────────────────────────────────────────────────
 
+// validateRefreshURL checks that a URL is safe to fetch (no SSRF).
+// Only HTTPS is allowed. HTTP is permitted only for github.com and
+// raw.githubusercontent.com (IPsum lists). Private/loopback IPs are rejected.
+func validateRefreshURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// Only allow HTTPS (and HTTP for known-safe GitHub hosts).
+	switch u.Scheme {
+	case "https":
+		// always allowed
+	case "http":
+		host := strings.ToLower(u.Hostname())
+		if host != "github.com" && host != "raw.githubusercontent.com" {
+			return fmt.Errorf("only HTTPS URLs are allowed (HTTP permitted for github.com only)")
+		}
+	default:
+		return fmt.Errorf("unsupported URL scheme %q: only HTTPS is allowed", u.Scheme)
+	}
+
+	// Resolve the hostname and reject private/loopback IPs.
+	hostname := u.Hostname()
+	ips, err := net.LookupHost(hostname)
+	if err != nil {
+		return fmt.Errorf("cannot resolve hostname %q: %w", hostname, err)
+	}
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("URL resolves to private/loopback address %s", ipStr)
+		}
+	}
+
+	return nil
+}
+
 // RefreshURL re-fetches items from the list's URL, re-validates, and persists.
+// The HTTP request is performed outside the mutex lock to avoid blocking other
+// store operations during slow/stalled fetches.
 func (s *ManagedListStore) RefreshURL(id string) (ManagedList, error) {
+	// Phase 1: Read list metadata under read lock.
+	s.mu.RLock()
+	var listURL, listKind, listName string
+	found := false
+	for _, l := range s.lists {
+		if l.ID == id {
+			if l.Source != "url" {
+				s.mu.RUnlock()
+				return ManagedList{}, fmt.Errorf("only url-sourced lists can be refreshed")
+			}
+			if l.URL == "" {
+				s.mu.RUnlock()
+				return ManagedList{}, fmt.Errorf("list has no URL configured")
+			}
+			listURL = l.URL
+			listKind = l.Kind
+			listName = l.Name
+			found = true
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if !found {
+		return ManagedList{}, fmt.Errorf("list not found")
+	}
+
+	// Phase 2: Validate URL safety (SSRF protection) and fetch — no lock held.
+	if !s.skipURLValidation {
+		if err := validateRefreshURL(listURL); err != nil {
+			return ManagedList{}, fmt.Errorf("URL validation failed: %w", err)
+		}
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(listURL)
+	if err != nil {
+		return ManagedList{}, fmt.Errorf("fetching %s: %w", listURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return ManagedList{}, fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, listURL, string(errBody))
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024)) // 50 MB limit
+	if err != nil {
+		return ManagedList{}, fmt.Errorf("reading response: %w", err)
+	}
+
+	items := parseItemLines(string(body))
+
+	if err := validateItems(listKind, items); err != nil {
+		return ManagedList{}, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Phase 3: Re-acquire write lock and apply mutation.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -396,55 +499,23 @@ func (s *ManagedListStore) RefreshURL(id string) (ManagedList, error) {
 		}
 	}
 	if idx < 0 {
-		return ManagedList{}, fmt.Errorf("list not found")
-	}
-
-	l := s.lists[idx]
-	if l.Source != "url" {
-		return ManagedList{}, fmt.Errorf("only url-sourced lists can be refreshed")
-	}
-	if l.URL == "" {
-		return ManagedList{}, fmt.Errorf("list has no URL configured")
-	}
-
-	// Fetch the URL content.
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Get(l.URL)
-	if err != nil {
-		return ManagedList{}, fmt.Errorf("fetching %s: %w", l.URL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return ManagedList{}, fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, l.URL, string(body))
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024)) // 50 MB limit
-	if err != nil {
-		return ManagedList{}, fmt.Errorf("reading response: %w", err)
-	}
-
-	items := parseItemLines(string(body))
-
-	// Validate items per kind.
-	if err := validateItems(l.Kind, items); err != nil {
-		return ManagedList{}, fmt.Errorf("validation failed: %w", err)
+		return ManagedList{}, fmt.Errorf("list not found (removed during fetch)")
 	}
 
 	old := s.lists[idx]
-	l.Items = items
-	l.ItemCount = len(items)
-	l.UpdatedAt = time.Now().UTC()
-	s.lists[idx] = l
+	updated := s.lists[idx]
+	updated.Items = items
+	updated.ItemCount = len(items)
+	updated.UpdatedAt = time.Now().UTC()
+	s.lists[idx] = updated
 
 	if err := s.save(); err != nil {
 		s.lists[idx] = old // roll back
 		return ManagedList{}, err
 	}
 
-	log.Printf("[lists] refreshed %q from URL: %d items", l.Name, len(items))
-	return l, nil
+	log.Printf("[lists] refreshed %q from URL: %d items", listName, len(items))
+	return updated, nil
 }
 
 // ─── IPsum Sync ─────────────────────────────────────────────────────

@@ -586,6 +586,7 @@ func TestManagedListStore_RefreshURL(t *testing.T) {
 	defer srv.Close()
 
 	store := newTestManagedListStore(t)
+	store.skipURLValidation = true // httptest uses loopback
 	created, _ := store.Create(ManagedList{
 		Name:   "url-list",
 		Kind:   "ip",
@@ -625,6 +626,7 @@ func TestManagedListStore_RefreshURL_ValidationFailure(t *testing.T) {
 	defer srv.Close()
 
 	store := newTestManagedListStore(t)
+	store.skipURLValidation = true // httptest uses loopback
 	created, _ := store.Create(ManagedList{
 		Name: "bad-url-list", Kind: "ip", Source: "url", URL: srv.URL,
 	})
@@ -643,6 +645,7 @@ func TestManagedListStore_RefreshURL_HTTPError(t *testing.T) {
 	defer srv.Close()
 
 	store := newTestManagedListStore(t)
+	store.skipURLValidation = true // httptest uses loopback
 	created, _ := store.Create(ManagedList{
 		Name: "error-url-list", Kind: "ip", Source: "url", URL: srv.URL,
 	})
@@ -650,6 +653,54 @@ func TestManagedListStore_RefreshURL_HTTPError(t *testing.T) {
 	_, err := store.RefreshURL(created.ID)
 	if err == nil || !strings.Contains(err.Error(), "500") {
 		t.Errorf("expected HTTP 500 error, got %v", err)
+	}
+}
+
+func TestValidateRefreshURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr string
+	}{
+		{"https allowed", "https://example.com/list.txt", ""},
+		{"http github allowed", "http://raw.githubusercontent.com/list.txt", ""},
+		{"http non-github rejected", "http://example.com/list.txt", "only HTTPS"},
+		{"ftp rejected", "ftp://example.com/list.txt", "unsupported URL scheme"},
+		{"loopback rejected", "https://127.0.0.1/list.txt", "private/loopback"},
+		{"localhost rejected", "https://localhost/list.txt", "private/loopback"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateRefreshURL(tc.url)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("want error containing %q, got %v", tc.wantErr, err)
+				}
+			}
+		})
+	}
+}
+
+func TestManagedListStore_RefreshURL_SSRFBlocked(t *testing.T) {
+	// Verify that RefreshURL rejects loopback URLs when validation is active.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("1.2.3.4\n"))
+	}))
+	defer srv.Close()
+
+	store := newTestManagedListStore(t)
+	// skipURLValidation is NOT set — validation is active.
+	created, _ := store.Create(ManagedList{
+		Name: "ssrf-test", Kind: "ip", Source: "url", URL: srv.URL,
+	})
+
+	_, err := store.RefreshURL(created.ID)
+	if err == nil || !strings.Contains(err.Error(), "URL validation failed") {
+		t.Errorf("expected SSRF validation error, got %v", err)
 	}
 }
 
@@ -837,6 +888,7 @@ func TestHandlerRefreshManagedList(t *testing.T) {
 	defer srv.Close()
 
 	mux, ls := setupListMux(t)
+	ls.skipURLValidation = true // httptest uses loopback
 
 	created, _ := ls.Create(ManagedList{
 		Name: "refresh-test", Kind: "hostname", Source: "url", URL: srv.URL,

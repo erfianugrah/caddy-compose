@@ -103,16 +103,42 @@ func (s *ExclusionStore) List() []RuleExclusion {
 	return cp
 }
 
-// Get returns a single exclusion by ID.
+// Get returns a single exclusion by ID (deep copy — safe to modify).
 func (s *ExclusionStore) Get(id string) (RuleExclusion, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, e := range s.exclusions {
 		if e.ID == id {
-			return e, true
+			return deepCopyExclusion(e), true
 		}
 	}
 	return RuleExclusion{}, false
+}
+
+// deepCopyExclusion returns a deep copy of a RuleExclusion, cloning all slices
+// to prevent shared backing arrays from causing concurrent mutation bugs.
+func deepCopyExclusion(e RuleExclusion) RuleExclusion {
+	if e.Conditions != nil {
+		conds := make([]Condition, len(e.Conditions))
+		for i, c := range e.Conditions {
+			conds[i] = c
+			if c.Transforms != nil {
+				conds[i].Transforms = make([]string, len(c.Transforms))
+				copy(conds[i].Transforms, c.Transforms)
+			}
+			if c.ListItems != nil {
+				conds[i].ListItems = make([]string, len(c.ListItems))
+				copy(conds[i].ListItems, c.ListItems)
+			}
+		}
+		e.Conditions = conds
+	}
+	if e.Tags != nil {
+		tags := make([]string, len(e.Tags))
+		copy(tags, e.Tags)
+		e.Tags = tags
+	}
+	return e
 }
 
 // Create adds a new exclusion and persists to disk.
