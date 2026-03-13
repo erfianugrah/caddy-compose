@@ -130,6 +130,7 @@ export function QuickActionsForm({
   ]);
   const [groupOp, setGroupOp] = useState<GroupOperator>("and");
   const [enabled, setEnabled] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
   const [showPrefillBanner, setShowPrefillBanner] = useState(false);
 
   // Detect-specific state
@@ -156,6 +157,7 @@ export function QuickActionsForm({
     setSeverity("WARNING");
     setDetectPL(0);
     setEnabled(true);
+    setTags([]);
     setShowPrefillBanner(false);
     onPrefillConsumed?.();
   };
@@ -187,6 +189,7 @@ export function QuickActionsForm({
       data.severity = severity;
       if (detectPL > 0) data.detect_paranoia_level = detectPL;
     }
+    if (tags.length > 0) data.tags = tags;
 
     onSubmit(data);
     resetForm();
@@ -394,6 +397,19 @@ export function QuickActionsForm({
           </div>
         </div>
       )}
+
+      {/* Tags */}
+      <div className="space-y-1.5">
+        <Label className={T.formLabel}>Tags</Label>
+        <PipeTagInput
+          value={tags.join("|")}
+          onChange={(v) => setTags(v ? v.split("|").filter(Boolean) : [])}
+          placeholder="e.g., scanner, bot-detection, temporary (Enter to add)"
+        />
+        <p className="text-xs text-muted-foreground">
+          Optional labels for organizing rules and classifying events
+        </p>
+      </div>
 
       {/* Enabled + Submit */}
       <div className="flex items-center gap-4 pt-2">

@@ -325,7 +325,7 @@ func (s *RateLimitRuleStore) EnabledRules() []RateLimitRule {
 	var result []RateLimitRule
 	for _, r := range s.config.Rules {
 		if r.Enabled {
-			result = append(result, r)
+			result = append(result, deepCopyRLRule(r))
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {

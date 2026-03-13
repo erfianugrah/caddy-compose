@@ -94,12 +94,14 @@ func (s *ExclusionStore) save() error {
 	return nil
 }
 
-// List returns all exclusions.
+// List returns all exclusions (deep copies — safe to modify).
 func (s *ExclusionStore) List() []RuleExclusion {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cp := make([]RuleExclusion, len(s.exclusions))
-	copy(cp, s.exclusions)
+	for i, e := range s.exclusions {
+		cp[i] = deepCopyExclusion(e)
+	}
 	return cp
 }
 
@@ -276,14 +278,14 @@ func (s *ExclusionStore) Export() ExclusionExport {
 	}
 }
 
-// EnabledExclusions returns only enabled exclusions.
+// EnabledExclusions returns only enabled exclusions (deep copies).
 func (s *ExclusionStore) EnabledExclusions() []RuleExclusion {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []RuleExclusion
 	for _, e := range s.exclusions {
 		if e.Enabled {
-			result = append(result, e)
+			result = append(result, deepCopyExclusion(e))
 		}
 	}
 	return result
