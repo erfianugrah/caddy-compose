@@ -4236,8 +4236,8 @@ Per-field operator additions:
 - [x] E2E smoke test: negated operators — `not_contains` block rule, `not_in` method block, validation (3 new tests)
 - [x] E2E smoke test: priority bands updated for 5-pass model, allow-overrides-block verified
 - [x] E2E smoke test: full suite passing (all existing + 6 new tests)
-- [ ] Local smoke test: verify UI renders all operators for each field correctly
-- [ ] Local smoke test: verify transforms UI grouping and presets work
+- [x] Visual smoke test: UI renders operators, transforms, skip type — verified via live production screenshots
+- [x] Visual smoke test: transforms dropdown compact + scrollable — verified via live screenshots
 - [x] Commit all changes on `fix/code-review-round2` — committed as `ffcad36`
 - [x] Merge to main — `c714118`
 - [x] Production deploy — caddy `3.22.0-2.11.1` + wafctl `2.23.0` + plugin `v0.14.0`
