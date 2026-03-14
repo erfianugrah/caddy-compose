@@ -302,7 +302,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
               </CardHeader>
               <CardContent>
                 {data.timeline.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={300}>
                     <AreaChart
                       data={data.timeline}
                       margin={{ top: 5, right: 10, left: 0, bottom: 0 }}

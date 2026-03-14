@@ -387,6 +387,9 @@ func handleGeneralLogs(gls *GeneralLogStore) http.HandlerFunc {
 			}
 		}
 
+		// Request ID filter (exact match for cross-log correlation)
+		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
+
 		// Header presence filter (e.g., ?missing_header=csp)
 		missingHeader := strings.ToLower(q.Get("missing_header"))
 
@@ -421,6 +424,9 @@ func handleGeneralLogs(gls *GeneralLogStore) http.HandlerFunc {
 				continue
 			}
 			if uaF != nil && !uaF.matchField(e.UserAgent) {
+				continue
+			}
+			if requestIDF != nil && !requestIDF.matchField(e.RequestID) {
 				continue
 			}
 

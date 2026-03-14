@@ -125,6 +125,7 @@ export interface GeneralLogsParams {
   user_agent?: string;
   user_agent_op?: FilterOp;
   missing_header?: string;
+  request_id?: string;
   page?: number;
   per_page?: number;
 }
@@ -154,6 +155,7 @@ function applyGeneralLogParams(sp: URLSearchParams, params?: GeneralLogsParams):
     if (op && op !== "eq") sp.set(`${field}_op`, op);
   }
   if (params.missing_header) sp.set("missing_header", params.missing_header);
+  if (params.request_id) sp.set("request_id", params.request_id);
 }
 
 // ─── API Functions ──────────────────────────────────────────────────

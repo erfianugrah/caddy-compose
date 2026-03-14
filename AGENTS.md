@@ -44,6 +44,7 @@ cd waf-dashboard && npm run build  # Astro static build
 make test               # Run ALL tests (Go + frontend)
 make test-go            # Go tests only
 make test-frontend      # Frontend (Vitest) tests only
+make test-e2e           # E2E smoke tests (requires Docker — builds images, starts stack, runs suite)
 ```
 
 ### Running a single test
@@ -53,6 +54,8 @@ make test-frontend      # Frontend (Vitest) tests only
 cd wafctl && go test -run TestFunctionName -count=1 -timeout 60s ./...
 # Frontend:
 cd waf-dashboard && npx vitest run -t "test description substring"
+# E2E (single test):
+cd test/e2e && go test -v -count=1 -timeout 60s -run TestName ./...
 ```
 
 ## Lint / Format
@@ -205,8 +208,9 @@ it is used; otherwise it defaults to `paranoia_level`. Same for `detection_paran
 
 | Type | Action | Notes |
 |------|--------|-------|
-| `allow` | Policy Engine allow | Full WAF bypass for matching requests |
+| `allow` | Policy Engine allow | Full WAF bypass for matching requests. Terminates immediately (pass 1). |
 | `block` | Policy Engine block (403) | Deny matching requests. Honeypot paths use `block` + `["honeypot"]` tag |
+| `skip` | Policy Engine skip | Selective bypass — skip specific CRS rule IDs, entire phases, or all remaining rules. Non-terminating (pass 3). Carries `skip_targets` with `rules`, `phases`, `all_remaining`. |
 | `detect` | Policy Engine detect | CRS-style anomaly scoring with configurable severity and PL |
 
 ### Condition Fields
@@ -748,6 +752,7 @@ Zero external dependencies beyond Caddy itself. Registered as `http.handlers.pol
 | `allow` | Set vars, pass to next handler | `{http.vars.policy_engine.action}=allow`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}` |
 | `block` | Set vars, return 403 via `caddyhttp.Error` | `{http.vars.policy_engine.action}=block`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}`, `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
 | `honeypot` | Set vars, return 403 via `caddyhttp.Error` | `{http.vars.policy_engine.action}=honeypot`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}`, `X-Blocked-By: policy-engine`, `X-Blocked-Rule: <name>` |
+| `skip` | Set vars, accumulate skip flags (non-terminating) | `{http.vars.policy_engine.action}=skip`, `{http.vars.policy_engine.rule_id}`, `{http.vars.policy_engine.rule_name}`, `{http.vars.policy_engine.tags}` |
 | `rate_limit` | Sliding window counter, 429 when exceeded | `{http.vars.policy_engine.action}=rate_limit`, `X-RateLimit-Limit/Remaining/Reset/Policy`, `Retry-After` |
 | `rate_limit` (log_only) | Monitor mode, set headers but don't block | `{http.vars.policy_engine.action}=rate_limit_monitor`, `X-RateLimit-Monitor: <name>` |
 
@@ -771,7 +776,8 @@ Supports all request-phase fields: `ip`, `path`, `uri_path`, `host`, `method`, `
 `body_form`.
 
 All operators: `eq`, `neq`, `contains`, `begins_with`, `ends_with`, `regex`, `ip_match`,
-`not_ip_match`, `in`, `exists`. Named fields use `Name:value` format (same as wafctl conventions).
+`not_ip_match`, `in`, `exists`, `phrase_match`, `not_contains`, `not_begins_with`,
+`not_ends_with`, `not_regex`, `not_in`, `not_phrase_match`. Named fields use `Name:value` format.
 
 **Critical security fix**: `in` operator uses `map[string]bool` hash set for O(1) exact
 lookup instead of substring matching.
@@ -809,7 +815,7 @@ and rate limiting. Coraza has been removed entirely.
 ### wafctl Integration
 
 - `policy_generator.go` generates `policy-rules.json` from exclusions (allow/block/detect) and rate limit rules
-- `GeneratePolicyRulesWithRL()` merges WAF exclusions + RL rules into a single rules array with priority bands: block(100) < allow(200) < rate_limit(300). Accepts a `serviceMap` parameter for FQDN resolution.
+- `GeneratePolicyRulesWithRL()` merges WAF exclusions + RL rules into a single rules array with priority bands: allow(50) < block(100) < skip(200) < rate_limit(300) < detect(400). Accepts a `serviceMap` parameter for FQDN resolution.
 - `IsPolicyEngineType()` checks if an exclusion type is handled by the plugin
 - `splitHoneypotPaths()` expands honeypot rules (which consolidate multiple paths) into individual path conditions (unexported, test-only)
 - Both `generateOnBoot()` and `handleDeploy()` call the policy generator, including RL rules
@@ -932,7 +938,8 @@ The `AccessLogStore` (`access_log_store.go`) parses Caddy access logs for securi
 - 429 responses → `rate_limited` events
 - 403 responses with policy engine vars → `policy_block` events
 - Policy engine detect actions with score above threshold → `detect_block` events
-- Policy engine detect actions below threshold → `logged` events
+- `policy_action == "skip"` on any status → `policy_skip` events
+- Below-threshold detect (score > 0 with CRS rule matches, non-403) → `logged` events
 
 **Policy engine block detection** uses a two-tier approach for HTTP/2 compatibility:
 
@@ -953,7 +960,7 @@ Rate limit events from the policy engine carry direct rule name attribution via
 `policy_rule` field (or `X-RateLimit-Policy` header name extraction), eliminating
 the need for heuristic condition-based matching (`matchEventToRuleTags`).
 
-**Access log flow**: `AccessLogEntry` → classify as `isRateLimit` (429) or `isPolicy` (403 + policy detection) → further classify 429s as `isPolicyRateLimit` → `RateLimitEvent{Source: "policy_rl"|"policy"|""}` → `enrichAccessEvents()` (tag lookup from RL rules for `policy_rl`, exclusion store for `policy`, heuristic for legacy) → `RateLimitEventToEvent()` → unified `Event`
+**Access log flow**: `AccessLogEntry` → classify as `isRateLimit` (429) or `isPolicy` (403) or `isSkip` (policy_action=skip) or `isLogged` (score>0 with matches) → `RateLimitEvent{Source}` → `enrichAccessEvents()` → `RateLimitEventToEvent()` → unified `Event`
 
 **Event sources**:
 | Source | Status | EventType | Tag Enrichment |
@@ -961,6 +968,9 @@ the need for heuristic condition-based matching (`matchEventToRuleTags`).
 | `""` | 429 | `rate_limited` | Heuristic `matchEventToRuleTags()` |
 | `"policy_rl"` | 429 | `rate_limited` | Direct RL rule name lookup |
 | `"policy"` | 403 | `policy_block` | Exclusion store name lookup |
+| `"detect_block"` | 403 | `detect_block` | Inline tags from plugin |
+| `"policy_skip"` | original | `policy_skip` | Inline tags from plugin |
+| `"logged"` | original | `logged` | Inline tags from plugin + CRS enrichment |
 
 **Helper functions**: `headerValuesCI()` / `headerValueCI()` for case-insensitive header lookups, `isPolicyBlocked(entry)` for block detection, `isPolicyRateLimit(entry)` for RL detection, `policyBlockedRuleName(entry)` / `policyRateLimitRuleName(entry)` for rule name extraction.
 
