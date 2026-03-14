@@ -3658,7 +3658,7 @@ CI runs unit tests (`test-go`, `test-frontend`) but not the e2e suite (21 test f
 120 tests). Integration-critical tests covering WAF bypass, policy engine, rate limiting,
 backup/restore only run locally via `make test-e2e`.
 
-- [ ] Add e2e job to CI that builds test images and runs the e2e suite
+- [x] Add e2e job to CI that builds test images and runs the e2e suite
 
 #### CR2-15: CORS Reflects Request Host Without Validation — `Caddyfile:68,74`
 

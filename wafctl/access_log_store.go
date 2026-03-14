@@ -481,17 +481,18 @@ func (s *AccessLogStore) Load() {
 		if len(line) > 0 {
 			var entry AccessLogEntry
 			if jsonErr := json.Unmarshal(line, &entry); jsonErr == nil {
-				// Collect 429 (rate limited), policy-engine-blocked (403), and
-				// below-threshold detect events (any status with anomaly score).
+				// Collect security-relevant events from the access log:
+				// - 429 (rate limited)
+				// - 403 with policy engine block
+				// - policy_action=skip (selective bypass, non-terminating)
+				// - below-threshold detect (score > 0 with CRS rule matches)
 				isRateLimit := entry.Status == 429
 				isPolicy := entry.Status == 403 && isPolicyBlocked(entry)
-				// Below-threshold detect: score > 0 AND actual CRS rule matches present.
-				// Without the DetectRules check, we'd collect every single request
-				// that passes through the policy engine (high volume noise).
-				isLogged := !isPolicy && !isRateLimit &&
+				isSkip := entry.PolicyAction == "skip"
+				isLogged := !isPolicy && !isRateLimit && !isSkip &&
 					entry.PolicyScore != "" && entry.PolicyScore != "0" &&
 					(entry.PolicyDetectRules != "" || entry.PolicyDetectMatches != "")
-				if isRateLimit || isPolicy || isLogged {
+				if isRateLimit || isPolicy || isSkip || isLogged {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -525,6 +526,13 @@ func (s *AccessLogStore) Load() {
 					} else if isPolicy {
 						evt.Source = "policy"
 						evt.RuleName = policyBlockedRuleName(entry)
+					} else if isSkip {
+						// Policy engine skip: selective bypass of specific rules/phases.
+						evt.Source = "policy_skip"
+						evt.RuleName = entry.PolicyRule
+						if entry.PolicyTags != "" {
+							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
+						}
 					} else if isLogged {
 						// Below-threshold detect: CRS rules fired but score didn't
 						// exceed the inbound threshold. These appear as "logged" events
@@ -778,16 +786,19 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// Policy engine rate limit — still a 429/rate_limited but with rule attribution.
 		status = 429
 		eventType = "rate_limited"
+	case "policy_skip":
+		// Policy engine skip: selective bypass, request passed through.
+		status = rle.Status
+		eventType = "policy_skip"
 	case "logged":
 		// Below-threshold detect: CRS rules scored but didn't exceed threshold.
-		// Keep the original HTTP status (typically 200) and mark as "logged".
 		status = rle.Status
 		eventType = "logged"
 	}
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
 	}
-	isBlocked := rle.Source != "logged"
+	isBlocked := rle.Source != "logged" && rle.Source != "policy_skip"
 	evt := Event{
 		ID:             rle.RequestID,
 		Timestamp:      rle.Timestamp,
@@ -807,6 +818,9 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	// For policy engine blocks, set the rule message from X-Blocked-Rule header.
 	if rle.Source == "policy" && rle.RuleName != "" {
 		evt.RuleMsg = "Policy Block: " + rle.RuleName
+	}
+	if rle.Source == "policy_skip" && rle.RuleName != "" {
+		evt.RuleMsg = "Policy Skip: " + rle.RuleName
 	}
 	// For detect_block and logged, include the anomaly score and matched rule details.
 	// Enrich with CRS descriptions and populate top-level fields

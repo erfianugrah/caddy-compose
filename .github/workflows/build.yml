@@ -15,6 +15,7 @@ on:
       - 'waf/**'
       - 'scripts/**'
       - 'errors/**'
+      - 'test/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -79,9 +80,49 @@ jobs:
       - run: npx vitest run
         working-directory: waf-dashboard
 
+  # ── E2E smoke tests ──────────────────────────────────────────────
+  test-e2e:
+    needs: [test-go, test-frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build test images
+        run: |
+          docker build -t caddy-e2e:local .
+          docker build -t wafctl-e2e:local -f wafctl/Dockerfile .
+
+      - name: Start e2e stack
+        run: |
+          docker compose -f test/docker-compose.e2e.yml up -d
+          # Wait for wafctl health
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:18082/api/health > /dev/null 2>&1 && break
+            sleep 2
+          done
+
+      - name: Run e2e tests
+        run: go test -v -count=1 -timeout 600s ./...
+        working-directory: test/e2e
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          docker compose -f test/docker-compose.e2e.yml logs caddy --tail 50
+          docker compose -f test/docker-compose.e2e.yml logs wafctl --tail 50
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f test/docker-compose.e2e.yml down -v
+
   # ── Build + scan + push + sign Caddy image ───────────────────────
   caddy:
-    needs: [changes, test-go, test-frontend]
+    needs: [changes, test-go, test-frontend, test-e2e]
     if: needs.changes.outputs.caddy == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -136,7 +177,7 @@ jobs:
 
   # ── Build + scan + push + sign wafctl image ─────────────────────
   wafctl:
-    needs: [changes, test-go, test-frontend]
+    needs: [changes, test-go, test-frontend, test-e2e]
     if: needs.changes.outputs.wafctl == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
