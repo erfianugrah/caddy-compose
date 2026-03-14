@@ -18,6 +18,7 @@ import {
   parseMatchedData,
   HighlightedText,
   TruncatedCode,
+  CopyBtn,
   isPolicyRuleEvent,
   policyRuleLink,
 } from "./helpers";
@@ -167,27 +168,29 @@ function CRSEventDetails({ event }: { event: WAFEvent }) {
         if (parsed) {
           return (
             <div className="space-y-1">
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground">Variable:</span>
                 <code className="text-lv-cyan">{parsed.variable}</code>
+                <CopyBtn text={parsed.variable} />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground">Trigger:</span>
-                <code className="text-lv-peach">{parsed.trigger}</code>
+                <TruncatedCode value={parsed.trigger} className="text-lv-peach" />
+                <CopyBtn text={parsed.trigger} />
               </div>
               <div className="flex gap-2 items-start">
                 <span className="text-muted-foreground shrink-0">Full Value:</span>
-                <code className="break-all text-foreground/80">
-                  <HighlightedText text={parsed.fullValue} highlight={parsed.trigger} />
-                </code>
+                <TruncatedCode value={parsed.fullValue} className="text-foreground/80" />
+                <CopyBtn text={parsed.fullValue} />
               </div>
             </div>
           );
         }
         return (
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-start">
             <span className="text-muted-foreground">Matched:</span>
-            <code className="break-all text-lv-peach">{event.matched_data}</code>
+            <TruncatedCode value={event.matched_data} className="text-lv-peach" />
+            <CopyBtn text={event.matched_data} />
           </div>
         );
       })()}
@@ -299,20 +302,22 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
           </Button>
         </div>
       )}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-3">
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
             Request Details
           </h4>
           <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs">
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <span className="text-muted-foreground">Event ID:</span>
               <code className="text-muted-foreground/70 font-data select-all">{event.id}</code>
+              <CopyBtn text={event.id} />
             </div>
             {event.request_id && (
               <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground">Request ID:</span>
                 <code className="text-muted-foreground/70 font-data select-all">{event.request_id}</code>
+                <CopyBtn text={event.request_id} />
                 <a
                   href={`/logs?request_id=${encodeURIComponent(event.request_id)}`}
                   onClick={(e) => e.stopPropagation()}
@@ -322,15 +327,17 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 </a>
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <span className="text-muted-foreground">Method:</span>
               <span className="font-medium text-lv-cyan">{event.method}</span>
+              <CopyBtn text={event.method} />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <span className="text-muted-foreground">URI:</span>
               <code className="break-all text-foreground">{event.uri}</code>
+              <CopyBtn text={event.uri} />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <span className="text-muted-foreground">Client:</span>
               <a
                 href={`/analytics?q=${encodeURIComponent(event.client_ip)}`}
@@ -338,13 +345,14 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               >
                 {event.client_ip}
               </a>
+              <CopyBtn text={event.client_ip} />
               {event.country && event.country !== "XX" && (
                 <span className="text-muted-foreground">
                   ({countryFlag(event.country)} {event.country})
                 </span>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <span className="text-muted-foreground">Status:</span>
               <span
                 className={
@@ -353,6 +361,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               >
                 {event.status}
               </span>
+              <CopyBtn text={String(event.status)} />
             </div>
           </div>
         </div>
@@ -388,9 +397,10 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                   </div>
                 )}
                 {event.user_agent && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">User-Agent:</span>
-                    <code className="break-all text-foreground">{event.user_agent}</code>
+                  <div className="flex gap-2 items-start">
+                    <span className="text-muted-foreground shrink-0">User-Agent:</span>
+                    <TruncatedCode value={event.user_agent} className="text-foreground" />
+                    <CopyBtn text={event.user_agent} />
                   </div>
                 )}
               </>
@@ -445,9 +455,10 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                   </div>
                 )}
                 {event.user_agent && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">User-Agent:</span>
-                    <code className="break-all text-foreground text-xs">{event.user_agent}</code>
+                  <div className="flex gap-2 items-start">
+                    <span className="text-muted-foreground shrink-0">User-Agent:</span>
+                    <TruncatedCode value={event.user_agent} className="text-foreground" />
+                    <CopyBtn text={event.user_agent} />
                   </div>
                 )}
               </>
@@ -490,9 +501,10 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     <div className="pl-2 space-y-1">
                       {rule.matches.map((m, mIdx) => (
                         <div key={mIdx} className="space-y-0.5">
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center">
                             <span className="text-muted-foreground shrink-0">Variable:</span>
-                            <code className="text-lv-cyan">{m.var_name}</code>
+                            <code className="text-lv-cyan break-all">{m.var_name}</code>
+                            <CopyBtn text={m.var_name} />
                             {m.operator && (
                               <Badge variant="outline" className="text-[10px] px-1 py-0 text-muted-foreground">{m.operator}</Badge>
                             )}
@@ -501,22 +513,14 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                             <div className="flex gap-2 items-start">
                               <span className="text-muted-foreground shrink-0">Matched:</span>
                               <TruncatedCode value={m.matched_data} className="text-lv-peach" />
+                              <CopyBtn text={m.matched_data} />
                             </div>
                           )}
                           {m.value && m.value !== m.matched_data && (
                             <div className="flex gap-2 items-start">
                               <span className="text-muted-foreground shrink-0">Full Value:</span>
-                              {m.value.length > 200 ? (
-                                <TruncatedCode value={m.value} className="text-foreground/70" />
-                              ) : (
-                                <code className="break-all text-foreground/70">
-                                  {m.matched_data ? (
-                                    <HighlightedText text={m.value} highlight={m.matched_data} />
-                                  ) : (
-                                    m.value
-                                  )}
-                                </code>
-                              )}
+                              <TruncatedCode value={m.value} className="text-foreground/70" />
+                              <CopyBtn text={m.value} />
                             </div>
                           )}
                         </div>
@@ -524,20 +528,21 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     </div>
                   ) : parsed ? (
                     <div className="pl-2 space-y-0.5">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <span className="text-muted-foreground">Variable:</span>
                         <code className="text-lv-cyan">{parsed.variable}</code>
+                        <CopyBtn text={parsed.variable} />
                       </div>
                       <div className="flex gap-2 items-start">
                         <span className="text-muted-foreground shrink-0">Value:</span>
-                        <code className="break-all text-foreground/80">
-                          <HighlightedText text={parsed.fullValue} highlight={parsed.trigger} />
-                        </code>
+                        <TruncatedCode value={parsed.fullValue} className="text-foreground/80" />
+                        <CopyBtn text={parsed.fullValue} />
                       </div>
                     </div>
                   ) : rule.matched_data ? (
-                    <div className="pl-2">
-                      <code className="break-all text-lv-peach text-xs">{rule.matched_data}</code>
+                    <div className="pl-2 flex gap-2 items-start">
+                      <TruncatedCode value={rule.matched_data} className="text-lv-peach" />
+                      <CopyBtn text={rule.matched_data} />
                     </div>
                   ) : null}
                   {rule.file && (

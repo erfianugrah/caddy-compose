@@ -171,6 +171,9 @@ export function ConditionRow({
   const isListOp = condition.operator === "in_list" || condition.operator === "not_in_list";
   const transforms = condition.transforms ?? [];
 
+  // Track previous value when field changes so user can re-apply it.
+  const [prevValue, setPrevValue] = useState<string | null>(null);
+
   return (
     <div className="space-y-1">
     <div className="flex items-start gap-2">
@@ -180,6 +183,8 @@ export function ConditionRow({
         onValueChange={(v) => {
           const newField = v as ConditionField;
           const newFieldDef = getFieldDef(newField);
+          // Save old value as pill if non-empty.
+          if (condition.value) setPrevValue(condition.value);
           onChange(index, {
             field: newField,
             operator: newFieldDef.operators[0].value,
@@ -211,14 +216,27 @@ export function ConditionRow({
             const newOp = v as ConditionOperator;
             const isPhraseOp = newOp === "phrase_match" || newOp === "not_phrase_match";
             const wasPhraseOp = condition.operator === "phrase_match" || condition.operator === "not_phrase_match";
-            if (isPhraseOp) {
+            const isListOp_ = newOp === "in_list" || newOp === "not_in_list";
+            const wasListOp = condition.operator === "in_list" || condition.operator === "not_in_list";
+
+            if (newOp === "exists") {
+              // exists needs no value
+              onChange(index, { ...condition, operator: newOp, value: "", list_items: undefined });
+            } else if (isPhraseOp) {
+              // Migrate pipe-separated value to list_items for phrase_match
               const items = condition.value ? condition.value.split("|").filter(Boolean) : [];
               onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : (condition.list_items ?? undefined) });
-            } else {
-              const fromPhraseMatch = wasPhraseOp && condition.list_items?.length;
+            } else if (wasPhraseOp) {
+              // Migrate list_items back to pipe-separated value
               const isInOp = newOp === "in" || newOp === "not_in";
-              const newValue = fromPhraseMatch && isInOp ? condition.list_items!.join("|") : "";
+              const newValue = condition.list_items?.length && isInOp ? condition.list_items.join("|") : condition.value;
               onChange(index, { ...condition, operator: newOp, value: newValue, list_items: undefined });
+            } else if (isListOp_ !== wasListOp) {
+              // Switching to/from list operators — clear value (different semantics)
+              onChange(index, { ...condition, operator: newOp, value: "", list_items: undefined });
+            } else {
+              // Default: preserve the value when switching between compatible operators
+              onChange(index, { ...condition, operator: newOp, list_items: undefined });
             }
           }}
         >
@@ -298,6 +316,27 @@ export function ConditionRow({
           <X className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Previous value pill — shown after field change so user can re-apply */}
+      {prevValue && !condition.value && (
+        <div className="flex items-center gap-1 pl-1 text-[11px]">
+          <span className="text-muted-foreground/60">Previous:</span>
+          <button
+            onClick={() => { onChange(index, { ...condition, value: prevValue }); setPrevValue(null); }}
+            className="inline-flex items-center gap-1 rounded bg-lovelace-800 border border-border px-2 py-0.5 font-data text-lv-cyan hover:bg-lv-cyan/10 transition-colors cursor-pointer"
+            title="Click to re-apply this value"
+          >
+            {prevValue.length > 50 ? prevValue.slice(0, 50) + "..." : prevValue}
+          </button>
+          <button
+            onClick={() => setPrevValue(null)}
+            className="text-muted-foreground/40 hover:text-lv-red"
+            title="Dismiss"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </div>
+      )}
 
       {/* Transform pills — shown below the row when transforms are active */}
       {transforms.length > 0 && (

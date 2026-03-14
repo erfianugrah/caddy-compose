@@ -101,7 +101,7 @@ import { consumePrefillEvent } from "./policy/eventPrefill";
 import { conditionsSummary, exclusionTypeLabel, exclusionTypeBadgeVariant } from "./policy/exclusionHelpers";
 import { QuickActionsForm, AdvancedBuilderForm } from "./policy/PolicyForms";
 
-const RULES_PAGE_SIZE = 15;
+const RULES_PAGE_SIZE = 25;
 
 // ─── Main Policy Engine Component ───────────────────────────────────
 
@@ -123,6 +123,9 @@ export default function PolicyEngine() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
+  // Inline position editing — click an order number to type a new position.
+  const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
+
   const [deployStep, setDeployStep] = useState<string | null>(null);
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -130,9 +133,13 @@ export default function PolicyEngine() {
   // Event prefill — consumed once on mount from sessionStorage.
   // Must use useEffect (not useState initializer) to avoid SSR hydration mismatch.
   const [eventPrefill, setEventPrefill] = useState<EventPrefill | null>(null);
+  const [cameFromEvents, setCameFromEvents] = useState(false);
   useEffect(() => {
     const prefill = consumePrefillEvent();
-    if (prefill) setEventPrefill(prefill);
+    if (prefill) {
+      setEventPrefill(prefill);
+      setCameFromEvents(true);
+    }
   }, []);
 
   // Guard against stale responses when rapid reloads fire concurrent requests.
@@ -231,7 +238,7 @@ export default function PolicyEngine() {
   const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(sortedFilteredExclusions, rulesPage, RULES_PAGE_SIZE);
 
   // All possible exclusion types for the filter dropdown
-  const allExclusionTypes: ExclusionType[] = ["allow", "block", "detect"];
+  const allExclusionTypes: ExclusionType[] = ["allow", "block", "skip", "detect"];
 
   // Scroll to the highlighted rule once exclusions have loaded.
   useEffect(() => {
@@ -324,6 +331,55 @@ export default function PolicyEngine() {
       setError(err instanceof Error ? err.message : "Move failed");
     }
   }, [exclusions, autoDeploy]);
+
+  const handleMoveToPosition = useCallback(async (id: string, targetPos: number) => {
+    const fromIdx = exclusions.findIndex((e) => e.id === id);
+    if (fromIdx === -1) return;
+    const toIdx = Math.max(0, Math.min(exclusions.length - 1, targetPos - 1));
+    if (fromIdx === toIdx) return;
+
+    const newExclusions = [...exclusions];
+    const [item] = newExclusions.splice(fromIdx, 1);
+    newExclusions.splice(toIdx, 0, item);
+
+    // Navigate to the page where the rule landed.
+    setRulesPage(Math.ceil((toIdx + 1) / RULES_PAGE_SIZE));
+
+    const prev = exclusions;
+    setExclusions(newExclusions);
+    try {
+      const result = await reorderExclusions(newExclusions.map((e) => e.id));
+      setExclusions(result);
+      await autoDeploy(`Rule moved to position ${toIdx + 1}`);
+    } catch (err: unknown) {
+      setExclusions(prev);
+      setError(err instanceof Error ? err.message : "Move failed");
+    }
+  }, [exclusions, autoDeploy]);
+
+  const handleBulkMoveToPosition = useCallback(async (targetPos: number) => {
+    if (selected.size === 0) return;
+    const selectedIds = new Set(selected);
+    // Remove selected from array, insert them at target position in selection order.
+    const remaining = exclusions.filter((e) => !selectedIds.has(e.id));
+    const moved = exclusions.filter((e) => selectedIds.has(e.id));
+    const insertIdx = Math.max(0, Math.min(remaining.length, targetPos - 1));
+    const newExclusions = [...remaining.slice(0, insertIdx), ...moved, ...remaining.slice(insertIdx)];
+
+    setRulesPage(Math.ceil((insertIdx + 1) / RULES_PAGE_SIZE));
+
+    const prev = exclusions;
+    setExclusions(newExclusions);
+    try {
+      const result = await reorderExclusions(newExclusions.map((e) => e.id));
+      setExclusions(result);
+      setSelected(new Set());
+      await autoDeploy(`${moved.length} rules moved to position ${insertIdx + 1}`);
+    } catch (err: unknown) {
+      setExclusions(prev);
+      setError(err instanceof Error ? err.message : "Bulk move failed");
+    }
+  }, [exclusions, selected, autoDeploy]);
 
   const handleCreate = async (data: ExclusionCreateData) => {
     try {
@@ -526,7 +582,14 @@ export default function PolicyEngine() {
         <Alert variant="success">
           <Check className="h-4 w-4" />
           <AlertTitle>Success</AlertTitle>
-          <AlertDescription>{successMsg}</AlertDescription>
+          <AlertDescription className="flex items-center gap-3">
+            {successMsg}
+            {cameFromEvents && (
+              <a href="/events" className="inline-flex items-center gap-1 text-xs font-medium text-lv-cyan hover:underline ml-2">
+                Back to Events
+              </a>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -614,6 +677,27 @@ export default function PolicyEngine() {
                 <Button variant="outline" size="xs" className="text-lv-red hover:text-lv-red" onClick={() => handleBulkAction("delete")} disabled={bulkBusy}>
                   Delete
                 </Button>
+                {!isFiltered && (
+                  <form className="inline-flex items-center gap-1 ml-2" onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = (e.target as HTMLFormElement).elements.namedItem("bulkPos") as HTMLInputElement;
+                    const pos = parseInt(input.value, 10);
+                    if (!isNaN(pos) && pos >= 1) {
+                      handleBulkMoveToPosition(pos);
+                      input.value = "";
+                    }
+                  }}>
+                    <span className="text-xs text-muted-foreground">Move to #</span>
+                    <input
+                      name="bulkPos"
+                      type="number"
+                      min={1}
+                      max={exclusions.length}
+                      className="w-[50px] h-6 bg-transparent border border-border rounded px-1 text-xs text-center outline-none focus:border-lv-cyan"
+                      placeholder="#"
+                    />
+                  </form>
+                )}
                 <div className="ml-auto flex items-center gap-2">
                   <Button variant="ghost" size="xs" onClick={selectAllVisible} className="text-xs text-muted-foreground">
                     Select All ({filteredExclusions.length})
@@ -660,8 +744,37 @@ export default function PolicyEngine() {
                         className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
                       />
                     </TableCell>
-                    <TableCell className="text-xs tabular-nums text-muted-foreground/60" title={`Rule ${globalIdx} of ${filteredExclusions.length}`}>
-                      {globalIdx}
+                    <TableCell className="text-xs tabular-nums text-muted-foreground/60 w-[40px]" title={`Rule ${globalIdx} of ${filteredExclusions.length} — click to move`}>
+                      {editingPositionId === excl.id ? (
+                        <input
+                          type="number"
+                          min={1}
+                          max={exclusions.length}
+                          defaultValue={globalIdx}
+                          autoFocus
+                          className="w-[40px] bg-transparent border border-lv-cyan/50 rounded px-1 py-0 text-xs text-center text-lv-cyan outline-none"
+                          onBlur={(e) => {
+                            setEditingPositionId(null);
+                            const v = parseInt(e.target.value, 10);
+                            if (!isNaN(v) && v !== globalIdx) handleMoveToPosition(excl.id, v);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              (e.target as HTMLInputElement).blur();
+                            } else if (e.key === "Escape") {
+                              setEditingPositionId(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => !isFiltered && setEditingPositionId(excl.id)}
+                          className={`${isFiltered ? "cursor-default" : "cursor-pointer hover:text-lv-cyan hover:bg-lv-cyan/10 rounded px-1"} transition-colors`}
+                          disabled={isFiltered}
+                        >
+                          {globalIdx}
+                        </button>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div>

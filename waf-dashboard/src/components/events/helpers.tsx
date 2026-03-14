@@ -1,5 +1,34 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { WAFEvent } from "@/lib/api";
+
+// ─── Copy Button ────────────────────────────────────────────────────
+
+/** Tiny inline copy-to-clipboard icon. Shows a checkmark briefly on success. */
+export function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          timerRef.current = setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+      className="inline-flex items-center shrink-0 ml-1 text-muted-foreground/40 hover:text-lv-cyan transition-colors"
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg className="h-3 w-3 text-lv-green" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8.5l3 3 7-7" /></svg>
+      ) : (
+        <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="5" y="5" width="8" height="8" rx="1" /><path d="M3 11V3a1 1 0 011-1h8" /></svg>
+      )}
+    </button>
+  );
+}
 
 // ─── Truncation ─────────────────────────────────────────────────────
 

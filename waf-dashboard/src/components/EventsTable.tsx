@@ -335,7 +335,7 @@ export default function EventsTable() {
                 ) : (
                   <>
                     <Download className="h-3 w-3 mr-1" />
-                    All ({response.total.toLocaleString()})
+                    All{response.total >= 0 ? ` (${response.total.toLocaleString()})` : ""}
                   </>
                 )}
               </Button>

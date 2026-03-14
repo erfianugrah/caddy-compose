@@ -1,51 +1,85 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.26.0 / caddy 3.25.0 / plugin v0.14.1)
+## Current State (v2.28.0 / caddy 3.27.0 / plugin v0.14.1)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (254 default rules),
 5-pass evaluation (allow → block → skip → rate_limit → detect), 6 negated operators,
 managed lists, IPsum blocklist (8 levels, 597K IPs), per-service skip rule management,
 logged event collection (tuning mode visibility), and e2e CI pipeline.
 
-### Completed Milestones
+---
 
-| Version | Feature |
-|---------|---------|
-| v0.6.1 | Client IP fix |
-| v0.7.0 | Response phase: CSP & security headers |
-| v0.8.0 | Anomaly scoring engine (detect rules) |
-| v0.8.1 | Transform functions (17 transforms) |
-| v0.9.0 | Multi-variable inspection + Aho-Corasick phrase match |
-| v0.10.x | Default rules loading, CRS 920/930/941/942/943 categories |
-| v0.11.x | CRS LFI/protocol/session fixation, RE2 regex fix |
-| v0.14.0 | Skip action (5-pass), 6 negated operators |
-| v0.14.1 | Below-threshold detect_rules/tags emission |
+## Completed This Session (v2.26.0→v2.28.0)
 
-### Completed This Session
-
-- Skip action type: plugin 5-pass eval, wafctl validation/generation, frontend UI
-- 6 negated operators: not_contains, not_begins_with, not_ends_with, not_regex, not_in, not_phrase_match
-- Dead settings removed from `/rules` page (Mode, CRS groups, Advanced CRS v4)
-- Logged event collection from access logs (tuning/log-only mode)
-- policy_skip event collection from access logs
-- Skip prefill from events (logged → skip with rule IDs)
-- Inline CRS rule picker per service (searchable dropdown + pills)
-- Transform UI: Select-style dropdown + numbered pills below
-- CRS breadcrumb navigation, policy dialog refresh
-- CORS Origin allowlist (regex validation instead of Host reflection)
-- CRS PL section headers (Active/Inactive badge + threshold)
-- RawRateLimitRule type safety
-- E2E CI job, image existence check, 14 new e2e tests
-- Policy table: Tags column, column alignment fix
-- Skipped events show rule ID pills in detail
-- View in General Logs link fixed (request_id param)
-- useStaleSafeRequest hook extracted
+- [x] **AGENTS.md** — trimmed from 1057→171 lines, focused on agent-actionable info
+- [x] **Method pills** — `MethodMultiSelect` for all method operators (single mode for eq/neq)
+- [x] **Host multi-select** — `HostMultiSelect` with search, max-height scroll, custom entry
+- [x] **Operator alignment** — all string fields get 16 operators, enum fields get 6, IP gets 8
+  - Go backend `validOperatorsForField` map aligned
+  - Frontend `CONDITION_FIELDS` constants aligned
+  - `TestValidateOperatorsPerField` (275 subtests) + 23 frontend tests added
+  - Fix: method validation skips `in_list`/`not_in_list` (list name ≠ HTTP method)
+- [x] **Perf: deploy** — removed `reloadCaddy()` from `handleDeploy` and `deployAll`
+  (policy engine plugin hot-reloads via mtime polling, no Caddy restart needed)
+- [x] **Perf: FQDN cache** — `BuildServiceFQDNMap` cached with mtime invalidation (26x faster)
+- [x] **Perf: summary cache** — TTL increased from 3s to 10s
+- [x] **Perf: events pagination** — early-exit for non-export (stop after full page collected)
+- [x] **Perf: matchIntField** — avoid `strconv.Itoa` per event in status_code filter
+- [x] **Perf: ui_server** — `Cache-Control: immutable` for `/_astro/*` (defense in depth)
+- [x] **Perf: benchmarks** — 16 benchmarks for summary, events, filters, FQDN map, UI server
+- [x] **Fix: exclusion hits** — endpoint now scans access log store for policy events
+- [x] **Fix: events page** — `All (-1)` → `All` when total unknown from early-exit
+- [x] **Policy UX: pagination** — 15→25 per page
+- [x] **Policy UX: position reorder** — clickable order number opens inline input
+- [x] **Policy UX: handleMoveToPosition** + `handleBulkMoveToPosition` handlers added
+- [x] **Policy UX: back to events** — "Back to Events" link in success banner after event→policy flow
 
 ---
 
-## Open Items
+## In Progress — Remaining Items
 
-### Major Features (Future Sessions)
+### 1. Event Detail Panel Fixes (EventDetailPanel.tsx)
+
+- [ ] **Blank gap** between Request Details and Matched Rules sections
+  - The 2-column grid creates a large gap when right column (Rule Match) is shorter
+  - Fix: either collapse to single column or ensure min-height parity
+
+- [ ] **Long values overflow** — Variable, Full Value, matched_data fields overflow horizontally
+  - TruncatedCode exists but isn't used consistently
+  - Fix: apply `max-w-full overflow-hidden` + expand/collapse toggle to all long value fields
+  - Ensure export JSON always contains full untruncated values
+
+- [ ] **Copy buttons** — add per-field copy button for:
+  - Event ID, Request ID, Method, URI, Client IP, Status
+  - Variable, Matched data, Full Value in matched rules
+  - User-Agent
+  - Use existing `CopyButton` from `TagInputs.tsx` or inline clipboard icon
+
+### 2. Condition Builder UX (ConditionBuilder.tsx)
+
+- [ ] **Preserve value on operator change** — don't clear when switching operators
+  - Currently `value: ""` is set on every operator change (line 220)
+  - Fix: keep `condition.value` when switching between compatible operators
+  - Only clear when switching to/from structurally different ops (e.g., to `exists`, to `phrase_match`)
+
+- [ ] **Previous value pill on field change** — when field changes:
+  - Clear the value (current behavior)
+  - Show a small dismissible pill with the old value below the input
+  - Clicking the pill re-applies it; clicking × dismisses it
+  - Requires new state: `previousValue` per condition row
+
+### 3. Policy Page: Bulk Move-to-Position (PolicyEngine.tsx)
+
+- [ ] Add "Move to #" input in the bulk action toolbar (alongside Enable/Disable/Delete)
+  - Small number input + "Move" button
+  - Calls `handleBulkMoveToPosition(position)` (handler already implemented)
+  - Only visible when selection is non-empty and not filtered/sorted
+
+---
+
+## Open Items (Future Sessions)
+
+### Major Features
 
 #### 1. Policy UI Unification — Merge Rate Limits into `/policy`
 
@@ -80,6 +114,15 @@ Would enable ~100+ CRS outbound rules (response body inspection).
 - wafctl: wire `outbound_threshold` through `BuildPolicyWafConfig()`
 - CRS converter: port outbound rule categories
 
+### Performance (Future)
+
+- [ ] **Incremental summary computation** — maintain running counters on Store,
+  update on insert/evict instead of O(N) full scan per request
+- [ ] **TopCountriesPanel 397KB bundle** — recharts leaks into this chunk via shared
+  code splitting. Lazy-load IPLookupPanel or configure Vite `manualChunks`
+- [ ] **enrichAccessEvents O(events × rules)** — cache `sortRulesByPriority` result
+- [ ] **SecurityHeaderStore.deepCopy** — replace JSON round-trip with field-by-field copy
+
 ### Design Decisions Pending
 
 - [ ] **Mode field**: Either implement detection-only mode in the plugin
@@ -101,4 +144,3 @@ Would enable ~100+ CRS outbound rules (response body inspection).
 - [ ] CRS accuracy evaluation against CRS test suite
 - [ ] Compare detection rates: regex-only vs regex+libinjection
 - [ ] `operatorChip()` for negated operators in DashboardFilterBar
-  (deferred — negated operators only used in condition builder, not filter bar)
