@@ -1,6 +1,6 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.30.0 / caddy 3.29.0 / plugin v0.14.1)
+## Current State (v2.30.0 / caddy 3.29.0 / plugin v0.14.1 → v0.15.0 pending)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (254 default rules,
 auto-converted at Docker build time), 5-pass evaluation (allow → block → skip →
@@ -51,10 +51,14 @@ unified /policy page (WAF rules + rate limits), and e2e CI pipeline.
 - [x] **Policy page: per-page count** — all pagination shows "N per page"
 - [x] **CRS CI automation** — `crs-rules` Dockerfile stage converts CRS at build time
 - [x] **UI unification** — WAF Rules + Rate Limits merged into `/policy` with tabs
-- [x] **Response-phase Phase A** — plugin outbound scoring infra: Phase field, responseContext,
+- [x] **Response-phase Phase A** — plugin outbound scoring: Phase field, responseContext,
   extractResponseField (response_status, response_header, response_content_type),
-  outboundThreshold per-service, scoreAccumulator.outbound, post-ServeHTTP evaluation
-  (plugin branch: feat/response-phase-a, 10 new tests)
+  outboundThreshold per-service, post-ServeHTTP evaluation (10 new plugin tests)
+- [x] **Response-phase Phase B** — response body buffering via Caddy ResponseRecorder,
+  shouldBufferResponse Content-Type filter, can block 403 before response sent,
+  bufPool for memory reuse (6 new plugin tests, live smoke test: SQL leak blocked)
+- [x] **Response-phase Phase C** — CRS converter emits outbound rules (59 new rules),
+  fix RESPONSE_HEADERS -> response_header mapping, 313 total rules (254+59)
 - [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
 
 ## CRS Audit (v2.30.0)
@@ -82,10 +86,11 @@ Currently at CRS v4.24.1 (254 rules). Converter supports ModSecurity SecRule syn
 
 ### Major Features
 
-#### 1. Response-Phase Detection
+#### 1. Response-Phase Detection — DONE (pending plugin tag + deploy)
 
-Outbound anomaly scoring — inspect response headers and bodies after
-`next.ServeHTTP()`. Enables ~50-70 CRS data leakage rules.
+Outbound anomaly scoring implemented in all 3 phases. 59 CRS outbound rules
+converted. Plugin branch: `feat/response-phase-a`. Needs: tag v0.15.0, update
+Dockerfile to use new plugin version, full e2e test, deploy.
 
 **Phased approach (recommended):**
 
