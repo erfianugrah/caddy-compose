@@ -5,7 +5,7 @@ RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.13.0
+	--with github.com/erfianugrah/caddy-policy-engine@v0.14.0
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
@@ -25,6 +25,7 @@ FROM golang:1.24-alpine AS wafctl
 ARG WAFCTL_VERSION=dev
 WORKDIR /build
 COPY wafctl/go.mod ./
+RUN go mod download
 COPY wafctl/*.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o wafctl .
 

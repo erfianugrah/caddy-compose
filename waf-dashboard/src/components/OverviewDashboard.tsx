@@ -464,6 +464,8 @@ export default function OverviewDashboard() {
       {/* ── Analytics Section (collapsible) — above events ── */}
       <div className="space-y-4">
         <button
+          aria-label="Toggle analytics breakdown"
+          aria-expanded={analyticsOpen}
           onClick={() => setAnalyticsOpen(!analyticsOpen)}
           className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >

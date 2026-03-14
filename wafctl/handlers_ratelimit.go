@@ -108,9 +108,6 @@ func handleDeployRLRules(rs *RateLimitRuleStore, es *ExclusionStore, cs *ConfigS
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
-		// Discover any new services from the Caddyfile.
-		rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
-
 		rules := rs.EnabledRules()
 		global := rs.GetGlobal()
 

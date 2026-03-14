@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/tooltip";
 import { SortableTableHead } from "./SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
-import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Shield } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -377,24 +377,31 @@ export default function RulesPanel() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="space-y-6">
-        {/* Back link + Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        {/* Breadcrumb + Header */}
+        <div className="space-y-3">
+          <nav className="flex items-center gap-1.5 text-sm">
             <a
               href="/rules"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              <ArrowLeft className="h-4 w-4" />
               Rules
             </a>
-            <div>
-              <h1 className={T.pageTitle}>OWASP CRS 4.24.1</h1>
-              <p className={T.pageDescription}>
-                {rules.length} rules ({totalEnabled} enabled
-                {totalOverridden > 0 && `, ${totalOverridden} overridden`})
-              </p>
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+            <span className="text-foreground font-medium">OWASP CRS</span>
+          </nav>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-lv-cyan/10">
+                <Shield className="h-4.5 w-4.5 text-lv-cyan" />
+              </div>
+              <div>
+                <h1 className={T.pageTitle}>OWASP CRS 4.24.1</h1>
+                <p className={T.pageDescription}>
+                  {rules.length} rules ({totalEnabled} enabled
+                  {totalOverridden > 0 && `, ${totalOverridden} overridden`})
+                </p>
+              </div>
             </div>
-          </div>
           <div className="flex items-center gap-2">
             {deployMsg && (
               <span
@@ -420,6 +427,7 @@ export default function RulesPanel() {
             >
               {deploying ? "Deploying..." : "Save & Deploy"}
             </Button>
+          </div>
           </div>
         </div>
 

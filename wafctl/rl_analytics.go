@@ -8,20 +8,54 @@ import (
 	"time"
 )
 
-// regexCache caches compiled regular expressions for condition matching.
-// Keys are pattern strings, values are *regexp.Regexp.
-var regexCache sync.Map
+// regexCache is a bounded LRU cache for compiled regular expressions used
+// by condition matching. Capped at 256 entries to prevent memory exhaustion
+// from user-controlled query filter patterns.
+var regexCache = newBoundedRegexCache(256)
+
+type boundedRegexCache struct {
+	mu       sync.Mutex
+	capacity int
+	entries  map[string]*regexCacheEntry
+	order    []string // oldest first for eviction
+}
+
+type regexCacheEntry struct {
+	re *regexp.Regexp
+}
+
+func newBoundedRegexCache(capacity int) *boundedRegexCache {
+	return &boundedRegexCache{
+		capacity: capacity,
+		entries:  make(map[string]*regexCacheEntry, capacity),
+		order:    make([]string, 0, capacity),
+	}
+}
 
 // cachedRegexp returns a compiled regex from the cache, compiling on first use.
+// Evicts the oldest entry when the cache is full.
 func cachedRegexp(pattern string) (*regexp.Regexp, error) {
-	if v, ok := regexCache.Load(pattern); ok {
-		return v.(*regexp.Regexp), nil
+	regexCache.mu.Lock()
+	defer regexCache.mu.Unlock()
+
+	if entry, ok := regexCache.entries[pattern]; ok {
+		return entry.re, nil
 	}
+
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, err
 	}
-	regexCache.Store(pattern, re)
+
+	// Evict oldest if at capacity.
+	if len(regexCache.entries) >= regexCache.capacity {
+		oldest := regexCache.order[0]
+		regexCache.order = regexCache.order[1:]
+		delete(regexCache.entries, oldest)
+	}
+
+	regexCache.entries[pattern] = &regexCacheEntry{re: re}
+	regexCache.order = append(regexCache.order, pattern)
 	return re, nil
 }
 

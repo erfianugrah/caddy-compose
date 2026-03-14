@@ -479,7 +479,7 @@ export default function DashboardFilterBar<F extends string = string>({
           if (!open) resetPopover();
         }}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground">
+            <Button aria-label="Add filter" variant="outline" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground">
               <Plus className="h-3 w-3" />
               Add filter
             </Button>
@@ -522,6 +522,7 @@ export default function DashboardFilterBar<F extends string = string>({
                     >
                       <span className="font-data">{label}</span>
                       <button
+                        aria-label={`Remove ${label} from ${meta.label} filter`}
                         className="ml-0.5 rounded-sm p-0.5 hover:bg-lv-cyan/30 transition-colors cursor-pointer"
                         onClick={() => {
                           const remaining = values.filter((x) => x !== v);
@@ -548,6 +549,7 @@ export default function DashboardFilterBar<F extends string = string>({
                   );
                 })}
                 <button
+                  aria-label={`Remove all ${meta.label} filters`}
                   className="rounded-sm p-0.5 hover:bg-destructive/20 transition-colors cursor-pointer"
                   onClick={() => removeFilter(f.field)}
                   title={`Remove all ${meta.label} filters`}
@@ -568,6 +570,7 @@ export default function DashboardFilterBar<F extends string = string>({
               <span className="text-lv-cyan/70 font-data text-xs">{OP_META[f.operator]?.chip ?? "="}</span>
               <span className="font-data">{displayValue(f.field, f.value)}</span>
               <button
+                aria-label={`Remove ${meta.label} filter`}
                 className="ml-0.5 rounded-sm p-0.5 hover:bg-lv-cyan/30 transition-colors cursor-pointer"
                 onClick={() => removeFilter(f.field)}
                 title={`Remove ${meta.label} filter`}
@@ -584,7 +587,7 @@ export default function DashboardFilterBar<F extends string = string>({
             if (!open) resetPopover();
           }}>
             <PopoverTrigger asChild>
-              <button className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer">
+              <button aria-label="Add filter" className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer">
                 <Plus className="h-3 w-3" />
                 Add
               </button>
@@ -598,6 +601,7 @@ export default function DashboardFilterBar<F extends string = string>({
 
       {filters.length > 1 && (
         <Button
+          aria-label="Clear all filters"
           variant="ghost"
           size="sm"
           className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground shrink-0"
@@ -609,6 +613,7 @@ export default function DashboardFilterBar<F extends string = string>({
 
       {filters.length === 1 && (
         <Button
+          aria-label="Clear all filters"
           variant="ghost"
           size="icon-sm"
           className="text-muted-foreground hover:text-foreground shrink-0"

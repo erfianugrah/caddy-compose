@@ -385,96 +385,6 @@ func (s *RateLimitRuleStore) Import(rules []RateLimitRule) error {
 	return nil
 }
 
-// ─── Caddyfile Auto-Discovery ───────────────────────────────────────
-
-// rlImportPattern matches Caddyfile lines like:
-//
-//	import /data/caddy/rl/sonarr_rl*.caddy
-//
-// It captures the zone prefix (e.g. "sonarr_rl") so we can derive the
-// service name. The Caddy-side path (/data/caddy/rl/) differs from
-// wafctl's mount (/data/rl/) — callers must use their own RateLimitDir.
-var rlImportPattern = regexp.MustCompile(`import\s+\S*/rl/([a-zA-Z0-9_-]+_rl)\*\.caddy`)
-
-// scanCaddyfileServices reads the Caddyfile and returns the set of service
-// names referenced by rate limit import globs.
-func scanCaddyfileServices(caddyfilePath string) []string {
-	data, err := os.ReadFile(caddyfilePath)
-	if err != nil {
-		log.Printf("warning: cannot read Caddyfile at %s for RL service scanning: %v", caddyfilePath, err)
-		return nil
-	}
-
-	seen := make(map[string]bool)
-	var names []string
-	for _, match := range rlImportPattern.FindAllStringSubmatch(string(data), -1) {
-		prefix := match[1]
-		name := strings.TrimSuffix(prefix, "_rl")
-		if !seen[name] {
-			seen[name] = true
-			names = append(names, name)
-		}
-	}
-	return names
-}
-
-// MergeCaddyfileServices scans the Caddyfile for rate limit import globs
-// and adds default rules for any new services not already covered.
-// Returns the number of rules added.
-func (s *RateLimitRuleStore) MergeCaddyfileServices(caddyfilePath string) int {
-	if caddyfilePath == "" {
-		return 0
-	}
-
-	services := scanCaddyfileServices(caddyfilePath)
-	if len(services) == 0 {
-		return 0
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Build a set of services that already have at least one rule.
-	existing := make(map[string]bool, len(s.config.Rules))
-	for _, r := range s.config.Rules {
-		existing[r.Service] = true
-	}
-
-	added := 0
-	now := time.Now().UTC()
-	for _, svc := range services {
-		if existing[svc] {
-			continue
-		}
-		s.config.Rules = append(s.config.Rules, RateLimitRule{
-			ID:        generateUUID(),
-			Name:      svc,
-			Service:   svc,
-			Key:       "client_ip",
-			Events:    defaultRLEvents,
-			Window:    defaultRLWindow,
-			Enabled:   true,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-		existing[svc] = true
-		added++
-		log.Printf("discovered new RL service %q from Caddyfile", svc)
-	}
-
-	if added > 0 {
-		if err := s.save(); err != nil {
-			// Roll back: remove the appended rules to keep memory consistent with disk.
-			s.config.Rules = s.config.Rules[:len(s.config.Rules)-added]
-			log.Printf("warning: failed to persist %d new RL rules (rolled back): %v", added, err)
-			return 0
-		}
-		log.Printf("merged %d service(s) from Caddyfile into rate limit rules (%d total)", added, len(s.config.Rules))
-	}
-
-	return added
-}
-
 // ─── Validation ─────────────────────────────────────────────────────
 
 // validWindowPattern matches duration strings: number + unit (s, m, h).
@@ -577,16 +487,5 @@ func validateRateLimitGlobal(cfg RateLimitGlobalConfig) error {
 	if cfg.PurgeAge != "" && !validWindowPattern.MatchString(cfg.PurgeAge) {
 		return fmt.Errorf("purge_age must be a duration like 1m, 5m")
 	}
-	return nil
-}
-
-// ─── File Operations ────────────────────────────────────────────────
-
-// ensureRateLimitDir creates the rate limit directory if it doesn't exist.
-func ensureRateLimitDir(dir string) error {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("creating rate limit dir %s: %w", dir, err)
-	}
-	log.Printf("rate limit directory ready: %s", dir)
 	return nil
 }

@@ -67,15 +67,6 @@ type RateLimitZone struct {
 
 // ─── Rate Limit Validation Maps ─────────────────────────────────────────────
 
-// Valid rate limit rule keys
-var validRLKeys = map[string]bool{
-	"client_ip":        true,
-	"path":             true,
-	"static":           true,
-	"client_ip+path":   true,
-	"client_ip+method": true,
-}
-
 // validRLKeyPrefixes are key prefixes that take a parameter (e.g. "header:X-API-Key")
 var validRLKeyPrefixes = []string{"header:", "cookie:", "body_json:", "body_form:"}
 
@@ -104,13 +95,4 @@ var validRLConditionFields = map[string]bool{
 	"uri_path":     true,
 	"referer":      true,
 	"http_version": true,
-}
-
-// Valid hours filter values
-var validHours = map[int]bool{
-	1:   true,
-	6:   true,
-	24:  true,
-	72:  true,
-	168: true,
 }

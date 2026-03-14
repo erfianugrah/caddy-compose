@@ -10,19 +10,9 @@ import (
 )
 
 // headerValue extracts the first value for a header key from a map[string][]string.
-// Tries the exact key first, then a case-insensitive match.
+// Uses case-insensitive matching (delegates to headerValueCI in access_log_store.go).
 func headerValue(headers map[string][]string, key string) string {
-	if vals, ok := headers[key]; ok && len(vals) > 0 {
-		return vals[0]
-	}
-	// Case-insensitive fallback.
-	lowerKey := strings.ToLower(key)
-	for k, vals := range headers {
-		if strings.ToLower(k) == lowerKey && len(vals) > 0 {
-			return vals[0]
-		}
-	}
-	return ""
+	return headerValueCI(headers, key)
 }
 
 // parseTimestamp parses "2006/01/02 15:04:05" format timestamps.
@@ -95,27 +85,6 @@ func generateUUID() string {
 		return fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
-}
-
-// generateUUIDv7 produces a UUIDv7 (RFC 9562): time-ordered with ms precision.
-// First 48 bits = unix_ts_ms, next 4 = version (0111), 12 bits rand,
-// 2 variant bits (10), 62 bits rand.
-func generateUUIDv7() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	ms := uint64(time.Now().UnixMilli())
-	b[0] = byte(ms >> 40)
-	b[1] = byte(ms >> 32)
-	b[2] = byte(ms >> 24)
-	b[3] = byte(ms >> 16)
-	b[4] = byte(ms >> 8)
-	b[5] = byte(ms)
-	b[6] = (b[6] & 0x0f) | 0x70 // version 7
 	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])

@@ -3,39 +3,26 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import type { WAFServiceSettings, CRSCategory, ServiceDetail } from "@/lib/api";
-import { T } from "@/lib/typography";
-import { MODE_META } from "./constants";
-import { ModeSelector, SensitivitySettings, RuleGroupToggles } from "./SettingsFormSections";
-import {
-  AdvancedParanoiaSettings,
-  RequestPolicySettings,
-  LimitsSettings,
-  AdvancedCRSControls,
-  CRSExclusionProfiles,
-} from "./AdvancedSettings";
+import type { WAFServiceSettings, ServiceDetail } from "@/lib/api";
+import { SensitivitySettings } from "./SettingsFormSections";
 
 // ─── Per-Service Card ───────────────────────────────────────────────
 
 export function ServiceSettingsCard({
   hostname,
   settings,
-  categories,
   serviceDetail,
   onChange,
   onRemove,
 }: {
   hostname: string;
   settings: WAFServiceSettings;
-  categories: CRSCategory[];
+  categories?: unknown; // kept for call-site compat, unused
   serviceDetail?: ServiceDetail;
   onChange: (s: WAFServiceSettings) => void;
   onRemove: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const modeMeta = MODE_META[settings.mode];
 
   return (
     <Card className="overflow-hidden">
@@ -48,7 +35,6 @@ export function ServiceSettingsCard({
         ) : (
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         )}
-        <div className={`h-2 w-2 rounded-full shrink-0 ${modeMeta.dot}`} />
         <div className="min-w-0 flex-1">
           <span className="text-sm font-medium truncate block">{hostname}</span>
         </div>
@@ -78,47 +64,14 @@ export function ServiceSettingsCard({
             </>
           )}
           <Badge variant="outline" className="text-xs">
-            {modeMeta.label}
+            PL{settings.paranoia_level}
           </Badge>
         </div>
       </div>
 
       {expanded && (
         <CardContent className="space-y-5 border-t border-border pt-4">
-          {/* Mode */}
-          <div className="space-y-2">
-            <Label className={T.formLabel}>Mode</Label>
-            <ModeSelector
-              value={settings.mode}
-              onChange={(mode) => onChange({ ...settings, mode })}
-            />
-          </div>
-
-          {settings.mode !== "disabled" && (
-            <>
-              <Separator />
-              <SensitivitySettings settings={settings} onChange={onChange} compact />
-              <Separator />
-              <RuleGroupToggles
-                categories={categories}
-                disabledGroups={settings.disabled_groups ?? []}
-                onChange={(groups) => onChange({ ...settings, disabled_groups: groups })}
-              />
-              <Separator />
-              <CRSExclusionProfiles
-                exclusions={settings.crs_exclusions ?? []}
-                onChange={(excl) => onChange({ ...settings, crs_exclusions: excl.length > 0 ? excl : undefined })}
-              />
-              <Separator />
-              <AdvancedParanoiaSettings settings={settings} onChange={onChange} />
-              <Separator />
-              <RequestPolicySettings settings={settings} onChange={onChange} />
-              <Separator />
-              <LimitsSettings settings={settings} onChange={onChange} />
-              <Separator />
-              <AdvancedCRSControls settings={settings} onChange={onChange} />
-            </>
-          )}
+          <SensitivitySettings settings={settings} onChange={onChange} compact />
 
           <div className="flex justify-end">
             <Button variant="ghost" size="sm" onClick={onRemove} className="text-lv-red text-xs">

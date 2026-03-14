@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
@@ -94,6 +94,7 @@ import {
 } from "@/lib/api";
 
 import { T } from "@/lib/typography";
+import { downloadJSON } from "@/lib/download";
 import type { AdvancedFormState } from "./policy/constants";
 import type { EventPrefill } from "./policy/eventPrefill";
 import { consumePrefillEvent } from "./policy/eventPrefill";
@@ -134,70 +135,16 @@ export default function PolicyEngine() {
     if (prefill) setEventPrefill(prefill);
   }, []);
 
+  // Guard against stale responses when rapid reloads fire concurrent requests.
+  const requestGenRef = useRef(0);
+
   // Drag-and-drop reorder state
-  const isFilteredBase = searchQuery.trim() !== "" || typeFilter !== "all";
+  const deferredSearch = useDeferredValue(searchQuery);
+  const isFilteredBase = deferredSearch.trim() !== "" || typeFilter !== "all";
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    // Compute reordered array for the current page
-    const pageStartIdx = (rulesPage - 1) * RULES_PAGE_SIZE;
-    const pageIds = exclusions.slice(pageStartIdx, pageStartIdx + RULES_PAGE_SIZE).map((e) => e.id);
-    const oldIdx = pageIds.indexOf(active.id as string);
-    const newIdx = pageIds.indexOf(over.id as string);
-    if (oldIdx === -1 || newIdx === -1) return;
-
-    // Reorder the full array: splice the page portion, reorder it, put it back
-    const newExclusions = [...exclusions];
-    const pageSlice = newExclusions.splice(pageStartIdx, pageIds.length);
-    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
-    newExclusions.splice(pageStartIdx, 0, ...reorderedPage);
-
-    // Optimistic update
-    const prev = exclusions;
-    setExclusions(newExclusions);
-    try {
-      const result = await reorderExclusions(newExclusions.map((e) => e.id));
-      setExclusions(result);
-      await autoDeploy("Rules reordered");
-    } catch (err: unknown) {
-      setExclusions(prev); // rollback
-      setError(err instanceof Error ? err.message : "Reorder failed");
-    }
-  }, [exclusions, rulesPage]);
-
-  const handleMoveToEdge = useCallback(async (id: string, edge: "top" | "bottom") => {
-    const idx = exclusions.findIndex((e) => e.id === id);
-    if (idx === -1) return;
-    if (edge === "top" && idx === 0) return;
-    if (edge === "bottom" && idx === exclusions.length - 1) return;
-
-    const newExclusions = [...exclusions];
-    const [item] = newExclusions.splice(idx, 1);
-    if (edge === "top") {
-      newExclusions.unshift(item);
-      setRulesPage(1); // jump to first page so user sees the moved rule
-    } else {
-      newExclusions.push(item);
-      setRulesPage(Math.ceil(newExclusions.length / RULES_PAGE_SIZE)); // jump to last page
-    }
-
-    const prev = exclusions;
-    setExclusions(newExclusions);
-    try {
-      const result = await reorderExclusions(newExclusions.map((e) => e.id));
-      setExclusions(result);
-      await autoDeploy(`Rule moved to ${edge}`);
-    } catch (err: unknown) {
-      setExclusions(prev);
-      setError(err instanceof Error ? err.message : "Move failed");
-    }
-  }, [exclusions]);
 
   // Highlight a specific exclusion when navigating from an event (e.g. /policy?rule=<name>).
   // The name is extracted from the Policy Engine rule's msg field.
@@ -218,6 +165,7 @@ export default function PolicyEngine() {
   }, []);
 
   const loadData = useCallback(() => {
+    const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
     Promise.all([
@@ -226,12 +174,19 @@ export default function PolicyEngine() {
       fetchExclusionHits(24).catch(() => null),
     ])
       .then(([excl, svcs, hits]) => {
+        if (gen !== requestGenRef.current) return;
         setExclusions(excl);
         setServices(svcs);
         if (hits) setHitsData(hits);
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (gen !== requestGenRef.current) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (gen !== requestGenRef.current) return;
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -244,8 +199,8 @@ export default function PolicyEngine() {
     if (typeFilter !== "all") {
       result = result.filter((e) => e.type === typeFilter);
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       result = result.filter((e) =>
         e.name.toLowerCase().includes(q) ||
         e.description.toLowerCase().includes(q) ||
@@ -253,14 +208,14 @@ export default function PolicyEngine() {
       );
     }
     return result;
-  }, [exclusions, searchQuery, typeFilter]);
+  }, [exclusions, deferredSearch, typeFilter]);
 
   const selectAllVisible = useCallback(() => {
     setSelected(new Set(filteredExclusions.map((e) => e.id)));
   }, [filteredExclusions]);
 
   // Reset page when filters change
-  useEffect(() => { setRulesPage(1); }, [searchQuery, typeFilter]);
+  useEffect(() => { setRulesPage(1); }, [deferredSearch, typeFilter]);
 
   const exclSortComparators = useMemo(() => ({
     name: (a: Exclusion, b: Exclusion) => a.name.localeCompare(b.name),
@@ -296,17 +251,7 @@ export default function PolicyEngine() {
   };
   useEffect(() => () => { if (successTimerRef.current) clearTimeout(successTimerRef.current); }, []);
 
-  const handleCreate = async (data: ExclusionCreateData) => {
-    try {
-      const created = await createExclusion(data);
-      setExclusions((prev) => [...prev, created]);
-      await autoDeploy("Rule created");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Operation failed");
-    }
-  };
-
-  const autoDeploy = async (action: string) => {
+  const autoDeploy = useCallback(async (action: string) => {
     try {
       setDeployStep("Deploying...");
       const result = await deployConfig();
@@ -319,6 +264,74 @@ export default function PolicyEngine() {
       setError(`${action}, but deploy failed: ${deployErr instanceof Error ? deployErr.message : "unknown error"}`);
     } finally {
       setDeployStep(null);
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    // Compute reordered array for the current page
+    const pageStartIdx = (rulesPage - 1) * RULES_PAGE_SIZE;
+    const pageIds = exclusions.slice(pageStartIdx, pageStartIdx + RULES_PAGE_SIZE).map((e) => e.id);
+    const oldIdx = pageIds.indexOf(active.id as string);
+    const newIdx = pageIds.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    // Reorder the full array: splice the page portion, reorder it, put it back
+    const newExclusions = [...exclusions];
+    const pageSlice = newExclusions.splice(pageStartIdx, pageIds.length);
+    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
+    newExclusions.splice(pageStartIdx, 0, ...reorderedPage);
+
+    // Optimistic update
+    const prev = exclusions;
+    setExclusions(newExclusions);
+    try {
+      const result = await reorderExclusions(newExclusions.map((e) => e.id));
+      setExclusions(result);
+      await autoDeploy("Rules reordered");
+    } catch (err: unknown) {
+      setExclusions(prev); // rollback
+      setError(err instanceof Error ? err.message : "Reorder failed");
+    }
+  }, [exclusions, rulesPage, autoDeploy]);
+
+  const handleMoveToEdge = useCallback(async (id: string, edge: "top" | "bottom") => {
+    const idx = exclusions.findIndex((e) => e.id === id);
+    if (idx === -1) return;
+    if (edge === "top" && idx === 0) return;
+    if (edge === "bottom" && idx === exclusions.length - 1) return;
+
+    const newExclusions = [...exclusions];
+    const [item] = newExclusions.splice(idx, 1);
+    if (edge === "top") {
+      newExclusions.unshift(item);
+      setRulesPage(1); // jump to first page so user sees the moved rule
+    } else {
+      newExclusions.push(item);
+      setRulesPage(Math.ceil(newExclusions.length / RULES_PAGE_SIZE)); // jump to last page
+    }
+
+    const prev = exclusions;
+    setExclusions(newExclusions);
+    try {
+      const result = await reorderExclusions(newExclusions.map((e) => e.id));
+      setExclusions(result);
+      await autoDeploy(`Rule moved to ${edge}`);
+    } catch (err: unknown) {
+      setExclusions(prev);
+      setError(err instanceof Error ? err.message : "Move failed");
+    }
+  }, [exclusions, autoDeploy]);
+
+  const handleCreate = async (data: ExclusionCreateData) => {
+    try {
+      const created = await createExclusion(data);
+      setExclusions((prev) => [...prev, created]);
+      await autoDeploy("Rule created");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Operation failed");
     }
   };
 
@@ -357,13 +370,7 @@ export default function PolicyEngine() {
   const handleExport = async () => {
     try {
       const data = await exportExclusions();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "waf-exclusions.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJSON(data, "waf-exclusions.json");
       showSuccess("Exclusions exported");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Export failed");
@@ -385,7 +392,10 @@ export default function PolicyEngine() {
         if (!Array.isArray(exclusions)) {
           throw new Error("Invalid import file: expected an array of exclusions or { exclusions: [...] }");
         }
-        const result = await importExclusions(exclusions);
+        if (!exclusions.every((e: unknown) => typeof e === "object" && e !== null && "id" in e && "type" in e)) {
+          throw new Error("Invalid import data: each exclusion must have 'id' and 'type' fields");
+        }
+        const result = await importExclusions(exclusions as Exclusion[]);
         showSuccess(`Imported ${result.imported} exclusions`);
         loadData();
       } catch (err: unknown) {
@@ -443,6 +453,7 @@ export default function PolicyEngine() {
         type: exclusionToEdit.type,
         severity: exclusionToEdit.severity ?? "",
         detect_paranoia_level: exclusionToEdit.detect_paranoia_level ?? 0,
+        skip_targets: exclusionToEdit.skip_targets ?? {},
         conditions: exclusionToEdit.conditions ?? [],
         group_operator: exclusionToEdit.group_operator ?? "and",
         tags: exclusionToEdit.tags ?? [],
@@ -553,6 +564,7 @@ export default function PolicyEngine() {
                 />
                 {searchQuery && (
                   <button
+                    aria-label="Clear search"
                     onClick={() => setSearchQuery("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
@@ -779,32 +791,36 @@ export default function PolicyEngine() {
 
       {/* Create / Edit Rule Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
-        <DialogContent className="w-[90vw] max-w-[1800px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-lv-green" />
-              {editingId ? "Edit Rule" : "Create Rule"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingId
-                ? "Modify the rule below. Changes are deployed automatically on save."
-                : "Use Quick Actions for common tasks or Advanced for full control."}
-            </DialogDescription>
-          </DialogHeader>
-
+        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="quick" className="gap-1.5" disabled={!!editingId}>
-                <Zap className="h-3.5 w-3.5" />
-                Quick Actions
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="gap-1.5">
-                <Code2 className="h-3.5 w-3.5" />
-                Advanced
-              </TabsTrigger>
-            </TabsList>
+            <DialogHeader className="space-y-3">
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-base">
+                  {editingId ? "Edit Rule" : "Create Rule"}
+                </DialogTitle>
+                {!editingId && (
+                  <TabsList className="h-8">
+                    <TabsTrigger value="quick" className="gap-1.5 text-xs px-3 h-7">
+                      <Zap className="h-3 w-3" />
+                      Quick
+                    </TabsTrigger>
+                    <TabsTrigger value="advanced" className="gap-1.5 text-xs px-3 h-7">
+                      <Code2 className="h-3 w-3" />
+                      Advanced
+                    </TabsTrigger>
+                  </TabsList>
+                )}
+              </div>
+              <DialogDescription className="text-xs">
+                {editingId
+                  ? "Modify the rule below. Changes are deployed automatically on save."
+                  : activeTab === "quick"
+                    ? "Pick an action type, define conditions, and deploy."
+                    : "Full control over rule type, conditions, and metadata."}
+              </DialogDescription>
+            </DialogHeader>
 
-            <TabsContent value="quick">
+            <TabsContent value="quick" className="mt-4">
               <QuickActionsForm
                 services={services}
                 onSubmit={(data) => {
@@ -817,7 +833,7 @@ export default function PolicyEngine() {
               />
             </TabsContent>
 
-            <TabsContent value="advanced">
+            <TabsContent value="advanced" className="mt-4">
               {editingId && editFormState ? (
                 <AdvancedBuilderForm
                   key={editingId}

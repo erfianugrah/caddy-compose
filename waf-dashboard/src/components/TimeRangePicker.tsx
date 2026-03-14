@@ -220,6 +220,7 @@ export default function TimeRangePicker({
           {/* Tabs */}
           <div className="flex border-b border-border">
             <button
+              aria-label="Quick ranges"
               className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
                 tab === "quick"
                   ? "border-b-2 border-lv-cyan text-lv-cyan"
@@ -230,6 +231,7 @@ export default function TimeRangePicker({
               Quick ranges
             </button>
             <button
+              aria-label="Custom range"
               className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
                 tab === "custom"
                   ? "border-b-2 border-lv-cyan text-lv-cyan"
@@ -293,6 +295,7 @@ export default function TimeRangePicker({
 
       {/* Refresh button */}
       <Button
+        aria-label="Refresh data"
         variant="outline"
         size="icon"
         className="h-8 w-8"
@@ -306,6 +309,7 @@ export default function TimeRangePicker({
       <Popover open={refreshMenuOpen} onOpenChange={setRefreshMenuOpen}>
         <PopoverTrigger asChild>
           <Button
+            aria-label="Auto-refresh interval"
             variant="outline"
             size="sm"
             className="h-8 gap-1 text-xs font-normal px-2"

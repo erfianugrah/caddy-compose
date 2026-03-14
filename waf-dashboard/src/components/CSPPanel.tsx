@@ -37,6 +37,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { T } from "@/lib/typography";
+import { downloadJSON } from "@/lib/download";
 import {
   getCSPConfig,
   updateCSPConfig,
@@ -70,11 +71,16 @@ export default function CSPPanel() {
   const [globalDefaults, setGlobalDefaults] = useState<CSPPolicy>({});
   const [serviceConfigs, setServiceConfigs] = useState<Record<string, CSPServiceConfig>>({});
 
+  // Guard against stale responses when rapid reloads fire concurrent requests.
+  const requestGenRef = useRef(0);
+
   const loadData = useCallback(() => {
+    const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
     Promise.all([getCSPConfig(), fetchServices(), previewCSP()])
       .then(([cfg, svcs, prev]) => {
+        if (gen !== requestGenRef.current) return;
         setConfig(cfg);
         setEnabled(cfg.enabled !== false);
         setGlobalDefaults(cfg.global_defaults);
@@ -83,8 +89,14 @@ export default function CSPPanel() {
         setPreview(prev);
         setDirty(false);
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (gen !== requestGenRef.current) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (gen !== requestGenRef.current) return;
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -187,13 +199,7 @@ export default function CSPPanel() {
   const handleExport = () => {
     try {
       const data = buildConfig();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "csp-config.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJSON(data, "csp-config.json");
       showSuccess("CSP configuration exported");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Export failed");

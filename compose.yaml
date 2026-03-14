@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:3.19.0-2.11.1
+    image: erfianugrah/caddy:3.22.0-2.11.1
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -37,7 +37,7 @@ services:
       start_period: 10s
     depends_on:
       authelia:
-        condition: service_started
+        condition: service_healthy
         restart: true
     volumes:
       # Caddyfile mounted from host — source of truth, survives restarts
@@ -48,10 +48,6 @@ services:
       - /mnt/user/data/caddy/log:/var/log
       # Dynamic WAF overrides — written by wafctl Policy Engine
       - /mnt/user/data/caddy/waf:/data/waf
-      # Dynamic rate limit zone files — written by wafctl Rate Limit Engine
-      - /mnt/user/data/caddy/rl:/data/caddy/rl
-      # Dynamic CSP header files — written by wafctl CSP Engine
-      - /mnt/user/data/caddy/csp:/data/caddy/csp
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
       - tmpfs_caddy:/var/run
@@ -116,7 +112,7 @@ services:
     build:
       context: .
       dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.20.0
+    image: erfianugrah/wafctl:2.23.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
@@ -147,6 +143,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    depends_on:
+      caddy:
+        condition: service_healthy
+        restart: true
     networks:
       waf:
         ipv4_address: 172.19.98.2
@@ -161,10 +161,6 @@ services:
       - /mnt/user/data/wafctl:/data
       # Dynamic WAF overrides — shared with Caddy
       - /mnt/user/data/caddy/waf:/data/waf
-      # Dynamic rate limit zone files — shared with Caddy
-      - /mnt/user/data/caddy/rl:/data/rl
-      # Dynamic CSP header files — shared with Caddy
-      - /mnt/user/data/caddy/csp:/data/csp
       # Caddyfile — read-only, needed for reload via admin API
       - /mnt/user/data/caddy/Caddyfile:/data/Caddyfile:ro
       # GeoIP MMDB database (DB-IP Lite or MaxMind GeoLite2)
@@ -177,7 +173,6 @@ services:
       - WAF_RATELIMIT_FILE=/data/rate-limits.json
       - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
       - WAF_DIR=/data/waf
-      - WAF_RATELIMIT_DIR=/data/rl
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
       - WAF_GEOIP_DB=/data/geoip/country.mmdb

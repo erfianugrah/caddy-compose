@@ -13,10 +13,10 @@ import {
 // ─── QUICK_ACTIONS ──────────────────────────────────────────────────
 
 describe("QUICK_ACTIONS", () => {
-  it("has exactly 3 actions: allow, block, detect", () => {
-    expect(QUICK_ACTIONS).toHaveLength(3);
+  it("has exactly 4 actions: allow, block, skip, detect", () => {
+    expect(QUICK_ACTIONS).toHaveLength(4);
     const values = QUICK_ACTIONS.map((a) => a.value);
-    expect(values).toEqual(["allow", "block", "detect"]);
+    expect(values).toEqual(["allow", "block", "skip", "detect"]);
   });
 
   it("each action has label, description, and iconName", () => {
@@ -31,9 +31,9 @@ describe("QUICK_ACTIONS", () => {
 // ─── ALL_EXCLUSION_TYPES ────────────────────────────────────────────
 
 describe("ALL_EXCLUSION_TYPES", () => {
-  it("has exactly 3 types: allow, block, detect", () => {
+  it("has exactly 4 types: allow, block, skip, detect", () => {
     const values = ALL_EXCLUSION_TYPES.map((t) => t.value);
-    expect(values).toEqual(["allow", "block", "detect"]);
+    expect(values).toEqual(["allow", "block", "skip", "detect"]);
   });
 
   it("all types are in the quick group", () => {

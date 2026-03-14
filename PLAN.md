@@ -2410,15 +2410,15 @@ policy generator (`BuildPolicyWafConfig()`) or the plugin.
 
 #### Tasks
 
-- [ ] Remove dead settings from Rules page UI — hide or remove Mode selector, Outbound Threshold,
+- [x] Remove dead settings from Rules page UI — hide or remove Mode selector, Outbound Threshold,
   CRS Rule Group Toggles, CRS Exclusion Profiles, and all Advanced CRS v4 settings
 - [ ] Decide: either implement Mode in the plugin (detection-only mode = log but don't block on
   threshold) or remove the field from `WAFConfig` entirely
 - [ ] Decide: either implement CRS Rule Group disabling in the policy generator (filter
   `default-rules.json` by tag at generation time) or remove `disabled_groups` from config
-- [ ] Remove `outbound_threshold` from UI (response-phase detection is Phase 2; keep the field
+- [x] Remove `outbound_threshold` from UI (response-phase detection is Phase 2; keep the field
   in the model for forward compatibility but don't expose it)
-- [ ] Remove or collapse `AdvancedSettings.tsx` — all CRS v4 extended settings are dead
+- [x] Remove or collapse `AdvancedSettings.tsx` — all CRS v4 extended settings are dead
 
 ### UI Polish Issues
 
@@ -2434,7 +2434,7 @@ The "Add transforms" dropdown in the condition builder is poorly styled:
 consistent layout, search/filter, and scroll container. Group by category
 (decode, normalize, whitespace, other).
 
-- [ ] Redesign transforms dropdown — use shadcn Command/Popover pattern with search, categories, and consistent layout
+- [x] Redesign transforms dropdown — use shadcn Command/Popover pattern with search, categories, and consistent layout
 
 #### CRS Rules Back Navigation (`/rules/crs` → `/rules`)
 
@@ -2445,7 +2445,7 @@ from the page design. Needs better visual integration.
 matches the page header design. Consider a breadcrumb pattern: `Rules / OWASP CRS 4.24.1`
 with the first segment as a link.
 
-- [ ] Redesign CRS rules back navigation — breadcrumb or styled back button integrated with page header
+- [x] Redesign CRS rules back navigation — breadcrumb with `Rules / OWASP CRS` pattern + Shield icon
 
 #### Policy Create/Edit Dialog — Stale Design
 
@@ -2455,7 +2455,7 @@ design language used on other pages. Specific issues:
 - Action type cards (Allow/Block/Detect) could use better visual hierarchy
 - Form layout doesn't match the tighter, more consistent style of newer pages
 
-- [ ] Review and refresh Policy Create/Edit dialog design for consistency with current UI patterns
+- [x] Review and refresh Policy Create/Edit dialog design — tighter max-w-3xl, inline tab toggle in header, context-aware description
 
 ### Response-Phase Detection (Phase 2)
 
@@ -3535,7 +3535,7 @@ CI). Findings below exclude items already addressed in CR-1 through CR-27.
 `sync.Map` has no eviction or size limit, an attacker can exhaust memory by sending
 requests with unique regex filter values.
 
-- [ ] Replace `sync.Map` with bounded LRU cache (e.g., 256 entries max) or reuse the
+- [x] Replace `sync.Map` with bounded LRU cache (e.g., 256 entries max) or reuse the
   TTL-evict pattern from `advisorCache`
 
 #### CR2-2: No AbortController / Race Protection on Data Fetches — multiple frontend components
@@ -3548,8 +3548,8 @@ save, delete) can cause stale API responses to overwrite fresher state.
 Additionally, `OverviewDashboard.tsx:199-224` `loadEvents` doesn't use the same
 `requestGenRef` counter that `loadData` uses — a separate race vector.
 
-- [ ] Add generation-counter or `AbortController` pattern to all data-fetching components
-- [ ] Use consistent pattern (extract a `useFetchWithCancel` hook)
+- [x] Add generation-counter or `AbortController` pattern to all data-fetching components
+- [ ] Use consistent pattern (extract a `useFetchWithCancel` hook) — deferred, each component now has requestGenRef
 
 ### HIGH
 
@@ -3559,7 +3559,7 @@ Four CLI helpers (`cliGet`, `cliPost`, `cliPut`, `cliDelete`) use `io.ReadAll(re
 with no size limit. A compromised or misbehaving wafctl server could cause the CLI client
 to exhaust memory.
 
-- [ ] Wrap with `io.LimitReader(resp.Body, 50<<20)` (50 MB cap)
+- [x] Wrap with `io.LimitReader(resp.Body, 50<<20)` (50 MB cap)
 
 #### CR2-4: Partial Restore Leaves Inconsistent State — `wafctl/backup.go:72-175`
 
@@ -3567,8 +3567,8 @@ to exhaust memory.
 (e.g., store 4 of 6 fails), already-restored stores are not rolled back. System is left
 in a partially-restored, potentially inconsistent state.
 
-- [ ] Restore to temp state first and swap atomically, or document the limitation and
-  add a "retry restore" recommendation in the error response
+- [x] Restore to temp state first and swap atomically, or document the limitation and
+  add a "retry restore" recommendation in the error response — added partial restore warning with remediation guidance
 
 #### CR2-5: Policy Priority Overflow at 99+ Exclusions — `wafctl/policy_generator.go:155-156`
 
@@ -3576,7 +3576,7 @@ Priority is calculated as `basePriority + index` where each type band is 100 wid
 there are 100+ exclusions of the same type (e.g., 100+ `block` rules), multiple rules
 share the same priority. Plugin tiebreaker behavior is undefined.
 
-- [ ] Widen priority bands or add overflow handling (warn + use sub-priority)
+- [x] Widen priority bands or add overflow handling (warn + use sub-priority) — widened to 1000-wide bands
 
 #### CR2-6: Unsafe `JSON.parse` in Import Handlers — 4 frontend components
 
@@ -3584,7 +3584,7 @@ share the same priority. Plugin tiebreaker behavior is undefined.
 `SecurityHeadersPanel.tsx:288` all do `JSON.parse(text) as SomeType` without runtime
 schema validation. Malformed import files could inject unexpected fields or crash the app.
 
-- [ ] Add runtime schema validation (zod or manual checks) for all import handlers
+- [x] Add runtime schema validation (zod or manual checks) for all import handlers — added try/catch + structural validation
 
 #### CR2-7: `autoDeploy` Stale Closure Risk — `PolicyEngine.tsx:430`, `RateLimitsPanel.tsx:157`
 
@@ -3592,7 +3592,7 @@ schema validation. Malformed import files could inject unexpected fields or cras
 `useCallback` dependency arrays. `handleDragEnd` in both components calls `autoDeploy`
 but doesn't include it in deps, creating a stale closure risk.
 
-- [ ] Wrap `autoDeploy` in `useCallback` or move to a ref-based pattern
+- [x] Wrap `autoDeploy` in `useCallback` or move to a ref-based pattern
 
 #### CR2-8: E2E Test Caddyfile Exposes Admin API on All Interfaces — `test/Caddyfile.e2e:3`
 
@@ -3603,7 +3603,7 @@ admin :2019
 Binds Caddy admin API to `0.0.0.0:2019` instead of `localhost:2019`. In shared CI
 runners, any process on the network could reconfigure or kill Caddy.
 
-- [ ] Use `admin localhost:2019` or document the justification
+- [x] Use `admin localhost:2019` or document the justification — intentional: wafctl container needs network access to caddy:2019 in Docker e2e tests
 
 #### CR2-9: No `depends_on` Health Condition Between wafctl and Caddy — `compose.yaml`
 
@@ -3612,8 +3612,8 @@ wafctl needs Caddy's admin API (`WAF_CADDY_ADMIN_URL=http://caddy:2020`) but has
 dependency on authelia uses `service_started` instead of `service_healthy` despite
 authelia having a healthcheck.
 
-- [ ] Add `depends_on: caddy: condition: service_healthy` to wafctl service
-- [ ] Change caddy's authelia dependency to `service_healthy`
+- [x] Add `depends_on: caddy: condition: service_healthy` to wafctl service
+- [x] Change caddy's authelia dependency to `service_healthy`
 
 ### MEDIUM
 
@@ -3624,8 +3624,8 @@ policy engine plugin (which handles rate limiting internally via `policy-rules.j
 Caddyfile RL matchers are unused. The `TODO: OR grouping` at line 77 also confirms
 `groupOp` parameter is silently ignored (OR-grouped RL rules behave as AND).
 
-- [ ] Verify no code calls `writeConditionMatchers()` / `rlConditionToMatcher()`
-- [ ] Delete if confirmed dead
+- [x] Verify no code calls `writeConditionMatchers()` / `rlConditionToMatcher()`
+- [x] Delete if confirmed dead — deleted rl_matchers.go (412 lines)
 
 #### CR2-11: Dead Code — 3 Declarations Never Referenced
 
@@ -3635,7 +3635,7 @@ Caddyfile RL matchers are unused. The `TODO: OR grouping` at line 77 also confir
 - `util.go:106` — `generateUUIDv7()` defined but never called (all UUID generation
   uses `generateUUID()` v4)
 
-- [ ] Remove all three dead declarations
+- [x] Remove all three dead declarations
 
 #### CR2-12: Duplicate Header Value Lookup Implementations
 
@@ -3643,14 +3643,14 @@ Caddyfile RL matchers are unused. The `TODO: OR grouping` at line 77 also confir
 `access_log_store.go:91-114` defines `headerValueCI()` and `headerValuesCI()` (full
 case-insensitive scan). Overlapping purposes with subtly different semantics.
 
-- [ ] Consolidate to a single case-insensitive implementation
+- [x] Consolidate to a single case-insensitive implementation — headerValue() now delegates to headerValueCI()
 
 #### CR2-13: Docker Layer Caching Suboptimal for Go Build — `Dockerfile:24-29`, `wafctl/Dockerfile:9-14`
 
 Both Dockerfiles copy `go.mod` then `*.go` without a separate `go mod download` step.
 Any `.go` file change invalidates the module download cache.
 
-- [ ] Add `RUN go mod download` between `COPY go.mod` and `COPY *.go` in both Dockerfiles
+- [x] Add `RUN go mod download` between `COPY go.mod` and `COPY *.go` in both Dockerfiles
 
 #### CR2-14: No E2E Tests in CI Pipeline — `.github/workflows/build.yml`
 
@@ -3676,7 +3676,7 @@ this is limited, but a spoofed Host header that bypasses SNI would get CORS acce
 The internal admin API proxy at `:2020` has no `log` directive. Security events
 (unauthorized access attempts to the admin API) are invisible.
 
-- [ ] Add log directive to capture admin API access attempts
+- [x] Add log directive to capture admin API access attempts
 
 #### CR2-17: `bulkUpdateExclusions` / `bulkOverrideDefaultRules` Bypass `fetchJSON` — `exclusions.ts:272`, `default-rules.ts:123,135`
 
@@ -3684,35 +3684,35 @@ These functions use raw `fetch` and throw `new Error(await resp.text())` on fail
 which could surface raw HTML error pages. The shared `fetchJSON` has `sanitizeErrorBody()`
 to strip HTML tags, but these bypass it.
 
-- [ ] Refactor bulk API functions to use shared `fetchJSON` helper
+- [x] Refactor bulk API functions to use shared `postJSON` helper
 
 #### CR2-18: `useCountUp` Always Starts From 0 — `waf-dashboard/src/hooks/useCountUp.ts:15`
 
 Animation starts from 0 regardless of previous value. When target changes from 100 to 150,
 it animates 0→150 (jarring) instead of 100→150.
 
-- [ ] Track previous target in ref and animate from previous to new value
+- [x] Track previous target in ref and animate from previous to new value
 
 #### CR2-19: Uncapped Client Map in General Logs Summary — `wafctl/general_logs_handlers.go:~100`
 
 URI map is capped at 5,000 entries, but `clientMap` has no cap. High-volume logs from
 many unique IPs could cause unbounded memory growth during summarization.
 
-- [ ] Add matching cap to clientMap (5,000 entries)
+- [x] ~~Add matching cap to clientMap (5,000 entries)~~ — FALSE POSITIVE: clientMap already capped at 5,000
 
 #### CR2-20: Error Values Compared by Reference — `wafctl/default_rules.go:370-371`
 
 `err == errDefaultRuleNotFound` uses pointer equality. Works because it's a package-level
 var, but wrapping the error (e.g., `fmt.Errorf("...: %w", err)`) would silently break it.
 
-- [ ] Use `errors.Is(err, errDefaultRuleNotFound)` instead
+- [x] Use `errors.Is(err, errDefaultRuleNotFound)` instead
 
 #### CR2-21: No Debounce on Policy/RateLimit Search Inputs
 
 `PolicyEngine.tsx:549` and `RateLimitsPanel.tsx:553` filter on every keystroke. Not
 critical given typical rule counts (<100), but a debounce would be more professional.
 
-- [ ] Add 150ms debounce to search inputs
+- [x] Add `useDeferredValue` for search inputs (React 19 built-in, no debounce timer needed)
 
 ### LOW
 
@@ -3731,14 +3731,14 @@ submissions, drag-and-drop, dialog flows, or hook behavior (`useCountUp`, `useTa
 duplicate the `Blob` + `createObjectURL` + `<a>.click()` + `revokeObjectURL` pattern.
 `src/lib/download.ts` already provides `downloadJSON` — only `EventsTable.tsx` uses it.
 
-- [ ] Replace all 6 duplications with the existing `downloadJSON` utility
+- [x] Replace all 6 duplications with the existing `downloadJSON` utility
 
 #### CR2-24: IPsum Download Has No Integrity Verification — `wafctl/blocklist.go:141-193`
 
 IPsum list downloaded from GitHub raw without any checksum or signature verification.
 A MITM or compromised CDN could inject arbitrary IPs into the blocklist.
 
-- [ ] Add format validation (all lines must be valid CIDR) at minimum
+- [x] Add format validation (all lines must be valid CIDR) at minimum — added net.ParseIP validation
 - [ ] Consider cross-validation against a hash or second source
 
 #### CR2-25: Missing `aria-label` on Interactive Elements — multiple components
@@ -3747,14 +3747,14 @@ A MITM or compromised CDN could inject arbitrary IPs into the blocklist.
 (quick range buttons), `ManagedListsPanel.tsx:467-470` (collapse toggle),
 `OverviewDashboard.tsx:467-470` (analytics toggle) — all lack `aria-label`.
 
-- [ ] Add `aria-label` to all interactive elements without visible text labels
+- [x] Add `aria-label` to all interactive elements without visible text labels
 
 #### CR2-26: `test/docker-compose.test.yml` Appears to Be Legacy Dead File
 
 This file doesn't appear to be referenced by any Makefile target — `test-e2e` uses
 `docker-compose.e2e.yml`. Likely leftover from an earlier test approach.
 
-- [ ] Verify and remove if unused
+- [x] Verify and remove if unused — deleted test/docker-compose.test.yml, updated AGENTS.md and README.md references
 
 #### CR2-27: CI Workflow Doesn't Verify Images Exist Before Release — `.github/workflows/release.yml`
 
@@ -3770,7 +3770,7 @@ Client-side IP regex `^[\d.:a-fA-F/]+$` accepts many invalid patterns (e.g., `..
 `:::///`). Server validates separately, but showing "valid" feedback on the client
 is misleading.
 
-- [ ] Use proper CIDR validation regex or `net.ParseIP`-style check
+- [x] Use proper CIDR validation regex or `net.ParseIP`-style check — added isValidIPOrCIDR() with octet-level validation
 
 #### CR2-29: `mapRLRule` Defensive Defaults Hide API Contract Violations — `rate-limits.ts:88-106`
 
@@ -3826,3 +3826,417 @@ rm -f /data/coraza/*.conf
 These files contain legacy event formats (rl- prefix IDs, Coraza transaction IDs,
 old event types like `ipsum_blocked`, `honeypot`, `scanner`). Starting fresh ensures
 all events use Caddy request UUIDs and the new event classification.
+
+---
+
+## Design Spec: Operator Parity with Cloudflare Ruleset Engine
+
+### Motivation
+
+The policy engine condition builder UI is missing operators that the backend already
+supports, and the entire stack is missing negated string operators that Cloudflare's
+ruleset engine provides via composable `not` logic. Since our condition model is flat
+(`{field, operator, value}` — not a composable expression tree), we need explicit
+negated operator variants.
+
+Goal: match Cloudflare's WAF custom rules operator coverage, then exceed it with
+features CF doesn't have (transforms, phrase_match, detect_sqli/detect_xss,
+validate_byte_range, aggregate fields, count pseudo-fields).
+
+### Reference: Cloudflare Ruleset Engine Operators
+
+| CF Operator | CF Notation | Our Equivalent | Status |
+|-------------|-------------|----------------|--------|
+| Equal | `eq` / `==` | `eq` | Have |
+| Not equal | `ne` / `!=` | `neq` | Have |
+| Less than | `lt` / `<` | `lt` | Have |
+| Less than or equal | `le` / `<=` | `le` | Have |
+| Greater than | `gt` / `>` | `gt` | Have |
+| Greater than or equal | `ge` / `>=` | `ge` | Have |
+| Contains | `contains` | `contains` | Have |
+| Does not contain | `not ... contains` | `not_contains` | **Missing** |
+| Starts with | `starts_with()` | `begins_with` | Have |
+| Does not start with | `not starts_with()` | `not_begins_with` | **Missing** |
+| Ends with | `ends_with()` | `ends_with` | Have |
+| Does not end with | `not ends_with()` | `not_ends_with` | **Missing** |
+| Matches regex | `matches` / `~` | `regex` | Have |
+| Does not match regex | `not ... matches` | `not_regex` | **Missing** |
+| Is in (inline set) | `in { ... }` | `in` | Have |
+| Is not in (inline set) | `not ... in { ... }` | `not_in` | **Missing** |
+| Is in list (named) | `in $<LIST>` | `in_list` | Have |
+| Is not in list (named) | `not ... in $<LIST>` | `not_in_list` | Have |
+| Wildcard (case-insensitive) | `wildcard` | `wildcard` | **Missing** (low priority — regex covers this) |
+| Strict wildcard (case-sensitive) | `strict wildcard` | — | Skip (regex covers this) |
+
+### Our Extras (beyond CF)
+
+| Operator | Description | CF Equivalent |
+|----------|-------------|---------------|
+| `phrase_match` | Aho-Corasick multi-phrase substring search | None (CF uses `contains` per phrase) |
+| `not_phrase_match` | Negated phrase match | **Missing — add** |
+| `ip_match` | CIDR match | CF uses `in { CIDR }` |
+| `not_ip_match` | Negated CIDR match | CF uses `not ... in { CIDR }` |
+| `exists` | JSON field presence check | CF uses `has_key()` function |
+| `detect_sqli` | libinjection SQLi detection | None (CF uses ML scoring) |
+| `detect_xss` | libinjection XSS detection | None (CF uses ML scoring) |
+| `validate_byte_range` | Byte range validation | None |
+| `validate_url_encoding` | URL encoding validation | None |
+| Transforms (17) | Pre-match value transforms | CF uses `lower()`, `url_decode()` functions |
+| Aggregate fields (7) | `all_args`, `all_headers`, etc. | CF has `http.request.headers.values[*]` with `any()` |
+| Count pseudo-fields (7+) | `count:all_args`, etc. | CF uses `len()` function |
+
+### Gap Summary: 6 Missing Negated Operators
+
+All 6 use the plugin's existing `cc.negate = true` infrastructure — the matching
+logic already wraps results with `!matched` for negated conditions. Implementation
+is trivial: add operator names to the negate switch case, then compile them using
+the same path as their positive counterpart.
+
+```
+not_contains       → compile as contains, set negate=true
+not_begins_with    → compile as begins_with, set negate=true
+not_ends_with      → compile as ends_with, set negate=true
+not_regex          → compile as regex, set negate=true
+not_in             → compile as in, set negate=true
+not_phrase_match   → compile as phrase_match, set negate=true
+```
+
+### Implementation Plan
+
+#### Phase 1: Fix Frontend Operator Coverage (match backend)
+
+Frontend `constants.ts` CONDITION_FIELDS is missing operators that wafctl backend
+already supports. No backend changes needed — purely frontend.
+
+**Missing `phrase_match` on 9 fields:**
+`header`, `query`, `cookie`, `body_json`, `body_form`, `args`, `uri_path`, `referer`, `response_header`
+
+**Aggregate fields too restrictive:**
+All 7 aggregate fields (`all_args`, `all_args_names`, `all_args_values`, `all_headers`,
+`all_headers_names`, `all_cookies`, `all_cookies_names`) only show `{contains, regex, phrase_match}`
+but backend supports `{eq, neq, contains, begins_with, ends_with, regex, phrase_match, in_list, not_in_list}`.
+
+**Phantom fields to remove:**
+`all_headers_values`, `all_cookies_values` — no backend or plugin support.
+`all_headers` already covers both names + values. Same for `all_cookies`.
+
+**`request_combined` — add to wafctl backend:**
+Plugin supports it (tested). Add to `validOperatorsForField`, `validConditionFields`,
+`validPolicyEngineFields` in `models_exclusions.go`.
+
+#### Phase 2: Add Negated Operators (full stack)
+
+**Plugin (`caddy-policy-engine/policyengine.go`):**
+
+1. Add to negate switch (line ~2510):
+```go
+case "neq", "not_ip_match", "not_in_list",
+     "not_contains", "not_begins_with", "not_ends_with",
+     "not_regex", "not_in", "not_phrase_match":
+    cc.negate = true
+```
+
+2. Add compile aliases so they route to the right compilation path:
+```go
+case "contains", "not_contains":
+    cc.contains = value
+case "begins_with", "not_begins_with":
+    cc.prefix = value
+case "ends_with", "not_ends_with":
+    cc.suffix = value
+case "regex", "not_regex":
+    // ... compile regex
+case "in", "not_in":
+    // ... compile string set
+case "phrase_match", "not_phrase_match":
+    // ... compile Aho-Corasick
+```
+
+3. Add tests for each negated operator.
+
+**wafctl backend (`models_exclusions.go`):**
+
+Add negated operators to `validOperatorsForField` for each field that has the
+positive variant. Pattern: if a field supports `contains`, it also supports
+`not_contains`. Exception: `ip` field uses `ip_match`/`not_ip_match` (already have).
+
+| Field | Add |
+|-------|-----|
+| `path` | `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `not_in`, `not_phrase_match` |
+| `host` | `not_contains` |
+| `user_agent` | `not_contains`, `not_regex`, `not_in`, `not_phrase_match` |
+| `header` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `query` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `cookie` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `body` | `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `not_phrase_match` |
+| `body_json` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `body_form` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `args` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `uri_path` | `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `not_phrase_match` |
+| `referer` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `response_header` | `not_contains`, `not_regex`, `not_phrase_match` |
+| `response_status` | `not_in` |
+| `http_version` | — (only eq/neq needed) |
+| All aggregate fields | `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `not_phrase_match` |
+
+**Frontend (`constants.ts`):**
+
+Add negated operators with clear labels:
+
+| Operator | Label |
+|----------|-------|
+| `not_contains` | "does not contain" |
+| `not_begins_with` | "does not start with" |
+| `not_ends_with` | "does not end with" |
+| `not_regex` | "does not match regex" |
+| `not_in` | "is not in" |
+| `not_phrase_match` | "no phrase match" |
+
+**Frontend (`ConditionBuilder.tsx`):**
+
+Update value input branching — `not_in` should use `PipeTagInput` (same as `in`),
+`not_phrase_match` should use `PipeTagInput` (same as `phrase_match`).
+
+#### Phase 3: Improve Transforms UI
+
+Current issues visible in the screenshot:
+- Transform popover is a flat list of 17 items with tiny descriptions crammed to the right
+- No visual grouping (Phase 1 vs Phase 2 transforms)
+- Hard to scan — monospace names with short descriptions are dense
+
+**Improvements:**
+
+1. **Group transforms by category** with section headers:
+   - **Encoding** — `urlDecode`, `urlDecodeUni`, `htmlEntityDecode`, `base64Decode`, `hexDecode`, `jsDecode`, `cssDecode`
+   - **Normalization** — `lowercase`, `normalizePath`, `normalizePathWin`, `compressWhitespace`, `removeWhitespace`, `removeNulls`, `removeComments`, `trim`
+   - **Inspection** — `utf8toUnicode`, `length`
+
+2. **Two-line layout per transform** — name on top (bold), description below (muted):
+   ```
+   urlDecode
+   Decode %XX percent-encoded sequences
+   ```
+
+3. **Selected transforms as a numbered pipeline** — show order with arrows:
+   ```
+   1. lowercase → 2. urlDecode → 3. htmlEntityDecode
+   ```
+
+4. **Drag-to-reorder** selected transforms (order matters — applied left-to-right).
+   Use existing dnd-kit already in the project (`SortableTableRow`).
+
+5. **Common presets** button at the top of the popover:
+   - "CRS Standard" → `lowercase, urlDecode, htmlEntityDecode, removeNulls`
+   - "Full Decode" → `lowercase, urlDecode, urlDecodeUni, htmlEntityDecode, base64Decode, hexDecode, jsDecode`
+   - "Normalize" → `lowercase, normalizePath, compressWhitespace, trim`
+
+#### Phase 4: Frontend TypeScript Type Updates
+
+Update `ConditionOperator` type in `exclusions.ts` to include all new operators:
+
+```typescript
+export type ConditionOperator =
+  | "eq" | "neq"
+  | "contains" | "not_contains"
+  | "begins_with" | "not_begins_with"
+  | "ends_with" | "not_ends_with"
+  | "regex" | "not_regex"
+  | "in" | "not_in"
+  | "in_list" | "not_in_list"
+  | "ip_match" | "not_ip_match"
+  | "phrase_match" | "not_phrase_match"
+  | "exists"
+  | "gt" | "ge" | "lt" | "le"
+  | "detect_sqli" | "detect_xss"
+  | "validate_byte_range" | "validate_url_encoding";
+```
+
+Update `DashboardFilterBar` `operatorChip()` and `filterDisplayValue()` to render
+negated operators correctly (e.g., `not_contains` → `!~`).
+
+### Execution Order & Detailed Checklist
+
+#### Step 0: Plugin — Add Skip Action (5-Pass Evaluation Loop)
+
+> Committed as `d049807` on plugin `main` branch. 419 tests passing.
+
+- [x] Add `SkipTargets` struct, `compiledSkipTargets`, `compileSkipTargets()`, `validSkipPhases` map
+- [x] Rewrite `ServeHTTP` from 4-pass to 5-pass evaluation loop (allow→block→skip→rate_limit→detect)
+- [x] `allow` terminates immediately (full bypass), `skip` accumulates targets (non-terminating)
+- [x] Skip targets support: specific rule IDs, entire phases (detect/rate_limit/block), `all_remaining`
+- [x] Multiple skip rules merge targets (union)
+- [x] 8 new skip tests + 5 updated priority tests
+- [x] Run full plugin suite (419 tests passing)
+- [x] Commit to plugin repo
+
+#### Step 1: Plugin — Add 6 Negated Operators
+
+> Committed as `17d7b87` on plugin `main` branch. 419 tests passing.
+
+**File: `/home/erfi/caddy-policy-engine/policyengine.go`**
+
+- [x] **Negate switch** (~line 2508-2512): Add `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `not_in`, `not_phrase_match` to the negate case
+- [x] **Compile switch** (~line 2518-2614): Expand each `case` to accept the negated variant:
+  - `case "contains":` → `case "contains", "not_contains":`
+  - `case "begins_with":` → `case "begins_with", "not_begins_with":`
+  - `case "ends_with":` → `case "ends_with", "not_ends_with":`
+  - `case "regex":` → `case "regex", "not_regex":`
+  - `case "in":` → `case "in", "not_in":`
+  - `case "phrase_match":` → `case "phrase_match", "not_phrase_match":`
+- [x] **evalOperator + evalOperatorDetailed switches**: Added negated variants to both eval functions (critical — missing these causes negated operators to always match)
+
+**File: `/home/erfi/caddy-policy-engine/policyengine_test.go`**
+
+- [x] Add `TestNegate_NotContains` — match string, verify negation (match returns false, non-match returns true)
+- [x] Add `TestNegate_NotBeginsWith`
+- [x] Add `TestNegate_NotEndsWith`
+- [x] Add `TestNegate_NotRegex`
+- [x] Add `TestNegate_NotIn` — inline set, verify item NOT in set passes, item in set fails
+- [x] Add `TestNegate_NotPhraseMatch` — Aho-Corasick negation
+- [x] Add `TestNegate_FieldAbsent` — verify `not_contains` on absent field returns true (existing `fieldAbsent` logic)
+- [x] Run full plugin suite: `cd /home/erfi/caddy-policy-engine && go test -count=1 ./...`
+- [x] Commit to plugin repo
+
+#### Step 2: wafctl Backend — Expand validOperatorsForField + Add request_combined + Skip Action
+
+> All changes in working tree on branch `fix/code-review-round2`. 527 tests passing.
+
+**File: `wafctl/models_exclusions.go`**
+
+- [x] **`validOperatorsForField` map**: Added negated variants for all 17+ fields per spec
+- [x] **Add `request_combined` field** to `validOperatorsForField`, `validConditionFields`, `validPolicyEngineFields`
+- [x] **Add `request_combined` to `validAggregateFields`**
+- [x] **Add `SkipTargets` struct** (`Rules []string`, `Phases []string`, `AllRemaining bool`)
+- [x] **Add `skip_targets *SkipTargets`** field to `RuleExclusion`
+- [x] **Add `skip` to `validExclusionTypes`**
+
+**File: `wafctl/exclusions_validate.go`**
+
+- [x] `validateConditions()` handles negated operators transparently (uses `validOperatorsForField` map)
+- [x] `not_phrase_match` requires `list_items` (added validation)
+- [x] `not_regex` gets regex pattern validation (reuses existing regex compile check)
+- [x] Added `validateSkipTargets()` function with phase/rule validation
+- [x] Added `case "skip"` to `validateExclusion()` switch (requires conditions + skip_targets)
+
+**File: `wafctl/policy_generator.go`**
+
+- [x] Negated operators pass through to `PolicyCondition` unchanged
+- [x] `request_combined` passes through unchanged
+- [x] Added `PolicySkipTargets` struct and `SkipTargets` field to `PolicyRule`
+- [x] Added `skip` to `policyEngineTypes` and `policyTypePriority` maps
+- [x] Updated priority bands: `allow=50, block=100, skip=200, rate_limit=300, detect=400`
+- [x] `GeneratePolicyRulesWithRL` converts skip_targets from exclusion store format to policy format
+- [x] `not_phrase_match` passes through `list_items`
+- [x] Fixed stale comments in `deploy.go` and `policy_generator.go`
+
+**Tests:**
+- [x] Run `cd wafctl && go test -count=1 ./...` — 527 tests passing
+- [x] Added `TestValidateNegatedOperators` — 50+ test cases covering every field/negated-operator combination
+- [x] Added `TestValidateRequestCombinedField` — validation in both general and policy engine field sets
+- [x] Added `TestGenerateSkipRules` — skip_targets passthrough, all_remaining, full 5-pass priority ordering
+- [x] Added `TestValidateSkipTargets` — valid phases, valid rules, all_remaining, empty targets, invalid phase
+- [x] Added `TestValidateExclusion_SkipType` — valid skip, missing skip_targets, missing conditions
+- [x] Updated all priority-ordering tests for new bands (block<allow→allow<block, RL priority 3000→300, etc.)
+- [x] Updated `TestIsPolicyEngineType` with skip and detect entries
+
+#### Step 3: Frontend — Full constants.ts Rewrite + Skip Type UI
+
+> All changes in working tree on branch `fix/code-review-round2`. 324 tests passing, build succeeds.
+
+**File: `waf-dashboard/src/lib/api/exclusions.ts`**
+
+- [x] Update `ConditionOperator` type to include all 6 negated operators
+- [x] Update `ConditionField` type to include `request_combined`
+- [x] Remove `all_headers_values`, `all_cookies_values` from `ConditionField`
+- [x] Add `SkipTargets` interface
+- [x] Update `Exclusion`, `ExclusionCreateData`, `RawExclusion` with `skip_targets`
+- [x] Update `ExclusionType` to include `"skip"`
+- [x] Update `typeToGo`/`typeFromGo` mappings for `skip`
+- [x] Update `mapExclusionFromGo`/`mapExclusionToGo` to handle `skip_targets`
+- [x] Update `importExclusions` to pass `skip_targets`, `severity`, `detect_paranoia_level`
+
+**File: `waf-dashboard/src/components/policy/constants.ts`**
+
+Per-field operator additions:
+
+- [x] `ip` — no changes needed
+- [x] `path` — added all 6 negated operators + `phrase_match`/`not_phrase_match`
+- [x] `host` — added `not_contains`
+- [x] `method` — added `not_in`
+- [x] `user_agent` — added `not_contains`, `not_regex`, `not_in`, `not_phrase_match`, `phrase_match`
+- [x] `header` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `query` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `country` — added `not_in`
+- [x] `cookie` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `body` — added `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `phrase_match`, `not_phrase_match`
+- [x] `body_json` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `body_form` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `args` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `uri_path` — added `phrase_match`, `not_contains`, `not_begins_with`, `not_ends_with`, `not_regex`, `not_phrase_match`
+- [x] `referer` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `response_header` — added `phrase_match`, `not_contains`, `not_regex`, `not_phrase_match`
+- [x] `response_status` — added `not_in`, `gt`, `ge`, `lt`, `le`
+- [x] `http_version` — no changes needed
+- [x] **Aggregate fields** — expanded all 7 aggregate fields to full 14-operator set
+- [x] **Removed** `all_headers_values` and `all_cookies_values` phantom entries
+- [x] **Added** `request_combined` entry with full 14-operator set
+- [x] **Added** count pseudo-fields (7 entries) with `gt`/`ge`/`lt`/`le` operators
+- [x] Updated `QUICK_ACTIONS` and `ALL_EXCLUSION_TYPES` to include `skip`
+- [x] Added `skip_targets` to `AdvancedFormState` interface and `emptyAdvancedForm`
+
+**File: `waf-dashboard/src/components/policy/ConditionBuilder.tsx`**
+
+- [x] `not_in` routes to `PipeTagInput` (and `MethodMultiSelect` for method field)
+- [x] `not_phrase_match` routes to `PipeTagInput` with `list_items`
+- [x] `isListOp` check already includes `not_in_list`
+- [x] Operator switching logic handles `not_phrase_match` ↔ `not_in` transitions
+
+**File: `waf-dashboard/src/components/policy/PolicyForms.tsx`**
+
+- [x] Added `SkipTargetsForm` component (all_remaining switch, phase switches, rule ID input)
+- [x] `QuickActionsForm`: skip card in 4-column grid, skip color (lv-cyan), skip_targets state, validation, handleSubmit
+- [x] `AdvancedBuilderForm`: skip type in ExclusionTypePicker, skip badge, skip_targets in form state, handleTypeChange reset, validation, handleSubmit
+
+**File: `waf-dashboard/src/components/policy/exclusionHelpers.ts`**
+
+- [x] Added `skip` to `exclusionTypeLabel()` and `exclusionTypeBadgeVariant()`
+
+**File: `waf-dashboard/src/components/PolicyEngine.tsx`**
+
+- [x] Added `skip_targets` to `editFormState` mapping (round-trip for edit)
+
+**File: `waf-dashboard/src/components/filters/constants.ts`** (DashboardFilterBar)
+
+- [ ] Update `operatorChip()` to render negated operators — **DEFERRED**: `FilterOp` type only covers `eq|neq|contains|in|regex` for dashboard-level filtering. Negated operators are only used in condition builder (exclusion/RL rules), not in the dashboard filter bar. No change needed unless `FilterOp` is expanded.
+
+**Tests:**
+- [x] Updated `constants.test.ts` — 4 types instead of 3
+- [x] Added skip tests to `exclusionHelpers.test.ts` (label + badge variant)
+- [x] Run `cd waf-dashboard && npx vitest run` — 324 tests passing (was 322, +2 new skip tests)
+
+#### Step 4: Transforms UI Improvement
+
+**File: `waf-dashboard/src/components/policy/TagInputs.tsx`**
+
+- [x] Replace `TRANSFORM_HINTS` flat record with grouped `TRANSFORM_GROUPS` (Normalization/Decoding/Inspection)
+- [x] Update popover to render group headers with `TransformPopoverContent` component
+- [x] Two-line item layout: name bold on top, description muted below
+- [x] Add preset buttons (`TRANSFORM_PRESETS`): "CRS Standard", "Full Decode", "Normalize"
+- [x] Selected chips: numbered pipeline with arrows (`1. lowercase → 2. urlDecode → ...`)
+- [x] Drag-to-reorder via dnd-kit on selected transform chips (GripVertical handle, horizontalListSortingStrategy)
+
+#### Step 5: Build, Test, Smoke Test
+
+- [x] `cd waf-dashboard && npx vitest run` — 324 tests passing
+- [x] `cd wafctl && go test -count=1 ./...` — 527 tests passing
+- [x] `cd /home/erfi/caddy-policy-engine && go test -count=1 ./...` — 419 tests passing
+- [x] `cd waf-dashboard && npm run build` — Astro static build succeeds (13 pages)
+- [x] `make build` — Docker images build successfully (caddy-e2e + wafctl-e2e with plugin v0.14.0)
+- [x] E2E smoke test: skip action CRUD, validation, policy generation (3 new tests)
+- [x] E2E smoke test: negated operators — `not_contains` block rule, `not_in` method block, validation (3 new tests)
+- [x] E2E smoke test: priority bands updated for 5-pass model, allow-overrides-block verified
+- [x] E2E smoke test: full suite passing (all existing + 6 new tests)
+- [ ] Local smoke test: verify UI renders all operators for each field correctly
+- [ ] Local smoke test: verify transforms UI grouping and presets work
+- [ ] Commit all changes on `fix/code-review-round2`
+- [ ] Production deploy: `make build && make push && make scp && make pull && make restart`

@@ -48,8 +48,6 @@ func runServe() int {
 
 	deployCfg := DeployConfig{
 		WafDir:          envOr("WAF_DIR", "/data/waf"),
-		RateLimitDir:    envOr("WAF_RATELIMIT_DIR", "/data/rl"),
-		CSPDir:          envOr("WAF_CSP_DIR", "/data/csp"),
 		CaddyfilePath:   envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
 		CaddyAdminURL:   envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
 		PolicyRulesFile: policyRulesFile,
@@ -58,16 +56,6 @@ func runServe() int {
 	// Ensure WAF config directory and placeholder files exist.
 	if err := ensureWafDir(deployCfg.WafDir); err != nil {
 		log.Printf("warning: could not initialize waf dir: %v", err)
-	}
-
-	// Ensure rate limit directory exists.
-	if err := ensureRateLimitDir(deployCfg.RateLimitDir); err != nil {
-		log.Printf("warning: could not initialize rate limit dir: %v", err)
-	}
-
-	// Ensure CSP directory exists.
-	if err := ensureCSPDir(deployCfg.CSPDir); err != nil {
-		log.Printf("warning: could not initialize CSP dir: %v", err)
 	}
 
 	// Event retention: maximum age for in-memory events (default 2160h = 90 days).
@@ -98,8 +86,8 @@ func runServe() int {
 	geoAPIURL := envOr("WAF_GEOIP_API_URL", "")
 	geoAPIKey := envOr("WAF_GEOIP_API_KEY", "")
 
-	log.Printf("wafctl starting: combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s waf_dir=%s rl_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s default_rules=%s",
-		combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.WafDir, deployCfg.RateLimitDir, maxAge, tailInterval, geoDBPath, geoAPIURL, defaultRulesFile)
+	log.Printf("wafctl starting: combined=%s port=%s exclusions=%s config=%s ratelimits=%s lists=%s waf_dir=%s max_age=%s tail_interval=%s geoip_db=%s geoip_api=%s default_rules=%s",
+		combinedAccessLog, port, exclusionsFile, configFile, rateLimitFile, managedListsFile, deployCfg.WafDir, maxAge, tailInterval, geoDBPath, geoAPIURL, defaultRulesFile)
 
 	var geoAPICfg *GeoIPAPIConfig
 	if geoAPIURL != "" {

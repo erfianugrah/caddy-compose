@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   List, Plus, RefreshCw, Trash2, Pencil, Download, Upload,
   Globe, Database, ExternalLink, Copy, Check, Search, Shield,
@@ -27,6 +27,7 @@ import {
   type BlocklistStats, type BlocklistCheckResult, type BlocklistRefreshResult,
 } from "@/lib/api";
 import { T } from "@/lib/typography";
+import { downloadJSON } from "@/lib/download";
 
 // ─── Kind / Source Badge Colors ─────────────────────────────────────
 
@@ -130,14 +131,50 @@ const KIND_META: Record<ManagedList["kind"], { icon: typeof Network; label: stri
   asn:      { icon: Hash,    label: "ASN Numbers",  desc: "Autonomous System Numbers",           hint: "Enter ASNs in AS##### format",                            placeholder: "AS13335\nAS15169\nAS32934" },
 };
 
+/** Validate an IPv4 address (4 octets, each 0-255). */
+function isValidIPv4(ip: string): boolean {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((p) => {
+    if (!/^\d{1,3}$/.test(p)) return false;
+    const n = parseInt(p, 10);
+    return n >= 0 && n <= 255;
+  });
+}
+
+/** Validate an IPv6 address (simplified — allows hex groups and ::). */
+function isValidIPv6(ip: string): boolean {
+  // Must contain at least one colon and only hex digits, colons, dots (for mapped v4)
+  if (!ip.includes(":")) return false;
+  if (!/^[0-9a-fA-F:.]+$/.test(ip)) return false;
+  // Reject multiple consecutive :: groups
+  if ((ip.match(/::/g) || []).length > 1) return false;
+  return true;
+}
+
+/** Validate an IP address or CIDR range. */
+function isValidIPOrCIDR(value: string): boolean {
+  const [ip, prefix, ...rest] = value.split("/");
+  if (rest.length > 0) return false; // multiple slashes
+  const isV4 = isValidIPv4(ip);
+  const isV6 = isValidIPv6(ip);
+  if (!isV4 && !isV6) return false;
+  if (prefix !== undefined) {
+    if (!/^\d{1,3}$/.test(prefix)) return false;
+    const n = parseInt(prefix, 10);
+    const max = isV4 ? 32 : 128;
+    if (n < 0 || n > max) return false;
+  }
+  return true;
+}
+
 /** Simple line-level validation for item entries. */
 function validateItems(kind: ManagedList["kind"], text: string): string[] {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const errors: string[] = [];
   for (const line of lines) {
     if (kind === "ip") {
-      // Basic IPv4/v6 + optional CIDR — reject obvious junk
-      if (!/^[\d.:a-fA-F/]+$/.test(line)) errors.push(line);
+      if (!isValidIPOrCIDR(line)) errors.push(line);
     } else if (kind === "asn") {
       if (!/^AS\d+$/i.test(line)) errors.push(line);
     }
@@ -559,13 +596,26 @@ export default function ManagedListsPanel() {
   // Feedback
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Guard against stale responses when rapid reloads fire concurrent requests.
+  const requestGenRef = useRef(0);
+
   const loadLists = useCallback(() => {
+    const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
     fetchManagedLists()
-      .then(setLists)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (gen !== requestGenRef.current) return;
+        setLists(data);
+      })
+      .catch((err) => {
+        if (gen !== requestGenRef.current) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (gen !== requestGenRef.current) return;
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => { loadLists(); }, [loadLists]);
@@ -651,13 +701,7 @@ export default function ManagedListsPanel() {
   const handleExport = useCallback(async () => {
     try {
       const data = await exportManagedLists();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `managed-lists-export-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJSON(data, `managed-lists-export-${new Date().toISOString().slice(0, 10)}.json`);
     } catch (err: unknown) {
       setFeedback({ type: "error", message: err instanceof Error ? err.message : "Export failed" });
     }
@@ -673,6 +717,10 @@ export default function ManagedListsPanel() {
       try {
         const text = await file.text();
         const data = JSON.parse(text);
+        const items = Array.isArray(data) ? data : data.lists;
+        if (!Array.isArray(items) || !items.every((l: unknown) => typeof l === "object" && l !== null && "id" in l && "name" in l && "type" in l)) {
+          throw new Error("Invalid import data: expected an array of lists with 'id', 'name', and 'type' fields");
+        }
         const result = await importManagedLists(data);
         setFeedback({ type: "success", message: `Imported ${result.imported} list(s).` });
         loadLists();

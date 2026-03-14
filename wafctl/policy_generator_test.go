@@ -19,6 +19,8 @@ func TestIsPolicyEngineType(t *testing.T) {
 	}{
 		{"allow", true},
 		{"block", true},
+		{"skip", true},
+		{"detect", true},
 		{"honeypot", false},
 		{"skip_rule", false},
 		{"anomaly", false},
@@ -65,13 +67,12 @@ func TestGeneratePolicyRules(t *testing.T) {
 		}
 	})
 
-	t.Run("filters non-policy types", func(t *testing.T) {
+	t.Run("includes all policy engine types", func(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "1", Name: "Allow", Type: "allow", Enabled: true},
-			{ID: "2", Name: "Skip", Type: "skip_rule", Enabled: true},
-			{ID: "3", Name: "Block", Type: "block", Enabled: true},
-			{ID: "4", Name: "Anomaly", Type: "anomaly", Enabled: true},
-			{ID: "5", Name: "Raw", Type: "raw", Enabled: true},
+			{ID: "2", Name: "Block", Type: "block", Enabled: true},
+			{ID: "3", Name: "Skip", Type: "skip", Enabled: true, SkipTargets: &SkipTargets{Phases: []string{"detect"}}},
+			{ID: "4", Name: "Detect", Type: "detect", Severity: "CRITICAL", Enabled: true},
 		}
 		data, err := GeneratePolicyRules(exclusions, nil)
 		if err != nil {
@@ -81,22 +82,21 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			t.Fatal(err)
 		}
-		// Only allow, block should be included.
-		if len(file.Rules) != 2 {
-			t.Fatalf("expected 2 rules, got %d", len(file.Rules))
+		if len(file.Rules) != 4 {
+			t.Fatalf("expected 4 rules, got %d", len(file.Rules))
 		}
 		types := map[string]bool{}
 		for _, r := range file.Rules {
 			types[r.Type] = true
 		}
-		for _, want := range []string{"allow", "block"} {
+		for _, want := range []string{"allow", "block", "skip", "detect"} {
 			if !types[want] {
 				t.Errorf("missing type %q in output", want)
 			}
 		}
 	})
 
-	t.Run("priority ordering: block < allow", func(t *testing.T) {
+	t.Run("priority ordering: allow < block", func(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "a1", Name: "Allow Office", Type: "allow", Enabled: true},
 			{ID: "b1", Name: "Block Scanners", Type: "block", Enabled: true},
@@ -112,19 +112,19 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if len(file.Rules) != 2 {
 			t.Fatalf("expected 2 rules, got %d", len(file.Rules))
 		}
-		// Order should be: block (100+), allow (200+)
-		if file.Rules[0].Type != "block" {
-			t.Errorf("rules[0].Type = %q, want block", file.Rules[0].Type)
+		// New 5-pass order: allow (50+) < block (100+).
+		if file.Rules[0].Type != "allow" {
+			t.Errorf("rules[0].Type = %q, want allow", file.Rules[0].Type)
 		}
-		if file.Rules[1].Type != "allow" {
-			t.Errorf("rules[1].Type = %q, want allow", file.Rules[1].Type)
+		if file.Rules[1].Type != "block" {
+			t.Errorf("rules[1].Type = %q, want block", file.Rules[1].Type)
 		}
-		// Verify priority values.
-		if file.Rules[0].Priority < 100 || file.Rules[0].Priority >= 200 {
-			t.Errorf("block priority = %d, want [100,200)", file.Rules[0].Priority)
+		// Verify priority values (new bands).
+		if file.Rules[0].Priority < 50 || file.Rules[0].Priority >= 100 {
+			t.Errorf("allow priority = %d, want [50,100)", file.Rules[0].Priority)
 		}
-		if file.Rules[1].Priority < 200 || file.Rules[1].Priority >= 300 {
-			t.Errorf("allow priority = %d, want [200,300)", file.Rules[1].Priority)
+		if file.Rules[1].Priority < 100 || file.Rules[1].Priority >= 200 {
+			t.Errorf("block priority = %d, want [100,200)", file.Rules[1].Priority)
 		}
 	})
 
@@ -147,7 +147,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			t.Errorf("expected b1,b2,b3 order, got %s,%s,%s",
 				file.Rules[0].ID, file.Rules[1].ID, file.Rules[2].ID)
 		}
-		// Priorities should be 100, 101, 102.
+		// Priorities should be 100, 101, 102 (new block band starts at 100).
 		if file.Rules[0].Priority != 100 {
 			t.Errorf("b1 priority = %d, want 100", file.Rules[0].Priority)
 		}
@@ -159,12 +159,12 @@ func TestGeneratePolicyRules(t *testing.T) {
 		}
 	})
 
-	t.Run("tiebreaker caps at 99", func(t *testing.T) {
-		// Create 101 block rules to verify cap.
+	t.Run("tiebreaker caps at 999", func(t *testing.T) {
+		// Create 1001 block rules to verify cap at 999.
 		var exclusions []RuleExclusion
-		for i := 0; i < 101; i++ {
+		for i := 0; i < 1001; i++ {
 			exclusions = append(exclusions, RuleExclusion{
-				ID:   "b" + time.Now().Format("150405") + fmt.Sprintf("%03d", i),
+				ID:   fmt.Sprintf("b%04d", i),
 				Type: "block", Enabled: true, Name: "Block",
 			})
 		}
@@ -176,15 +176,15 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			t.Fatal(err)
 		}
-		// The last two rules (index 99 and 100) should both have priority 199
-		// (100 + capped 99).
+		// The last two rules (index 999 and 1000) should both have priority 1099
+		// (100 + capped 999).
 		last := file.Rules[len(file.Rules)-1]
 		secondLast := file.Rules[len(file.Rules)-2]
-		if last.Priority != 199 {
-			t.Errorf("last rule priority = %d, want 199", last.Priority)
+		if last.Priority != 1099 {
+			t.Errorf("last rule priority = %d, want 1099", last.Priority)
 		}
-		if secondLast.Priority != 199 {
-			t.Errorf("second-to-last rule priority = %d, want 199", secondLast.Priority)
+		if secondLast.Priority != 1099 {
+			t.Errorf("second-to-last rule priority = %d, want 1099", secondLast.Priority)
 		}
 	})
 
@@ -393,18 +393,19 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if len(file.Rules) != 3 {
 			t.Fatalf("expected 3 rules, got %d", len(file.Rules))
 		}
-		// Verify ordering: block (b1, b2), allow (a1).
-		if file.Rules[0].ID != "b1" {
-			t.Errorf("first rule ID = %q, want b1", file.Rules[0].ID)
+		// Verify ordering: allow (a1), block (b1, b2).
+		// New 5-pass order: allow(50) < block(100).
+		if file.Rules[0].ID != "a1" {
+			t.Errorf("first rule ID = %q, want a1", file.Rules[0].ID)
 		}
-		if file.Rules[1].ID != "b2" {
-			t.Errorf("second rule ID = %q, want b2", file.Rules[1].ID)
+		if file.Rules[1].ID != "b1" {
+			t.Errorf("second rule ID = %q, want b1", file.Rules[1].ID)
 		}
-		if file.Rules[2].ID != "a1" {
-			t.Errorf("third rule ID = %q, want a1", file.Rules[2].ID)
+		if file.Rules[2].ID != "b2" {
+			t.Errorf("third rule ID = %q, want b2", file.Rules[2].ID)
 		}
-		// Verify block path conditions.
-		bp := file.Rules[1]
+		// Verify block path conditions (b2 is now at index 2).
+		bp := file.Rules[2]
 		if len(bp.Conditions) != 1 {
 			t.Fatalf("block path conditions = %d, want 1", len(bp.Conditions))
 		}
@@ -523,7 +524,7 @@ func TestGeneratePolicyRulesListResolution(t *testing.T) {
 		t.Fatalf("expected 3 rules, got %d", len(file.Rules))
 	}
 
-	// Rules are sorted by priority: block (200) < allow (300).
+	// Rules are sorted by priority: allow (50+) < block (100+).
 	// Find each rule by name.
 	byName := map[string]PolicyRule{}
 	for _, r := range file.Rules {
@@ -799,12 +800,12 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		if len(file.Rules) != 3 {
 			t.Fatalf("want 3 rules, got %d", len(file.Rules))
 		}
-		// Order: block (100) < allow (200) < rate_limit (300).
-		if file.Rules[0].Type != "block" {
-			t.Errorf("rules[0].Type = %q, want block", file.Rules[0].Type)
+		// New 5-pass order: allow (50) < block (100) < rate_limit (300).
+		if file.Rules[0].Type != "allow" {
+			t.Errorf("rules[0].Type = %q, want allow", file.Rules[0].Type)
 		}
-		if file.Rules[1].Type != "allow" {
-			t.Errorf("rules[1].Type = %q, want allow", file.Rules[1].Type)
+		if file.Rules[1].Type != "block" {
+			t.Errorf("rules[1].Type = %q, want block", file.Rules[1].Type)
 		}
 		if file.Rules[2].Type != "rate_limit" {
 			t.Errorf("rules[2].Type = %q, want rate_limit", file.Rules[2].Type)
@@ -813,7 +814,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		if file.Rules[2].RateLimit == nil {
 			t.Error("RL rule should have RateLimit config")
 		}
-		if file.Rules[0].RateLimit != nil {
+		if file.Rules[1].RateLimit != nil {
 			t.Error("block rule should not have RateLimit config")
 		}
 	})
@@ -1308,7 +1309,7 @@ func TestGenerateDetectRules(t *testing.T) {
 		t.Fatalf("expected 2 rules, got %d", len(file.Rules))
 	}
 
-	// Rules should be sorted by priority: allow (200) before detect (400).
+	// Rules should be sorted by priority: allow (50) before detect (400).
 	if file.Rules[0].Type != "allow" {
 		t.Errorf("first rule type = %q, want allow", file.Rules[0].Type)
 	}
@@ -1356,17 +1357,310 @@ func TestGenerateDetectRules_PriorityBand(t *testing.T) {
 	var file PolicyRulesFile
 	json.Unmarshal(data, &file)
 
-	// Priority order: block(100) < allow(200) < detect(400).
+	// Priority order: allow(50) < block(100) < detect(400).
 	if len(file.Rules) != 3 {
 		t.Fatalf("expected 3 rules, got %d", len(file.Rules))
 	}
-	if file.Rules[0].Type != "block" {
-		t.Errorf("rule[0] type = %q, want block", file.Rules[0].Type)
+	if file.Rules[0].Type != "allow" {
+		t.Errorf("rule[0] type = %q, want allow", file.Rules[0].Type)
 	}
-	if file.Rules[1].Type != "allow" {
-		t.Errorf("rule[1] type = %q, want allow", file.Rules[1].Type)
+	if file.Rules[1].Type != "block" {
+		t.Errorf("rule[1] type = %q, want block", file.Rules[1].Type)
 	}
 	if file.Rules[2].Type != "detect" {
 		t.Errorf("rule[2] type = %q, want detect", file.Rules[2].Type)
 	}
+}
+
+// ─── Skip Rule Generation ─────────────────────────────────────────
+
+func TestGenerateSkipRules(t *testing.T) {
+	t.Run("skip_targets passed through to policy rule", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "s1", Name: "Skip CRS for health", Type: "skip", Enabled: true,
+				Conditions:  []Condition{{Field: "path", Operator: "eq", Value: "/health"}},
+				SkipTargets: &SkipTargets{Rules: []string{"932120", "941100"}, Phases: []string{"detect"}},
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		if len(file.Rules) != 1 {
+			t.Fatalf("expected 1 rule, got %d", len(file.Rules))
+		}
+		r := file.Rules[0]
+		if r.Type != "skip" {
+			t.Errorf("type = %q, want skip", r.Type)
+		}
+		if r.SkipTargets == nil {
+			t.Fatal("skip_targets should not be nil")
+		}
+		if len(r.SkipTargets.Rules) != 2 || r.SkipTargets.Rules[0] != "932120" {
+			t.Errorf("skip_targets.rules = %v, want [932120 941100]", r.SkipTargets.Rules)
+		}
+		if len(r.SkipTargets.Phases) != 1 || r.SkipTargets.Phases[0] != "detect" {
+			t.Errorf("skip_targets.phases = %v, want [detect]", r.SkipTargets.Phases)
+		}
+	})
+
+	t.Run("skip with all_remaining", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "s2", Name: "Skip all for monitoring", Type: "skip", Enabled: true,
+				Conditions:  []Condition{{Field: "ip", Operator: "eq", Value: "10.0.0.1"}},
+				SkipTargets: &SkipTargets{AllRemaining: true},
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		r := file.Rules[0]
+		if !r.SkipTargets.AllRemaining {
+			t.Error("skip_targets.all_remaining should be true")
+		}
+	})
+
+	t.Run("full 5-pass priority ordering", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{ID: "d1", Name: "Detect", Type: "detect", Severity: "CRITICAL", Enabled: true,
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/sus"}}},
+			{ID: "a1", Name: "Allow", Type: "allow", Enabled: true},
+			{ID: "s1", Name: "Skip", Type: "skip", Enabled: true,
+				SkipTargets: &SkipTargets{Phases: []string{"detect"}}},
+			{ID: "b1", Name: "Block", Type: "block", Enabled: true},
+		}
+		rlRules := []RateLimitRule{
+			{ID: "rl1", Name: "RL", Key: "client_ip", Events: 100, Window: "1m", Enabled: true},
+		}
+		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+
+		if len(file.Rules) != 5 {
+			t.Fatalf("expected 5 rules, got %d", len(file.Rules))
+		}
+		// Full 5-pass order: allow(50) < block(100) < skip(200) < rate_limit(300) < detect(400).
+		wantOrder := []string{"allow", "block", "skip", "rate_limit", "detect"}
+		for i, want := range wantOrder {
+			if file.Rules[i].Type != want {
+				t.Errorf("rule[%d] = %q, want %q", i, file.Rules[i].Type, want)
+			}
+		}
+		// Verify each rule falls in its priority band.
+		bands := []struct{ lo, hi int }{{50, 100}, {100, 200}, {200, 300}, {300, 400}, {400, 500}}
+		for i, band := range bands {
+			if file.Rules[i].Priority < band.lo || file.Rules[i].Priority >= band.hi {
+				t.Errorf("rule[%d] (%s) priority = %d, want [%d,%d)",
+					i, file.Rules[i].Type, file.Rules[i].Priority, band.lo, band.hi)
+			}
+		}
+	})
+
+	t.Run("nil skip_targets omitted from JSON", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{ID: "b1", Name: "Block", Type: "block", Enabled: true},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "skip_targets") {
+			t.Error("skip_targets should be omitted for non-skip rules")
+		}
+	})
+}
+
+// ─── Negated Operator & request_combined Validation ───────────────
+
+func TestValidateNegatedOperators(t *testing.T) {
+	tests := []struct {
+		field     string
+		operator  string
+		value     string
+		listItems []string
+		wantErr   bool
+	}{
+		{"path", "not_contains", "/admin", nil, false},
+		{"path", "not_begins_with", "/api", nil, false},
+		{"path", "not_ends_with", ".php", nil, false},
+		{"path", "not_regex", "^/admin", nil, false},
+		{"path", "not_in", "/a|/b", nil, false},
+		{"path", "not_phrase_match", "", []string{"pattern1", "pattern2"}, false},
+		{"host", "not_contains", "example", nil, false},
+		{"method", "not_in", "GET|POST", nil, false},
+		{"country", "not_in", "CN|RU", nil, false},
+		{"user_agent", "not_contains", "bot", nil, false},
+		{"user_agent", "not_regex", "(?i)bot", nil, false},
+		{"user_agent", "not_in", "curl|wget", nil, false},
+		{"user_agent", "not_phrase_match", "", []string{"sqlmap", "nikto"}, false},
+		{"header", "not_contains", "bad", nil, false},
+		{"header", "not_regex", "^evil", nil, false},
+		{"header", "not_phrase_match", "", []string{"exploit"}, false},
+		{"query", "not_contains", "drop", nil, false},
+		{"query", "not_regex", "union.*select", nil, false},
+		{"cookie", "not_contains", "session", nil, false},
+		{"cookie", "not_regex", "^admin", nil, false},
+		{"body", "not_contains", "attack", nil, false},
+		{"body", "not_begins_with", "<?xml", nil, false},
+		{"body", "not_ends_with", "</script>", nil, false},
+		{"body", "not_regex", "<script>", nil, false},
+		{"body_json", "not_contains", "admin", nil, false},
+		{"body_json", "not_regex", "root", nil, false},
+		{"body_form", "not_contains", "drop", nil, false},
+		{"args", "not_contains", "test", nil, false},
+		{"args", "not_regex", "^admin", nil, false},
+		{"uri_path", "not_contains", "/admin", nil, false},
+		{"uri_path", "not_begins_with", "/api", nil, false},
+		{"uri_path", "not_ends_with", ".bak", nil, false},
+		{"uri_path", "not_regex", "\\.(bak|sql)$", nil, false},
+		{"referer", "not_contains", "evil", nil, false},
+		{"referer", "not_regex", "^http://spam", nil, false},
+		{"response_header", "not_contains", "error", nil, false},
+		{"response_status", "not_in", "200|301", nil, false},
+		{"request_combined", "not_contains", "attack", nil, false},
+		{"request_combined", "not_regex", "union.*select", nil, false},
+		{"request_combined", "not_phrase_match", "", []string{"exploit"}, false},
+		// Invalid: operators not supported for the field.
+		{"ip", "not_contains", "10.0", nil, true},
+		{"http_version", "not_contains", "HTTP/1.0", nil, true},
+		{"ip", "not_regex", "^10", nil, true},
+		// Invalid regex pattern.
+		{"path", "not_regex", "[invalid", nil, true},
+		// not_phrase_match without list_items.
+		{"path", "not_phrase_match", "", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.field+"/"+tt.operator, func(t *testing.T) {
+			conds := []Condition{{
+				Field: tt.field, Operator: tt.operator,
+				Value: tt.value, ListItems: tt.listItems,
+			}}
+			err := validateConditions(conds, nil)
+			if tt.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+
+	// Aggregate fields are only valid in the policy engine field set.
+	aggTests := []struct {
+		field     string
+		operator  string
+		value     string
+		listItems []string
+	}{
+		{"all_args", "not_contains", "test", nil},
+		{"all_args", "not_begins_with", "admin", nil},
+		{"all_args", "not_ends_with", ".php", nil},
+		{"all_args", "not_regex", "drop", nil},
+		{"all_args", "not_phrase_match", "", []string{"xss"}},
+		{"all_args_values", "not_contains", "test", nil},
+		{"all_args_names", "not_regex", "^admin", nil},
+		{"all_headers", "not_contains", "evil", nil},
+		{"all_headers_names", "not_begins_with", "X-", nil},
+		{"all_cookies", "not_regex", "^session", nil},
+		{"all_cookies_names", "not_ends_with", "_id", nil},
+		{"request_combined", "not_contains", "attack", nil},
+		{"request_combined", "not_regex", "union.*select", nil},
+		{"request_combined", "not_phrase_match", "", []string{"exploit"}},
+	}
+	for _, tt := range aggTests {
+		t.Run(tt.field+"/"+tt.operator, func(t *testing.T) {
+			conds := []Condition{{
+				Field: tt.field, Operator: tt.operator,
+				Value: tt.value, ListItems: tt.listItems,
+			}}
+			if err := validateConditions(conds, validPolicyEngineFields); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRequestCombinedField(t *testing.T) {
+	conds := []Condition{
+		{Field: "request_combined", Operator: "contains", Value: "attack"},
+	}
+	if err := validateConditions(conds, validPolicyEngineFields); err != nil {
+		t.Errorf("request_combined should be valid: %v", err)
+	}
+
+	// Not valid in the general condition fields set (response fields included).
+	if err := validateConditions(conds, nil); err != nil {
+		t.Errorf("request_combined should be valid in general fields too: %v", err)
+	}
+}
+
+func TestValidateSkipTargets(t *testing.T) {
+	tests := []struct {
+		name    string
+		st      *SkipTargets
+		wantErr bool
+	}{
+		{"valid phases", &SkipTargets{Phases: []string{"detect", "rate_limit"}}, false},
+		{"valid rules", &SkipTargets{Rules: []string{"932120"}}, false},
+		{"valid all_remaining", &SkipTargets{AllRemaining: true}, false},
+		{"empty targets", &SkipTargets{}, true},
+		{"invalid phase", &SkipTargets{Phases: []string{"invalid"}}, true},
+		{"empty rule ID", &SkipTargets{Rules: []string{""}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSkipTargets(tt.st)
+			if tt.wantErr && err == nil {
+				t.Error("expected error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateExclusion_SkipType(t *testing.T) {
+	t.Run("valid skip exclusion", func(t *testing.T) {
+		e := RuleExclusion{
+			Name: "Skip CRS", Type: "skip", Enabled: true,
+			Conditions:  []Condition{{Field: "path", Operator: "eq", Value: "/health"}},
+			SkipTargets: &SkipTargets{Phases: []string{"detect"}},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("skip without skip_targets", func(t *testing.T) {
+		e := RuleExclusion{
+			Name: "Bad Skip", Type: "skip", Enabled: true,
+			Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/health"}},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for skip without skip_targets")
+		}
+	})
+
+	t.Run("skip without conditions", func(t *testing.T) {
+		e := RuleExclusion{
+			Name: "Bad Skip", Type: "skip", Enabled: true,
+			SkipTargets: &SkipTargets{Phases: []string{"detect"}},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for skip without conditions")
+		}
+	})
 }

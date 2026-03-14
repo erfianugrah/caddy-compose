@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
@@ -93,6 +93,7 @@ import {
 } from "@/lib/api";
 import { RateAdvisorPanel } from "./RateAdvisorPanel";
 import { T } from "@/lib/typography";
+import { downloadJSON } from "@/lib/download";
 
 // ─── Submodule imports ──────────────────────────────────────────────
 import { RL_RULES_PAGE_SIZE } from "./ratelimits/constants";
@@ -117,50 +118,28 @@ export default function RateLimitsPanel() {
   const [globalSaving, setGlobalSaving] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Guard against stale responses when rapid reloads fire concurrent requests.
+  const requestGenRef = useRef(0);
+
   // Search & filter
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearch = useDeferredValue(searchQuery);
   const [actionFilter, setActionFilter] = useState<RLRuleAction | "all">("all");
   const [rulesPage, setRulesPage] = useState(1);
 
   // Drag-and-drop reorder
-  const isFilteredBase = searchQuery.trim() !== "" || actionFilter !== "all";
+  const isFilteredBase = deferredSearch.trim() !== "" || actionFilter !== "all";
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const pageStartIdx = (rulesPage - 1) * RL_RULES_PAGE_SIZE;
-    const pageIds = rules.slice(pageStartIdx, pageStartIdx + RL_RULES_PAGE_SIZE).map((r) => r.id);
-    const oldIdx = pageIds.indexOf(active.id as string);
-    const newIdx = pageIds.indexOf(over.id as string);
-    if (oldIdx === -1 || newIdx === -1) return;
-
-    const newRules = [...rules];
-    const pageSlice = newRules.splice(pageStartIdx, pageIds.length);
-    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
-    newRules.splice(pageStartIdx, 0, ...reorderedPage);
-
-    const prev = rules;
-    setRules(newRules);
-    try {
-      const result = await reorderRLRules(newRules.map((r) => r.id));
-      setRules(result);
-      await autoDeploy("Rules reordered");
-    } catch (err: unknown) {
-      setRules(prev);
-      setError(err instanceof Error ? err.message : "Reorder failed");
-    }
-  }, [rules, rulesPage]);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("rules");
 
   const loadData = useCallback(() => {
+    const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
     Promise.all([
@@ -170,6 +149,7 @@ export default function RateLimitsPanel() {
       getRLRuleHits(24).catch(() => null),
     ])
       .then(([rlRules, svcs, gc, hits]) => {
+        if (gen !== requestGenRef.current) return;
         setRules(rlRules);
         setServices(svcs);
         if (gc) {
@@ -178,8 +158,14 @@ export default function RateLimitsPanel() {
         }
         if (hits) setHitsData(hits);
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (gen !== requestGenRef.current) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (gen !== requestGenRef.current) return;
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -192,8 +178,8 @@ export default function RateLimitsPanel() {
     if (actionFilter !== "all") {
       result = result.filter((r) => r.action === actionFilter);
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       result = result.filter((r) =>
         r.name.toLowerCase().includes(q) ||
         r.description.toLowerCase().includes(q) ||
@@ -203,10 +189,10 @@ export default function RateLimitsPanel() {
       );
     }
     return result;
-  }, [rules, searchQuery, actionFilter]);
+  }, [rules, deferredSearch, actionFilter]);
 
   // Reset page when filters change
-  useEffect(() => { setRulesPage(1); }, [searchQuery, actionFilter]);
+  useEffect(() => { setRulesPage(1); }, [deferredSearch, actionFilter]);
 
   const rlSortComparators = useMemo(() => ({
     name: (a: RateLimitRule, b: RateLimitRule) => a.name.localeCompare(b.name),
@@ -238,7 +224,7 @@ export default function RateLimitsPanel() {
     JSON.stringify(globalConfig) !== JSON.stringify(initialGlobalConfig);
 
   // Auto-deploy after CRUD
-  const autoDeploy = async (action: string) => {
+  const autoDeploy = useCallback(async (action: string) => {
     try {
       setDeployStep("Deploying...");
       const result = await deployRLRules();
@@ -252,7 +238,34 @@ export default function RateLimitsPanel() {
     } finally {
       setDeployStep(null);
     }
-  };
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const pageStartIdx = (rulesPage - 1) * RL_RULES_PAGE_SIZE;
+    const pageIds = rules.slice(pageStartIdx, pageStartIdx + RL_RULES_PAGE_SIZE).map((r) => r.id);
+    const oldIdx = pageIds.indexOf(active.id as string);
+    const newIdx = pageIds.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    const newRules = [...rules];
+    const pageSlice = newRules.splice(pageStartIdx, pageIds.length);
+    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
+    newRules.splice(pageStartIdx, 0, ...reorderedPage);
+
+    const prev = rules;
+    setRules(newRules);
+    try {
+      const result = await reorderRLRules(newRules.map((r) => r.id));
+      setRules(result);
+      await autoDeploy("Rules reordered");
+    } catch (err: unknown) {
+      setRules(prev);
+      setError(err instanceof Error ? err.message : "Reorder failed");
+    }
+  }, [rules, rulesPage, autoDeploy]);
 
   const handleCreate = async (data: RateLimitRuleCreateData) => {
     setError(null);
@@ -363,13 +376,7 @@ export default function RateLimitsPanel() {
   const handleExport = async () => {
     try {
       const data = await exportRLRules();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "rate-limit-rules.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJSON(data, "rate-limit-rules.json");
       showSuccess("Rules exported");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Export failed");
@@ -386,6 +393,10 @@ export default function RateLimitsPanel() {
       try {
         const text = await file.text();
         const parsed = JSON.parse(text);
+        const imported = Array.isArray(parsed) ? parsed : parsed.rules;
+        if (!Array.isArray(imported) || !imported.every((r: unknown) => typeof r === "object" && r !== null && "id" in r && "name" in r && "service" in r)) {
+          throw new Error("Invalid import data: expected an array of rules with 'id', 'name', and 'service' fields");
+        }
         const result = await importRLRules(parsed);
         showSuccess(`Imported ${result.imported} rules`);
         loadData();
@@ -556,6 +567,7 @@ export default function RateLimitsPanel() {
                     />
                     {searchQuery && (
                       <button
+                        aria-label="Clear search"
                         onClick={() => setSearchQuery("")}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >

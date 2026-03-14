@@ -123,6 +123,10 @@ describe("exclusionTypeLabel", () => {
     expect(exclusionTypeLabel("block")).toBe("Block");
   });
 
+  it('returns "Skip" for skip', () => {
+    expect(exclusionTypeLabel("skip")).toBe("Skip");
+  });
+
   it('returns "Detect" for detect', () => {
     expect(exclusionTypeLabel("detect")).toBe("Detect");
   });
@@ -141,6 +145,10 @@ describe("exclusionTypeBadgeVariant", () => {
 
   it("returns 'destructive' for block", () => {
     expect(exclusionTypeBadgeVariant("block")).toBe("destructive");
+  });
+
+  it("returns 'default' for skip", () => {
+    expect(exclusionTypeBadgeVariant("skip")).toBe("default");
   });
 
   it("returns 'secondary' for detect", () => {

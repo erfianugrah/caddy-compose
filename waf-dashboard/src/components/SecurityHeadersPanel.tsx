@@ -49,6 +49,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { T } from "@/lib/typography";
+import { downloadJSON } from "@/lib/download";
 import {
   getSecurityHeaders,
   updateSecurityHeaders,
@@ -108,20 +109,31 @@ export default function SecurityHeadersPanel() {
   }, []);
   useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); }, []);
 
+  // Guard against stale responses when rapid reloads fire concurrent requests.
+  const requestGenRef = useRef(0);
+
   // Load config, profiles, and services
   useEffect(() => {
+    const gen = ++requestGenRef.current;
     Promise.all([
       getSecurityHeaders(),
       listSecurityProfiles(),
       fetchServices().catch(() => [] as ServiceDetail[]),
     ])
       .then(([cfg, profs, svcs]) => {
+        if (gen !== requestGenRef.current) return;
         setConfig(cfg);
         setProfiles(profs);
         setServices(svcs);
       })
-      .catch((err) => showFlash("error", err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (gen !== requestGenRef.current) return;
+        showFlash("error", err.message);
+      })
+      .finally(() => {
+        if (gen !== requestGenRef.current) return;
+        setLoading(false);
+      });
   }, [showFlash]);
 
   const handleSave = async () => {
@@ -268,13 +280,7 @@ export default function SecurityHeadersPanel() {
 
   const handleExport = () => {
     if (!config) return;
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "security-headers.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadJSON(config, "security-headers.json");
   };
 
   const handleImport = () => {
@@ -286,11 +292,14 @@ export default function SecurityHeadersPanel() {
       if (!file) return;
       try {
         const text = await file.text();
-        const imported = JSON.parse(text) as SecurityHeaderConfig;
-        setConfig(imported);
+        const imported = JSON.parse(text);
+        if (typeof imported !== "object" || imported === null || !("profile" in imported)) {
+          throw new Error("Invalid security headers config: must be a JSON object with a 'profile' field");
+        }
+        setConfig(imported as SecurityHeaderConfig);
         showFlash("success", "Config imported — save to apply");
-      } catch {
-        showFlash("error", "Invalid JSON file");
+      } catch (err) {
+        showFlash("error", err instanceof Error ? err.message : "Invalid JSON file");
       }
     };
     input.click();

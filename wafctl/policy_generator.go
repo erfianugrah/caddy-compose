@@ -37,11 +37,19 @@ type PolicyRule struct {
 	Conditions    []PolicyCondition      `json:"conditions"`
 	GroupOp       string                 `json:"group_op"`
 	RateLimit     *PolicyRateLimitConfig `json:"rate_limit,omitempty"`
+	SkipTargets   *PolicySkipTargets     `json:"skip_targets,omitempty"`   // For skip: what to bypass
 	Severity      string                 `json:"severity,omitempty"`       // For detect: CRITICAL, ERROR, WARNING, NOTICE
 	ParanoiaLevel int                    `json:"paranoia_level,omitempty"` // For detect: 1-4 (0 = all levels)
 	Tags          []string               `json:"tags,omitempty"`
 	Enabled       bool                   `json:"enabled"`
 	Priority      int                    `json:"priority"`
+}
+
+// PolicySkipTargets mirrors the plugin's SkipTargets type.
+type PolicySkipTargets struct {
+	Rules        []string `json:"rules,omitempty"`
+	Phases       []string `json:"phases,omitempty"`
+	AllRemaining bool     `json:"all_remaining,omitempty"`
 }
 
 // PolicyRateLimitConfig holds per-rule rate limit parameters.
@@ -98,16 +106,22 @@ type PolicyCondition struct {
 var policyEngineTypes = map[string]bool{
 	"allow":  true,
 	"block":  true,
+	"skip":   true,
 	"detect": true,
 }
 
 // policyTypePriority assigns a base priority per exclusion type.
-// Lower values evaluate first. Block (deny) → Allow (bypass) → Rate Limit.
-// This ensures deny rules take precedence over allow rules, and both
-// take precedence over rate limiting.
+// Lower values evaluate first. The 5-pass evaluation order:
+//
+//	Pass 1 — Allow (50-99): full bypass, terminates immediately
+//	Pass 2 — Block (100-199): deny list, terminates on match
+//	Pass 3 — Skip (200-299): selective bypass, non-terminating
+//	Pass 4 — Rate Limit (300-399): sliding window counters
+//	Pass 5 — Detect (400-499): CRS anomaly scoring
 var policyTypePriority = map[string]int{
+	"allow":      50,
 	"block":      100,
-	"allow":      200,
+	"skip":       200,
 	"rate_limit": 300,
 	"detect":     400,
 }
@@ -122,10 +136,10 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 }
 
 // GeneratePolicyRulesWithRL converts exclusions and rate limit rules into
-// the plugin's JSON format. WAF exclusions (allow/block) and rate limit
-// rules are merged into a single rules array, sorted by priority.
+// the plugin's JSON format. WAF exclusions (allow/block/skip/detect) and
+// rate limit rules are merged into a single rules array, sorted by priority.
 //
-// Priority bands: block=100-199, allow=200-299, rate_limit=300+.
+// Priority bands: allow=50-99, block=100-199, skip=200-299, rate_limit=300-399, detect=400-499.
 // Within rate_limit, rules with explicit Priority use it directly (offset
 // by 300); rules without explicit Priority get 300 + their store index.
 //
@@ -142,7 +156,7 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string, respHeaders *PolicyResponseHeaderConfig, wafConfig *PolicyWafConfig) ([]byte, error) {
 	var rules []PolicyRule
 
-	// Convert WAF exclusions (allow/block/detect).
+	// Convert WAF exclusions (allow/block/skip/detect).
 	for i, e := range exclusions {
 		if !policyEngineTypes[e.Type] {
 			continue
@@ -151,10 +165,10 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 		conditions := convertConditions(e.Conditions, listStore)
 
 		basePriority := policyTypePriority[e.Type]
-		// Add store index as tiebreaker (0-99 range, capped).
+		// Add store index as tiebreaker (0-999 range, capped).
 		tiebreaker := i
-		if tiebreaker > 99 {
-			tiebreaker = 99
+		if tiebreaker > 999 {
+			tiebreaker = 999
 		}
 
 		groupOp := e.GroupOp
@@ -180,6 +194,15 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 			pr.ParanoiaLevel = e.DetectParanoiaLevel
 		}
 
+		// Skip rules carry skip_targets for the plugin's selective bypass.
+		if e.Type == "skip" && e.SkipTargets != nil {
+			pr.SkipTargets = &PolicySkipTargets{
+				Rules:        e.SkipTargets.Rules,
+				Phases:       e.SkipTargets.Phases,
+				AllRemaining: e.SkipTargets.AllRemaining,
+			}
+		}
+
 		rules = append(rules, pr)
 	}
 
@@ -188,14 +211,14 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 		conditions := convertConditions(rl.Conditions, listStore)
 
 		// Determine priority: use explicit Priority if set, otherwise
-		// use the RL base (300) + store index as tiebreaker.
+		// use the RL base (3000) + store index as tiebreaker.
 		priority := policyTypePriority["rate_limit"]
 		if rl.Priority > 0 {
 			priority += rl.Priority
 		} else {
 			tiebreaker := i
-			if tiebreaker > 99 {
-				tiebreaker = 99
+			if tiebreaker > 999 {
+				tiebreaker = 999
 			}
 			priority += tiebreaker
 		}
@@ -316,8 +339,8 @@ func convertConditions(conditions []Condition, listStore *ManagedListStore) []Po
 		if (c.Operator == "in_list" || c.Operator == "not_in_list") && listStore != nil {
 			pc.ListItems, pc.ListKind = resolveListItems(listStore, c.Value)
 		}
-		// Pass through inline list items for phrase_match.
-		if c.Operator == "phrase_match" && len(c.ListItems) > 0 {
+		// Pass through inline list items for phrase_match and not_phrase_match.
+		if (c.Operator == "phrase_match" || c.Operator == "not_phrase_match") && len(c.ListItems) > 0 {
 			pc.ListItems = c.ListItems
 		}
 		result[j] = pc

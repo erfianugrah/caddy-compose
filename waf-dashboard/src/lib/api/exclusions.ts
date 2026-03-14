@@ -27,7 +27,7 @@ export interface CRSCatalogResponse {
 
 // ─── Exclusions / Policy ────────────────────────────────────────────
 
-export type ExclusionType = "allow" | "block" | "detect";
+export type ExclusionType = "allow" | "block" | "skip" | "detect";
 
 // Condition fields and operators for the dynamic rule builder
 export type ConditionField =
@@ -36,18 +36,19 @@ export type ConditionField =
   | "uri_path" | "referer" | "response_header" | "response_status" | "http_version"
   // Aggregate fields (combine multiple sources for broad matching)
   | "all_args" | "all_args_names" | "all_args_values"
-  | "all_headers" | "all_headers_names" | "all_headers_values"
-  | "all_cookies" | "all_cookies_names" | "all_cookies_values"
+  | "all_headers" | "all_headers_names"
+  | "all_cookies" | "all_cookies_names"
   | "request_combined"
   // Count pseudo-fields (numeric comparison on aggregate field element count)
   | "count:all_args" | "count:all_args_names" | "count:all_args_values"
   | "count:all_headers" | "count:all_headers_names"
   | "count:all_cookies" | "count:all_cookies_names";
 export type ConditionOperator =
-  | "eq" | "neq" | "contains" | "begins_with" | "ends_with"
-  | "regex" | "phrase_match"
+  | "eq" | "neq" | "contains" | "not_contains"
+  | "begins_with" | "not_begins_with" | "ends_with" | "not_ends_with"
+  | "regex" | "not_regex" | "phrase_match" | "not_phrase_match"
   | "ip_match" | "not_ip_match"
-  | "in" | "exists" | "in_list" | "not_in_list"
+  | "in" | "not_in" | "exists" | "in_list" | "not_in_list"
   | "gt" | "ge" | "lt" | "le";
 export type GroupOperator = "and" | "or";
 
@@ -85,6 +86,12 @@ export const VALID_TRANSFORMS = [
 
 export type TransformName = (typeof VALID_TRANSFORMS)[number];
 
+export interface SkipTargets {
+  rules?: string[];
+  phases?: string[];
+  all_remaining?: boolean;
+}
+
 export interface Exclusion {
   id: string;
   name: string;
@@ -92,6 +99,7 @@ export interface Exclusion {
   type: ExclusionType;
   conditions: Condition[];
   group_operator: GroupOperator;
+  skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
   tags?: string[];
@@ -106,6 +114,7 @@ export interface ExclusionCreateData {
   type: ExclusionType;
   conditions?: Condition[];
   group_operator?: GroupOperator;
+  skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
   tags?: string[];
@@ -135,6 +144,7 @@ export interface ExclusionHitsResponse {
 const typeToGo: Record<ExclusionType, string> = {
   allow: "allow",
   block: "block",
+  skip: "skip",
   detect: "detect",
 };
 
@@ -150,6 +160,7 @@ interface RawExclusion {
   type: string;
   conditions?: Condition[];
   group_operator?: string;
+  skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
   tags?: string[];
@@ -166,6 +177,7 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     type: typeFromGo[raw.type] ?? ("allow" as ExclusionType),
     conditions: raw.conditions ?? [],
     group_operator: (raw.group_operator as GroupOperator) || "and",
+    skip_targets: raw.skip_targets ?? undefined,
     severity: raw.severity || undefined,
     detect_paranoia_level: raw.detect_paranoia_level ?? undefined,
     tags: raw.tags,
@@ -182,6 +194,7 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.type !== undefined) result.type = typeToGo[data.type] ?? data.type;
   if (data.conditions !== undefined) result.conditions = data.conditions;
   if (data.group_operator !== undefined) result.group_operator = data.group_operator;
+  if (data.skip_targets !== undefined) result.skip_targets = data.skip_targets;
   if (data.severity !== undefined) result.severity = data.severity;
   if (data.detect_paranoia_level !== undefined) result.detect_paranoia_level = data.detect_paranoia_level;
   if (data.tags !== undefined) result.tags = data.tags;
@@ -236,6 +249,9 @@ export async function importExclusions(data: Exclusion[]): Promise<{ imported: n
     type: e.type,
     conditions: e.conditions,
     group_operator: e.group_operator,
+    skip_targets: e.skip_targets,
+    severity: e.severity,
+    detect_paranoia_level: e.detect_paranoia_level,
     tags: e.tags,
     enabled: e.enabled,
   }));
@@ -263,11 +279,5 @@ export async function bulkUpdateExclusions(
   ids: string[],
   action: BulkExclusionAction,
 ): Promise<{ changed: number }> {
-  const resp = await fetch(`${API_BASE}/exclusions/bulk`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids, action }),
-  });
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json();
+  return postJSON<{ changed: number }>(`${API_BASE}/exclusions/bulk`, { ids, action });
 }
