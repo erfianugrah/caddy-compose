@@ -419,7 +419,7 @@ export function TransformSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={`inline-flex items-center justify-between gap-1 rounded-md border h-9 px-3 text-xs w-[180px] shrink-0 transition-colors ${
+          className={`inline-flex items-center justify-between gap-1 rounded-md border h-9 px-3 text-xs w-[160px] shrink-0 transition-colors ${
             selected.length > 0
               ? "border-lv-cyan/30 text-lv-cyan"
               : "border-border text-muted-foreground"
