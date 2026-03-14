@@ -185,9 +185,16 @@ func handleRestore(
 			}
 		}
 
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		resp := map[string]interface{}{
 			"status":  status,
 			"results": results,
-		})
+		}
+		if status == "partial" {
+			resp["warning"] = "Partial restore: some stores were updated before the failure. " +
+				"Re-run the restore or manually fix the failed stores. " +
+				"A deploy is recommended to sync the live Caddy config."
+		}
+
+		writeJSON(w, http.StatusOK, resp)
 	}
 }

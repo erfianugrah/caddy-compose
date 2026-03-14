@@ -112,19 +112,19 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if len(file.Rules) != 2 {
 			t.Fatalf("expected 2 rules, got %d", len(file.Rules))
 		}
-		// Order should be: block (100+), allow (200+)
+		// Order should be: block (1000+), allow (2000+)
 		if file.Rules[0].Type != "block" {
 			t.Errorf("rules[0].Type = %q, want block", file.Rules[0].Type)
 		}
 		if file.Rules[1].Type != "allow" {
 			t.Errorf("rules[1].Type = %q, want allow", file.Rules[1].Type)
 		}
-		// Verify priority values.
-		if file.Rules[0].Priority < 100 || file.Rules[0].Priority >= 200 {
-			t.Errorf("block priority = %d, want [100,200)", file.Rules[0].Priority)
+		// Verify priority values (1000-wide bands).
+		if file.Rules[0].Priority < 1000 || file.Rules[0].Priority >= 2000 {
+			t.Errorf("block priority = %d, want [1000,2000)", file.Rules[0].Priority)
 		}
-		if file.Rules[1].Priority < 200 || file.Rules[1].Priority >= 300 {
-			t.Errorf("allow priority = %d, want [200,300)", file.Rules[1].Priority)
+		if file.Rules[1].Priority < 2000 || file.Rules[1].Priority >= 3000 {
+			t.Errorf("allow priority = %d, want [2000,3000)", file.Rules[1].Priority)
 		}
 	})
 
@@ -147,24 +147,24 @@ func TestGeneratePolicyRules(t *testing.T) {
 			t.Errorf("expected b1,b2,b3 order, got %s,%s,%s",
 				file.Rules[0].ID, file.Rules[1].ID, file.Rules[2].ID)
 		}
-		// Priorities should be 100, 101, 102.
-		if file.Rules[0].Priority != 100 {
-			t.Errorf("b1 priority = %d, want 100", file.Rules[0].Priority)
+		// Priorities should be 1000, 1001, 1002 (1000-wide bands).
+		if file.Rules[0].Priority != 1000 {
+			t.Errorf("b1 priority = %d, want 1000", file.Rules[0].Priority)
 		}
-		if file.Rules[1].Priority != 101 {
-			t.Errorf("b2 priority = %d, want 101", file.Rules[1].Priority)
+		if file.Rules[1].Priority != 1001 {
+			t.Errorf("b2 priority = %d, want 1001", file.Rules[1].Priority)
 		}
-		if file.Rules[2].Priority != 102 {
-			t.Errorf("b3 priority = %d, want 102", file.Rules[2].Priority)
+		if file.Rules[2].Priority != 1002 {
+			t.Errorf("b3 priority = %d, want 1002", file.Rules[2].Priority)
 		}
 	})
 
-	t.Run("tiebreaker caps at 99", func(t *testing.T) {
-		// Create 101 block rules to verify cap.
+	t.Run("tiebreaker caps at 999", func(t *testing.T) {
+		// Create 1001 block rules to verify cap at 999.
 		var exclusions []RuleExclusion
-		for i := 0; i < 101; i++ {
+		for i := 0; i < 1001; i++ {
 			exclusions = append(exclusions, RuleExclusion{
-				ID:   "b" + time.Now().Format("150405") + fmt.Sprintf("%03d", i),
+				ID:   fmt.Sprintf("b%04d", i),
 				Type: "block", Enabled: true, Name: "Block",
 			})
 		}
@@ -176,15 +176,15 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			t.Fatal(err)
 		}
-		// The last two rules (index 99 and 100) should both have priority 199
-		// (100 + capped 99).
+		// The last two rules (index 999 and 1000) should both have priority 1999
+		// (1000 + capped 999).
 		last := file.Rules[len(file.Rules)-1]
 		secondLast := file.Rules[len(file.Rules)-2]
-		if last.Priority != 199 {
-			t.Errorf("last rule priority = %d, want 199", last.Priority)
+		if last.Priority != 1999 {
+			t.Errorf("last rule priority = %d, want 1999", last.Priority)
 		}
-		if secondLast.Priority != 199 {
-			t.Errorf("second-to-last rule priority = %d, want 199", secondLast.Priority)
+		if secondLast.Priority != 1999 {
+			t.Errorf("second-to-last rule priority = %d, want 1999", secondLast.Priority)
 		}
 	})
 
@@ -523,7 +523,7 @@ func TestGeneratePolicyRulesListResolution(t *testing.T) {
 		t.Fatalf("expected 3 rules, got %d", len(file.Rules))
 	}
 
-	// Rules are sorted by priority: block (200) < allow (300).
+	// Rules are sorted by priority: block (1000+) < allow (2000+).
 	// Find each rule by name.
 	byName := map[string]PolicyRule{}
 	for _, r := range file.Rules {
@@ -763,9 +763,9 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		if len(r.Tags) != 2 || r.Tags[0] != "api" {
 			t.Errorf("Tags = %v, want [api protection]", r.Tags)
 		}
-		// Priority should be in RL band (300+).
-		if r.Priority < 300 {
-			t.Errorf("Priority = %d, want >= 300", r.Priority)
+		// Priority should be in RL band (3000+).
+		if r.Priority < 3000 {
+			t.Errorf("Priority = %d, want >= 3000", r.Priority)
 		}
 		// Global config should be present.
 		if file.RateLimitConfig == nil {
@@ -799,7 +799,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		if len(file.Rules) != 3 {
 			t.Fatalf("want 3 rules, got %d", len(file.Rules))
 		}
-		// Order: block (100) < allow (200) < rate_limit (300).
+		// Order: block (1000) < allow (2000) < rate_limit (3000).
 		if file.Rules[0].Type != "block" {
 			t.Errorf("rules[0].Type = %q, want block", file.Rules[0].Type)
 		}
@@ -853,15 +853,15 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		if len(file.Rules) != 2 {
 			t.Fatalf("want 2 rules, got %d", len(file.Rules))
 		}
-		// rl-1 should come first (priority 300+5=305 < 300+50=350).
+		// rl-1 should come first (priority 3000+5=3005 < 3000+50=3050).
 		if file.Rules[0].ID != "rl-1" {
 			t.Errorf("first rule should be rl-1 (higher priority), got %s", file.Rules[0].ID)
 		}
-		if file.Rules[0].Priority != 305 {
-			t.Errorf("rl-1 priority = %d, want 305", file.Rules[0].Priority)
+		if file.Rules[0].Priority != 3005 {
+			t.Errorf("rl-1 priority = %d, want 3005", file.Rules[0].Priority)
 		}
-		if file.Rules[1].Priority != 350 {
-			t.Errorf("rl-2 priority = %d, want 350", file.Rules[1].Priority)
+		if file.Rules[1].Priority != 3050 {
+			t.Errorf("rl-2 priority = %d, want 3050", file.Rules[1].Priority)
 		}
 	})
 

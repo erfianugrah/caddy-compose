@@ -263,11 +263,5 @@ export async function bulkUpdateExclusions(
   ids: string[],
   action: BulkExclusionAction,
 ): Promise<{ changed: number }> {
-  const resp = await fetch(`${API_BASE}/exclusions/bulk`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids, action }),
-  });
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json();
+  return postJSON<{ changed: number }>(`${API_BASE}/exclusions/bulk`, { ids, action });
 }

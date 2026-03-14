@@ -273,7 +273,7 @@ func cliGet(flags cliFlags, path string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to connect to %s: %w", flags.addr, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50 MB cap
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +296,7 @@ func cliPost(flags cliFlags, path string, payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to connect to %s: %w", flags.addr, err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50 MB cap
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +318,7 @@ func cliPut(flags cliFlags, path string, payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to connect to %s: %w", flags.addr, err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50 MB cap
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +339,7 @@ func cliDelete(flags cliFlags, path string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to connect to %s: %w", flags.addr, err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50 MB cap
 	if err != nil {
 		return nil, err
 	}

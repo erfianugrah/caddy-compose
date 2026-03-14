@@ -3535,7 +3535,7 @@ CI). Findings below exclude items already addressed in CR-1 through CR-27.
 `sync.Map` has no eviction or size limit, an attacker can exhaust memory by sending
 requests with unique regex filter values.
 
-- [ ] Replace `sync.Map` with bounded LRU cache (e.g., 256 entries max) or reuse the
+- [x] Replace `sync.Map` with bounded LRU cache (e.g., 256 entries max) or reuse the
   TTL-evict pattern from `advisorCache`
 
 #### CR2-2: No AbortController / Race Protection on Data Fetches — multiple frontend components
@@ -3548,8 +3548,8 @@ save, delete) can cause stale API responses to overwrite fresher state.
 Additionally, `OverviewDashboard.tsx:199-224` `loadEvents` doesn't use the same
 `requestGenRef` counter that `loadData` uses — a separate race vector.
 
-- [ ] Add generation-counter or `AbortController` pattern to all data-fetching components
-- [ ] Use consistent pattern (extract a `useFetchWithCancel` hook)
+- [x] Add generation-counter or `AbortController` pattern to all data-fetching components
+- [ ] Use consistent pattern (extract a `useFetchWithCancel` hook) — deferred, each component now has requestGenRef
 
 ### HIGH
 
@@ -3559,7 +3559,7 @@ Four CLI helpers (`cliGet`, `cliPost`, `cliPut`, `cliDelete`) use `io.ReadAll(re
 with no size limit. A compromised or misbehaving wafctl server could cause the CLI client
 to exhaust memory.
 
-- [ ] Wrap with `io.LimitReader(resp.Body, 50<<20)` (50 MB cap)
+- [x] Wrap with `io.LimitReader(resp.Body, 50<<20)` (50 MB cap)
 
 #### CR2-4: Partial Restore Leaves Inconsistent State — `wafctl/backup.go:72-175`
 
@@ -3567,8 +3567,8 @@ to exhaust memory.
 (e.g., store 4 of 6 fails), already-restored stores are not rolled back. System is left
 in a partially-restored, potentially inconsistent state.
 
-- [ ] Restore to temp state first and swap atomically, or document the limitation and
-  add a "retry restore" recommendation in the error response
+- [x] Restore to temp state first and swap atomically, or document the limitation and
+  add a "retry restore" recommendation in the error response — added partial restore warning with remediation guidance
 
 #### CR2-5: Policy Priority Overflow at 99+ Exclusions — `wafctl/policy_generator.go:155-156`
 
@@ -3576,7 +3576,7 @@ Priority is calculated as `basePriority + index` where each type band is 100 wid
 there are 100+ exclusions of the same type (e.g., 100+ `block` rules), multiple rules
 share the same priority. Plugin tiebreaker behavior is undefined.
 
-- [ ] Widen priority bands or add overflow handling (warn + use sub-priority)
+- [x] Widen priority bands or add overflow handling (warn + use sub-priority) — widened to 1000-wide bands
 
 #### CR2-6: Unsafe `JSON.parse` in Import Handlers — 4 frontend components
 
@@ -3584,7 +3584,7 @@ share the same priority. Plugin tiebreaker behavior is undefined.
 `SecurityHeadersPanel.tsx:288` all do `JSON.parse(text) as SomeType` without runtime
 schema validation. Malformed import files could inject unexpected fields or crash the app.
 
-- [ ] Add runtime schema validation (zod or manual checks) for all import handlers
+- [x] Add runtime schema validation (zod or manual checks) for all import handlers — added try/catch + structural validation
 
 #### CR2-7: `autoDeploy` Stale Closure Risk — `PolicyEngine.tsx:430`, `RateLimitsPanel.tsx:157`
 
@@ -3592,7 +3592,7 @@ schema validation. Malformed import files could inject unexpected fields or cras
 `useCallback` dependency arrays. `handleDragEnd` in both components calls `autoDeploy`
 but doesn't include it in deps, creating a stale closure risk.
 
-- [ ] Wrap `autoDeploy` in `useCallback` or move to a ref-based pattern
+- [x] Wrap `autoDeploy` in `useCallback` or move to a ref-based pattern
 
 #### CR2-8: E2E Test Caddyfile Exposes Admin API on All Interfaces — `test/Caddyfile.e2e:3`
 
@@ -3603,7 +3603,7 @@ admin :2019
 Binds Caddy admin API to `0.0.0.0:2019` instead of `localhost:2019`. In shared CI
 runners, any process on the network could reconfigure or kill Caddy.
 
-- [ ] Use `admin localhost:2019` or document the justification
+- [x] Use `admin localhost:2019` or document the justification — intentional: wafctl container needs network access to caddy:2019 in Docker e2e tests
 
 #### CR2-9: No `depends_on` Health Condition Between wafctl and Caddy — `compose.yaml`
 
@@ -3612,8 +3612,8 @@ wafctl needs Caddy's admin API (`WAF_CADDY_ADMIN_URL=http://caddy:2020`) but has
 dependency on authelia uses `service_started` instead of `service_healthy` despite
 authelia having a healthcheck.
 
-- [ ] Add `depends_on: caddy: condition: service_healthy` to wafctl service
-- [ ] Change caddy's authelia dependency to `service_healthy`
+- [x] Add `depends_on: caddy: condition: service_healthy` to wafctl service
+- [x] Change caddy's authelia dependency to `service_healthy`
 
 ### MEDIUM
 
@@ -3624,8 +3624,8 @@ policy engine plugin (which handles rate limiting internally via `policy-rules.j
 Caddyfile RL matchers are unused. The `TODO: OR grouping` at line 77 also confirms
 `groupOp` parameter is silently ignored (OR-grouped RL rules behave as AND).
 
-- [ ] Verify no code calls `writeConditionMatchers()` / `rlConditionToMatcher()`
-- [ ] Delete if confirmed dead
+- [x] Verify no code calls `writeConditionMatchers()` / `rlConditionToMatcher()`
+- [x] Delete if confirmed dead — deleted rl_matchers.go (412 lines)
 
 #### CR2-11: Dead Code — 3 Declarations Never Referenced
 
@@ -3635,7 +3635,7 @@ Caddyfile RL matchers are unused. The `TODO: OR grouping` at line 77 also confir
 - `util.go:106` — `generateUUIDv7()` defined but never called (all UUID generation
   uses `generateUUID()` v4)
 
-- [ ] Remove all three dead declarations
+- [x] Remove all three dead declarations
 
 #### CR2-12: Duplicate Header Value Lookup Implementations
 
@@ -3643,14 +3643,14 @@ Caddyfile RL matchers are unused. The `TODO: OR grouping` at line 77 also confir
 `access_log_store.go:91-114` defines `headerValueCI()` and `headerValuesCI()` (full
 case-insensitive scan). Overlapping purposes with subtly different semantics.
 
-- [ ] Consolidate to a single case-insensitive implementation
+- [x] Consolidate to a single case-insensitive implementation — headerValue() now delegates to headerValueCI()
 
 #### CR2-13: Docker Layer Caching Suboptimal for Go Build — `Dockerfile:24-29`, `wafctl/Dockerfile:9-14`
 
 Both Dockerfiles copy `go.mod` then `*.go` without a separate `go mod download` step.
 Any `.go` file change invalidates the module download cache.
 
-- [ ] Add `RUN go mod download` between `COPY go.mod` and `COPY *.go` in both Dockerfiles
+- [x] Add `RUN go mod download` between `COPY go.mod` and `COPY *.go` in both Dockerfiles
 
 #### CR2-14: No E2E Tests in CI Pipeline — `.github/workflows/build.yml`
 
@@ -3676,7 +3676,7 @@ this is limited, but a spoofed Host header that bypasses SNI would get CORS acce
 The internal admin API proxy at `:2020` has no `log` directive. Security events
 (unauthorized access attempts to the admin API) are invisible.
 
-- [ ] Add log directive to capture admin API access attempts
+- [x] Add log directive to capture admin API access attempts
 
 #### CR2-17: `bulkUpdateExclusions` / `bulkOverrideDefaultRules` Bypass `fetchJSON` — `exclusions.ts:272`, `default-rules.ts:123,135`
 
@@ -3684,35 +3684,35 @@ These functions use raw `fetch` and throw `new Error(await resp.text())` on fail
 which could surface raw HTML error pages. The shared `fetchJSON` has `sanitizeErrorBody()`
 to strip HTML tags, but these bypass it.
 
-- [ ] Refactor bulk API functions to use shared `fetchJSON` helper
+- [x] Refactor bulk API functions to use shared `postJSON` helper
 
 #### CR2-18: `useCountUp` Always Starts From 0 — `waf-dashboard/src/hooks/useCountUp.ts:15`
 
 Animation starts from 0 regardless of previous value. When target changes from 100 to 150,
 it animates 0→150 (jarring) instead of 100→150.
 
-- [ ] Track previous target in ref and animate from previous to new value
+- [x] Track previous target in ref and animate from previous to new value
 
 #### CR2-19: Uncapped Client Map in General Logs Summary — `wafctl/general_logs_handlers.go:~100`
 
 URI map is capped at 5,000 entries, but `clientMap` has no cap. High-volume logs from
 many unique IPs could cause unbounded memory growth during summarization.
 
-- [ ] Add matching cap to clientMap (5,000 entries)
+- [x] ~~Add matching cap to clientMap (5,000 entries)~~ — FALSE POSITIVE: clientMap already capped at 5,000
 
 #### CR2-20: Error Values Compared by Reference — `wafctl/default_rules.go:370-371`
 
 `err == errDefaultRuleNotFound` uses pointer equality. Works because it's a package-level
 var, but wrapping the error (e.g., `fmt.Errorf("...: %w", err)`) would silently break it.
 
-- [ ] Use `errors.Is(err, errDefaultRuleNotFound)` instead
+- [x] Use `errors.Is(err, errDefaultRuleNotFound)` instead
 
 #### CR2-21: No Debounce on Policy/RateLimit Search Inputs
 
 `PolicyEngine.tsx:549` and `RateLimitsPanel.tsx:553` filter on every keystroke. Not
 critical given typical rule counts (<100), but a debounce would be more professional.
 
-- [ ] Add 150ms debounce to search inputs
+- [x] Add `useDeferredValue` for search inputs (React 19 built-in, no debounce timer needed)
 
 ### LOW
 
@@ -3731,14 +3731,14 @@ submissions, drag-and-drop, dialog flows, or hook behavior (`useCountUp`, `useTa
 duplicate the `Blob` + `createObjectURL` + `<a>.click()` + `revokeObjectURL` pattern.
 `src/lib/download.ts` already provides `downloadJSON` — only `EventsTable.tsx` uses it.
 
-- [ ] Replace all 6 duplications with the existing `downloadJSON` utility
+- [x] Replace all 6 duplications with the existing `downloadJSON` utility
 
 #### CR2-24: IPsum Download Has No Integrity Verification — `wafctl/blocklist.go:141-193`
 
 IPsum list downloaded from GitHub raw without any checksum or signature verification.
 A MITM or compromised CDN could inject arbitrary IPs into the blocklist.
 
-- [ ] Add format validation (all lines must be valid CIDR) at minimum
+- [x] Add format validation (all lines must be valid CIDR) at minimum — added net.ParseIP validation
 - [ ] Consider cross-validation against a hash or second source
 
 #### CR2-25: Missing `aria-label` on Interactive Elements — multiple components
@@ -3747,14 +3747,14 @@ A MITM or compromised CDN could inject arbitrary IPs into the blocklist.
 (quick range buttons), `ManagedListsPanel.tsx:467-470` (collapse toggle),
 `OverviewDashboard.tsx:467-470` (analytics toggle) — all lack `aria-label`.
 
-- [ ] Add `aria-label` to all interactive elements without visible text labels
+- [x] Add `aria-label` to all interactive elements without visible text labels
 
 #### CR2-26: `test/docker-compose.test.yml` Appears to Be Legacy Dead File
 
 This file doesn't appear to be referenced by any Makefile target — `test-e2e` uses
 `docker-compose.e2e.yml`. Likely leftover from an earlier test approach.
 
-- [ ] Verify and remove if unused
+- [x] Verify and remove if unused — deleted test/docker-compose.test.yml, updated AGENTS.md and README.md references
 
 #### CR2-27: CI Workflow Doesn't Verify Images Exist Before Release — `.github/workflows/release.yml`
 
@@ -3770,7 +3770,7 @@ Client-side IP regex `^[\d.:a-fA-F/]+$` accepts many invalid patterns (e.g., `..
 `:::///`). Server validates separately, but showing "valid" feedback on the client
 is misleading.
 
-- [ ] Use proper CIDR validation regex or `net.ParseIP`-style check
+- [x] Use proper CIDR validation regex or `net.ParseIP`-style check — added isValidIPOrCIDR() with octet-level validation
 
 #### CR2-29: `mapRLRule` Defensive Defaults Hide API Contract Violations — `rate-limits.ts:88-106`
 

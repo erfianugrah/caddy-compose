@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:3.19.0-2.11.1
+    image: erfianugrah/caddy:3.20.0-2.11.1
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -37,7 +37,7 @@ services:
       start_period: 10s
     depends_on:
       authelia:
-        condition: service_started
+        condition: service_healthy
         restart: true
     volumes:
       # Caddyfile mounted from host — source of truth, survives restarts
@@ -116,7 +116,7 @@ services:
     build:
       context: .
       dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.20.0
+    image: erfianugrah/wafctl:2.21.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
@@ -147,6 +147,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    depends_on:
+      caddy:
+        condition: service_healthy
+        restart: true
     networks:
       waf:
         ipv4_address: 172.19.98.2

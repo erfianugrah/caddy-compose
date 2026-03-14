@@ -90,8 +90,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.19.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.20.0
+CADDY_IMAGE   ?= <your-registry>/caddy:3.20.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.21.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -150,15 +150,14 @@ The `.env` file and `authelia/users_database.yml` are SOPS-encrypted with age. A
 
 ### Version management
 
-Image tags must stay in sync across five files:
+Image tags must stay in sync across four files:
 
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
 - `compose.yaml` (lines 3 and 119: image fields)
-- `test/docker-compose.test.yml` (line 3: caddy image)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.19.0-2.11.1`), wafctl is plain semver (e.g. `2.20.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.20.0-2.11.1`), wafctl is plain semver (e.g. `2.21.0`).
 
 ## WAF configuration
 
@@ -576,9 +575,7 @@ caddy-compose/
     astro.config.mjs
     vitest.config.ts
   test/
-    docker-compose.test.yml
     docker-compose.e2e.yml  # E2e smoke test stack (Caddy + wafctl + httpbun)
-    Caddyfile.test
     Caddyfile.e2e           # Test Caddyfile for e2e tests
     ipsum_block.caddy       # Stub blocklist for tests
     e2e/                    # Go e2e smoke tests

@@ -106,10 +106,10 @@ var policyEngineTypes = map[string]bool{
 // This ensures deny rules take precedence over allow rules, and both
 // take precedence over rate limiting.
 var policyTypePriority = map[string]int{
-	"block":      100,
-	"allow":      200,
-	"rate_limit": 300,
-	"detect":     400,
+	"block":      1000,
+	"allow":      2000,
+	"rate_limit": 3000,
+	"detect":     4000,
 }
 
 // GeneratePolicyRules converts exclusions into the plugin's JSON format.
@@ -125,7 +125,7 @@ func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore
 // the plugin's JSON format. WAF exclusions (allow/block) and rate limit
 // rules are merged into a single rules array, sorted by priority.
 //
-// Priority bands: block=100-199, allow=200-299, rate_limit=300+.
+// Priority bands: block=1000-1999, allow=2000-2999, rate_limit=3000+.
 // Within rate_limit, rules with explicit Priority use it directly (offset
 // by 300); rules without explicit Priority get 300 + their store index.
 //
@@ -151,10 +151,10 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 		conditions := convertConditions(e.Conditions, listStore)
 
 		basePriority := policyTypePriority[e.Type]
-		// Add store index as tiebreaker (0-99 range, capped).
+		// Add store index as tiebreaker (0-999 range, capped).
 		tiebreaker := i
-		if tiebreaker > 99 {
-			tiebreaker = 99
+		if tiebreaker > 999 {
+			tiebreaker = 999
 		}
 
 		groupOp := e.GroupOp
@@ -188,14 +188,14 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 		conditions := convertConditions(rl.Conditions, listStore)
 
 		// Determine priority: use explicit Priority if set, otherwise
-		// use the RL base (300) + store index as tiebreaker.
+		// use the RL base (3000) + store index as tiebreaker.
 		priority := policyTypePriority["rate_limit"]
 		if rl.Priority > 0 {
 			priority += rl.Priority
 		} else {
 			tiebreaker := i
-			if tiebreaker > 99 {
-				tiebreaker = 99
+			if tiebreaker > 999 {
+				tiebreaker = 999
 			}
 			priority += tiebreaker
 		}

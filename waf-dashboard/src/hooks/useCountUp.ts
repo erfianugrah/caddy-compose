@@ -5,14 +5,15 @@ import { useState, useEffect, useRef } from "react";
 export function useCountUp(target: number, duration = 800): number {
   const [current, setCurrent] = useState(0);
   const rafRef = useRef<number>(0);
+  const prevTargetRef = useRef(0);
 
   useEffect(() => {
-    if (target === 0) {
-      setCurrent(0);
+    const startVal = prevTargetRef.current;
+    if (target === startVal) {
+      setCurrent(target);
       return;
     }
     const startTime = performance.now();
-    const startVal = 0;
 
     const animate = (now: number) => {
       const elapsed = now - startTime;
@@ -25,7 +26,10 @@ export function useCountUp(target: number, duration = 800): number {
     };
 
     rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      prevTargetRef.current = target;
+    };
   }, [target, duration]);
 
   return current;

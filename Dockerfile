@@ -25,6 +25,7 @@ FROM golang:1.24-alpine AS wafctl
 ARG WAFCTL_VERSION=dev
 WORKDIR /build
 COPY wafctl/go.mod ./
+RUN go mod download
 COPY wafctl/*.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o wafctl .
 

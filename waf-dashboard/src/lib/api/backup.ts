@@ -1,4 +1,5 @@
 import { API_BASE, fetchJSON, postJSON } from "./shared";
+import { downloadJSON } from "@/lib/download";
 import type { WAFConfig } from "./config";
 import type { CSPConfig } from "./csp";
 import type { RateLimitRule, RateLimitGlobalConfig } from "./rate-limits";
@@ -41,25 +42,11 @@ export async function fetchBackup(): Promise<FullBackup> {
 
 /**
  * Download backup as a file (triggers browser download).
- * Uses raw fetch to access the Content-Disposition header.
  */
 export async function downloadBackup(): Promise<void> {
-  const res = await fetch(`${API_BASE}/backup`);
-  if (!res.ok) {
-    const raw = await res.text().catch(() => "");
-    throw new Error(`Backup failed: ${res.status} ${res.statusText}${raw ? ` — ${raw}` : ""}`);
-  }
-  const blob = await res.blob();
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] ?? `wafctl-backup-${new Date().toISOString().replace(/[:.]/g, "")}.json`;
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  const data = await fetchBackup();
+  const filename = `wafctl-backup-${new Date().toISOString().replace(/[:.]/g, "")}.json`;
+  downloadJSON(data, filename);
 }
 
 /** Restore all configuration stores from a unified backup. */

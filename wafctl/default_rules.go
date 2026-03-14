@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -367,7 +368,7 @@ func handleOverrideDefaultRule(ds *DefaultRuleStore) http.HandlerFunc {
 		}
 
 		if err := ds.SetOverride(id, raw); err != nil {
-			if err == errDefaultRuleNotFound {
+			if errors.Is(err, errDefaultRuleNotFound) {
 				writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
 				return
 			}
@@ -435,7 +436,7 @@ func handleResetDefaultRule(ds *DefaultRuleStore) http.HandlerFunc {
 		id := r.PathValue("id")
 		removed, err := ds.RemoveOverride(id)
 		if err != nil {
-			if err == errDefaultRuleNotFound {
+			if errors.Is(err, errDefaultRuleNotFound) {
 				writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
 				return
 			}

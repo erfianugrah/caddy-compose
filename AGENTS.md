@@ -62,11 +62,10 @@ TypeScript strict mode is enforced via `astro/tsconfigs/strict`.
 
 ## Version Management
 
-Image tags live in **five places** that must stay in sync:
+Image tags live in **four places** that must stay in sync:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
 - `compose.yaml` (lines 3 and 119: image fields)
 - `README.md` (badge/reference)
-- `test/docker-compose.test.yml` (line 3: caddy image field)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 
 Caddy tag format: `<project-version>-<caddy-version>` (e.g. `3.1.0-2.11.1`).

@@ -184,11 +184,16 @@ func (bs *BlocklistStore) Refresh() BlocklistRefreshResponse {
 		if err != nil {
 			continue
 		}
+		ip := fields[0]
+		// Validate IP format — skip malformed entries.
+		if net.ParseIP(ip) == nil {
+			continue
+		}
 		if score >= minScore {
-			allIPs = append(allIPs, fields[0])
+			allIPs = append(allIPs, ip)
 		}
 		if score >= 1 && score <= 8 {
-			ipsByScore[score] = append(ipsByScore[score], fields[0])
+			ipsByScore[score] = append(ipsByScore[score], ip)
 		}
 	}
 

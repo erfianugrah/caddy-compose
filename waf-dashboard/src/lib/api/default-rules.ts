@@ -1,7 +1,7 @@
 // ─── Default Rules API ──────────────────────────────────────────────
 // CRUD for baked-in CRS default rules and user overrides.
 
-import { API_BASE, fetchJSON, putJSON, deleteJSON } from "./shared";
+import { API_BASE, fetchJSON, postJSON, putJSON, deleteJSON } from "./shared";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -114,24 +114,12 @@ export async function bulkOverrideDefaultRules(
   ids: string[],
   override: DefaultRuleOverride,
 ): Promise<BulkOverrideResult> {
-  const resp = await fetch(`${API_BASE}/default-rules/bulk`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids, action: "override", override }),
-  });
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json();
+  return postJSON<BulkOverrideResult>(`${API_BASE}/default-rules/bulk`, { ids, action: "override", override });
 }
 
 /** Reset overrides for multiple rules at once. */
 export async function bulkResetDefaultRules(
   ids: string[],
 ): Promise<BulkResetResult> {
-  const resp = await fetch(`${API_BASE}/default-rules/bulk`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids, action: "reset" }),
-  });
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json();
+  return postJSON<BulkResetResult>(`${API_BASE}/default-rules/bulk`, { ids, action: "reset" });
 }

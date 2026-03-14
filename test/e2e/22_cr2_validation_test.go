@@ -1,0 +1,250 @@
+package e2e_test
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+)
+
+// --- CR2-5: Priority bands widened to 1000-wide ---
+
+// TestPolicyPriorityBands verifies that generated policy rules use 1000-wide
+// priority bands: block=[1000,2000), allow=[2000,3000), rate_limit=[3000,4000).
+func TestPolicyPriorityBands(t *testing.T) {
+	// Create a block rule.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-prio-block", "type": "block", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": "/e2e-prio-block-" + t.Name()},
+		},
+	})
+	assertCode(t, "create block", 201, resp)
+	blockID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+blockID) })
+
+	// Create an allow rule.
+	resp, body = httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-prio-allow", "type": "allow", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": "/e2e-prio-allow-" + t.Name()},
+		},
+	})
+	assertCode(t, "create allow", 201, resp)
+	allowID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
+
+	// Create a rate limit rule.
+	resp, body = httpPost(t, wafctlURL+"/api/rate-rules", map[string]any{
+		"name": "e2e-prio-rl", "service": "*", "key": "client_ip",
+		"events": 999, "window": "1m", "action": "deny", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": "/e2e-prio-rl-" + t.Name()},
+		},
+	})
+	assertCode(t, "create rl", 201, resp)
+	rlID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rate-rules/"+rlID) })
+
+	// Call the generate (preview) endpoint.
+	resp, body = httpPost(t, wafctlURL+"/api/config/generate", struct{}{})
+	assertCode(t, "generate", 200, resp)
+
+	// Parse policy_rules from the response.
+	var outer map[string]json.RawMessage
+	if err := json.Unmarshal(body, &outer); err != nil {
+		t.Fatalf("unmarshal outer: %v", err)
+	}
+	var policyFile struct {
+		Rules []struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			Priority int    `json:"priority"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(outer["policy_rules"], &policyFile); err != nil {
+		t.Fatalf("unmarshal policy_rules: %v", err)
+	}
+
+	// Find our three rules by name.
+	var blockPrio, allowPrio, rlPrio int
+	var found int
+	for _, r := range policyFile.Rules {
+		switch r.Name {
+		case "e2e-prio-block":
+			blockPrio = r.Priority
+			found++
+		case "e2e-prio-allow":
+			allowPrio = r.Priority
+			found++
+		case "e2e-prio-rl":
+			rlPrio = r.Priority
+			found++
+		}
+	}
+	if found != 3 {
+		t.Fatalf("expected 3 rules in generated output, found %d matching our names", found)
+	}
+
+	// Verify priority bands.
+	if blockPrio < 1000 || blockPrio >= 2000 {
+		t.Errorf("block priority %d not in [1000,2000)", blockPrio)
+	}
+	if allowPrio < 2000 || allowPrio >= 3000 {
+		t.Errorf("allow priority %d not in [2000,3000)", allowPrio)
+	}
+	if rlPrio < 3000 || rlPrio >= 4000 {
+		t.Errorf("rl priority %d not in [3000,4000)", rlPrio)
+	}
+
+	// Verify ordering: block < allow < rate_limit.
+	if blockPrio >= allowPrio {
+		t.Errorf("block priority %d should be < allow priority %d", blockPrio, allowPrio)
+	}
+	if allowPrio >= rlPrio {
+		t.Errorf("allow priority %d should be < rl priority %d", allowPrio, rlPrio)
+	}
+	t.Logf("priorities: block=%d allow=%d rl=%d", blockPrio, allowPrio, rlPrio)
+}
+
+// TestPolicyPriorityBlockOverridesAllow creates both a block and an allow rule
+// for the same path and verifies block wins (lower priority = evaluated first).
+func TestPolicyPriorityBlockOverridesAllow(t *testing.T) {
+	testPath := "/e2e-prio-conflict-" + time.Now().Format("150405")
+
+	// Create an allow rule.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-prio-allow-conflict", "type": "allow", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+	})
+	assertCode(t, "create allow", 201, resp)
+	allowID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
+
+	// Create a block rule for the same path.
+	resp, body = httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-prio-block-conflict", "type": "block", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+	})
+	assertCode(t, "create block", 201, resp)
+	blockID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+blockID) })
+
+	// Deploy and wait for the block to take effect.
+	deployAndWaitForStatus(t, caddyURL+testPath, 403)
+
+	// Verify the block wins — request should be blocked by policy engine.
+	resp2, _ := httpGetRetry(t, caddyURL+testPath, 3)
+	if resp2.StatusCode != 403 {
+		t.Errorf("expected 403 (block wins), got %d", resp2.StatusCode)
+	}
+
+	// Clean up: deploy without the rules to restore normal behavior.
+	cleanup(t, wafctlURL+"/api/exclusions/"+blockID)
+	cleanup(t, wafctlURL+"/api/exclusions/"+allowID)
+	deployWAF(t)
+}
+
+// --- CR2-4: Backup/restore partial failure warning ---
+
+// TestBackupRestorePartialFailureWarning verifies that restoring a backup with
+// invalid data produces a "partial" status and includes a warning message.
+func TestBackupRestorePartialFailureWarning(t *testing.T) {
+	// Take a clean backup first.
+	_, backupBody := httpGet(t, wafctlURL+"/api/backup")
+
+	// Tamper with the exclusions store: inject an invalid exclusion type.
+	var backup map[string]json.RawMessage
+	if err := json.Unmarshal(backupBody, &backup); err != nil {
+		t.Fatalf("unmarshal backup: %v", err)
+	}
+	backup["exclusions"] = json.RawMessage(`[{"name":"bad-excl","type":"completely_invalid","enabled":true}]`)
+
+	tamperedJSON, _ := json.Marshal(backup)
+
+	resp, body := httpPost(t, wafctlURL+"/api/backup/restore", json.RawMessage(tamperedJSON))
+	assertCode(t, "partial restore", 200, resp)
+
+	status := jsonField(body, "status")
+	if status != "partial" {
+		t.Errorf("expected status=partial, got %q", status)
+	}
+
+	warning := jsonField(body, "warning")
+	if warning == "" {
+		t.Error("expected non-empty warning on partial restore")
+	} else if !strings.Contains(warning, "Partial restore") {
+		t.Errorf("warning should contain 'Partial restore', got %q", warning)
+	}
+
+	// Check that the results map indicates the exclusions failure.
+	exclResult := jsonField(body, "results.exclusions")
+	if !strings.HasPrefix(exclResult, "failed") {
+		t.Errorf("expected exclusions result to start with 'failed', got %q", exclResult)
+	}
+
+	t.Logf("status=%q warning=%q exclusions=%q", status, warning, exclResult)
+
+	// Restore the clean backup to fix state.
+	resp2, _ := httpPost(t, wafctlURL+"/api/backup/restore", json.RawMessage(backupBody))
+	assertCode(t, "clean restore", 200, resp2)
+}
+
+// --- CR2-24: Blocklist check endpoint validates IP format ---
+
+// TestBlocklistCheckInvalidIP verifies that the check endpoint rejects invalid IPs.
+func TestBlocklistCheckInvalidIP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ip   string
+	}{
+		{"not an IP", "not-an-ip"},
+		{"too many octets", "1.2.3.4.5"},
+		{"letters only", "abcdef"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, body := httpGet(t, wafctlURL+"/api/blocklist/check/"+tt.ip)
+			if resp.StatusCode != 400 {
+				t.Errorf("expected 400 for %q, got %d: %s", tt.ip, resp.StatusCode, body)
+			}
+		})
+	}
+}
+
+// --- CR2-9: Backup/restore response includes results map ---
+
+// TestBackupRestoreSuccessStatus verifies that a clean restore returns
+// status="restored" and a results map with per-store details.
+func TestBackupRestoreSuccessStatus(t *testing.T) {
+	// Take backup.
+	_, backupBody := httpGet(t, wafctlURL+"/api/backup")
+
+	// Restore the same backup.
+	resp, body := httpPost(t, wafctlURL+"/api/backup/restore", json.RawMessage(backupBody))
+	assertCode(t, "restore", 200, resp)
+
+	status := jsonField(body, "status")
+	if status != "restored" {
+		t.Errorf("expected status=restored, got %q", status)
+	}
+
+	// Verify results map exists with at least the config store.
+	configResult := jsonField(body, "results.waf_config")
+	if configResult == "" {
+		t.Error("expected results.waf_config in restore response")
+	}
+
+	warning := jsonField(body, "warning")
+	if warning != "" {
+		t.Errorf("expected no warning on clean restore, got %q", warning)
+	}
+}
