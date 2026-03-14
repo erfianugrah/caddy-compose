@@ -302,12 +302,12 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
           </Button>
         </div>
       )}
-      <div className="space-y-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
             Request Details
           </h4>
-          <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs">
+          <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs overflow-hidden">
             <div className="flex gap-2 items-center">
               <span className="text-muted-foreground">Event ID:</span>
               <code className="text-muted-foreground/70 font-data select-all">{event.id}</code>
@@ -377,7 +377,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 ? "Anomaly Score Block"
                 : "Rule Match"}
           </h4>
-          <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs">
+          <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs overflow-hidden">
             {event.event_type === "rate_limited" ? (
               <>
                 <div className="flex gap-2">
@@ -427,22 +427,20 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     )}
                   </div>
                 )}
-                {/* For skip events: extract and display skipped rule IDs as pills */}
+                {/* For skip events: extract skipped rule IDs and show inline as pills */}
                 {event.event_type === "policy_skip" && event.rule_msg && (() => {
                   const match = event.rule_msg.match(/Skip\s+([\d,\s.]+)/);
                   if (!match) return null;
                   const ids = match[1].split(/[,\s]+/).filter((s) => /^\d+$/.test(s));
                   if (ids.length === 0) return null;
                   return (
-                    <div className="space-y-1.5">
-                      <span className="text-muted-foreground text-xs">Skipped Rules:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {ids.map((id) => (
-                          <span key={id} className="inline-flex items-center rounded-md bg-lv-cyan/10 border border-lv-cyan/20 px-2 py-0.5 text-xs font-data text-lv-cyan">
-                            {id}
-                          </span>
-                        ))}
-                      </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="text-muted-foreground shrink-0">Skipped Rules:</span>
+                      {ids.map((id) => (
+                        <span key={id} className="inline-flex items-center rounded-md bg-lv-cyan/10 border border-lv-cyan/20 px-2 py-0.5 text-xs font-data text-lv-cyan">
+                          {id}
+                        </span>
+                      ))}
                     </div>
                   );
                 })()}

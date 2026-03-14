@@ -46,7 +46,28 @@ logged event collection (tuning mode visibility), and e2e CI pipeline.
 - [x] **Condition builder: previous value pill** — dismissible pill after field change
 - [x] **Policy page: bulk move-to-position** — "Move to #" input in bulk toolbar
 - [x] **Policy page: type filter** — added missing "Skip" type
+- [x] **Policy page: multi-drag** — drag selected rows as a group
+- [x] **Policy page: per-page count** — all pagination shows "N per page"
 - [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
+
+## CRS Audit (v2.29.0)
+
+**All settings verified working end-to-end:**
+
+| Setting | Status | Implementation |
+|---------|--------|----------------|
+| Paranoia Level | Working | Plugin skips rules where `rule.PL > servicePL` at runtime |
+| Inbound Threshold | Working | Cumulative severity scores (CRIT=5, ERR=4, WARN=3, NOTICE=2); block when >= threshold |
+| Per-Service Overrides | Working | Plugin resolves PL+threshold per Host header via `waf_config.per_service` |
+| Individual Rule Disable | Working | User overrides stored separately, disabled rules excluded at generation time |
+
+**CRS update process: fully manual** — no auto-update mechanism exists.
+Pipeline: CRS repo → `tools/crs-converter` CLI → `waf/default-rules.json` → git commit → Docker build.
+Currently at CRS v4.24.1 (254 rules). Converter supports ModSecurity SecRule syntax only.
+**Should be automated** — run converter in CI build pipeline (see Open Items).
+
+**`mode` field**: persisted but ignored by plugin — detection-only mode not implemented.
+**`disabled_groups`**: persisted but ignored — group-level disabling not implemented.
 
 ---
 
@@ -65,7 +86,19 @@ on a single `/policy` page. Currently rate limits are on a separate `/rate-limit
 - Single priority ordering across all rule types
 - Remove `/rate-limits` page
 
-#### 2. Per-Service CRS Profiles — Plugin Rule Masks
+#### 2. CRS Auto-Update in CI
+
+Automate CRS rule conversion in the Docker build pipeline so updating
+CRS is just a version bump in a single variable.
+
+**Scope:**
+- Add a build stage to `Dockerfile` that clones the CRS repo at a pinned tag
+- Run `tools/crs-converter` in a Go builder stage to produce `default-rules.json`
+- Remove the committed `waf/default-rules.json` — it becomes a build artifact
+- Add `CRS_VERSION` env var to `.github/workflows/build.yml` alongside `CADDY_VERSION`
+- Optional: scheduled workflow to check for new CRS releases and open a PR
+
+#### 3. Per-Service CRS Profiles — Plugin Rule Masks
 
 Allow different CRS rule sets per service at the plugin level, not just
 skip rules with host conditions. Would enable: "authelia runs PL1 with

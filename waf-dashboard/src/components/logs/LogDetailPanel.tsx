@@ -148,7 +148,7 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
         </Button>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {/* Request Details */}
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>Request Details</h4>
