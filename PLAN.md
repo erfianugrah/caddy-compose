@@ -48,6 +48,8 @@ logged event collection (tuning mode visibility), and e2e CI pipeline.
 - [x] **Policy page: type filter** — added missing "Skip" type
 - [x] **Policy page: multi-drag** — drag selected rows as a group
 - [x] **Policy page: per-page count** — all pagination shows "N per page"
+- [x] **CRS CI automation** — `crs-rules` Dockerfile stage converts CRS at build time (branch: feat/next-major)
+- [x] **UI unification** — WAF Rules + Rate Limits merged into `/policy` with tabs (branch: feat/next-major)
 - [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
 
 ## CRS Audit (v2.29.0)
