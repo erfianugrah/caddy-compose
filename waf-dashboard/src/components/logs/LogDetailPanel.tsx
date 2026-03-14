@@ -4,6 +4,7 @@ import type { GeneralLogEvent } from "@/lib/api";
 import { countryFlag } from "@/lib/format";
 import { T } from "@/lib/typography";
 import { downloadJSON } from "@/lib/download";
+import { TruncatedCode, CopyBtn } from "@/components/events/helpers";
 import { formatDuration, formatBytes, headerCheckIcon } from "./helpers";
 
 // ─── RFC / Spec References ──────────────────────────────────────────
@@ -87,9 +88,9 @@ function HeaderDetailRow({ specKey, present, value }: {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 items-start">
       <span className="text-muted-foreground shrink-0">{label}:</span>
-      {children}
+      <div className="min-w-0 flex-1 flex items-start gap-1">{children}</div>
     </div>
   );
 }
@@ -147,7 +148,7 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-3">
         {/* Request Details */}
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>Request Details</h4>
@@ -160,6 +161,7 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
               >
                 {evt.client_ip}
               </a>
+              <CopyBtn text={evt.client_ip} />
               {evt.country && (
                 <span className="text-muted-foreground ml-1">
                   ({countryFlag(evt.country)} {evt.country})
@@ -168,24 +170,29 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
             </Field>
             <Field label="Method">
               <span className="font-medium text-lv-cyan">{evt.method}</span>
+              <CopyBtn text={evt.method} />
             </Field>
             <Field label="URI">
-              <code className="break-all text-foreground">{evt.uri}</code>
+              <TruncatedCode value={evt.uri} className="text-foreground" />
+              <CopyBtn text={evt.uri} />
             </Field>
             <Field label="Protocol">
               <span className="text-foreground">{evt.protocol}</span>
             </Field>
             <Field label="Service">
               <span className="text-foreground">{evt.service}</span>
+              <CopyBtn text={evt.service} />
             </Field>
             {evt.user_agent && (
               <Field label="User-Agent">
-                <code className="break-all text-foreground">{evt.user_agent}</code>
+                <TruncatedCode value={evt.user_agent} className="text-foreground" />
+                <CopyBtn text={evt.user_agent} />
               </Field>
             )}
             {evt.request_id && (
               <Field label="Request ID">
                 <code className="font-data text-foreground break-all">{evt.request_id}</code>
+                <CopyBtn text={evt.request_id} />
                 <a
                   href={`/events?request_id=${encodeURIComponent(evt.request_id)}`}
                   onClick={(e) => e.stopPropagation()}
@@ -207,6 +214,7 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
               <span className={evt.status >= 400 ? "text-lv-red" : "text-lv-green"}>
                 {evt.status}
               </span>
+              <CopyBtn text={String(evt.status)} />
             </Field>
             <Field label="Response Size">
               <span className="text-foreground font-data">{formatBytes(evt.size)}</span>

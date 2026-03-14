@@ -332,9 +332,11 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               <span className="font-medium text-lv-cyan">{event.method}</span>
               <CopyBtn text={event.method} />
             </div>
-            <div className="flex gap-2 items-center">
-              <span className="text-muted-foreground">URI:</span>
-              <code className="break-all text-foreground">{event.uri}</code>
+            <div className="flex gap-2 items-start">
+              <span className="text-muted-foreground shrink-0">URI:</span>
+              <div className="min-w-0 flex-1">
+                <TruncatedCode value={event.uri} className="text-foreground" />
+              </div>
               <CopyBtn text={event.uri} />
             </div>
             <div className="flex gap-2 items-center">
