@@ -399,36 +399,55 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 {/* Policy engine event — tag-aware display */}
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className="font-medium text-lv-red">
+                  <span className={`font-medium ${event.event_type === "policy_skip" ? "text-lv-cyan" : event.event_type === "policy_allow" ? "text-lv-green" : "text-lv-red"}`}>
                     {`Policy ${event.event_type?.replace("policy_", "").replace(/^\w/, (c) => c.toUpperCase())} (${event.status || 403})`}
                   </span>
                 </div>
-                {event.tags && event.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    <span className="text-muted-foreground">Tags:</span>
-                    {event.tags.map((tag) => (
-                      <span key={tag} className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-2 py-0.5 text-xs font-data text-lv-cyan">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
                 {event.rule_msg && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">Rule:</span>
                     {isPolicyRuleEvent(event) && policyRuleLink(event.rule_msg) ? (
                       <a href={policyRuleLink(event.rule_msg)!} className="text-lv-green hover:text-lv-green-bright hover:underline transition-colors" onClick={(e) => e.stopPropagation()}>
-                        {event.rule_id ? `${event.rule_id} — ` : ""}{event.rule_msg}
+                        {event.rule_msg}
                       </a>
                     ) : (
-                      <span className="text-foreground">{event.rule_id ? `${event.rule_id} — ` : ""}{event.rule_msg}</span>
+                      <span className="text-foreground">{event.rule_msg}</span>
                     )}
+                  </div>
+                )}
+                {/* For skip events: extract and display skipped rule IDs as pills */}
+                {event.event_type === "policy_skip" && event.rule_msg && (() => {
+                  const match = event.rule_msg.match(/Skip\s+([\d,\s.]+)/);
+                  if (!match) return null;
+                  const ids = match[1].split(/[,\s]+/).filter((s) => /^\d+$/.test(s));
+                  if (ids.length === 0) return null;
+                  return (
+                    <div className="space-y-1.5">
+                      <span className="text-muted-foreground text-xs">Skipped Rules:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {ids.map((id) => (
+                          <span key={id} className="inline-flex items-center rounded-md bg-lv-cyan/10 border border-lv-cyan/20 px-2 py-0.5 text-xs font-data text-lv-cyan">
+                            {id}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {event.tags && event.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="text-muted-foreground">Tags:</span>
+                    {event.tags.map((tag) => (
+                      <span key={tag} className="inline-flex items-center rounded bg-muted/50 px-2 py-0.5 text-xs font-data text-muted-foreground">
+                        {tag}
+                      </span>
+                    ))}
                   </div>
                 )}
                 {event.user_agent && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">User-Agent:</span>
-                    <code className="break-all text-foreground">{event.user_agent}</code>
+                    <code className="break-all text-foreground text-xs">{event.user_agent}</code>
                   </div>
                 )}
               </>
