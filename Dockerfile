@@ -1,4 +1,5 @@
 ARG VERSION=2.11.1
+ARG CRS_VERSION=v4.24.1
 
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
@@ -6,6 +7,23 @@ RUN xcaddy build \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.14.1
+
+# Convert CRS rules to policy-engine format at build time.
+# Update CRS_VERSION to pick up new CRS releases.
+FROM golang:1.24-alpine AS crs-rules
+ARG CRS_VERSION
+RUN apk add --no-cache git
+WORKDIR /build
+COPY tools/crs-converter/ ./converter/
+RUN cd converter && CGO_ENABLED=0 go build -o /usr/local/bin/crs-converter .
+RUN git clone --depth 1 --branch ${CRS_VERSION} \
+      https://github.com/coreruleset/coreruleset.git /crs
+COPY waf/custom-rules.json /build/custom-rules.json
+RUN crs-converter \
+      -crs-dir /crs/rules \
+      -crs-version "${CRS_VERSION#v}" \
+      -custom-rules /build/custom-rules.json \
+      -output /build/default-rules.json
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
@@ -34,7 +52,7 @@ RUN apk upgrade --no-cache && apk add --no-cache curl
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY errors/ /etc/caddy/errors/
-COPY waf/default-rules.json /etc/caddy/waf/default-rules.json
+COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/default-rules.json
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
