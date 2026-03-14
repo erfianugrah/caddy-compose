@@ -130,8 +130,15 @@ describe("extractPrefillFromEvent", () => {
     expect(prefill.action).toBe("detect");
   });
 
-  it("sets action to block for logged (non-blocked) events", () => {
+  it("sets action to skip for logged events with matched rules (false positives)", () => {
     const event = { ...baseEvent, event_type: "logged" as const, blocked: false };
+    const prefill = extractPrefillFromEvent(event);
+    expect(prefill.action).toBe("skip");
+    expect(prefill.suggestedSkipTargets?.rules).toEqual(["942100", "942200"]);
+  });
+
+  it("sets action to block for logged events without matched rules", () => {
+    const event = { ...baseEvent, event_type: "logged" as const, blocked: false, matched_rules: [], rule_id: 0 };
     const prefill = extractPrefillFromEvent(event);
     expect(prefill.action).toBe("block");
   });

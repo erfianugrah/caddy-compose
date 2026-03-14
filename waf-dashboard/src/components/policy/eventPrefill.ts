@@ -73,19 +73,24 @@ export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     conditions.push({ field: "country", operator: "eq", value: event.country });
   }
 
-  // Smart action default:
-  // - If the event was a block (policy_block, detect_block, blocked), the user
-  //   likely wants to CREATE AN ALLOW exception (the block was a false positive).
-  // - If the event was a skip (policy_skip), keep detect as default.
-  // - Otherwise default to block (the event was logged but should be blocked).
+  // Smart action default based on event type:
+  // - logged (below-threshold detect, false positives) → Skip those specific rules
+  // - detect_block / policy_block / blocked → Allow (false positive, bypass WAF)
+  // - policy_skip → Detect (already skipped, maybe add detection)
+  // - other → Block (event was logged but should be blocked)
   const isBlockEvent = event.event_type === "policy_block"
     || event.event_type === "detect_block"
     || event.blocked;
+  const isLoggedEvent = event.event_type === "logged";
   const isSkipEvent = event.event_type === "policy_skip";
-  const action: "allow" | "block" | "detect" = isBlockEvent ? "allow" : isSkipEvent ? "detect" : "block";
+  const action: EventPrefill["action"] =
+    isLoggedEvent && ruleIds.length > 0 ? "skip"    // FP in tuning mode → skip those rules
+    : isBlockEvent ? "allow"                          // FP block → allow bypass
+    : isSkipEvent ? "detect"                          // already skipped → add detection
+    : "block";                                        // suspicious → block
 
   // Action label for the auto-generated name
-  const actionLabel = action === "allow" ? "Allow" : action === "detect" ? "Detect" : "Block";
+  const actionLabel = action === "allow" ? "Allow" : action === "skip" ? "Skip" : action === "detect" ? "Detect" : "Block";
 
   // Auto-generate name — handle missing rule IDs gracefully for policy events
   const ruleSnippet = ruleIds.length > 0
