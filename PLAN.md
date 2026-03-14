@@ -75,77 +75,144 @@ Currently at CRS v4.24.1 (254 rules). Converter supports ModSecurity SecRule syn
 
 ### Major Features
 
-#### 1. Policy UI Unification — Merge Rate Limits into `/policy`
+#### 1. CRS Auto-Update in CI (branch: `feat/next-major`)
 
-Unified rule table showing all rule types (allow, block, skip, detect, rate_limit)
-on a single `/policy` page. Currently rate limits are on a separate `/rate-limits` page.
+Automate CRS rule conversion in the Docker build so updating CRS is a one-line
+version bump. Currently fully manual (clone → run converter → commit → push).
 
-**Scope:**
-- Merge `RateLimitsPanel` into `PolicyEngine` as a unified table
-- Unified create/edit dialog that handles all 5 rule types
-- Single priority ordering across all rule types
-- Remove `/rate-limits` page
+**Implementation plan:**
 
-#### 2. CRS Auto-Update in CI
+```
+New Dockerfile stage: crs-rules
+  FROM golang:1.24-alpine
+  ARG CRS_VERSION=v4.24.1
+  1. Build tools/crs-converter
+  2. git clone --depth 1 --branch ${CRS_VERSION} coreruleset/coreruleset
+  3. Run converter: crs-converter -crs-dir /crs/rules -output /build/default-rules.json
+  
+Both Dockerfiles: COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/
+```
 
-Automate CRS rule conversion in the Docker build pipeline so updating
-CRS is just a version bump in a single variable.
+**Files to change:**
+- `Dockerfile` — add `crs-rules` build stage, replace static COPY
+- `wafctl/Dockerfile` — same
+- `.github/workflows/build.yml` — add `CRS_VERSION` env var + build-arg, add `tools/crs-converter/**` to paths filter
+- `waf/default-rules.json` — keep committed as dev convenience, Dockerfile stage is source of truth for images
+- Optional: `crs-update.yml` scheduled workflow to check upstream releases
 
-**Scope:**
-- Add a build stage to `Dockerfile` that clones the CRS repo at a pinned tag
-- Run `tools/crs-converter` in a Go builder stage to produce `default-rules.json`
-- Remove the committed `waf/default-rules.json` — it becomes a build artifact
-- Add `CRS_VERSION` env var to `.github/workflows/build.yml` alongside `CADDY_VERSION`
-- Optional: scheduled workflow to check for new CRS releases and open a PR
+**Complexity:** Low. Converter has zero external deps (stdlib Go), builds trivially.
 
-#### 3. Per-Service CRS Profiles — Plugin Rule Masks
+#### 2. Policy UI Unification — Merge Rate Limits into `/policy` (branch: `feat/next-major`)
 
-Allow different CRS rule sets per service at the plugin level, not just
-skip rules with host conditions. Would enable: "authelia runs PL1 with
-only protocol rules, httpbun runs PL2 with full CRS."
+Combine WAF rules and rate limit rules into a single `/policy` page with tabs.
+The two rule types remain in separate backend stores (different evaluation phases)
+but share a unified UI shell.
 
-**Scope:**
-- Plugin: per-service rule masks in wafConfig
-- wafctl: new store for per-service CRS profiles
-- Frontend: profile selector on per-service override card
+**Proposed layout:**
+```
+/policy?tab=rules           — WAF exclusions (allow/block/skip/detect)
+/policy?tab=rate-limits     — Rate limit rules (deny/log_only)
+/policy?tab=advisor         — Rate limit advisor (existing)
+/policy?tab=settings        — RL global settings (existing)
+```
 
-#### 3. Response-Phase Detection (Phase 2)
+**Implementation plan:**
+- New: `UnifiedPolicyPage.tsx` — wrapper with Tabs component
+- Refactor: `PolicyEngine.tsx` → extract table+dialogs as tab content (remove outer chrome)
+- Refactor: `RateLimitsPanel.tsx` → extract rules tab, advisor tab, settings tab
+- Update: `src/pages/policy.astro` — render `UnifiedPolicyPage`
+- Delete: `src/pages/rate-limits.astro` (or redirect to `/policy?tab=rate-limits`)
+- Update: sidebar nav — remove "Rate Limits" link
+- Read `?tab=` in `useEffect` (Astro MPA hydration caveat)
 
-Outbound anomaly scoring — inspect response bodies after `next.ServeHTTP()`.
-Would enable ~100+ CRS outbound rules (response body inspection).
+**Key decisions:**
+- Tabs are top-level (not nested) — Rules | Rate Limits | Advisor | Settings
+- Each tab keeps its own create/edit dialog (no unified form)
+- Export/Import become per-tab buttons
+- Rate limits get parity features: bulk select, move-to-edge, inline position
+- Backend APIs stay separate (`/api/exclusions` + `/api/rate-rules`)
 
-**Scope:**
-- Plugin: response body buffering + inspection
-- Plugin: outbound anomaly scoring with separate threshold
-- wafctl: wire `outbound_threshold` through `BuildPolicyWafConfig()`
-- CRS converter: port outbound rule categories
+**Files changed:** ~5 frontend files modified/created, 1 deleted, 0 backend changes.
+**Complexity:** Medium. Mostly refactoring, no new logic.
 
-### Performance (Future)
+#### 3. Response-Phase Detection (branch: `feat/next-major`)
 
-- [ ] **Incremental summary computation** — maintain running counters on Store,
-  update on insert/evict instead of O(N) full scan per request
-- [ ] **TopCountriesPanel 397KB bundle** — recharts leaks into this chunk via shared
-  code splitting. Lazy-load IPLookupPanel or configure Vite `manualChunks`
-- [ ] **enrichAccessEvents O(events × rules)** — cache `sortRulesByPriority` result
-- [ ] **SecurityHeaderStore.deepCopy** — replace JSON round-trip with field-by-field copy
+Outbound anomaly scoring — inspect response headers and bodies after
+`next.ServeHTTP()`. Enables ~50-70 CRS data leakage rules.
 
-### Design Decisions Pending
+**Phased approach (recommended):**
 
-- [ ] **Mode field**: Either implement detection-only mode in the plugin
-  (detect but don't block on threshold) or remove `mode` from `WAFConfig` entirely.
-  Currently `mode` is persisted but ignored by the policy engine.
+**Phase A — Response headers only (no body buffering):**
+- Plugin: add `response_status`, `response_headers`, `response_content_type` to `extractField()`
+- Plugin: wrap response writer to capture status + headers
+- Plugin: outbound score accumulation + threshold check
+- Plugin: wire `OutboundThreshold` through `resolveWafConfig` (field already exists, currently unused)
+- Converter: remove phase 3/4 skip for header-only rules (~20 rules)
+- Impact: ~30% of CRS outbound rules. Zero memory overhead.
 
-- [ ] **CRS Rule Group disabling**: Either implement in the policy generator
-  (filter `default-rules.json` by tag at generation time) or remove
-  `disabled_groups` from WAFConfig. Currently persisted but ignored.
+**Phase B — Response body buffering:**
+- Plugin: `caddyhttp.NewResponseRecorder` with `shouldBuffer` callback
+- Plugin: only buffer text/json/xml responses under configurable max size (default 1MB)
+- Plugin: skip SSE, WebSocket, binary, large responses (zero overhead for streaming)
+- Plugin: `sync.Pool` for buffers, `response_body_max_size` Caddyfile option
+- Plugin: add `response_body` to `extractField()`
+- Converter: enable remaining response-phase rules (~50 more rules)
+- Impact: full CRS outbound coverage.
 
-### Operational
+**Phase C — Integration:**
+- wafctl: phase-aware rule model, outbound threshold in config generator
+- Frontend: outbound score in event details, filter by inbound/outbound
+- Tests: ~20 plugin tests (buffering, streaming bypass, threshold, edge cases)
+
+**Key risks:**
+- Response body buffering breaks streaming if not filtered correctly
+- Memory pressure from large buffered responses
+- Caddy's `ResponseRecorder` API compatibility across versions
+
+**Files changed (total across phases):**
+- Plugin: ~300 lines new code (buffering, field extraction, scoring)
+- Converter: ~10 lines (remove phase skip)
+- wafctl: ~50 lines (config wiring, model updates)
+- Frontend: ~100 lines (event display, config UI)
+- Tests: ~200 lines
+
+**Complexity:** High (Phase A: Medium, Phase B: High, Phase C: Medium).
+
+---
+
+### Other Open Items
+
+#### Per-Service CRS Profiles — Plugin Rule Masks
+
+Allow different CRS rule sets per service. Would enable: "authelia runs PL1 with
+only protocol rules, httpbun runs PL2 with full CRS." Currently PL filtering is
+global; this would add per-service category masks.
+
+**Scope:** Plugin per-service rule masks in wafConfig, wafctl store, frontend profile selector.
+**Complexity:** Medium. Blocked on UI unification (per-service card redesign).
+
+#### Performance
+
+- [ ] **Incremental summary computation** — running counters on Store, O(1) reads
+- [ ] **TopCountriesPanel 397KB bundle** — lazy-load IPLookupPanel or Vite manualChunks
+- [ ] **enrichAccessEvents O(events × rules)** — cache sortRulesByPriority result
+- [ ] **SecurityHeaderStore.deepCopy** — field-by-field copy instead of JSON round-trip
+
+#### Design Decisions
+
+- [ ] **Mode field**: implement detection-only in plugin or remove from WAFConfig
+- [ ] **CRS Rule Group disabling**: implement in generator or remove disabled_groups
+- [ ] **Custom rulesets**: define a native policy-engine rule format for user-created
+  detect rules that bypass the CRS converter. Could enable importing other WAF
+  rulesets (Trustwave, custom) directly.
+
+#### Operational
 
 - [ ] Audit each service's built-in auth and document decisions
 - [ ] Add `forward_auth` to dockge at minimum
 - [ ] Monitor and document sizing guidance for event stores
 
-### Low Priority / Deferred
+#### Low Priority
 
 - [ ] CRS accuracy evaluation against CRS test suite
 - [ ] Compare detection rates: regex-only vs regex+libinjection
