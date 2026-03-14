@@ -140,6 +140,85 @@ describe("CONDITION_FIELDS", () => {
     const ops = method.operators.map((o) => o.value);
     expect(ops).toContain("in");
   });
+
+  // ─── Comprehensive operator-per-field smoke tests ───
+
+  const FULL_STRING_OPS = [
+    "eq", "neq", "contains", "not_contains",
+    "begins_with", "not_begins_with", "ends_with", "not_ends_with",
+    "regex", "not_regex", "phrase_match", "not_phrase_match",
+    "in", "not_in", "in_list", "not_in_list",
+  ];
+
+  const STRING_FIELDS = [
+    "host", "path", "uri_path", "user_agent", "header", "query",
+    "cookie", "body", "body_json", "body_form", "args", "referer",
+    "response_header",
+  ];
+
+  for (const field of STRING_FIELDS) {
+    it(`${field} has all 16 string operators`, () => {
+      const def = CONDITION_FIELDS.find((f) => f.value === field)!;
+      const ops = def.operators.map((o) => o.value);
+      for (const op of FULL_STRING_OPS) {
+        expect(ops, `${field} missing ${op}`).toContain(op);
+      }
+    });
+  }
+
+  it("body_json also has exists operator", () => {
+    const def = CONDITION_FIELDS.find((f) => f.value === "body_json")!;
+    const ops = def.operators.map((o) => o.value);
+    expect(ops).toContain("exists");
+  });
+
+  const ENUM_OPS = ["eq", "neq", "in", "not_in", "in_list", "not_in_list"];
+  const ENUM_FIELDS = ["method", "country", "http_version"];
+
+  for (const field of ENUM_FIELDS) {
+    it(`${field} has all 6 enum operators`, () => {
+      const def = CONDITION_FIELDS.find((f) => f.value === field)!;
+      const ops = def.operators.map((o) => o.value);
+      for (const op of ENUM_OPS) {
+        expect(ops, `${field} missing ${op}`).toContain(op);
+      }
+    });
+  }
+
+  it("ip has eq, neq, in, not_in, ip_match, not_ip_match, in_list, not_in_list", () => {
+    const def = CONDITION_FIELDS.find((f) => f.value === "ip")!;
+    const ops = def.operators.map((o) => o.value);
+    for (const op of ["eq", "neq", "in", "not_in", "ip_match", "not_ip_match", "in_list", "not_in_list"]) {
+      expect(ops, `ip missing ${op}`).toContain(op);
+    }
+  });
+
+  it("response_status has numeric operators gt, ge, lt, le plus enum operators", () => {
+    const def = CONDITION_FIELDS.find((f) => f.value === "response_status")!;
+    const ops = def.operators.map((o) => o.value);
+    for (const op of ["eq", "neq", "gt", "ge", "lt", "le", "in", "not_in", "in_list", "not_in_list"]) {
+      expect(ops, `response_status missing ${op}`).toContain(op);
+    }
+  });
+
+  // Enum fields should NOT have string operators
+  for (const field of ENUM_FIELDS) {
+    it(`${field} does not have string-only operators`, () => {
+      const def = CONDITION_FIELDS.find((f) => f.value === field)!;
+      const ops = def.operators.map((o) => o.value);
+      for (const op of ["contains", "begins_with", "ends_with", "regex"]) {
+        expect(ops, `${field} should not have ${op}`).not.toContain(op);
+      }
+    });
+  }
+
+  it("ip does not have string-only operators", () => {
+    const def = CONDITION_FIELDS.find((f) => f.value === "ip")!;
+    const ops = def.operators.map((o) => o.value);
+    for (const op of ["contains", "begins_with", "ends_with", "regex"]) {
+      expect(ops, `ip should not have ${op}`).not.toContain(op);
+    }
+  });
 });
 
 // ─── getFieldDef ────────────────────────────────────────────────────

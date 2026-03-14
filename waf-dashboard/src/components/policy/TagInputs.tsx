@@ -144,14 +144,21 @@ export const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "O
 export function MethodMultiSelect({
   value,
   onChange,
+  single = false,
 }: {
   value: string;
   onChange: (value: string) => void;
+  single?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = value ? value.split("|").filter(Boolean) : [];
 
   const toggle = (method: string) => {
+    if (single) {
+      onChange(method);
+      setOpen(false);
+      return;
+    }
     const next = selected.includes(method)
       ? selected.filter((m) => m !== method)
       : [...selected, method];
@@ -203,6 +210,95 @@ export function MethodMultiSelect({
           </PopoverContent>
         </Popover>
       )}
+    </div>
+  );
+}
+
+// ─── Host / Service Multi-Select ────────────────────────────────────
+
+export function HostMultiSelect({
+  value,
+  onChange,
+  services,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  services: { service: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [customInput, setCustomInput] = useState("");
+  const selected = value ? value.split("|").filter(Boolean) : [];
+  const serviceNames = services.map((s) => s.service);
+
+  const addHost = (host: string) => {
+    if (!host || selected.includes(host)) return;
+    onChange([...selected, host].join("|"));
+  };
+
+  const remove = (host: string) => {
+    onChange(selected.filter((h) => h !== host).join("|"));
+  };
+
+  const addCustom = () => {
+    const trimmed = customInput.trim();
+    if (trimmed) {
+      addHost(trimmed);
+      setCustomInput("");
+    }
+  };
+
+  const unselected = serviceNames.filter((s) => !selected.includes(s));
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-within:ring-1 focus-within:ring-ring min-h-[36px] flex-1">
+      {selected.map((host) => (
+        <span
+          key={host}
+          className="inline-flex items-center gap-1 rounded bg-lovelace-800 border border-border px-2 py-0.5 text-xs font-data text-lv-cyan"
+        >
+          {host}
+          <button
+            onClick={() => remove(host)}
+            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </span>
+      ))}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent">
+            <Plus className="h-3 w-3" />
+            {selected.length === 0 ? "Select hosts" : "Add"}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[220px] p-1" align="start">
+          {unselected.map((svc) => (
+            <button
+              key={svc}
+              onClick={() => { addHost(svc); if (unselected.length <= 1) setOpen(false); }}
+              className="flex w-full items-center rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
+            >
+              {svc}
+            </button>
+          ))}
+          {unselected.length > 0 && <div className="my-1 border-t border-border" />}
+          <div className="flex gap-1 px-1 py-1">
+            <input
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+              placeholder="Custom host..."
+              className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            />
+            {customInput.trim() && (
+              <button onClick={addCustom} className="text-xs text-lv-cyan hover:text-foreground">
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import {
 import type { Condition, ConditionField, ConditionOperator, ServiceDetail } from "@/lib/api";
 import { fetchManagedLists, compatibleKinds, type ManagedList } from "@/lib/api";
 import { CONDITION_FIELDS, getFieldDef, type FieldDef } from "./constants";
-import { MethodMultiSelect, PipeTagInput, TransformSelect } from "./TagInputs";
+import { MethodMultiSelect, HostMultiSelect, PipeTagInput, TransformSelect } from "./TagInputs";
 
 // ─── Host Value Input ───────────────────────────────────────────────
 
@@ -242,16 +242,23 @@ export function ConditionRow({
               field={condition.field}
               onChange={(v) => onChange(index, { ...condition, value: v })}
             />
-          ) : condition.field === "host" ? (
+          ) : condition.field === "host" && (condition.operator === "in" || condition.operator === "not_in") ? (
+            <HostMultiSelect
+              value={condition.value}
+              services={services}
+              onChange={(v) => onChange(index, { ...condition, value: v })}
+            />
+          ) : condition.field === "host" && (condition.operator === "eq" || condition.operator === "neq") ? (
             <HostValueInput
               value={condition.value}
               services={services}
               onChange={(v) => onChange(index, { ...condition, value: v })}
             />
-          ) : condition.field === "method" && (condition.operator === "in" || condition.operator === "not_in") ? (
+          ) : condition.field === "method" ? (
             <MethodMultiSelect
               value={condition.value}
               onChange={(v) => onChange(index, { ...condition, value: v })}
+              single={condition.operator === "eq" || condition.operator === "neq"}
             />
           ) : condition.operator === "phrase_match" || condition.operator === "not_phrase_match" ? (
             <PipeTagInput

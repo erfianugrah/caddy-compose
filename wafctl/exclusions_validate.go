@@ -95,8 +95,8 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 				return fmt.Errorf("condition[%d]: numeric operator %q requires a numeric value, got %q", i, c.Operator, c.Value)
 			}
 		}
-		// Validate method values.
-		if c.Field == "method" {
+		// Validate method values (skip for list operators — value is a list name, not a method).
+		if c.Field == "method" && c.Operator != "in_list" && c.Operator != "not_in_list" {
 			validMethods := map[string]bool{
 				"GET": true, "POST": true, "PUT": true, "DELETE": true,
 				"PATCH": true, "HEAD": true, "OPTIONS": true, "TRACE": true,

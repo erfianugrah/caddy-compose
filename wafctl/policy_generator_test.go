@@ -1592,6 +1592,147 @@ func TestValidateNegatedOperators(t *testing.T) {
 	}
 }
 
+// ─── Comprehensive Operator-per-Field Smoke Tests ─────────────────
+
+func TestValidateOperatorsPerField(t *testing.T) {
+	// Full string operator set — all string-type fields should accept these.
+	stringOps := []struct {
+		op    string
+		value string
+		items []string
+	}{
+		{"eq", "test", nil},
+		{"neq", "test", nil},
+		{"contains", "test", nil},
+		{"not_contains", "test", nil},
+		{"begins_with", "test", nil},
+		{"not_begins_with", "test", nil},
+		{"ends_with", "test", nil},
+		{"not_ends_with", "test", nil},
+		{"regex", "^test$", nil},
+		{"not_regex", "^test$", nil},
+		{"in", "a|b|c", nil},
+		{"not_in", "a|b|c", nil},
+		{"phrase_match", "", []string{"alpha", "bravo"}},
+		{"not_phrase_match", "", []string{"alpha", "bravo"}},
+		{"in_list", "my-list", nil},
+		{"not_in_list", "my-list", nil},
+	}
+
+	stringFields := []string{
+		"host", "path", "uri_path", "user_agent", "header", "query",
+		"cookie", "body", "body_json", "body_form", "args", "referer",
+		"response_header",
+	}
+
+	for _, field := range stringFields {
+		for _, op := range stringOps {
+			t.Run(field+"/"+op.op, func(t *testing.T) {
+				conds := []Condition{{
+					Field: field, Operator: op.op,
+					Value: op.value, ListItems: op.items,
+				}}
+				if err := validateConditions(conds, nil); err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			})
+		}
+	}
+
+	// body_json also supports "exists"
+	t.Run("body_json/exists", func(t *testing.T) {
+		conds := []Condition{{Field: "body_json", Operator: "exists", Value: ".user.role"}}
+		if err := validateConditions(conds, nil); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	// Enum fields: eq, neq, in, not_in, in_list, not_in_list
+	enumOps := []struct {
+		op    string
+		value string
+	}{
+		{"eq", "GET"},
+		{"neq", "POST"},
+		{"in", "GET|POST|PUT"},
+		{"not_in", "DELETE|PATCH"},
+		{"in_list", "my-list"},
+		{"not_in_list", "my-list"},
+	}
+	enumFields := []string{"method", "country", "response_status", "http_version"}
+
+	for _, field := range enumFields {
+		for _, op := range enumOps {
+			t.Run(field+"/"+op.op, func(t *testing.T) {
+				conds := []Condition{{Field: field, Operator: op.op, Value: op.value}}
+				if err := validateConditions(conds, nil); err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			})
+		}
+	}
+
+	// IP field: eq, neq, in, not_in, ip_match, not_ip_match, in_list, not_in_list
+	ipOps := []struct {
+		op    string
+		value string
+	}{
+		{"eq", "1.2.3.4"},
+		{"neq", "1.2.3.4"},
+		{"in", "1.2.3.4|5.6.7.8"},
+		{"not_in", "1.2.3.4|5.6.7.8"},
+		{"ip_match", "10.0.0.0/8"},
+		{"not_ip_match", "10.0.0.0/8"},
+		{"in_list", "blocklist"},
+		{"not_in_list", "blocklist"},
+	}
+	for _, op := range ipOps {
+		t.Run("ip/"+op.op, func(t *testing.T) {
+			conds := []Condition{{Field: "ip", Operator: op.op, Value: op.value}}
+			if err := validateConditions(conds, nil); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+
+	// ─── Rejection tests: string operators on enum/IP fields ───
+	rejectOps := []string{"contains", "begins_with", "ends_with", "regex"}
+	rejectFields := []string{"ip", "method", "country", "response_status", "http_version"}
+
+	for _, field := range rejectFields {
+		for _, op := range rejectOps {
+			t.Run("reject/"+field+"/"+op, func(t *testing.T) {
+				conds := []Condition{{Field: field, Operator: op, Value: "test"}}
+				if err := validateConditions(conds, nil); err == nil {
+					t.Errorf("expected %s/%s to be rejected, but it was accepted", field, op)
+				}
+			})
+		}
+	}
+
+	// IP-specific operators should be rejected on non-IP fields.
+	for _, field := range []string{"host", "path", "method", "user_agent"} {
+		for _, op := range []string{"ip_match", "not_ip_match"} {
+			t.Run("reject/"+field+"/"+op, func(t *testing.T) {
+				conds := []Condition{{Field: field, Operator: op, Value: "10.0.0.0/8"}}
+				if err := validateConditions(conds, nil); err == nil {
+					t.Errorf("expected %s/%s to be rejected", field, op)
+				}
+			})
+		}
+	}
+
+	// exists should be rejected on non-body_json fields.
+	for _, field := range []string{"ip", "host", "path", "method", "header"} {
+		t.Run("reject/"+field+"/exists", func(t *testing.T) {
+			conds := []Condition{{Field: field, Operator: "exists", Value: "test"}}
+			if err := validateConditions(conds, nil); err == nil {
+				t.Errorf("expected %s/exists to be rejected", field)
+			}
+		})
+	}
+}
+
 func TestValidateRequestCombinedField(t *testing.T) {
 	conds := []Condition{
 		{Field: "request_combined", Operator: "contains", Value: "attack"},
