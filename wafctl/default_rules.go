@@ -22,6 +22,7 @@ import (
 // Supports both "rules" (legacy v1-v6) and "default_rules" (v7+ converter output).
 type DefaultRulesFile struct {
 	Version      int          `json:"version"`
+	CRSVersion   string       `json:"crs_version,omitempty"`
 	Rules        []PolicyRule `json:"rules"`
 	DefaultRules []PolicyRule `json:"default_rules"`
 }
@@ -38,6 +39,7 @@ type DefaultRuleStore struct {
 	defaultsByID  map[string]PolicyRule      // index for fast lookup
 	overrides     map[string]json.RawMessage // per-rule field overrides
 	overridesFile string                     // path to writable overrides file
+	crsVersion    string                     // CRS version from default-rules.json metadata
 }
 
 // NewDefaultRuleStore loads baked defaults from defaultsPath and user
@@ -65,10 +67,11 @@ func NewDefaultRuleStore(defaultsPath, overridesPath string) *DefaultRuleStore {
 					rules = f.DefaultRules
 				}
 				ds.defaults = rules
+				ds.crsVersion = f.CRSVersion
 				for _, r := range rules {
 					ds.defaultsByID[r.ID] = r
 				}
-				log.Printf("[default-rules] loaded %d baked default rules from %s (version %d)", len(rules), defaultsPath, f.Version)
+				log.Printf("[default-rules] loaded %d baked default rules from %s (version %d, CRS %s)", len(rules), defaultsPath, f.Version, f.CRSVersion)
 			}
 		}
 	}
@@ -88,6 +91,13 @@ func NewDefaultRuleStore(defaultsPath, overridesPath string) *DefaultRuleStore {
 	}
 
 	return ds
+}
+
+// CRSVersion returns the CRS version string from the loaded default-rules.json.
+func (ds *DefaultRuleStore) CRSVersion() string {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+	return ds.crsVersion
 }
 
 // List returns all default rules with overrides applied.

@@ -9,7 +9,7 @@ import (
 
 // --- Handlers: Health, Summary, Events, Services ---
 
-func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore) http.HandlerFunc {
+func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
@@ -30,10 +30,15 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 			"security_headers": secStore.StoreInfo(),
 		}
 
+		crsVer := ds.CRSVersion()
+		if crsVer == "" {
+			crsVer = "unknown"
+		}
+
 		writeJSON(w, http.StatusOK, HealthResponse{
 			Status:     "ok",
 			Version:    version,
-			CRSVersion: crsVersion,
+			CRSVersion: crsVer,
 			Uptime:     uptime.String(),
 			Stores:     stores,
 		})

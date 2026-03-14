@@ -86,6 +86,7 @@ export default function RulesPanel() {
   const [rules, setRules] = useState<DefaultRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [crsVersion, setCrsVersion] = useState("CRS");
   const [deploying, setDeploying] = useState(false);
   const [deployMsg, setDeployMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -116,10 +117,12 @@ export default function RulesPanel() {
     try {
       setLoading(true);
       setError(null);
-      const [data, cfg] = await Promise.all([listDefaultRules(), getConfig()]);
+      const healthP = fetch("/api/health").then(r => r.json()).catch(() => ({}));
+      const [data, cfg, health] = await Promise.all([listDefaultRules(), getConfig(), healthP]);
       setRules(data);
       setWafPL(cfg.defaults.paranoia_level);
       setWafThreshold(cfg.defaults.inbound_threshold);
+      if (health?.crs_version) setCrsVersion(`CRS ${health.crs_version}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -403,7 +406,7 @@ export default function RulesPanel() {
                 <Shield className="h-4.5 w-4.5 text-lv-cyan" />
               </div>
               <div>
-                <h1 className={T.pageTitle}>OWASP CRS 4.24.1</h1>
+                <h1 className={T.pageTitle}>OWASP {crsVersion}</h1>
                 <p className={T.pageDescription}>
                   {rules.length} rules ({totalEnabled} enabled
                   {totalOverridden > 0 && `, ${totalOverridden} overridden`})

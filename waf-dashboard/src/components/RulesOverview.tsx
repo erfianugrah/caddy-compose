@@ -103,8 +103,9 @@ export default function RulesOverview() {
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getConfig(), fetchServices(), listDefaultRules()])
-      .then(([cfg, svcs, rules]) => {
+    const healthP = fetch("/api/health").then(r => r.json()).catch(() => ({}));
+    Promise.all([getConfig(), fetchServices(), listDefaultRules(), healthP])
+      .then(([cfg, svcs, rules, health]) => {
         setConfig(cfg);
         setDefaults(cfg.defaults);
         setServiceOverrides(cfg.services);
@@ -135,7 +136,7 @@ export default function RulesOverview() {
           overridden,
           plCounts,
           catCounts,
-          crsVersion: "4.24.1",
+          crsVersion: health?.crs_version || "unknown",
         });
       })
       .catch((err) => setError(err.message))

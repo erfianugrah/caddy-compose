@@ -64,7 +64,8 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	cfStore := NewCFProxyStore(filepath.Join(t.TempDir(), "cf.caddy"))
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
 	secStore := NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec.json"))
-	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore, secStore)
+	ds := NewDefaultRuleStore(filepath.Join(t.TempDir(), "defaults.json"), filepath.Join(t.TempDir(), "overrides.json"))
+	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore, secStore, ds)
 }
 
 // emptyWAFStore returns a Store with no events for tests that only need

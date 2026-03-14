@@ -17,9 +17,6 @@ import (
 // Set at build time via: -ldflags="-X main.version=2.20.0"
 var version = "dev"
 
-// crsVersion is the OWASP CRS version used by the policy engine's default rules.
-const crsVersion = "4.24.1"
-
 // startTime records when the process started, used for uptime calculation.
 var startTime = time.Now()
 
@@ -176,7 +173,7 @@ func runServe() int {
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore, rlRuleStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore, rlRuleStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore, rlRuleStore))
