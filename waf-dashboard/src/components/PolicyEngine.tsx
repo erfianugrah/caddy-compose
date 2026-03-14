@@ -583,24 +583,16 @@ export default function PolicyEngine() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className={T.pageTitle}>Policy Engine</h2>
-          <p className={T.pageDescription}>
-            Create allow/block/detect rules to control WAF behavior.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleImport}>
-            <Upload className="h-3.5 w-3.5" />
-            Import
-          </Button>
-        </div>
+      {/* Export/Import buttons */}
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleExport}>
+          <Download className="h-3.5 w-3.5" />
+          Export
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleImport}>
+          <Upload className="h-3.5 w-3.5" />
+          Import
+        </Button>
       </div>
 
       {error && (
