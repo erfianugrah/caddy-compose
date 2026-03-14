@@ -51,6 +51,10 @@ unified /policy page (WAF rules + rate limits), and e2e CI pipeline.
 - [x] **Policy page: per-page count** — all pagination shows "N per page"
 - [x] **CRS CI automation** — `crs-rules` Dockerfile stage converts CRS at build time
 - [x] **UI unification** — WAF Rules + Rate Limits merged into `/policy` with tabs
+- [x] **Response-phase Phase A** — plugin outbound scoring infra: Phase field, responseContext,
+  extractResponseField (response_status, response_header, response_content_type),
+  outboundThreshold per-service, scoreAccumulator.outbound, post-ServeHTTP evaluation
+  (plugin branch: feat/response-phase-a, 10 new tests)
 - [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
 
 ## CRS Audit (v2.30.0)

@@ -57,9 +57,9 @@ var variableMap = map[string]string{
 	// XML
 	"XML": "xml", // NEEDED in plugin
 
-	// Response (deferred — phase 3/4)
+	// Response (outbound — phase 3/4)
 	"RESPONSE_STATUS":       "response_status",
-	"RESPONSE_HEADERS":      "response_headers",
+	"RESPONSE_HEADERS":      "response_header",
 	"RESPONSE_BODY":         "response_body",
 	"RESPONSE_CONTENT_TYPE": "response_content_type",
 

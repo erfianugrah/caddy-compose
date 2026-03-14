@@ -118,7 +118,7 @@ func TestSkipFlowControlRanges(t *testing.T) {
 	}
 }
 
-func TestSkipResponsePhase(t *testing.T) {
+func TestResponsePhaseConverted(t *testing.T) {
 	input := `SecRule RESPONSE_BODY "@rx password" "id:950001,phase:4,block,msg:'Data Leakage',severity:'ERROR'"`
 
 	rules, err := ParseFile(input, "test.conf")
@@ -129,11 +129,14 @@ func TestSkipResponsePhase(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "test.conf")
 
-	if len(result) != 0 {
-		t.Errorf("expected 0 rules (response phase), got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 outbound rule, got %d", len(result))
 	}
-	if len(converter.report.SkippedResponsePhase) != 1 {
-		t.Errorf("expected 1 skipped response-phase rule")
+	if result[0].Phase != "outbound" {
+		t.Errorf("expected phase=outbound, got %q", result[0].Phase)
+	}
+	if result[0].Conditions[0].Field != "response_body" {
+		t.Errorf("expected field=response_body, got %q", result[0].Conditions[0].Field)
 	}
 }
 
@@ -314,11 +317,11 @@ SecRule RESPONSE_BODY "@rx leak" "id:950001,phase:4,block,msg:'Leak',severity:'E
 	if r.TotalRules != 3 {
 		t.Errorf("TotalRules: got %d, want 3", r.TotalRules)
 	}
-	if r.ConvertedRules != 1 {
-		t.Errorf("ConvertedRules: got %d, want 1", r.ConvertedRules)
+	if r.ConvertedRules != 2 {
+		t.Errorf("ConvertedRules: got %d, want 2 (1 inbound + 1 outbound)", r.ConvertedRules)
 	}
-	if r.SkippedRules != 2 {
-		t.Errorf("SkippedRules: got %d, want 2", r.SkippedRules)
+	if r.SkippedRules != 1 {
+		t.Errorf("SkippedRules: got %d, want 1 (flow control only)", r.SkippedRules)
 	}
 }
 

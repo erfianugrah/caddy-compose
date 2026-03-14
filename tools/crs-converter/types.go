@@ -62,7 +62,8 @@ type PolicyRulesFile struct {
 type PolicyRule struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`
-	Type          string            `json:"type"` // always "detect" for CRS rules
+	Type          string            `json:"type"`            // always "detect" for CRS rules
+	Phase         string            `json:"phase,omitempty"` // "inbound" (default) or "outbound" for response-phase rules
 	Conditions    []PolicyCondition `json:"conditions"`
 	GroupOp       string            `json:"group_op"` // "and" or "or"
 	Severity      string            `json:"severity,omitempty"`

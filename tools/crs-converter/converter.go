@@ -131,15 +131,8 @@ func (c *Converter) shouldSkip(rule SecRule, filename string) bool {
 		return true
 	}
 
-	// Skip response-phase rules (phase 3 or 4)
-	if rule.Phase == 3 || rule.Phase == 4 {
-		c.report.SkippedResponsePhase = append(c.report.SkippedResponsePhase, SkippedRule{
-			ID: rule.ID, Reason: fmt.Sprintf("response phase %d", rule.Phase), File: filename,
-		})
-		c.report.SkippedRules++
-		c.addCategoryStat(categoryFromFilename(filename), false)
-		return true
-	}
+	// Response-phase rules (phase 3 or 4) are converted with phase: "outbound".
+	// These rules evaluate against response headers and body after the upstream responds.
 
 	// Skip rules that only do setvar (no detection operator)
 	if rule.Operator.Name == "" || rule.Operator.Name == "unconditionalMatch" {
@@ -283,11 +276,18 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 	// Map tags
 	tags := mapCRSTags(rule.Tags)
 
+	// Determine phase: response-phase rules (CRS phase 3/4) are outbound.
+	phase := ""
+	if rule.Phase == 3 || rule.Phase == 4 {
+		phase = "outbound"
+	}
+
 	// Build the policy rule
 	pr := &PolicyRule{
 		ID:            rule.ID,
 		Name:          rule.Msg,
 		Type:          "detect",
+		Phase:         phase,
 		Conditions:    conditions,
 		GroupOp:       "and",
 		Severity:      severity,
