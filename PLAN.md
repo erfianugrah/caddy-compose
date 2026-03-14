@@ -1,6 +1,6 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.30.0 / caddy 3.29.0 / plugin v0.14.1 → v0.15.0 pending)
+## Current State (v2.31.0 / caddy 3.30.0 / plugin v0.15.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (254 default rules,
 auto-converted at Docker build time), 5-pass evaluation (allow → block → skip →
@@ -86,11 +86,12 @@ Currently at CRS v4.24.1 (254 rules). Converter supports ModSecurity SecRule syn
 
 ### Major Features
 
-#### 1. Response-Phase Detection — DONE (pending plugin tag + deploy)
+#### 1. Response-Phase Detection — DONE (v0.15.0, deployed)
 
-Outbound anomaly scoring implemented in all 3 phases. 59 CRS outbound rules
-converted. Plugin branch: `feat/response-phase-a`. Needs: tag v0.15.0, update
-Dockerfile to use new plugin version, full e2e test, deploy.
+Outbound anomaly scoring — all 3 phases complete. 59 CRS outbound rules.
+Plugin v0.15.0: response_status, response_header, response_body fields,
+ResponseRecorder body buffering, per-service outbound threshold, Content-Type
+filtering. E2E tested: SQL error leakage blocked (score 9 >= threshold 5 → 403).
 
 **Phased approach (recommended):**
 
