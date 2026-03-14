@@ -791,7 +791,7 @@ export default function PolicyEngine() {
 
       {/* Create / Edit Rule Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
-        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-y-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <DialogHeader className="space-y-3">
               <div className="flex items-center justify-between">

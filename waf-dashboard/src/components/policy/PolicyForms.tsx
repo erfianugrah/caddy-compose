@@ -257,6 +257,10 @@ export function QuickActionsForm({
     if (prefill.conditions && prefill.conditions.length > 0) {
       setConditions(prefill.conditions);
     }
+    // Pre-populate skip targets from matched rule IDs so switching to Skip is seamless
+    if (prefill.suggestedSkipTargets) {
+      setSkipTargets(prefill.suggestedSkipTargets);
+    }
     setShowPrefillBanner(true);
   }, [prefill]);
 
@@ -372,7 +376,14 @@ export function QuickActionsForm({
                   ? colors.active
                   : "border-border hover:border-muted-foreground/50"
               }`}
-              onClick={() => setActionType(action.value)}
+              onClick={() => {
+                setActionType(action.value);
+                // Update auto-generated name to reflect new action type
+                if (prefill && name.startsWith("Allow ") || name.startsWith("Block ") || name.startsWith("Skip ") || name.startsWith("Detect ")) {
+                  const label = action.value === "allow" ? "Allow" : action.value === "block" ? "Block" : action.value === "skip" ? "Skip" : "Detect";
+                  setName(name.replace(/^(Allow|Block|Skip|Detect)\b/, label));
+                }
+              }}
             >
               <div className="flex items-center gap-2">
                 <Icon className={`h-4 w-4 ${isActive ? colors.icon : "text-muted-foreground"}`} />

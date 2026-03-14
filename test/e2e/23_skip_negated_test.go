@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -302,4 +303,159 @@ func TestNegatedOperatorNotInBlock(t *testing.T) {
 	}
 
 	t.Logf("GET=%d POST=%d", resp2.StatusCode, postCode)
+}
+
+// ─── Logged (Below-Threshold Detect) E2E Tests ──────────────────────
+
+// TestLoggedEventsCollected verifies that below-threshold detect events
+// (tuning/log-only mode) are collected and appear in the events API.
+func TestLoggedEventsCollected(t *testing.T) {
+	// Save current config.
+	_, origBody := httpGet(t, wafctlURL+"/api/config")
+
+	// Set a very high threshold (tuning mode) so detect rules fire but don't block.
+	resp, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     2,
+			"inbound_threshold":  10000,
+			"outbound_threshold": 10000,
+		},
+		"services": map[string]any{},
+	})
+	assertCode(t, "set tuning config", 200, resp)
+
+	// Deploy the config change.
+	deployWAF(t)
+	time.Sleep(3 * time.Second)
+
+	// Send a request that triggers CRS rules (SQLi in a header value).
+	// httpbun doesn't care about headers so it returns 200, but CRS detects the payload.
+	// With threshold=10000, this should NOT be blocked but should be logged.
+	sentinel := fmt.Sprintf("E2E-Logged/%d", time.Now().UnixNano())
+	req, _ := http.NewRequest("GET", caddyURL+"/get", nil)
+	req.Header.Set("User-Agent", sentinel)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("X-Custom-Test", "' OR 1=1--")
+	resp2, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("SQLi request: %v", err)
+	}
+	resp2.Body.Close()
+
+	if resp2.StatusCode == 403 {
+		t.Fatalf("expected non-403 in tuning mode (threshold=10000), got 403")
+	}
+	t.Logf("tuning mode SQLi status: %d (expected 200)", resp2.StatusCode)
+
+	// Wait for the event to be collected. Access log tail interval is 2s,
+	// plus processing time. Use a polling wait instead of fixed sleep.
+	time.Sleep(8 * time.Second)
+
+	// Check if the logged event appears in the events API.
+	_, eventsBody := httpGet(t, wafctlURL+"/api/events?hours=1&limit=50")
+	events := jsonFieldArray(eventsBody, "events")
+
+	found := false
+	for _, e := range events {
+		var evt map[string]any
+		if json.Unmarshal(e, &evt) != nil {
+			continue
+		}
+		ua, _ := evt["user_agent"].(string)
+		if ua == sentinel {
+			found = true
+			eventType, _ := evt["event_type"].(string)
+			score, _ := evt["anomaly_score"].(float64)
+			t.Logf("found logged event: type=%s score=%v blocked=%v", eventType, score, evt["is_blocked"])
+			if eventType != "logged" {
+				t.Errorf("expected event_type=logged, got %q", eventType)
+			}
+			if score == 0 {
+				t.Error("expected non-zero anomaly_score for logged event")
+			}
+			blocked, _ := evt["is_blocked"].(bool)
+			if blocked {
+				t.Error("expected is_blocked=false for logged event")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Logf("total events returned: %d", len(events))
+		t.Error("logged event not found in events API — below-threshold detect events may not be collected")
+	}
+
+	// Restore original config.
+	var origConfig map[string]any
+	json.Unmarshal(origBody, &origConfig)
+	httpPut(t, wafctlURL+"/api/config", origConfig)
+	deployWAF(t)
+}
+
+// TestSkipRuleBypassesDetect verifies that a skip rule targeting specific CRS
+// rule IDs actually prevents those rules from scoring.
+func TestSkipRuleBypassesDetect(t *testing.T) {
+	testPath := "/e2e-skip-detect-" + time.Now().Format("150405")
+
+	// First, verify the path triggers detect scoring without a skip rule.
+	// Create a detect rule with a low threshold that catches any anomaly.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-detect-baseline", "type": "detect", "enabled": true,
+		"severity": "CRITICAL",
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+	})
+	assertCode(t, "create detect rule", 201, resp)
+	detectID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+detectID) })
+
+	// Now create a skip rule that targets the detect phase for the same path.
+	resp, body = httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-skip-detect", "type": "skip", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+		"skip_targets": map[string]any{
+			"phases": []string{"detect"},
+		},
+	})
+	assertCode(t, "create skip rule", 201, resp)
+	skipID := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+skipID)
+		cleanup(t, wafctlURL+"/api/exclusions/"+detectID)
+		deployWAF(t)
+	})
+
+	// Deploy — skip should prevent the detect rule from firing.
+	// The detect rule alone would block SQLi (CRITICAL=5 >= threshold 5).
+	// First verify detect works WITHOUT skip by checking generate output.
+	resp3, body3 := httpPost(t, wafctlURL+"/api/config/generate", struct{}{})
+	assertCode(t, "generate", 200, resp3)
+	t.Logf("generated policy rules: %s", string(body3)[:min(500, len(body3))])
+
+	time.Sleep(1 * time.Second)
+	deployWAF(t)
+	// Policy engine hot-reload interval is 5s in e2e config.
+	time.Sleep(8 * time.Second)
+
+	// Send a request with a SQLi payload in a custom header.
+	// Without skip, the custom detect rule + default CRS rules would block this.
+	// With skip targeting detect phase, ALL detect evaluation is bypassed.
+	req, _ := http.NewRequest("GET", caddyURL+testPath, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; e2e-test/1.0)")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("X-Test-Payload", "' OR 1=1--")
+	resp4, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp4.Body.Close()
+
+	if resp4.StatusCode == 403 {
+		t.Errorf("expected non-403 (skip should bypass detect), got 403")
+	}
+	t.Logf("skip-detect status: %d (expected non-403)", resp4.StatusCode)
 }

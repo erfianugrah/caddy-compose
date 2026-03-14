@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ShieldMinus, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import type { WAFServiceSettings, ServiceDetail } from "@/lib/api";
 import { SensitivitySettings } from "./SettingsFormSections";
 
@@ -72,6 +73,30 @@ export function ServiceSettingsCard({
       {expanded && (
         <CardContent className="space-y-5 border-t border-border pt-4">
           <SensitivitySettings settings={settings} onChange={onChange} compact />
+
+          <Separator />
+
+          {/* Skip Rules shortcut — manage per-service CRS rule exceptions */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldMinus className="h-3.5 w-3.5 text-lv-cyan" />
+                <span className="text-xs font-medium">Rule Exceptions</span>
+              </div>
+              <a
+                href={`/policy`}
+                className="inline-flex items-center gap-1 text-xs text-lv-cyan hover:underline"
+              >
+                Manage on Policy page
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              To disable specific CRS rules for {hostname}, create a <strong>Skip</strong> rule
+              on the Policy page with a <code className="text-[10px] bg-muted/50 px-1 rounded">host equals {hostname}</code> condition
+              and the rule IDs to skip.
+            </p>
+          </div>
 
           <div className="flex justify-end">
             <Button variant="ghost" size="sm" onClick={onRemove} className="text-lv-red text-xs">

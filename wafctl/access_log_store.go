@@ -73,14 +73,15 @@ type RateLimitEvent struct {
 	Method         string              `json:"method"`
 	URI            string              `json:"uri"`
 	Protocol       string              `json:"protocol,omitempty"` // e.g. "HTTP/2.0"
+	Status         int                 `json:"status,omitempty"`   // original HTTP status (for logged events: 200)
 	UserAgent      string              `json:"user_agent"`
-	Source         string              `json:"source,omitempty"`          // "" = rate_limited, "ipsum" = ipsum_blocked, "policy" = policy engine block, "detect_block" = anomaly threshold
+	Source         string              `json:"source,omitempty"`          // "" = rate_limited, "policy" = policy engine block, "detect_block" = anomaly threshold, "logged" = below-threshold detect
 	RuleName       string              `json:"rule_name,omitempty"`       // policy engine: X-Blocked-Rule header value or detect summary
 	RequestID      string              `json:"request_id,omitempty"`      // Caddy UUID for cross-log correlation
-	AnomalyScore   int                 `json:"anomaly_score,omitempty"`   // detect_block: total anomaly score
-	DetectRules    string              `json:"detect_rules,omitempty"`    // detect_block: "id:severity:score,..." detail string
-	DetectMatches  string              `json:"detect_matches,omitempty"`  // detect_block: raw JSON of per-rule match details
-	InlineTags     []string            `json:"inline_tags,omitempty"`     // detect_block: tags from policy_tags log_append field
+	AnomalyScore   int                 `json:"anomaly_score,omitempty"`   // detect_block/logged: total anomaly score
+	DetectRules    string              `json:"detect_rules,omitempty"`    // detect_block/logged: "id:severity:score,..." detail string
+	DetectMatches  string              `json:"detect_matches,omitempty"`  // detect_block/logged: raw JSON of per-rule match details
+	InlineTags     []string            `json:"inline_tags,omitempty"`     // detect_block/logged: tags from policy_tags log_append field
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"` // block/detect_block: captured request headers
 	RequestBody    string              `json:"request_body,omitempty"`    // block/detect_block: truncated body excerpt
 }
@@ -480,10 +481,17 @@ func (s *AccessLogStore) Load() {
 		if len(line) > 0 {
 			var entry AccessLogEntry
 			if jsonErr := json.Unmarshal(line, &entry); jsonErr == nil {
-				// Collect 429 (rate limited) and policy-engine-blocked (403) responses.
+				// Collect 429 (rate limited), policy-engine-blocked (403), and
+				// below-threshold detect events (any status with anomaly score).
 				isRateLimit := entry.Status == 429
 				isPolicy := entry.Status == 403 && isPolicyBlocked(entry)
-				if isRateLimit || isPolicy {
+				// Below-threshold detect: score > 0 AND actual CRS rule matches present.
+				// Without the DetectRules check, we'd collect every single request
+				// that passes through the policy engine (high volume noise).
+				isLogged := !isPolicy && !isRateLimit &&
+					entry.PolicyScore != "" && entry.PolicyScore != "0" &&
+					(entry.PolicyDetectRules != "" || entry.PolicyDetectMatches != "")
+				if isRateLimit || isPolicy || isLogged {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -497,6 +505,7 @@ func (s *AccessLogStore) Load() {
 						Method:    entry.Request.Method,
 						URI:       entry.Request.URI,
 						Protocol:  entry.Request.Proto,
+						Status:    entry.Status,
 						UserAgent: ua,
 						RequestID: accessLogRequestID(entry),
 					}
@@ -516,6 +525,17 @@ func (s *AccessLogStore) Load() {
 					} else if isPolicy {
 						evt.Source = "policy"
 						evt.RuleName = policyBlockedRuleName(entry)
+					} else if isLogged {
+						// Below-threshold detect: CRS rules fired but score didn't
+						// exceed the inbound threshold. These appear as "logged" events
+						// so tuning/log-only mode has visibility.
+						evt.Source = "logged"
+						evt.DetectRules = entry.PolicyDetectRules
+						evt.DetectMatches = entry.PolicyDetectMatches
+						evt.AnomalyScore, _ = strconv.Atoi(entry.PolicyScore)
+						if entry.PolicyTags != "" {
+							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
+						}
 					}
 					// Capture request context from policy engine (block/detect_block only).
 					if isPolicy {
@@ -758,10 +778,16 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// Policy engine rate limit — still a 429/rate_limited but with rule attribution.
 		status = 429
 		eventType = "rate_limited"
+	case "logged":
+		// Below-threshold detect: CRS rules scored but didn't exceed threshold.
+		// Keep the original HTTP status (typically 200) and mark as "logged".
+		status = rle.Status
+		eventType = "logged"
 	}
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
 	}
+	isBlocked := rle.Source != "logged"
 	evt := Event{
 		ID:             rle.RequestID,
 		Timestamp:      rle.Timestamp,
@@ -771,7 +797,7 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		Method:         rle.Method,
 		URI:            rle.URI,
 		Protocol:       rle.Protocol,
-		IsBlocked:      true,
+		IsBlocked:      isBlocked,
 		ResponseStatus: status,
 		UserAgent:      rle.UserAgent,
 		EventType:      eventType,
@@ -782,12 +808,14 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	if rle.Source == "policy" && rle.RuleName != "" {
 		evt.RuleMsg = "Policy Block: " + rle.RuleName
 	}
-	// For detect_block, include the anomaly score and matched rule details.
+	// For detect_block and logged, include the anomaly score and matched rule details.
 	// Enrich with CRS descriptions and populate top-level fields
 	// (rule_id, severity, rule_msg, blocked_by, matched_data, rule_tags).
-	if rle.Source == "detect_block" {
+	if rle.Source == "detect_block" || rle.Source == "logged" {
 		evt.AnomalyScore = rle.AnomalyScore
-		evt.BlockedBy = "anomaly_inbound"
+		if rle.Source == "detect_block" {
+			evt.BlockedBy = "anomaly_inbound"
+		}
 		// Parse detect_rules into matched_rules for the event response.
 		if rle.DetectRules != "" {
 			evt.MatchedRules = parseDetectRulesDetail(rle.DetectRules)

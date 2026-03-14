@@ -1,14 +1,16 @@
-import type { WAFEvent, Condition, ConditionOperator } from "@/lib/api";
+import type { WAFEvent, Condition, ConditionOperator, SkipTargets } from "@/lib/api";
 
 // ─── Event Prefill ──────────────────────────────────────────────────
 
 export interface EventPrefill {
-  action: "allow" | "block" | "detect";
+  action: "allow" | "block" | "skip" | "detect";
   name: string;
   description: string;
   ruleIds: string;        // Space-separated rule IDs
+  ruleIdList: string[];   // Individual rule IDs for skip_targets population
   conditions: Condition[];
   sourceEvent: WAFEvent;
+  suggestedSkipTargets?: SkipTargets; // Pre-built skip targets from matched rules
 }
 
 /** Extract prefill data from a WAF event for the Quick Actions form.
@@ -106,13 +108,21 @@ export function extractPrefillFromEvent(event: WAFEvent): EventPrefill {
     ? `Auto-created from event: ${event.rule_msg}`
     : `Auto-created from event ${event.id}`;
 
+  // Build suggested skip targets from rule IDs — when user switches to Skip,
+  // these are auto-populated so they don't have to re-type them.
+  const suggestedSkipTargets: SkipTargets | undefined = ruleIds.length > 0
+    ? { rules: ruleIds, phases: ["detect"] }
+    : undefined;
+
   return {
     action,
     name,
     description,
     ruleIds: ruleIds.join(" "),
+    ruleIdList: ruleIds,
     conditions,
     sourceEvent: event,
+    suggestedSkipTargets,
   };
 }
 
