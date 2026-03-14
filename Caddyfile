@@ -63,16 +63,18 @@
 }
 
 (cors) {
+	# CORS: validate Origin against *.erfi.io allowlist (not Host reflection).
+	@cors_origin `header_regexp("Origin", "^https://[a-z0-9-]+\\.erfi\\.io$")`
 	@cors_preflight method OPTIONS
 	handle @cors_preflight {
-		header Access-Control-Allow-Origin "https://{http.request.host}"
+		header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
 		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
-		header Access-Control-Allow-Headers "Content-Type"
+		header Access-Control-Allow-Headers "Content-Type, Authorization"
 		header Access-Control-Max-Age "3600"
 		respond "" 204
 	}
-	header Access-Control-Allow-Origin "https://{http.request.host}"
-	header Vary Origin
+	header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
+	header @cors_origin Vary Origin
 }
 
 # Static asset caching — sets Cache-Control only if the upstream didn't already.

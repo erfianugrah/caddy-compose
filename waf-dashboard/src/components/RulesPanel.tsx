@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import {
   type DefaultRule,
   type RuleSeverity,
+  type WAFConfig,
   CRS_CATEGORIES,
   getCategoryForRule,
   listDefaultRules,
@@ -11,6 +12,7 @@ import {
   resetDefaultRule,
   bulkOverrideDefaultRules,
   bulkResetDefaultRules,
+  getConfig,
 } from "@/lib/api";
 import { deployConfig } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -104,14 +106,20 @@ export default function RulesPanel() {
   // Detail dialog
   const [detailRule, setDetailRule] = useState<DefaultRule | null>(null);
 
+  // WAF config (for PL section header integration)
+  const [wafPL, setWafPL] = useState(2);
+  const [wafThreshold, setWafThreshold] = useState(10);
+
   // ── Load ────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await listDefaultRules();
+      const [data, cfg] = await Promise.all([listDefaultRules(), getConfig()]);
       setRules(data);
+      setWafPL(cfg.defaults.paranoia_level);
+      setWafThreshold(cfg.defaults.inbound_threshold);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -568,6 +576,8 @@ export default function RulesPanel() {
               enabledCount={enabledCount}
               isCollapsed={isCollapsed}
               selected={selected}
+              wafPL={wafPL}
+              wafThreshold={wafThreshold}
               onToggleCollapse={() => togglePL(pl)}
               onToggleRule={handleToggle}
               onSeverityChange={handleSeverityChange}
@@ -618,6 +628,8 @@ interface PLSectionProps {
   enabledCount: number;
   isCollapsed: boolean;
   selected: Set<string>;
+  wafPL: number;      // global paranoia_level from WAFConfig
+  wafThreshold: number; // global inbound_threshold from WAFConfig
   onToggleCollapse: () => void;
   onToggleRule: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
@@ -633,6 +645,8 @@ function PLSection({
   enabledCount,
   isCollapsed,
   selected,
+  wafPL,
+  wafThreshold,
   onToggleCollapse,
   onToggleRule,
   onSeverityChange,
@@ -641,6 +655,7 @@ function PLSection({
   onToggleSelect,
   onBulkPL,
 }: PLSectionProps) {
+  const isActivePL = pl <= wafPL; // PL is active if <= the configured paranoia level
   const [page, setPage] = useState(0);
   const { sortState, toggleSort, sortedData } = useTableSort<DefaultRule, RuleSortKey>(
     rules,
@@ -672,10 +687,24 @@ function PLSection({
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           )}
           <span className="text-sm font-semibold">PL{pl}</span>
+          {isActivePL ? (
+            <Badge className="text-[10px] bg-lv-green/15 text-lv-green border-lv-green/30">
+              Active
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground/50">
+              Inactive
+            </Badge>
+          )}
           <Badge variant="outline" className="text-xs">
-            {enabledCount}/{rules.length} enabled
+            {enabledCount}/{rules.length}
           </Badge>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
+          {isActivePL && (
+            <span className="text-[10px] text-muted-foreground hidden sm:inline font-data">
+              Threshold: {wafThreshold}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground hidden md:inline">
             {PL_DESCRIPTIONS[pl]}
           </span>
         </button>

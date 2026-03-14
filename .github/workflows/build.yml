@@ -175,6 +175,9 @@ jobs:
       - name: Attest SBOM
         run: cosign attest --yes --predicate caddy.spdx.json --type spdxjson "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
 
+      - name: Verify image exists on registry
+        run: docker manifest inspect "${{ steps.meta.outputs.full }}" > /dev/null
+
   # ── Build + scan + push + sign wafctl image ─────────────────────
   wafctl:
     needs: [changes, test-go, test-frontend, test-e2e]
@@ -228,3 +231,6 @@ jobs:
 
       - name: Attest SBOM
         run: cosign attest --yes --predicate wafctl.spdx.json --type spdxjson "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
+
+      - name: Verify image exists on registry
+        run: docker manifest inspect "${{ steps.meta.outputs.full }}" > /dev/null

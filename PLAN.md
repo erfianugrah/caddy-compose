@@ -997,7 +997,7 @@ each with generous sleep waits. The biggest time sinks:
 - [x] CRS rules: Pagination per PL section — **DONE**: 50 rules/page with First/Prev/Next/Last controls in `PLSection` component
 - [x] CRS rules: Bulk actions — checkbox column, select all, bulk toolbar (enable/disable/severity/reset)
 - [x] CRS rules: Bulk action API — `POST /api/default-rules/bulk` with `{ ids, action: "override"|"reset", override }` + tests
-- [ ] CRS rules: Global PL controls on section headers — each PL section header should have:
+- [x] CRS rules: Global PL controls on section headers — each PL section header shows:
   - PL-level enable/disable toggle (disable all rules at this PL)
   - Anomaly score threshold display/edit (leverages WAF engine settings via policy engine)
   - These controls map to the existing `WAFConfig` (paranoia_level, inbound_threshold) but
@@ -3669,7 +3669,7 @@ header Access-Control-Allow-Origin "https://{http.request.host}"
 Reflects the `Host` header back as allowed origin. Behind Cloudflare with `strict_sni_host`,
 this is limited, but a spoofed Host header that bypasses SNI would get CORS access.
 
-- [ ] Consider explicit origin allowlist instead of Host reflection
+- [x] Use explicit origin allowlist instead of Host reflection (Caddyfile CORS validates Origin against `*.erfi.io` regex)
 
 #### CR2-16: No Logging on `:2020` Internal Admin Proxy — `Caddyfile:626-636`
 
@@ -3762,7 +3762,7 @@ Release workflow creates a GitHub release based on tag push but doesn't verify t
 corresponding Docker images were successfully built/signed. A tag could be pushed
 without `build.yml` having run.
 
-- [ ] Add image existence check or make release workflow depend on successful build
+- [x] Add image existence check (`docker manifest inspect`) after push in CI workflow
 
 #### CR2-28: Managed List IP Regex Accepts Invalid Patterns — `ManagedListsPanel.tsx:134-147`
 
@@ -3777,7 +3777,7 @@ is misleading.
 Every field defaults via `??` even though the `RateLimitRule` type declares them as
 non-optional. This hides backend API contract violations silently.
 
-- [ ] Consider a narrower `RawRateLimitRule` type with optional fields for the mapper
+- [x] Add `RawRateLimitRule` type with optional fields for the mapper (defensive deserialization)
 
 ### Summary
 

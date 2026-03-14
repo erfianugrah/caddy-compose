@@ -169,125 +169,129 @@ export function ConditionRow({
   const operators = fieldDef.operators;
 
   const isListOp = condition.operator === "in_list" || condition.operator === "not_in_list";
+  const transforms = condition.transforms ?? [];
 
   return (
-    <div className="flex items-start gap-2">
-      {/* Field selector */}
-      <Select
-        value={condition.field}
-        onValueChange={(v) => {
-          const newField = v as ConditionField;
-          const newFieldDef = getFieldDef(newField);
-          onChange(index, {
-            field: newField,
-            operator: newFieldDef.operators[0].value,
-            value: "",
-            transforms: condition.transforms,
-          });
-        }}
-      >
-        <SelectTrigger className="w-[160px] shrink-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {availableFields.map((f) => (
-            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className="space-y-1">
+      {/* Main row: Field → Operator → Value → Remove */}
+      <div className="flex items-start gap-2">
+        {/* Field selector */}
+        <Select
+          value={condition.field}
+          onValueChange={(v) => {
+            const newField = v as ConditionField;
+            const newFieldDef = getFieldDef(newField);
+            onChange(index, {
+              field: newField,
+              operator: newFieldDef.operators[0].value,
+              value: "",
+              transforms: condition.transforms,
+            });
+          }}
+        >
+          <SelectTrigger className="w-[160px] shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {availableFields.map((f) => (
+              <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-      {/* Transforms — applied to field value before operator evaluates */}
-      <TransformSelect
-        value={condition.transforms ?? []}
-        onChange={(transforms) => onChange(index, { ...condition, transforms: transforms.length > 0 ? transforms : undefined })}
-      />
+        {/* Operator selector */}
+        <Select
+          value={condition.operator}
+          onValueChange={(v) => {
+            const newOp = v as ConditionOperator;
+            const isPhraseOp = newOp === "phrase_match" || newOp === "not_phrase_match";
+            const wasPhraseOp = condition.operator === "phrase_match" || condition.operator === "not_phrase_match";
+            if (isPhraseOp) {
+              const items = condition.value ? condition.value.split("|").filter(Boolean) : [];
+              onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : (condition.list_items ?? undefined) });
+            } else {
+              const fromPhraseMatch = wasPhraseOp && condition.list_items?.length;
+              const isInOp = newOp === "in" || newOp === "not_in";
+              const newValue = fromPhraseMatch && isInOp ? condition.list_items!.join("|") : "";
+              onChange(index, { ...condition, operator: newOp, value: newValue, list_items: undefined });
+            }
+          }}
+        >
+          <SelectTrigger className="w-[160px] shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {operators.map((op) => (
+              <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-      {/* Operator selector */}
-      <Select
-        value={condition.operator}
-        onValueChange={(v) => {
-          const newOp = v as ConditionOperator;
-          const isPhraseOp = newOp === "phrase_match" || newOp === "not_phrase_match";
-          const wasPhraseOp = condition.operator === "phrase_match" || condition.operator === "not_phrase_match";
-          if (isPhraseOp) {
-            const items = condition.value ? condition.value.split("|").filter(Boolean) : [];
-            onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : (condition.list_items ?? undefined) });
-          } else {
-            const fromPhraseMatch = wasPhraseOp && condition.list_items?.length;
-            const isInOp = newOp === "in" || newOp === "not_in";
-            const newValue = fromPhraseMatch && isInOp ? condition.list_items!.join("|") : "";
-            onChange(index, { ...condition, operator: newOp, value: newValue, list_items: undefined });
-          }
-        }}
-      >
-        <SelectTrigger className="w-[160px] shrink-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {operators.map((op) => (
-            <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        {/* Value input */}
+        <div className="flex flex-1 flex-col gap-1">
+          {condition.operator === "exists" ? (
+            <span className="flex items-center h-9 px-3 text-xs text-muted-foreground italic">field exists (no value needed)</span>
+          ) : isListOp ? (
+            <ListValueSelect
+              value={condition.value}
+              field={condition.field}
+              onChange={(v) => onChange(index, { ...condition, value: v })}
+            />
+          ) : condition.field === "host" ? (
+            <HostValueInput
+              value={condition.value}
+              services={services}
+              onChange={(v) => onChange(index, { ...condition, value: v })}
+            />
+          ) : condition.field === "method" && (condition.operator === "in" || condition.operator === "not_in") ? (
+            <MethodMultiSelect
+              value={condition.value}
+              onChange={(v) => onChange(index, { ...condition, value: v })}
+            />
+          ) : condition.operator === "phrase_match" || condition.operator === "not_phrase_match" ? (
+            <PipeTagInput
+              value={(condition.list_items ?? []).join("|")}
+              onChange={(v) => {
+                const items = v ? v.split("|").filter(Boolean) : [];
+                onChange(index, { ...condition, value: "", list_items: items.length > 0 ? items : undefined });
+              }}
+              placeholder="e.g., select|union|insert|drop"
+            />
+          ) : condition.operator === "in" || condition.operator === "not_in" ? (
+            <PipeTagInput
+              value={condition.value}
+              onChange={(v) => onChange(index, { ...condition, value: v })}
+              placeholder={fieldDef.placeholder}
+            />
+          ) : (
+            <Input
+              value={condition.value}
+              onChange={(e) => onChange(index, { ...condition, value: e.target.value })}
+              placeholder={fieldDef.placeholder}
+              className="flex-1"
+            />
+          )}
+          {fieldDef.hint && !isListOp && condition.operator !== "exists" && (
+            <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
+          )}
+        </div>
 
-      {/* Value input */}
-      <div className="flex flex-1 flex-col gap-1">
-        {condition.operator === "exists" ? (
-          <span className="flex items-center h-9 px-3 text-xs text-muted-foreground italic">field exists (no value needed)</span>
-        ) : isListOp ? (
-          <ListValueSelect
-            value={condition.value}
-            field={condition.field}
-            onChange={(v) => onChange(index, { ...condition, value: v })}
-          />
-        ) : condition.field === "host" ? (
-          <HostValueInput
-            value={condition.value}
-            services={services}
-            onChange={(v) => onChange(index, { ...condition, value: v })}
-          />
-        ) : condition.field === "method" && (condition.operator === "in" || condition.operator === "not_in") ? (
-          <MethodMultiSelect
-            value={condition.value}
-            onChange={(v) => onChange(index, { ...condition, value: v })}
-          />
-        ) : condition.operator === "phrase_match" || condition.operator === "not_phrase_match" ? (
-          <PipeTagInput
-            value={(condition.list_items ?? []).join("|")}
-            onChange={(v) => {
-              const items = v ? v.split("|").filter(Boolean) : [];
-              onChange(index, { ...condition, value: "", list_items: items.length > 0 ? items : undefined });
-            }}
-            placeholder="e.g., select|union|insert|drop"
-          />
-        ) : condition.operator === "in" || condition.operator === "not_in" ? (
-          <PipeTagInput
-            value={condition.value}
-            onChange={(v) => onChange(index, { ...condition, value: v })}
-            placeholder={fieldDef.placeholder}
-          />
-        ) : (
-          <Input
-            value={condition.value}
-            onChange={(e) => onChange(index, { ...condition, value: e.target.value })}
-            placeholder={fieldDef.placeholder}
-            className="flex-1"
-          />
-        )}
-        {fieldDef.hint && !isListOp && condition.operator !== "exists" && (
-          <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
-        )}
+        {/* Remove button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0 text-muted-foreground hover:text-lv-red"
+          onClick={() => onRemove(index)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
 
-      {/* Remove button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0 text-muted-foreground hover:text-lv-red"
-        onClick={() => onRemove(index)}
-      >
-        <X className="h-4 w-4" />
-      </Button>
+      {/* Transforms sub-row — collapsible, below the main condition row */}
+      <TransformSelect
+        value={transforms}
+        onChange={(t) => onChange(index, { ...condition, transforms: t.length > 0 ? t : undefined })}
+      />
     </div>
   );
 }

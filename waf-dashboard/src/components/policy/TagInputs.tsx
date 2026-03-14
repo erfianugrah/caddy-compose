@@ -462,7 +462,7 @@ function SortableTransformChip({
   );
 }
 
-// ─── Transform Select (compact dropdown for condition row) ──────────
+// ─── Transform Select (collapsible sub-row) ────────────────────────
 
 export function TransformSelect({
   value,
@@ -471,7 +471,8 @@ export function TransformSelect({
   value: string[];
   onChange: (value: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const selected = value ?? [];
 
   const sensors = useSensors(
@@ -488,7 +489,9 @@ export function TransformSelect({
   };
 
   const remove = (t: string) => {
-    onChange(selected.filter((s) => s !== t));
+    const next = selected.filter((s) => s !== t);
+    onChange(next);
+    if (next.length === 0) setExpanded(false);
   };
 
   const applyPreset = (transforms: string[]) => {
@@ -507,42 +510,54 @@ export function TransformSelect({
     }
   };
 
+  // Auto-expand when transforms are present
+  const hasTransforms = selected.length > 0;
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          className={`inline-flex items-center gap-1 shrink-0 h-9 rounded-md border px-2 text-xs transition-colors ${
-            selected.length > 0
-              ? "border-lv-cyan/30 bg-lv-cyan/5 text-lv-cyan"
-              : "border-border text-muted-foreground/60 hover:text-muted-foreground hover:border-muted-foreground/50"
-          }`}
-        >
-          <Sparkles className="h-3 w-3" />
-          {selected.length > 0 ? (
-            <span className="font-data">{selected.length}</span>
-          ) : (
-            <span className="hidden sm:inline">T</span>
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="p-0 w-[320px]" align="start">
-        {/* Selected pipeline (draggable) — shown at top when transforms active */}
-        {selected.length > 0 && (
-          <div className="border-b border-border p-2 space-y-1.5">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 px-1">Pipeline</p>
-            <div className="flex flex-wrap items-center gap-1">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
-                  {selected.map((t, i) => (
-                    <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </div>
-          </div>
+    <div className="pl-[160px]">
+      {/* Toggle row */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className={`inline-flex items-center gap-1.5 text-[11px] transition-colors ${
+          hasTransforms
+            ? "text-lv-cyan"
+            : "text-muted-foreground/50 hover:text-muted-foreground"
+        }`}
+      >
+        <Sparkles className="h-3 w-3" />
+        {hasTransforms ? (
+          <span>Transforms ({selected.length}): {selected.join(" → ")}</span>
+        ) : (
+          <span>Add transforms</span>
         )}
-        <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
-      </PopoverContent>
-    </Popover>
+      </button>
+
+      {/* Expanded pipeline + add controls */}
+      {(expanded || hasTransforms) && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          {hasTransforms && (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
+                {selected.map((t, i) => (
+                  <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )}
+          <Popover open={addOpen} onOpenChange={setAddOpen}>
+            <PopoverTrigger asChild>
+              <button className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
+                <Plus className="h-2.5 w-2.5" />
+                {!hasTransforms && <span>Add</span>}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[320px]" align="start" side="bottom">
+              <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
+    </div>
   );
 }

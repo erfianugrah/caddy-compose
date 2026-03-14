@@ -85,7 +85,26 @@ export interface RLRuleHitsResponse {
 
 // ─── Rate Limit Rule Mapper ─────────────────────────────────────────
 
-function mapRLRule(raw: RateLimitRule): RateLimitRule {
+/** Raw API response — fields may be null/omitted due to Go omitempty. */
+interface RawRateLimitRule {
+  id?: string;
+  name?: string;
+  description?: string;
+  service?: string;
+  conditions?: Condition[];
+  group_operator?: string;
+  key?: string;
+  events?: number;
+  window?: string;
+  action?: string;
+  priority?: number;
+  tags?: string[];
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function mapRLRule(raw: RawRateLimitRule): RateLimitRule {
   return {
     id: raw.id ?? "",
     name: raw.name ?? "",
@@ -108,22 +127,22 @@ function mapRLRule(raw: RateLimitRule): RateLimitRule {
 // ─── Rate Limit Rule CRUD ───────────────────────────────────────────
 
 export async function getRLRules(): Promise<RateLimitRule[]> {
-  const raw = await fetchJSON<RateLimitRule[]>(`${API_BASE}/rate-rules`);
+  const raw = await fetchJSON<RawRateLimitRule[]>(`${API_BASE}/rate-rules`);
   return (raw ?? []).map(mapRLRule);
 }
 
 export async function getRLRule(id: string): Promise<RateLimitRule> {
-  const raw = await fetchJSON<RateLimitRule>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`);
+  const raw = await fetchJSON<RawRateLimitRule>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`);
   return mapRLRule(raw);
 }
 
 export async function createRLRule(data: RateLimitRuleCreateData): Promise<RateLimitRule> {
-  const raw = await postJSON<RateLimitRule>(`${API_BASE}/rate-rules`, data);
+  const raw = await postJSON<RawRateLimitRule>(`${API_BASE}/rate-rules`, data);
   return mapRLRule(raw);
 }
 
 export async function updateRLRule(id: string, data: RateLimitRuleUpdateData): Promise<RateLimitRule> {
-  const raw = await putJSON<RateLimitRule>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`, data);
+  const raw = await putJSON<RawRateLimitRule>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`, data);
   return mapRLRule(raw);
 }
 
