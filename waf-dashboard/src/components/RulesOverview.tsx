@@ -535,8 +535,8 @@ export default function RulesOverview() {
             {unconfiguredHosts.length > 0 && (
               <div className="flex justify-end">
                 <Select onValueChange={(v) => handleAddServiceOverride(v)}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Add service override..." />
+                  <SelectTrigger className="w-[260px] text-muted-foreground">
+                    <SelectValue placeholder="+ Add service override..." />
                   </SelectTrigger>
                   <SelectContent>
                     {unconfiguredHosts.map((host) => (

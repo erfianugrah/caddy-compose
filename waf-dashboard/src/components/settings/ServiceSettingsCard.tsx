@@ -84,8 +84,9 @@ export function ServiceSettingsCard({
                 <span className="text-xs font-medium">Rule Exceptions</span>
               </div>
               <a
-                href={`/policy`}
-                className="inline-flex items-center gap-1 text-xs text-lv-cyan hover:underline"
+                href="/policy"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 rounded-md border border-lv-cyan/30 bg-lv-cyan/5 px-2.5 py-1 text-xs text-lv-cyan hover:bg-lv-cyan/10 transition-colors"
               >
                 Manage on Policy page
                 <ExternalLink className="h-3 w-3" />
