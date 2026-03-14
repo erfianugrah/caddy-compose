@@ -906,8 +906,9 @@ func enrichAccessEvents(rlEvents []RateLimitEvent, rules []RateLimitRule, exclus
 	for i, rle := range rlEvents {
 		var tags []string
 		switch rle.Source {
-		case "detect_block":
-			// Detect-threshold block — tags come inline from the plugin (policy_tags log field).
+		case "detect_block", "logged":
+			// Detect-threshold block or below-threshold logged — tags come inline
+			// from the plugin (policy_tags log field).
 			tags = rle.InlineTags
 		case "policy", "ipsum":
 			// Match policy engine block to exclusion tags by rule name.
@@ -919,6 +920,9 @@ func enrichAccessEvents(rlEvents []RateLimitEvent, rules []RateLimitRule, exclus
 			if t, ok := rlTagsByName[rle.RuleName]; ok {
 				tags = t
 			}
+		case "policy_skip":
+			// Policy engine skip — inline tags from the plugin.
+			tags = rle.InlineTags
 		default:
 			// Legacy caddy-ratelimit 429 — heuristic condition matching.
 			tags = matchEventToRuleTags(rle, sorted)
@@ -1081,9 +1085,29 @@ func enrichDetectBlockEvent(evt *Event, rawRuleName string) {
 	evt.Severity = best.Severity
 	evt.RuleMsg = best.Msg
 	evt.MatchedData = best.MatchedData
-	// Use event-level tags as RuleTags (rule-level tags are just "detect,score:N" + CRS tags).
-	if len(evt.Tags) > 0 {
-		evt.RuleTags = evt.Tags
+	// Collect CRS category tags from enriched matched rules into RuleTags.
+	// These are the tags like "application-multi", "attack-sqli", "language-shell"
+	// that the CRS rule lookup adds to each matched rule.
+	tagSeen := make(map[string]bool)
+	var allTags []string
+	// Start with event-level tags (from plugin policy_tags).
+	for _, t := range evt.Tags {
+		if !tagSeen[t] {
+			tagSeen[t] = true
+			allTags = append(allTags, t)
+		}
+	}
+	// Add CRS tags from each matched rule (enriched by LookupCRSRule above).
+	for _, r := range evt.MatchedRules {
+		for _, t := range r.Tags {
+			if !tagSeen[t] {
+				tagSeen[t] = true
+				allTags = append(allTags, t)
+			}
+		}
+	}
+	if len(allTags) > 0 {
+		evt.RuleTags = allTags
 	}
 }
 

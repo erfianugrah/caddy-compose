@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Check, Copy, Sparkles, GripVertical } from "lucide-react";
+import { Plus, X, Check, Copy, Sparkles, GripVertical, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -346,7 +346,7 @@ const TRANSFORM_PRESETS: { label: string; description: string; transforms: strin
   { label: "Normalize", description: "Whitespace + path cleanup", transforms: ["lowercase", "normalizePath", "compressWhitespace", "trim"] },
 ];
 
-/** Popover contents — grouped transform list with presets. */
+/** Popover contents — compact scrollable list matching Select dropdown style. */
 function TransformPopoverContent({
   selected,
   onToggle,
@@ -357,49 +357,45 @@ function TransformPopoverContent({
   onApplyPreset: (transforms: string[]) => void;
 }) {
   return (
-    <div className="w-[300px] max-h-[400px] overflow-y-auto">
-      {/* Presets */}
-      <div className="px-2 pt-2 pb-1">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold mb-1.5">Presets</p>
-        <div className="flex flex-wrap gap-1.5">
-          {TRANSFORM_PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => onApplyPreset(preset.transforms)}
-              className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-lovelace-800/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent hover:border-accent-foreground/20 transition-colors"
-              title={preset.description}
-            >
-              <Sparkles className="h-3 w-3" />
-              {preset.label}
-            </button>
-          ))}
-        </div>
+    <div className="w-[240px]">
+      {/* Presets — compact row */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border/30">
+        {TRANSFORM_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            onClick={() => onApplyPreset(preset.transforms)}
+            className="rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title={preset.description}
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
 
-      <div className="my-1 mx-2 h-px bg-border/30" />
-
-      {/* Grouped items */}
-      {TRANSFORM_GROUPS.map((group) => (
-        <div key={group.label}>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold px-2 pt-2 pb-1">{group.label}</p>
-          {group.items.map((t) => {
-            const isSelected = selected.includes(t);
-            return (
-              <button
-                key={t}
-                onClick={() => onToggle(t)}
-                className="flex w-full items-start gap-2 rounded px-2 py-1.5 cursor-pointer hover:bg-accent"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-data font-medium ${isSelected ? "text-lv-cyan" : ""}`}>{t}</p>
-                  <p className="text-[10px] leading-tight text-muted-foreground">{TRANSFORM_HINTS[t]}</p>
-                </div>
-                {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-lv-cyan mt-0.5" />}
-              </button>
-            );
-          })}
-        </div>
-      ))}
+      {/* Scrollable transform list */}
+      <div className="max-h-[200px] overflow-y-auto py-1">
+        {TRANSFORM_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 px-2 pt-1.5 pb-0.5">{group.label}</p>
+            {group.items.map((t) => {
+              const isSelected = selected.includes(t);
+              return (
+                <button
+                  key={t}
+                  onClick={() => onToggle(t)}
+                  className={`flex w-full items-center justify-between px-2 py-1 text-xs cursor-pointer hover:bg-accent rounded-sm mx-1 ${
+                    isSelected ? "text-lv-cyan" : "text-foreground"
+                  }`}
+                  style={{ width: "calc(100% - 8px)" }}
+                >
+                  <span className="font-data">{t}</span>
+                  {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -471,7 +467,6 @@ export function TransformSelect({
   value: string[];
   onChange: (value: string[]) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const selected = value ?? [];
 
@@ -489,9 +484,7 @@ export function TransformSelect({
   };
 
   const remove = (t: string) => {
-    const next = selected.filter((s) => s !== t);
-    onChange(next);
-    if (next.length === 0) setExpanded(false);
+    onChange(selected.filter((s) => s !== t));
   };
 
   const applyPreset = (transforms: string[]) => {
@@ -515,49 +508,36 @@ export function TransformSelect({
 
   return (
     <div className="pl-[160px]">
-      {/* Toggle row */}
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 text-[11px] transition-colors ${
-          hasTransforms
-            ? "text-lv-cyan"
-            : "text-muted-foreground/50 hover:text-muted-foreground"
-        }`}
-      >
-        <Sparkles className="h-3 w-3" />
-        {hasTransforms ? (
-          <span>Transforms ({selected.length}): {selected.join(" → ")}</span>
-        ) : (
-          <span>Add transforms</span>
+      <div className="flex flex-wrap items-center gap-1">
+        {/* Selected transform chips (draggable) */}
+        {hasTransforms && (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
+              {selected.map((t, i) => (
+                <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
-      </button>
 
-      {/* Expanded pipeline + add controls */}
-      {(expanded || hasTransforms) && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1">
-          {hasTransforms && (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
-                {selected.map((t, i) => (
-                  <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
-          <Popover open={addOpen} onOpenChange={setAddOpen}>
-            <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
-                <Plus className="h-2.5 w-2.5" />
-                {!hasTransforms && <span>Add</span>}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="p-0 w-[320px]" align="start" side="bottom">
-              <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
-            </PopoverContent>
-          </Popover>
-        </div>
-      )}
+        {/* Add dropdown — styled to match Select triggers */}
+        <Popover open={addOpen} onOpenChange={setAddOpen}>
+          <PopoverTrigger asChild>
+            <button className={`inline-flex items-center gap-1 rounded-md border h-7 px-2 text-[11px] transition-colors ${
+              hasTransforms
+                ? "border-border/50 text-muted-foreground/60 hover:text-muted-foreground hover:border-muted-foreground/50"
+                : "border-dashed border-border/50 text-muted-foreground/40 hover:text-muted-foreground hover:border-muted-foreground/50"
+            }`}>
+              <Sparkles className="h-3 w-3" />
+              {hasTransforms ? <Plus className="h-2.5 w-2.5" /> : "Transforms"}
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="p-0" align="start" side="bottom" sideOffset={4}>
+            <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
+          </PopoverContent>
+        </Popover>
+      </div>
     </div>
   );
 }

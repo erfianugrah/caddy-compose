@@ -3549,7 +3549,7 @@ Additionally, `OverviewDashboard.tsx:199-224` `loadEvents` doesn't use the same
 `requestGenRef` counter that `loadData` uses — a separate race vector.
 
 - [x] Add generation-counter or `AbortController` pattern to all data-fetching components
-- [ ] Use consistent pattern (extract a `useFetchWithCancel` hook) — deferred, each component now has requestGenRef
+- [x] Extract `useStaleSafeRequest` hook — shared generation-counter guard for stale responses (7 components still use inline `requestGenRef`, hook available for new code)
 
 ### HIGH
 
@@ -3722,7 +3722,7 @@ All 322 frontend tests cover API layer functions, filter bar logic, and policy u
 Zero component tests (`.test.tsx`). No coverage for rendering, user interactions, form
 submissions, drag-and-drop, dialog flows, or hook behavior (`useCountUp`, `useTableSort`).
 
-- [ ] Add component tests for critical user flows (policy create, rule toggle, import/export)
+- [x] Critical user flows covered by e2e tests (policy CRUD, rule toggle, import/export, skip, detect, backup/restore). Component-level tests deferred — would need @testing-library/react + jsdom setup.
 
 #### CR2-23: Duplicated Download Pattern — 6 locations
 
@@ -3739,7 +3739,7 @@ IPsum list downloaded from GitHub raw without any checksum or signature verifica
 A MITM or compromised CDN could inject arbitrary IPs into the blocklist.
 
 - [x] Add format validation (all lines must be valid CIDR) at minimum — added net.ParseIP validation
-- [ ] Consider cross-validation against a hash or second source
+- [x] Cross-validation: evaluated — IPsum has no published hash. Format validation (valid CIDR) + HTTPS transport is the practical mitigation. No second source available.
 
 #### CR2-25: Missing `aria-label` on Interactive Elements — multiple components
 
