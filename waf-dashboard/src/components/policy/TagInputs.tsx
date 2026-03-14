@@ -226,7 +226,7 @@ export function HostMultiSelect({
   services: { service: string }[];
 }) {
   const [open, setOpen] = useState(false);
-  const [customInput, setCustomInput] = useState("");
+  const [search, setSearch] = useState("");
   const selected = value ? value.split("|").filter(Boolean) : [];
   const serviceNames = services.map((s) => s.service);
 
@@ -240,14 +240,17 @@ export function HostMultiSelect({
   };
 
   const addCustom = () => {
-    const trimmed = customInput.trim();
-    if (trimmed) {
+    const trimmed = search.trim();
+    if (trimmed && !serviceNames.includes(trimmed)) {
       addHost(trimmed);
-      setCustomInput("");
+      setSearch("");
     }
   };
 
   const unselected = serviceNames.filter((s) => !selected.includes(s));
+  const filtered = search
+    ? unselected.filter((s) => s.toLowerCase().includes(search.toLowerCase()))
+    : unselected;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-within:ring-1 focus-within:ring-ring min-h-[36px] flex-1">
@@ -265,38 +268,54 @@ export function HostMultiSelect({
           </button>
         </span>
       ))}
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch(""); }}>
         <PopoverTrigger asChild>
           <button className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent">
             <Plus className="h-3 w-3" />
             {selected.length === 0 ? "Select hosts" : "Add"}
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[220px] p-1" align="start">
-          {unselected.map((svc) => (
-            <button
-              key={svc}
-              onClick={() => { addHost(svc); if (unselected.length <= 1) setOpen(false); }}
-              className="flex w-full items-center rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
-            >
-              {svc}
-            </button>
-          ))}
-          {unselected.length > 0 && <div className="my-1 border-t border-border" />}
-          <div className="flex gap-1 px-1 py-1">
-            <input
-              value={customInput}
-              onChange={(e) => setCustomInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-              placeholder="Custom host..."
-              className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            />
-            {customInput.trim() && (
-              <button onClick={addCustom} className="text-xs text-lv-cyan hover:text-foreground">
-                <Plus className="h-3 w-3" />
+        <PopoverContent className="w-[240px] p-1" align="start">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (filtered.length === 1) { addHost(filtered[0]); setSearch(""); }
+                else addCustom();
+              }
+            }}
+            placeholder="Search or type custom..."
+            className="w-full rounded px-2 py-1.5 mb-1 text-xs bg-transparent border border-border outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+            autoFocus
+          />
+          <div className="max-h-[200px] overflow-y-auto">
+            {filtered.map((svc) => (
+              <button
+                key={svc}
+                onClick={() => { addHost(svc); setSearch(""); if (unselected.length <= 1) setOpen(false); }}
+                className="flex w-full items-center rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
+              >
+                {svc}
               </button>
+            ))}
+            {filtered.length === 0 && unselected.length > 0 && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">No matches</div>
             )}
           </div>
+          {search.trim() && !serviceNames.includes(search.trim()) && (
+            <>
+              <div className="my-1 border-t border-border" />
+              <button
+                onClick={addCustom}
+                className="flex w-full items-center gap-1 rounded px-2 py-1.5 text-xs cursor-pointer hover:bg-accent text-lv-cyan"
+              >
+                <Plus className="h-3 w-3" />
+                Add &ldquo;{search.trim()}&rdquo;
+              </button>
+            </>
+          )}
         </PopoverContent>
       </Popover>
     </div>
