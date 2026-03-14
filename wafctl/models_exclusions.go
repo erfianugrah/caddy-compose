@@ -61,6 +61,9 @@ type WAFServiceSettings struct {
 	InboundThreshold int `json:"inbound_threshold"`
 	// OutboundThreshold: anomaly score threshold for outbound responses
 	OutboundThreshold int `json:"outbound_threshold"`
+	// DisabledCategories: CRS rule ID prefixes to skip (e.g., "942" for SQLi, "941" for XSS).
+	// Per-service overrides replace the global list (not merge).
+	DisabledCategories []string `json:"disabled_categories,omitempty"`
 	// ─── CRS v4 Extended Settings ───────────────────────────────────
 	// All fields use omitempty so existing configs are unaffected.
 	// Zero/empty values mean "use CRS default" (no setvar emitted).

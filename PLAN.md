@@ -1,179 +1,155 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.31.0 / caddy 3.30.0 / plugin v0.15.0)
+## Current State (v2.31.0 / caddy 3.30.0 / plugin v0.16.0)
 
-Fully operational WAF with custom policy engine, CRS 4.24.1 (254 default rules,
-auto-converted at Docker build time), 5-pass evaluation (allow → block → skip →
-rate_limit → detect), 6 negated operators, managed lists, IPsum blocklist (8 levels,
-597K IPs), per-service skip rule management, logged event collection (tuning mode),
-unified /policy page (WAF rules + rate limits), and e2e CI pipeline.
-
----
-
-## Completed This Session (v2.26.0→v2.28.0)
-
-- [x] **AGENTS.md** — trimmed from 1057→171 lines, focused on agent-actionable info
-- [x] **Method pills** — `MethodMultiSelect` for all method operators (single mode for eq/neq)
-- [x] **Host multi-select** — `HostMultiSelect` with search, max-height scroll, custom entry
-- [x] **Operator alignment** — all string fields get 16 operators, enum fields get 6, IP gets 8
-  - Go backend `validOperatorsForField` map aligned
-  - Frontend `CONDITION_FIELDS` constants aligned
-  - `TestValidateOperatorsPerField` (275 subtests) + 23 frontend tests added
-  - Fix: method validation skips `in_list`/`not_in_list` (list name ≠ HTTP method)
-- [x] **Perf: deploy** — removed `reloadCaddy()` from `handleDeploy` and `deployAll`
-  (policy engine plugin hot-reloads via mtime polling, no Caddy restart needed)
-- [x] **Perf: FQDN cache** — `BuildServiceFQDNMap` cached with mtime invalidation (26x faster)
-- [x] **Perf: summary cache** — TTL increased from 3s to 10s
-- [x] **Perf: events pagination** — early-exit for non-export (stop after full page collected)
-- [x] **Perf: matchIntField** — avoid `strconv.Itoa` per event in status_code filter
-- [x] **Perf: ui_server** — `Cache-Control: immutable` for `/_astro/*` (defense in depth)
-- [x] **Perf: benchmarks** — 16 benchmarks for summary, events, filters, FQDN map, UI server
-- [x] **Fix: exclusion hits** — endpoint now scans access log store for policy events
-- [x] **Fix: events page** — `All (-1)` → `All` when total unknown from early-exit
-- [x] **Policy UX: pagination** — 15→25 per page
-- [x] **Policy UX: position reorder** — clickable order number opens inline input
-- [x] **Policy UX: handleMoveToPosition** + `handleBulkMoveToPosition` handlers added
-- [x] **Policy UX: back to events** — "Back to Events" link in success banner after event→policy flow
+Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
+59 outbound, auto-converted at Docker build time), 5-pass evaluation (allow → block →
+skip → rate_limit → detect), outbound anomaly scoring (response headers + body),
+per-service category masks, 6 negated operators, managed lists, IPsum blocklist
+(8 levels, 597K IPs), unified /policy page (WAF rules + rate limits tabs), and
+e2e CI pipeline.
 
 ---
 
-## Recently Completed
+## Deployed (this session: v2.26.0 → v2.31.0)
 
-- [x] **Event detail: blank gap** — replaced 2-column grid with stacked layout (both panels)
-- [x] **Event detail: long values** — TruncatedCode for URI, User-Agent, Variable, Full Value, matched_data
-- [x] **Event detail: copy buttons** — CopyBtn on all fields (Event ID, Request ID, URI, IP, etc.)
-- [x] **General Logs: same fixes** — TruncatedCode, CopyBtn, stacked layout
-- [x] **Condition builder: preserve value** — operator changes keep value (clear only for exists/list/phrase)
-- [x] **Condition builder: previous value pill** — dismissible pill after field change
-- [x] **Policy page: bulk move-to-position** — "Move to #" input in bulk toolbar
-- [x] **Policy page: type filter** — added missing "Skip" type
-- [x] **Policy page: multi-drag** — drag selected rows as a group
-- [x] **Policy page: per-page count** — all pagination shows "N per page"
-- [x] **CRS CI automation** — `crs-rules` Dockerfile stage converts CRS at build time
-- [x] **UI unification** — WAF Rules + Rate Limits merged into `/policy` with tabs
-- [x] **Response-phase Phase A** — plugin outbound scoring: Phase field, responseContext,
-  extractResponseField (response_status, response_header, response_content_type),
-  outboundThreshold per-service, post-ServeHTTP evaluation (10 new plugin tests)
-- [x] **Response-phase Phase B** — response body buffering via Caddy ResponseRecorder,
-  shouldBufferResponse Content-Type filter, can block 403 before response sent,
-  bufPool for memory reuse (6 new plugin tests, live smoke test: SQL leak blocked)
-- [x] **Response-phase Phase C** — CRS converter emits outbound rules (59 new rules),
-  fix RESPONSE_HEADERS -> response_header mapping, 313 total rules (254+59)
-- [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
+### Operator & Condition Builder
+- [x] Method pills (MethodMultiSelect single mode for eq/neq)
+- [x] Host multi-select (HostMultiSelect with search, scroll, custom entry)
+- [x] Comprehensive operator alignment (all string fields: 16 ops, enum: 6, IP: 8)
+- [x] Condition builder: preserve value on operator change, previous value pill on field change
+- [x] 275 Go + 23 frontend operator validation tests
 
-## CRS Audit (v2.30.0)
+### Performance
+- [x] Remove Caddy reload from deploy (hot-reload via mtime polling)
+- [x] Cache BuildServiceFQDNMap with mtime invalidation (26x faster)
+- [x] Summary cache TTL 3s→10s, events early-exit pagination
+- [x] matchIntField (zero-alloc status code filter), 16 Go benchmarks
 
-**All settings verified working end-to-end:**
+### Policy Page UX
+- [x] 25/page, clickable order numbers, move-to-position, multi-drag, bulk move
+- [x] Back-to-events link, Skip type filter, per-page count in all pagination
+- [x] UI unification: WAF Rules + Rate Limits merged into /policy with tabs
 
-| Setting | Status | Implementation |
-|---------|--------|----------------|
-| Paranoia Level | Working | Plugin skips rules where `rule.PL > servicePL` at runtime |
-| Inbound Threshold | Working | Cumulative severity scores (CRIT=5, ERR=4, WARN=3, NOTICE=2); block when >= threshold |
-| Per-Service Overrides | Working | Plugin resolves PL+threshold per Host header via `waf_config.per_service` |
-| Individual Rule Disable | Working | User overrides stored separately, disabled rules excluded at generation time |
+### Event & Log Detail
+- [x] 2-column grid layout, TruncatedCode for long values, CopyBtn on all fields
+- [x] Inline skipped rule pills, URI/User-Agent truncation with expand
 
-**CRS update process: fully manual** — no auto-update mechanism exists.
-Pipeline: CRS repo → `tools/crs-converter` CLI → `waf/default-rules.json` → git commit → Docker build.
-Currently at CRS v4.24.1 (254 rules). Converter supports ModSecurity SecRule syntax only.
-**Should be automated** — run converter in CI build pipeline (see Open Items).
+### CRS & Rules
+- [x] CRS CI automation: crs-rules Dockerfile stage, CRS_VERSION build arg
+- [x] Dynamic CRS version from default-rules.json (was hardcoded)
+- [x] Response-phase CRS categories (Leakage, SQL Leak, Web Shell, etc.)
+- [x] Outbound threshold UI in WAF Engine Settings
+- [x] Settings badge: "PL2 · In 15 · Out 10"
+- [x] Dead config cleanup: disabled_groups removed, mode validation removed
 
-**`mode` field**: persisted but ignored by plugin — detection-only mode not implemented.
-**`disabled_groups`**: persisted but ignored — group-level disabling not implemented.
+### Response-Phase Detection (plugin v0.15.0 + v0.16.0)
+- [x] Phase A: response_status, response_header, response_content_type fields
+- [x] Phase B: response body buffering via Caddy ResponseRecorder, can block 403
+- [x] Phase C: CRS converter emits 59 outbound rules (313 total)
+- [x] Per-service category masks (disabled_categories) — plugin v0.16.0
+- [x] E2E smoke tested: SQL error leakage blocked, category masks verified
 
----
-
-## Open Items (Future Sessions)
-
-### Major Features
-
-#### 1. Response-Phase Detection — DONE (v0.15.0, deployed)
-
-Outbound anomaly scoring — all 3 phases complete. 59 CRS outbound rules.
-Plugin v0.15.0: response_status, response_header, response_body fields,
-ResponseRecorder body buffering, per-service outbound threshold, Content-Type
-filtering. E2E tested: SQL error leakage blocked (score 9 >= threshold 5 → 403).
-
-**Phased approach (recommended):**
-
-**Phase A — Response headers only (no body buffering):**
-- Plugin: add `response_status`, `response_headers`, `response_content_type` to `extractField()`
-- Plugin: wrap response writer to capture status + headers
-- Plugin: outbound score accumulation + threshold check
-- Plugin: wire `OutboundThreshold` through `resolveWafConfig` (field already exists, currently unused)
-- Converter: remove phase 3/4 skip for header-only rules (~20 rules)
-- Impact: ~30% of CRS outbound rules. Zero memory overhead.
-
-**Phase B — Response body buffering:**
-- Plugin: `caddyhttp.NewResponseRecorder` with `shouldBuffer` callback
-- Plugin: only buffer text/json/xml responses under configurable max size (default 1MB)
-- Plugin: skip SSE, WebSocket, binary, large responses (zero overhead for streaming)
-- Plugin: `sync.Pool` for buffers, `response_body_max_size` Caddyfile option
-- Plugin: add `response_body` to `extractField()`
-- Converter: enable remaining response-phase rules (~50 more rules)
-- Impact: full CRS outbound coverage.
-
-**Phase C — Integration:**
-- wafctl: phase-aware rule model, outbound threshold in config generator
-- Frontend: outbound score in event details, filter by inbound/outbound
-- Tests: ~20 plugin tests (buffering, streaming bypass, threshold, edge cases)
-
-**Key risks:**
-- Response body buffering breaks streaming if not filtered correctly
-- Memory pressure from large buffered responses
-- Caddy's `ResponseRecorder` API compatibility across versions
-
-**Files changed (total across phases):**
-- Plugin: ~300 lines new code (buffering, field extraction, scoring)
-- Converter: ~10 lines (remove phase skip)
-- wafctl: ~50 lines (config wiring, model updates)
-- Frontend: ~100 lines (event display, config UI)
-- Tests: ~200 lines
-
-**Complexity:** High (Phase A: Medium, Phase B: High, Phase C: Medium).
+### Infrastructure
+- [x] Cache SSD migration (/mnt/cache/caddy/), event logs on array
+- [x] Sidebar footer sticky, exclusion hits scanning ALS
+- [x] Fix events "All (-1)" display
 
 ---
 
-### Other Open Items
+## In Progress — Uncommitted Work
 
-#### Per-Service CRS Profiles — Plugin Rule Masks
+### Per-Service Category Masks (wafctl + frontend wiring)
 
-Allow different CRS rule sets per service. Would enable: "authelia runs PL1 with
-only protocol rules, httpbun runs PL2 with full CRS." Currently PL filtering is
-global; this would add per-service category masks.
+**Plugin side: DONE** (v0.16.0 tagged + pushed). Plugin supports `disabled_categories`
+globally and per-service in `waf_config`. Smoke tested with xcaddy.
 
-**Scope:** Plugin per-service rule masks in wafConfig, wafctl store, frontend profile selector.
-**Complexity:** Medium. Blocked on UI unification (per-service card redesign).
+**wafctl side: IN PROGRESS** (uncommitted changes):
+- `wafctl/models_exclusions.go` — added `DisabledCategories []string` to `WAFServiceSettings`
+- `wafctl/policy_generator.go` — added `Phase` to `PolicyRule`, `DisabledCategories`
+  to `PolicyWafConfig`/`PolicyWafServiceConfig`, wired through `BuildPolicyWafConfig`
+- `wafctl/config.go` — deep copy for `DisabledCategories`, validation (3-4 digit numeric prefix)
+- `waf-dashboard/src/lib/api/config.ts` — added `disabled_categories?: string[]`
+- `Dockerfile` — updated to plugin v0.16.0
+- `test/e2e/24_outbound_categories_test.go` — 14 new e2e tests
 
-#### Performance
+**What remains to complete:**
+1. Fix e2e test failures — many existing tests are failing after plugin v0.16.0 upgrade
+   (likely from outbound scoring affecting existing detect rule behavior, or category mask
+   inheritance changing default behavior). Need to investigate each failure.
+2. Frontend UI for disabled_categories in per-service override cards (category toggle checkboxes)
+3. Commit, bump tags (3.31.0 / 2.32.0), deploy
 
-- [ ] **Incremental summary computation** — running counters on Store, O(1) reads
-- [ ] **TopCountriesPanel 397KB bundle** — lazy-load IPLookupPanel or Vite manualChunks
-- [ ] **enrichAccessEvents O(events × rules)** — cache sortRulesByPriority result
-- [ ] **SecurityHeaderStore.deepCopy** — field-by-field copy instead of JSON round-trip
+### E2E Test Suite Expansion
 
-#### Design Decisions
+New test file `24_outbound_categories_test.go` covers:
+- Outbound threshold config (global + per-service)
+- CRS version dynamic (from health endpoint)
+- Default rules have outbound phase
+- Deploy returns reloaded=false (hot-reload)
+- Exclusion hits endpoint
+- Events pagination limit
+- Unified policy page loads
+- Rate limits redirect to /policy
+- Cache-Control on hashed assets
+- Deploy speed (FQDN cache)
+- Disabled categories config
 
-- [ ] **Mode field**: implement detection-only in plugin or remove from WAFConfig
-- [ ] **CRS Rule Group disabling**: implement in generator or remove disabled_groups
-- [ ] **Custom rulesets**: define a native policy-engine rule format for user-created
-  detect rules that bypass the CRS converter. Could enable importing other WAF
-  rulesets (Trustwave, custom) directly.
+**Status:** Tests compile and vet clean. Some failures in e2e environment due to
+image rebuild needed + some existing tests broken by plugin behavioral changes.
 
-#### Operational
+---
 
+## Next Up (Priority Order)
+
+### 1. Complete Per-Service Category Masks
+- Fix e2e test failures from plugin v0.16.0
+- Add frontend category toggle UI in per-service override cards
+- Commit, test end-to-end, deploy
+
+### 2. Rate Limits Parity
+- Add bulk select, move-to-edge, inline position editing to RL tab
+- Match PolicyEngine feature set for consistent UX
+
+### 3. Rate Limits → Policy Engine Unification (Backend)
+Currently RL rules use separate API (`/api/rate-rules/*`) and separate Go stores.
+The deeper unification would merge them into the exclusion store with `type: "rate_limit"`,
+single priority ordering, single deploy endpoint. This is a significant backend refactor.
+
+**Scope:**
+- Migrate `RateLimitRuleStore` data into `ExclusionStore`
+- Unify CRUD APIs
+- Single `POST /api/config/deploy` for all rule types
+- Migration path for existing rate-limits.json → exclusions.json
+
+### 4. CRS Update Checker Workflow
+Scheduled CI workflow to check latest CRS release, open PR bumping CRS_VERSION.
+
+---
+
+## Future Items
+
+### Performance
+- [ ] Incremental summary computation — running counters on Store, O(1) reads
+- [ ] TopCountriesPanel 397KB bundle — lazy-load IPLookupPanel or Vite manualChunks
+- [ ] enrichAccessEvents O(events × rules) — cache sortRulesByPriority result
+- [ ] SecurityHeaderStore.deepCopy — field-by-field copy instead of JSON round-trip
+
+### Features
+- [ ] Custom rulesets — native policy-engine rule format for user-created detect rules
+- [ ] CRS accuracy evaluation against CRS test suite
+- [ ] Outbound score display in event detail panel
+- [ ] Filter events by inbound/outbound phase
+
+### Design Decisions
+- [ ] Mode field: currently preserved for backward compat but ignored. Remove entirely
+  when all production configs have been migrated (or add a one-time migration to strip it).
+
+### Operational
 - [ ] Audit each service's built-in auth and document decisions
-- [ ] Add `forward_auth` to dockge at minimum
+- [ ] Add forward_auth to dockge at minimum
 - [ ] Monitor and document sizing guidance for event stores
 
-#### CI / Automation
-
-- [ ] **CRS update checker** — optional `crs-update.yml` scheduled workflow that checks
-  the latest CRS release tag via GitHub API and opens a PR bumping `CRS_VERSION`
-- [ ] **Rate limits parity** — add bulk select, move-to-edge, inline position editing
-  to Rate Limits tab (matching PolicyEngine features)
-
-#### Low Priority
-
-- [ ] CRS accuracy evaluation against CRS test suite
+### Low Priority
+- [ ] operatorChip() for negated operators in DashboardFilterBar
 - [ ] Compare detection rates: regex-only vs regex+libinjection
-- [ ] `operatorChip()` for negated operators in DashboardFilterBar

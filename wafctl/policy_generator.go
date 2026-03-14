@@ -34,6 +34,7 @@ type PolicyRule struct {
 	ID            string                 `json:"id"`
 	Name          string                 `json:"name"`
 	Type          string                 `json:"type"`
+	Phase         string                 `json:"phase,omitempty"` // "inbound" (default) or "outbound" for response-phase rules
 	Service       string                 `json:"service,omitempty"`
 	Conditions    []PolicyCondition      `json:"conditions"`
 	GroupOp       string                 `json:"group_op"`
@@ -78,17 +79,19 @@ type PolicyRateLimitGlobalConfig struct {
 
 // PolicyWafConfig holds global WAF settings for the anomaly scoring engine.
 type PolicyWafConfig struct {
-	ParanoiaLevel     int                               `json:"paranoia_level"`
-	InboundThreshold  int                               `json:"inbound_threshold"`
-	OutboundThreshold int                               `json:"outbound_threshold"`
-	PerService        map[string]PolicyWafServiceConfig `json:"per_service,omitempty"`
+	ParanoiaLevel      int                               `json:"paranoia_level"`
+	InboundThreshold   int                               `json:"inbound_threshold"`
+	OutboundThreshold  int                               `json:"outbound_threshold"`
+	DisabledCategories []string                          `json:"disabled_categories,omitempty"`
+	PerService         map[string]PolicyWafServiceConfig `json:"per_service,omitempty"`
 }
 
 // PolicyWafServiceConfig holds per-service WAF overrides.
 type PolicyWafServiceConfig struct {
-	ParanoiaLevel     int `json:"paranoia_level,omitempty"`
-	InboundThreshold  int `json:"inbound_threshold,omitempty"`
-	OutboundThreshold int `json:"outbound_threshold,omitempty"`
+	ParanoiaLevel      int      `json:"paranoia_level,omitempty"`
+	InboundThreshold   int      `json:"inbound_threshold,omitempty"`
+	OutboundThreshold  int      `json:"outbound_threshold,omitempty"`
+	DisabledCategories []string `json:"disabled_categories,omitempty"`
 }
 
 // PolicyCondition represents a single match condition for the plugin.
@@ -590,9 +593,10 @@ func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *Policy
 	cfg := cs.Get()
 
 	pwc := &PolicyWafConfig{
-		ParanoiaLevel:     cfg.Defaults.ParanoiaLevel,
-		InboundThreshold:  cfg.Defaults.InboundThreshold,
-		OutboundThreshold: cfg.Defaults.OutboundThreshold,
+		ParanoiaLevel:      cfg.Defaults.ParanoiaLevel,
+		InboundThreshold:   cfg.Defaults.InboundThreshold,
+		OutboundThreshold:  cfg.Defaults.OutboundThreshold,
+		DisabledCategories: cfg.Defaults.DisabledCategories,
 	}
 
 	if len(cfg.Services) > 0 {
@@ -600,9 +604,10 @@ func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *Policy
 		for svc, ss := range cfg.Services {
 			fqdn := resolveServiceName(svc, serviceMap)
 			psc := PolicyWafServiceConfig{
-				ParanoiaLevel:     ss.ParanoiaLevel,
-				InboundThreshold:  ss.InboundThreshold,
-				OutboundThreshold: ss.OutboundThreshold,
+				ParanoiaLevel:      ss.ParanoiaLevel,
+				InboundThreshold:   ss.InboundThreshold,
+				OutboundThreshold:  ss.OutboundThreshold,
+				DisabledCategories: ss.DisabledCategories,
 			}
 			pwc.PerService[fqdn] = psc
 			// Also map the short name if different from FQDN.

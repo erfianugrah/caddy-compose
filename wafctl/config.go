@@ -190,11 +190,13 @@ func (s *ConfigStore) Get() WAFConfig {
 	// Return a deep copy.
 	cp := s.config
 	cp.Defaults.CRSExclusions = copyStringSlice(s.config.Defaults.CRSExclusions)
+	cp.Defaults.DisabledCategories = copyStringSlice(s.config.Defaults.DisabledCategories)
 	cp.Defaults.EarlyBlocking = copyBoolPtr(s.config.Defaults.EarlyBlocking)
 	cp.Defaults.EnforceBodyprocURLEncoded = copyBoolPtr(s.config.Defaults.EnforceBodyprocURLEncoded)
 	cp.Services = make(map[string]WAFServiceSettings, len(s.config.Services))
 	for k, v := range s.config.Services {
 		v.CRSExclusions = copyStringSlice(v.CRSExclusions)
+		v.DisabledCategories = copyStringSlice(v.DisabledCategories)
 		v.EarlyBlocking = copyBoolPtr(v.EarlyBlocking)
 		v.EnforceBodyprocURLEncoded = copyBoolPtr(v.EnforceBodyprocURLEncoded)
 		cp.Services[k] = v
@@ -265,6 +267,18 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 	if ss.OutboundThreshold < 1 {
 		return fmt.Errorf("%s: outbound_threshold must be at least 1", name)
 	}
+	// Validate disabled_categories — must be 3-4 digit CRS rule ID prefixes.
+	for _, cat := range ss.DisabledCategories {
+		if len(cat) < 3 || len(cat) > 4 {
+			return fmt.Errorf("%s: disabled_categories entry %q must be a 3-4 digit CRS rule ID prefix", name, cat)
+		}
+		for _, c := range cat {
+			if c < '0' || c > '9' {
+				return fmt.Errorf("%s: disabled_categories entry %q must be numeric", name, cat)
+			}
+		}
+	}
+
 	// CRS v4 extended settings validation.
 	if ss.BlockingParanoiaLevel != 0 && (ss.BlockingParanoiaLevel < 1 || ss.BlockingParanoiaLevel > 4) {
 		return fmt.Errorf("%s: blocking_paranoia_level must be between 1 and 4", name)
