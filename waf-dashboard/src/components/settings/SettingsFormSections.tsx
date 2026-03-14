@@ -1,58 +1,19 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import {
-  type WAFMode,
   type WAFPreset,
   type WAFServiceSettings,
-  type CRSCategory,
   presetToSettings,
   settingsToPreset,
 } from "@/lib/api";
 import { T } from "@/lib/typography";
-import { MODE_META, PARANOIA_DESCRIPTIONS } from "./constants";
+import { PARANOIA_DESCRIPTIONS } from "./constants";
 
-// ─── Mode Selector ──────────────────────────────────────────────────
+// Dead settings removed: ModeSelector, RuleGroupToggles
+// Policy engine uses only paranoia_level + inbound_threshold from WAFServiceSettings
 
-export function ModeSelector({
-  value,
-  onChange,
-}: {
-  value: WAFMode;
-  onChange: (mode: WAFMode) => void;
-}) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {(Object.keys(MODE_META) as WAFMode[]).map((mode) => {
-        const meta = MODE_META[mode];
-        return (
-          <button
-            key={mode}
-            onClick={() => onChange(mode)}
-            className={`rounded-lg border p-4 text-left transition-all ${
-              value === mode
-                ? meta.color
-                : "border-border bg-lovelace-950 text-muted-foreground hover:border-border/80"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className={`h-2.5 w-2.5 rounded-full ${
-                  value === mode ? meta.dot : "bg-muted-foreground/30"
-                }`}
-              />
-              <span className="text-sm font-medium">{meta.label}</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{meta.desc}</p>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Sensitivity Settings (Preset + Paranoia + Thresholds) ──────────
+// ─── Sensitivity Settings (Preset + Paranoia + Threshold) ───────────
 
 export function SensitivitySettings({
   settings,
@@ -64,7 +25,6 @@ export function SensitivitySettings({
   compact?: boolean;
 }) {
   const preset = settingsToPreset(settings);
-  const isCustom = preset === "custom";
 
   const handlePresetChange = (p: WAFPreset) => {
     if (p === "custom") return;
@@ -134,99 +94,23 @@ export function SensitivitySettings({
         </p>
       </div>
 
-      {/* Thresholds */}
-      {settings.mode !== "detection_only" && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label className={T.formLabel}>
-              Inbound Threshold
-            </Label>
-            <Input
-              type="number"
-              min={1}
-              value={settings.inbound_threshold}
-              onChange={(e) =>
-                onChange({ ...settings, inbound_threshold: Number(e.target.value) || 1 })
-              }
-              className="w-24"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className={T.formLabel}>
-              Outbound Threshold
-            </Label>
-            <Input
-              type="number"
-              min={1}
-              value={settings.outbound_threshold}
-              onChange={(e) =>
-                onChange({ ...settings, outbound_threshold: Number(e.target.value) || 1 })
-              }
-              className="w-24"
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Rule Group Toggles ─────────────────────────────────────────────
-
-export function RuleGroupToggles({
-  categories,
-  disabledGroups,
-  onChange,
-}: {
-  categories: CRSCategory[];
-  disabledGroups: string[];
-  onChange: (groups: string[]) => void;
-}) {
-  const disabledSet = new Set(disabledGroups);
-
-  const toggle = (tag: string) => {
-    const next = new Set(disabledSet);
-    if (next.has(tag)) {
-      next.delete(tag);
-    } else {
-      next.add(tag);
-    }
-    onChange([...next]);
-  };
-
-  // Deduplicate categories by tag (protocol-enforcement and protocol-attack share "attack-protocol").
-  const seen = new Set<string>();
-  const unique = categories.filter((c) => {
-    if (seen.has(c.tag)) return false;
-    seen.add(c.tag);
-    return true;
-  });
-
-  return (
-    <div className="space-y-2">
-      <Label className={T.formLabel}>
-        CRS Rule Groups
-      </Label>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {unique.map((cat) => {
-          const isEnabled = !disabledSet.has(cat.tag);
-          return (
-            <div
-              key={cat.tag}
-              className="flex items-center justify-between rounded-md border border-border bg-lovelace-950 px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="text-xs font-medium truncate">{cat.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{cat.tag}</p>
-              </div>
-              <Switch
-                checked={isEnabled}
-                onCheckedChange={() => toggle(cat.tag)}
-                className="ml-2 shrink-0"
-              />
-            </div>
-          );
-        })}
+      {/* Inbound Anomaly Threshold */}
+      <div className="space-y-1">
+        <Label className={T.formLabel}>
+          Inbound Anomaly Threshold
+        </Label>
+        <Input
+          type="number"
+          min={1}
+          value={settings.inbound_threshold}
+          onChange={(e) =>
+            onChange({ ...settings, inbound_threshold: Number(e.target.value) || 1 })
+          }
+          className="w-24"
+        />
+        <p className="text-xs text-muted-foreground">
+          Cumulative CRS anomaly score required to trigger a detect rule block.
+        </p>
       </div>
     </div>
   );

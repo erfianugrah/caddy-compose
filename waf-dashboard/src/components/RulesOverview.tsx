@@ -19,6 +19,7 @@ import {
   Shield,
   BookOpen,
 } from "lucide-react";
+// Dead CRS settings removed — policy engine uses only paranoia_level + inbound_threshold
 import {
   Card,
   CardContent,
@@ -29,7 +30,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
@@ -43,30 +43,19 @@ import {
   getConfig,
   updateConfig,
   fetchServices,
-  fetchCRSRules,
   deployConfig,
   downloadBackup,
   restoreBackup,
   listDefaultRules,
-  CRS_CATEGORIES,
   getCategoryForRule,
   type WAFConfig,
   type WAFServiceSettings,
   type ServiceDetail,
-  type CRSCategory,
   type FullBackup,
   type RestoreResult,
-  type DefaultRule,
 } from "@/lib/api";
 import { T } from "@/lib/typography";
-import { ModeSelector, SensitivitySettings, RuleGroupToggles } from "./settings/SettingsFormSections";
-import {
-  AdvancedParanoiaSettings,
-  RequestPolicySettings,
-  LimitsSettings,
-  AdvancedCRSControls,
-  CRSExclusionProfiles,
-} from "./settings/AdvancedSettings";
+import { SensitivitySettings } from "./settings/SettingsFormSections";
 import { ServiceSettingsCard } from "./settings/ServiceSettingsCard";
 
 // ─── Main Rules Overview ────────────────────────────────────────────
@@ -74,7 +63,7 @@ import { ServiceSettingsCard } from "./settings/ServiceSettingsCard";
 export default function RulesOverview() {
   const [config, setConfig] = useState<WAFConfig | null>(null);
   const [services, setServices] = useState<ServiceDetail[]>([]);
-  const [categories, setCategories] = useState<CRSCategory[]>([]);
+  // categories state removed — RuleGroupToggles was dead (CRS group toggles not used by policy engine)
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deployStep, setDeployStep] = useState<string | null>(null);
@@ -97,12 +86,12 @@ export default function RulesOverview() {
     crsVersion: string;
   } | null>(null);
 
-  // Working copy of the config
+  // Working copy of the config (only live fields: paranoia_level + inbound_threshold)
   const [defaults, setDefaults] = useState<WAFServiceSettings>({
     mode: "enabled",
     paranoia_level: 1,
     inbound_threshold: 5,
-    outbound_threshold: 4,
+    outbound_threshold: 4,  // kept for API compat — not shown in UI
   });
   const [serviceOverrides, setServiceOverrides] = useState<Record<string, WAFServiceSettings>>({});
 
@@ -114,13 +103,12 @@ export default function RulesOverview() {
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getConfig(), fetchServices(), fetchCRSRules(), listDefaultRules()])
-      .then(([cfg, svcs, crs, rules]) => {
+    Promise.all([getConfig(), fetchServices(), listDefaultRules()])
+      .then(([cfg, svcs, rules]) => {
         setConfig(cfg);
         setDefaults(cfg.defaults);
         setServiceOverrides(cfg.services);
         setServices(svcs);
-        setCategories(crs.categories);
         setDirty(false);
 
         // Compute CRS ruleset stats
@@ -499,8 +487,7 @@ export default function RulesOverview() {
             <Globe className="h-4 w-4 text-lv-cyan" />
             <h3 className="text-sm font-semibold">WAF Engine Settings</h3>
             <Badge variant="outline" className="text-xs">
-              {defaults.mode === "enabled" ? "Blocking" : defaults.mode === "detection_only" ? "Detection" : "Disabled"}
-              {" \u00b7 PL"}{defaults.paranoia_level}
+              PL{defaults.paranoia_level} · Threshold {defaults.inbound_threshold}
             </Badge>
           </div>
           <svg
@@ -515,35 +502,7 @@ export default function RulesOverview() {
         </div>
         {settingsExpanded && (
           <CardContent className="space-y-5 border-t border-border pt-4">
-            <ModeSelector
-              value={defaults.mode}
-              onChange={(mode) => handleDefaultsChange({ ...defaults, mode })}
-            />
-            {defaults.mode !== "disabled" && (
-              <>
-                <Separator />
-                <SensitivitySettings settings={defaults} onChange={handleDefaultsChange} />
-                <Separator />
-                <RuleGroupToggles
-                  categories={categories}
-                  disabledGroups={defaults.disabled_groups ?? []}
-                  onChange={(groups) => handleDefaultsChange({ ...defaults, disabled_groups: groups })}
-                />
-                <Separator />
-                <CRSExclusionProfiles
-                  exclusions={defaults.crs_exclusions ?? []}
-                  onChange={(excl) => handleDefaultsChange({ ...defaults, crs_exclusions: excl.length > 0 ? excl : undefined })}
-                />
-                <Separator />
-                <AdvancedParanoiaSettings settings={defaults} onChange={handleDefaultsChange} />
-                <Separator />
-                <RequestPolicySettings settings={defaults} onChange={handleDefaultsChange} />
-                <Separator />
-                <LimitsSettings settings={defaults} onChange={handleDefaultsChange} />
-                <Separator />
-                <AdvancedCRSControls settings={defaults} onChange={handleDefaultsChange} />
-              </>
-            )}
+            <SensitivitySettings settings={defaults} onChange={handleDefaultsChange} />
           </CardContent>
         )}
       </Card>
@@ -602,7 +561,6 @@ export default function RulesOverview() {
                     key={host}
                     hostname={host}
                     settings={settings}
-                    categories={categories}
                     serviceDetail={services.find((s) => s.service === host)}
                     onChange={(s) => handleServiceChange(host, s)}
                     onRemove={() => handleServiceRemove(host)}

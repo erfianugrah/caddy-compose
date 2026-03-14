@@ -1,0 +1,305 @@
+package e2e_test
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+)
+
+// ─── Skip Action E2E Tests ──────────────────────────────────────────
+
+// TestSkipActionCRUD verifies that skip exclusions can be created, read,
+// and deleted via the API, and that skip_targets are preserved.
+func TestSkipActionCRUD(t *testing.T) {
+	skipTargets := map[string]any{
+		"rules":         []string{"920350", "941100"},
+		"phases":        []string{"detect"},
+		"all_remaining": false,
+	}
+
+	// Create a skip rule.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-skip-crud", "type": "skip", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "begins_with", "value": "/e2e-skip-crud"},
+		},
+		"skip_targets": skipTargets,
+	})
+	assertCode(t, "create skip", 201, resp)
+	id := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+id) })
+
+	// Verify the rule type is skip.
+	assertField(t, "type", body, "type", "skip")
+
+	// Read it back and verify skip_targets.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/exclusions/"+id)
+	assertCode(t, "get skip", 200, resp2)
+	assertField(t, "type", body2, "type", "skip")
+
+	// Verify skip_targets fields are present.
+	st := jsonField(body2, "skip_targets")
+	if st == "" {
+		t.Fatal("expected skip_targets in response")
+	}
+	t.Logf("skip_targets: %s", st)
+
+	// Delete.
+	resp3, _ := httpDelete(t, wafctlURL+"/api/exclusions/"+id)
+	assertCode(t, "delete skip", 204, resp3)
+}
+
+// TestSkipActionValidation verifies that skip rules without skip_targets
+// are rejected, and that invalid skip_targets are caught.
+func TestSkipActionValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload map[string]any
+	}{
+		{
+			"missing skip_targets",
+			map[string]any{
+				"name": "e2e-skip-no-targets", "type": "skip", "enabled": true,
+				"conditions": []map[string]string{
+					{"field": "path", "operator": "eq", "value": "/test"},
+				},
+			},
+		},
+		{
+			"empty skip_targets",
+			map[string]any{
+				"name": "e2e-skip-empty-targets", "type": "skip", "enabled": true,
+				"conditions": []map[string]string{
+					{"field": "path", "operator": "eq", "value": "/test"},
+				},
+				"skip_targets": map[string]any{},
+			},
+		},
+		{
+			"invalid phase name",
+			map[string]any{
+				"name": "e2e-skip-bad-phase", "type": "skip", "enabled": true,
+				"conditions": []map[string]string{
+					{"field": "path", "operator": "eq", "value": "/test"},
+				},
+				"skip_targets": map[string]any{
+					"phases": []string{"nonexistent"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, body := httpPost(t, wafctlURL+"/api/exclusions", tt.payload)
+			if resp.StatusCode != 400 {
+				t.Errorf("expected 400, got %d: %s", resp.StatusCode, body)
+				if resp.StatusCode == 201 {
+					id := mustGetID(t, body)
+					cleanup(t, wafctlURL+"/api/exclusions/"+id)
+				}
+			}
+		})
+	}
+}
+
+// TestSkipGeneratesPolicyRule verifies that a skip exclusion generates a
+// policy rule with type=skip and skip_targets in the output.
+func TestSkipGeneratesPolicyRule(t *testing.T) {
+	testPath := "/e2e-skip-gen-" + time.Now().Format("150405")
+
+	// Create a skip rule targeting specific CRS rule IDs.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-skip-gen", "type": "skip", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+		"skip_targets": map[string]any{
+			"rules":  []string{"920350", "941100"},
+			"phases": []string{"detect"},
+		},
+	})
+	assertCode(t, "create skip", 201, resp)
+	id := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+id) })
+
+	// Generate policy rules.
+	resp2, body2 := httpPost(t, wafctlURL+"/api/config/generate", struct{}{})
+	assertCode(t, "generate", 200, resp2)
+
+	// Parse and find our skip rule.
+	var outer map[string]json.RawMessage
+	if err := json.Unmarshal(body2, &outer); err != nil {
+		t.Fatalf("unmarshal outer: %v", err)
+	}
+	var policyFile struct {
+		Rules []struct {
+			Name        string `json:"name"`
+			Type        string `json:"type"`
+			Priority    int    `json:"priority"`
+			SkipTargets *struct {
+				Rules        []string `json:"rules"`
+				Phases       []string `json:"phases"`
+				AllRemaining bool     `json:"all_remaining"`
+			} `json:"skip_targets"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(outer["policy_rules"], &policyFile); err != nil {
+		t.Fatalf("unmarshal policy_rules: %v", err)
+	}
+
+	found := false
+	for _, r := range policyFile.Rules {
+		if r.Name == "e2e-skip-gen" {
+			found = true
+			if r.Type != "skip" {
+				t.Errorf("expected type=skip, got %q", r.Type)
+			}
+			if r.Priority < 200 || r.Priority >= 300 {
+				t.Errorf("skip priority %d not in [200,300)", r.Priority)
+			}
+			if r.SkipTargets == nil {
+				t.Fatal("expected skip_targets in generated rule")
+			}
+			if len(r.SkipTargets.Rules) != 2 {
+				t.Errorf("expected 2 rules, got %d", len(r.SkipTargets.Rules))
+			}
+			if len(r.SkipTargets.Phases) != 1 || r.SkipTargets.Phases[0] != "detect" {
+				t.Errorf("expected phases=[detect], got %v", r.SkipTargets.Phases)
+			}
+			t.Logf("skip rule: priority=%d targets=%+v", r.Priority, r.SkipTargets)
+			break
+		}
+	}
+	if !found {
+		t.Error("skip rule 'e2e-skip-gen' not found in generated output")
+	}
+}
+
+// ─── Negated Operator E2E Tests ─────────────────────────────────────
+
+// TestNegatedOperatorBlockRule verifies that not_contains creates a block rule
+// that blocks requests whose path does NOT contain the specified substring.
+func TestNegatedOperatorBlockRule(t *testing.T) {
+	safePath := "/e2e-negated-safe-" + time.Now().Format("150405")
+	blockedPath := "/e2e-negated-blocked-" + time.Now().Format("150405")
+
+	// Create a block rule: block if path not_contains "safe".
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-negated-not-contains", "type": "block", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "not_contains", "value": "safe"},
+		},
+	})
+	assertCode(t, "create block with not_contains", 201, resp)
+	id := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+id)
+		deployWAF(t)
+	})
+
+	// Deploy and wait for it to take effect.
+	deployAndWaitForStatus(t, caddyURL+blockedPath, 403)
+
+	// Path without "safe" should be blocked.
+	resp2, _ := httpGetRetry(t, caddyURL+blockedPath, 3)
+	if resp2.StatusCode != 403 {
+		t.Errorf("expected 403 for path without 'safe', got %d", resp2.StatusCode)
+	}
+
+	// Path containing "safe" should NOT be blocked.
+	resp3, _ := httpGetRetry(t, caddyURL+safePath, 3)
+	if resp3.StatusCode == 403 {
+		t.Errorf("path containing 'safe' should not be blocked, got 403")
+	}
+	t.Logf("safe=%d blocked=%d", resp3.StatusCode, resp2.StatusCode)
+}
+
+// TestNegatedOperatorValidation verifies that the API accepts all 6 negated
+// operators via create/validate.
+func TestNegatedOperatorValidation(t *testing.T) {
+	t.Parallel()
+
+	operators := []struct {
+		op    string
+		field string
+		value string
+	}{
+		{"not_contains", "path", "/safe"},
+		{"not_begins_with", "path", "/api"},
+		{"not_ends_with", "path", ".html"},
+		{"not_regex", "user_agent", "^Bot"},
+		{"not_in", "method", "GET|POST"},
+	}
+
+	for _, tt := range operators {
+		t.Run(tt.op, func(t *testing.T) {
+			resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+				"name":    fmt.Sprintf("e2e-negop-%s", tt.op),
+				"type":    "block",
+				"enabled": true,
+				"conditions": []map[string]string{
+					{"field": tt.field, "operator": tt.op, "value": tt.value},
+				},
+			})
+			if resp.StatusCode != 201 {
+				t.Errorf("expected 201 for operator %s, got %d: %s", tt.op, resp.StatusCode, body)
+				return
+			}
+			id := mustGetID(t, body)
+			cleanup(t, wafctlURL+"/api/exclusions/"+id)
+		})
+	}
+}
+
+// TestNegatedOperatorNotInBlock verifies not_in operator: block requests
+// whose method is NOT in the specified set.
+func TestNegatedOperatorNotInBlock(t *testing.T) {
+	testPath := "/e2e-not-in-" + time.Now().Format("150405")
+
+	// Block if method not_in GET|HEAD — so POST should be blocked.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-not-in-method", "type": "block", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "method", "operator": "not_in", "value": "GET|HEAD"},
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+	})
+	assertCode(t, "create block with not_in", 201, resp)
+	id := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+id)
+		deployWAF(t)
+	})
+
+	// Deploy and wait for POST to be blocked (method NOT in GET|HEAD → block).
+	// We can't wait on GET status since it passes through to backend (404).
+	time.Sleep(1 * time.Second)
+	deployWAF(t)
+
+	// Wait for the rule to take effect by polling POST.
+	waitForCondition(t, "POST blocked on "+testPath, 15*time.Second, func() bool {
+		code, err := httpPostRaw(caddyURL+testPath, []byte(`{}`))
+		return err == nil && code == 403
+	})
+
+	// GET should pass (method IS in the set, so not_in = false → no block).
+	resp2, _ := httpGetRetry(t, caddyURL+testPath, 3)
+	if resp2.StatusCode == 403 {
+		t.Errorf("GET should not be blocked (method is in GET|HEAD set), got 403")
+	}
+
+	// POST should be blocked (method NOT in GET|HEAD → not_in = true → block).
+	postCode, err := httpPostRaw(caddyURL+testPath, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	if postCode != 403 {
+		t.Errorf("expected POST to be blocked (403), got %d", postCode)
+	}
+
+	t.Logf("GET=%d POST=%d", resp2.StatusCode, postCode)
+}

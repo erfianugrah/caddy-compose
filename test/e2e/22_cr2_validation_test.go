@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-// --- CR2-5: Priority bands widened to 1000-wide ---
+// --- CR2-5: Priority bands (5-pass evaluation) ---
 
-// TestPolicyPriorityBands verifies that generated policy rules use 1000-wide
-// priority bands: block=[1000,2000), allow=[2000,3000), rate_limit=[3000,4000).
+// TestPolicyPriorityBands verifies that generated policy rules use the 5-pass
+// priority bands: allow=[50,100), block=[100,200), skip=[200,300),
+// rate_limit=[300,400), detect=[400,500).
 func TestPolicyPriorityBands(t *testing.T) {
 	// Create a block rule.
 	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
@@ -87,45 +88,35 @@ func TestPolicyPriorityBands(t *testing.T) {
 		t.Fatalf("expected 3 rules in generated output, found %d matching our names", found)
 	}
 
-	// Verify priority bands.
-	if blockPrio < 1000 || blockPrio >= 2000 {
-		t.Errorf("block priority %d not in [1000,2000)", blockPrio)
+	// Verify priority bands (5-pass: allow<block<skip<rl<detect).
+	if allowPrio < 50 || allowPrio >= 100 {
+		t.Errorf("allow priority %d not in [50,100)", allowPrio)
 	}
-	if allowPrio < 2000 || allowPrio >= 3000 {
-		t.Errorf("allow priority %d not in [2000,3000)", allowPrio)
+	if blockPrio < 100 || blockPrio >= 200 {
+		t.Errorf("block priority %d not in [100,200)", blockPrio)
 	}
-	if rlPrio < 3000 || rlPrio >= 4000 {
-		t.Errorf("rl priority %d not in [3000,4000)", rlPrio)
+	if rlPrio < 300 || rlPrio >= 400 {
+		t.Errorf("rl priority %d not in [300,400)", rlPrio)
 	}
 
-	// Verify ordering: block < allow < rate_limit.
-	if blockPrio >= allowPrio {
-		t.Errorf("block priority %d should be < allow priority %d", blockPrio, allowPrio)
+	// Verify ordering: allow < block < rate_limit.
+	if allowPrio >= blockPrio {
+		t.Errorf("allow priority %d should be < block priority %d", allowPrio, blockPrio)
 	}
-	if allowPrio >= rlPrio {
-		t.Errorf("allow priority %d should be < rl priority %d", allowPrio, rlPrio)
+	if blockPrio >= rlPrio {
+		t.Errorf("block priority %d should be < rl priority %d", blockPrio, rlPrio)
 	}
-	t.Logf("priorities: block=%d allow=%d rl=%d", blockPrio, allowPrio, rlPrio)
+	t.Logf("priorities: allow=%d block=%d rl=%d", allowPrio, blockPrio, rlPrio)
 }
 
-// TestPolicyPriorityBlockOverridesAllow creates both a block and an allow rule
-// for the same path and verifies block wins (lower priority = evaluated first).
-func TestPolicyPriorityBlockOverridesAllow(t *testing.T) {
+// TestPolicyPriorityAllowOverridesBlock creates both a block and an allow rule
+// for the same path and verifies allow wins. Under the 5-pass model, allow
+// (pass 1, priority 50) terminates before block (pass 2, priority 100) runs.
+func TestPolicyPriorityAllowOverridesBlock(t *testing.T) {
 	testPath := "/e2e-prio-conflict-" + time.Now().Format("150405")
 
-	// Create an allow rule.
+	// Create a block rule first and verify it blocks.
 	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
-		"name": "e2e-prio-allow-conflict", "type": "allow", "enabled": true,
-		"conditions": []map[string]string{
-			{"field": "path", "operator": "eq", "value": testPath},
-		},
-	})
-	assertCode(t, "create allow", 201, resp)
-	allowID := mustGetID(t, body)
-	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
-
-	// Create a block rule for the same path.
-	resp, body = httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
 		"name": "e2e-prio-block-conflict", "type": "block", "enabled": true,
 		"conditions": []map[string]string{
 			{"field": "path", "operator": "eq", "value": testPath},
@@ -135,18 +126,34 @@ func TestPolicyPriorityBlockOverridesAllow(t *testing.T) {
 	blockID := mustGetID(t, body)
 	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+blockID) })
 
-	// Deploy and wait for the block to take effect.
+	// Deploy and confirm block works.
 	deployAndWaitForStatus(t, caddyURL+testPath, 403)
 
-	// Verify the block wins — request should be blocked by policy engine.
-	resp2, _ := httpGetRetry(t, caddyURL+testPath, 3)
-	if resp2.StatusCode != 403 {
-		t.Errorf("expected 403 (block wins), got %d", resp2.StatusCode)
-	}
+	// Now add an allow rule for the same path.
+	resp, body = httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-prio-allow-conflict", "type": "allow", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+	})
+	assertCode(t, "create allow", 201, resp)
+	allowID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
 
-	// Clean up: deploy without the rules to restore normal behavior.
-	cleanup(t, wafctlURL+"/api/exclusions/"+blockID)
+	// Deploy — allow should now override the block.
+	// httpbun returns 404 for unknown paths, so "not 403" means allow won.
+	deployAndWaitForStatus(t, caddyURL+testPath, 404)
+
+	// Verify the allow wins — request passes through WAF (404 from backend, not 403 from block).
+	resp2, _ := httpGetRetry(t, caddyURL+testPath, 3)
+	if resp2.StatusCode == 403 {
+		t.Errorf("expected non-403 (allow wins over block in 5-pass), got 403")
+	}
+	t.Logf("allow override status: %d (expected 404 from backend, not 403 from block)", resp2.StatusCode)
+
+	// Clean up.
 	cleanup(t, wafctlURL+"/api/exclusions/"+allowID)
+	cleanup(t, wafctlURL+"/api/exclusions/"+blockID)
 	deployWAF(t)
 }
 

@@ -60,7 +60,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 	allExclusions := es.EnabledExclusions()
 
 	// Policy engine: generate JSON rules file for the Caddy plugin.
-	// Includes WAF exclusions (allow/block/detect) and rate limit rules.
+	// Includes WAF exclusions (allow/block/skip/detect) and rate limit rules.
 	rlRules := rs.EnabledRules()
 	rlGlobal := rs.GetGlobal()
 	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)

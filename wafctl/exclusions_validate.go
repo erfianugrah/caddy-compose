@@ -73,13 +73,13 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 		}
 
 		// Empty value is allowed for eq/neq (matching empty/missing headers),
-		// phrase_match (patterns come from ListItems), and exists.
-		if c.Value == "" && c.Operator != "eq" && c.Operator != "neq" && c.Operator != "phrase_match" && c.Operator != "exists" {
+		// phrase_match/not_phrase_match (patterns come from ListItems), and exists.
+		if c.Value == "" && c.Operator != "eq" && c.Operator != "neq" && c.Operator != "phrase_match" && c.Operator != "not_phrase_match" && c.Operator != "exists" {
 			return fmt.Errorf("condition[%d]: value is required", i)
 		}
-		// phrase_match requires list_items.
-		if c.Operator == "phrase_match" && len(c.ListItems) == 0 {
-			return fmt.Errorf("condition[%d]: phrase_match requires list_items (pattern list)", i)
+		// phrase_match and not_phrase_match require list_items.
+		if (c.Operator == "phrase_match" || c.Operator == "not_phrase_match") && len(c.ListItems) == 0 {
+			return fmt.Errorf("condition[%d]: %s requires list_items (pattern list)", i, c.Operator)
 		}
 		// Numeric operators require a parseable numeric value.
 		// For named fields (header, cookie, args, etc.), the value is "Name:number" —
@@ -125,7 +125,7 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 		}
 		// Validate regex patterns — Go uses RE2 (no lookaheads/lookbehinds).
 		// Catches PCRE-only patterns like (?!...) and (?<=...) early.
-		if c.Operator == "regex" && c.Value != "" {
+		if (c.Operator == "regex" || c.Operator == "not_regex") && c.Value != "" {
 			if _, err := regexp.Compile(c.Value); err != nil {
 				return fmt.Errorf("condition[%d]: invalid regex %q: %v", i, c.Value, err)
 			}
@@ -190,6 +190,16 @@ func validateExclusion(e RuleExclusion) error {
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("%s requires at least one condition", e.Type)
 		}
+	case "skip":
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("skip requires at least one condition")
+		}
+		if e.SkipTargets == nil {
+			return fmt.Errorf("skip requires skip_targets")
+		}
+		if err := validateSkipTargets(e.SkipTargets); err != nil {
+			return err
+		}
 	case "detect":
 		if len(e.Conditions) == 0 {
 			return fmt.Errorf("detect requires at least one condition")
@@ -208,6 +218,36 @@ func validateExclusion(e RuleExclusion) error {
 		}
 	}
 
+	return nil
+}
+
+// validSkipPhases are the phases that can be targeted by a skip rule.
+var validSkipPhases = map[string]bool{
+	"detect":     true,
+	"rate_limit": true,
+	"block":      true,
+}
+
+// validateSkipTargets validates the skip_targets of a skip rule.
+func validateSkipTargets(st *SkipTargets) error {
+	// At least one target must be specified.
+	if !st.AllRemaining && len(st.Rules) == 0 && len(st.Phases) == 0 {
+		return fmt.Errorf("skip_targets must specify at least one of: rules, phases, or all_remaining")
+	}
+	for i, phase := range st.Phases {
+		if !validSkipPhases[phase] {
+			return fmt.Errorf("skip_targets.phases[%d]: invalid phase %q (must be detect, rate_limit, or block)", i, phase)
+		}
+	}
+	// Validate rule IDs are non-empty strings.
+	for i, ruleID := range st.Rules {
+		if ruleID == "" {
+			return fmt.Errorf("skip_targets.rules[%d]: rule ID must not be empty", i)
+		}
+		if strings.ContainsAny(ruleID, "\n\r") {
+			return fmt.Errorf("skip_targets.rules[%d]: rule ID must not contain newlines", i)
+		}
+	}
 	return nil
 }
 

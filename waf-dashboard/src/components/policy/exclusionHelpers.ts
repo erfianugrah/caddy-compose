@@ -28,6 +28,7 @@ export function exclusionTypeLabel(type: ExclusionType): string {
   switch (type) {
     case "allow": return "Allow";
     case "block": return "Block";
+    case "skip": return "Skip";
     case "detect": return "Detect";
     default: return type;
   }
@@ -37,6 +38,7 @@ export function exclusionTypeBadgeVariant(type: ExclusionType): "default" | "out
   switch (type) {
     case "allow": return "outline";
     case "block": return "destructive";
+    case "skip": return "default";
     case "detect": return "secondary";
     default: return "outline";
   }

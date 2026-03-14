@@ -4,7 +4,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { WAFMode } from "@/lib/api";
 
 // ─── Tooltip Helper ─────────────────────────────────────────────────
 
@@ -22,18 +21,8 @@ export function FieldTip({ tip, rule }: { tip: string; rule?: string }) {
   );
 }
 
-// ─── CRS v4 Exclusion Profiles ──────────────────────────────────────
-
-export const CRS_EXCLUSION_PROFILES: { value: string; label: string; desc: string }[] = [
-  { value: "wordpress", label: "WordPress", desc: "Excludes common WP admin/editor false positives" },
-  { value: "nextcloud", label: "Nextcloud", desc: "Excludes Nextcloud WebDAV and sync operations" },
-  { value: "drupal", label: "Drupal", desc: "Excludes Drupal admin and module operations" },
-  { value: "cpanel", label: "cPanel", desc: "Excludes cPanel/WHM control panel operations" },
-  { value: "dokuwiki", label: "DokuWiki", desc: "Excludes DokuWiki editing operations" },
-  { value: "phpbb", label: "phpBB", desc: "Excludes phpBB forum operations" },
-  { value: "phpmyadmin", label: "phpMyAdmin", desc: "Excludes phpMyAdmin database operations" },
-  { value: "xenforo", label: "XenForo", desc: "Excludes XenForo forum operations" },
-];
+// Dead settings removed: MODE_META, CRS_EXCLUSION_PROFILES
+// Policy engine uses only paranoia_level + inbound_threshold
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -53,26 +42,5 @@ export const PARANOIA_DESCRIPTIONS: Record<number, { label: string; desc: string
   4: {
     label: "Ultra (PL4)",
     desc: "Maximum paranoia. Many false positives. Requires extensive tuning.",
-  },
-};
-
-export const MODE_META: Record<WAFMode, { label: string; desc: string; color: string; dot: string }> = {
-  enabled: {
-    label: "Enabled",
-    desc: "WAF actively blocks malicious requests",
-    color: "text-lv-green border-lv-green/30 bg-lv-green/5",
-    dot: "bg-lv-green",
-  },
-  detection_only: {
-    label: "Detection Only",
-    desc: "WAF logs but does not block requests",
-    color: "text-lv-peach border-lv-peach/30 bg-lv-peach/5",
-    dot: "bg-lv-peach",
-  },
-  disabled: {
-    label: "Disabled",
-    desc: "WAF engine is completely disabled",
-    color: "text-lv-red border-lv-red/30 bg-lv-red/5",
-    dot: "bg-lv-red",
   },
 };

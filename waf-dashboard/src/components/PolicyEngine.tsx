@@ -453,6 +453,7 @@ export default function PolicyEngine() {
         type: exclusionToEdit.type,
         severity: exclusionToEdit.severity ?? "",
         detect_paranoia_level: exclusionToEdit.detect_paranoia_level ?? 0,
+        skip_targets: exclusionToEdit.skip_targets ?? {},
         conditions: exclusionToEdit.conditions ?? [],
         group_operator: exclusionToEdit.group_operator ?? "and",
         tags: exclusionToEdit.tags ?? [],
@@ -790,32 +791,36 @@ export default function PolicyEngine() {
 
       {/* Create / Edit Rule Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
-        <DialogContent className="w-[90vw] max-w-[1800px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-lv-green" />
-              {editingId ? "Edit Rule" : "Create Rule"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingId
-                ? "Modify the rule below. Changes are deployed automatically on save."
-                : "Use Quick Actions for common tasks or Advanced for full control."}
-            </DialogDescription>
-          </DialogHeader>
-
+        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="quick" className="gap-1.5" disabled={!!editingId}>
-                <Zap className="h-3.5 w-3.5" />
-                Quick Actions
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="gap-1.5">
-                <Code2 className="h-3.5 w-3.5" />
-                Advanced
-              </TabsTrigger>
-            </TabsList>
+            <DialogHeader className="space-y-3">
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-base">
+                  {editingId ? "Edit Rule" : "Create Rule"}
+                </DialogTitle>
+                {!editingId && (
+                  <TabsList className="h-8">
+                    <TabsTrigger value="quick" className="gap-1.5 text-xs px-3 h-7">
+                      <Zap className="h-3 w-3" />
+                      Quick
+                    </TabsTrigger>
+                    <TabsTrigger value="advanced" className="gap-1.5 text-xs px-3 h-7">
+                      <Code2 className="h-3 w-3" />
+                      Advanced
+                    </TabsTrigger>
+                  </TabsList>
+                )}
+              </div>
+              <DialogDescription className="text-xs">
+                {editingId
+                  ? "Modify the rule below. Changes are deployed automatically on save."
+                  : activeTab === "quick"
+                    ? "Pick an action type, define conditions, and deploy."
+                    : "Full control over rule type, conditions, and metadata."}
+              </DialogDescription>
+            </DialogHeader>
 
-            <TabsContent value="quick">
+            <TabsContent value="quick" className="mt-4">
               <QuickActionsForm
                 services={services}
                 onSubmit={(data) => {
@@ -828,7 +833,7 @@ export default function PolicyEngine() {
               />
             </TabsContent>
 
-            <TabsContent value="advanced">
+            <TabsContent value="advanced" className="mt-4">
               {editingId && editFormState ? (
                 <AdvancedBuilderForm
                   key={editingId}

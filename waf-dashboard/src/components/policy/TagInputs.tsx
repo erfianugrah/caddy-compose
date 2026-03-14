@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Check, Copy, Sparkles } from "lucide-react";
+import { Plus, X, Check, Copy, Sparkles, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -7,6 +7,23 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { VALID_TRANSFORMS } from "@/lib/api";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ─── Copy Button ────────────────────────────────────────────────────
 
@@ -285,32 +302,168 @@ export function PipeTagInput({
 
 // ─── Transform Multi-Select ─────────────────────────────────────────
 
-/** Short descriptions for each transform, shown in the popover. */
+/** Transform metadata: name, description, and category grouping. */
 const TRANSFORM_HINTS: Record<string, string> = {
-  lowercase: "Convert to lowercase",
-  urlDecode: "Decode %XX sequences",
-  urlDecodeUni: "Decode %uXXXX + %XX",
-  htmlEntityDecode: "Decode &amp; &#NN; &#xHH;",
-  normalizePath: "Collapse /../ /./ //",
-  normalizePathWin: "Normalize + backslash",
-  removeNulls: "Strip null bytes",
-  compressWhitespace: "Collapse whitespace",
-  removeWhitespace: "Strip all whitespace",
-  base64Decode: "Base64 decode",
-  hexDecode: "Hex-encoded decode",
-  jsDecode: "JS escape sequences",
-  cssDecode: "CSS escape sequences",
-  utf8toUnicode: "UTF-8 to \\uXXXX",
-  removeComments: "Strip /* */ and <!-- -->",
-  trim: "Trim leading/trailing space",
-  length: "Replace with string length",
+  lowercase: "Convert to lowercase for case-insensitive matching",
+  urlDecode: "Decode %XX percent-encoded sequences",
+  urlDecodeUni: "Decode %uXXXX Unicode + %XX sequences",
+  htmlEntityDecode: "Decode &amp; &#NN; &#xHH; HTML entities",
+  normalizePath: "Collapse /../ /./ and // in paths",
+  normalizePathWin: "Normalize paths + convert backslashes",
+  removeNulls: "Strip null bytes (bypass evasion)",
+  compressWhitespace: "Collapse runs of whitespace to single space",
+  removeWhitespace: "Strip all whitespace characters",
+  base64Decode: "Decode base64-encoded payloads",
+  hexDecode: "Decode hex-encoded sequences (0xNN)",
+  jsDecode: "Decode JavaScript escape sequences (\\uNNNN)",
+  cssDecode: "Decode CSS escape sequences (\\NN)",
+  utf8toUnicode: "Convert UTF-8 multibyte to \\uXXXX notation",
+  removeComments: "Strip /* */ and <!-- --> comment blocks",
+  trim: "Trim leading and trailing whitespace",
+  length: "Replace value with its string length (numeric)",
 };
+
+/** Grouped transform layout for the popover picker. */
+const TRANSFORM_GROUPS: { label: string; items: string[] }[] = [
+  {
+    label: "Normalization",
+    items: ["lowercase", "normalizePath", "normalizePathWin", "compressWhitespace", "removeWhitespace", "removeNulls", "removeComments", "trim"],
+  },
+  {
+    label: "Decoding",
+    items: ["urlDecode", "urlDecodeUni", "htmlEntityDecode", "base64Decode", "hexDecode", "jsDecode", "cssDecode"],
+  },
+  {
+    label: "Inspection",
+    items: ["utf8toUnicode", "length"],
+  },
+];
+
+/** Preset transform pipelines for common use cases. */
+const TRANSFORM_PRESETS: { label: string; description: string; transforms: string[] }[] = [
+  { label: "CRS Standard", description: "Common CRS decoding chain", transforms: ["lowercase", "urlDecode", "htmlEntityDecode", "removeNulls"] },
+  { label: "Full Decode", description: "All decoding transforms", transforms: ["lowercase", "urlDecode", "urlDecodeUni", "htmlEntityDecode", "base64Decode", "hexDecode", "jsDecode"] },
+  { label: "Normalize", description: "Whitespace + path cleanup", transforms: ["lowercase", "normalizePath", "compressWhitespace", "trim"] },
+];
+
+/** Popover contents — grouped transform list with presets. */
+function TransformPopoverContent({
+  selected,
+  onToggle,
+  onApplyPreset,
+}: {
+  selected: string[];
+  onToggle: (t: string) => void;
+  onApplyPreset: (transforms: string[]) => void;
+}) {
+  return (
+    <div className="w-[300px] max-h-[400px] overflow-y-auto">
+      {/* Presets */}
+      <div className="px-2 pt-2 pb-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold mb-1.5">Presets</p>
+        <div className="flex flex-wrap gap-1.5">
+          {TRANSFORM_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => onApplyPreset(preset.transforms)}
+              className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-lovelace-800/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent hover:border-accent-foreground/20 transition-colors"
+              title={preset.description}
+            >
+              <Sparkles className="h-3 w-3" />
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="my-1 mx-2 h-px bg-border/30" />
+
+      {/* Grouped items */}
+      {TRANSFORM_GROUPS.map((group) => (
+        <div key={group.label}>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold px-2 pt-2 pb-1">{group.label}</p>
+          {group.items.map((t) => {
+            const isSelected = selected.includes(t);
+            return (
+              <button
+                key={t}
+                onClick={() => onToggle(t)}
+                className="flex w-full items-start gap-2 rounded px-2 py-1.5 cursor-pointer hover:bg-accent"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-data font-medium ${isSelected ? "text-lv-cyan" : ""}`}>{t}</p>
+                  <p className="text-[10px] leading-tight text-muted-foreground">{TRANSFORM_HINTS[t]}</p>
+                </div>
+                {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-lv-cyan mt-0.5" />}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Popover-based multi-select for condition transforms.
- * Displays selected transforms as ordered chip pills with X to remove.
+ * Displays selected transforms as a numbered pipeline with arrows.
  * Values stored as string[] (order matters — applied left-to-right).
  */
+// ─── Sortable Transform Chip ────────────────────────────────────────
+
+function SortableTransformChip({
+  id,
+  index,
+  onRemove,
+}: {
+  id: string;
+  index: number;
+  onRemove: (t: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <span
+      ref={setNodeRef}
+      style={style}
+      className="inline-flex items-center gap-1 rounded bg-lovelace-800/60 border border-border/50 px-1.5 py-0 text-[11px] font-data text-lv-cyan/80 select-none"
+      {...attributes}
+    >
+      <button
+        className="cursor-grab active:cursor-grabbing p-0 text-muted-foreground/30 hover:text-muted-foreground/60 touch-none"
+        {...listeners}
+        tabIndex={-1}
+      >
+        <GripVertical className="h-2.5 w-2.5" />
+      </button>
+      <span className="text-muted-foreground/40 text-[9px]">{index + 1}.</span>
+      {id}
+      <button
+        onClick={() => onRemove(id)}
+        className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
+      >
+        <X className="h-2 w-2" />
+      </button>
+    </span>
+  );
+}
+
+// ─── Transform Select (with drag-to-reorder) ───────────────────────
+
 export function TransformSelect({
   value,
   onChange,
@@ -320,6 +473,11 @@ export function TransformSelect({
 }) {
   const [open, setOpen] = useState(false);
   const selected = value ?? [];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const toggle = (t: string) => {
     if (selected.includes(t)) {
@@ -333,7 +491,21 @@ export function TransformSelect({
     onChange(selected.filter((s) => s !== t));
   };
 
-  const unselected = VALID_TRANSFORMS.filter((t) => !selected.includes(t));
+  const applyPreset = (transforms: string[]) => {
+    const merged = [...new Set([...selected, ...transforms])];
+    const presetSet = new Set(transforms);
+    const nonPreset = merged.filter((t) => !presetSet.has(t));
+    onChange([...transforms, ...nonPreset]);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = selected.indexOf(active.id as string);
+      const newIndex = selected.indexOf(over.id as string);
+      onChange(arrayMove(selected, oldIndex, newIndex));
+    }
+  };
 
   if (selected.length === 0 && !open) {
     return (
@@ -344,17 +516,8 @@ export function TransformSelect({
             Add transforms
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[260px] p-1 max-h-[320px] overflow-y-auto" align="start">
-          {VALID_TRANSFORMS.map((t) => (
-            <button
-              key={t}
-              onClick={() => toggle(t)}
-              className="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
-            >
-              <span>{t}</span>
-              <span className="text-[10px] text-muted-foreground">{TRANSFORM_HINTS[t]}</span>
-            </button>
-          ))}
+        <PopoverContent className="p-0" align="start">
+          <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
         </PopoverContent>
       </Popover>
     );
@@ -362,45 +525,23 @@ export function TransformSelect({
 
   return (
     <div className="flex flex-wrap items-center gap-1 min-h-[24px]">
-      {selected.map((t, i) => (
-        <span
-          key={t}
-          className="inline-flex items-center gap-1 rounded bg-lovelace-800/60 border border-border/50 px-1.5 py-0 text-[11px] font-data text-lv-cyan/80"
-        >
-          {i > 0 && <span className="text-muted-foreground/40 mr-0.5">&rarr;</span>}
-          {t}
-          <button
-            onClick={() => remove(t)}
-            className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
-          >
-            <X className="h-2 w-2" />
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
+          {selected.map((t, i) => (
+            <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
+            <Plus className="h-2.5 w-2.5" />
           </button>
-        </span>
-      ))}
-      {unselected.length > 0 && (
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <button className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
-              <Plus className="h-2.5 w-2.5" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[260px] p-1 max-h-[320px] overflow-y-auto" align="start">
-            {VALID_TRANSFORMS.map((t) => (
-              <button
-                key={t}
-                onClick={() => { toggle(t); if (unselected.length <= 1) setOpen(false); }}
-                className="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-data cursor-pointer hover:bg-accent"
-              >
-                <span className={selected.includes(t) ? "text-lv-cyan" : ""}>{t}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">{TRANSFORM_HINTS[t]}</span>
-                  {selected.includes(t) && <Check className="h-3 w-3 text-lv-cyan" />}
-                </div>
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
-      )}
+        </PopoverTrigger>
+        <PopoverContent className="p-0" align="start">
+          <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

@@ -201,14 +201,17 @@ export function ConditionRow({
         value={condition.operator}
         onValueChange={(v) => {
           const newOp = v as ConditionOperator;
-          // When switching to phrase_match, move any existing pipe-separated value into list_items
-          if (newOp === "phrase_match") {
+          const isPhraseOp = newOp === "phrase_match" || newOp === "not_phrase_match";
+          const wasPhraseOp = condition.operator === "phrase_match" || condition.operator === "not_phrase_match";
+          // When switching to phrase_match/not_phrase_match, move any existing pipe-separated value into list_items
+          if (isPhraseOp) {
             const items = condition.value ? condition.value.split("|").filter(Boolean) : [];
-            onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : undefined });
+            onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : (condition.list_items ?? undefined) });
           } else {
-            // When switching away from phrase_match, move list_items back to pipe value for "in" or clear
-            const fromPhraseMatch = condition.operator === "phrase_match" && condition.list_items?.length;
-            const newValue = fromPhraseMatch && newOp === "in" ? condition.list_items!.join("|") : "";
+            // When switching away from phrase_match, move list_items back to pipe value for "in"/"not_in" or clear
+            const fromPhraseMatch = wasPhraseOp && condition.list_items?.length;
+            const isInOp = newOp === "in" || newOp === "not_in";
+            const newValue = fromPhraseMatch && isInOp ? condition.list_items!.join("|") : "";
             onChange(index, { ...condition, operator: newOp, value: newValue, list_items: undefined });
           }
         }}
@@ -239,12 +242,12 @@ export function ConditionRow({
             services={services}
             onChange={(v) => onChange(index, { ...condition, value: v })}
           />
-        ) : condition.field === "method" && condition.operator === "in" ? (
+        ) : condition.field === "method" && (condition.operator === "in" || condition.operator === "not_in") ? (
           <MethodMultiSelect
             value={condition.value}
             onChange={(v) => onChange(index, { ...condition, value: v })}
           />
-        ) : condition.operator === "phrase_match" ? (
+        ) : condition.operator === "phrase_match" || condition.operator === "not_phrase_match" ? (
           <PipeTagInput
             value={(condition.list_items ?? []).join("|")}
             onChange={(v) => {
@@ -253,7 +256,7 @@ export function ConditionRow({
             }}
             placeholder="e.g., select|union|insert|drop"
           />
-        ) : condition.operator === "in" ? (
+        ) : condition.operator === "in" || condition.operator === "not_in" ? (
           <PipeTagInput
             value={condition.value}
             onChange={(v) => onChange(index, { ...condition, value: v })}

@@ -3,6 +3,7 @@ import {
   Shield,
   ShieldCheck,
   ShieldBan,
+  ShieldMinus,
   ShieldAlert,
   Plus,
   X,
@@ -30,6 +31,7 @@ import type {
   ExclusionType,
   GroupOperator,
   ServiceDetail,
+  SkipTargets,
 } from "@/lib/api";
 import {
   type QuickActionType,
@@ -39,7 +41,7 @@ import {
   emptyAdvancedForm,
 } from "./constants";
 import type { EventPrefill } from "./eventPrefill";
-import { PipeTagInput } from "./TagInputs";
+import { PipeTagInput, RuleIdTagInput, parseRuleIds } from "./TagInputs";
 import { ConditionRow } from "./ConditionBuilder";
 import { T } from "@/lib/typography";
 
@@ -48,6 +50,7 @@ import { T } from "@/lib/typography";
 const QUICK_ACTION_ICONS: Record<string, typeof Shield> = {
   ShieldCheck,
   ShieldBan,
+  ShieldMinus,
   ShieldAlert,
 };
 
@@ -59,6 +62,111 @@ const SEVERITY_OPTIONS = [
   { value: "ERROR", label: "Error", description: "High severity — likely malicious" },
   { value: "CRITICAL", label: "Critical", description: "Highest severity — definite attack" },
 ];
+
+// ─── Skip target phase options ──────────────────────────────────────
+
+const SKIP_PHASES = [
+  { value: "detect", label: "Detect", description: "Skip all CRS/anomaly detection rules" },
+  { value: "rate_limit", label: "Rate Limit", description: "Skip all rate limiting rules" },
+  { value: "block", label: "Block", description: "Skip all block rules" },
+];
+
+// ─── Skip Targets Form ─────────────────────────────────────────────
+
+function SkipTargetsForm({
+  value,
+  onChange,
+}: {
+  value: SkipTargets;
+  onChange: (targets: SkipTargets) => void;
+}) {
+  const ruleIds = (value.rules ?? []).join(" ");
+  const phases = value.phases ?? [];
+  const allRemaining = value.all_remaining ?? false;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Skip Rule</p>
+        <p className="mt-1">
+          Selectively bypass specific rules or entire evaluation phases for matching requests.
+          Unlike Allow (which terminates evaluation), Skip accumulates targets and later phases
+          check the skip list before evaluating.
+        </p>
+      </div>
+
+      {/* All Remaining toggle */}
+      <div className="flex items-center gap-2">
+        <Switch
+          id="skip-all-remaining"
+          checked={allRemaining}
+          onCheckedChange={(checked) => {
+            onChange({
+              ...value,
+              all_remaining: checked,
+              // Clear specific targets when all_remaining is toggled on
+              ...(checked ? { rules: undefined, phases: undefined } : {}),
+            });
+          }}
+        />
+        <Label htmlFor="skip-all-remaining" className="text-sm font-medium">
+          Skip all remaining rules
+        </Label>
+        <span className="text-xs text-muted-foreground">(bypass all block, detect, and rate limit rules)</span>
+      </div>
+
+      {!allRemaining && (
+        <>
+          {/* Phase toggles */}
+          <div className="space-y-1.5">
+            <Label className={T.formLabel}>Skip Phases</Label>
+            <div className="flex flex-wrap gap-4">
+              {SKIP_PHASES.map((phase) => {
+                const checked = phases.includes(phase.value);
+                return (
+                  <div key={phase.value} className="flex items-center gap-2">
+                    <Switch
+                      id={`skip-phase-${phase.value}`}
+                      checked={checked}
+                      onCheckedChange={(c) => {
+                        const next = c
+                          ? [...phases, phase.value]
+                          : phases.filter((p) => p !== phase.value);
+                        onChange({ ...value, phases: next.length > 0 ? next : undefined });
+                      }}
+                    />
+                    <Label htmlFor={`skip-phase-${phase.value}`} className="text-sm">
+                      {phase.label}
+                    </Label>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Skip all rules in the selected evaluation phases
+            </p>
+          </div>
+
+          {/* Rule IDs */}
+          <div className="space-y-1.5">
+            <Label className={T.formLabel}>Skip Specific Rule IDs</Label>
+            <RuleIdTagInput
+              value={ruleIds}
+              onChange={(v) => {
+                const ids = parseRuleIds(v);
+                onChange({ ...value, rules: ids.length > 0 ? ids : undefined });
+              }}
+              placeholder="Type rule IDs to skip (Enter to add)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Skip individual rules by ID — these are policy engine rule IDs from your block/detect/rate-limit rules
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Exclusion Type Picker (Popover-based, no Radix Select scroll) ──
 
@@ -137,6 +245,9 @@ export function QuickActionsForm({
   const [severity, setSeverity] = useState("WARNING");
   const [detectPL, setDetectPL] = useState(0);
 
+  // Skip-specific state
+  const [skipTargets, setSkipTargets] = useState<SkipTargets>({});
+
   // Apply prefill when it arrives (async from useEffect in parent)
   useEffect(() => {
     if (!prefill) return;
@@ -156,6 +267,7 @@ export function QuickActionsForm({
     setGroupOp("and");
     setSeverity("WARNING");
     setDetectPL(0);
+    setSkipTargets({});
     setEnabled(true);
     setTags([]);
     setShowPrefillBanner(false);
@@ -189,6 +301,10 @@ export function QuickActionsForm({
       data.severity = severity;
       if (detectPL > 0) data.detect_paranoia_level = detectPL;
     }
+    if (actionType === "skip") {
+      const hasTargets = skipTargets.all_remaining || (skipTargets.rules?.length ?? 0) > 0 || (skipTargets.phases?.length ?? 0) > 0;
+      if (hasTargets) data.skip_targets = skipTargets;
+    }
     if (tags.length > 0) data.tags = tags;
 
     onSubmit(data);
@@ -200,6 +316,10 @@ export function QuickActionsForm({
     if (!name.trim()) return false;
     if (validConditions.length === 0) return false;
     if (actionType === "detect" && !severity) return false;
+    if (actionType === "skip") {
+      const hasTargets = skipTargets.all_remaining || (skipTargets.rules?.length ?? 0) > 0 || (skipTargets.phases?.length ?? 0) > 0;
+      if (!hasTargets) return false;
+    }
     return true;
   })();
 
@@ -233,13 +353,14 @@ export function QuickActionsForm({
       )}
 
       {/* Action Type Selector */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         {QUICK_ACTIONS.map((action) => {
           const Icon = QUICK_ACTION_ICONS[action.iconName] ?? Shield;
           const isActive = actionType === action.value;
           const colorMap: Record<string, { active: string; icon: string; text: string }> = {
             allow: { active: "border-lv-green/40 bg-lv-green/5", icon: "text-lv-green", text: "text-lv-green" },
             block: { active: "border-lv-red/40 bg-lv-red/5", icon: "text-lv-red", text: "text-lv-red" },
+            skip: { active: "border-lv-cyan/40 bg-lv-cyan/5", icon: "text-lv-cyan", text: "text-lv-cyan" },
             detect: { active: "border-lv-peach/40 bg-lv-peach/5", icon: "text-lv-peach", text: "text-lv-peach" },
           };
           const colors = colorMap[action.value] ?? colorMap.detect;
@@ -398,6 +519,11 @@ export function QuickActionsForm({
         </div>
       )}
 
+      {/* Skip: Target Selection */}
+      {actionType === "skip" && (
+        <SkipTargetsForm value={skipTargets} onChange={setSkipTargets} />
+      )}
+
       {/* Tags */}
       <div className="space-y-1.5">
         <Label className={T.formLabel}>Tags</Label>
@@ -415,7 +541,7 @@ export function QuickActionsForm({
       <div className="flex items-center gap-4 pt-2">
         <Button onClick={handleSubmit} disabled={!isValid}>
           <SelectedIcon className="h-4 w-4" />
-          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : "Add Detect Rule"}
+          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : actionType === "skip" ? "Add Skip Rule" : "Add Detect Rule"}
         </Button>
         <div className="flex items-center gap-2">
           <Switch checked={enabled} onCheckedChange={setEnabled} id="qa-enabled" />
@@ -445,11 +571,12 @@ export function AdvancedBuilderForm({
 }) {
   const [form, setForm] = useState<AdvancedFormState>(initial ?? emptyAdvancedForm);
 
-  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator | string[]) => {
+  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator | string[] | SkipTargets) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const isDetect = form.type === "detect";
+  const isSkip = form.type === "skip";
 
   // Condition management — all 3 types need conditions
   const updateCondition = (index: number, condition: Condition) => {
@@ -476,6 +603,8 @@ export function AdvancedBuilderForm({
       // Reset detect-specific fields when switching away from detect
       severity: newType === "detect" ? (prev.severity || "WARNING") : "",
       detect_paranoia_level: newType === "detect" ? prev.detect_paranoia_level : 0,
+      // Reset skip-specific fields when switching away from skip
+      skip_targets: newType === "skip" ? prev.skip_targets : {},
     }));
   };
 
@@ -490,6 +619,11 @@ export function AdvancedBuilderForm({
     if (isDetect) {
       data.severity = form.severity;
       if (form.detect_paranoia_level > 0) data.detect_paranoia_level = form.detect_paranoia_level;
+    }
+    if (isSkip) {
+      const st = form.skip_targets;
+      const hasTargets = st.all_remaining || (st.rules?.length ?? 0) > 0 || (st.phases?.length ?? 0) > 0;
+      if (hasTargets) data.skip_targets = st;
     }
     if (validConditions.length > 0) {
       data.conditions = validConditions;
@@ -506,6 +640,12 @@ export function AdvancedBuilderForm({
     if (validConds.length === 0) return false;
     // Detect needs severity
     if (isDetect && !form.severity) return false;
+    // Skip needs at least one target
+    if (isSkip) {
+      const st = form.skip_targets;
+      const hasTargets = st.all_remaining || (st.rules?.length ?? 0) > 0 || (st.phases?.length ?? 0) > 0;
+      if (!hasTargets) return false;
+    }
     return true;
   })();
 
@@ -529,6 +669,7 @@ export function AdvancedBuilderForm({
           <Label className={T.formLabel}>Exclusion Type</Label>
           {form.type === "allow" && <span className="inline-flex items-center rounded bg-lv-green/20 border border-lv-green/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-green">Allow</span>}
           {form.type === "block" && <span className="inline-flex items-center rounded bg-lv-red/20 border border-lv-red/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-red">Block</span>}
+          {form.type === "skip" && <span className="inline-flex items-center rounded bg-lv-cyan/20 border border-lv-cyan/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-cyan">Skip</span>}
           {form.type === "detect" && <span className="inline-flex items-center rounded bg-lv-peach/20 border border-lv-peach/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-peach">Detect</span>}
         </div>
         <ExclusionTypePicker value={form.type} onChange={handleTypeChange} />
@@ -566,6 +707,14 @@ export function AdvancedBuilderForm({
             </Select>
           </div>
         </div>
+      )}
+
+      {/* Skip: Target Selection */}
+      {isSkip && (
+        <SkipTargetsForm
+          value={form.skip_targets}
+          onChange={(targets) => update("skip_targets", targets)}
+        />
       )}
 
       {/* Condition builder */}
