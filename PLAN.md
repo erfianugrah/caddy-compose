@@ -4271,3 +4271,20 @@ Per-field operator additions:
 
 - [x] `TestLoggedEventsCollected`: tuning mode events appear with `type=logged score=22 blocked=false`
 - [x] `TestSkipRuleBypassesDetect`: skip `phases=["detect"]` prevents CRS scoring (non-403)
+
+#### Step 7: Logged Events Full Detail
+
+> Plugin committed as `9999701` (v0.14.1). Caddy-compose committed as `e332539`.
+
+**Plugin change** (`caddy-policy-engine v0.14.1`):
+
+- [x] Move `detect_rules` and `tags` variable emission out of the threshold block
+  so they are set for ALL detect events (both blocking and below-threshold)
+- [x] `detect_rules` (id:severity:score detail string) now emitted regardless of threshold
+- [x] `tags` (rule tags) now emitted regardless of threshold
+- [x] `detect_matches` was already emitted for all events (no change)
+- [x] All 419 plugin tests passing
+
+**Impact**: Logged events in tuning/log-only mode now show the same matched rule IDs,
+severity, scores, and category tags as blocked events. The events list displays Rule ID,
+score, and the full tag ribbon (e.g., `application-multi`, `language-shell`, `attack-sqli`).
