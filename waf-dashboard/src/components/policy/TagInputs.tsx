@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Check, Copy, Sparkles, GripVertical, ChevronDown } from "lucide-react";
+import { Plus, X, Check, Copy, Sparkles, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -7,23 +7,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { VALID_TRANSFORMS } from "@/lib/api";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  horizontalListSortingStrategy,
-  useSortable,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 // ─── Copy Button ────────────────────────────────────────────────────
 
@@ -402,63 +385,10 @@ function TransformPopoverContent({
 
 /**
  * Popover-based multi-select for condition transforms.
- * Displays selected transforms as a numbered pipeline with arrows.
- * Values stored as string[] (order matters — applied left-to-right).
+ * Simple multi-select dropdown for transforms. Looks like the Field/Operator selects.
  */
-// ─── Sortable Transform Chip ────────────────────────────────────────
 
-function SortableTransformChip({
-  id,
-  index,
-  onRemove,
-}: {
-  id: string;
-  index: number;
-  onRemove: (t: string) => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : undefined,
-    zIndex: isDragging ? 10 : undefined,
-  };
-
-  return (
-    <span
-      ref={setNodeRef}
-      style={style}
-      className="inline-flex items-center gap-0.5 rounded-md border border-lv-cyan/20 bg-lv-cyan/5 px-1.5 py-0.5 text-[11px] font-data text-lv-cyan select-none"
-      {...attributes}
-    >
-      <button
-        className="cursor-grab active:cursor-grabbing p-0 text-lv-cyan/30 hover:text-lv-cyan/60 touch-none"
-        {...listeners}
-        tabIndex={-1}
-      >
-        <GripVertical className="h-2.5 w-2.5" />
-      </button>
-      <span className="text-lv-cyan/40 text-[9px]">{index + 1}.</span>
-      {id}
-      <button
-        onClick={() => onRemove(id)}
-        className="ml-0.5 rounded-full p-0.5 text-lv-cyan/40 hover:bg-lv-red/20 hover:text-lv-red"
-      >
-        <X className="h-2 w-2" />
-      </button>
-    </span>
-  );
-}
-
-// ─── Transform Select (collapsible sub-row) ────────────────────────
+// ─── Transform Select ──────────────────────────────────────────────
 
 export function TransformSelect({
   value,
@@ -467,13 +397,8 @@ export function TransformSelect({
   value: string[];
   onChange: (value: string[]) => void;
 }) {
-  const [addOpen, setAddOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const selected = value ?? [];
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
 
   const toggle = (t: string) => {
     if (selected.includes(t)) {
@@ -483,61 +408,30 @@ export function TransformSelect({
     }
   };
 
-  const remove = (t: string) => {
-    onChange(selected.filter((s) => s !== t));
-  };
-
-  const applyPreset = (transforms: string[]) => {
-    const merged = [...new Set([...selected, ...transforms])];
-    const presetSet = new Set(transforms);
-    const nonPreset = merged.filter((t) => !presetSet.has(t));
-    onChange([...transforms, ...nonPreset]);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = selected.indexOf(active.id as string);
-      const newIndex = selected.indexOf(over.id as string);
-      onChange(arrayMove(selected, oldIndex, newIndex));
-    }
-  };
-
-  // Auto-expand when transforms are present
-  const hasTransforms = selected.length > 0;
+  // Trigger text
+  const label = selected.length === 0
+    ? "No transforms"
+    : selected.length <= 2
+      ? selected.join(" → ")
+      : `${selected.length} transforms`;
 
   return (
-    <div className="pl-1">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {/* Selected transform chips (draggable) */}
-        {hasTransforms && (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
-              {selected.map((t, i) => (
-                <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
-              ))}
-            </SortableContext>
-          </DndContext>
-        )}
-
-        {/* Add dropdown — styled to match Select triggers */}
-        <Popover open={addOpen} onOpenChange={setAddOpen}>
-          <PopoverTrigger asChild>
-            <button className={`inline-flex items-center gap-1 rounded-md border h-7 px-2 text-[11px] transition-colors ${
-              hasTransforms
-                ? "border-border/50 text-muted-foreground/60 hover:text-muted-foreground hover:border-muted-foreground/50"
-                : "border-dashed border-border/50 text-muted-foreground/40 hover:text-muted-foreground hover:border-muted-foreground/50"
-            }`}>
-              <Sparkles className="h-3 w-3" />
-              {hasTransforms ? <Plus className="h-2.5 w-2.5" /> : "Transforms"}
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="p-0" align="start" side="bottom" sideOffset={4}>
-            <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
-          </PopoverContent>
-        </Popover>
-      </div>
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={`inline-flex items-center justify-between gap-1 rounded-md border h-9 px-3 text-xs w-[180px] shrink-0 transition-colors ${
+            selected.length > 0
+              ? "border-lv-cyan/30 text-lv-cyan"
+              : "border-border text-muted-foreground"
+          }`}
+        >
+          <span className="truncate font-data">{label}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0" align="start" sideOffset={4}>
+        <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={(t) => onChange(t)} />
+      </PopoverContent>
+    </Popover>
   );
 }

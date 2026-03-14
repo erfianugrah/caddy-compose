@@ -633,8 +633,9 @@ export default function PolicyEngine() {
                   <SortableTableHead sortKey="name" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Name</SortableTableHead>
                   <SortableTableHead sortKey="type" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Type</SortableTableHead>
                   <TableHead>Target / Conditions</TableHead>
+                  <TableHead>Tags</TableHead>
                   <SortableTableHead sortKey="hits" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Hits (24h)</SortableTableHead>
-                  <SortableTableHead sortKey="enabled" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Enabled</SortableTableHead>
+                  <TableHead className="w-[60px]" />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -677,6 +678,22 @@ export default function PolicyEngine() {
                     </TableCell>
                     <TableCell className="text-xs font-data max-w-[300px] truncate" title={conditionsSummary(excl)}>
                       {conditionsSummary(excl)}
+                    </TableCell>
+                    <TableCell>
+                      {excl.tags && excl.tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {excl.tags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="inline-block rounded bg-muted/50 px-1.5 py-0 text-[10px] text-muted-foreground font-data">
+                              {tag}
+                            </span>
+                          ))}
+                          {excl.tags.length > 3 && (
+                            <span className="text-[10px] text-muted-foreground/50">+{excl.tags.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/30">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {(() => {

@@ -534,7 +534,7 @@ export default function RulesOverview() {
           <CardContent className="space-y-3 border-t border-border pt-4">
             {unconfiguredHosts.length > 0 && (
               <div className="flex justify-end">
-                <Select onValueChange={(v) => handleAddServiceOverride(v)}>
+                <Select key={Object.keys(serviceOverrides).length} onValueChange={(v) => handleAddServiceOverride(v)}>
                   <SelectTrigger className="w-[260px] text-muted-foreground">
                     <SelectValue placeholder="+ Add service override..." />
                   </SelectTrigger>
