@@ -4,12 +4,14 @@ import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -278,20 +280,51 @@ export default function PolicyEngine() {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    // Compute reordered array for the current page
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Multi-drag: if the dragged item is selected and there are other selections,
+    // move all selected items as a group to the drop target position.
+    if (selected.size > 1 && selected.has(activeId)) {
+      const selectedIds = new Set(selected);
+      const overIdx = exclusions.findIndex((e) => e.id === overId);
+      if (overIdx === -1) return;
+
+      // Remove all selected items, preserving their relative order.
+      const remaining = exclusions.filter((e) => !selectedIds.has(e.id));
+      const moved = exclusions.filter((e) => selectedIds.has(e.id));
+
+      // Find where to insert: the position of the drop target in the remaining array.
+      const targetInRemaining = remaining.findIndex((e) => e.id === overId);
+      const insertIdx = targetInRemaining === -1 ? overIdx : targetInRemaining;
+
+      const newExclusions = [...remaining.slice(0, insertIdx), ...moved, ...remaining.slice(insertIdx)];
+
+      const prev = exclusions;
+      setExclusions(newExclusions);
+      try {
+        const result = await reorderExclusions(newExclusions.map((e) => e.id));
+        setExclusions(result);
+        await autoDeploy(`${moved.length} rules reordered`);
+      } catch (err: unknown) {
+        setExclusions(prev);
+        setError(err instanceof Error ? err.message : "Reorder failed");
+      }
+      return;
+    }
+
+    // Single-drag: reorder within the current page.
     const pageStartIdx = (rulesPage - 1) * RULES_PAGE_SIZE;
     const pageIds = exclusions.slice(pageStartIdx, pageStartIdx + RULES_PAGE_SIZE).map((e) => e.id);
-    const oldIdx = pageIds.indexOf(active.id as string);
-    const newIdx = pageIds.indexOf(over.id as string);
+    const oldIdx = pageIds.indexOf(activeId);
+    const newIdx = pageIds.indexOf(overId);
     if (oldIdx === -1 || newIdx === -1) return;
 
-    // Reorder the full array: splice the page portion, reorder it, put it back
     const newExclusions = [...exclusions];
     const pageSlice = newExclusions.splice(pageStartIdx, pageIds.length);
     const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
     newExclusions.splice(pageStartIdx, 0, ...reorderedPage);
 
-    // Optimistic update
     const prev = exclusions;
     setExclusions(newExclusions);
     try {
@@ -299,10 +332,10 @@ export default function PolicyEngine() {
       setExclusions(result);
       await autoDeploy("Rules reordered");
     } catch (err: unknown) {
-      setExclusions(prev); // rollback
+      setExclusions(prev);
       setError(err instanceof Error ? err.message : "Reorder failed");
     }
-  }, [exclusions, rulesPage, autoDeploy]);
+  }, [exclusions, selected, rulesPage, autoDeploy]);
 
   const handleMoveToEdge = useCallback(async (id: string, edge: "top" | "bottom") => {
     const idx = exclusions.findIndex((e) => e.id === id);
@@ -889,7 +922,7 @@ export default function PolicyEngine() {
               </SortableContext>
             </Table>
             </DndContext>
-            <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredExclusions.length} />
+            <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredExclusions.length} pageSize={RULES_PAGE_SIZE} />
             {filteredExclusions.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8">
                 <Search className="mb-2 h-6 w-6 text-muted-foreground/50" />

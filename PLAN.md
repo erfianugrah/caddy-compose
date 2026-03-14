@@ -36,44 +36,17 @@ logged event collection (tuning mode visibility), and e2e CI pipeline.
 
 ---
 
-## In Progress — Remaining Items
+## Recently Completed
 
-### 1. Event Detail Panel Fixes (EventDetailPanel.tsx)
-
-- [ ] **Blank gap** between Request Details and Matched Rules sections
-  - The 2-column grid creates a large gap when right column (Rule Match) is shorter
-  - Fix: either collapse to single column or ensure min-height parity
-
-- [ ] **Long values overflow** — Variable, Full Value, matched_data fields overflow horizontally
-  - TruncatedCode exists but isn't used consistently
-  - Fix: apply `max-w-full overflow-hidden` + expand/collapse toggle to all long value fields
-  - Ensure export JSON always contains full untruncated values
-
-- [ ] **Copy buttons** — add per-field copy button for:
-  - Event ID, Request ID, Method, URI, Client IP, Status
-  - Variable, Matched data, Full Value in matched rules
-  - User-Agent
-  - Use existing `CopyButton` from `TagInputs.tsx` or inline clipboard icon
-
-### 2. Condition Builder UX (ConditionBuilder.tsx)
-
-- [ ] **Preserve value on operator change** — don't clear when switching operators
-  - Currently `value: ""` is set on every operator change (line 220)
-  - Fix: keep `condition.value` when switching between compatible operators
-  - Only clear when switching to/from structurally different ops (e.g., to `exists`, to `phrase_match`)
-
-- [ ] **Previous value pill on field change** — when field changes:
-  - Clear the value (current behavior)
-  - Show a small dismissible pill with the old value below the input
-  - Clicking the pill re-applies it; clicking × dismisses it
-  - Requires new state: `previousValue` per condition row
-
-### 3. Policy Page: Bulk Move-to-Position (PolicyEngine.tsx)
-
-- [ ] Add "Move to #" input in the bulk action toolbar (alongside Enable/Disable/Delete)
-  - Small number input + "Move" button
-  - Calls `handleBulkMoveToPosition(position)` (handler already implemented)
-  - Only visible when selection is non-empty and not filtered/sorted
+- [x] **Event detail: blank gap** — replaced 2-column grid with stacked layout (both panels)
+- [x] **Event detail: long values** — TruncatedCode for URI, User-Agent, Variable, Full Value, matched_data
+- [x] **Event detail: copy buttons** — CopyBtn on all fields (Event ID, Request ID, URI, IP, etc.)
+- [x] **General Logs: same fixes** — TruncatedCode, CopyBtn, stacked layout
+- [x] **Condition builder: preserve value** — operator changes keep value (clear only for exists/list/phrase)
+- [x] **Condition builder: previous value pill** — dismissible pill after field change
+- [x] **Policy page: bulk move-to-position** — "Move to #" input in bulk toolbar
+- [x] **Policy page: type filter** — added missing "Skip" type
+- [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
 
 ---
 

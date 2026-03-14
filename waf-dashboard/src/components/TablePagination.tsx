@@ -7,13 +7,15 @@ interface TablePaginationProps {
   onPageChange: (page: number) => void;
   /** Optional: total item count to display "X items" */
   totalItems?: number;
+  /** Optional: items per page to display "N per page" */
+  pageSize?: number;
 }
 
 /**
  * Compact pagination control for tables.
  * Matches the existing style from EventsTable / OverviewDashboard.
  */
-export function TablePagination({ page, totalPages, onPageChange, totalItems }: TablePaginationProps) {
+export function TablePagination({ page, totalPages, onPageChange, totalItems, pageSize }: TablePaginationProps) {
   if (totalPages <= 1) return null;
 
   return (
@@ -21,6 +23,7 @@ export function TablePagination({ page, totalPages, onPageChange, totalItems }: 
       <span className="text-xs text-muted-foreground">
         Page {page} of {totalPages}
         {totalItems != null && <span className="ml-2">({totalItems.toLocaleString()} items)</span>}
+        {pageSize != null && <span className="ml-1 text-muted-foreground/50">&middot; {pageSize} per page</span>}
       </span>
       <div className="flex items-center gap-1">
         <Button

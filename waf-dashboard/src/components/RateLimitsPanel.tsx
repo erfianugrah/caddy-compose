@@ -704,7 +704,7 @@ export default function RateLimitsPanel() {
                   </Table>
                   </DndContext>
                    {filteredRules.length > 0 && (
-                    <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredRules.length} />
+                    <TablePagination page={rulesPage} totalPages={rulesTotalPages} onPageChange={setRulesPage} totalItems={filteredRules.length} pageSize={RL_RULES_PAGE_SIZE} />
                   )}
                   {filteredRules.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-8">

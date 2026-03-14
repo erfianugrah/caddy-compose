@@ -426,6 +426,7 @@ export function IPLookupPanel({ initialIP }: { initialIP?: string }) {
                   totalPages={Math.max(1, Math.ceil(data.events_total / IP_EVENTS_PAGE_SIZE))}
                   onPageChange={handleEventsPageChange}
                   totalItems={data.events_total}
+                  pageSize={IP_EVENTS_PAGE_SIZE}
                 />
               </CardContent>
             </Card>

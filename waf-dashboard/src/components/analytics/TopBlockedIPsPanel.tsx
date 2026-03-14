@@ -142,7 +142,7 @@ export function TopBlockedIPsPanel({ hours, refreshKey }: { hours?: number; refr
               ))}
             </TableBody>
           </Table>
-          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={data.length} />
+          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={data.length} pageSize={ANALYTICS_PAGE_SIZE} />
           </>
         ) : (
           <div className="py-8 text-center text-xs text-muted-foreground">

@@ -331,6 +331,8 @@ export default function LogStreamTab({
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
             Page {page} of {totalPages}
+            {response && <span className="ml-2">({formatNumber(response.total)} items)</span>}
+            <span className="ml-1 text-muted-foreground/50">&middot; 50 per page</span>
           </span>
           <div className="flex items-center gap-1">
             <Button

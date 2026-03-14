@@ -538,6 +538,8 @@ export default function EventsTable() {
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
             Page {page} of {totalPages}
+            {response && response.total >= 0 && <span className="ml-2">({response.total.toLocaleString()} items)</span>}
+            <span className="ml-1 text-muted-foreground/50">&middot; {response?.per_page ?? 50} per page</span>
           </span>
           <div className="flex items-center gap-1">
             <Button
