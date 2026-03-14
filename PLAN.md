@@ -1,11 +1,12 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.28.0 / caddy 3.27.0 / plugin v0.14.1)
+## Current State (v2.30.0 / caddy 3.29.0 / plugin v0.14.1)
 
-Fully operational WAF with custom policy engine, CRS 4.24.1 (254 default rules),
-5-pass evaluation (allow → block → skip → rate_limit → detect), 6 negated operators,
-managed lists, IPsum blocklist (8 levels, 597K IPs), per-service skip rule management,
-logged event collection (tuning mode visibility), and e2e CI pipeline.
+Fully operational WAF with custom policy engine, CRS 4.24.1 (254 default rules,
+auto-converted at Docker build time), 5-pass evaluation (allow → block → skip →
+rate_limit → detect), 6 negated operators, managed lists, IPsum blocklist (8 levels,
+597K IPs), per-service skip rule management, logged event collection (tuning mode),
+unified /policy page (WAF rules + rate limits), and e2e CI pipeline.
 
 ---
 
@@ -48,11 +49,11 @@ logged event collection (tuning mode visibility), and e2e CI pipeline.
 - [x] **Policy page: type filter** — added missing "Skip" type
 - [x] **Policy page: multi-drag** — drag selected rows as a group
 - [x] **Policy page: per-page count** — all pagination shows "N per page"
-- [x] **CRS CI automation** — `crs-rules` Dockerfile stage converts CRS at build time (branch: feat/next-major)
-- [x] **UI unification** — WAF Rules + Rate Limits merged into `/policy` with tabs (branch: feat/next-major)
+- [x] **CRS CI automation** — `crs-rules` Dockerfile stage converts CRS at build time
+- [x] **UI unification** — WAF Rules + Rate Limits merged into `/policy` with tabs
 - [x] **Infra: cache SSD migration** — Caddy + wafctl config on /mnt/cache/caddy/, logs on array
 
-## CRS Audit (v2.29.0)
+## CRS Audit (v2.30.0)
 
 **All settings verified working end-to-end:**
 
@@ -77,67 +78,7 @@ Currently at CRS v4.24.1 (254 rules). Converter supports ModSecurity SecRule syn
 
 ### Major Features
 
-#### 1. CRS Auto-Update in CI (branch: `feat/next-major`)
-
-Automate CRS rule conversion in the Docker build so updating CRS is a one-line
-version bump. Currently fully manual (clone → run converter → commit → push).
-
-**Implementation plan:**
-
-```
-New Dockerfile stage: crs-rules
-  FROM golang:1.24-alpine
-  ARG CRS_VERSION=v4.24.1
-  1. Build tools/crs-converter
-  2. git clone --depth 1 --branch ${CRS_VERSION} coreruleset/coreruleset
-  3. Run converter: crs-converter -crs-dir /crs/rules -output /build/default-rules.json
-  
-Both Dockerfiles: COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/
-```
-
-**Files to change:**
-- `Dockerfile` — add `crs-rules` build stage, replace static COPY
-- `wafctl/Dockerfile` — same
-- `.github/workflows/build.yml` — add `CRS_VERSION` env var + build-arg, add `tools/crs-converter/**` to paths filter
-- `waf/default-rules.json` — keep committed as dev convenience, Dockerfile stage is source of truth for images
-- Optional: `crs-update.yml` scheduled workflow to check upstream releases
-
-**Complexity:** Low. Converter has zero external deps (stdlib Go), builds trivially.
-
-#### 2. Policy UI Unification — Merge Rate Limits into `/policy` (branch: `feat/next-major`)
-
-Combine WAF rules and rate limit rules into a single `/policy` page with tabs.
-The two rule types remain in separate backend stores (different evaluation phases)
-but share a unified UI shell.
-
-**Proposed layout:**
-```
-/policy?tab=rules           — WAF exclusions (allow/block/skip/detect)
-/policy?tab=rate-limits     — Rate limit rules (deny/log_only)
-/policy?tab=advisor         — Rate limit advisor (existing)
-/policy?tab=settings        — RL global settings (existing)
-```
-
-**Implementation plan:**
-- New: `UnifiedPolicyPage.tsx` — wrapper with Tabs component
-- Refactor: `PolicyEngine.tsx` → extract table+dialogs as tab content (remove outer chrome)
-- Refactor: `RateLimitsPanel.tsx` → extract rules tab, advisor tab, settings tab
-- Update: `src/pages/policy.astro` — render `UnifiedPolicyPage`
-- Delete: `src/pages/rate-limits.astro` (or redirect to `/policy?tab=rate-limits`)
-- Update: sidebar nav — remove "Rate Limits" link
-- Read `?tab=` in `useEffect` (Astro MPA hydration caveat)
-
-**Key decisions:**
-- Tabs are top-level (not nested) — Rules | Rate Limits | Advisor | Settings
-- Each tab keeps its own create/edit dialog (no unified form)
-- Export/Import become per-tab buttons
-- Rate limits get parity features: bulk select, move-to-edge, inline position
-- Backend APIs stay separate (`/api/exclusions` + `/api/rate-rules`)
-
-**Files changed:** ~5 frontend files modified/created, 1 deleted, 0 backend changes.
-**Complexity:** Medium. Mostly refactoring, no new logic.
-
-#### 3. Response-Phase Detection (branch: `feat/next-major`)
+#### 1. Response-Phase Detection
 
 Outbound anomaly scoring — inspect response headers and bodies after
 `next.ServeHTTP()`. Enables ~50-70 CRS data leakage rules.
@@ -213,6 +154,13 @@ global; this would add per-service category masks.
 - [ ] Audit each service's built-in auth and document decisions
 - [ ] Add `forward_auth` to dockge at minimum
 - [ ] Monitor and document sizing guidance for event stores
+
+#### CI / Automation
+
+- [ ] **CRS update checker** — optional `crs-update.yml` scheduled workflow that checks
+  the latest CRS release tag via GitHub API and opens a PR bumping `CRS_VERSION`
+- [ ] **Rate limits parity** — add bulk select, move-to-edge, inline position editing
+  to Rate Limits tab (matching PolicyEngine features)
 
 #### Low Priority
 
