@@ -196,6 +196,12 @@ export function ConditionRow({
         </SelectContent>
       </Select>
 
+      {/* Transforms — applied to field value before operator evaluates */}
+      <TransformSelect
+        value={condition.transforms ?? []}
+        onChange={(transforms) => onChange(index, { ...condition, transforms: transforms.length > 0 ? transforms : undefined })}
+      />
+
       {/* Operator selector */}
       <Select
         value={condition.operator}
@@ -203,12 +209,10 @@ export function ConditionRow({
           const newOp = v as ConditionOperator;
           const isPhraseOp = newOp === "phrase_match" || newOp === "not_phrase_match";
           const wasPhraseOp = condition.operator === "phrase_match" || condition.operator === "not_phrase_match";
-          // When switching to phrase_match/not_phrase_match, move any existing pipe-separated value into list_items
           if (isPhraseOp) {
             const items = condition.value ? condition.value.split("|").filter(Boolean) : [];
             onChange(index, { ...condition, operator: newOp, value: "", list_items: items.length > 0 ? items : (condition.list_items ?? undefined) });
           } else {
-            // When switching away from phrase_match, move list_items back to pipe value for "in"/"not_in" or clear
             const fromPhraseMatch = wasPhraseOp && condition.list_items?.length;
             const isInOp = newOp === "in" || newOp === "not_in";
             const newValue = fromPhraseMatch && isInOp ? condition.list_items!.join("|") : "";
@@ -226,7 +230,7 @@ export function ConditionRow({
         </SelectContent>
       </Select>
 
-      {/* Value input — specialized inputs for specific field/operator combos */}
+      {/* Value input */}
       <div className="flex flex-1 flex-col gap-1">
         {condition.operator === "exists" ? (
           <span className="flex items-center h-9 px-3 text-xs text-muted-foreground italic">field exists (no value needed)</span>
@@ -273,11 +277,6 @@ export function ConditionRow({
         {fieldDef.hint && !isListOp && condition.operator !== "exists" && (
           <p className="text-[11px] leading-tight text-muted-foreground/70 px-1">{fieldDef.hint}</p>
         )}
-        {/* Transform selection — applied left-to-right before operator evaluation */}
-        <TransformSelect
-          value={condition.transforms ?? []}
-          onChange={(transforms) => onChange(index, { ...condition, transforms: transforms.length > 0 ? transforms : undefined })}
-        />
       </div>
 
       {/* Remove button */}

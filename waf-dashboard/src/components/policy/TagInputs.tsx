@@ -462,7 +462,7 @@ function SortableTransformChip({
   );
 }
 
-// ─── Transform Select (with drag-to-reorder) ───────────────────────
+// ─── Transform Select (compact dropdown for condition row) ──────────
 
 export function TransformSelect({
   value,
@@ -507,41 +507,42 @@ export function TransformSelect({
     }
   };
 
-  if (selected.length === 0 && !open) {
-    return (
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
-            <Sparkles className="h-3 w-3" />
-            Add transforms
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="p-0" align="start">
-          <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
-        </PopoverContent>
-      </Popover>
-    );
-  }
-
   return (
-    <div className="flex flex-wrap items-center gap-1 min-h-[24px]">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
-          {selected.map((t, i) => (
-            <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
-          ))}
-        </SortableContext>
-      </DndContext>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent">
-            <Plus className="h-2.5 w-2.5" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="p-0" align="start">
-          <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
-        </PopoverContent>
-      </Popover>
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={`inline-flex items-center gap-1 shrink-0 h-9 rounded-md border px-2 text-xs transition-colors ${
+            selected.length > 0
+              ? "border-lv-cyan/30 bg-lv-cyan/5 text-lv-cyan"
+              : "border-border text-muted-foreground/60 hover:text-muted-foreground hover:border-muted-foreground/50"
+          }`}
+        >
+          <Sparkles className="h-3 w-3" />
+          {selected.length > 0 ? (
+            <span className="font-data">{selected.length}</span>
+          ) : (
+            <span className="hidden sm:inline">T</span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[320px]" align="start">
+        {/* Selected pipeline (draggable) — shown at top when transforms active */}
+        {selected.length > 0 && (
+          <div className="border-b border-border p-2 space-y-1.5">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 px-1">Pipeline</p>
+            <div className="flex flex-wrap items-center gap-1">
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={selected} strategy={horizontalListSortingStrategy}>
+                  {selected.map((t, i) => (
+                    <SortableTransformChip key={t} id={t} index={i} onRemove={remove} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+          </div>
+        )}
+        <TransformPopoverContent selected={selected} onToggle={toggle} onApplyPreset={applyPreset} />
+      </PopoverContent>
+    </Popover>
   );
 }
