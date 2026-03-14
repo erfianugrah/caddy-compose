@@ -21,10 +21,11 @@ on:
 
 env:
   CADDY_IMAGE: erfianugrah/caddy
-  CADDY_TAG: "3.28.0-2.11.1"
+  CADDY_TAG: "3.29.0-2.11.1"
   CADDY_VERSION: "2.11.1"
+  CRS_VERSION: "v4.24.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "2.29.0"
+  WAFCTL_VERSION: "2.30.0"
 
 permissions:
   contents: read
@@ -149,6 +150,7 @@ jobs:
           build-args: |
             VERSION=${{ env.CADDY_VERSION }}
             WAFCTL_VERSION=${{ env.WAFCTL_VERSION }}
+            CRS_VERSION=${{ env.CRS_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -205,7 +207,9 @@ jobs:
           file: ./wafctl/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.full }}
-          build-args: VERSION=${{ env.WAFCTL_VERSION }}
+          build-args: |
+            VERSION=${{ env.WAFCTL_VERSION }}
+            CRS_VERSION=${{ env.CRS_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

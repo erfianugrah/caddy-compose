@@ -796,3 +796,90 @@ func TestHandleBulkDefaultRules(t *testing.T) {
 		}
 	})
 }
+
+// ─── CRS Build Output Validation ────────────────────────────────────
+
+// TestCRSBuildOutputValid validates that the committed/generated default-rules.json
+// is structurally correct and contains a reasonable number of CRS rules.
+// This catches converter regressions and malformed build output.
+func TestCRSBuildOutputValid(t *testing.T) {
+	// Try the production baked-in path first, then fall back to the repo path.
+	paths := []string{
+		"/etc/caddy/waf/default-rules.json",
+		filepath.Join("..", "waf", "default-rules.json"),
+	}
+	var data []byte
+	var err error
+	for _, p := range paths {
+		data, err = os.ReadFile(p)
+		if err == nil {
+			t.Logf("loaded default-rules.json from %s (%d bytes)", p, len(data))
+			break
+		}
+	}
+	if data == nil {
+		t.Skip("default-rules.json not found (expected in Docker image or repo root)")
+	}
+
+	// Parse the top-level structure.
+	var raw struct {
+		DefaultRules []json.RawMessage `json:"default_rules"`
+		Version      int               `json:"version"`
+		CRSVersion   string            `json:"crs_version"`
+		Generated    string            `json:"generated"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("failed to parse default-rules.json: %v", err)
+	}
+
+	// Version must be >= 7 (current format).
+	if raw.Version < 7 {
+		t.Errorf("version = %d, want >= 7", raw.Version)
+	}
+
+	// CRS version must be non-empty.
+	if raw.CRSVersion == "" {
+		t.Error("crs_version is empty")
+	}
+
+	// Must have at least 200 rules (CRS 4.x has 254).
+	if len(raw.DefaultRules) < 200 {
+		t.Errorf("only %d rules, expected >= 200", len(raw.DefaultRules))
+	}
+
+	// Spot-check: parse a few rules and verify required fields.
+	type ruleCheck struct {
+		ID            string `json:"id"`
+		Type          string `json:"type"`
+		ParanoiaLevel int    `json:"paranoia_level"`
+		Enabled       bool   `json:"enabled"`
+	}
+	plCounts := map[int]int{}
+	typeCounts := map[string]int{}
+	for i, raw := range raw.DefaultRules {
+		var r ruleCheck
+		if err := json.Unmarshal(raw, &r); err != nil {
+			t.Errorf("rule[%d]: failed to parse: %v", i, err)
+			continue
+		}
+		if r.ID == "" {
+			t.Errorf("rule[%d]: empty ID", i)
+		}
+		// Custom rules (block/allow from custom-rules.json) don't have PL.
+		// CRS detect rules must have PL 1-4.
+		if r.Type == "detect" && (r.ParanoiaLevel < 1 || r.ParanoiaLevel > 4) {
+			t.Errorf("rule[%d] (%s): detect rule has paranoia_level = %d, want 1-4", i, r.ID, r.ParanoiaLevel)
+		}
+		plCounts[r.ParanoiaLevel]++
+		typeCounts[r.Type]++
+	}
+
+	t.Logf("CRS %s: %d rules (PL1=%d, PL2=%d, PL3=%d, PL4=%d)",
+		raw.CRSVersion, len(raw.DefaultRules),
+		plCounts[1], plCounts[2], plCounts[3], plCounts[4])
+
+	// PL1 should have the most rules.
+	if plCounts[1] < 100 {
+		t.Errorf("PL1 has only %d rules, expected >= 100", plCounts[1])
+	}
+}

@@ -1,8 +1,8 @@
 ---
 import DashboardLayout from "../layouts/DashboardLayout.astro";
-import RateLimitsPanel from "../components/RateLimitsPanel";
 ---
 
-<DashboardLayout title="wafctl — Rate Limits" active="rate-limits">
-  <RateLimitsPanel client:load />
+<DashboardLayout title="wafctl — Rate Limits" active="policy">
+  <meta http-equiv="refresh" content="0;url=/policy?tab=rate-limits" />
+  <p class="text-sm text-muted-foreground p-8">Redirecting to <a href="/policy?tab=rate-limits">Policy Engine → Rate Limits</a>...</p>
 </DashboardLayout>
