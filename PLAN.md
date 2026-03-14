@@ -4238,5 +4238,36 @@ Per-field operator additions:
 - [x] E2E smoke test: full suite passing (all existing + 6 new tests)
 - [ ] Local smoke test: verify UI renders all operators for each field correctly
 - [ ] Local smoke test: verify transforms UI grouping and presets work
-- [ ] Commit all changes on `fix/code-review-round2`
-- [ ] Production deploy: `make build && make push && make scp && make pull && make restart`
+- [x] Commit all changes on `fix/code-review-round2` — committed as `ffcad36`
+- [x] Merge to main — `c714118`
+- [x] Production deploy — caddy `3.22.0-2.11.1` + wafctl `2.23.0` + plugin `v0.14.0`
+
+#### Step 6: Post-Deploy Fixes
+
+> Committed as `83f4b6c` on `main`. Full e2e suite passing including 8 new tests.
+
+**Logged event collection (tuning/log-only mode)**:
+
+- [x] `AccessLogStore.Load()`: third classification branch for below-threshold detect events
+  (`PolicyScore != "" && PolicyScore != "0" && (PolicyDetectRules || PolicyDetectMatches)`)
+- [x] `RateLimitEvent` gains `Status int` field for original HTTP status passthrough
+- [x] `RateLimitEventToEvent`: `case "logged"` sets `status = rle.Status`, `eventType = "logged"`,
+  `IsBlocked = false`, plus detect enrichment (parseDetectRulesDetail + enrichMatchedRulesWithDetails)
+- [x] Volume protection: only collects events with actual CRS rule matches, not every scored request
+
+**Skip prefill from events**:
+
+- [x] `EventPrefill` gains `ruleIdList []string` and `suggestedSkipTargets *SkipTargets`
+- [x] `extractPrefillFromEvent()` builds `suggestedSkipTargets` from matched rule IDs
+- [x] `QuickActionsForm` pre-populates `skipTargets` state from prefill on mount
+- [x] Action type switch updates auto-generated name prefix (Allow→Skip→Block→Detect)
+
+**UI improvements**:
+
+- [x] Policy dialog widened to `max-w-5xl` (was `max-w-3xl`)
+- [x] `ServiceSettingsCard` gains "Rule Exceptions" section with explanation + link to Policy page
+
+**E2E tests**:
+
+- [x] `TestLoggedEventsCollected`: tuning mode events appear with `type=logged score=22 blocked=false`
+- [x] `TestSkipRuleBypassesDetect`: skip `phases=["detect"]` prevents CRS scoring (non-403)
