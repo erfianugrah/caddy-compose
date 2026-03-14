@@ -436,21 +436,21 @@ function SortableTransformChip({
     <span
       ref={setNodeRef}
       style={style}
-      className="inline-flex items-center gap-1 rounded bg-lovelace-800/60 border border-border/50 px-1.5 py-0 text-[11px] font-data text-lv-cyan/80 select-none"
+      className="inline-flex items-center gap-0.5 rounded-md border border-lv-cyan/20 bg-lv-cyan/5 px-1.5 py-0.5 text-[11px] font-data text-lv-cyan select-none"
       {...attributes}
     >
       <button
-        className="cursor-grab active:cursor-grabbing p-0 text-muted-foreground/30 hover:text-muted-foreground/60 touch-none"
+        className="cursor-grab active:cursor-grabbing p-0 text-lv-cyan/30 hover:text-lv-cyan/60 touch-none"
         {...listeners}
         tabIndex={-1}
       >
         <GripVertical className="h-2.5 w-2.5" />
       </button>
-      <span className="text-muted-foreground/40 text-[9px]">{index + 1}.</span>
+      <span className="text-lv-cyan/40 text-[9px]">{index + 1}.</span>
       {id}
       <button
         onClick={() => onRemove(id)}
-        className="ml-0.5 rounded-full p-0.5 hover:bg-accent hover:text-lv-red"
+        className="ml-0.5 rounded-full p-0.5 text-lv-cyan/40 hover:bg-lv-red/20 hover:text-lv-red"
       >
         <X className="h-2 w-2" />
       </button>
@@ -507,8 +507,8 @@ export function TransformSelect({
   const hasTransforms = selected.length > 0;
 
   return (
-    <div className="pl-[160px]">
-      <div className="flex flex-wrap items-center gap-1">
+    <div className="pl-1">
+      <div className="flex flex-wrap items-center gap-1.5">
         {/* Selected transform chips (draggable) */}
         {hasTransforms && (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
