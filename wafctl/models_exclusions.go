@@ -52,7 +52,8 @@ type WAFConfig struct {
 
 // WAFServiceSettings controls WAF behavior for a service (or as defaults).
 type WAFServiceSettings struct {
-	// Mode: "enabled" (blocking), "detection_only" (log-only), "disabled" (ctl:ruleEngine=Off)
+	// Mode: preserved for backward compat — has no behavioral effect.
+	// Detection-only is achieved via high thresholds (Tuning preset = 10000/10000).
 	Mode string `json:"mode"`
 	// ParanoiaLevel: CRS paranoia level 1-4 (higher = more rules, more false positives)
 	ParanoiaLevel int `json:"paranoia_level"`
@@ -60,9 +61,6 @@ type WAFServiceSettings struct {
 	InboundThreshold int `json:"inbound_threshold"`
 	// OutboundThreshold: anomaly score threshold for outbound responses
 	OutboundThreshold int `json:"outbound_threshold"`
-	// DisabledGroups: CRS rule group tags to disable (e.g. "attack-sqli", "attack-xss")
-	DisabledGroups []string `json:"disabled_groups,omitempty"`
-
 	// ─── CRS v4 Extended Settings ───────────────────────────────────
 	// All fields use omitempty so existing configs are unaffected.
 	// Zero/empty values mean "use CRS default" (no setvar emitted).
@@ -117,13 +115,6 @@ type WAFServiceSettings struct {
 
 // ─── Validation Maps ────────────────────────────────────────────────────────
 
-// Valid WAF modes
-var validWAFModes = map[string]bool{
-	"enabled":        true,
-	"detection_only": true,
-	"disabled":       true,
-}
-
 // Valid CRS v4 built-in exclusion profile names (tx.crs_exclusions_<name>=1).
 // See: https://coreruleset.org/docs/concepts/exclusion_profiles/
 var validCRSExclusions = map[string]bool{
@@ -135,20 +126,6 @@ var validCRSExclusions = map[string]bool{
 	"phpmyadmin": true,
 	"wordpress":  true,
 	"xenforo":    true,
-}
-
-// Valid CRS rule group tags that can be disabled
-var validRuleGroupTags = map[string]bool{
-	"attack-protocol":         true, // Protocol Enforcement (920xxx) + Protocol Attack (921xxx)
-	"attack-lfi":              true, // Local File Inclusion (930xxx)
-	"attack-rfi":              true, // Remote File Inclusion (931xxx)
-	"attack-rce":              true, // Remote Code Execution (932xxx)
-	"attack-injection-php":    true, // PHP Injection (933xxx)
-	"attack-injection-nodejs": true, // Node.js Injection (934xxx)
-	"attack-xss":              true, // Cross-Site Scripting (941xxx)
-	"attack-sqli":             true, // SQL Injection (942xxx)
-	"attack-fixation":         true, // Session Fixation (943xxx)
-	"attack-injection-java":   true, // Java Injection (944xxx)
 }
 
 // Valid exclusion types — policy engine only.

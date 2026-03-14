@@ -189,13 +189,11 @@ func (s *ConfigStore) Get() WAFConfig {
 	defer s.mu.RUnlock()
 	// Return a deep copy.
 	cp := s.config
-	cp.Defaults.DisabledGroups = copyStringSlice(s.config.Defaults.DisabledGroups)
 	cp.Defaults.CRSExclusions = copyStringSlice(s.config.Defaults.CRSExclusions)
 	cp.Defaults.EarlyBlocking = copyBoolPtr(s.config.Defaults.EarlyBlocking)
 	cp.Defaults.EnforceBodyprocURLEncoded = copyBoolPtr(s.config.Defaults.EnforceBodyprocURLEncoded)
 	cp.Services = make(map[string]WAFServiceSettings, len(s.config.Services))
 	for k, v := range s.config.Services {
-		v.DisabledGroups = copyStringSlice(v.DisabledGroups)
 		v.CRSExclusions = copyStringSlice(v.CRSExclusions)
 		v.EarlyBlocking = copyBoolPtr(v.EarlyBlocking)
 		v.EnforceBodyprocURLEncoded = copyBoolPtr(v.EnforceBodyprocURLEncoded)
@@ -256,9 +254,8 @@ func validateConfig(cfg WAFConfig) error {
 
 // validateServiceSettings validates a single WAFServiceSettings.
 func validateServiceSettings(name string, ss WAFServiceSettings) error {
-	if !validWAFModes[ss.Mode] {
-		return fmt.Errorf("%s: mode must be enabled, detection_only, or disabled (got %q)", name, ss.Mode)
-	}
+	// Note: Mode field preserved for backward compat but has no behavioral effect.
+	// The "Tuning" preset achieves detection-only by setting thresholds to 10000.
 	if ss.ParanoiaLevel < 1 || ss.ParanoiaLevel > 4 {
 		return fmt.Errorf("%s: paranoia_level must be between 1 and 4", name)
 	}
@@ -268,12 +265,6 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 	if ss.OutboundThreshold < 1 {
 		return fmt.Errorf("%s: outbound_threshold must be at least 1", name)
 	}
-	for _, tag := range ss.DisabledGroups {
-		if !validRuleGroupTags[tag] {
-			return fmt.Errorf("%s: invalid rule group tag %q", name, tag)
-		}
-	}
-
 	// CRS v4 extended settings validation.
 	if ss.BlockingParanoiaLevel != 0 && (ss.BlockingParanoiaLevel < 1 || ss.BlockingParanoiaLevel > 4) {
 		return fmt.Errorf("%s: blocking_paranoia_level must be between 1 and 4", name)

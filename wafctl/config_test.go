@@ -115,30 +115,7 @@ func TestConfigValidation(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "invalid mode",
-			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "maybe", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
-				Services: map[string]WAFServiceSettings{},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid rule group tag",
-			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"not-a-real-tag"}},
-				Services: map[string]WAFServiceSettings{},
-			},
-			wantErr: true,
-		},
-		{
-			name: "valid with disabled groups",
-			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4, DisabledGroups: []string{"attack-sqli", "attack-xss"}},
-				Services: map[string]WAFServiceSettings{},
-			},
-			wantErr: false,
-		},
+
 		{
 			name: "valid per-service override",
 			cfg: WAFConfig{

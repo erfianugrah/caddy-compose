@@ -452,8 +452,8 @@ func TestRestore_InvalidWAFConfig(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode:              "bogus_mode",
-				ParanoiaLevel:     2,
+				Mode:              "enabled",
+				ParanoiaLevel:     0, // invalid: must be 1-4
 				InboundThreshold:  5,
 				OutboundThreshold: 4,
 			},

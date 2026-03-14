@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"strings"
 	"text/tabwriter"
 	"time"
 )
@@ -116,9 +115,6 @@ func printWAFSettings(tw *tabwriter.Writer, prefix string, s WAFServiceSettings)
 	fmt.Fprintf(tw, "%sParanoia Level:\t%d\n", prefix, s.ParanoiaLevel)
 	fmt.Fprintf(tw, "%sInbound Threshold:\t%d\n", prefix, s.InboundThreshold)
 	fmt.Fprintf(tw, "%sOutbound Threshold:\t%d\n", prefix, s.OutboundThreshold)
-	if len(s.DisabledGroups) > 0 {
-		fmt.Fprintf(tw, "%sDisabled Groups:\t%s\n", prefix, strings.Join(s.DisabledGroups, ", "))
-	}
 }
 
 func cliConfigSet(flags cliFlags) int {
