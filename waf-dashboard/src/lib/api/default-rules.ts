@@ -64,6 +64,14 @@ export const CRS_CATEGORIES: RuleCategory[] = [
   { prefix: "943", name: "Session Fixation", shortName: "Session" },
   { prefix: "944", name: "Java Injection", shortName: "Java" },
   { prefix: "9100", name: "Custom Rules", shortName: "Custom" },
+  // Response-phase (outbound) categories
+  { prefix: "950", name: "Data Leakages", shortName: "Leakage" },
+  { prefix: "951", name: "SQL Data Leakages", shortName: "SQL Leak" },
+  { prefix: "952", name: "Java Data Leakages", shortName: "Java Leak" },
+  { prefix: "953", name: "PHP Data Leakages", shortName: "PHP Leak" },
+  { prefix: "954", name: "IIS Data Leakages", shortName: "IIS Leak" },
+  { prefix: "955", name: "Web Shell Detection", shortName: "Web Shell" },
+  { prefix: "956", name: "Ruby Data Leakages", shortName: "Ruby Leak" },
 ];
 
 export function getCategoryForRule(ruleId: string): RuleCategory | undefined {

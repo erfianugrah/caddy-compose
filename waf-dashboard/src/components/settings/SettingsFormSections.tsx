@@ -109,7 +109,26 @@ export function SensitivitySettings({
           className="w-24"
         />
         <p className="text-xs text-muted-foreground">
-          Cumulative CRS anomaly score required to trigger a detect rule block.
+          Cumulative CRS anomaly score required to trigger an inbound detect rule block.
+        </p>
+      </div>
+
+      {/* Outbound Anomaly Threshold */}
+      <div className="space-y-1">
+        <Label className={T.formLabel}>
+          Outbound Anomaly Threshold
+        </Label>
+        <Input
+          type="number"
+          min={1}
+          value={settings.outbound_threshold}
+          onChange={(e) =>
+            onChange({ ...settings, outbound_threshold: Number(e.target.value) || 1 })
+          }
+          className="w-24"
+        />
+        <p className="text-xs text-muted-foreground">
+          Cumulative score for response-phase rules (data leakage, error disclosure). Set high to log only.
         </p>
       </div>
     </div>

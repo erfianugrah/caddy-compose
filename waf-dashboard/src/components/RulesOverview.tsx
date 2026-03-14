@@ -488,7 +488,7 @@ export default function RulesOverview() {
             <Globe className="h-4 w-4 text-lv-cyan" />
             <h3 className="text-sm font-semibold">WAF Engine Settings</h3>
             <Badge variant="outline" className="text-xs">
-              PL{defaults.paranoia_level} · Threshold {defaults.inbound_threshold}
+              PL{defaults.paranoia_level} · In {defaults.inbound_threshold} · Out {defaults.outbound_threshold}
             </Badge>
           </div>
           <svg
