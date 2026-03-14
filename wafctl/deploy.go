@@ -22,16 +22,6 @@ type DeployConfig struct {
 	// These files are volume-mounted into the Caddy container.
 	WafDir string
 
-	// RateLimitDir is the directory for per-zone rate limit .caddy files.
-	// These files are volume-mounted into the Caddy container and imported
-	// by each site block via glob patterns.
-	RateLimitDir string
-
-	// CSPDir is the directory for per-service CSP header .caddy files.
-	// These files are volume-mounted into the Caddy container and imported
-	// by each site block via glob patterns.
-	CSPDir string
-
 	// CaddyfilePath is the path to the Caddyfile (read-only mount from Caddy).
 	// Used to POST to Caddy's admin API for reload.
 	CaddyfilePath string
@@ -68,9 +58,6 @@ func ensureWafDir(dir string) error {
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
 func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
 	allExclusions := es.EnabledExclusions()
-
-	// Rate limit rules: discover new services from the Caddyfile.
-	rs.MergeCaddyfileServices(deployCfg.CaddyfilePath)
 
 	// Policy engine: generate JSON rules file for the Caddy plugin.
 	// Includes WAF exclusions (allow/block/detect) and rate limit rules.

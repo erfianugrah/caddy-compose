@@ -162,7 +162,7 @@ wafctl tag format: simple semver (e.g. `2.1.0`).
 - **Managed lists**: `managed_lists.go` (~582 lines) — ManagedListStore CRUD, persistence, validation; `models_lists.go` (~69 lines) — ManagedList types; `handlers_lists.go` (~160 lines) — HTTP handlers
 - **Security headers**: `security_headers.go` (~370 lines) — SecurityHeaderStore, 4 profiles (strict/default/relaxed/api), per-service overrides with profile inheritance, resolution, validation, HTTP handlers
 - **Backup/Restore**: `backup.go` (~210 lines) — FullBackup envelope, handleBackup/handleRestore for all 6 config stores
-- **Domain stores**: `rl_rules.go` (564), `csp.go` (~700 lines, includes functions moved from deleted `csp_generator.go`), `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
+- **Domain stores**: `rl_rules.go` (491), `csp.go` (~633 lines), `blocklist.go` (372), `validate.go` (447), `deploy.go`, `config.go`, `cache.go`, `cfproxy.go`, `crs_rules.go`
 
 ## WAF Config Defaults
 
@@ -258,7 +258,7 @@ fine-grained per-path, per-method, or per-header rate limiting.
 
 ### Architecture
 
-- **Store**: `rl_rules.go` — `RateLimitRuleStore` with `sync.RWMutex`, CRUD, validation, v1 migration from flat zones, Caddyfile auto-discovery
+- **Store**: `rl_rules.go` — `RateLimitRuleStore` with `sync.RWMutex`, CRUD, validation, v1 migration from flat zones
 - **Analytics**: `rl_analytics.go` — condition-based inference to attribute 429 events to specific rules
 - **Advisor**: `rl_advisor.go` — traffic analysis, anomaly detection, client classification, recommendations with impact curves and time-of-day baselines
 - **Handlers**: 12 HTTP endpoints under `/api/rate-rules` (CRUD, deploy, global config, export/import, hits, advisor)
@@ -461,7 +461,7 @@ JSON store → Caddy config generator → file deploy → Caddy reload.
 
 ### Architecture
 
-- **Store**: `csp.go` (~700 lines) — `CSPStore` with `sync.RWMutex`, CRUD, validation, header builder, merge logic, service discovery via `discoverCaddyfileServices()`, CSP deploy (policy engine only)
+- **Store**: `csp.go` (~633 lines) — `CSPStore` with `sync.RWMutex`, CRUD, validation, header builder, merge logic, service discovery via `discoverCaddyfileServices()`, CSP deploy (policy engine only)
 - **Handlers**: 4 HTTP endpoints under `/api/csp` (get, update, deploy, preview)
 - **CLI**: `wafctl csp` subcommands (get, set, deploy, preview)
 - **Frontend**: `CSPPanel.tsx` (~420 lines) orchestrator + `csp/` subdir (constants, CSPSourceInput, DirectiveEditor, PreviewPanel)
@@ -509,16 +509,9 @@ CSPPolicy {
 
 ### FQDN Propagation
 
-Each Caddyfile service block has two CSP import lines (short name + FQDN):
-```
-import /data/caddy/csp/httpbun_csp*.caddy
-import /data/caddy/csp/httpbun.erfi.io_csp*.caddy
-```
-
-When a service has an explicit override (e.g., `httpbun`), the generator propagates
-it to the FQDN variant (`httpbun.erfi.io`) via `findParentServiceConfig()`. Without
-this, the FQDN file would get global defaults and overwrite the short-name override
-(Caddy processes imports sequentially).
+When a service has an explicit CSP override (e.g., `httpbun`), the policy engine
+propagates it to the FQDN variant (`httpbun.erfi.io`) via `findParentServiceConfig()`.
+This ensures FQDN-based requests get the same CSP policy as the short-name service.
 
 ### Merge Behavior (inherit: true)
 
@@ -994,9 +987,8 @@ All configurable via `envOr()` with sensible defaults:
 - `WAF_GEOIP_DB` (default `/data/geoip/country.mmdb`) — path to DB-IP/MaxMind MMDB file
 - `WAF_GEOIP_API_URL` (default empty = disabled) — online GeoIP API URL (e.g., `https://ipinfo.io/%s/json`); `%s` is replaced with IP, or IP is appended as path segment
 - `WAF_GEOIP_API_KEY` (default empty) — API key sent as Bearer token for online GeoIP lookups
-- `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for RL auto-discovery
+- `WAF_CADDYFILE_PATH` (default `/data/Caddyfile`) — path to the Caddyfile used for service FQDN resolution
 - `WAF_CSP_FILE` (default `/data/csp-config.json`) — CSP configuration store path
-- `WAF_CSP_DIR` (default `/data/csp/`) — output directory for generated CSP config files
 - `WAF_GENERAL_LOG_FILE` (default `/data/general-events.jsonl`) — JSONL persistence for general log events
 - `WAF_GENERAL_LOG_OFFSET_FILE` (default `/data/.general-log-offset`) — persists general log read offset across restarts
 - `WAF_GENERAL_LOG_MAX_AGE` (default `168h`) — retention period for general log events (shorter than WAF events due to higher volume)

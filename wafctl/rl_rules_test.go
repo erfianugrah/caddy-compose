@@ -439,132 +439,6 @@ func TestRLRuleStoreMigrateFromV1Empty(t *testing.T) {
 	}
 }
 
-// ─── Caddyfile Auto-Discovery ───────────────────────────────────────
-
-func TestScanCaddyfileServices(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-
-	content := `sonarr.erfi.io {
-	import /data/caddy/rl/sonarr_rl*.caddy
-}
-
-radarr.erfi.io {
-	import /data/caddy/rl/radarr_rl*.caddy
-}
-
-prowlarr.erfi.io {
-	# no rate limit import
-}`
-	os.WriteFile(caddyfile, []byte(content), 0644)
-
-	services := scanCaddyfileServices(caddyfile)
-	if len(services) != 2 {
-		t.Fatalf("want 2 services, got %d: %v", len(services), services)
-	}
-
-	// Check both are present (order may vary).
-	found := make(map[string]bool)
-	for _, s := range services {
-		found[s] = true
-	}
-	if !found["sonarr"] {
-		t.Error("want sonarr in discovered services")
-	}
-	if !found["radarr"] {
-		t.Error("want radarr in discovered services")
-	}
-}
-
-func TestScanCaddyfileServicesNonexistent(t *testing.T) {
-	services := scanCaddyfileServices("/nonexistent/Caddyfile")
-	if len(services) != 0 {
-		t.Fatalf("want 0 services from nonexistent file, got %d", len(services))
-	}
-}
-
-func TestScanCaddyfileServicesNoGlobs(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-	os.WriteFile(caddyfile, []byte("sonarr.erfi.io {\n}\n"), 0644)
-
-	services := scanCaddyfileServices(caddyfile)
-	if len(services) != 0 {
-		t.Fatalf("want 0 services from Caddyfile without RL globs, got %d", len(services))
-	}
-}
-
-func TestMergeCaddyfileServices(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-	content := "sonarr.erfi.io {\n\timport /data/caddy/rl/sonarr_rl*.caddy\n}\n" +
-		"radarr.erfi.io {\n\timport /data/caddy/rl/radarr_rl*.caddy\n}\n"
-	os.WriteFile(caddyfile, []byte(content), 0644)
-
-	s := newTestRLRuleStore(t)
-
-	// Pre-add sonarr — only radarr should be added.
-	s.Create(RateLimitRule{
-		Name: "existing", Service: "sonarr", Key: "client_ip",
-		Events: 100, Window: "1m", Enabled: true,
-	})
-
-	added := s.MergeCaddyfileServices(caddyfile)
-	if added != 1 {
-		t.Fatalf("want 1 added, got %d", added)
-	}
-
-	rules := s.List()
-	if len(rules) != 2 {
-		t.Fatalf("want 2 total rules, got %d", len(rules))
-	}
-
-	// The new one should be radarr with defaults.
-	var radarrRule *RateLimitRule
-	for _, r := range rules {
-		if r.Service == "radarr" {
-			cp := r
-			radarrRule = &cp
-		}
-	}
-	if radarrRule == nil {
-		t.Fatal("radarr rule should have been created")
-	}
-	if radarrRule.Events != defaultRLEvents {
-		t.Errorf("want default events %d, got %d", defaultRLEvents, radarrRule.Events)
-	}
-	if radarrRule.Window != defaultRLWindow {
-		t.Errorf("want default window %q, got %q", defaultRLWindow, radarrRule.Window)
-	}
-}
-
-func TestMergeCaddyfileServicesIdempotent(t *testing.T) {
-	dir := t.TempDir()
-	caddyfile := filepath.Join(dir, "Caddyfile")
-	content := "sonarr.erfi.io {\n\timport /data/caddy/rl/sonarr_rl*.caddy\n}\n"
-	os.WriteFile(caddyfile, []byte(content), 0644)
-
-	s := newTestRLRuleStore(t)
-
-	added1 := s.MergeCaddyfileServices(caddyfile)
-	if added1 != 1 {
-		t.Fatalf("first merge: want 1, got %d", added1)
-	}
-
-	added2 := s.MergeCaddyfileServices(caddyfile)
-	if added2 != 0 {
-		t.Fatalf("second merge should be 0, got %d", added2)
-	}
-}
-
-func TestMergeCaddyfileServicesEmptyPath(t *testing.T) {
-	s := newTestRLRuleStore(t)
-	added := s.MergeCaddyfileServices("")
-	if added != 0 {
-		t.Fatalf("want 0 from empty path, got %d", added)
-	}
-}
-
 // ─── Validation ─────────────────────────────────────────────────────
 
 func TestValidateRateLimitRule(t *testing.T) {
@@ -836,18 +710,14 @@ func TestRLRuleStoreGetDeepCopy(t *testing.T) {
 
 // ─── generateOnBoot Integration ─────────────────────────────────────
 
-func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
-	// Set up a Caddyfile with an RL import.
+func TestGenerateOnBootWritesPolicyRules(t *testing.T) {
 	dir := t.TempDir()
 	caddyfile := filepath.Join(dir, "Caddyfile")
-	os.WriteFile(caddyfile, []byte("sonarr.erfi.io {\n\timport /data/caddy/rl/sonarr_rl*.caddy\n}\n"), 0644)
+	os.WriteFile(caddyfile, []byte(""), 0644)
 
 	wafDir := filepath.Join(dir, "waf")
 	os.MkdirAll(wafDir, 0755)
-	rlDir := filepath.Join(dir, "rl")
-	os.MkdirAll(rlDir, 0755)
-	cspDir := filepath.Join(dir, "csp")
-	os.MkdirAll(cspDir, 0755)
+	policyFile := filepath.Join(wafDir, "policy-rules.json")
 
 	cs := NewConfigStore(filepath.Join(dir, "config.json"))
 	es := NewExclusionStore(filepath.Join(dir, "excl.json"))
@@ -855,42 +725,15 @@ func TestGenerateOnBootMergesCaddyfileServices(t *testing.T) {
 	cspS := NewCSPStore(filepath.Join(dir, "csp.json"))
 
 	deployCfg := DeployConfig{
-		WafDir:        wafDir,
-		RateLimitDir:  rlDir,
-		CSPDir:        cspDir,
-		CaddyfilePath: caddyfile,
+		WafDir:          wafDir,
+		CaddyfilePath:   caddyfile,
+		PolicyRulesFile: policyFile,
 	}
 
 	generateOnBoot(cs, es, rs, cspS, nil, nil, nil, deployCfg)
 
-	// The sonarr service should be auto-discovered.
-	rules := rs.List()
-	if len(rules) != 1 {
-		t.Fatalf("want 1 rule from Caddyfile discovery, got %d", len(rules))
-	}
-	if rules[0].Service != "sonarr" {
-		t.Errorf("want service %q, got %q", "sonarr", rules[0].Service)
-	}
-
-	// Policy engine is always enabled now — RL files should be cleared.
-	entries, _ := os.ReadDir(rlDir)
-	if len(entries) != 0 {
-		t.Errorf("want 0 RL files (policy engine handles RL), got %d", len(entries))
-	}
-}
-
-// ─── ensureRateLimitDir ─────────────────────────────────────────────
-
-func TestEnsureRateLimitDir(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "nested", "rl")
-	if err := ensureRateLimitDir(dir); err != nil {
-		t.Fatalf("ensureRateLimitDir: %v", err)
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
-		t.Fatalf("dir should exist: %v", err)
-	}
-	if !info.IsDir() {
-		t.Error("should be a directory")
+	// Verify policy-rules.json was written.
+	if _, err := os.Stat(policyFile); err != nil {
+		t.Fatalf("policy-rules.json should exist after generateOnBoot: %v", err)
 	}
 }

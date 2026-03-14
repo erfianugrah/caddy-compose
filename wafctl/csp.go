@@ -631,8 +631,3 @@ func discoverCaddyfileServices(caddyfilePath string) []string {
 	sort.Strings(services)
 	return services
 }
-
-// ensureCSPDir creates the CSP output directory if it doesn't exist.
-func ensureCSPDir(dir string) error {
-	return os.MkdirAll(dir, 0755)
-}

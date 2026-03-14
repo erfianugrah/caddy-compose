@@ -304,8 +304,6 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_EXCLUSIONS_FILE` | — | Path to exclusions JSON store |
 | `WAF_CONFIG_FILE` | — | Path to WAF config JSON store |
 | `WAF_RATELIMIT_FILE` | — | Path to rate limit JSON store |
-| `WAF_CORAZA_DIR` | — | Output dir for generated WAF configs |
-| `WAF_RATELIMIT_DIR` | — | Output dir for generated rate limit configs |
 | `WAF_CADDY_ADMIN_URL` | `http://caddy:2019` | Caddy admin API endpoint |
 | `WAF_EVENT_FILE` | `/data/events.jsonl` | JSONL persistence for WAF events |
 | `WAF_ACCESS_EVENT_FILE` | `/data/access-events.jsonl` | JSONL persistence for access log events |
@@ -316,9 +314,8 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_GEOIP_API_KEY` | (empty) | Bearer token for online GeoIP API |
 | `WAF_AUDIT_OFFSET_FILE` | `/data/.audit-log-offset` | Persists audit log read offset across restarts |
 | `WAF_ACCESS_OFFSET_FILE` | `/data/.access-log-offset` | Persists access log read offset across restarts |
-| `WAF_CADDYFILE_PATH` | `/data/Caddyfile` | Path to Caddyfile for RL auto-discovery |
+| `WAF_CADDYFILE_PATH` | `/data/Caddyfile` | Path to Caddyfile for service FQDN resolution |
 | `WAF_CSP_FILE` | `/data/csp-config.json` | CSP configuration store path |
-| `WAF_CSP_DIR` | `/data/csp/` | Output dir for generated CSP config files |
 | `WAF_GENERAL_LOG_FILE` | `/data/general-events.jsonl` | JSONL persistence for general log events |
 | `WAF_GENERAL_LOG_OFFSET_FILE` | `/data/.general-log-offset` | Persists general log read offset across restarts |
 | `WAF_GENERAL_LOG_MAX_AGE` | `168h` (7 days) | Retention period for general log events |
@@ -341,7 +338,6 @@ myservice.example.com {
     import security_headers
     import static_cache
     import waf
-    import /data/caddy/rl/myservice_rl*.caddy
     import tls_config
     encode zstd gzip
     reverse_proxy <backend-ip>:<port> {
@@ -363,7 +359,6 @@ myservice.example.com {
     import static_cache
     import waf
     import forward_auth
-    import /data/caddy/rl/myservice_rl*.caddy
     import tls_config
     encode zstd gzip
     reverse_proxy <backend-ip>:<port> {
@@ -384,7 +379,6 @@ myservice.example.com {
     import security_headers
     import static_cache
     import waf
-    import /data/caddy/rl/myservice_rl*.caddy
     import tls_config
     encode zstd gzip
 
@@ -417,9 +411,8 @@ Every site block should include these, in order:
 | `import cors` | recommended | CORS preflight handling |
 | `import security_headers` | yes | HSTS, CSP, nosniff, etc. |
 | `import static_cache` | recommended | Cache-Control for static assets |
-| `import waf` or `import waf_off` | yes | Policy engine + Coraza WAF with OWASP CRS |
+| `import waf` or `import waf_off` | yes | Policy engine WAF with OWASP CRS + rate limiting |
 | `import forward_auth` | if authenticated | Authelia forward authentication |
-| `import /data/caddy/rl/<name>_rl*.caddy` | yes | Rate limiting (no-op until configured) |
 | `import tls_config` | yes | ACME DNS challenge via Cloudflare |
 | `encode zstd gzip` | recommended | Response compression |
 | `import error_pages` | yes | Custom error page templates |
@@ -526,7 +519,6 @@ caddy-compose/
     json_helpers.go      # writeJSON, decodeJSON, queryInt
     query_helpers.go     # parseHours, parseTimeRange, fieldFilter
     rl_rules.go          # Rate limit rule store (CRUD, validation, v1 migration)
-    rl_matchers.go       # Caddy matcher syntax generation from conditions
     rl_analytics.go      # Rate limit analytics, condition-based 429 attribution
     rl_advisor.go        # Rate advisor (anomaly detection, recommendations)
     rl_advisor_stats.go  # MAD/IQR/Fano statistical functions, distribution analysis

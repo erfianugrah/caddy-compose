@@ -531,7 +531,6 @@ func setupCSPMux(t *testing.T) (*http.ServeMux, *CSPStore) {
 	store := newTestCSPStore(t)
 	dir := t.TempDir()
 	deployCfg := DeployConfig{
-		CSPDir:        dir,
 		CaddyfilePath: filepath.Join(dir, "Caddyfile"),
 	}
 	// Write an empty Caddyfile for the deploy handler.
@@ -686,7 +685,6 @@ radarr.example.com {
 	os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644)
 
 	deployCfg := DeployConfig{
-		CSPDir:        dir,
 		CaddyfilePath: caddyfilePath,
 	}
 
@@ -758,7 +756,6 @@ func TestHandlePreviewCSPEmptyGlobals(t *testing.T) {
 `), 0644)
 
 	deployCfg := DeployConfig{
-		CSPDir:        dir,
 		CaddyfilePath: caddyfilePath,
 	}
 
@@ -869,7 +866,7 @@ func TestPreviewCSPDisabled(t *testing.T) {
 	store.Update(cfg)
 
 	dir := t.TempDir()
-	deployCfg := DeployConfig{CSPDir: dir, CaddyfilePath: filepath.Join(dir, "Caddyfile")}
+	deployCfg := DeployConfig{CaddyfilePath: filepath.Join(dir, "Caddyfile")}
 	os.WriteFile(deployCfg.CaddyfilePath, []byte(""), 0644)
 
 	mux := http.NewServeMux()
@@ -977,7 +974,7 @@ func TestPreviewCSPFQDNPropagation(t *testing.T) {
 	}
 	store.Update(cfg)
 
-	deployCfg := DeployConfig{CSPDir: dir, CaddyfilePath: caddyfilePath}
+	deployCfg := DeployConfig{CaddyfilePath: caddyfilePath}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(store, deployCfg))
 
@@ -1000,21 +997,5 @@ func TestPreviewCSPFQDNPropagation(t *testing.T) {
 	}
 	if !fqdn.ReportOnly {
 		t.Error("FQDN should propagate report_only from parent")
-	}
-}
-
-// ─── ensureCSPDir Tests ─────────────────────────────────────────────────────
-
-func TestEnsureCSPDir(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "nested", "csp")
-	if err := ensureCSPDir(dir); err != nil {
-		t.Fatalf("ensureCSPDir failed: %v", err)
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
-		t.Fatalf("dir should exist: %v", err)
-	}
-	if !info.IsDir() {
-		t.Error("should be a directory")
 	}
 }

@@ -17,7 +17,6 @@ services:
       - ./ipsum_block.caddy:/etc/caddy/ipsum_block.caddy:ro
       # Shared writable volumes for dynamic configs
       - waf_data:/data/waf
-      - csp_data:/data/caddy/csp
       - wafctl_data:/data
       - caddy_log:/var/log
     healthcheck:
@@ -44,9 +43,7 @@ services:
       WAF_CONFIG_FILE: /data/waf-config.json
       WAF_RATELIMIT_FILE: /data/ratelimit.json
       WAF_DIR: /data/waf
-      WAF_RATELIMIT_DIR: /data/rl
       WAF_CSP_FILE: /data/csp-config.json
-      WAF_CSP_DIR: /data/caddy/csp
       WAF_CADDY_ADMIN_URL: http://caddy:2019
       WAF_CADDYFILE_PATH: /data/Caddyfile
       WAF_EVENT_FILE: /data/events.jsonl
@@ -63,7 +60,6 @@ services:
       WAF_MANAGED_LISTS_DIR: /data/lists
     volumes:
       - waf_data:/data/waf
-      - csp_data:/data/caddy/csp
       - wafctl_data:/data
       - caddy_log:/data/logs:ro
       - ./Caddyfile.e2e:/data/Caddyfile:ro
@@ -83,6 +79,5 @@ services:
 
 volumes:
   waf_data:
-  csp_data:
   wafctl_data:
   caddy_log:
