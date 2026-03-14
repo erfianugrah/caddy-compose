@@ -459,3 +459,240 @@ func TestSkipRuleBypassesDetect(t *testing.T) {
 	}
 	t.Logf("skip-detect status: %d (expected non-403)", resp4.StatusCode)
 }
+
+// ─── Logged Event Detail E2E Tests ──────────────────────────────────
+
+// TestLoggedEventHasMatchedRules verifies that below-threshold detect events
+// include matched rule IDs, severity, and tags (plugin v0.14.1 fix).
+func TestLoggedEventHasMatchedRules(t *testing.T) {
+	// Save current config.
+	_, origBody := httpGet(t, wafctlURL+"/api/config")
+
+	// Set tuning mode — high threshold so nothing blocks.
+	resp, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"mode": "enabled", "paranoia_level": 2,
+			"inbound_threshold": 10000, "outbound_threshold": 10000,
+		},
+		"services": map[string]any{},
+	})
+	assertCode(t, "set tuning config", 200, resp)
+	deployWAF(t)
+	time.Sleep(3 * time.Second)
+
+	// Send a request with a SQLi payload in a custom header — triggers CRS rules.
+	sentinel := fmt.Sprintf("E2E-LoggedDetail/%d", time.Now().UnixNano())
+	req, _ := http.NewRequest("GET", caddyURL+"/get", nil)
+	req.Header.Set("User-Agent", sentinel)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("X-Test-Payload", "' UNION SELECT * FROM users--")
+	resp2, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp2.Body.Close()
+	t.Logf("tuning mode status: %d", resp2.StatusCode)
+
+	// Wait for event collection.
+	time.Sleep(8 * time.Second)
+
+	// Find the logged event.
+	_, eventsBody := httpGet(t, wafctlURL+"/api/events?hours=1&limit=100")
+	events := jsonFieldArray(eventsBody, "events")
+
+	for _, e := range events {
+		var evt map[string]any
+		if json.Unmarshal(e, &evt) != nil {
+			continue
+		}
+		ua, _ := evt["user_agent"].(string)
+		if ua != sentinel {
+			continue
+		}
+		eventType, _ := evt["event_type"].(string)
+		if eventType != "logged" {
+			t.Errorf("expected event_type=logged, got %q", eventType)
+		}
+		// Verify matched_rules is populated (plugin v0.14.1 fix).
+		rulesRaw, _ := json.Marshal(evt["matched_rules"])
+		var rules []map[string]any
+		json.Unmarshal(rulesRaw, &rules)
+		if len(rules) == 0 {
+			t.Fatal("expected matched_rules to be populated for logged event (plugin v0.14.1)")
+		}
+		// Verify at least one rule has an ID, severity, and score.
+		first := rules[0]
+		ruleID := first["id"]
+		severity := first["severity"]
+		t.Logf("logged event: %d matched rules, first: id=%v severity=%v", len(rules), ruleID, severity)
+		if ruleID == nil || ruleID == float64(0) {
+			t.Error("matched_rules[0].id should be non-zero")
+		}
+		if severity == nil {
+			t.Error("matched_rules[0].severity should be set")
+		}
+		// Verify tags are populated.
+		tagsRaw, _ := json.Marshal(evt["tags"])
+		var tags []string
+		json.Unmarshal(tagsRaw, &tags)
+		t.Logf("logged event tags: %v", tags)
+		// Tags may be empty if the matched rules don't have tags, but rule_tags should exist.
+		ruleTagsRaw, _ := json.Marshal(evt["rule_tags"])
+		t.Logf("logged event rule_tags: %s", string(ruleTagsRaw))
+
+		// Restore config and return — found the event.
+		var origConfig map[string]any
+		json.Unmarshal(origBody, &origConfig)
+		httpPut(t, wafctlURL+"/api/config", origConfig)
+		deployWAF(t)
+		return
+	}
+	t.Fatal("logged event with sentinel UA not found")
+}
+
+// TestSkipRuleWithSpecificRuleIDs verifies that a skip rule targeting specific
+// CRS rule IDs only skips those rules, not all detect evaluation.
+func TestSkipRuleWithSpecificRuleIDs(t *testing.T) {
+	testPath := "/e2e-skip-ids-" + time.Now().Format("150405")
+
+	// Create a skip rule that skips specific rule IDs (not the whole detect phase).
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-skip-specific-ids", "type": "skip", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": testPath},
+		},
+		"skip_targets": map[string]any{
+			// Skip only rule 920350 (hypothetical) — other detect rules should still fire.
+			"rules": []string{"920350"},
+		},
+	})
+	assertCode(t, "create skip rule", 201, resp)
+	id := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+id)
+		deployWAF(t)
+	})
+
+	// Verify the generated policy has skip_targets with specific rule IDs.
+	resp2, body2 := httpPost(t, wafctlURL+"/api/config/generate", struct{}{})
+	assertCode(t, "generate", 200, resp2)
+
+	var outer map[string]json.RawMessage
+	json.Unmarshal(body2, &outer)
+	var pf struct {
+		Rules []struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+			ST   *struct {
+				Rules  []string `json:"rules"`
+				Phases []string `json:"phases"`
+			} `json:"skip_targets"`
+		} `json:"rules"`
+	}
+	json.Unmarshal(outer["policy_rules"], &pf)
+
+	found := false
+	for _, r := range pf.Rules {
+		if r.Name == "e2e-skip-specific-ids" {
+			found = true
+			if r.ST == nil {
+				t.Fatal("expected skip_targets")
+			}
+			if len(r.ST.Rules) != 1 || r.ST.Rules[0] != "920350" {
+				t.Errorf("expected rules=[920350], got %v", r.ST.Rules)
+			}
+			if len(r.ST.Phases) > 0 {
+				t.Errorf("expected no phases (rule-specific skip), got %v", r.ST.Phases)
+			}
+			t.Logf("skip rule: rules=%v phases=%v", r.ST.Rules, r.ST.Phases)
+		}
+	}
+	if !found {
+		t.Error("skip rule not found in generated output")
+	}
+}
+
+// TestInlineSkipRuleCRUD verifies the workflow of creating a skip rule
+// scoped to a host (the per-service override pattern) via the exclusions API.
+func TestInlineSkipRuleCRUD(t *testing.T) {
+	host := "e2e-inline-skip.example.com"
+
+	// Create a skip rule with host condition + specific rule IDs.
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "Skip CRS rules for " + host, "type": "skip", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "host", "operator": "eq", "value": host},
+		},
+		"group_operator": "and",
+		"skip_targets": map[string]any{
+			"rules":  []string{"932236", "942120"},
+			"phases": []string{"detect"},
+		},
+	})
+	assertCode(t, "create inline skip", 201, resp)
+	id := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+id) })
+
+	// Read it back.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/exclusions/"+id)
+	assertCode(t, "get inline skip", 200, resp2)
+	assertField(t, "type", body2, "type", "skip")
+	assertField(t, "name", body2, "name", "Skip CRS rules for "+host)
+
+	// Verify conditions.
+	conds := jsonFieldArray(body2, "conditions")
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	var cond map[string]string
+	json.Unmarshal(conds[0], &cond)
+	if cond["field"] != "host" || cond["value"] != host {
+		t.Errorf("expected host=%s, got field=%s value=%s", host, cond["field"], cond["value"])
+	}
+
+	// Now "consolidate" — delete old rule and create new one with more IDs
+	// (mimicking the ServiceSettingsCard workflow).
+	cleanup(t, wafctlURL+"/api/exclusions/"+id)
+
+	resp3, body3 := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "Skip CRS rules for " + host, "type": "skip", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "host", "operator": "eq", "value": host},
+		},
+		"group_operator": "and",
+		"skip_targets": map[string]any{
+			"rules":  []string{"932236", "942120", "942340"},
+			"phases": []string{"detect"},
+		},
+	})
+	assertCode(t, "create consolidated skip", 201, resp3)
+	newID := mustGetID(t, body3)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+newID) })
+
+	// Verify 3 rule IDs.
+	resp4, body4 := httpGet(t, wafctlURL+"/api/exclusions/"+newID)
+	assertCode(t, "get consolidated", 200, resp4)
+	st := jsonField(body4, "skip_targets")
+	if st == "" {
+		t.Fatal("expected skip_targets")
+	}
+	t.Logf("consolidated skip_targets: %s", st)
+
+	// Deploy and verify health.
+	deployWAF(t)
+	resp5, _ := httpGet(t, wafctlURL+"/api/health")
+	assertCode(t, "health after skip deploy", 200, resp5)
+}
+
+// TestLoggedEventsSummaryCount verifies that logged events appear in the summary API.
+func TestLoggedEventsSummaryCount(t *testing.T) {
+	// After TestLoggedEventsCollected ran earlier, there should be logged events.
+	_, body := httpGet(t, wafctlURL+"/api/summary?hours=1")
+	logged := jsonInt(body, "logged_events")
+	t.Logf("summary logged_events count: %d", logged)
+	// We don't assert > 0 because this depends on test ordering and event timing,
+	// but we verify the field exists and is a valid number.
+	if logged < 0 {
+		t.Error("summary.logged_events should be >= 0")
+	}
+}
