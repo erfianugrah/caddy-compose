@@ -78,6 +78,10 @@ export function getCategoryName(ruleId: string): string {
   return getCategoryForRule(ruleId)?.name ?? "Other";
 }
 
+export function getCategoryShortName(ruleId: string): string {
+  return getCategoryForRule(ruleId)?.shortName ?? "Other";
+}
+
 // ─── API Functions ──────────────────────────────────────────────────
 
 export async function listDefaultRules(): Promise<DefaultRule[]> {

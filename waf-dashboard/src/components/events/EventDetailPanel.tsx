@@ -314,7 +314,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 <span className="text-muted-foreground">Request ID:</span>
                 <code className="text-muted-foreground/70 font-data select-all">{event.request_id}</code>
                 <a
-                  href={`/logs?q=${encodeURIComponent(event.request_id)}`}
+                  href={`/logs?request_id=${encodeURIComponent(event.request_id)}`}
                   onClick={(e) => e.stopPropagation()}
                   className="text-[10px] text-lv-cyan hover:text-lv-green hover:underline"
                 >
@@ -360,7 +360,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
             {event.event_type === "rate_limited" ? "Rate Limit Details"
-              : event.event_type === "detect_block" ? "Anomaly Score Block"
+              : event.event_type === "detect_block" || event.event_type === "logged" ? "Rule Match"
               : event.event_type?.startsWith("policy_") ? "Policy Engine Match"
               : event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound"
                 ? "Anomaly Score Block"
@@ -443,12 +443,13 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
       {event.matched_rules && event.matched_rules.length > 0 && (() => {
         // For non-detect_block events, skip the first matched rule if it duplicates
         // the primary rule already displayed in the right column.
-        const dedupedRules = event.event_type !== "detect_block" && event.rule_id > 0
+        const isDetectLike = event.event_type === "detect_block" || event.event_type === "logged";
+        const dedupedRules = !isDetectLike && event.rule_id > 0
           ? event.matched_rules.filter((r) => r.id !== event.rule_id)
           : event.matched_rules;
         if (dedupedRules.length === 0) return null;
         return (
-        <ExpandableSection title={`All Matched Rules (${dedupedRules.length})`} defaultOpen={event.event_type === "detect_block"}>
+        <ExpandableSection title={`All Matched Rules (${dedupedRules.length})`} defaultOpen={isDetectLike}>
           <div className="space-y-3">
             {dedupedRules.map((rule, idx) => {
               const sev = formatSeverity(rule.severity);

@@ -55,6 +55,9 @@ export default function LogViewer() {
   // Expanded rows (keyed by timestamp+index for stable identity)
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Extra param: request_id passed directly to API (not a filter field)
+  const [requestIdParam, setRequestIdParam] = useState<string | null>(null);
+
   const toggleExpand = useCallback((key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -73,8 +76,9 @@ export default function LogViewer() {
       page,
       per_page: perPage,
     };
+    if (requestIdParam) params.request_id = requestIdParam;
     return params;
-  }, [timeRange, page, filters]);
+  }, [timeRange, page, filters, requestIdParam]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -104,11 +108,17 @@ export default function LogViewer() {
   useEffect(() => {
     const search = window.location.search;
     if (!search) return;
+    const params = new URLSearchParams(search);
+    // Handle ?request_id= param (from "View in General Logs" link)
+    const rid = params.get("request_id") || params.get("q");
+    if (rid) {
+      setRequestIdParam(rid);
+    }
     const parsed = parseLogFiltersFromURL(search);
     if (parsed.length > 0) {
       setFilters(parsed);
-      window.history.replaceState({}, "", window.location.pathname);
     }
+    window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
   // Sort

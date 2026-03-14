@@ -1,18 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronRight, ShieldMinus, Plus, X, Loader2, Rocket } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ChevronDown, ChevronRight, ShieldMinus, Plus, X, Loader2, Rocket, Search, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import type { WAFServiceSettings, ServiceDetail, Exclusion } from "@/lib/api";
-import { getExclusions, createExclusion, deleteExclusion, deployConfig } from "@/lib/api";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import type { WAFServiceSettings, ServiceDetail, Exclusion, DefaultRule } from "@/lib/api";
+import { getExclusions, createExclusion, deleteExclusion, deployConfig, listDefaultRules, getCategoryShortName } from "@/lib/api";
 import { SensitivitySettings } from "./SettingsFormSections";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/** Find skip exclusions that target a specific host via conditions. */
 function findSkipRulesForHost(exclusions: Exclusion[], hostname: string): Exclusion[] {
   return exclusions.filter((e) => {
     if (e.type !== "skip" || !e.enabled) return false;
@@ -22,7 +26,6 @@ function findSkipRulesForHost(exclusions: Exclusion[], hostname: string): Exclus
   });
 }
 
-/** Extract all skipped rule IDs from a set of skip exclusions. */
 function collectSkippedRuleIds(skipRules: Exclusion[]): string[] {
   const ids: string[] = [];
   for (const rule of skipRules) {
@@ -57,96 +60,84 @@ export function ServiceSettingsCard({
   const [skipRules, setSkipRules] = useState<Exclusion[]>([]);
   const [skippedIds, setSkippedIds] = useState<string[]>([]);
   const [loadingSkips, setLoadingSkips] = useState(false);
-  const [newRuleId, setNewRuleId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  const loadSkipRules = useCallback(async () => {
+  // CRS rules for the picker
+  const [crsRules, setCrsRules] = useState<DefaultRule[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+
+  const loadData = useCallback(async () => {
     setLoadingSkips(true);
     try {
-      const all = await getExclusions();
+      const [all, rules] = await Promise.all([getExclusions(), listDefaultRules()]);
       const hostSkips = findSkipRulesForHost(all, hostname);
       setSkipRules(hostSkips);
       setSkippedIds(collectSkippedRuleIds(hostSkips));
+      setCrsRules(rules);
     } catch {
-      // silent — non-critical
+      // silent
     } finally {
       setLoadingSkips(false);
     }
   }, [hostname]);
 
   useEffect(() => {
-    if (expanded) loadSkipRules();
-  }, [expanded, loadSkipRules]);
+    if (expanded) loadData();
+  }, [expanded, loadData]);
 
-  const addRuleIds = async () => {
-    const ids = newRuleId
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter((s) => /^\d+$/.test(s) && !skippedIds.includes(s));
-    if (ids.length === 0) return;
+  // Filtered CRS rules for picker
+  const filteredCrsRules = useMemo(() => {
+    if (!pickerSearch.trim()) return crsRules.slice(0, 50);
+    const q = pickerSearch.toLowerCase();
+    return crsRules
+      .filter((r) =>
+        r.id.includes(q) ||
+        (r.description ?? "").toLowerCase().includes(q) ||
+        (r.name ?? "").toLowerCase().includes(q) ||
+        getCategoryShortName(r.id).toLowerCase().includes(q)
+      )
+      .slice(0, 50);
+  }, [crsRules, pickerSearch]);
 
+  const skippedSet = useMemo(() => new Set(skippedIds), [skippedIds]);
+
+  const saveSkipRule = async (newIds: string[]) => {
     setSaving(true);
     try {
-      // If there's already a skip rule for this host, update it by creating a new
-      // consolidated one and deleting the old ones. Otherwise create a new one.
-      const allIds = [...skippedIds, ...ids];
-
       // Delete existing skip rules for this host
       for (const rule of skipRules) {
         await deleteExclusion(rule.id);
       }
-
-      // Create a single consolidated skip rule
-      await createExclusion({
-        name: `Skip CRS rules for ${hostname}`,
-        type: "skip",
-        enabled: true,
-        conditions: [{ field: "host", operator: "eq", value: hostname }],
-        group_operator: "and",
-        skip_targets: { rules: allIds, phases: ["detect"] },
-      });
-
-      setNewRuleId("");
-      setDirty(true);
-      await loadSkipRules();
-    } catch (err) {
-      console.error("Failed to add skip rules:", err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeRuleId = async (idToRemove: string) => {
-    setSaving(true);
-    try {
-      const remaining = skippedIds.filter((id) => id !== idToRemove);
-
-      // Delete existing skip rules for this host
-      for (const rule of skipRules) {
-        await deleteExclusion(rule.id);
-      }
-
-      // Recreate with remaining IDs (if any)
-      if (remaining.length > 0) {
+      // Create consolidated skip rule if any IDs remain
+      if (newIds.length > 0) {
         await createExclusion({
           name: `Skip CRS rules for ${hostname}`,
           type: "skip",
           enabled: true,
           conditions: [{ field: "host", operator: "eq", value: hostname }],
           group_operator: "and",
-          skip_targets: { rules: remaining, phases: ["detect"] },
+          skip_targets: { rules: newIds, phases: ["detect"] },
         });
       }
-
       setDirty(true);
-      await loadSkipRules();
+      await loadData();
     } catch (err) {
-      console.error("Failed to remove skip rule:", err);
+      console.error("Failed to update skip rules:", err);
     } finally {
       setSaving(false);
     }
+  };
+
+  const addRuleId = (id: string) => {
+    if (skippedSet.has(id)) return;
+    saveSkipRule([...skippedIds, id]);
+  };
+
+  const removeRuleId = (id: string) => {
+    saveSkipRule(skippedIds.filter((x) => x !== id));
   };
 
   const handleDeploy = async () => {
@@ -217,62 +208,105 @@ export function ServiceSettingsCard({
 
           <Separator />
 
-          {/* Inline Skip Rule Management */}
+          {/* Disabled CRS Rules */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <ShieldMinus className="h-3.5 w-3.5 text-lv-cyan" />
-              <Label className="text-xs font-medium">Disabled CRS Rules</Label>
-              {loadingSkips && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldMinus className="h-3.5 w-3.5 text-lv-cyan" />
+                <Label className="text-xs font-medium">Disabled CRS Rules</Label>
+                {loadingSkips && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              </div>
+
+              {/* Add rule picker */}
+              <Popover open={pickerOpen} onOpenChange={(o) => { setPickerOpen(o); if (!o) setPickerSearch(""); }}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={saving || crsRules.length === 0}>
+                    <Plus className="h-3 w-3" />
+                    Add Rule
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[340px] p-0" align="end" sideOffset={4}>
+                  {/* Search */}
+                  <div className="flex items-center border-b border-border px-3 py-2">
+                    <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <input
+                      value={pickerSearch}
+                      onChange={(e) => setPickerSearch(e.target.value)}
+                      placeholder="Search by ID, name, or category..."
+                      className="flex-1 ml-2 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
+                      autoFocus
+                    />
+                  </div>
+                  {/* Rule list */}
+                  <div className="max-h-[280px] overflow-y-auto py-1">
+                    {filteredCrsRules.length === 0 ? (
+                      <p className="px-3 py-4 text-xs text-muted-foreground text-center">No rules found</p>
+                    ) : (
+                      filteredCrsRules.map((rule) => {
+                        const isSkipped = skippedSet.has(rule.id);
+                        const cat = getCategoryShortName(rule.id);
+                        return (
+                          <button
+                            key={rule.id}
+                            onClick={() => { if (!isSkipped) addRuleId(rule.id); }}
+                            disabled={saving}
+                            className={`flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent transition-colors ${
+                              isSkipped ? "opacity-50" : ""
+                            }`}
+                          >
+                            <div className="w-3.5 pt-0.5 shrink-0">
+                              {isSkipped && <Check className="h-3.5 w-3.5 text-lv-cyan" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-data font-medium">{rule.id}</span>
+                                <span className="text-[10px] text-muted-foreground">{cat}</span>
+                              </div>
+                              {rule.description && (
+                                <p className="text-[10px] text-muted-foreground truncate">{rule.description}</p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Skipped rule ID pills */}
             {skippedIds.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {skippedIds.map((id) => (
-                  <span
-                    key={id}
-                    className="inline-flex items-center gap-1 rounded-md bg-lv-cyan/10 border border-lv-cyan/20 px-2 py-0.5 text-xs font-data text-lv-cyan"
-                  >
-                    {id}
-                    <button
-                      onClick={() => removeRuleId(id)}
-                      disabled={saving}
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-lv-red/20 hover:text-lv-red transition-colors disabled:opacity-50"
+                {skippedIds.map((id) => {
+                  const rule = crsRules.find((r) => r.id === id);
+                  const cat = getCategoryShortName(id);
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 rounded-md bg-lv-cyan/10 border border-lv-cyan/20 px-2 py-0.5 text-xs font-data text-lv-cyan"
+                      title={rule?.description ?? id}
                     >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </span>
-                ))}
+                      {id}
+                      <span className="text-[10px] text-lv-cyan/50">{cat}</span>
+                      <button
+                        onClick={() => removeRuleId(id)}
+                        disabled={saving}
+                        className="ml-0.5 rounded-full p-0.5 hover:bg-lv-red/20 hover:text-lv-red transition-colors disabled:opacity-50"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No CRS rules disabled for this service. Add rule IDs below to skip specific rules.
+                No CRS rules disabled. Click "Add Rule" to skip specific rules for this service.
               </p>
             )}
 
-            {/* Add rule IDs input */}
-            <div className="flex items-center gap-2">
-              <Input
-                value={newRuleId}
-                onChange={(e) => setNewRuleId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addRuleIds(); }}
-                placeholder="Rule IDs (e.g. 932236 942120)"
-                className="flex-1 h-8 text-xs font-data"
-                disabled={saving}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addRuleIds}
-                disabled={saving || !newRuleId.trim()}
-                className="h-8 text-xs"
-              >
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-                Add
-              </Button>
-            </div>
-
-            {/* Deploy button when dirty */}
+            {/* Deploy */}
             {dirty && (
               <Button
                 size="sm"
@@ -280,11 +314,7 @@ export function ServiceSettingsCard({
                 disabled={deploying}
                 className="w-full h-8 text-xs"
               >
-                {deploying ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Rocket className="h-3 w-3" />
-                )}
+                {deploying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
                 {deploying ? "Deploying..." : "Deploy Changes"}
               </Button>
             )}
