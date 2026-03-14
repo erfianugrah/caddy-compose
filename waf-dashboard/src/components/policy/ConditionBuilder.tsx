@@ -172,34 +172,38 @@ export function ConditionRow({
   const transforms = condition.transforms ?? [];
 
   return (
-    <div className="space-y-1">
-      {/* Main row: Field → Operator → Value → Remove */}
-      <div className="flex items-start gap-2">
-        {/* Field selector */}
-        <Select
-          value={condition.field}
-          onValueChange={(v) => {
-            const newField = v as ConditionField;
-            const newFieldDef = getFieldDef(newField);
-            onChange(index, {
-              field: newField,
-              operator: newFieldDef.operators[0].value,
-              value: "",
-              transforms: condition.transforms,
-            });
-          }}
-        >
-          <SelectTrigger className="w-[160px] shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {availableFields.map((f) => (
-              <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="flex items-start gap-2">
+      {/* Field selector */}
+      <Select
+        value={condition.field}
+        onValueChange={(v) => {
+          const newField = v as ConditionField;
+          const newFieldDef = getFieldDef(newField);
+          onChange(index, {
+            field: newField,
+            operator: newFieldDef.operators[0].value,
+            value: "",
+            transforms: condition.transforms,
+          });
+        }}
+      >
+        <SelectTrigger className="w-[160px] shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {availableFields.map((f) => (
+            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-        {/* Operator selector */}
+      {/* Transforms — applied to field value before operator evaluates */}
+      <TransformSelect
+        value={transforms}
+        onChange={(t) => onChange(index, { ...condition, transforms: t.length > 0 ? t : undefined })}
+      />
+
+      {/* Operator selector */}
         <Select
           value={condition.operator}
           onValueChange={(v) => {
@@ -285,13 +289,6 @@ export function ConditionRow({
         >
           <X className="h-4 w-4" />
         </Button>
-      </div>
-
-      {/* Transforms sub-row — collapsible, below the main condition row */}
-      <TransformSelect
-        value={transforms}
-        onChange={(t) => onChange(index, { ...condition, transforms: t.length > 0 ? t : undefined })}
-      />
     </div>
   );
 }

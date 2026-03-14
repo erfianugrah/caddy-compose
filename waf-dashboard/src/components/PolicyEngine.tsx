@@ -635,7 +635,6 @@ export default function PolicyEngine() {
                   <TableHead>Target / Conditions</TableHead>
                   <TableHead>Tags</TableHead>
                   <SortableTableHead sortKey="hits" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Hits (24h)</SortableTableHead>
-                  <TableHead className="w-[60px]" />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -720,14 +719,12 @@ export default function PolicyEngine() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={excl.enabled}
-                        onCheckedChange={(v) => handleToggleEnabled(excl.id, v)}
-                      />
-                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <Switch
+                          checked={excl.enabled}
+                          onCheckedChange={(v) => handleToggleEnabled(excl.id, v)}
+                        />
                         {!isFiltered && (
                           <>
                             <Button
