@@ -31,7 +31,7 @@ DEPLOY_MODE ?= dockge
 # Dockge mode: path inside the dockge container (mapped from host).
 # Compose mode: absolute path on the remote host.
 STACK_PATH     ?= /opt/stacks/caddy/compose.yaml
-CADDYFILE_DEST ?= /mnt/user/data/caddy/Caddyfile
+CADDYFILE_DEST ?= /mnt/cache/caddy/Caddyfile
 COMPOSE_DEST   ?= /mnt/user/data/dockge/stacks/caddy/compose.yaml
 AUTHELIA_DEST  ?= /mnt/user/data/authelia/config
 

@@ -40,14 +40,15 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      # Caddyfile mounted from host — source of truth, survives restarts
-      - /mnt/user/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /mnt/user/data/caddy/site:/srv:ro
-      - /mnt/user/data/caddy/data:/data
-      - /mnt/user/data/caddy/config:/config
+      # Config + TLS on cache SSD — fast reads for TLS handshakes + config
+      - /mnt/cache/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /mnt/cache/caddy/site:/srv:ro
+      - /mnt/cache/caddy/data:/data
+      - /mnt/cache/caddy/config:/config
+      # Logs stay on array — write-heavy, large, not latency-sensitive
       - /mnt/user/data/caddy/log:/var/log
-      # Dynamic WAF overrides — written by wafctl Policy Engine
-      - /mnt/user/data/caddy/waf:/data/waf
+      # Dynamic WAF overrides — written by wafctl Policy Engine, polled by plugin
+      - /mnt/cache/caddy/waf:/data/waf
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
       - tmpfs_caddy:/var/run
@@ -157,14 +158,20 @@ services:
       # keeps traffic within the allowed 172.19.98.0/24 subnet.
       - "caddy:172.19.98.1"
     volumes:
+      # Caddy logs — read-only, on array (write-heavy)
       - /mnt/user/data/caddy/log:/var/log:ro
-      - /mnt/user/data/wafctl:/data
-      # Dynamic WAF overrides — shared with Caddy
-      - /mnt/user/data/caddy/waf:/data/waf
-      # Caddyfile — read-only, needed for reload via admin API
-      - /mnt/user/data/caddy/Caddyfile:/data/Caddyfile:ro
-      # GeoIP MMDB database (DB-IP Lite or MaxMind GeoLite2)
-      - /mnt/user/data/wafctl/geoip:/data/geoip:ro
+      # wafctl config on cache SSD — exclusions, rate-limits, lists, etc.
+      - /mnt/cache/caddy/wafctl/config:/data
+      # JSONL event files on array — large, append-heavy
+      - /mnt/user/data/wafctl/events:/data/events
+      # Dynamic WAF overrides — shared with Caddy, on cache
+      - /mnt/cache/caddy/waf:/data/waf
+      # Caddyfile — read-only, needed for FQDN resolution
+      - /mnt/cache/caddy/Caddyfile:/data/Caddyfile:ro
+      # GeoIP MMDB database
+      - /mnt/cache/caddy/wafctl/geoip:/data/geoip:ro
+      # Managed list files — on cache
+      - /mnt/cache/caddy/wafctl/lists:/data/lists
     environment:
       - TZ=Asia/Singapore
       - WAF_AUDIT_LOG=/var/log/waf-audit.log
@@ -177,6 +184,16 @@ services:
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
       - WAF_GEOIP_DB=/data/geoip/country.mmdb
       - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json
+      # Event JSONL files — on array via /data/events mount
+      - WAF_EVENT_FILE=/data/events/events.jsonl
+      - WAF_ACCESS_EVENT_FILE=/data/events/access-events.jsonl
+      - WAF_GENERAL_LOG_FILE=/data/events/general-events.jsonl
+      - WAF_AUDIT_OFFSET_FILE=/data/events/.audit-log-offset
+      - WAF_ACCESS_OFFSET_FILE=/data/events/.access-log-offset
+      - WAF_GENERAL_LOG_OFFSET_FILE=/data/events/.general-log-offset
+      # Managed lists
+      - WAF_MANAGED_LISTS_FILE=/data/lists.json
+      - WAF_MANAGED_LISTS_DIR=/data/lists
 
 networks:
   authelia:
