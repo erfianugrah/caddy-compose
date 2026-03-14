@@ -629,6 +629,7 @@ export default function PolicyEngine() {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[36px] px-2" />
+                  <TableHead className="w-[36px] px-2" />
                   <TableHead className="w-[52px] px-1">#</TableHead>
                   <SortableTableHead sortKey="name" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Name</SortableTableHead>
                   <SortableTableHead sortKey="type" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Type</SortableTableHead>
