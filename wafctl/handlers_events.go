@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -106,7 +105,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 				if !uriF.matchField(ev.URI) {
 					continue
 				}
-				if !statusCodeF.matchField(strconv.Itoa(ev.ResponseStatus)) {
+				if !statusCodeF.matchIntField(ev.ResponseStatus) {
 					continue
 				}
 				if !countryF.matchField(ev.Country) {
@@ -130,7 +129,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			}
 			summary.UniqueClients = len(allClients)
 			summary.UniqueServices = len(allServices)
-			cache.set(cacheKey, summary, gen, 3*time.Second)
+			cache.set(cacheKey, summary, gen, 10*time.Second)
 			writeJSON(w, http.StatusOK, summary)
 			return
 		}
@@ -357,7 +356,7 @@ func handleSummary(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) ht
 			})
 		}
 
-		cache.set(cacheKey, summary, gen, 3*time.Second)
+		cache.set(cacheKey, summary, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, summary)
 	}
 }
@@ -446,7 +445,7 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 			if !uriF.matchField(ev.URI) {
 				return false
 			}
-			if !statusCodeF.matchField(strconv.Itoa(ev.ResponseStatus)) {
+			if !statusCodeF.matchIntField(ev.ResponseStatus) {
 				return false
 			}
 			if !countryF.matchField(ev.Country) {
@@ -462,10 +461,9 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 		}
 
 		// Reverse-merge two chronologically sorted slices (newest first)
-		// with inline filtering and early-exit pagination.
-		// For export mode we need the total count, so we can't early-exit.
+		// with inline filtering and pagination.
 		wi, ri := len(wafEvents)-1, len(rlEvts)-1
-		filtered := make([]Event, 0)
+		filtered := make([]Event, 0, limit)
 		matched := 0
 
 		for wi >= 0 || ri >= 0 {
@@ -486,9 +484,22 @@ func handleEvents(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) htt
 			if matched > offset && len(filtered) < limit {
 				filtered = append(filtered, *ev)
 			}
-			// For non-export: once we have a full page AND enough to know
-			// the total would require scanning everything anyway for total count.
-			// We must continue to get accurate total, so no early-exit here.
+			// Early-exit for non-export: once we have a full page and are past
+			// the offset window, stop scanning. Return total=-1 to signal
+			// that more results exist but the exact count is unknown.
+			if !exportAll && len(filtered) >= limit && matched >= offset+limit {
+				// Check if there are more events to determine hasMore.
+				hasMore := wi >= 0 || ri >= 0
+				total := matched
+				if hasMore {
+					total = -1 // signal: more results exist
+				}
+				writeJSON(w, http.StatusOK, EventsResponse{
+					Total:  total,
+					Events: filtered,
+				})
+				return
+			}
 		}
 
 		writeJSON(w, http.StatusOK, EventsResponse{
@@ -568,7 +579,7 @@ func handleServices(store *Store, als *AccessLogStore, rs *RateLimitRuleStore) h
 			return resp.Services[i].Total > resp.Services[j].Total
 		})
 
-		cache.set(cacheKey, resp, gen, 3*time.Second)
+		cache.set(cacheKey, resp, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, resp)
 	}
 }

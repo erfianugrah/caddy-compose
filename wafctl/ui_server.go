@@ -29,6 +29,12 @@ func uiFileServer(dir string) http.Handler {
 		// 1. Exact file match (static assets, e.g. /_astro/index.DxN2a.css)
 		full := filepath.Join(dir, p)
 		if fi, err := os.Stat(full); err == nil && !fi.IsDir() {
+			// Hashed Astro assets are immutable — set long Cache-Control as
+			// defense-in-depth (Caddy also sets this, but wafctl should be
+			// correct on its own for direct access / debugging).
+			if strings.HasPrefix(p, "_astro/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
 			http.ServeFile(w, r, full)
 			return
 		}

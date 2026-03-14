@@ -13,22 +13,18 @@ import (
 
 // --- Deploy tests ---
 
-func TestDeployEndpointReloadFail(t *testing.T) {
+// TestDeployEndpointNoReload verifies that the deploy endpoint writes
+// policy-rules.json and returns success without triggering a Caddy reload.
+// The policy engine plugin detects the file change via mtime polling.
+func TestDeployEndpointNoReload(t *testing.T) {
 	wafDir := t.TempDir()
 	caddyfilePath := filepath.Join(t.TempDir(), "Caddyfile")
 	os.WriteFile(caddyfilePath, []byte("localhost:80\n"), 0644)
 
-	// Admin server that always fails
-	adminServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("reload failed"))
-	}))
-	defer adminServer.Close()
-
 	deployCfg := DeployConfig{
 		WafDir:          wafDir,
 		CaddyfilePath:   caddyfilePath,
-		CaddyAdminURL:   adminServer.URL,
+		CaddyAdminURL:   "http://127.0.0.1:0", // unused — no reload
 		PolicyRulesFile: filepath.Join(wafDir, "policy-rules.json"),
 	}
 
@@ -49,17 +45,22 @@ func TestDeployEndpointReloadFail(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != 200 {
-		t.Fatalf("expected 200 (partial success), got %d", rec.Code)
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
 	var resp DeployResponse
 	json.NewDecoder(rec.Body).Decode(&resp)
 
-	if resp.Status != "partial" {
-		t.Errorf("expected status=partial, got %q", resp.Status)
+	if resp.Status != "deployed" {
+		t.Errorf("expected status=deployed, got %q", resp.Status)
 	}
 	if resp.Reloaded {
-		t.Error("expected reloaded=false")
+		t.Error("expected reloaded=false (hot-reload via mtime)")
+	}
+
+	// Verify policy-rules.json was written.
+	if _, err := os.Stat(deployCfg.PolicyRulesFile); err != nil {
+		t.Errorf("policy-rules.json should exist: %v", err)
 	}
 }
 

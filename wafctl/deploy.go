@@ -89,10 +89,10 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore,
 
 }
 
-// deployAll regenerates the policy engine rules file and reloads Caddy.
-// This is the programmatic equivalent of POST /api/config/deploy, used by
-// background processes (e.g. blocklist refresh) that need to trigger a full
-// regeneration + reload cycle after updating managed lists.
+// deployAll regenerates the policy engine rules file from all stores.
+// Used by background processes (e.g. blocklist refresh) that need to trigger
+// a full regeneration after updating managed lists. The policy engine plugin
+// detects the file change via mtime polling and hot-reloads within seconds.
 func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) error {
 	deployMu.Lock()
 	defer deployMu.Unlock()
@@ -125,11 +125,7 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *
 	log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
 		policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 
-	// Reload Caddy to pick up the new policy rules.
-	if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
-		return fmt.Errorf("Caddy reload: %w", err)
-	}
-
+	// No Caddy reload — policy engine plugin hot-reloads via mtime polling.
 	return nil
 }
 

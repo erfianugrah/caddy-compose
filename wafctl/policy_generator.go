@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -365,6 +366,15 @@ func IsPolicyEngineType(typ string) bool {
 // full hostname. Port-only blocks like ":8080 {" are excluded.
 var siteBlockPattern = regexp.MustCompile(`(?m)^([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z0-9][-a-zA-Z0-9]*)+)\s*\{`)
 
+// fqdnCache caches the result of BuildServiceFQDNMap keyed by Caddyfile mtime.
+// Avoids re-reading and re-parsing the file on every deploy/preview call.
+var fqdnCache struct {
+	mu    sync.Mutex
+	path  string
+	mtime time.Time
+	data  map[string]string
+}
+
 // BuildServiceFQDNMap parses the Caddyfile and builds a mapping from short
 // service names to FQDNs. For a site block "httpbun.erfi.io {", the short
 // name is "httpbun" (everything before the first dot). This allows the
@@ -372,11 +382,28 @@ var siteBlockPattern = regexp.MustCompile(`(?m)^([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a
 // (from Caddyfile auto-discovery) to the FQDNs that the plugin sees in
 // the Host header.
 //
+// Results are cached and invalidated when the Caddyfile mtime changes.
 // Returns nil if the Caddyfile cannot be read or contains no FQDN blocks.
 func BuildServiceFQDNMap(caddyfilePath string) map[string]string {
 	if caddyfilePath == "" {
 		return nil
 	}
+
+	// Fast path: check mtime and return cached result.
+	fi, err := os.Stat(caddyfilePath)
+	if err != nil {
+		return nil
+	}
+	mtime := fi.ModTime()
+
+	fqdnCache.mu.Lock()
+	defer fqdnCache.mu.Unlock()
+
+	if fqdnCache.path == caddyfilePath && fqdnCache.mtime.Equal(mtime) && fqdnCache.data != nil {
+		return fqdnCache.data
+	}
+
+	// Cache miss — re-read and re-parse.
 	data, err := os.ReadFile(caddyfilePath)
 	if err != nil {
 		return nil
@@ -401,6 +428,10 @@ func BuildServiceFQDNMap(caddyfilePath string) map[string]string {
 			m[short] = fqdn
 		}
 	}
+
+	fqdnCache.path = caddyfilePath
+	fqdnCache.mtime = mtime
+	fqdnCache.data = m
 	return m
 }
 

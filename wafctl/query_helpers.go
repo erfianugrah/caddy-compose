@@ -201,6 +201,34 @@ func (f *fieldFilter) matchField(target string) bool {
 	return true
 }
 
+// matchIntField tests whether an integer target matches the filter.
+// For eq/neq/in this compares ints directly, avoiding per-event strconv.Itoa.
+// Falls back to string comparison for regex/contains.
+func (f *fieldFilter) matchIntField(target int) bool {
+	if f == nil {
+		return true
+	}
+	switch f.op {
+	case "eq":
+		v, err := strconv.Atoi(f.value)
+		return err == nil && target == v
+	case "neq":
+		v, err := strconv.Atoi(f.value)
+		return err != nil || target != v
+	case "in":
+		ts := strconv.Itoa(target)
+		tl := strings.ToLower(ts)
+		for _, v := range f.ins {
+			if tl == v {
+				return true
+			}
+		}
+		return false
+	default:
+		return f.matchField(strconv.Itoa(target))
+	}
+}
+
 // ─── Event Source Routing ────────────────────────────────────────────
 
 // wafEventTypes lists event types originating from the WAF (policy engine) event store.

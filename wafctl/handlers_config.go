@@ -120,24 +120,12 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 		log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
 			policyCount, len(rlRules), deployCfg.PolicyRulesFile)
 
-		// Reload Caddy via admin API to pick up the new policy rules.
-		reloaded := true
-		if err := reloadCaddy(deployCfg.CaddyfilePath, deployCfg.CaddyAdminURL); err != nil {
-			log.Printf("warning: Caddy reload failed: %v", err)
-			reloaded = false
-		}
-
-		status := "deployed"
-		msg := "Policy rules written and Caddy reloaded successfully"
-		if !reloaded {
-			status = "partial"
-			msg = "Policy rules written but Caddy reload failed — manual reload may be needed"
-		}
-
+		// No Caddy reload needed — the policy engine plugin hot-reloads
+		// policy-rules.json via mtime polling (default 5s interval).
 		writeJSON(w, http.StatusOK, DeployResponse{
-			Status:    status,
-			Message:   msg,
-			Reloaded:  reloaded,
+			Status:    "deployed",
+			Message:   "Policy rules written — plugin will hot-reload within seconds",
+			Reloaded:  false,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		})
 	}

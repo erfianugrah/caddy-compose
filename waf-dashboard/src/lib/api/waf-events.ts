@@ -358,7 +358,11 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
   );
 
   const total = raw.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // total=-1 signals the backend used early-exit pagination (more results exist
+  // but the exact count is unknown). Show a large totalPages to enable "Next".
+  const totalPages = total < 0
+    ? page + 1 // always allow "Next" when unknown
+    : Math.max(1, Math.ceil(total / perPage));
 
   return {
     events: (raw.events ?? []).map(mapEvent),

@@ -293,7 +293,7 @@ export default function EventsTable() {
         {response && (
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs text-muted-foreground">
-              {response.total.toLocaleString()} events
+              {response.total < 0 ? `${response.events.length}+ events` : `${response.total.toLocaleString()} events`}
             </span>
             <div className="flex gap-1">
               <Button
