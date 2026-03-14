@@ -172,6 +172,7 @@ export function ConditionRow({
   const transforms = condition.transforms ?? [];
 
   return (
+    <div className="space-y-1">
     <div className="flex items-start gap-2">
       {/* Field selector */}
       <Select
@@ -289,6 +290,31 @@ export function ConditionRow({
         >
           <X className="h-4 w-4" />
         </Button>
+      </div>
+
+      {/* Transform pills — shown below the row when transforms are active */}
+      {transforms.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 pl-1">
+          {transforms.map((t, i) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1 rounded-md border border-lv-cyan/20 bg-lv-cyan/5 px-1.5 py-0.5 text-[11px] font-data text-lv-cyan"
+            >
+              <span className="text-lv-cyan/40 text-[9px]">{i + 1}.</span>
+              {t}
+              <button
+                onClick={() => {
+                  const next = transforms.filter((_, j) => j !== i);
+                  onChange(index, { ...condition, transforms: next.length > 0 ? next : undefined });
+                }}
+                className="ml-0.5 rounded-full p-0.5 text-lv-cyan/40 hover:bg-lv-red/20 hover:text-lv-red"
+              >
+                <X className="h-2 w-2" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
