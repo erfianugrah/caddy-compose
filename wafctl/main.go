@@ -196,7 +196,7 @@ func runServe() int {
 	mux.HandleFunc("POST /api/exclusions/import", handleImportExclusions(exclusionStore))
 	mux.HandleFunc("PUT /api/exclusions/reorder", handleReorderExclusions(exclusionStore))
 	mux.HandleFunc("POST /api/exclusions/bulk", handleBulkExclusions(exclusionStore))
-	mux.HandleFunc("GET /api/exclusions/hits", handleExclusionHits(store, exclusionStore))
+	mux.HandleFunc("GET /api/exclusions/hits", handleExclusionHits(store, accessLogStore, rlRuleStore, exclusionStore))
 	mux.HandleFunc("GET /api/exclusions/{id}", handleGetExclusion(exclusionStore))
 	mux.HandleFunc("PUT /api/exclusions/{id}", handleUpdateExclusion(exclusionStore))
 	mux.HandleFunc("DELETE /api/exclusions/{id}", handleDeleteExclusion(exclusionStore))

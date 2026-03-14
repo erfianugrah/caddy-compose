@@ -641,7 +641,9 @@ func TestHandleExclusionHits(t *testing.T) {
 	}
 	store.mu.Unlock()
 
-	handler := handleExclusionHits(store, es)
+	als := emptyAccessLogStore(t)
+	rs := emptyRLRuleStore(t)
+	handler := handleExclusionHits(store, als, rs, es)
 
 	// Default (24h)
 	req := httptest.NewRequest("GET", "/api/exclusions/hits", nil)

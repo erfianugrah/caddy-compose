@@ -16,7 +16,7 @@ import (
 //
 // Response: { "hits": { "<exclusion_name>": { "total": N, "sparkline": [n, n, ...] } } }
 // The sparkline is a 24-element array (one per hour, oldest first).
-func handleExclusionHits(store *Store, es *ExclusionStore) http.HandlerFunc {
+func handleExclusionHits(store *Store, als *AccessLogStore, rs *RateLimitRuleStore, es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		hoursStr := r.URL.Query().Get("hours")
 		hours := 24
@@ -26,7 +26,6 @@ func handleExclusionHits(store *Store, es *ExclusionStore) http.HandlerFunc {
 			}
 		}
 
-		events := store.SnapshotSince(hours)
 		exclusions := es.List()
 
 		// Build a set of known exclusion names for fast lookup.
@@ -54,28 +53,51 @@ func handleExclusionHits(store *Store, es *ExclusionStore) http.HandlerFunc {
 			hits[exc.Name] = &hitData{Sparkline: make([]int, bucketCount)}
 		}
 
-		for i := range events {
-			ev := &events[i]
+		// countHit records a hit for the given exclusion name at the event timestamp.
+		countHit := func(name string, ts time.Time) {
+			if name == "" || !nameSet[name] {
+				return
+			}
+			hd, ok := hits[name]
+			if !ok {
+				hd = &hitData{Sparkline: make([]int, bucketCount)}
+				hits[name] = hd
+			}
+			hd.Total++
+			bucket := int(ts.Sub(bucketStart).Hours())
+			if bucket >= 0 && bucket < bucketCount {
+				hd.Sparkline[bucket]++
+			}
+		}
+
+		// Scan WAF event store for policy events with MatchedRules.
+		wafEvents := store.SnapshotSince(hours)
+		for i := range wafEvents {
+			ev := &wafEvents[i]
 			if !strings.HasPrefix(ev.EventType, "policy_") {
 				continue
 			}
 			for _, mr := range ev.MatchedRules {
-				// msg format: "Policy Allow: <name>", "Policy Skip: <name>", "Policy Block: <name>"
-				name := extractPolicyName(mr.Msg)
-				if name == "" || !nameSet[name] {
-					continue
-				}
-				hd, ok := hits[name]
-				if !ok {
-					hd = &hitData{Sparkline: make([]int, bucketCount)}
-					hits[name] = hd
-				}
-				hd.Total++
-				// Assign to sparkline bucket.
-				bucket := int(ev.Timestamp.Sub(bucketStart).Hours())
-				if bucket >= 0 && bucket < bucketCount {
-					hd.Sparkline[bucket]++
-				}
+				countHit(extractPolicyName(mr.Msg), ev.Timestamp)
+			}
+		}
+
+		// Scan access log store for policy events (block, skip, allow, detect).
+		// ALS events carry the rule name in RuleMsg (format: "Policy Block: <name>").
+		alsEvents := getRLEvents(als, timeRange{}, hours, rs.List())
+		for i := range alsEvents {
+			ev := &alsEvents[i]
+			if !strings.HasPrefix(ev.EventType, "policy_") && ev.EventType != "detect_block" {
+				continue
+			}
+			// Primary: extract rule name from RuleMsg (e.g., "Policy Block: Honeypot Paths").
+			if name := extractPolicyName(ev.RuleMsg); name != "" {
+				countHit(name, ev.Timestamp)
+				continue
+			}
+			// Fallback: check MatchedRules for legacy or detect events.
+			for _, mr := range ev.MatchedRules {
+				countHit(extractPolicyName(mr.Msg), ev.Timestamp)
 			}
 		}
 
