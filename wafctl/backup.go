@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,14 +15,15 @@ import (
 
 // FullBackup is the top-level envelope for a complete config backup.
 type FullBackup struct {
-	Version         int                  `json:"version"`
-	ExportedAt      time.Time            `json:"exported_at"`
-	WAFConfig       WAFConfig            `json:"waf_config"`
-	CSPConfig       CSPConfig            `json:"csp_config"`
-	SecurityHeaders SecurityHeaderConfig `json:"security_headers"`
-	Exclusions      []RuleExclusion      `json:"exclusions"`
-	RateLimits      RateLimitBackup      `json:"rate_limits"`
-	Lists           []ManagedList        `json:"lists"`
+	Version              int                        `json:"version"`
+	ExportedAt           time.Time                  `json:"exported_at"`
+	WAFConfig            WAFConfig                  `json:"waf_config"`
+	CSPConfig            CSPConfig                  `json:"csp_config"`
+	SecurityHeaders      SecurityHeaderConfig       `json:"security_headers"`
+	Exclusions           []RuleExclusion            `json:"exclusions"`
+	RateLimits           RateLimitBackup            `json:"rate_limits"`
+	Lists                []ManagedList              `json:"lists"`
+	DefaultRuleOverrides map[string]json.RawMessage `json:"default_rule_overrides,omitempty"`
 }
 
 // RateLimitBackup holds both rules and global config for rate limits.
@@ -37,6 +39,7 @@ func handleBackup(
 	secS *SecurityHeaderStore,
 	es *ExclusionStore,
 	ls *ManagedListStore,
+	ds *DefaultRuleStore,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		// Collect from all stores. Each getter returns a deep copy.
@@ -44,14 +47,15 @@ func handleBackup(
 		listExport := ls.Export() // already excludes ipsum lists
 
 		backup := FullBackup{
-			Version:         1,
-			ExportedAt:      time.Now().UTC(),
-			WAFConfig:       cs.Get(),
-			CSPConfig:       cspS.Get(),
-			SecurityHeaders: secS.Get(),
-			Exclusions:      exclusionExport.Exclusions,
-			RateLimits:      RateLimitBackup{}, // empty — rate_limit rules are now in Exclusions
-			Lists:           listExport.Lists,
+			Version:              1,
+			ExportedAt:           time.Now().UTC(),
+			WAFConfig:            cs.Get(),
+			CSPConfig:            cspS.Get(),
+			SecurityHeaders:      secS.Get(),
+			Exclusions:           exclusionExport.Exclusions,
+			RateLimits:           RateLimitBackup{}, // empty — rate_limit rules are now in Exclusions
+			Lists:                listExport.Lists,
+			DefaultRuleOverrides: ds.GetOverrides(),
 		}
 
 		// Set Content-Disposition so browsers offer a file download.
@@ -71,6 +75,7 @@ func handleRestore(
 	secS *SecurityHeaderStore,
 	es *ExclusionStore,
 	ls *ManagedListStore,
+	ds *DefaultRuleStore,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var backup FullBackup
@@ -156,6 +161,17 @@ func handleRestore(
 				} else {
 					results["lists"] = "restored " + strconv.Itoa(len(backup.Lists)) + " lists"
 				}
+			}
+		}
+
+		// 7. Default Rule Overrides
+		if len(backup.DefaultRuleOverrides) == 0 {
+			results["default_rules"] = "skipped: no overrides in backup"
+		} else {
+			if err := ds.ReplaceOverrides(backup.DefaultRuleOverrides); err != nil {
+				results["default_rules"] = "failed: " + err.Error()
+			} else {
+				results["default_rules"] = "restored " + strconv.Itoa(len(backup.DefaultRuleOverrides)) + " overrides"
 			}
 		}
 

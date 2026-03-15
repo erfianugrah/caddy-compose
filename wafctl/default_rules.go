@@ -258,6 +258,32 @@ func (ds *DefaultRuleStore) applyOverride(def PolicyRule, override json.RawMessa
 	return result, fields
 }
 
+// GetOverrides returns a copy of the current user overrides map.
+func (ds *DefaultRuleStore) GetOverrides() map[string]json.RawMessage {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+	cp := make(map[string]json.RawMessage, len(ds.overrides))
+	for k, v := range ds.overrides {
+		vCopy := make(json.RawMessage, len(v))
+		copy(vCopy, v)
+		cp[k] = vCopy
+	}
+	return cp
+}
+
+// ReplaceOverrides replaces all overrides atomically and persists to disk.
+func (ds *DefaultRuleStore) ReplaceOverrides(overrides map[string]json.RawMessage) error {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	old := ds.overrides
+	ds.overrides = overrides
+	if err := ds.saveLocked(); err != nil {
+		ds.overrides = old
+		return err
+	}
+	return nil
+}
+
 // saveLocked writes the overrides file to disk. Caller must hold ds.mu.Lock.
 func (ds *DefaultRuleStore) saveLocked() error {
 	f := defaultRuleOverridesFile{Overrides: ds.overrides}

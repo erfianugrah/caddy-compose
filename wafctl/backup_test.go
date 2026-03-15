@@ -21,18 +21,19 @@ func newTestSecurityHeaderStore(t *testing.T) *SecurityHeaderStore {
 	return NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec-headers.json"))
 }
 
-func setupBackupMux(t *testing.T) (*http.ServeMux, *ConfigStore, *CSPStore, *SecurityHeaderStore, *ExclusionStore, *ManagedListStore) {
+func setupBackupMux(t *testing.T) (*http.ServeMux, *ConfigStore, *CSPStore, *SecurityHeaderStore, *ExclusionStore, *ManagedListStore, *DefaultRuleStore) {
 	t.Helper()
 	cs := newTestConfigStore(t)
 	cspS := newTestCSPStore(t)
 	secS := newTestSecurityHeaderStore(t)
 	es := newTestExclusionStore(t)
 	ls := newTestManagedListStore(t)
+	ds := NewDefaultRuleStore("", "") // empty store for tests
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/backup", handleBackup(cs, cspS, secS, es, ls))
-	mux.HandleFunc("POST /api/backup/restore", handleRestore(cs, cspS, secS, es, ls))
-	return mux, cs, cspS, secS, es, ls
+	mux.HandleFunc("GET /api/backup", handleBackup(cs, cspS, secS, es, ls, ds))
+	mux.HandleFunc("POST /api/backup/restore", handleRestore(cs, cspS, secS, es, ls, ds))
+	return mux, cs, cspS, secS, es, ls, ds
 }
 
 // testAllowExclusion returns a valid allow exclusion with a condition.
@@ -89,7 +90,7 @@ func testRLRule(name, service string) RateLimitRule {
 // ─── Backup: Empty Stores ───────────────────────────────────────────────────
 
 func TestBackup_EmptyStores(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -130,7 +131,7 @@ func TestBackup_EmptyStores(t *testing.T) {
 // ─── Backup: Content-Disposition Header ─────────────────────────────────────
 
 func TestBackup_ContentDisposition(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -154,7 +155,7 @@ func TestBackup_ContentDisposition(t *testing.T) {
 // ─── Backup: Content-Type ───────────────────────────────────────────────────
 
 func TestBackup_ContentType(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -169,7 +170,7 @@ func TestBackup_ContentType(t *testing.T) {
 // ─── Backup: With Seeded Data ───────────────────────────────────────────────
 
 func TestBackup_WithData(t *testing.T) {
-	mux, cs, _, _, es, ls := setupBackupMux(t)
+	mux, cs, _, _, es, ls, _ := setupBackupMux(t)
 
 	// Seed WAF config.
 	cs.Update(WAFConfig{
@@ -227,7 +228,7 @@ func TestBackup_WithData(t *testing.T) {
 // ─── Backup: JSON Is Valid ──────────────────────────────────────────────────
 
 func TestBackup_ValidJSON(t *testing.T) {
-	mux, cs, _, _, es, _ := setupBackupMux(t)
+	mux, cs, _, _, es, _, _ := setupBackupMux(t)
 
 	// Seed data to make the JSON non-trivial.
 	cs.Update(WAFConfig{
@@ -283,7 +284,8 @@ func TestBackup_IpsumListsExcluded(t *testing.T) {
 	csp := newTestCSPStore(t)
 	es := newTestExclusionStore(t)
 	sec := newTestSecurityHeaderStore(t)
-	mux.HandleFunc("GET /api/backup", handleBackup(cs, csp, sec, es, ipsumStore))
+	ds := NewDefaultRuleStore("", "")
+	mux.HandleFunc("GET /api/backup", handleBackup(cs, csp, sec, es, ipsumStore, ds))
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -302,7 +304,7 @@ func TestBackup_IpsumListsExcluded(t *testing.T) {
 // ─── Restore: Valid Full Backup ─────────────────────────────────────────────
 
 func TestRestore_ValidBackup(t *testing.T) {
-	mux, cs, cspS, _, es, _ := setupBackupMux(t)
+	mux, cs, cspS, _, es, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -376,7 +378,7 @@ func TestRestore_ValidBackup(t *testing.T) {
 // ─── Restore: Missing Version ───────────────────────────────────────────────
 
 func TestRestore_MissingVersion(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	body := []byte(`{"waf_config":{"defaults":{"mode":"enabled","paranoia_level":1,"inbound_threshold":5,"outbound_threshold":4}}}`)
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader(body))
@@ -397,7 +399,7 @@ func TestRestore_MissingVersion(t *testing.T) {
 // ─── Restore: Invalid JSON Body ─────────────────────────────────────────────
 
 func TestRestore_InvalidJSON(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader([]byte(`{not json}`)))
 	rec := httptest.NewRecorder()
@@ -411,7 +413,7 @@ func TestRestore_InvalidJSON(t *testing.T) {
 // ─── Restore: Empty Body ────────────────────────────────────────────────────
 
 func TestRestore_EmptyBody(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader([]byte{}))
 	rec := httptest.NewRecorder()
@@ -425,7 +427,7 @@ func TestRestore_EmptyBody(t *testing.T) {
 // ─── Restore: Invalid WAF Config (partial) ──────────────────────────────────
 
 func TestRestore_InvalidWAFConfig(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -471,7 +473,7 @@ func TestRestore_InvalidWAFConfig(t *testing.T) {
 // ─── Restore: Invalid CSP Config (partial) ──────────────────────────────────
 
 func TestRestore_InvalidCSPConfig(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -518,7 +520,7 @@ func TestRestore_InvalidCSPConfig(t *testing.T) {
 // ─── Restore: Invalid Exclusion (partial) ───────────────────────────────────
 
 func TestRestore_InvalidExclusion(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -560,7 +562,7 @@ func TestRestore_InvalidExclusion(t *testing.T) {
 // ─── Restore: Invalid RL Rule (now gracefully skipped) ──────────────────────
 
 func TestRestore_InvalidRLRule(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -602,7 +604,7 @@ func TestRestore_InvalidRLRule(t *testing.T) {
 // ─── Restore: Empty Sections Skipped ────────────────────────────────────────
 
 func TestRestore_EmptyExclusions(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -646,7 +648,7 @@ func TestRestore_EmptyExclusions(t *testing.T) {
 // ─── Restore: Full Round-Trip ───────────────────────────────────────────────
 
 func TestRestore_RoundTrip(t *testing.T) {
-	mux, cs, cspS, _, es, ls := setupBackupMux(t)
+	mux, cs, cspS, _, es, ls, _ := setupBackupMux(t)
 
 	// Seed all stores with non-trivial data.
 	cs.Update(WAFConfig{
@@ -711,7 +713,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 	}
 
 	// Set up a fresh set of stores.
-	mux2, cs2, csp2, _, es2, ls2 := setupBackupMux(t)
+	mux2, cs2, csp2, _, es2, ls2, _ := setupBackupMux(t)
 
 	// Restore into fresh stores.
 	req2 := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader(backupJSON))
@@ -811,7 +813,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 // ─── Restore: Multiple Failures ─────────────────────────────────────────────
 
 func TestRestore_MultipleFailures(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -870,7 +872,7 @@ func TestRestore_MultipleFailures(t *testing.T) {
 // ─── Restore: Preserves Existing Data on Partial Failure ────────────────────
 
 func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
-	mux, cs, _, _, es, _ := setupBackupMux(t)
+	mux, cs, _, _, es, _, _ := setupBackupMux(t)
 
 	// Pre-seed some data.
 	cs.Update(WAFConfig{
@@ -919,7 +921,7 @@ func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 // ─── Restore: WAF Config With Service Overrides ─────────────────────────────
 
 func TestRestore_WAFConfigServiceOverrides(t *testing.T) {
-	mux, cs, _, _, _, _ := setupBackupMux(t)
+	mux, cs, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -968,7 +970,7 @@ func TestRestore_WAFConfigServiceOverrides(t *testing.T) {
 // ─── Restore: CSP With Service Overrides ────────────────────────────────────
 
 func TestRestore_CSPServiceOverrides(t *testing.T) {
-	mux, _, cspS, _, _, _ := setupBackupMux(t)
+	mux, _, cspS, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1029,7 +1031,7 @@ func TestRestore_CSPServiceOverrides(t *testing.T) {
 // ─── Restore: Exclusion Conditions Preserved ────────────────────────────────
 
 func TestRestore_ExclusionConditionsPreserved(t *testing.T) {
-	mux, _, _, _, es, _ := setupBackupMux(t)
+	mux, _, _, _, es, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1087,7 +1089,7 @@ func TestRestore_ExclusionConditionsPreserved(t *testing.T) {
 // ─── Restore: Legacy RL Rules Gracefully Skipped ────────────────────────────
 
 func TestRestore_LegacyRLRulesSkipped(t *testing.T) {
-	mux, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1135,7 +1137,7 @@ func TestRestore_LegacyRLRulesSkipped(t *testing.T) {
 // ─── Restore: Managed List Details Preserved ────────────────────────────────
 
 func TestRestore_ManagedListDetailsPreserved(t *testing.T) {
-	mux, _, _, _, _, ls := setupBackupMux(t)
+	mux, _, _, _, _, ls, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,

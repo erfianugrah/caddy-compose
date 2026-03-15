@@ -276,8 +276,8 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
 	// Backup / Restore (unified export of all config stores)
-	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore))
-	mux.HandleFunc("POST /api/backup/restore", handleRestore(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore))
+	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore, defaultRuleStore))
+	mux.HandleFunc("POST /api/backup/restore", handleRestore(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore, defaultRuleStore))
 
 	// Dashboard UI: serve static files from the embedded waf-dashboard build.
 	// The UI dir is configurable so it can be disabled or relocated.
