@@ -7,7 +7,7 @@ Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbo
 skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
 rule types, managed lists, IPsum blocklist (8 levels, 618K IPs), CRS auto-update
-workflow, and e2e CI pipeline (113 e2e tests, 500 Go unit tests, 326 frontend tests).
+workflow, and e2e CI pipeline (114 e2e tests, 500 Go unit tests, 326 frontend tests).
 
 ---
 
@@ -231,9 +231,15 @@ config model (stores + rules) and requires dedicated endpoints for each header t
 - [ ] Cache-Control set-if-absent (`?` prefix) semantic in response_header rules
 - [ ] CSP directive composition in response_header rules (or keep as plugin feature)
 
-**What's needed in wafctl:**
-- [ ] Add `response_header` to validExclusionTypes
-- [ ] Header action fields on RuleExclusion (header_set, header_add, header_remove)
+**wafctl (DONE):**
+- [x] `response_header` added to validExclusionTypes + policyEngineTypes
+- [x] Header action fields: `header_set`, `header_add`, `header_remove`, `header_default`
+- [x] Validation: at least one action, no newlines, phase must be outbound
+- [x] Policy generator: priority band 500-599, auto-outbound phase, fields wired
+- [x] Frontend types updated (ExclusionType, Exclusion, ExclusionCreateData, mappings)
+- [x] E2E: TestResponseHeaderRuleCRUD (7 subtests)
+
+**Remaining (wafctl):**
 - [ ] Rule templates/presets: "CORS for *.erfi.io", "Cache static assets", etc.
 - [ ] Migrate CSPStore → response_header rules
 - [ ] Migrate SecurityHeaderStore → response_header rules
