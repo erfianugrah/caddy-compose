@@ -405,7 +405,15 @@ Two operating modes:
 
 ### Features
 - [x] Custom rulesets — users create detect rules via /api/rules, templates via /api/rules/templates
-- [x] CRS accuracy: 90.8% (216/238 rules pass, 22 fail — protocol enforcement gaps)
+- [x] CRS accuracy: 90.8% (216/238 rules pass). Breakdown of 22 failures:
+      9 Go http client limitations (can't send malformed HTTP requests),
+      9 correct detections with different status code (403 vs expected 400),
+      13 false positives from broad request_combined regex (CRS chain exclusions
+      not translated by converter), 1 genuine miss (920521).
+      Converter fix attempted (narrower consolidateFields) but the 4 over-matching
+      rules (932236/932260/941130/942200) use the full CRS variable combo which
+      correctly maps to request_combined. The false positives are from CRS
+      exclusion chains that the converter doesn't yet translate.
 - [x] Outbound score display — already in EventDetailPanel + EventsTable Score column
 - [x] Filter events by blocked_by (anomaly_inbound/outbound/direct) in DashboardFilterBar
 
