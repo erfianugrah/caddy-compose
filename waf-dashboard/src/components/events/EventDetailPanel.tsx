@@ -308,18 +308,13 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
             Request Details
           </h4>
           <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs overflow-hidden">
-            <div className="flex gap-2 items-center">
-              <span className="text-muted-foreground">Event ID:</span>
-              <code className="text-muted-foreground/70 font-data select-all">{event.id}</code>
-              <CopyBtn text={event.id} />
-            </div>
-            {event.request_id && (
+            {(event.request_id || event.id) && (
               <div className="flex gap-2 items-center">
                 <span className="text-muted-foreground">Request ID:</span>
-                <code className="text-muted-foreground/70 font-data select-all">{event.request_id}</code>
-                <CopyBtn text={event.request_id} />
+                <code className="text-muted-foreground/70 font-data select-all">{event.request_id || event.id}</code>
+                <CopyBtn text={event.request_id || event.id} />
                 <a
-                  href={`/logs?request_id=${encodeURIComponent(event.request_id)}`}
+                  href={`/logs?request_id=${encodeURIComponent(event.request_id || event.id)}`}
                   onClick={(e) => e.stopPropagation()}
                   className="text-[10px] text-lv-cyan hover:text-lv-green hover:underline"
                 >
