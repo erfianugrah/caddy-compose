@@ -1,6 +1,6 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.33.0 / caddy 3.32.0 / plugin v0.17.0)
+## Current State (v2.34.0 / caddy 3.33.0 / plugin v0.17.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound), 6-pass evaluation (allow → block → skip → rate_limit → detect →
