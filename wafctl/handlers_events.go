@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 )
@@ -335,60 +334,30 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, cached)
 			return
 		}
-		tr := parseTimeRange(r)
 		hours := parseHours(r)
 
-		var resp ServicesResponse
-		if tr.Valid {
-			resp = store.ServicesRange(tr.Start, tr.End)
-		} else {
-			resp = store.Services(hours)
-		}
-
-		// Merge access-log per-service counts. Use FastSummary (O(buckets))
-		// instead of getRLEvents (O(events)) to avoid enriching all events.
+		// Use FastSummary from both stores (O(buckets)) to build per-service counts.
+		// This avoids the slow O(events) snapshot+enrich path.
+		wafSummary := store.FastSummary(hours)
 		alsSummary := als.FastSummary(hours)
-		type svcCounts struct {
-			rl, policyBlock, detectBlock int
-		}
-		alsSvcMap := make(map[string]*svcCounts)
-		for _, sd := range alsSummary.TopServices {
-			alsSvcMap[sd.Service] = &svcCounts{
-				rl:          sd.RateLimited,
-				policyBlock: sd.PolicyBlock,
-				detectBlock: sd.DetectBlock,
-			}
+		merged := mergeSummaryResponses(wafSummary, alsSummary)
+
+		// Build ServicesResponse from merged summary TopServices.
+		var resp ServicesResponse
+		for _, sd := range merged.TopServices {
+			resp.Services = append(resp.Services, ServiceDetail{
+				Service:      sd.Service,
+				Total:        sd.Count,
+				TotalBlocked: sd.TotalBlocked,
+				RateLimited:  sd.RateLimited,
+				PolicyBlock:  sd.PolicyBlock,
+				DetectBlock:  sd.DetectBlock,
+				PolicyAllow:  sd.PolicyAllow,
+				PolicySkip:   sd.PolicySkip,
+			})
 		}
 
-		existingSvcs := make(map[string]int)
-		for i, sd := range resp.Services {
-			existingSvcs[sd.Service] = i
-		}
-		for svc, sc := range alsSvcMap {
-			total := sc.rl + sc.policyBlock + sc.detectBlock
-			if idx, ok := existingSvcs[svc]; ok {
-				resp.Services[idx].RateLimited += sc.rl
-				resp.Services[idx].PolicyBlock += sc.policyBlock
-				resp.Services[idx].DetectBlock += sc.detectBlock
-				resp.Services[idx].Total += total
-			} else {
-				resp.Services = append(resp.Services, ServiceDetail{
-					Service:     svc,
-					Total:       total,
-					RateLimited: sc.rl,
-					PolicyBlock: sc.policyBlock,
-					DetectBlock: sc.detectBlock,
-				})
-				existingSvcs[svc] = len(resp.Services) - 1
-			}
-		}
-
-		// Re-sort by total desc.
-		sort.Slice(resp.Services, func(i, j int) bool {
-			return resp.Services[i].Total > resp.Services[j].Total
-		})
-
-		cache.set(cacheKey, resp, gen, 10*time.Second)
+		cache.set(cacheKey, resp, gen, 30*time.Second)
 		writeJSON(w, http.StatusOK, resp)
 	}
 }
