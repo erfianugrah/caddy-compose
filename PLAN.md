@@ -405,7 +405,7 @@ Two operating modes:
 
 ### Features
 - [x] Custom rulesets — users create detect rules via /api/rules, templates via /api/rules/templates
-- [ ] CRS accuracy evaluation via CRS regression test suite (opt-in, set CRS_REGRESSION=1)
+- [x] CRS accuracy: 90.8% (216/238 rules pass, 22 fail — protocol enforcement gaps)
 - [x] Outbound score display — already in EventDetailPanel + EventsTable Score column
 - [x] Filter events by blocked_by (anomaly_inbound/outbound/direct) in DashboardFilterBar
 

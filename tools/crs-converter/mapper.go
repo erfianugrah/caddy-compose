@@ -270,24 +270,38 @@ func consolidateFields(fields []string) string {
 		set[f] = true
 	}
 
-	// Any combo involving args + cookies → request_combined
-	// This covers the ~180 CRS rules that check ARGS|ARGS_NAMES|COOKIES|...
-	// request_combined includes: args values/names, cookies values/names,
-	// form body, JSON body, raw body, headers, request basename.
-	if (set["all_args_values"] || set["all_args_names"]) &&
-		(set["all_cookies"] || set["all_cookies_names"]) {
+	// Only use request_combined for the FULL standard CRS variable combo:
+	// ARGS + ARGS_NAMES + COOKIES + COOKIES_NAMES + BODY + HEADERS + FILENAME
+	// This is the combo used by ~100 core detection rules that truly need
+	// all request sources. Smaller combos get individual fields to reduce
+	// false positives from overly broad matching.
+	hasArgs := set["all_args_values"] || set["all_args_names"]
+	hasCookies := set["all_cookies"] || set["all_cookies_names"]
+	hasHeaders := set["all_headers"] || set["all_headers_names"]
+	hasBody := set["body"] || set["uri_path"] || set["request_basename"]
+
+	// Full combo (4+ categories) → request_combined
+	cats := 0
+	if hasArgs {
+		cats++
+	}
+	if hasCookies {
+		cats++
+	}
+	if hasHeaders {
+		cats++
+	}
+	if hasBody {
+		cats++
+	}
+	if cats >= 4 {
 		return "request_combined"
 	}
 
-	// Args + headers (e.g., User-Agent, Referer checks)
-	if (set["all_args_values"] || set["all_args_names"]) &&
-		(set["all_headers"] || set["user_agent"] || set["referer"]) {
-		return "request_combined"
-	}
-
-	// Args + body/filename — also request_combined
-	if (set["all_args_values"] || set["all_args_names"]) &&
-		(set["body"] || set["uri_path"] || set["request_basename"]) {
+	// Args + cookies (2 categories, common CRS pattern) → request_combined
+	// Only when BOTH values AND names are present (the full standard combo)
+	if set["all_args_values"] && set["all_args_names"] &&
+		set["all_cookies"] && set["all_cookies_names"] {
 		return "request_combined"
 	}
 
@@ -296,12 +310,25 @@ func consolidateFields(fields []string) string {
 		return "all_headers"
 	}
 
-	// Just ARGS variants (without cookies/headers) — keep as all_args_values
+	// Prefer the most specific multi-value field available:
+	// args > cookies > headers > body
 	if set["all_args_values"] {
 		return "all_args_values"
 	}
+	if set["all_args_names"] {
+		return "all_args_names"
+	}
+	if set["all_cookies"] {
+		return "all_cookies"
+	}
+	if set["all_headers"] {
+		return "all_headers"
+	}
+	if set["body"] {
+		return "body"
+	}
 
-	// Default: use the first field (will be a single-condition rule)
+	// Default: use the first field
 	return fields[0]
 }
 
