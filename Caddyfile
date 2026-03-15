@@ -199,7 +199,6 @@ caddy.erfi.io {
 }
 
 waf.erfi.io {
-	import waf
 	import forward_auth
 
 	import tls_config
