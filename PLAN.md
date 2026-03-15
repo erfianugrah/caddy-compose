@@ -8,7 +8,7 @@ response_header), unified rule store (`/api/rules` + `/api/deploy`), response-ph
 support for all rule types, structured CORS (preflight + origin validation), rule
 templates, per-service category masks, outbound anomaly scoring + rate limiting,
 incremental summary (O(hours)), managed lists, IPsum blocklist (618K IPs), CRS
-auto-update workflow, and e2e CI pipeline (116 e2e tests, 500 Go tests, 326 frontend).
+auto-update workflow, and e2e CI pipeline (117 e2e tests, 500 Go tests, 326 frontend).
 
 ---
 

@@ -39,7 +39,7 @@ cd waf-dashboard && npm ci && npm run build
 make test               # Run ALL tests (Go + frontend)
 make test-go            # Go tests only (24 test files, 500 tests)
 make test-frontend      # Frontend Vitest only (17 test files, 326 tests)
-make test-e2e           # E2E smoke tests (requires Docker, 116 tests)
+make test-e2e           # E2E smoke tests (requires Docker, 117 tests)
 ```
 
 ### Running a single test
