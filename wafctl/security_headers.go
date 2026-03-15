@@ -345,18 +345,19 @@ func (s *SecurityHeaderStore) Resolve(service string) ResolvedSecurityHeaders {
 }
 
 func (s *SecurityHeaderStore) deepCopy() SecurityHeaderConfig {
-	data, err := json.Marshal(s.cfg)
-	if err != nil {
-		log.Printf("warning: security headers deepCopy marshal failed: %v", err)
-		return SecurityHeaderConfig{Services: make(map[string]SecurityServiceConfig)}
+	cp := SecurityHeaderConfig{
+		Enabled: copyBoolPtr(s.cfg.Enabled),
+		Profile: s.cfg.Profile,
+		Headers: copyStringMap(s.cfg.Headers),
+		Remove:  copyStringSlice(s.cfg.Remove),
 	}
-	var cp SecurityHeaderConfig
-	if err := json.Unmarshal(data, &cp); err != nil {
-		log.Printf("warning: security headers deepCopy unmarshal failed: %v", err)
-		return SecurityHeaderConfig{Services: make(map[string]SecurityServiceConfig)}
-	}
-	if cp.Services == nil {
-		cp.Services = make(map[string]SecurityServiceConfig)
+	cp.Services = make(map[string]SecurityServiceConfig, len(s.cfg.Services))
+	for k, v := range s.cfg.Services {
+		cp.Services[k] = SecurityServiceConfig{
+			Profile: v.Profile,
+			Headers: copyStringMap(v.Headers),
+			Remove:  copyStringSlice(v.Remove),
+		}
 	}
 	return cp
 }

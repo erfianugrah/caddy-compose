@@ -232,6 +232,18 @@ func copyStringSlice(s []string) []string {
 	return cp
 }
 
+// copyStringMap returns a copy of a string map (nil-safe).
+func copyStringMap(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
+}
+
 // copyBoolPtr returns a copy of a *bool pointer (nil-safe).
 func copyBoolPtr(p *bool) *bool {
 	if p == nil {

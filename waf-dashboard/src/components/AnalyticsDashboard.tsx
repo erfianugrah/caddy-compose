@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { T } from "@/lib/typography";
-import { IPLookupPanel } from "./analytics/IPLookupPanel";
+import { IPLookupPanel } from "./analytics/ip-lookup";
 
 // Re-export subcomponents for external consumers
 export { CountryLabel } from "./analytics/CountryLabel";
