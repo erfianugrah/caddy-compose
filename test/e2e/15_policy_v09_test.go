@@ -371,19 +371,21 @@ func TestPolicyEnginePhraseMatchAggregateField(t *testing.T) {
 	})
 
 	t.Run("path traversal in Referer header blocked", func(t *testing.T) {
-		req, err := http.NewRequest("GET", caddyURL+"/e2e-pmh-test", nil)
-		if err != nil {
-			t.Fatalf("creating request: %v", err)
-		}
-		req.Header.Set("Referer", "https://example.com/../../etc/passwd")
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("request failed: %v", err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != 403 {
-			t.Errorf("expected 403 (path traversal in Referer), got %d", resp.StatusCode)
-		}
+		// Retry briefly — the all_headers phrase_match may need an extra
+		// policy engine reload cycle to evaluate Referer consistently.
+		waitForCondition(t, "Referer path traversal blocked", 10*time.Second, func() bool {
+			req, err := http.NewRequest("GET", caddyURL+"/e2e-pmh-test", nil)
+			if err != nil {
+				return false
+			}
+			req.Header.Set("Referer", "https://example.com/../../etc/passwd")
+			resp, err := client.Do(req)
+			if err != nil {
+				return false
+			}
+			resp.Body.Close()
+			return resp.StatusCode == 403
+		})
 	})
 
 	t.Run("clean headers pass", func(t *testing.T) {

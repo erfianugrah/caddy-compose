@@ -142,6 +142,20 @@ func (s *Store) IPLookupRange(ip string, tr timeRange, hours, limit, offset int,
 	return s.ipLookupFromEvents(ip, events, limit, offset, extraEvents)
 }
 
+// IPLookupRangeRaw is like IPLookupRange but accepts raw []RateLimitEvent
+// instead of pre-enriched []Event. Only matching events (for the target IP)
+// are enriched, avoiding the O(N) enrichment cost of converting all 148K+
+// ALS events. The lookup parameter provides tag resolution for enrichment.
+func (s *Store) IPLookupRangeRaw(ip string, tr timeRange, hours, limit, offset int, rlRaw []RateLimitEvent, lookup *enrichmentLookup) IPLookupResponse {
+	var events []Event
+	if tr.Valid {
+		events = s.SnapshotRange(tr.Start, tr.End)
+	} else {
+		events = s.SnapshotSince(hours)
+	}
+	return s.ipLookupFromEventsRaw(ip, events, limit, offset, rlRaw, lookup)
+}
+
 // IPLookup returns an IP lookup response using events from the last N hours.
 // Retained for backward compatibility (CLI, tests).
 func (s *Store) IPLookup(ip string, hours, limit, offset int, extraEvents []Event) IPLookupResponse {
@@ -167,6 +181,35 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		}
 	}
 
+	return s.buildIPLookupResponse(ip, matched, rlMatched, limit, offset)
+}
+
+// ipLookupFromEventsRaw is like ipLookupFromEvents but filters raw
+// RateLimitEvents by IP first, then enriches only the matches.
+func (s *Store) ipLookupFromEventsRaw(ip string, events []Event, limit, offset int, rlRaw []RateLimitEvent, lookup *enrichmentLookup) IPLookupResponse {
+	// Collect WAF events matching this IP (newest-first).
+	var matched []Event
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].ClientIP == ip {
+			matched = append(matched, events[i])
+		}
+	}
+
+	// Filter raw RLE by IP first, then enrich only matching events.
+	// This avoids enriching all 148K+ events when only a handful match.
+	var rlMatched []Event
+	for i := len(rlRaw) - 1; i >= 0; i-- {
+		if rlRaw[i].ClientIP == ip {
+			rlMatched = append(rlMatched, enrichSingleRLE(&rlRaw[i], lookup))
+		}
+	}
+
+	return s.buildIPLookupResponse(ip, matched, rlMatched, limit, offset)
+}
+
+// buildIPLookupResponse constructs the response from pre-filtered WAF and RL
+// event slices (both already newest-first, already filtered to the target IP).
+func (s *Store) buildIPLookupResponse(ip string, matched, rlMatched []Event, limit, offset int) IPLookupResponse {
 	// Reverse-merge into newest-first combined list.
 	combined := make([]Event, 0, len(matched)+len(rlMatched))
 	wi, ri := 0, 0
@@ -219,11 +262,11 @@ func (s *Store) ipLookupFromEvents(ip string, events []Event, limit, offset int,
 		}
 
 		// Per-hour bucketing for timeline.
-		hourKey := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
-		hc, ok := hourMap[hourKey]
+		hk := ev.Timestamp.Truncate(time.Hour).Format(time.RFC3339)
+		hc, ok := hourMap[hk]
 		if !ok {
 			hc = &counts{}
-			hourMap[hourKey] = hc
+			hourMap[hk] = hc
 		}
 		hc.total++
 		if ev.IsBlocked {

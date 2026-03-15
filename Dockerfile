@@ -3,7 +3,7 @@ ARG CRS_VERSION=v4.24.1
 
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
-	--with github.com/caddy-dns/cloudflare \
+	--with github.com/caddy-dns/cloudflare@v0.2.3 \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.19.0

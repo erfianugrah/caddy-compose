@@ -41,7 +41,14 @@ func handleRLRuleHits(als *AccessLogStore, es *ExclusionStore) http.HandlerFunc 
 // --- Rate Limit Advisor handler ---
 
 func handleRLAdvisor(als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := als.generation.Load()
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		q := r.URL.Query()
 		limit := queryInt(q.Get("limit"), 50)
 		if limit <= 0 || limit > 500 {
@@ -54,7 +61,9 @@ func handleRLAdvisor(als *AccessLogStore) http.HandlerFunc {
 			Method:  q.Get("method"),
 			Limit:   limit,
 		}
-		writeJSON(w, http.StatusOK, als.ScanRates(req))
+		result := als.ScanRates(req)
+		cache.set(cacheKey, result, gen, 10*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

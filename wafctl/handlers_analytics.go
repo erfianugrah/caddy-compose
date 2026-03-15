@@ -134,9 +134,11 @@ func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *I
 			offset = 0
 		}
 
-		// Merge WAF events + access log events (rate_limited, ipsum_blocked).
-		rlEvents := getRLEvents(als, tr, hours, nil)
-		result := store.IPLookupRange(ip, tr, hours, limit, offset, rlEvents)
+		// Use raw RLE snapshot — only events matching this IP are enriched,
+		// avoiding the O(N) enrichment cost of converting all 148K+ ALS events.
+		rlRaw := getRawRLSnapshot(als, tr, hours)
+		lookup := buildEnrichmentLookup(als)
+		result := store.IPLookupRangeRaw(ip, tr, hours, limit, offset, rlRaw, &lookup)
 
 		// Skip expensive intelligence lookups when paginating (offset > 0).
 		// The frontend already has GeoIP/intel from the first page.

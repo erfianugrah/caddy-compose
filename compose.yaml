@@ -45,8 +45,8 @@ services:
       - /mnt/cache/caddy/site:/srv:ro
       - /mnt/cache/caddy/data:/data
       - /mnt/cache/caddy/config:/config
-      # Logs stay on array — write-heavy, large, not latency-sensitive
-      - /mnt/user/data/caddy/log:/var/log
+      # Logs on cache SSD — write-heavy, log rotation needs native chown support
+      - /mnt/cache/caddy/log:/var/log
       # Dynamic WAF overrides — written by wafctl Policy Engine, polled by plugin
       - /mnt/cache/caddy/waf:/data/waf
       # Temp dirs for read-only root filesystem
@@ -158,8 +158,8 @@ services:
       # keeps traffic within the allowed 172.19.98.0/24 subnet.
       - "caddy:172.19.98.1"
     volumes:
-      # Caddy logs — read-only, on array (write-heavy)
-      - /mnt/user/data/caddy/log:/var/log:ro
+      # Caddy logs — read-only, on cache SSD
+      - /mnt/cache/caddy/log:/var/log:ro
       # wafctl config on cache SSD — exclusions, rate-limits, lists, etc.
       - /mnt/cache/caddy/wafctl/config:/data
       # JSONL event files on array — large, append-heavy

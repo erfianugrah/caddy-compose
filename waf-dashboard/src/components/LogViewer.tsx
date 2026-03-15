@@ -106,10 +106,14 @@ export default function LogViewer() {
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
   // Re-fetch summary only on filter/time change (not page change).
+  // Uses a separate generation counter to discard stale summary responses.
+  const summaryGenRef = useRef(0);
   useEffect(() => {
+    const gen = ++summaryGenRef.current;
     const params = buildBaseParams();
     fetchGeneralLogsSummary(params)
       .then((summaryResp) => {
+        if (summaryGenRef.current !== gen) return; // stale
         setSummary(summaryResp);
         if (summaryResp?.top_services) {
           setKnownServices(summaryResp.top_services.map((s: { service: string }) => s.service));
