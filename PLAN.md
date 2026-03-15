@@ -99,34 +99,183 @@ When the plugin implements these, remove the `t.Skip()` calls in:
 
 ---
 
-## Next Up (Priority Order)
+## Next Up — Unified Policy Engine (v3.0)
 
-### 1. Rate Limits Parity
-- Add bulk select, move-to-edge, inline position editing to RL tab
-- Match PolicyEngine feature set for consistent UX
+The goal: make `policy-rules.json` the **single control plane** for all
+request/response processing. Everything hot-reloads via mtime polling — no
+Caddy restart. Rate limits, CSP, security headers, caching, CORS, and custom
+header manipulation all become policy-engine concerns, managed through one
+unified API and UI.
 
-### 2. Rate Limits → Policy Engine Unification (Backend)
-Currently RL rules use separate API (`/api/rate-rules/*`) and separate Go stores.
-The deeper unification would merge them into the exclusion store with `type: "rate_limit"`,
-single priority ordering, single deploy endpoint. This is a significant backend refactor.
+### Architecture Context
 
-**Scope:**
-- Migrate `RateLimitRuleStore` data into `ExclusionStore`
-- Unify CRUD APIs
-- Single `POST /api/config/deploy` for all rule types
-- Migration path for existing rate-limits.json → exclusions.json
+Today the deploy pipeline already reads all 6 config stores (ExclusionStore,
+RateLimitRuleStore, ConfigStore, CSPStore, SecurityHeaderStore, DefaultRuleStore)
+and writes one `policy-rules.json`. There are 4 identical deploy endpoints
+(`/api/config/deploy`, `/api/rate-rules/deploy`, `/api/csp/deploy`,
+`/api/security-headers/deploy`) that all do the same thing. The fragmentation
+is purely at the API/UI level — the data is already unified at the file level.
 
-### 3. CRS Update Checker Workflow
-Scheduled CI workflow to check latest CRS release, open PR bumping CRS_VERSION.
+### Phase 1: Quick Wins (pre-unification cleanup)
+
+- [ ] `SecurityHeaderStore.deepCopy` — field-by-field copy, drop JSON round-trip
+      (`security_headers.go:347-362`)
+- [ ] `IPLookupPanel` — split 893-line file into sub-components, lazy-load recharts
+- [ ] `operatorChip()` — expand beyond 5 operators in DashboardFilterBar
+      (begins_with, ip_match, gt, etc. currently fallback to "=")
+- [ ] Mode field removal — strip ignored `mode` from `WAFServiceSettings`
+      (`models_exclusions.go:55-57`); add one-time migration in `config.go`
+
+### Phase 2: Rule Store Unification (Backend)
+
+Merge `RateLimitRuleStore` into `ExclusionStore` under a unified `PolicyRule` type.
+The two structs are nearly identical — both have ID, Name, Conditions, GroupOp,
+Tags, Enabled, timestamps. Only the type-specific fields differ.
+
+**Unified PolicyRule (superset):**
+```
+type PolicyRule struct {
+    // Common fields (all types)
+    ID, Name, Description, Type string   // Type: allow|block|skip|detect|rate_limit
+    Conditions    []Condition
+    GroupOp       string                 // "and"|"or"
+    Tags          []string
+    Enabled       bool
+    Phase         string                 // "inbound" (default) | "outbound"
+    Service       string                 // hostname or "*" for per-service scoping
+    Priority      int                    // explicit ordering within type band
+    CreatedAt, UpdatedAt time.Time
+
+    // skip-only
+    SkipTargets   *SkipTargets
+
+    // detect-only
+    Severity            string           // CRITICAL|ERROR|WARNING|NOTICE
+    DetectParanoiaLevel int              // 1-4
+
+    // rate_limit-only
+    RateLimit     *RateLimitConfig       // key, events, window, action
+}
+```
+
+**Go backend:**
+- [ ] Create unified `PolicyRule` type (superset of `RuleExclusion` + `RateLimitRule`)
+- [ ] New `RuleStore` replacing both `ExclusionStore` and `RateLimitRuleStore`
+- [ ] Migrate `rate-limits.json` → `rules.json` on startup (read old, write new)
+- [ ] Unified CRUD: `POST/GET/PUT/DELETE /api/rules[/:id]`
+- [ ] Unified bulk: `POST /api/rules/bulk`
+- [ ] Single deploy: `POST /api/deploy` (replaces 4 identical endpoints)
+- [ ] `RateLimitGlobalConfig` moves to `ConfigStore` (alongside WAF anomaly config)
+- [ ] Keep `/api/rate-rules/*` as deprecated aliases during transition
+- [ ] Update backup/restore: `FullBackup.Rules []PolicyRule` replaces separate arrays
+- [ ] Add `DefaultRuleStore` overrides to backup (currently missing)
+
+**Frontend:**
+- [ ] Merge `exclusions.ts` + `rate-limits.ts` (CRUD portions) → `rules.ts`
+- [ ] Single deploy function in `rules.ts`, remove from `config.ts`/`csp.ts`/etc.
+- [ ] Deprecate separate deploy buttons; single "Deploy" in header
+- [ ] `/policy` page already has tabs — just feed from unified API
+- [ ] Update `backup.ts` `FullBackup` interface
+
+### Phase 3: Response-Phase Policy Rules
+
+Enable all rule types (allow, block, skip, detect, rate_limit) to operate on
+response-phase fields, not just inbound. This makes rate limits and custom
+rules work on response data (status codes, headers, body).
+
+**Plugin (caddy-policy-engine):**
+- [ ] Extend rule evaluation to response phase for all types (currently only detect)
+- [ ] `phase: "outbound"` on any rule type triggers response-phase evaluation
+- [ ] Rate limit rules with `phase: "outbound"` — count responses by status code, etc.
+- [ ] Block rules on response_status/response_header — reject before client sees response
+
+**wafctl:**
+- [ ] Remove `validPolicyEngineFields` restriction on response_status/response_header
+      for non-detect types (currently rejected for allow/block/skip/rate_limit)
+- [ ] UI: phase selector (inbound/outbound) in rule editor for all types
+- [ ] Condition builder: show response-phase fields when phase=outbound
+
+### Phase 4: Header & Caching Policies (Plugin-Managed)
+
+Move header manipulation and caching rules from Caddyfile snippets into
+`policy-rules.json` so they hot-reload without Caddy restart.
+
+**New policy-rules.json sections:**
+```json
+{
+  "response_headers": {
+    "csp": { ... },             // Already exists
+    "security": { ... },        // Already exists
+    "custom": {                  // NEW: arbitrary per-service headers
+      "global": { "set": {}, "add": {}, "remove": [] },
+      "per_service": { "svc": { "set": {}, "add": {}, "remove": [] } }
+    },
+    "cors": {                    // NEW: replaces (cors) Caddyfile snippet
+      "allowed_origins": [],
+      "allowed_methods": [],
+      "allowed_headers": [],
+      "exposed_headers": [],
+      "max_age": 3600,
+      "per_service": {}
+    }
+  },
+  "request_headers": {           // NEW: request-phase header manipulation
+    "global": { "set": {}, "add": {}, "remove": [] },
+    "per_service": {}
+  },
+  "cache_control": {             // NEW: replaces (static_cache) snippet
+    "rules": [
+      { "path_match": "/_astro/*", "value": "public, max-age=31536000, immutable" },
+      { "path_match": "*.{css,js,woff2}", "value": "public, max-age=604800" }
+    ],
+    "per_service": {}
+  }
+}
+```
+
+**wafctl stores:**
+- [ ] `CustomHeaderStore` — request/response header manipulation per-service
+- [ ] `CORSStore` — CORS config per-service (or fold into CustomHeaderStore)
+- [ ] `CacheStore` — path-based Cache-Control rules per-service
+- [ ] All feed into `BuildPolicyResponseHeaders()` → `policy-rules.json`
+
+**Plugin:**
+- [ ] Parse and apply `custom` response headers (set/add/remove)
+- [ ] Parse and apply `cors` config (preflight handling, origin validation)
+- [ ] Parse and apply `request_headers` (set/add/remove before proxying)
+- [ ] Parse and apply `cache_control` rules (path matching → Cache-Control header)
+
+**Frontend:**
+- [ ] Custom headers UI (global + per-service set/add/remove)
+- [ ] CORS config UI (origins, methods, headers, max-age)
+- [ ] Cache rules UI (path patterns, Cache-Control values)
+
+**Caddyfile cleanup:**
+- [ ] Remove `(static_cache)` snippet after plugin handles it
+- [ ] Remove `(cors)` snippet after plugin handles it
+- [ ] Remove individual `header` directives that duplicate plugin functionality
+
+### Phase 5: Rate Limits Parity (UI)
+
+After backend unification, the RL tab in `/policy` gets full parity with the
+WAF rules tab. This is simpler post-unification since both share the same API.
+
+- [ ] Bulk select, move-to-edge, inline position editing in RL tab
+- [ ] Multi-drag reorder (already works for WAF rules)
+- [ ] Per-page count selector
+- [ ] Import/export rate limit rules
+
+### Phase 6: CRS Automation
+
+- [ ] GitHub Actions workflow to check latest CRS release
+- [ ] Auto-open PR bumping `CRS_VERSION` in Dockerfile
+- [ ] Run CRS test suite against policy engine for accuracy validation
 
 ---
 
 ## Future Items
 
 ### Performance
-- [ ] SecurityHeaderStore.deepCopy — field-by-field copy instead of JSON round-trip
-      (`security_headers.go:347-362` still uses json.Marshal/Unmarshal)
-- [ ] IPLookupPanel 893-line single file — split sub-components, lazy-load recharts
 - [ ] Incremental summary computation — running counters on Store, O(1) reads
 
 ### Features
@@ -134,12 +283,6 @@ Scheduled CI workflow to check latest CRS release, open PR bumping CRS_VERSION.
 - [ ] CRS accuracy evaluation against CRS test suite
 - [ ] Outbound score display in event detail panel
 - [ ] Filter events by inbound/outbound phase
-- [ ] Dashboard filter bar: expand `operatorChip()` beyond 5 operators (eq/neq/contains/
-      in/regex) — other operators (begins_with, ip_match, gt, etc.) fallback to "="
-
-### Design Decisions
-- [ ] Mode field: preserved for backward compat but ignored (`models_exclusions.go:55-57`).
-      Remove entirely when all production configs have migrated (or add a one-time migration).
 
 ### Operational
 - [ ] Audit each service's built-in auth and document decisions
