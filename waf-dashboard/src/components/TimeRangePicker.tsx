@@ -150,10 +150,11 @@ export default function TimeRangePicker({
   const [customFrom, setCustomFrom] = useState(toLocalDatetimeString(defaultStart));
   const [customTo, setCustomTo] = useState(toLocalDatetimeString(now));
 
-  // Auto-refresh timer
+  // Auto-refresh timer — pauses when the tab is hidden to avoid wasting
+  // bandwidth and hammering the backend while the user isn't looking.
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const startInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -161,10 +162,36 @@ export default function TimeRangePicker({
     if (autoRefresh > 0) {
       intervalRef.current = setInterval(onRefresh, autoRefresh * 1000);
     }
+  }, [autoRefresh, onRefresh]);
+
+  useEffect(() => {
+    startInterval();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [autoRefresh, onRefresh]);
+  }, [startInterval]);
+
+  // Pause/resume auto-refresh on visibility change.
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.hidden) {
+        // Tab hidden — pause the interval to save resources.
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      } else {
+        // Tab visible — resume and fire an immediate refresh so the
+        // user sees fresh data without waiting for the next tick.
+        if (autoRefresh > 0) {
+          onRefresh();
+          startInterval();
+        }
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [autoRefresh, onRefresh, startInterval]);
 
   const handleQuickRange = useCallback(
     (label: string) => {

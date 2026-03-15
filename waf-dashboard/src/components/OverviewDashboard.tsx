@@ -135,14 +135,23 @@ export default function OverviewDashboard() {
   const [zoomRight, setZoomRight] = useState<string | null>(null);
 
   // ── Collapsible analytics section ──
-  const [analyticsOpen, setAnalyticsOpen] = useState(true);
+  // Default collapsed to avoid 3 extra API calls on page load.
+  // Users can expand to see top IPs/URIs/countries on demand.
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const analyticsHours = rangeToParams(timeRange).hours;
   const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0);
 
   // ── Data loading ──
   // Guard against stale responses when rapid filter/time changes fire concurrent requests.
+  // An AbortController cancels in-flight HTTP requests when deps change, saving bandwidth.
   const requestGenRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const loadData = useCallback(() => {
+    // Abort any in-flight request before starting a new one.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
@@ -150,13 +159,14 @@ export default function OverviewDashboard() {
       ...rangeToParams(timeRange),
       ...filtersToSummaryParams(filters),
     };
-    fetchSummary(summaryParams)
+    fetchSummary(summaryParams, { signal: controller.signal })
       .then((d) => {
         if (requestGenRef.current !== gen) return;
         setData(d);
       })
       .catch((err) => {
         if (requestGenRef.current !== gen) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err.message);
       })
       .finally(() => {
@@ -168,6 +178,7 @@ export default function OverviewDashboard() {
   useEffect(() => {
     loadData();
     setAnalyticsRefreshKey((k) => k + 1);
+    return () => { abortRef.current?.abort(); };
   }, [loadData]);
 
   // Reset zoom and events page when time range or filters change
@@ -281,7 +292,7 @@ export default function OverviewDashboard() {
   }, []);
 
   // ── Donut data (action-based slices only) ──
-  const donutData =
+  const donutData = useMemo(() =>
     data && (data.total_blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.policy_events > 0)
       ? [
           ...(data.total_blocked > 0 ? [{ name: "WAF Blocked", value: data.total_blocked }] : []),
@@ -292,7 +303,8 @@ export default function OverviewDashboard() {
           ...(data.policy_skipped > 0 ? [{ name: "Policy Skip", value: data.policy_skipped }] : []),
           ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
         ]
-      : [];
+      : [],
+  [data]);
 
   const serviceBreakdown = useMemo(
     () => data?.service_breakdown ?? data?.top_services ?? [],

@@ -267,11 +267,11 @@ export function mapEvent(raw: RawEvent): WAFEvent {
 
 // ─── API Functions ──────────────────────────────────────────────────
 
-export async function fetchSummary(params?: FilterableParams): Promise<SummaryData> {
+export async function fetchSummary(params?: FilterableParams, init?: RequestInit): Promise<SummaryData> {
   const searchParams = new URLSearchParams();
   applyFilterParams(searchParams, params);
   const qs = searchParams.toString() ? `?${searchParams}` : "";
-  const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`);
+  const raw = await fetchJSON<RawSummary>(`${API_BASE}/summary${qs}`, init);
   return {
     total_events: raw.total_events ?? 0,
     total_blocked: raw.total_blocked ?? 0,
@@ -390,12 +390,30 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
 
 // Services
 // Go API returns {"services":[{service, total, total_blocked, logged, ..., top_uris, top_rules}]} — unwrap and compute derived fields.
+// Module-level cache for fetchServices — avoids redundant calls when multiple
+// components mount on the same page (OverviewDashboard, EventsTable, PolicyEngine, etc.).
+let _servicesCacheData: ServiceDetail[] | null = null;
+let _servicesCacheTs = 0;
+const SERVICES_CACHE_TTL = 30_000; // 30 seconds
+
+/** Clear the services cache (exported for tests). */
+export function clearServicesCache(): void {
+  _servicesCacheData = null;
+  _servicesCacheTs = 0;
+}
+
 export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
+  // Return cached data if fresh and no custom hours filter.
+  const now = Date.now();
+  if (!hours && _servicesCacheData && now - _servicesCacheTs < SERVICES_CACHE_TTL) {
+    return _servicesCacheData;
+  }
+
   const qs = hours ? `?hours=${hours}` : "";
   const raw = await fetchJSON<{ services: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number; top_uris?: { uri: string; count: number; total_blocked: number }[]; top_rules?: { rule_id: number; rule_msg: string; count: number }[] }[] }>(
     `${API_BASE}/services${qs}`
   );
-  return (raw.services ?? []).map((s) => ({
+  const result = (raw.services ?? []).map((s) => ({
     service: s.service,
     total_events: s.total,
     total_blocked: s.total_blocked,
@@ -409,6 +427,13 @@ export async function fetchServices(hours?: number): Promise<ServiceDetail[]> {
     top_uris: (s.top_uris ?? []).map((u) => ({ uri: u.uri, count: u.count, total_blocked: u.total_blocked })),
     top_rules: (s.top_rules ?? []).map((r) => ({ rule_id: String(r.rule_id), rule_msg: r.rule_msg, count: r.count })),
   }));
+
+  // Cache the default (no-hours) result.
+  if (!hours) {
+    _servicesCacheData = result;
+    _servicesCacheTs = now;
+  }
+  return result;
 }
 
 export async function fetchServiceDetail(service: string): Promise<ServiceDetail> {

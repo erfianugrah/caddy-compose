@@ -366,6 +366,9 @@ for (const link of navLinks) {
         }
 
         async function checkHealth() {
+          // Skip health checks when the tab is hidden to avoid wasting
+          // bandwidth and triggering 403s from auth proxies.
+          if (document.hidden) return;
           try {
             const res = await fetch("/api/health", { cache: "no-store" });
             if (!res.ok) { setStatus(false); return; }
@@ -378,6 +381,12 @@ for (const link of navLinks) {
 
         checkHealth();
         setInterval(checkHealth, 30_000);
+
+        // When the user switches back to the tab, run an immediate check
+        // so the indicator updates without waiting for the next tick.
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) checkHealth();
+        });
       })();
     </script>
 

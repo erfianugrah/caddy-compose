@@ -188,10 +188,10 @@ func (sc *summaryCounters) incrementEvent(ev *Event) {
 		b.Tags[tag]++
 	}
 
-	// Maintain recent events (newest first, capped).
-	b.RecentEvents = append([]Event{*ev}, b.RecentEvents...)
+	// Maintain recent events (append to tail, trim front — avoids prepend garbage).
+	b.RecentEvents = append(b.RecentEvents, *ev)
 	if len(b.RecentEvents) > recentCap {
-		b.RecentEvents = b.RecentEvents[:recentCap]
+		b.RecentEvents = b.RecentEvents[len(b.RecentEvents)-recentCap:]
 	}
 }
 
@@ -832,10 +832,284 @@ func (sc *summaryCounters) initFromEvents(events []Event) {
 			b.Tags[tag]++
 		}
 
-		// Recent events: maintain per-bucket newest-first.
-		b.RecentEvents = append([]Event{*ev}, b.RecentEvents...)
+		// Recent events: append to tail, trim front (avoids prepend garbage).
+		b.RecentEvents = append(b.RecentEvents, *ev)
 		if len(b.RecentEvents) > recentCap {
-			b.RecentEvents = b.RecentEvents[:recentCap]
+			b.RecentEvents = b.RecentEvents[len(b.RecentEvents)-recentCap:]
 		}
+	}
+}
+
+// ─── RateLimitEvent counter methods ─────────────────────────────────
+//
+// These operate directly on RateLimitEvent fields, avoiding the O(N)
+// allocation of converting every RateLimitEvent to Event just for
+// counter ingestion/eviction. The field mapping uses rleEventType and
+// rleIsBlocked from query_helpers.go.
+
+// incrementRLEvent updates the bucket for a single RateLimitEvent.
+func (sc *summaryCounters) incrementRLEvent(rle *RateLimitEvent) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	eventType := rleEventType(rle.Source)
+	isBlocked := rleIsBlocked(rle.Source)
+	key := hourKey(rle.Timestamp)
+	b, ok := sc.hours[key]
+	if !ok {
+		b = newHourBucket()
+		sc.hours[key] = b
+	}
+
+	b.Total++
+	classifyRLIntoBucket(b, eventType, isBlocked, 1)
+
+	b.Services[rle.Service]++
+	b.Clients[rle.ClientIP]++
+	b.URIs[rle.URI]++
+
+	cc := rle.Country
+	if cc == "" {
+		cc = "XX"
+	}
+	b.Countries[cc]++
+	if isBlocked {
+		b.CountryBlocked[cc]++
+	}
+
+	// Service action breakdown.
+	switch eventType {
+	case "rate_limited":
+		b.ServiceRL[rle.Service]++
+	case "policy_block":
+		b.ServicePolicyBlock[rle.Service]++
+	case "detect_block":
+		b.ServiceDetectBlock[rle.Service]++
+	case "policy_allow":
+		b.ServicePolicyAllow[rle.Service]++
+	case "policy_skip":
+		b.ServicePolicySkip[rle.Service]++
+	default:
+		b.ServiceLogged[rle.Service]++
+	}
+	if isBlocked {
+		b.ServiceBlocked[rle.Service]++
+	}
+
+	// Client action breakdown.
+	switch eventType {
+	case "rate_limited":
+		b.ClientRL[rle.ClientIP]++
+	case "policy_block":
+		b.ClientPolicyBlock[rle.ClientIP]++
+	case "detect_block":
+		b.ClientDetectBlock[rle.ClientIP]++
+	case "policy_allow":
+		b.ClientPolicyAllow[rle.ClientIP]++
+	case "policy_skip":
+		b.ClientPolicySkip[rle.ClientIP]++
+	}
+	if isBlocked {
+		b.ClientBlocked[rle.ClientIP]++
+	}
+
+	if b.ClientCountry[rle.ClientIP] == "" && rle.Country != "" {
+		b.ClientCountry[rle.ClientIP] = rle.Country
+	}
+
+	for _, tag := range rle.InlineTags {
+		b.Tags[tag]++
+	}
+
+	// Recent events: convert only the few that end up in the cap.
+	ev := RateLimitEventToEvent(*rle, rle.InlineTags)
+	b.RecentEvents = append(b.RecentEvents, ev)
+	if len(b.RecentEvents) > recentCap {
+		b.RecentEvents = b.RecentEvents[len(b.RecentEvents)-recentCap:]
+	}
+}
+
+// decrementRLEvent removes a single RateLimitEvent's contribution from the counters.
+func (sc *summaryCounters) decrementRLEvent(rle *RateLimitEvent) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	eventType := rleEventType(rle.Source)
+	isBlocked := rleIsBlocked(rle.Source)
+	key := hourKey(rle.Timestamp)
+	b, ok := sc.hours[key]
+	if !ok {
+		return
+	}
+
+	b.Total--
+	classifyRLIntoBucket(b, eventType, isBlocked, -1)
+
+	decrMap(b.Services, rle.Service)
+	decrMap(b.Clients, rle.ClientIP)
+	decrMap(b.URIs, rle.URI)
+
+	cc := rle.Country
+	if cc == "" {
+		cc = "XX"
+	}
+	decrMap(b.Countries, cc)
+	if isBlocked {
+		decrMap(b.CountryBlocked, cc)
+	}
+
+	switch eventType {
+	case "rate_limited":
+		decrMap(b.ServiceRL, rle.Service)
+	case "policy_block":
+		decrMap(b.ServicePolicyBlock, rle.Service)
+	case "detect_block":
+		decrMap(b.ServiceDetectBlock, rle.Service)
+	case "policy_allow":
+		decrMap(b.ServicePolicyAllow, rle.Service)
+	case "policy_skip":
+		decrMap(b.ServicePolicySkip, rle.Service)
+	default:
+		decrMap(b.ServiceLogged, rle.Service)
+	}
+	if isBlocked {
+		decrMap(b.ServiceBlocked, rle.Service)
+	}
+
+	switch eventType {
+	case "rate_limited":
+		decrMap(b.ClientRL, rle.ClientIP)
+	case "policy_block":
+		decrMap(b.ClientPolicyBlock, rle.ClientIP)
+	case "detect_block":
+		decrMap(b.ClientDetectBlock, rle.ClientIP)
+	case "policy_allow":
+		decrMap(b.ClientPolicyAllow, rle.ClientIP)
+	case "policy_skip":
+		decrMap(b.ClientPolicySkip, rle.ClientIP)
+	}
+	if isBlocked {
+		decrMap(b.ClientBlocked, rle.ClientIP)
+	}
+
+	for _, tag := range rle.InlineTags {
+		decrMap(b.Tags, tag)
+	}
+
+	if b.Total <= 0 {
+		delete(sc.hours, key)
+	}
+}
+
+// initFromRLEvents initializes counters directly from RateLimitEvents,
+// avoiding the O(N) allocation of converting to []Event.
+func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	sc.hours = make(map[string]*hourBucket)
+
+	for i := range events {
+		rle := &events[i]
+		eventType := rleEventType(rle.Source)
+		isBlocked := rleIsBlocked(rle.Source)
+		key := hourKey(rle.Timestamp)
+		b, ok := sc.hours[key]
+		if !ok {
+			b = newHourBucket()
+			sc.hours[key] = b
+		}
+
+		b.Total++
+		classifyRLIntoBucket(b, eventType, isBlocked, 1)
+
+		b.Services[rle.Service]++
+		b.Clients[rle.ClientIP]++
+		b.URIs[rle.URI]++
+
+		cc := rle.Country
+		if cc == "" {
+			cc = "XX"
+		}
+		b.Countries[cc]++
+		if isBlocked {
+			b.CountryBlocked[cc]++
+		}
+
+		switch eventType {
+		case "rate_limited":
+			b.ServiceRL[rle.Service]++
+		case "policy_block":
+			b.ServicePolicyBlock[rle.Service]++
+		case "detect_block":
+			b.ServiceDetectBlock[rle.Service]++
+		case "policy_allow":
+			b.ServicePolicyAllow[rle.Service]++
+		case "policy_skip":
+			b.ServicePolicySkip[rle.Service]++
+		default:
+			b.ServiceLogged[rle.Service]++
+		}
+		if isBlocked {
+			b.ServiceBlocked[rle.Service]++
+		}
+
+		switch eventType {
+		case "rate_limited":
+			b.ClientRL[rle.ClientIP]++
+		case "policy_block":
+			b.ClientPolicyBlock[rle.ClientIP]++
+		case "detect_block":
+			b.ClientDetectBlock[rle.ClientIP]++
+		case "policy_allow":
+			b.ClientPolicyAllow[rle.ClientIP]++
+		case "policy_skip":
+			b.ClientPolicySkip[rle.ClientIP]++
+		}
+		if isBlocked {
+			b.ClientBlocked[rle.ClientIP]++
+		}
+
+		if b.ClientCountry[rle.ClientIP] == "" && rle.Country != "" {
+			b.ClientCountry[rle.ClientIP] = rle.Country
+		}
+
+		for _, tag := range rle.InlineTags {
+			b.Tags[tag]++
+		}
+
+		// Recent events: convert only the last recentCap per bucket.
+		ev := RateLimitEventToEvent(*rle, rle.InlineTags)
+		b.RecentEvents = append(b.RecentEvents, ev)
+		if len(b.RecentEvents) > recentCap {
+			b.RecentEvents = b.RecentEvents[len(b.RecentEvents)-recentCap:]
+		}
+	}
+}
+
+// classifyRLIntoBucket increments or decrements action counters for an
+// RLE-derived event type. delta is +1 for increment, -1 for decrement.
+func classifyRLIntoBucket(b *hourBucket, eventType string, isBlocked bool, delta int) {
+	switch {
+	case eventType == "rate_limited":
+		b.RateLimited += delta
+	case eventType == "policy_block":
+		b.PolicyBlock += delta
+		if isBlocked {
+			b.Blocked += delta
+		}
+	case eventType == "detect_block":
+		b.DetectBlock += delta
+		if isBlocked {
+			b.Blocked += delta
+		}
+	case eventType == "policy_allow":
+		b.PolicyAllow += delta
+	case eventType == "policy_skip":
+		b.PolicySkip += delta
+	case isBlocked:
+		b.Blocked += delta
+	default:
+		b.Logged += delta
 	}
 }

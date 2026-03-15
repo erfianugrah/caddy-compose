@@ -54,8 +54,9 @@ const mockNonRL = {
 // ─── getRLRules (filters by type=rate_limit) ────────────────────────
 
 describe("getRLRules", () => {
-  it("filters unified rules to only rate_limit type", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse([mockUnifiedRL, mockNonRL]));
+  it("maps unified rules to RateLimitRule format", async () => {
+    // Server-side ?type=rate_limit filter means only RL rules are returned.
+    vi.stubGlobal("fetch", mockFetchResponse([mockUnifiedRL]));
     const rules = await getRLRules();
     expect(rules).toHaveLength(1);
     expect(rules[0].id).toBe("rl-001");
@@ -66,7 +67,7 @@ describe("getRLRules", () => {
     expect(rules[0].service).toBe("api.erfi.io");
   });
 
-  it("calls /api/rules endpoint", async () => {
+  it("calls /api/rules?type=rate_limit endpoint", async () => {
     const mock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -75,7 +76,7 @@ describe("getRLRules", () => {
     vi.stubGlobal("fetch", mock);
     await getRLRules();
     const url = mock.mock.calls[0][0] as string;
-    expect(url).toContain("/api/rules");
+    expect(url).toBe("/api/rules?type=rate_limit");
   });
 });
 

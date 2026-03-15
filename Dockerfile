@@ -28,9 +28,8 @@ RUN crs-converter \
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
 FROM alpine:3.21 AS cloudflare-ips
-RUN apk add --no-cache curl \
-	&& curl -fsSL --retry 3 --max-time 30 https://www.cloudflare.com/ips-v4 > /tmp/cf_ipv4 \
-	&& curl -fsSL --retry 3 --max-time 30 https://www.cloudflare.com/ips-v6 > /tmp/cf_ipv6 \
+RUN wget -qO /tmp/cf_ipv4 https://www.cloudflare.com/ips-v4 \
+	&& wget -qO /tmp/cf_ipv6 https://www.cloudflare.com/ips-v6 \
 	&& { echo '# AUTO-GENERATED at build time — Cloudflare IP ranges'; \
 	     printf 'trusted_proxies static'; \
 	     while IFS= read -r cidr; do [ -n "$cidr" ] && printf ' %s' "$cidr"; done < /tmp/cf_ipv4; \
@@ -38,17 +37,8 @@ RUN apk add --no-cache curl \
 	     echo; \
 	   } > /tmp/cf_trusted_proxies.caddy
 
-# Build wafctl sidecar
-FROM golang:1.24-alpine AS wafctl
-ARG WAFCTL_VERSION=dev
-WORKDIR /build
-COPY wafctl/go.mod ./
-RUN go mod download
-COPY wafctl/*.go ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${WAFCTL_VERSION}" -o wafctl .
-
 FROM caddy:${VERSION}-alpine
-RUN apk upgrade --no-cache && apk add --no-cache curl
+RUN apk upgrade --no-cache
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY errors/ /etc/caddy/errors/

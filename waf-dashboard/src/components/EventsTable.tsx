@@ -259,6 +259,14 @@ export default function EventsTable() {
           <CardTitle className="text-lv-red">Error</CardTitle>
           <CardDescription>{error}</CardDescription>
         </CardHeader>
+        <CardContent>
+          <button
+            onClick={() => { setError(null); loadEvents(); }}
+            className="text-sm text-lv-cyan hover:underline"
+          >
+            Retry
+          </button>
+        </CardContent>
       </Card>
     );
   }

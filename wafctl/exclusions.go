@@ -94,6 +94,29 @@ func (s *ExclusionStore) save() error {
 	return nil
 }
 
+// Count returns the number of exclusions without deep-copying.
+func (s *ExclusionStore) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.exclusions)
+}
+
+// TagsByName returns a map from exclusion name to tags slice.
+// The tag slices are references (not deep copies) — caller must NOT modify them.
+// Used by the enrichment path where only name→tags lookup is needed,
+// avoiding the expensive full deep copy of List().
+func (s *ExclusionStore) TagsByName() map[string][]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m := make(map[string][]string, len(s.exclusions))
+	for _, e := range s.exclusions {
+		if len(e.Tags) > 0 {
+			m[e.Name] = e.Tags
+		}
+	}
+	return m
+}
+
 // List returns all exclusions (deep copies — safe to modify).
 func (s *ExclusionStore) List() []RuleExclusion {
 	s.mu.RLock()

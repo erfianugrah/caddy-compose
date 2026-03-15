@@ -60,3 +60,106 @@ from tailscale, K8s streamtunnel, goproxy.
 - [ ] Apply cache-static-assets template via `/api/rules/templates/cache-static-assets/apply`
 - [ ] Verify CORS preflight + origin validation in production
 - [ ] Monitor event store disk/memory usage (see README sizing guide)
+
+---
+
+## Performance Improvements
+
+Full-stack performance audit. Branch: `perf/events-deferred-enrichment`.
+
+### Completed
+
+- [x] **Backend: Deferred enrichment in `/api/events`** — Merge loop works with raw
+  `[]RateLimitEvent`, only enriches ~25-50 page results instead of all 148K events (~60MB saved).
+  `wafctl/handlers_events.go`, `wafctl/query_helpers.go`
+- [x] **Backend: Response cache on `/api/events`** — 5s TTL, generation-invalidated.
+  `wafctl/handlers_events.go`
+- [x] **Backend 1.1: Analytics handlers use deferred enrichment** — `handleTopBlockedIPs`,
+  `handleTopTargetedURIs` now use raw `[]RateLimitEvent` (no enrichment). `handleTopCountries`
+  uses `FastSummary()` O(buckets) path. Cache TTL bumped 3s→10s.
+  `wafctl/handlers_analytics.go`, `wafctl/waf_analytics.go`
+- [x] **Backend 1.2: handleExclusionHits response cache + raw RLE** — Added
+  `newResponseCache(20)` with 10s TTL. Uses raw `snapshotSince` + `rleEventType` instead
+  of enriched `getRLEvents`. `wafctl/handlers_exclusions.go`
+- [x] **Backend 3.1: FastSummary fallback warning** — Added `log.Printf("[perf]...")` when
+  FastSummary falls back to O(N) scan. `wafctl/logparser.go`, `wafctl/access_log_store.go`
+- [x] **Backend 1.3-1.5: Response caches on RL/IP handlers** — Added caches to
+  `handleRLRuleHits` (10s), `handleRLSummary` (10s), `handleRLEvents` (5s),
+  `handleIPLookup` (10s). `wafctl/handlers_ratelimit.go`, `wafctl/handlers_analytics.go`
+- [x] **Backend 1.6: ExclusionStore.Count()** — New method avoids deep-copying all exclusions
+  just to count. Used in health check. `wafctl/exclusions.go`, `wafctl/handlers_events.go`
+- [x] **Backend 6.2: matchIntField cached parse** — Pre-parse int value at filter creation,
+  avoiding per-event `strconv.Atoi`. `wafctl/query_helpers.go`
+- [x] **Backend 6.3: extractPolicyName prefixes** — Moved to package-level var.
+  `wafctl/handlers_analytics.go`
+- [x] **Backend 6.9: JSONL single write syscall** — Append newline to data bytes before
+  writing (1 syscall instead of 2 per event). `wafctl/logparser.go`,
+  `wafctl/access_log_store.go`, `wafctl/general_logs.go`
+- [x] **Frontend: Visibility API for polling** — Health check (30s) and auto-refresh pause
+  when tab is hidden, fire immediately on focus.
+  `waf-dashboard/src/layouts/DashboardLayout.astro`, `waf-dashboard/src/components/TimeRangePicker.tsx`
+- [x] **Frontend: Retry button on EventsTable error** — Error card now has a clickable retry.
+  `waf-dashboard/src/components/EventsTable.tsx`
+- [x] **Frontend F-01: AbortController on OverviewDashboard** — Cancels in-flight summary
+  requests when filters/time change. `waf-dashboard/src/components/OverviewDashboard.tsx`,
+  `waf-dashboard/src/lib/api/waf-events.ts` (fetchSummary accepts RequestInit)
+- [x] **Frontend F-11: RateLimitsPanel bulk operations** — Replaced sequential `for await`
+  loop with single `bulkRLAction()` call via `/api/exclusions/bulk`.
+  `waf-dashboard/src/components/RateLimitsPanel.tsx`, `waf-dashboard/src/lib/api/rate-limits.ts`
+- [x] **Frontend F-17: LogViewer stale request guard** — Added `requestGenRef` pattern.
+  `waf-dashboard/src/components/LogViewer.tsx`
+- [x] **Frontend F-25: fetchServices module-level cache** — 30s TTL cache avoids redundant
+  calls from 5+ components. `waf-dashboard/src/lib/api/waf-events.ts`
+- [x] **Frontend F-08: donutData memoized** — Wrapped in `useMemo`.
+  `waf-dashboard/src/components/OverviewDashboard.tsx`
+- [x] **Frontend F-23: globalDirty memoized** — Wrapped `JSON.stringify` comparison in
+  `useMemo`. `waf-dashboard/src/components/RateLimitsPanel.tsx`
+- [x] **Backend 2.1-2.2: ALS counter uses RLE directly** — Added `incrementRLEvent`,
+  `decrementRLEvent`, `initFromRLEvents` to `summaryCounters`. Avoids O(N) temporary
+  `[]Event` allocation at startup and per eviction cycle.
+  `wafctl/summary_counters.go`, `wafctl/access_log_store.go`
+- [x] **Backend 3.3: RecentEvents append-to-tail** — Changed from prepend (alloc-heavy)
+  to append + trim front. `buildSummary` already sorts newest-first.
+  `wafctl/summary_counters.go`
+- [x] **Backend 2.3: JSONL compaction snapshot under lock, write outside** — All three
+  stores (WAF, ALS, general logs) now snapshot events under the existing lock and write
+  to disk using the snapshot copy. `wafctl/logparser.go`, `wafctl/access_log_store.go`,
+  `wafctl/general_logs.go`
+- [x] **Frontend F-07: Analytics section default collapsed** — Saves 3 API calls on
+  page load. Users expand on demand. `waf-dashboard/src/components/OverviewDashboard.tsx`
+- [x] **Frontend F-16: LogViewer split summary from pagination** — Summary only re-fetches
+  on filter/time changes, not page changes. `waf-dashboard/src/components/LogViewer.tsx`
+- [x] **Infra F6: Removed dead wafctl stage from Dockerfile** — Stage was built but never
+  referenced by the final image. `Dockerfile`
+- [x] **Infra F3/F4: Replaced curl with wget in Dockerfile** — Alpine has wget built-in.
+  Removed curl install from both cloudflare-ips stage and final image (~5MB saved). `Dockerfile`
+- [x] **Infra F19: Makefile parallel build and test** — `build` and `test` targets now
+  use `$(MAKE) -j2` for parallel execution. `Makefile`
+
+- [x] **Backend 5.1: Deploy dedup — shared generatePolicyData()** — Extracted common
+  pipeline into single function used by `handleDeploy`, `handleGenerateConfig`,
+  `generateOnBoot`, and `deployAll`. `wafctl/deploy.go`, `wafctl/handlers_config.go`
+- [x] **Backend 6.6: General logs summary cache TTL bumped** — 3s→10s.
+  `wafctl/general_logs_handlers.go`
+- [x] **Backend 2.5: ExclusionStore.TagsByName()** — Lightweight name→tags lookup without
+  deep copy. Used by enrichment path. `wafctl/exclusions.go`, `wafctl/query_helpers.go`
+- [x] **Backend 2.6: EventByID O(1) index** — Added `idIndex map[string]int` maintained
+  at load and eviction. `wafctl/logparser.go`
+- [x] **Frontend F-02: getRLRules server-side type filter** — Uses `?type=rate_limit`
+  query param. Backend `handleListExclusions` supports `?type=` filter.
+  `waf-dashboard/src/lib/api/rate-limits.ts`, `wafctl/handlers_exclusions.go`
+- [x] **Backend/Frontend F-18: IPLookup skip intel on pagination** — Backend skips GeoIP
+  and IP intelligence lookups when `offset > 0`. `wafctl/handlers_analytics.go`
+- [x] **Infra F12: Jellyfin streaming transport config** — Added `flush_interval -1` and
+  transport timeouts for media streaming. `Caddyfile`
+- [x] **Infra F15: Log retention reduced** — Per-site: 256MB×5 → 128MB×3. Combined:
+  256MB×3 → 256MB×2. Max disk ~13GB → ~8GB. `Caddyfile`
+- [x] **Infra F10: Caddy start_period 10s → 120s** — Covers ACME DNS propagation delay.
+  `compose.yaml`
+
+### Remaining (future)
+
+- [ ] **F-06 — fetchAllEvents unbounded response** (`waf-events.ts:377-389`) — Backend caps
+  at 10K; low priority since it's an explicit user action with loading indicator.
+- [ ] **F-20 — PolicyEngine + RateLimitsPanel ~700 lines duplication** — Large refactor to
+  extract shared `<RuleTable>` component. Deferred to a dedicated PR.

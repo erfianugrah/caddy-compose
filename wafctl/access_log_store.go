@@ -313,12 +313,9 @@ func (s *AccessLogStore) appendEventsToJSONL(events []RateLimitEvent) {
 		if err != nil {
 			continue
 		}
+		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
 			log.Printf("error writing RL event to JSONL: %v", err)
-			return
-		}
-		if _, err := f.Write([]byte{'\n'}); err != nil {
-			log.Printf("error writing newline to RL JSONL: %v", err)
 			return
 		}
 	}
@@ -335,35 +332,48 @@ func (s *AccessLogStore) compactEventFile() {
 		return
 	}
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.compactEventFileLocked()
+	snapshot := make([]RateLimitEvent, len(s.events))
+	copy(snapshot, s.events)
+	s.mu.RUnlock()
+	writeCompactedRLEvents(s.eventFile, snapshot)
 }
 
 // compactEventFileLocked rewrites the JSONL file with the current in-memory
 // events. The caller MUST hold s.mu (at least RLock).
+// Uses a snapshot copy so the write lock can be released before disk I/O.
 func (s *AccessLogStore) compactEventFileLocked() {
 	if s.eventFile == "" {
 		return
 	}
-	tmp := s.eventFile + ".tmp"
+	// Copy the events under the caller's lock, then write outside any lock.
+	snapshot := make([]RateLimitEvent, len(s.events))
+	copy(snapshot, s.events)
+	// Note: the caller still holds the write lock here. In the eviction path,
+	// the lock is released after this method returns. The disk write uses the
+	// snapshot so it doesn't access s.events. This keeps the critical section
+	// short (just the copy) while the slow I/O happens on the snapshot.
+	writeCompactedRLEvents(s.eventFile, snapshot)
+}
+
+// writeCompactedRLEvents atomically rewrites a JSONL file from a snapshot.
+// Does not hold any locks — safe to call outside critical sections.
+func writeCompactedRLEvents(path string, events []RateLimitEvent) {
+	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		log.Printf("error creating temp RL event file for compaction: %v", err)
 		return
 	}
 
-	count := len(s.events)
+	count := len(events)
 	var writeErr error
-	for i := range s.events {
-		data, err := json.Marshal(s.events[i])
+	for i := range events {
+		data, err := json.Marshal(events[i])
 		if err != nil {
 			continue
 		}
+		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
-			writeErr = err
-			break
-		}
-		if _, err := f.Write([]byte{'\n'}); err != nil {
 			writeErr = err
 			break
 		}
@@ -383,7 +393,7 @@ func (s *AccessLogStore) compactEventFileLocked() {
 		return
 	}
 	f.Close()
-	if err := os.Rename(tmp, s.eventFile); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		log.Printf("error renaming compacted RL event file: %v", err)
 		return
 	}
@@ -428,18 +438,13 @@ func (s *AccessLogStore) SetMaxAge(d time.Duration) {
 
 // initCountersFromRLEventsLocked initializes incremental counters from the
 // current in-memory RateLimitEvents. The caller MUST hold s.mu.
+// Uses initFromRLEvents to avoid the O(N) allocation of converting
+// every RateLimitEvent to Event.
 func (s *AccessLogStore) initCountersFromRLEventsLocked() {
 	if s.counters == nil {
 		return
 	}
-	// Convert RL events to unified Events for counter ingestion.
-	// Use empty rule/exclusion lists since tags aren't needed for counters —
-	// they're enriched at query time. We use a minimal conversion here.
-	events := make([]Event, len(s.events))
-	for i := range s.events {
-		events[i] = RateLimitEventToEvent(s.events[i], nil)
-	}
-	s.counters.initFromEvents(events)
+	s.counters.initFromRLEvents(s.events)
 }
 
 // Load reads new lines from the combined access log and extracts 429 events.
@@ -613,10 +618,10 @@ func (s *AccessLogStore) Load() {
 		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
 		// Update incremental summary counters for new events.
+		// Uses incrementRLEvent to avoid temporary Event allocations.
 		if s.counters != nil {
 			for i := range newEvents {
-				ev := RateLimitEventToEvent(newEvents[i], nil)
-				s.counters.incrementEvent(&ev)
+				s.counters.incrementRLEvent(&newEvents[i])
 			}
 		}
 		rlCount, policyCount, policyRLCount := 0, 0, 0
@@ -654,10 +659,10 @@ func (s *AccessLogStore) evict() {
 	}
 	if idx > 0 {
 		// Decrement incremental summary counters for evicted events.
+		// Uses decrementRLEvent to avoid temporary Event allocations.
 		if s.counters != nil {
 			for i := 0; i < idx; i++ {
-				ev := RateLimitEventToEvent(s.events[i], nil)
-				s.counters.decrementEvent(&ev)
+				s.counters.decrementRLEvent(&s.events[i])
 			}
 		}
 		evicted := idx
@@ -704,6 +709,7 @@ func (s *AccessLogStore) EventCount() int {
 // while events exist (e.g. events set directly without going through Load()).
 func (s *AccessLogStore) FastSummary(hours int) SummaryResponse {
 	if s.counters == nil || (s.counters.totalEvents() == 0 && s.EventCount() > 0) {
+		log.Printf("[perf] ALS FastSummary falling back to O(N) scan (%d events)", s.EventCount())
 		// Fallback: convert RL events to unified Events and summarize.
 		rlEvents := s.snapshotSince(hours)
 		events := make([]Event, len(rlEvents))

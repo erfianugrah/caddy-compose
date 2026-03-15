@@ -83,6 +83,7 @@ import {
   getRLGlobal,
   updateRLGlobal,
   exportRLRules,
+  bulkRLAction,
   importRLRules,
   getRLRuleHits,
   fetchServices,
@@ -233,8 +234,10 @@ export default function RateLimitsPanel() {
   useEffect(() => () => { if (successTimerRef.current) clearTimeout(successTimerRef.current); }, []);
 
   // Global config dirty check
-  const globalDirty = globalConfig !== null && initialGlobalConfig !== null &&
-    JSON.stringify(globalConfig) !== JSON.stringify(initialGlobalConfig);
+  const globalDirty = useMemo(() =>
+    globalConfig !== null && initialGlobalConfig !== null &&
+    JSON.stringify(globalConfig) !== JSON.stringify(initialGlobalConfig),
+  [globalConfig, initialGlobalConfig]);
 
   // Auto-deploy after CRUD
   const autoDeploy = useCallback(async (action: string) => {
@@ -529,15 +532,7 @@ export default function RateLimitsPanel() {
       if (confirmMsg && !window.confirm(confirmMsg)) return;
       try {
         setBulkBusy(true);
-        if (action === "delete") {
-          for (const id of selected) {
-            await deleteRLRule(id);
-          }
-        } else {
-          for (const id of selected) {
-            await updateRLRule(id, { enabled: action === "enable" });
-          }
-        }
+        await bulkRLAction([...selected], action);
         setSelected(new Set());
         loadData();
         await autoDeploy(`Bulk ${action}: ${selected.size} rules`);

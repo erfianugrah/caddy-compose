@@ -21,6 +21,10 @@ type Store struct {
 	mu     sync.RWMutex
 	events []Event
 
+	// idIndex maps event ID (request UUID) to slice index for O(1) lookup.
+	// Updated on AddEvents and eviction. Entries with empty IDs are not indexed.
+	idIndex map[string]int
+
 	// JSONL event persistence (empty = don't persist events)
 	eventFile string
 
@@ -40,7 +44,21 @@ type Store struct {
 }
 
 func NewStore() *Store {
-	return &Store{counters: newSummaryCounters()}
+	return &Store{
+		counters: newSummaryCounters(),
+		idIndex:  make(map[string]int),
+	}
+}
+
+// rebuildIDIndex rebuilds the id→index map from the current events slice.
+// The caller MUST hold s.mu.
+func (s *Store) rebuildIDIndex() {
+	s.idIndex = make(map[string]int, len(s.events))
+	for i, ev := range s.events {
+		if ev.ID != "" {
+			s.idIndex[ev.ID] = i
+		}
+	}
 }
 
 // SetEventFile configures a JSONL file for persistent event storage.
@@ -59,6 +77,7 @@ func (s *Store) SetEventFile(path string) {
 		return
 	}
 	s.events = events
+	s.rebuildIDIndex()
 	log.Printf("restored %d events from %s", len(events), path)
 	// Initialize incremental counters from restored events.
 	if s.counters != nil {
@@ -84,12 +103,9 @@ func (s *Store) appendEventsToJSONL(events []Event) {
 			log.Printf("error marshaling event for persistence: %v", err)
 			continue
 		}
+		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
 			log.Printf("error writing event to JSONL: %v", err)
-			return
-		}
-		if _, err := f.Write([]byte{'\n'}); err != nil {
-			log.Printf("error writing newline to JSONL: %v", err)
 			return
 		}
 	}
@@ -106,36 +122,42 @@ func (s *Store) compactEventFile() {
 		return
 	}
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.compactEventFileLocked()
+	snapshot := make([]Event, len(s.events))
+	copy(snapshot, s.events)
+	s.mu.RUnlock()
+	writeCompactedEvents(s.eventFile, snapshot)
 }
 
 // compactEventFileLocked rewrites the JSONL file with the current in-memory
 // events. The caller MUST hold s.mu (at least RLock).
+// Snapshots events under the caller's lock, then writes to disk.
 func (s *Store) compactEventFileLocked() {
 	if s.eventFile == "" {
 		return
 	}
+	snapshot := make([]Event, len(s.events))
+	copy(snapshot, s.events)
+	writeCompactedEvents(s.eventFile, snapshot)
+}
 
-	tmp := s.eventFile + ".tmp"
+// writeCompactedEvents atomically rewrites a JSONL file from an Event snapshot.
+func writeCompactedEvents(path string, events []Event) {
+	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		log.Printf("error creating temp event file for compaction: %v", err)
 		return
 	}
 
-	count := len(s.events)
+	count := len(events)
 	var writeErr error
-	for i := range s.events {
-		data, err := json.Marshal(s.events[i])
+	for i := range events {
+		data, err := json.Marshal(events[i])
 		if err != nil {
 			continue
 		}
+		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
-			writeErr = err
-			break
-		}
-		if _, err := f.Write([]byte{'\n'}); err != nil {
 			writeErr = err
 			break
 		}
@@ -155,7 +177,7 @@ func (s *Store) compactEventFileLocked() {
 		return
 	}
 	f.Close()
-	if err := os.Rename(tmp, s.eventFile); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		log.Printf("error renaming compacted event file: %v", err)
 		return
 	}
@@ -243,6 +265,7 @@ func (s *Store) evict() {
 		remaining := make([]Event, len(s.events)-idx)
 		copy(remaining, s.events[idx:])
 		s.events = remaining
+		s.rebuildIDIndex()
 		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
 		s.generation.Add(1)
 		// Compact the JSONL file synchronously to avoid racing with
@@ -303,14 +326,16 @@ func (s *Store) Snapshot() []Event {
 }
 
 // EventByID returns a copy of the event with the given ID, or nil if not found.
+// Uses the idIndex for O(1) lookup instead of linear scan.
 func (s *Store) EventByID(id string) *Event {
+	if id == "" {
+		return nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for i := len(s.events) - 1; i >= 0; i-- {
-		if s.events[i].ID == id {
-			ev := s.events[i]
-			return &ev
-		}
+	if idx, ok := s.idIndex[id]; ok && idx < len(s.events) {
+		ev := s.events[idx]
+		return &ev
 	}
 	return nil
 }
@@ -394,6 +419,7 @@ func (s *Store) Summary(hours int) SummaryResponse {
 // stale (e.g. events set directly without going through normal ingestion).
 func (s *Store) FastSummary(hours int) SummaryResponse {
 	if s.counters == nil || (s.counters.totalEvents() == 0 && s.EventCount() > 0) {
+		log.Printf("[perf] WAF Store FastSummary falling back to O(N) scan (%d events)", s.EventCount())
 		return s.Summary(hours)
 	}
 	return s.counters.buildSummary(hours)

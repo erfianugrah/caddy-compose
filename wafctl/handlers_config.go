@@ -44,23 +44,10 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		allExclusions := es.EnabledExclusions()
-		rlGlobal := cs.Get().RateLimitGlobal
-		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, svcMap)
-		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		policyData, _, err := generatePolicyData(cs, es, ls, cspStore, secStore, corsStore, ds, deployCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",
-				Details: err.Error(),
-			})
-			return
-		}
-		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-				Error:   "failed to apply default rule overrides",
 				Details: err.Error(),
 			})
 			return
@@ -79,25 +66,10 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, csp
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
-		allExclusions := es.EnabledExclusions()
-
-		// Generate policy engine rules file (all rule types from unified ExclusionStore).
-		rlGlobal := cs.Get().RateLimitGlobal
-		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, svcMap)
-		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		policyData, policyCount, err := generatePolicyData(cs, es, ls, cspStore, secStore, corsStore, ds, deployCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",
-				Details: err.Error(),
-			})
-			return
-		}
-		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-				Error:   "failed to apply default rule overrides",
 				Details: err.Error(),
 			})
 			return
@@ -108,12 +80,6 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, csp
 				Details: err.Error(),
 			})
 			return
-		}
-		policyCount := 0
-		for _, e := range allExclusions {
-			if IsPolicyEngineType(e.Type) {
-				policyCount++
-			}
 		}
 		log.Printf("[deploy] wrote policy rules (%d rules) → %s",
 			policyCount, deployCfg.PolicyRulesFile)

@@ -1,4 +1,5 @@
 import { vi, beforeEach, afterEach } from "vitest";
+import { clearServicesCache } from "./waf-events";
 
 /**
  * Creates a mock fetch that resolves with the given body and status.
@@ -20,6 +21,7 @@ export function mockFetchResponse(body: unknown, status = 200) {
 export function setupMockFetch() {
   beforeEach(() => {
     vi.stubGlobal("fetch", mockFetchResponse({}));
+    clearServicesCache(); // Reset module-level caches between tests.
   });
 
   afterEach(() => {

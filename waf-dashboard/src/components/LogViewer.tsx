@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
 import DashboardFilterBar from "@/components/DashboardFilterBar";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -69,40 +69,54 @@ export default function LogViewer() {
 
   const collapseAll = useCallback(() => setExpanded(new Set()), []);
 
-  const buildParams = useCallback((): GeneralLogsParams => {
+  // Separate base params (time/filters) from paginated params.
+  // Summary only needs base params; logs need page too.
+  const buildBaseParams = useCallback((): GeneralLogsParams => {
     const params: GeneralLogsParams = {
       ...rangeToParams(timeRange),
       ...filtersToGeneralLogsParams(filters),
-      page,
-      per_page: perPage,
     };
     if (requestIdParam) params.request_id = requestIdParam;
     return params;
-  }, [timeRange, page, filters, requestIdParam]);
+  }, [timeRange, filters, requestIdParam]);
 
+  const buildLogsParams = useCallback((): GeneralLogsParams => {
+    return { ...buildBaseParams(), page, per_page: perPage };
+  }, [buildBaseParams, page]);
+
+  // Guard against stale responses when rapid filter/page changes fire concurrent requests.
+  const requestGenRef = useRef(0);
   const loadLogs = useCallback(async () => {
+    const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
     try {
-      const params = buildParams();
-      const [logsResp, summaryResp] = await Promise.all([
-        fetchGeneralLogs(params),
-        fetchGeneralLogsSummary(params),
-      ]);
-      setResponse(logsResp);
-      setSummary(summaryResp);
-      // Collect known services for autocomplete
-      if (summaryResp?.top_services) {
-        setKnownServices(summaryResp.top_services.map((s: { service: string }) => s.service));
-      }
+      const resp = await fetchGeneralLogs(buildLogsParams());
+      if (requestGenRef.current !== gen) return; // stale
+      setResponse(resp);
     } catch (err) {
+      if (requestGenRef.current !== gen) return; // stale
       setError(err instanceof Error ? err.message : "Failed to load logs");
     } finally {
-      setLoading(false);
+      if (requestGenRef.current === gen) setLoading(false);
     }
-  }, [buildParams]);
+  }, [buildLogsParams]);
 
+  // Re-fetch logs on page/filter/time change.
   useEffect(() => { loadLogs(); }, [loadLogs]);
+
+  // Re-fetch summary only on filter/time change (not page change).
+  useEffect(() => {
+    const params = buildBaseParams();
+    fetchGeneralLogsSummary(params)
+      .then((summaryResp) => {
+        setSummary(summaryResp);
+        if (summaryResp?.top_services) {
+          setKnownServices(summaryResp.top_services.map((s: { service: string }) => s.service));
+        }
+      })
+      .catch(() => {}); // Non-critical — logs still work without summary.
+  }, [buildBaseParams]);
 
   // URL params on mount (client-only)
   useEffect(() => {

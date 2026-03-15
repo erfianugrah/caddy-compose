@@ -104,10 +104,10 @@ function rlToUnifiedPayload(data: RateLimitRuleCreateData | RateLimitRuleUpdateD
   return result;
 }
 
-/** List rate limit rules (filters unified rules by type=rate_limit). */
+/** List rate limit rules (server-side type filter). */
 export async function getRLRules(): Promise<RateLimitRule[]> {
-  const all = await fetchJSON<Exclusion[]>(`${API_BASE}/rules`);
-  return (all ?? []).filter(e => e.type === "rate_limit").map(exclusionToRL);
+  const all = await fetchJSON<Exclusion[]>(`${API_BASE}/rules?type=rate_limit`);
+  return (all ?? []).map(exclusionToRL);
 }
 
 export async function createRLRule(data: RateLimitRuleCreateData): Promise<RateLimitRule> {
@@ -157,10 +157,10 @@ export async function importRLRules(data: { rules: RateLimitRuleCreateData[] }):
 }
 
 export async function reorderRLRules(rlIds: string[]): Promise<RateLimitRule[]> {
-  // The backend Reorder requires ALL rule IDs. Fetch all rules, replace
-  // the RL subset with the new order, and send the full list.
+  // The backend Reorder requires ALL rule IDs. Fetch non-RL IDs separately
+  // to build the full list, keeping RL rules in the new order.
   const all = await fetchJSON<Exclusion[]>(`${API_BASE}/rules`);
-  const rlIdSet = new Set((all ?? []).filter(e => e.type === "rate_limit").map(e => e.id));
+  const rlIdSet = new Set(rlIds);
   const nonRL = (all ?? []).filter(e => !rlIdSet.has(e.id)).map(e => e.id);
   const fullOrder = [...nonRL, ...rlIds];
   const raw = await putJSON<Exclusion[]>(`${API_BASE}/rules/reorder`, { ids: fullOrder });
@@ -353,4 +353,12 @@ export async function getRateAdvisor(params?: {
   if (params?.limit) q.set("limit", String(params.limit));
   const qs = q.toString();
   return fetchJSON<RateAdvisorResponse>(`${API_BASE}/rate-rules/advisor${qs ? `?${qs}` : ""}`);
+}
+
+/** Bulk enable/disable/delete rate limit rules in a single API call. */
+export async function bulkRLAction(
+  ids: string[],
+  action: "enable" | "disable" | "delete",
+): Promise<{ changed: number }> {
+  return postJSON<{ changed: number }>(`${API_BASE}/exclusions/bulk`, { ids, action });
 }

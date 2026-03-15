@@ -85,10 +85,11 @@ ifdef NO_CACHE
   DOCKER_BUILD_FLAGS += --no-cache
 endif
 
-build: build-caddy build-wafctl ## Build both images
+build: ## Build both images in parallel
+	$(MAKE) -j2 build-caddy build-wafctl
 
 build-caddy: ## Build Caddy image (includes waf-dashboard)
-	docker build $(DOCKER_BUILD_FLAGS) -t $(CADDY_IMAGE) --build-arg WAFCTL_VERSION=$(WAFCTL_VERSION) .
+	docker build $(DOCKER_BUILD_FLAGS) -t $(CADDY_IMAGE) .
 
 WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))
 
@@ -105,7 +106,8 @@ push-wafctl: ## Push wafctl image
 	docker push $(WAFCTL_IMAGE)
 
 # ── Test ────────────────────────────────────────────────────────────
-test: test-go test-frontend ## Run all tests
+test: ## Run all tests in parallel
+	$(MAKE) -j2 test-go test-frontend
 
 test-go: ## Run Go tests
 	cd wafctl && go test -count=1 -timeout 60s ./...

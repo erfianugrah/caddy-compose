@@ -24,13 +24,12 @@ func handleTopBlockedIPs(store *Store, als *AccessLogStore) http.HandlerFunc {
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
+		// Use WAF events (snapshot) + raw ALS events (no enrichment needed —
+		// topBlockedIPs only reads ClientIP, IsBlocked, Country, Timestamp).
 		wafEvents := getWAFEvents(store, tr, hours)
-		rlEvents := getRLEvents(als, tr, hours, nil)
-		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
-		all = append(all, wafEvents...)
-		all = append(all, rlEvents...)
-		result := topBlockedIPs(all, limit)
-		cache.set(cacheKey, result, gen, 3*time.Second)
+		rlRaw := getRawRLSnapshot(als, tr, hours)
+		result := topBlockedIPsMixed(wafEvents, rlRaw, limit)
+		cache.set(cacheKey, result, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
@@ -50,13 +49,12 @@ func handleTopTargetedURIs(store *Store, als *AccessLogStore) http.HandlerFunc {
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
+		// Use WAF events (snapshot) + raw ALS events (no enrichment needed —
+		// topTargetedURIs only reads URI, IsBlocked, Service).
 		wafEvents := getWAFEvents(store, tr, hours)
-		rlEvents := getRLEvents(als, tr, hours, nil)
-		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
-		all = append(all, wafEvents...)
-		all = append(all, rlEvents...)
-		result := topTargetedURIs(all, limit)
-		cache.set(cacheKey, result, gen, 3*time.Second)
+		rlRaw := getRawRLSnapshot(als, tr, hours)
+		result := topTargetedURIsMixed(wafEvents, rlRaw, limit)
+		cache.set(cacheKey, result, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
@@ -76,14 +74,27 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 		if limit <= 0 || limit > 500 {
 			limit = 50
 		}
-		// Merge WAF events + rate-limit/ipsum events
+
+		// Fast path: use incremental counters when no absolute time range.
+		// TopCountries is already computed by FastSummary — O(buckets) vs O(events).
+		if !tr.Valid {
+			wafSummary := store.FastSummary(hours)
+			alsSummary := als.FastSummary(hours)
+			merged := mergeSummaryResponses(wafSummary, alsSummary)
+			result := merged.TopCountries
+			if len(result) > limit {
+				result = result[:limit]
+			}
+			cache.set(cacheKey, result, gen, 10*time.Second)
+			writeJSON(w, http.StatusOK, result)
+			return
+		}
+
+		// Fallback: absolute time range — use raw ALS events (no enrichment).
 		wafEvents := getWAFEvents(store, tr, hours)
-		rlEvents := getRLEvents(als, tr, hours, nil)
-		all := make([]Event, 0, len(wafEvents)+len(rlEvents))
-		all = append(all, wafEvents...)
-		all = append(all, rlEvents...)
-		result := TopCountries(all, limit)
-		cache.set(cacheKey, result, gen, 3*time.Second)
+		rlRaw := getRawRLSnapshot(als, tr, hours)
+		result := topCountriesMixed(wafEvents, rlRaw, limit)
+		cache.set(cacheKey, result, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
@@ -91,6 +102,7 @@ func handleTopCountries(store *Store, als *AccessLogStore) http.HandlerFunc {
 // --- Handler: IP Lookup ---
 
 func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *IPIntelStore) http.HandlerFunc {
+	cache := newResponseCache(50)
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := r.PathValue("ip")
 		if ip == "" {
@@ -102,6 +114,14 @@ func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *I
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid IP address"})
 			return
 		}
+
+		gen := combinedGeneration(&store.generation, &als.generation)
+		cacheKey := ip + ":" + normalizeCacheKey(r.URL.RawQuery)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
+
 		q := r.URL.Query()
 		tr := parseTimeRange(r)
 		hours := parseHours(r)
@@ -118,16 +138,21 @@ func handleIPLookup(store *Store, als *AccessLogStore, geo *GeoIPStore, intel *I
 		rlEvents := getRLEvents(als, tr, hours, nil)
 		result := store.IPLookupRange(ip, tr, hours, limit, offset, rlEvents)
 
-		// Enrich with GeoIP information.
-		if geo != nil {
-			result.GeoIP = geo.LookupFull(ip, "")
+		// Skip expensive intelligence lookups when paginating (offset > 0).
+		// The frontend already has GeoIP/intel from the first page.
+		skipIntel := q.Get("skip_intel") == "true" || offset > 0
+		if !skipIntel {
+			// Enrich with GeoIP information.
+			if geo != nil {
+				result.GeoIP = geo.LookupFull(ip, "")
+			}
+			// Enrich with IP intelligence (routing, reputation, Shodan).
+			if intel != nil {
+				result.Intelligence = intel.Lookup(ip)
+			}
 		}
 
-		// Enrich with IP intelligence (routing, reputation, Shodan).
-		if intel != nil {
-			result.Intelligence = intel.Lookup(ip)
-		}
-
+		cache.set(cacheKey, result, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
@@ -161,11 +186,14 @@ func matchesPolicyRuleNameFilter(ev *Event, f *fieldFilter) bool {
 	return false
 }
 
+// policyPrefixes are the known prefixes for policy rule msg strings.
+// Declared at package level to avoid per-call allocation.
+var policyPrefixes = []string{"Policy Allow: ", "Policy Skip: ", "Policy Block: "}
+
 // extractPolicyName extracts the exclusion name from a policy rule msg string.
 // Expected formats: "Policy Allow: <name>", "Policy Skip: <name>", "Policy Block: <name>"
 func extractPolicyName(msg string) string {
-	prefixes := []string{"Policy Allow: ", "Policy Skip: ", "Policy Block: "}
-	for _, p := range prefixes {
+	for _, p := range policyPrefixes {
 		if strings.HasPrefix(msg, p) {
 			return msg[len(p):]
 		}

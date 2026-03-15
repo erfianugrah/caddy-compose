@@ -17,7 +17,15 @@ import (
 // Response: { "hits": { "<exclusion_name>": { "total": N, "sparkline": [n, n, ...] } } }
 // The sparkline is a 24-element array (one per hour, oldest first).
 func handleExclusionHits(store *Store, als *AccessLogStore, es *ExclusionStore) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := combinedGeneration(&store.generation, &als.generation)
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
+
 		hoursStr := r.URL.Query().Get("hours")
 		hours := 24
 		if hoursStr != "" {
@@ -82,32 +90,43 @@ func handleExclusionHits(store *Store, als *AccessLogStore, es *ExclusionStore) 
 			}
 		}
 
-		// Scan access log store for policy events (block, skip, allow, detect).
-		// ALS events carry the rule name in RuleMsg (format: "Policy Block: <name>").
-		alsEvents := getRLEvents(als, timeRange{}, hours, nil)
-		for i := range alsEvents {
-			ev := &alsEvents[i]
-			if !strings.HasPrefix(ev.EventType, "policy_") && ev.EventType != "detect_block" {
+		// Scan access log store for policy events using raw RateLimitEvents.
+		// This avoids the O(N) enrichment cost — we only need RuleName and Source.
+		rlRaw := als.snapshotSince(hours)
+		for i := range rlRaw {
+			rle := &rlRaw[i]
+			et := rleEventType(rle.Source)
+			if !strings.HasPrefix(et, "policy_") && et != "detect_block" {
 				continue
 			}
-			// Primary: extract rule name from RuleMsg (e.g., "Policy Block: Honeypot Paths").
-			if name := extractPolicyName(ev.RuleMsg); name != "" {
-				countHit(name, ev.Timestamp)
-				continue
-			}
-			// Fallback: check MatchedRules for legacy or detect events.
-			for _, mr := range ev.MatchedRules {
-				countHit(extractPolicyName(mr.Msg), ev.Timestamp)
+			// ALS events carry the rule name directly.
+			if rle.RuleName != "" {
+				countHit(rle.RuleName, rle.Timestamp)
 			}
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
+		resp := map[string]any{"hits": hits}
+		cache.set(cacheKey, resp, gen, 10*time.Second)
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
 func handleListExclusions(es *ExclusionStore) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, es.List())
+	return func(w http.ResponseWriter, r *http.Request) {
+		all := es.List()
+		// Optional type filter: ?type=rate_limit, ?type=block, etc.
+		// Avoids transferring all rule types when only one is needed.
+		if typeFilter := r.URL.Query().Get("type"); typeFilter != "" {
+			filtered := make([]RuleExclusion, 0, len(all))
+			for _, exc := range all {
+				if exc.Type == typeFilter {
+					filtered = append(filtered, exc)
+				}
+			}
+			writeJSON(w, http.StatusOK, filtered)
+			return
+		}
+		writeJSON(w, http.StatusOK, all)
 	}
 }
 

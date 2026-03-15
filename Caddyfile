@@ -30,8 +30,8 @@
 	log {
 		level INFO
 		output file /var/log/access.log {
-			roll_size 256mb
-			roll_keep 5
+			roll_size 128mb
+			roll_keep 3
 			roll_keep_for 168h
 		}
 		format json {
@@ -135,8 +135,8 @@
 	log {
 		level INFO
 		output file /var/log/{args[0]}-access.log {
-			roll_size 256mb
-			roll_keep 5
+			roll_size 128mb
+			roll_keep 3
 			roll_keep_for 168h
 		}
 		format json {
@@ -148,7 +148,7 @@
 		output file /var/log/combined-access.log {
 			mode 0644
 			roll_size 256mb
-			roll_keep 3
+			roll_keep 2
 			roll_keep_for 168h
 		}
 		format json {
@@ -335,6 +335,11 @@ jellyfin.erfi.io {
 	encode zstd gzip
 	reverse_proxy 172.19.1.15:8096 {
 		import proxy_headers
+		flush_interval -1
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 0
+		}
 	}
 	import error_pages
 	import site_log jellyfin

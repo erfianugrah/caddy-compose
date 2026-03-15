@@ -21,7 +21,7 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 				"api_enabled": geoStore.HasAPI(),
 			},
 			"exclusions": map[string]any{
-				"count": len(exclusionStore.List()),
+				"count": exclusionStore.Count(),
 			},
 			"blocklist":        blocklistStore.Stats(),
 			"cfproxy":          cfProxyStore.Stats(),
@@ -174,6 +174,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 }
 
 func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(100)
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
@@ -186,6 +187,15 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			}
 			// Not found — fall through to normal filter path so RL/ipsum events
 			// can still be located via service+type+ip+time window.
+		}
+
+		// Check response cache — keyed on normalized query string, invalidated by
+		// data generation changes (new events or evictions in either store).
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		gen := combinedGeneration(&store.generation, &als.generation)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
 		}
 
 		// Read filter params with operator support.
@@ -226,17 +236,27 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 
 		// Collect events from both sources, optimizing by event_type filter.
 		needWAF, needRL := eventSourcesNeeded(eventTypeF)
-		// Collect events from both sources (already in chronological order).
-		var wafEvents, rlEvts []Event
+
+		// WAF events: snapshot copy (typically smaller set — logged/detect events).
+		var wafEvents []Event
 		if needWAF {
 			wafEvents = getWAFEvents(store, tr, hours)
 		}
+
+		// ALS events: raw snapshot WITHOUT enrichment. At 100K+ events this
+		// avoids allocating a second []Event of equal size and running tag
+		// lookups on every event. Only events that land in the result page
+		// are enriched via enrichSingleRLE (deferred enrichment).
+		var rlRaw []RateLimitEvent
 		if needRL {
-			rlEvts = getRLEvents(als, tr, hours, nil)
+			rlRaw = getRawRLSnapshot(als, tr, hours)
 		}
 
-		// eventMatchesFilters checks if an event passes all active filters.
-		matchesFilters := func(ev *Event) bool {
+		// Build enrichment lookup tables once (cheap map builds from exclusion store).
+		lookup := buildEnrichmentLookup(als)
+
+		// matchesWAFFilters checks if a WAF Event passes all active filters.
+		matchesWAFFilters := func(ev *Event) bool {
 			if !serviceF.matchField(ev.Service) {
 				return false
 			}
@@ -276,52 +296,104 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			return true
 		}
 
-		// Reverse-merge two chronologically sorted slices (newest first)
-		// with inline filtering and pagination.
-		wi, ri := len(wafEvents)-1, len(rlEvts)-1
+		// matchesRLFilters checks if a raw RateLimitEvent passes all active
+		// filters WITHOUT converting to Event first. This avoids the per-event
+		// allocation cost of RateLimitEventToEvent for non-matching events.
+		matchesRLFilters := func(rle *RateLimitEvent) bool {
+			if !serviceF.matchField(rle.Service) {
+				return false
+			}
+			if !clientF.matchField(rle.ClientIP) {
+				return false
+			}
+			if !methodF.matchField(rle.Method) {
+				return false
+			}
+			isBlocked := rleIsBlocked(rle.Source)
+			if blocked != nil && isBlocked != *blocked {
+				return false
+			}
+			if !eventTypeF.matchField(rleEventType(rle.Source)) {
+				return false
+			}
+			// ruleNameF: check RuleName directly (before enrichment adds "Policy Block: " prefix).
+			if ruleNameF != nil && !ruleNameF.matchField(rle.RuleName) {
+				return false
+			}
+			if !uriF.matchField(rle.URI) {
+				return false
+			}
+			if !statusCodeF.matchIntField(rleResponseStatus(rle)) {
+				return false
+			}
+			if !countryF.matchField(rle.Country) {
+				return false
+			}
+			if !requestIDF.matchField(rle.RequestID) {
+				return false
+			}
+			if tagF != nil && !tagF.matchTags(rleTags(rle, &lookup)) {
+				return false
+			}
+			if !blockedByF.matchField(rleBlockedBy(rle)) {
+				return false
+			}
+			return true
+		}
+
+		// Reverse-merge WAF events ([]Event) and ALS events ([]RateLimitEvent)
+		// sorted by timestamp (newest first) with inline filtering and pagination.
+		// Only events that land in the result page are enriched/converted.
+		wi, ri := len(wafEvents)-1, len(rlRaw)-1
 		filtered := make([]Event, 0, limit)
 		matched := 0
 
 		for wi >= 0 || ri >= 0 {
-			var ev *Event
-			if wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlEvts[ri].Timestamp)) {
-				ev = &wafEvents[wi]
+			// Pick the newest event from either source.
+			useWAF := wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlRaw[ri].Timestamp))
+
+			if useWAF {
+				ev := &wafEvents[wi]
 				wi--
+				if !matchesWAFFilters(ev) {
+					continue
+				}
+				matched++
+				if matched > offset && len(filtered) < limit {
+					filtered = append(filtered, *ev)
+				}
 			} else {
-				ev = &rlEvts[ri]
+				rle := &rlRaw[ri]
 				ri--
+				if !matchesRLFilters(rle) {
+					continue
+				}
+				matched++
+				if matched > offset && len(filtered) < limit {
+					// Deferred enrichment: only convert events that land in the page.
+					filtered = append(filtered, enrichSingleRLE(rle, &lookup))
+				}
 			}
 
-			if !matchesFilters(ev) {
-				continue
-			}
-
-			matched++
-			if matched > offset && len(filtered) < limit {
-				filtered = append(filtered, *ev)
-			}
 			// Early-exit for non-export: once we have a full page and are past
 			// the offset window, stop scanning. Return total=-1 to signal
 			// that more results exist but the exact count is unknown.
 			if !exportAll && len(filtered) >= limit && matched >= offset+limit {
-				// Check if there are more events to determine hasMore.
 				hasMore := wi >= 0 || ri >= 0
 				total := matched
 				if hasMore {
 					total = -1 // signal: more results exist
 				}
-				writeJSON(w, http.StatusOK, EventsResponse{
-					Total:  total,
-					Events: filtered,
-				})
+				resp := EventsResponse{Total: total, Events: filtered}
+				cache.set(cacheKey, resp, gen, 5*time.Second)
+				writeJSON(w, http.StatusOK, resp)
 				return
 			}
 		}
 
-		writeJSON(w, http.StatusOK, EventsResponse{
-			Total:  matched,
-			Events: filtered,
-		})
+		resp := EventsResponse{Total: matched, Events: filtered}
+		cache.set(cacheKey, resp, gen, 5*time.Second)
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

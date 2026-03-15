@@ -494,7 +494,7 @@ func handleGeneralLogsSummary(gls *GeneralLogStore) http.HandlerFunc {
 		}
 
 		summary := summarizeGeneralLogs(events)
-		cache.set(cacheKey, summary, gen, 3*time.Second)
+		cache.set(cacheKey, summary, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, summary)
 	}
 }

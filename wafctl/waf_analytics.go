@@ -428,3 +428,172 @@ func topTargetedURIs(events []Event, n int) []TopTargetedURI {
 	}
 	return result
 }
+
+// ─── Mixed-type analytics (deferred enrichment) ────────────────────
+//
+// These variants operate on WAF []Event + raw []RateLimitEvent to avoid
+// the O(N) enrichment cost of converting all ALS events to Events.
+
+// topBlockedIPsMixed computes top blocked IPs from WAF events and raw ALS events.
+func topBlockedIPsMixed(wafEvents []Event, rlRaw []RateLimitEvent, n int) []TopBlockedIP {
+	type ipStats struct {
+		total, totalBlocked int
+		first, last         time.Time
+		country             string
+	}
+	m := make(map[string]*ipStats)
+
+	recordIP := func(ip, country string, blocked bool, ts time.Time) {
+		st, ok := m[ip]
+		if !ok {
+			st = &ipStats{first: ts, last: ts}
+			m[ip] = st
+		}
+		st.total++
+		if blocked {
+			st.totalBlocked++
+		}
+		if ts.Before(st.first) {
+			st.first = ts
+		}
+		if ts.After(st.last) {
+			st.last = ts
+		}
+		if st.country == "" && country != "" {
+			st.country = country
+		}
+	}
+
+	for i := range wafEvents {
+		ev := &wafEvents[i]
+		recordIP(ev.ClientIP, ev.Country, ev.IsBlocked, ev.Timestamp)
+	}
+	for i := range rlRaw {
+		rle := &rlRaw[i]
+		recordIP(rle.ClientIP, rle.Country, rleIsBlocked(rle.Source), rle.Timestamp)
+	}
+
+	result := make([]TopBlockedIP, 0, len(m))
+	for ip, st := range m {
+		if st.totalBlocked == 0 {
+			continue
+		}
+		rate := 0.0
+		if st.total > 0 {
+			rate = float64(st.totalBlocked) / float64(st.total) * 100
+		}
+		result = append(result, TopBlockedIP{
+			ClientIP:     ip,
+			Country:      st.country,
+			Total:        st.total,
+			TotalBlocked: st.totalBlocked,
+			BlockRate:    rate,
+			FirstSeen:    st.first.Format(time.RFC3339),
+			LastSeen:     st.last.Format(time.RFC3339),
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].TotalBlocked > result[j].TotalBlocked
+	})
+	if len(result) > n {
+		result = result[:n]
+	}
+	return result
+}
+
+// topTargetedURIsMixed computes top targeted URIs from WAF events and raw ALS events.
+func topTargetedURIsMixed(wafEvents []Event, rlRaw []RateLimitEvent, n int) []TopTargetedURI {
+	type uriStats struct {
+		total, totalBlocked int
+		services            map[string]bool
+	}
+	m := make(map[string]*uriStats)
+
+	recordURI := func(uri, service string, blocked bool) {
+		st, ok := m[uri]
+		if !ok {
+			st = &uriStats{services: make(map[string]bool)}
+			m[uri] = st
+		}
+		st.total++
+		if blocked {
+			st.totalBlocked++
+		}
+		if service != "" {
+			st.services[service] = true
+		}
+	}
+
+	for i := range wafEvents {
+		ev := &wafEvents[i]
+		recordURI(ev.URI, ev.Service, ev.IsBlocked)
+	}
+	for i := range rlRaw {
+		rle := &rlRaw[i]
+		recordURI(rle.URI, rle.Service, rleIsBlocked(rle.Source))
+	}
+
+	result := make([]TopTargetedURI, 0, len(m))
+	for uri, st := range m {
+		svcs := make([]string, 0, len(st.services))
+		for svc := range st.services {
+			svcs = append(svcs, svc)
+		}
+		sort.Strings(svcs)
+		result = append(result, TopTargetedURI{
+			URI:          uri,
+			Total:        st.total,
+			TotalBlocked: st.totalBlocked,
+			Services:     svcs,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Total > result[j].Total
+	})
+	if len(result) > n {
+		result = result[:n]
+	}
+	return result
+}
+
+// topCountriesMixed computes top countries from WAF events and raw ALS events.
+// Used as fallback for absolute time range queries where FastSummary isn't available.
+func topCountriesMixed(wafEvents []Event, rlRaw []RateLimitEvent, n int) []CountryCount {
+	counts := make(map[string]*CountryCount)
+
+	recordCountry := func(cc string, blocked bool) {
+		if cc == "" {
+			cc = "XX"
+		}
+		entry, ok := counts[cc]
+		if !ok {
+			entry = &CountryCount{Country: cc}
+			counts[cc] = entry
+		}
+		entry.Count++
+		if blocked {
+			entry.TotalBlocked++
+		}
+	}
+
+	for i := range wafEvents {
+		recordCountry(wafEvents[i].Country, wafEvents[i].IsBlocked)
+	}
+	for i := range rlRaw {
+		recordCountry(rlRaw[i].Country, rleIsBlocked(rlRaw[i].Source))
+	}
+
+	result := make([]CountryCount, 0, len(counts))
+	for _, v := range counts {
+		result = append(result, *v)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Count > result[j].Count
+	})
+	if n > 0 && len(result) > n {
+		result = result[:n]
+	}
+	return result
+}

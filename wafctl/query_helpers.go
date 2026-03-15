@@ -96,6 +96,133 @@ func getRLEvents(als *AccessLogStore, tr timeRange, hours int, rules []RateLimit
 	return als.SnapshotAsEvents(hours, rules)
 }
 
+// getRawRLSnapshot returns raw RateLimitEvents without enrichment.
+// This avoids the O(N) enrichment cost when only a small page is needed.
+func getRawRLSnapshot(als *AccessLogStore, tr timeRange, hours int) []RateLimitEvent {
+	if tr.Valid {
+		return als.snapshotRange(tr.Start, tr.End)
+	}
+	return als.snapshotSince(hours)
+}
+
+// ─── Deferred enrichment helpers ────────────────────────────────────
+
+// rleEventType maps RateLimitEvent.Source to the unified Event.EventType string.
+func rleEventType(source string) string {
+	switch source {
+	case "policy", "ipsum":
+		return "policy_block"
+	case "detect_block":
+		return "detect_block"
+	case "logged":
+		return "logged"
+	case "policy_skip":
+		return "policy_skip"
+	default:
+		return "rate_limited"
+	}
+}
+
+// rleIsBlocked returns true if the RateLimitEvent source represents a blocked request.
+func rleIsBlocked(source string) bool {
+	return source != "logged" && source != "policy_skip"
+}
+
+// rleResponseStatus returns the HTTP status code for a RateLimitEvent.
+func rleResponseStatus(rle *RateLimitEvent) int {
+	switch rle.Source {
+	case "policy", "ipsum", "detect_block":
+		return 403
+	case "policy_skip", "logged":
+		return rle.Status
+	default:
+		return 429
+	}
+}
+
+// rleBlockedBy returns the blocked_by string for a RateLimitEvent.
+func rleBlockedBy(rle *RateLimitEvent) string {
+	switch rle.Source {
+	case "policy", "ipsum":
+		return "policy-engine"
+	case "detect_block":
+		return "anomaly_inbound"
+	default:
+		return ""
+	}
+}
+
+// enrichmentLookup holds pre-computed tag lookup tables for deferred enrichment.
+type enrichmentLookup struct {
+	excTagsByName map[string][]string
+	rlTagsByName  map[string][]string
+	sortedRules   []RateLimitRule
+}
+
+// buildEnrichmentLookup prepares tag lookup tables from the AccessLogStore's
+// associated exclusion store. Built once per request, used for on-demand enrichment.
+// Uses TagsByName() to avoid the expensive deep copy of List().
+func buildEnrichmentLookup(als *AccessLogStore) enrichmentLookup {
+	als.mu.RLock()
+	es := als.exclusionStore
+	als.mu.RUnlock()
+
+	var excTags map[string][]string
+	if es != nil {
+		excTags = es.TagsByName()
+	}
+
+	return enrichmentLookup{
+		excTagsByName: excTags,
+	}
+}
+
+// enrichSingleRLE converts a single RateLimitEvent to a unified Event with
+// tag enrichment. This is the deferred version of enrichAccessEvents — called
+// only for events that land in the result page instead of all events.
+func enrichSingleRLE(rle *RateLimitEvent, lookup *enrichmentLookup) Event {
+	var tags []string
+	switch rle.Source {
+	case "detect_block", "logged":
+		tags = rle.InlineTags
+	case "policy", "ipsum":
+		if t, ok := lookup.excTagsByName[rle.RuleName]; ok {
+			tags = t
+		}
+	case "policy_rl":
+		if t, ok := lookup.rlTagsByName[rle.RuleName]; ok {
+			tags = t
+		}
+	case "policy_skip":
+		tags = rle.InlineTags
+	default:
+		if len(lookup.sortedRules) > 0 {
+			tags = matchEventToRuleTags(*rle, lookup.sortedRules)
+		}
+	}
+	return RateLimitEventToEvent(*rle, tags)
+}
+
+// rleTags returns the tags for a RateLimitEvent using the pre-computed lookup.
+// Used for tag filtering without full Event conversion.
+func rleTags(rle *RateLimitEvent, lookup *enrichmentLookup) []string {
+	switch rle.Source {
+	case "detect_block", "logged":
+		return rle.InlineTags
+	case "policy", "ipsum":
+		return lookup.excTagsByName[rle.RuleName]
+	case "policy_rl":
+		return lookup.rlTagsByName[rle.RuleName]
+	case "policy_skip":
+		return rle.InlineTags
+	default:
+		if len(lookup.sortedRules) > 0 {
+			return matchEventToRuleTags(*rle, lookup.sortedRules)
+		}
+		return nil
+	}
+}
+
 // --- Field filter with operator support ---
 
 // fieldFilter represents a single filter condition with an operator.
@@ -106,6 +233,8 @@ type fieldFilter struct {
 	op         string         // "eq", "neq", "contains", "in", "regex"
 	re         *regexp.Regexp // compiled only when op == "regex"
 	ins        []string       // split + lowered values only when op == "in"
+	valueInt   int            // pre-parsed int for matchIntField (valid when valueIntOK)
+	valueIntOK bool           // true if value is a valid integer
 }
 
 // validFilterOps is the set of recognized filter operators.
@@ -144,6 +273,11 @@ func parseFieldFilter(value, op string) *fieldFilter {
 	}
 	// Pre-lowercase for case-insensitive comparison — avoids per-event allocations.
 	f.valueLower = strings.ToLower(f.value)
+	// Pre-parse integer value for matchIntField — avoids per-event strconv.Atoi.
+	if v, err := strconv.Atoi(f.value); err == nil {
+		f.valueInt = v
+		f.valueIntOK = true
+	}
 	return f
 }
 
@@ -202,7 +336,8 @@ func (f *fieldFilter) matchField(target string) bool {
 }
 
 // matchIntField tests whether an integer target matches the filter.
-// For eq/neq/in this compares ints directly, avoiding per-event strconv.Itoa.
+// For eq/neq this uses the pre-parsed valueInt (cached at parse time),
+// avoiding per-event strconv.Atoi calls.
 // Falls back to string comparison for regex/contains.
 func (f *fieldFilter) matchIntField(target int) bool {
 	if f == nil {
@@ -210,11 +345,9 @@ func (f *fieldFilter) matchIntField(target int) bool {
 	}
 	switch f.op {
 	case "eq":
-		v, err := strconv.Atoi(f.value)
-		return err == nil && target == v
+		return f.valueIntOK && target == f.valueInt
 	case "neq":
-		v, err := strconv.Atoi(f.value)
-		return err != nil || target != v
+		return !f.valueIntOK || target != f.valueInt
 	case "in":
 		ts := strconv.Itoa(target)
 		tl := strings.ToLower(ts)

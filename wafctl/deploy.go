@@ -52,40 +52,52 @@ func ensureWafDir(dir string) error {
 	return nil
 }
 
-// generateOnBoot regenerates the policy engine rules file from stored state
-// at startup. This ensures a stack restart always picks up the latest rules
-// without requiring a manual POST /api/config/deploy.
-// No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
+// generatePolicyData runs the full policy generation pipeline: collect enabled
+// exclusions, build service FQDN map, generate response headers + WAF config,
+// generate policy rules, and apply default rule overrides. Returns the JSON
+// policy data and the number of policy-engine rules, or an error.
+//
+// This is the single source of truth for config generation — used by
+// generateOnBoot, deployAll, handleDeploy, and handleGenerateConfig.
+func generatePolicyData(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, ds *DefaultRuleStore, deployCfg DeployConfig) ([]byte, int, error) {
 	allExclusions := es.EnabledExclusions()
-
-	// Policy engine: generate JSON rules file for the Caddy plugin.
-	// Includes all rule types (allow/block/skip/detect/rate_limit) from the unified ExclusionStore.
 	rlGlobal := cs.Get().RateLimitGlobal
 	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, svcMap)
 	wafCfg := BuildPolicyWafConfig(cs, svcMap)
 	policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 	if err != nil {
-		log.Printf("[boot] warning: failed to generate policy rules: %v", err)
-	} else {
-		policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-		if err != nil {
-			log.Printf("[boot] warning: failed to apply default rule overrides: %v", err)
-		} else if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
-			log.Printf("[boot] warning: failed to write policy rules file: %v", err)
-		} else {
-			policyCount := 0
-			for _, e := range allExclusions {
-				if IsPolicyEngineType(e.Type) {
-					policyCount++
-				}
-			}
-			log.Printf("[boot] regenerated policy rules (%d rules) → %s",
-				policyCount, deployCfg.PolicyRulesFile)
+		return nil, 0, fmt.Errorf("generating policy rules: %w", err)
+	}
+	policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
+	if err != nil {
+		return nil, 0, fmt.Errorf("applying default rule overrides: %w", err)
+	}
+	policyCount := 0
+	for _, e := range allExclusions {
+		if IsPolicyEngineType(e.Type) {
+			policyCount++
 		}
 	}
+	return policyData, policyCount, nil
+}
 
+// generateOnBoot regenerates the policy engine rules file from stored state
+// at startup. This ensures a stack restart always picks up the latest rules
+// without requiring a manual POST /api/config/deploy.
+// No Caddy reload is performed — Caddy reads the files fresh on its own start.
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
+	policyData, policyCount, err := generatePolicyData(cs, es, ls, cspStore, secStore, corsStore, ds, deployCfg)
+	if err != nil {
+		log.Printf("[boot] warning: %v", err)
+		return
+	}
+	if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
+		log.Printf("[boot] warning: failed to write policy rules file: %v", err)
+		return
+	}
+	log.Printf("[boot] regenerated policy rules (%d rules) → %s",
+		policyCount, deployCfg.PolicyRulesFile)
 }
 
 // deployAll regenerates the policy engine rules file from all stores.
@@ -96,29 +108,12 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspSto
 	deployMu.Lock()
 	defer deployMu.Unlock()
 
-	allExclusions := es.EnabledExclusions()
-
-	// Generate policy engine rules file (all rule types from unified ExclusionStore).
-	rlGlobal := cs.Get().RateLimitGlobal
-	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, svcMap)
-	wafCfg := BuildPolicyWafConfig(cs, svcMap)
-	policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+	policyData, policyCount, err := generatePolicyData(cs, es, ls, cspStore, secStore, corsStore, ds, deployCfg)
 	if err != nil {
-		return fmt.Errorf("generating policy rules: %w", err)
-	}
-	policyData, err = ApplyDefaultRuleOverrides(policyData, ds)
-	if err != nil {
-		return fmt.Errorf("applying default rule overrides: %w", err)
+		return err
 	}
 	if err := atomicWriteFile(deployCfg.PolicyRulesFile, policyData, 0644); err != nil {
 		return fmt.Errorf("writing policy rules file: %w", err)
-	}
-	policyCount := 0
-	for _, e := range allExclusions {
-		if IsPolicyEngineType(e.Type) {
-			policyCount++
-		}
 	}
 	log.Printf("[deploy] wrote policy rules (%d rules) → %s",
 		policyCount, deployCfg.PolicyRulesFile)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 )
 
 // ─── Handlers: Rate Limit Analytics ────────────────────────────────
@@ -10,7 +11,14 @@ import (
 // RateLimitRuleStore. They are kept for analytics/advisor endpoints.
 
 func handleRLRuleHits(als *AccessLogStore, es *ExclusionStore) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := als.generation.Load()
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		hours := parseHours(r)
 		exclusions := es.List()
 		// Build a []RateLimitRule from rate_limit exclusions for tag enrichment.
@@ -25,6 +33,7 @@ func handleRLRuleHits(als *AccessLogStore, es *ExclusionStore) http.HandlerFunc 
 			}
 		}
 		hits := als.RuleHits(rules, hours)
+		cache.set(cacheKey, hits, gen, 10*time.Second)
 		writeJSON(w, http.StatusOK, hits)
 	}
 }
@@ -52,14 +61,30 @@ func handleRLAdvisor(als *AccessLogStore) http.HandlerFunc {
 // --- Rate Limit Analytics handlers ---
 
 func handleRLSummary(als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := als.generation.Load()
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		hours := parseHours(r)
-		writeJSON(w, http.StatusOK, als.Summary(hours))
+		result := als.Summary(hours)
+		cache.set(cacheKey, result, gen, 10*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
 func handleRLEvents(als *AccessLogStore) http.HandlerFunc {
+	cache := newResponseCache(50)
 	return func(w http.ResponseWriter, r *http.Request) {
+		gen := als.generation.Load()
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		q := r.URL.Query()
 		service := q.Get("service")
 		client := q.Get("client")
@@ -73,6 +98,8 @@ func handleRLEvents(als *AccessLogStore) http.HandlerFunc {
 			offset = 0
 		}
 		hours := parseHours(r)
-		writeJSON(w, http.StatusOK, als.FilteredEvents(service, client, method, limit, offset, hours))
+		result := als.FilteredEvents(service, client, method, limit, offset, hours)
+		cache.set(cacheKey, result, gen, 5*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }

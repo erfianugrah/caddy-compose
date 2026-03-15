@@ -99,12 +99,9 @@ func (s *GeneralLogStore) appendEventsToJSONL(events []GeneralLogEvent) {
 		if err != nil {
 			continue
 		}
+		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
 			log.Printf("error writing general event to JSONL: %v", err)
-			return
-		}
-		if _, err := f.Write([]byte{'\n'}); err != nil {
-			log.Printf("error writing newline to general JSONL: %v", err)
 			return
 		}
 	}
@@ -117,25 +114,30 @@ func (s *GeneralLogStore) compactEventFileLocked() {
 	if s.eventFile == "" {
 		return
 	}
-	tmp := s.eventFile + ".tmp"
+	// Snapshot events under caller's lock, then write to disk.
+	snapshot := make([]GeneralLogEvent, len(s.events))
+	copy(snapshot, s.events)
+	writeCompactedGeneralEvents(s.eventFile, snapshot)
+}
+
+// writeCompactedGeneralEvents atomically rewrites a JSONL file from a snapshot.
+func writeCompactedGeneralEvents(path string, events []GeneralLogEvent) {
+	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		log.Printf("error creating temp general event file for compaction: %v", err)
 		return
 	}
 
-	count := len(s.events)
+	count := len(events)
 	var writeErr error
-	for i := range s.events {
-		data, err := json.Marshal(s.events[i])
+	for i := range events {
+		data, err := json.Marshal(events[i])
 		if err != nil {
 			continue
 		}
+		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
-			writeErr = err
-			break
-		}
-		if _, err := f.Write([]byte{'\n'}); err != nil {
 			writeErr = err
 			break
 		}
@@ -155,7 +157,7 @@ func (s *GeneralLogStore) compactEventFileLocked() {
 		return
 	}
 	f.Close()
-	if err := os.Rename(tmp, s.eventFile); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		log.Printf("error renaming compacted general event file: %v", err)
 		return
 	}
