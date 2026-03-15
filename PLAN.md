@@ -167,11 +167,16 @@ type RuleExclusion struct {
 - [x] `deployConfig()` uses unified `/api/deploy`
 - [x] Old endpoints (`/api/exclusions/*`, `/api/config/deploy`) kept as aliases
 
-**Remaining cleanup (non-blocking):**
-- [ ] Remove `RateLimitRuleStore` and its handlers (dead code after consumers switch)
-- [ ] Remove `models_ratelimit.go` (struct definitions moved to `models_exclusions.go`)
-- [ ] Mode field removal (40+ test touchpoints, zero functional impact)
-- [ ] Update backup/restore for unified rules + add DefaultRuleStore overrides
+**Cleanup completed:**
+- [x] Deleted `rl_rules.go` (491 lines), `rl_rules_test.go` (739), `rl_handlers_test.go` (342)
+      — net -1,913 lines across 25 files
+- [x] Removed all `/api/rate-rules` CRUD routes; kept analytics endpoints (hits, advisor)
+- [x] Deploy reads `RateLimitGlobal` from `ConfigStore` (not deleted RL store)
+- [x] Policy generator no longer takes `rlRules` param; unified loop handles all types
+- [x] Mode field deprecated (`json:"mode,omitempty"`), no longer set by defaults
+- [x] Backup includes `default_rule_overrides`; restore gracefully handles them
+- [x] All e2e tests updated to `/api/rules` with `type: "rate_limit"` payloads
+- [x] Full suite: 529 Go unit tests, 348 frontend tests, 106 e2e tests — all pass
 
 ### Phase 3: Response-Phase Policy Rules
 

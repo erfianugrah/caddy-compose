@@ -172,5 +172,9 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 - On startup, `generateOnBoot()` regenerates all config from stored JSON state.
 - All stores use JSON file persistence with `sync.RWMutex` protection.
 - Version tags must stay in sync across: `Makefile`, `compose.yaml`, `README.md`, `.github/workflows/build.yml`.
-- Policy engine handles all rule evaluation (allow/block/detect/rate_limit). Coraza has been removed.
+- **Unified rule store**: `ExclusionStore` handles ALL rule types (allow/block/skip/detect/rate_limit).
+  `RuleExclusion` is the single model. `/api/rules` is the canonical CRUD endpoint.
+  `/api/deploy` is the single deploy endpoint. Old `/api/exclusions` kept as alias.
+  `RateLimitRuleStore` has been removed — rate limit rules use `type: "rate_limit"` on `RuleExclusion`.
+- Policy engine handles all rule evaluation (allow/block/skip/detect/rate_limit). Coraza has been removed.
 - Service FQDN resolution: `BuildServiceFQDNMap()` parses Caddyfile to map short names → FQDNs.
