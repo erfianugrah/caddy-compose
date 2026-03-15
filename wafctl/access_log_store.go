@@ -666,15 +666,21 @@ func (s *AccessLogStore) evict() {
 			}
 		}
 		evicted := idx
-		remaining := make([]RateLimitEvent, len(s.events)-idx)
+		total := len(s.events)
+		remaining := make([]RateLimitEvent, total-idx)
 		copy(remaining, s.events[idx:])
 		s.events = remaining
-		log.Printf("evicted %d events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
 		s.generation.Add(1)
-		// Compact the JSONL file synchronously to avoid racing with
-		// appendEventsToJSONL on the next tail cycle. Use the locked
-		// variant since we already hold s.mu.
-		s.compactEventFileLocked()
+
+		// Only compact when eviction is significant (>5% or >10K events removed).
+		// Rewriting 460MB of JSONL for 21 evicted events out of 208K is wasteful.
+		evictPct := float64(evicted) / float64(total) * 100
+		if evicted > 10000 || evictPct > 5.0 {
+			log.Printf("evicted %d events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
+			s.compactEventFileLocked()
+		} else {
+			log.Printf("evicted %d events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
+		}
 	}
 }
 

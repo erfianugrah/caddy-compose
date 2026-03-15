@@ -95,30 +95,24 @@ func runServe() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
+	// ── Create stores (lightweight — no JSONL loading yet) ──
 	store := NewStore()
-	store.SetEventFile(envOr("WAF_EVENT_FILE", "/data/events.jsonl"))
 	store.SetMaxAge(maxAge)
 	store.SetGeoIP(geoStore)
-	store.StartEviction(ctx, tailInterval)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
 	accessLogStore.SetOffsetFile(envOr("WAF_ACCESS_OFFSET_FILE", "/data/.access-log-offset"))
-	accessLogStore.SetEventFile(envOr("WAF_ACCESS_EVENT_FILE", "/data/access-events.jsonl"))
 	accessLogStore.SetMaxAge(maxAge)
 	accessLogStore.SetGeoIP(geoStore)
-	// ExclusionStore wired up below after it's created (line order dependency).
 
 	generalLogStore := NewGeneralLogStore(combinedAccessLog)
 	generalLogStore.SetOffsetFile(envOr("WAF_GENERAL_LOG_OFFSET_FILE", "/data/.general-log-offset"))
-	generalLogStore.SetEventFile(envOr("WAF_GENERAL_LOG_FILE", "/data/general-events.jsonl"))
 	generalLogStore.SetMaxAge(generalMaxAge)
 	generalLogStore.SetGeoIP(geoStore)
-	generalLogStore.StartTailing(ctx, tailInterval)
 
+	// Config stores load instantly (small JSON files).
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	accessLogStore.SetExclusionStore(exclusionStore)
-	accessLogStore.StartTailing(ctx, tailInterval)
-
 	configStore := NewConfigStore(configFile)
 	cspStore := NewCSPStore(cspFile)
 	secHeaderStore := NewSecurityHeaderStore(secHeadersFile)
@@ -126,29 +120,20 @@ func runServe() int {
 	managedListStore := NewManagedListStore(managedListsFile, managedListsDir)
 	defaultRuleStore := NewDefaultRuleStore(defaultRulesFile, defaultRulesOverridesFile)
 
-	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
-	// stored state so a stack restart always picks up the latest generator output.
-	// No Caddy reload is needed because Caddy reads fresh on its own startup.
+	// Generate-on-boot: regenerate policy-rules.json from stored config so
+	// Caddy's policy engine has fresh rules on startup. This only reads small
+	// config files (exclusions, config, CSP, etc.) — not event stores.
 	generateOnBoot(configStore, exclusionStore, cspStore, secHeaderStore, corsStore, managedListStore, defaultRuleStore, deployCfg)
 
 	blocklistStore := NewBlocklistStore()
-
-	// Sync IPsum IPs to per-level managed lists after each blocklist refresh.
 	blocklistStore.SetOnRefresh(func(ipsByScore map[int][]string) {
 		managedListStore.SyncIPsum(ipsByScore)
 	})
-
-	// After managed list sync, regenerate policy-rules.json so the plugin
-	// picks up updated IP lists, then reload Caddy.
 	blocklistStore.SetOnDeploy(func() error {
 		return deployAll(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg)
 	})
 
-	// Populate in-memory IP set from existing managed lists (for Check API).
-	blocklistStore.loadFromLists(managedListStore)
-
 	// Schedule daily blocklist refresh at the configured UTC hour (default 06:00).
-	// Replaces the old cron + shell script approach that ran in the caddy container.
 	refreshHour := 6
 	if h := envOr("WAF_BLOCKLIST_REFRESH_HOUR", ""); h != "" {
 		if n, err := strconv.Atoi(h); err == nil && n >= 0 && n <= 23 {
@@ -158,6 +143,26 @@ func runServe() int {
 		}
 	}
 	blocklistStore.StartScheduledRefresh(ctx, refreshHour)
+
+	// ── Background loading of heavy event stores ──
+	// Load JSONL event files and blocklist IPs in parallel goroutines so
+	// the HTTP server starts immediately. Handlers return empty results
+	// until loading completes (stores are mutex-protected).
+	go func() {
+		store.SetEventFile(envOr("WAF_EVENT_FILE", "/data/events.jsonl"))
+		store.StartEviction(ctx, tailInterval)
+	}()
+	go func() {
+		accessLogStore.SetEventFile(envOr("WAF_ACCESS_EVENT_FILE", "/data/access-events.jsonl"))
+		accessLogStore.StartTailing(ctx, tailInterval)
+	}()
+	go func() {
+		generalLogStore.SetEventFile(envOr("WAF_GENERAL_LOG_FILE", "/data/general-events.jsonl"))
+		generalLogStore.StartTailing(ctx, tailInterval)
+	}()
+	go func() {
+		blocklistStore.loadFromLists(managedListStore)
+	}()
 
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)

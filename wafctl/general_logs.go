@@ -306,12 +306,19 @@ func (s *GeneralLogStore) evict() {
 	}
 	if idx > 0 {
 		evicted := idx
-		remaining := make([]GeneralLogEvent, len(s.events)-idx)
+		total := len(s.events)
+		remaining := make([]GeneralLogEvent, total-idx)
 		copy(remaining, s.events[idx:])
 		s.events = remaining
-		log.Printf("evicted %d general log events older than %s (%d remaining)", evicted, s.maxAge, len(s.events))
 		s.generation.Add(1)
-		s.compactEventFileLocked()
+
+		evictPct := float64(evicted) / float64(total) * 100
+		if evicted > 10000 || evictPct > 5.0 {
+			log.Printf("evicted %d general log events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
+			s.compactEventFileLocked()
+		} else {
+			log.Printf("evicted %d general log events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
+		}
 	}
 }
 

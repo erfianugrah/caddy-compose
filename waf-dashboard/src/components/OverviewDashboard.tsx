@@ -120,6 +120,7 @@ export default function OverviewDashboard() {
   const [events, setEvents] = useState<WAFEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsTotal, setEventsTotal] = useState(0);
+  const [eventsHasMore, setEventsHasMore] = useState(false); // true when total=-1 (more pages exist)
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [eventsPage, setEventsPage] = useState(1);
   const eventsPerPage = 20;
@@ -218,7 +219,9 @@ export default function OverviewDashboard() {
     })
       .then((resp) => {
         setEvents(resp.events);
-        setEventsTotal(resp.total);
+        // total=-1 is a sentinel meaning "more results exist but exact count unknown"
+        setEventsHasMore(resp.total < 0);
+        setEventsTotal(resp.total >= 0 ? resp.total : resp.events.length);
         setEventsError(null);
       })
       .catch((err) => {
@@ -239,7 +242,10 @@ export default function OverviewDashboard() {
     setEventsPage(1);
   }, [zoomTimeParams]);
 
-  const totalEventsPages = Math.max(1, Math.ceil(eventsTotal / eventsPerPage));
+  // When hasMore is true (total=-1), allow advancing beyond the known page count.
+  const totalEventsPages = eventsHasMore
+    ? eventsPage + 1  // always allow next page
+    : Math.max(1, Math.ceil(eventsTotal / eventsPerPage));
 
   const overviewEvtSortComparators = useMemo(() => ({
     time: (a: WAFEvent, b: WAFEvent) => a.timestamp.localeCompare(b.timestamp),
@@ -682,8 +688,8 @@ export default function OverviewDashboard() {
               <CardTitle className={T.cardTitle}>Security Events</CardTitle>
               <CardDescription>
                 {zoomTimeParams
-                  ? `Showing ${eventsTotal.toLocaleString()} events in selected time window`
-                  : `${eventsTotal.toLocaleString()} events — click a row to inspect`}
+                  ? `Showing ${eventsTotal.toLocaleString()}${eventsHasMore ? "+" : ""} events in selected time window`
+                  : `${eventsTotal.toLocaleString()}${eventsHasMore ? "+" : ""} events — click a row to inspect`}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -826,10 +832,10 @@ export default function OverviewDashboard() {
         </CardContent>
 
         {/* Pagination */}
-        {totalEventsPages > 1 && (
+        {(totalEventsPages > 1 || eventsHasMore) && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-lovelace-800">
             <span className="text-xs text-muted-foreground">
-              Page {eventsPage} of {totalEventsPages} ({eventsTotal.toLocaleString()} items)
+              Page {eventsPage}{eventsHasMore ? "+" : ` of ${totalEventsPages}`} ({eventsTotal.toLocaleString()}{eventsHasMore ? "+" : ""} items)
             </span>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage(1)} disabled={eventsPage <= 1}>
