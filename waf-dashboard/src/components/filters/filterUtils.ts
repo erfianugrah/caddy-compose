@@ -25,6 +25,7 @@ export function parseFiltersFromURL(search: string): DashboardFilter[] {
     { key: "event_id", field: "event_id" },
     { key: "request_id", field: "request_id" },
     { key: "tag", field: "tag" },
+    { key: "blocked_by", field: "blocked_by" },
   ];
 
   for (const { key, alias, field } of fieldMap) {
@@ -58,6 +59,7 @@ export function filtersToSummaryParams(filters: DashboardFilter[]): Partial<Summ
       case "country":     params.country = f.value;     params.country_op = f.operator;     break;
       case "request_id":  params.request_id = f.value;  params.request_id_op = f.operator;  break;
       case "tag":         params.tag = f.value;         params.tag_op = f.operator;         break;
+      case "blocked_by":  params.blocked_by = f.value;  params.blocked_by_op = f.operator;  break;
     }
   }
   return params;
@@ -79,6 +81,7 @@ export function filtersToEventsParams(filters: DashboardFilter[]): Partial<Event
       case "event_id":    params.id = f.value;                                                                  break;
       case "request_id":  params.request_id = f.value;                                                            break;
       case "tag":         params.tag = f.value;                             params.tag_op = f.operator;         break;
+      case "blocked_by":  params.blocked_by = f.value;                      params.blocked_by_op = f.operator;  break;
     }
   }
   return params;

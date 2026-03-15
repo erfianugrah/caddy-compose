@@ -60,6 +60,7 @@ export const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
   service:     ["eq", "neq", "contains", "in", "regex"],
   client:      ["eq", "neq", "in"],
   event_type:  ["eq", "in"],
+  blocked_by:  ["eq", "neq", "in"],
   method:      ["eq", "in"],
   rule_name:   ["eq", "contains", "regex"],
   uri:         ["eq", "neq", "contains", "regex"],
@@ -70,10 +71,17 @@ export const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
   tag:         ["eq", "neq", "contains", "in", "regex"],
 };
 
+export const BLOCKED_BY_OPTIONS: { value: string; label: string }[] = [
+  { value: "anomaly_inbound", label: "Anomaly (Inbound)" },
+  { value: "anomaly_outbound", label: "Anomaly (Outbound)" },
+  { value: "direct", label: "Direct (Policy Rule)" },
+];
+
 export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   service: { label: "Service", placeholder: "Search services...", dynamic: true, dynamicKey: "services" },
   client: { label: "Client IP", placeholder: "e.g. 192.168.1.100" },
   event_type: { label: "Event Type", placeholder: "Select type", options: EVENT_TYPE_OPTIONS },
+  blocked_by: { label: "Blocked By", placeholder: "Select source", options: BLOCKED_BY_OPTIONS },
   method: { label: "Method", placeholder: "Select method", options: METHOD_OPTIONS },
   rule_name: { label: "Policy Rule", placeholder: "Search rules...", dynamic: true, dynamicKey: "ruleNames" },
   uri: { label: "Path", placeholder: "e.g. /api/v1/users" },
@@ -84,7 +92,7 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   tag: { label: "Tag", placeholder: "e.g. scanner, blocklist" },
 };
 
-export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "tag", "method", "rule_name", "uri", "status_code", "country"];
+export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "blocked_by", "tag", "method", "rule_name", "uri", "status_code", "country"];
 
 export const WAF_FILTER_CONFIG: FilterConfig<FilterField> = {
   fields: FILTER_FIELDS,

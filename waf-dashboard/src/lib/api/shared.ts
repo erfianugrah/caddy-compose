@@ -81,6 +81,8 @@ export interface FilterableParams extends TimeRangeParams {
   request_id_op?: FilterOp;
   tag?: string;
   tag_op?: FilterOp;
+  blocked_by?: string;
+  blocked_by_op?: FilterOp;
 }
 
 /** Apply shared filter and time-range params to URLSearchParams. */
@@ -103,6 +105,7 @@ export function applyFilterParams(sp: URLSearchParams, params?: FilterableParams
     ["country", params.country, params.country_op],
     ["request_id", params.request_id, params.request_id_op],
     ["tag", params.tag, params.tag_op],
+    ["blocked_by", params.blocked_by, params.blocked_by_op],
   ];
   for (const [field, value, op] of filters) {
     if (value) sp.set(field, value);
