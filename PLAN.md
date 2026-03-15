@@ -228,33 +228,25 @@ manipulation are all response-phase policies.** They should NOT be separate
 config stores — they should be expressible as response-phase rules in the
 unified store, or as a new `response_header` rule type in the policy engine.
 
-**CORS/Cache stores removed** — initially built as separate stores (`cors_store.go`,
-`cache_store.go`), then reverted. The separate-store approach duplicates the
-config model (stores + rules) and requires dedicated endpoints for each header type.
+**Architecture decision:** CSP, security headers, and CORS are **structured config** (not
+`response_header` rules). They need rich UX (CSP directive composition, security profiles,
+CORS origin validation + preflight). The `response_header` rule type is for ad-hoc headers
+(Cache-Control overrides, custom headers). Cache-control rules can also use response_header.
 
-**Target architecture:**
-- New rule type `type: "response_header"` with `phase: "outbound"`
-- Conditions match when to apply (host, path, response_status)
-- Action sets/adds/removes response headers
-- CSP, security headers, CORS, cache-control become rule templates/presets
-  that generate response_header rules
-- Advisors help users create appropriate rules for their services
+**CORS: DONE as structured config (like CSP/SecurityHeaders):**
+- [x] Plugin: `CORSConfig` section in `ResponseHeaderConfig` with per-service config
+- [x] Plugin: preflight handling (OPTIONS + Origin + ACRM → 204) before WAF evaluation
+- [x] Plugin: origin validation (exact match + regex patterns), credentials, max-age
+- [x] Plugin: CORS headers on normal responses via `applyResponseHeaders()`
+- [x] wafctl: `CORSStore` with `GET/PUT /api/cors`, deploy wiring, FQDN resolution
+- [x] Frontend: `cors.ts` API module
+- [x] E2E: TestCORSStoreAPI (get, update, deploy)
 
-**Migration path (existing → target):**
-- CSPStore + SecurityHeaderStore remain for now (production deployed)
-- They continue to generate `response_headers.csp` and `response_headers.security`
-  sections in policy-rules.json
-- New `response_header` rules can coexist alongside the legacy sections
-- Eventually: migrate CSP/security header configs to rules, remove legacy stores
-
-**Plugin (caddy-policy-engine — DONE):**
-- [x] `response_header` rule type: evaluate conditions on response, set/add/remove/default headers
-- [x] `applyRuleHeaders()`: set (overwrite), add (append), remove (delete), default (set-if-absent)
-- [x] Outbound evaluation handles: detect (scoring), block (403), response_header, allow (skip)
-
-**Plugin (remaining):**
-- [ ] CORS preflight handling as a built-in response_header behavior
-- [ ] CSP directive composition in response_header rules (or keep as plugin feature)
+**response_header rule type: DONE**
+- [x] Plugin: evaluate conditions on response, set/add/remove/default headers
+- [x] Plugin: `applyRuleHeaders()` applied inline (multiple rules fire)
+- [x] Plugin: outbound evaluation handles detect/block/response_header/rate_limit/allow
+- [x] wafctl: model, validation, policy generator, frontend types, e2e tests
 
 **wafctl (DONE):**
 - [x] `response_header` added to validExclusionTypes + policyEngineTypes
@@ -264,16 +256,15 @@ config model (stores + rules) and requires dedicated endpoints for each header t
 - [x] Frontend types updated (ExclusionType, Exclusion, ExclusionCreateData, mappings)
 - [x] E2E: TestResponseHeaderRuleCRUD (7 subtests)
 
-**Remaining (wafctl):**
-- [ ] Rule templates/presets: "CORS for *.erfi.io", "Cache static assets", etc.
-- [ ] Migrate CSPStore → response_header rules
-- [ ] Migrate SecurityHeaderStore → response_header rules
-- [ ] Remove `/csp`, `/headers` pages, fold into advisor/settings
+**Remaining:**
+- [ ] Cache-control rules via `response_header` rule templates (pattern-based Cache-Control)
+- [ ] Rule templates/presets: "Cache static assets", "Security headers baseline", etc.
+- [ ] CORS/CSP/Headers UI pages (keep as structured config pages, not merged)
 
-**Caddyfile cleanup (after plugin implements):**
-- [ ] Remove `(static_cache)` snippet
-- [ ] Remove `(cors)` snippet
-- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)`
+**Caddyfile cleanup (after deploying plugin v0.17.0):**
+- [ ] Remove `(cors)` snippet (replaced by plugin CORS)
+- [ ] Remove `(static_cache)` snippet (can use response_header rules)
+- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` (plugin handles CORS)
 
 ### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
 
@@ -285,7 +276,9 @@ translate to `/api/rules` with `type: "rate_limit"` filtering.
 
 - [x] Assessed merge vs keep-separate — keeping separate (17-22h merge vs 2-3h fix)
 - [x] Fixed `reorderRLRules` to preserve non-RL rules in unified store
-- [ ] Bulk select, move-to-edge, inline position editing (future enhancement)
+- [x] Bulk selection: checkboxes, header checkbox, shift-click range select
+- [x] Bulk actions: enable, disable, delete with auto-deploy
+- [ ] Move-to-edge, inline position editing (future enhancement)
 
 ### Phase 6: CRS Automation — DONE
 
