@@ -270,11 +270,12 @@ CORS origin validation + preflight). The `response_header` rule type is for ad-h
 - [x] Template browser page (`/templates`): card grid by category, preview, one-click apply
 - [x] Nav entries in Security section sidebar
 
-**Caddyfile cleanup (plugin v0.17.0 deployed):**
-- [ ] Remove `(cors)` snippet → plugin CORS handles preflight + origin validation
-- [ ] Remove `(static_cache)` snippet → apply cache-static-assets rule template
-- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` → plugin handles CORS
-- [ ] Configure CORS via `/api/cors` with production origins
+**Caddyfile cleanup (plugin v0.17.0 — e2e done, production pending):**
+- [x] E2E Caddyfile: removed `(cors)` and `(static_cache)` snippets
+- [ ] Production Caddyfile: remove `(cors)` snippet (TODO comment added)
+- [ ] Production Caddyfile: remove `(static_cache)` snippet (TODO comment added)
+- [ ] Production Caddyfile: remove `header_down -Access-Control-*` from `(proxy_headers)`
+- [ ] Configure CORS via `PUT /api/cors` with production origins (one-time setup)
 
 ### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
 
