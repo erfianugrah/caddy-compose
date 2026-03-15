@@ -4,10 +4,10 @@
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound, auto-converted at Docker build time), 5-pass evaluation (allow → block →
-skip → rate_limit → detect), outbound anomaly scoring (response headers + body),
-per-service category masks with frontend UI, 6 negated operators, managed lists, IPsum
-blocklist (8 levels, 618K IPs), unified /policy page (WAF rules + rate limits tabs),
-unified rule store (`/api/rules` + `/api/deploy`), and e2e CI pipeline
+skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
+unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
+rule types (Phase 3), CORS + Cache stores wired into policy-rules.json (Phase 4),
+managed lists, IPsum blocklist (8 levels, 618K IPs), and e2e CI pipeline
 (106 e2e tests, 500 Go unit tests, 326 frontend tests).
 
 ---
@@ -237,22 +237,21 @@ Move header manipulation and caching rules from Caddyfile snippets into
 }
 ```
 
-**wafctl stores:**
-- [ ] `CustomHeaderStore` — request/response header manipulation per-service
-- [ ] `CORSStore` — CORS config per-service (or fold into CustomHeaderStore)
-- [ ] `CacheStore` — path-based Cache-Control rules per-service
-- [ ] All feed into `BuildPolicyResponseHeaders()` → `policy-rules.json`
+**wafctl stores (DONE):**
+- [x] `CORSStore` — per-service CORS config (origins, methods, headers, max-age, credentials)
+- [x] `CacheStore` — path-based Cache-Control rules with set/default modes
+- [x] Both wired into `BuildPolicyResponseHeaders()` → `response_headers.cors` + `response_headers.cache`
+- [x] API endpoints: `GET/PUT /api/cors`, `GET/PUT /api/cache`
+- [x] Frontend API modules: `cors.ts`, `cache.ts`
+- [ ] `CustomHeaderStore` — request/response header manipulation (deferred — not in Caddyfile today)
 
-**Plugin:**
-- [ ] Parse and apply `custom` response headers (set/add/remove)
+**Plugin (separate repo, not yet implemented):**
 - [ ] Parse and apply `cors` config (preflight handling, origin validation)
-- [ ] Parse and apply `request_headers` (set/add/remove before proxying)
-- [ ] Parse and apply `cache_control` rules (path matching → Cache-Control header)
+- [ ] Parse and apply `cache` config (path matching, set-if-absent)
 
 **Frontend:**
-- [ ] Custom headers UI (global + per-service set/add/remove)
-- [ ] CORS config UI (origins, methods, headers, max-age)
-- [ ] Cache rules UI (path patterns, Cache-Control values)
+- [ ] CORS config UI page (origins, methods, headers, max-age, per-service)
+- [ ] Cache config UI page (path patterns, Cache-Control values, per-service)
 
 **Caddyfile cleanup:**
 - [ ] Remove `(static_cache)` snippet after plugin handles it
