@@ -1,13 +1,16 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.32.0 / caddy 3.31.0 / plugin v0.16.0)
+## Current State (v2.32.0 / caddy 3.31.0 / plugin v0.17.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound, auto-converted at Docker build time), 5-pass evaluation (allow → block →
 skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
-rule types, managed lists, IPsum blocklist (8 levels, 618K IPs), CRS auto-update
-response_header rule type, structured CORS, rule templates, all plugin
+rule types (including outbound rate limiting), managed lists, IPsum blocklist
+(8 levels, 618K IPs), CRS auto-update, `response_header` rule type, structured CORS,
+rule templates, incremental summary counters (per-hour buckets), mode field fully
+removed, Caddyfile cleaned (CORS/cache snippets removed), move-to-edge + inline
+position editing, outbound score display, blocked_by filtering, all plugin
 limitations resolved (v0.17.0), and e2e CI pipeline (116 e2e tests,
 500 Go unit tests, 326 frontend tests).
 
@@ -141,7 +144,7 @@ response-phase rules in Phase 4).
 - [x] `SecurityHeaderStore.deepCopy` — field-by-field copy via `copyStringMap`
 - [x] `IPLookupPanel` — split 893→8 files under `ip-lookup/`, recharts isolated
 - [x] `operatorChip()` — investigated, not a bug (FilterOp matches events API)
-- [ ] Mode field removal — deferred to Phase 2h (40+ test touchpoints, zero impact)
+- [x] Mode field fully removed from WAFServiceSettings + all tests + frontend
 
 ### Phase 2: Rule Store Unification (Backend) — DONE
 
@@ -212,7 +215,7 @@ rules work on response data (status codes, headers, body).
       `matchConditionResponse()` instead of calling `evalOperator()` directly
 - [x] `matchRuleResponse()` + `matchConditionResponse()` — proper AND/OR, negate,
       transforms, absent-field semantics for outbound rules
-- [ ] Rate limit rules with `phase: "outbound"` — count responses by status code (future)
+- [x] Rate limit rules with `phase: "outbound"` — count responses by status code (plugin v0.17.0)
 
 **wafctl (DONE):**
 - [x] `Phase` field on `RuleExclusion` ("inbound"/"outbound"), validated + wired to PolicyRule
@@ -270,11 +273,11 @@ CORS origin validation + preflight). The `response_header` rule type is for ad-h
 - [x] Template browser page (`/templates`): card grid by category, preview, one-click apply
 - [x] Nav entries in Security section sidebar
 
-**Caddyfile cleanup (plugin v0.17.0 — e2e done, production pending):**
+**Caddyfile cleanup (plugin v0.17.0 — DONE):**
 - [x] E2E Caddyfile: removed `(cors)` and `(static_cache)` snippets
-- [ ] Production Caddyfile: remove `(cors)` snippet (TODO comment added)
-- [ ] Production Caddyfile: remove `(static_cache)` snippet (TODO comment added)
-- [ ] Production Caddyfile: remove `header_down -Access-Control-*` from `(proxy_headers)`
+- [x] Production Caddyfile: removed `(cors)` snippet
+- [x] Production Caddyfile: removed `(static_cache)` snippet
+- [x] Production Caddyfile: removed `header_down -Access-Control-*` from `(proxy_headers)`
 - [ ] Configure CORS via `PUT /api/cors` with production origins (one-time setup)
 
 ### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
@@ -289,7 +292,7 @@ translate to `/api/rules` with `type: "rate_limit"` filtering.
 - [x] Fixed `reorderRLRules` to preserve non-RL rules in unified store
 - [x] Bulk selection: checkboxes, header checkbox, shift-click range select
 - [x] Bulk actions: enable, disable, delete with auto-deploy
-- [ ] Move-to-edge, inline position editing (future enhancement)
+- [x] Move-to-edge + inline position editing in RateLimitsPanel
 
 ### Phase 6: CRS Automation — DONE
 
@@ -297,7 +300,6 @@ translate to `/api/rules` with `type: "rate_limit"` filtering.
 - [x] Fetches latest release, compares with CRS_VERSION in build.yml
 - [x] Auto-opens PR with version bump + changelog link
 - [x] Duplicate PR detection, manual trigger support
-- [ ] CRS test suite accuracy validation (future)
 
 ---
 
@@ -399,13 +401,13 @@ Two operating modes:
 7. E2E tests: WS frame inspection, SSE event inspection (~1 day)
 
 ### Performance
-- [ ] Incremental summary computation — running counters on Store, O(1) reads
+- [x] Incremental summary computation — per-hour buckets, O(hours) reads (summary_counters.go)
 
 ### Features
-- [ ] Custom rulesets — native policy-engine rule format for user-created detect rules
-- [ ] CRS accuracy evaluation against CRS test suite
-- [ ] Outbound score display in event detail panel
-- [ ] Filter events by inbound/outbound phase
+- [x] Custom rulesets — users create detect rules via /api/rules, templates via /api/rules/templates
+- [ ] CRS accuracy evaluation via CRS regression test suite (opt-in, set CRS_REGRESSION=1)
+- [x] Outbound score display — already in EventDetailPanel + EventsTable Score column
+- [x] Filter events by blocked_by (anomaly_inbound/outbound/direct) in DashboardFilterBar
 
 ### Operational
 - [ ] Audit each service's built-in auth and document decisions
