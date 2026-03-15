@@ -203,7 +203,7 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 	}
 
 	// Map variables → fields
-	fields, _, varIssues := mapVariablesToConditions(rule.Variables, rule.Operator)
+	fields, excludeVars, varIssues := mapVariablesToConditions(rule.Variables, rule.Operator)
 	for _, issue := range varIssues {
 		if strings.HasPrefix(issue, "unknown variable") {
 			varName := strings.TrimPrefix(issue, "unknown variable ")
@@ -249,6 +249,26 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		operatorValue = fixed
 	}
 
+	// Convert negation variable exclusions to exclude patterns.
+	// CRS uses !REQUEST_COOKIES:/__utm/ to skip specific variables.
+	var excludes []string
+	for _, v := range excludeVars {
+		var prefix string
+		switch v.Name {
+		case "REQUEST_COOKIES", "REQUEST_COOKIES_NAMES":
+			prefix = "cookie:"
+		case "ARGS", "ARGS_GET", "ARGS_POST", "ARGS_NAMES":
+			prefix = "args:"
+		case "REQUEST_HEADERS":
+			prefix = "header:"
+		default:
+			continue
+		}
+		if v.Key != "" {
+			excludes = append(excludes, prefix+v.Key)
+		}
+	}
+
 	// Build condition
 	cond := PolicyCondition{
 		Field:      field,
@@ -258,6 +278,7 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		MultiMatch: hasAction(rule.Actions, "multiMatch"),
 		Transforms: transforms,
 		ListItems:  listItems,
+		Excludes:   excludes,
 	}
 
 	// Handle chains → multi-condition AND rule

@@ -86,6 +86,7 @@ type PolicyCondition struct {
 	MultiMatch bool     `json:"multi_match,omitempty"`
 	Transforms []string `json:"transforms,omitempty"`
 	ListItems  []string `json:"list_items,omitempty"`
+	Excludes   []string `json:"excludes,omitempty"` // variable patterns to skip (e.g., "cookie:__utm")
 }
 
 // ─── Conversion Report Types ───────────────────────────────────────
