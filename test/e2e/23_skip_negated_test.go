@@ -188,10 +188,16 @@ func TestNegatedOperatorBlockRule(t *testing.T) {
 	safePath := "/e2e-negated-safe-" + time.Now().Format("150405")
 	blockedPath := "/e2e-negated-blocked-" + time.Now().Format("150405")
 
-	// Create a block rule: block if path not_contains "safe".
+	// Create a block rule: block paths starting with our test prefix that
+	// don't contain "safe". Scoped to test prefix to avoid blocking other tests.
+	testPrefix := "/e2e-negated-" + time.Now().Format("150405")
+	safePath = testPrefix + "-safe"
+	blockedPath = testPrefix + "-blocked"
 	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
 		"name": "e2e-negated-not-contains", "type": "block", "enabled": true,
+		"group_operator": "and",
 		"conditions": []map[string]string{
+			{"field": "path", "operator": "begins_with", "value": testPrefix},
 			{"field": "path", "operator": "not_contains", "value": "safe"},
 		},
 	})
@@ -259,7 +265,6 @@ func TestNegatedOperatorValidation(t *testing.T) {
 // TestNegatedOperatorNotInBlock verifies not_in operator: block requests
 // whose method is NOT in the specified set.
 func TestNegatedOperatorNotInBlock(t *testing.T) {
-	t.Skip("not_in operator not yet implemented in plugin — treats as always-true")
 	testPath := "/e2e-not-in-" + time.Now().Format("150405")
 
 	// Block if method not_in GET|HEAD — so POST should be blocked.
@@ -291,7 +296,10 @@ func TestNegatedOperatorNotInBlock(t *testing.T) {
 	// GET should pass (method IS in the set, so not_in = false → no block).
 	resp2, _ := httpGetRetry(t, caddyURL+testPath, 3)
 	if resp2.StatusCode == 403 {
-		t.Errorf("GET should not be blocked (method is in GET|HEAD set), got 403")
+		blockedBy := resp2.Header.Get("X-Blocked-By")
+		blockedRule := resp2.Header.Get("X-Blocked-Rule")
+		score := resp2.Header.Get("X-Anomaly-Score")
+		t.Errorf("GET should not be blocked (method is in GET|HEAD set), got 403 (X-Blocked-By=%q X-Blocked-Rule=%q X-Anomaly-Score=%q)", blockedBy, blockedRule, score)
 	}
 
 	// POST should be blocked (method NOT in GET|HEAD → not_in = true → block).

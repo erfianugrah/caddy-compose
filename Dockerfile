@@ -2,11 +2,12 @@ ARG VERSION=2.11.1
 ARG CRS_VERSION=v4.24.1
 
 FROM caddy:${VERSION}-builder AS builder
+COPY caddy-policy-engine/ /tmp/caddy-policy-engine/
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.16.0
+	--with github.com/erfianugrah/caddy-policy-engine=/tmp/caddy-policy-engine
 
 # Convert CRS rules to policy-engine format at build time.
 # Update CRS_VERSION to pick up new CRS releases.

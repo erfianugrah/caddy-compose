@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,6 @@ import (
 // Without multi_match (control): only final stage checked → no block
 
 func TestPolicyEngineMultiMatch(t *testing.T) {
-	t.Skip("multi_match not yet implemented in plugin — evaluates only final transform stage")
 	blockPath := fmt.Sprintf("/e2e-multimatch-%d", time.Now().UnixNano())
 
 	// Create block rule with multi_match=true + lowercase transform.
@@ -50,7 +50,20 @@ func TestPolicyEngineMultiMatch(t *testing.T) {
 		httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
 	})
 
-	deployAndWaitForStatus(t, caddyURL+blockPath, 404)
+	time.Sleep(1 * time.Second) // mtime boundary
+	deployWAF(t)
+	// Wait for multi_match rule to take effect by polling with the matching UA.
+	waitForCondition(t, "multi_match blocks TESTword", 15*time.Second, func() bool {
+		req, _ := http.NewRequest("GET", caddyURL+blockPath, nil)
+		setBrowserHeaders(req)
+		req.Header.Set("User-Agent", "TESTword")
+		resp, err := client.Do(req)
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == 403
+	})
 
 	t.Run("multi_match blocks on raw stage", func(t *testing.T) {
 		// UA "TESTword" — "TEST" present in raw stage, gone after lowercase.
@@ -144,7 +157,6 @@ func TestPolicyEngineMultiMatch(t *testing.T) {
 // GET → method eq GET is true, negate inverts to false → condition fails → pass
 
 func TestPolicyEngineNegate(t *testing.T) {
-	t.Skip("negate field not yet implemented in plugin — condition inversion ignored")
 	blockPath := fmt.Sprintf("/e2e-negate-%d", time.Now().UnixNano())
 
 	payload := map[string]any{
@@ -165,7 +177,13 @@ func TestPolicyEngineNegate(t *testing.T) {
 		httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
 	})
 
-	deployAndWaitForStatus(t, caddyURL+blockPath, 404)
+	time.Sleep(1 * time.Second) // mtime boundary
+	deployWAF(t)
+	// Wait for negate rule to take effect by polling POST (should be blocked).
+	waitForCondition(t, "negate blocks POST", 15*time.Second, func() bool {
+		code, err := httpPostRaw(caddyURL+blockPath, []byte(`{}`))
+		return err == nil && code == 403
+	})
 
 	t.Run("POST is blocked (method != GET)", func(t *testing.T) {
 		// POST to the path: method eq GET = false, negate → true → block

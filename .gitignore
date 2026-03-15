@@ -40,3 +40,4 @@ tools/coreruleset/
 # OS
 .DS_Store
 tools/crs-converter/crs-converter
+caddy-policy-engine/

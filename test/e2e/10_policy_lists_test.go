@@ -79,7 +79,6 @@ func TestPolicyEngineInList(t *testing.T) {
 }
 
 func TestPolicyEngineNotInList(t *testing.T) {
-	t.Skip("not_in_list operator not yet implemented in plugin — negated list membership ignored")
 	// Test not_in_list: block all paths NOT in the safe list.
 	// This uses method field to avoid interfering with other tests.
 
@@ -118,12 +117,17 @@ func TestPolicyEngineNotInList(t *testing.T) {
 	resp3, deployBody := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
 	assertCode(t, "deploy", 200, resp3)
 	assertField(t, "deploy", deployBody, "status", "deployed")
-	// The safe UA passes through (404 from upstream, not 403 from policy engine).
-	// Poll until we stop getting 403 — that means the old rule set is gone and the
-	// new not_in_list rule is active (safe UA is whitelisted).
-	waitForCondition(t, "not_in_list rule active", 10*time.Second, func() bool {
-		code, err := httpGetCode(caddyURL + "/e2e-notinlist-test")
-		return err == nil && code != 403
+	// Wait for the rule to take effect by polling the evil UA (should get 403).
+	waitForCondition(t, "not_in_list blocks unknown UA", 15*time.Second, func() bool {
+		req, _ := http.NewRequest("GET", caddyURL+"/e2e-notinlist-test", nil)
+		req.Header.Set("User-Agent", "EvilBot/1.0")
+		req.Header.Set("Accept", "*/*")
+		resp, err := client.Do(req)
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == 403
 	})
 
 	// Step 4: Verify not_in_list matching.
