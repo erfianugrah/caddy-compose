@@ -191,11 +191,13 @@ rules work on response data (status codes, headers, body).
 - [ ] Rate limit rules with `phase: "outbound"` — count responses by status code, etc.
 - [ ] Block rules on response_status/response_header — reject before client sees response
 
-**wafctl:**
-- [ ] Remove `validPolicyEngineFields` restriction on response_status/response_header
-      for non-detect types (currently rejected for allow/block/skip/rate_limit)
-- [ ] UI: phase selector (inbound/outbound) in rule editor for all types
-- [ ] Condition builder: show response-phase fields when phase=outbound
+**wafctl (DONE):**
+- [x] `Phase` field on `RuleExclusion` ("inbound"/"outbound"), validated + wired to PolicyRule
+- [x] `validOutboundFields` (response_header, response_status, response_content_type)
+- [x] Outbound phase merges response fields into allowed condition field set
+- [x] Phase selector (inbound/outbound toggle) in AdvancedBuilderForm
+- [x] Condition builder shows response-phase fields when phase=outbound
+- [x] `INBOUND_FIELD_DEFS` / `OUTBOUND_FIELD_DEFS` filtered field sets
 
 ### Phase 4: Header & Caching Policies (Plugin-Managed)
 
