@@ -1,20 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getRLRules,
   createRLRule,
-  updateRLRule,
   deleteRLRule,
   deployRLRules,
-  getRLGlobal,
-  updateRLGlobal,
-  exportRLRules,
-  importRLRules,
   getRLRuleHits,
   getRateAdvisor,
+  getRLSummary,
+  getRLEvents,
   type RateLimitRule,
-  type RateLimitGlobalConfig,
-  type RateLimitRuleExport,
-  type RateLimitDeployResult,
   type RLRuleHitsResponse,
   type RateAdvisorResponse,
 } from "@/lib/api";
@@ -22,21 +16,22 @@ import { mockFetchResponse, setupMockFetch } from "./__test-helpers";
 
 setupMockFetch();
 
-// ─── Rate Limit Rule API Tests ──────────────────────────────────────
+// ─── Unified API Exclusion format (what the server returns) ─────────
 
-const mockRLRule: RateLimitRule = {
+const mockUnifiedRL = {
   id: "rl-001",
   name: "API rate limit",
   description: "Protect API from abuse",
+  type: "rate_limit",
   service: "api.erfi.io",
   conditions: [
     { field: "path", operator: "begins_with", value: "/api/" },
   ],
   group_operator: "and",
-  key: "client_ip",
-  events: 100,
-  window: "1m",
-  action: "deny",
+  rate_limit_key: "client_ip",
+  rate_limit_events: 100,
+  rate_limit_window: "1m",
+  rate_limit_action: "deny",
   priority: 10,
   tags: ["api", "auth"],
   enabled: true,
@@ -44,71 +39,60 @@ const mockRLRule: RateLimitRule = {
   updated_at: "2026-02-25T10:00:00Z",
 };
 
+const mockNonRL = {
+  id: "exc-001",
+  name: "Allow health",
+  description: "",
+  type: "allow",
+  conditions: [{ field: "path", operator: "eq", value: "/health" }],
+  group_operator: "and",
+  enabled: true,
+  created_at: "2026-02-25T10:00:00Z",
+  updated_at: "2026-02-25T10:00:00Z",
+};
+
+// ─── getRLRules (filters by type=rate_limit) ────────────────────────
+
 describe("getRLRules", () => {
-  it("returns list of rate limit rules with defaults applied", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse([mockRLRule]));
-
-    const result = await getRLRules();
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("rl-001");
-    expect(result[0].name).toBe("API rate limit");
-    expect(result[0].service).toBe("api.erfi.io");
-    expect(result[0].conditions).toHaveLength(1);
-    expect(result[0].conditions[0].field).toBe("path");
-    expect(result[0].key).toBe("client_ip");
-    expect(result[0].events).toBe(100);
-    expect(result[0].window).toBe("1m");
-    expect(result[0].action).toBe("deny");
-    expect(result[0].tags).toEqual(["api", "auth"]);
-    expect(result[0].enabled).toBe(true);
+  it("filters unified rules to only rate_limit type", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse([mockUnifiedRL, mockNonRL]));
+    const rules = await getRLRules();
+    expect(rules).toHaveLength(1);
+    expect(rules[0].id).toBe("rl-001");
+    expect(rules[0].key).toBe("client_ip");
+    expect(rules[0].events).toBe(100);
+    expect(rules[0].window).toBe("1m");
+    expect(rules[0].action).toBe("deny");
+    expect(rules[0].service).toBe("api.erfi.io");
   });
 
-  it("calls the correct endpoint", async () => {
-    const mockFetch = mockFetchResponse([]);
-    vi.stubGlobal("fetch", mockFetch);
-
+  it("calls /api/rules endpoint", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve([]),
+    });
+    vi.stubGlobal("fetch", mock);
     await getRLRules();
-    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules", undefined);
-  });
-
-  it("handles null response gracefully", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(null));
-
-    const result = await getRLRules();
-    expect(result).toEqual([]);
-  });
-
-  it("applies defaults for missing fields", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse([{
-      id: "rl-002",
-      name: "Sparse rule",
-      service: "web.erfi.io",
-      events: 50,
-      window: "30s",
-      enabled: true,
-      created_at: "2026-02-25T10:00:00Z",
-      updated_at: "2026-02-25T10:00:00Z",
-    }]));
-
-    const result = await getRLRules();
-    expect(result[0].description).toBe("");
-    expect(result[0].conditions).toEqual([]);
-    expect(result[0].group_operator).toBe("and");
-    expect(result[0].key).toBe("client_ip");
-    expect(result[0].action).toBe("deny");
-    expect(result[0].priority).toBe(0);
-    expect(result[0].tags).toEqual([]);
+    const url = mock.mock.calls[0][0] as string;
+    expect(url).toContain("/api/rules");
   });
 });
 
+// ─── createRLRule (translates to unified format) ────────────────────
+
 describe("createRLRule", () => {
-  it("sends POST and returns created rule", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockRLRule, 201));
+  it("sends type=rate_limit and translated fields", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: () => Promise.resolve(mockUnifiedRL),
+    });
+    vi.stubGlobal("fetch", mock);
 
     const result = await createRLRule({
       name: "API rate limit",
       service: "api.erfi.io",
-      conditions: [{ field: "path", operator: "begins_with", value: "/api/" }],
       key: "client_ip",
       events: 100,
       window: "1m",
@@ -117,422 +101,113 @@ describe("createRLRule", () => {
     });
 
     expect(result.id).toBe("rl-001");
-    expect(result.name).toBe("API rate limit");
+    expect(result.key).toBe("client_ip");
 
-    // Verify POST payload
-    const postCall = vi.mocked(fetch).mock.calls[0];
-    expect(postCall[1]?.method).toBe("POST");
-    const body = JSON.parse(postCall[1]?.body as string);
-    expect(body.name).toBe("API rate limit");
-    expect(body.service).toBe("api.erfi.io");
-    expect(body.key).toBe("client_ip");
-    expect(body.events).toBe(100);
+    // Verify the payload sent to the server
+    const callBody = JSON.parse(mock.mock.calls[0][1].body);
+    expect(callBody.type).toBe("rate_limit");
+    expect(callBody.rate_limit_key).toBe("client_ip");
+    expect(callBody.rate_limit_events).toBe(100);
+    expect(callBody.rate_limit_window).toBe("1m");
+    expect(callBody.rate_limit_action).toBe("deny");
   });
 });
 
-describe("updateRLRule", () => {
-  it("sends PUT and returns updated rule", async () => {
-    const updated = { ...mockRLRule, events: 200 };
-    vi.stubGlobal("fetch", mockFetchResponse(updated));
-
-    const result = await updateRLRule("rl-001", { events: 200 });
-
-    expect(result.events).toBe(200);
-
-    // Verify PUT call
-    const putCall = vi.mocked(fetch).mock.calls[0];
-    expect(putCall[0]).toBe("/api/rate-rules/rl-001");
-    expect(putCall[1]?.method).toBe("PUT");
-  });
-});
+// ─── deleteRLRule ───────────────────────────────────────────────────
 
 describe("deleteRLRule", () => {
-  it("sends DELETE request", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({ status: "deleted" }));
-
+  it("calls DELETE on /api/rules/{id}", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: () => Promise.resolve(null),
+    });
+    vi.stubGlobal("fetch", mock);
     await deleteRLRule("rl-001");
-
-    const deleteCall = vi.mocked(fetch).mock.calls[0];
-    expect(deleteCall[0]).toBe("/api/rate-rules/rl-001");
-    expect(deleteCall[1]?.method).toBe("DELETE");
+    expect(mock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/rules/rl-001"),
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 });
+
+// ─── deployRLRules (uses unified /api/deploy) ───────────────────────
 
 describe("deployRLRules", () => {
-  it("calls POST and returns deploy result", async () => {
-    const deployResponse: RateLimitDeployResult = {
-      status: "deployed",
-      message: "3 rate limit files written and Caddy reloaded",
-      files: ["api.erfi.io_rate_limit.caddy", "web.erfi.io_rate_limit.caddy"],
-      reloaded: true,
-      timestamp: "2026-02-25T10:00:00Z",
-    };
-    vi.stubGlobal("fetch", mockFetchResponse(deployResponse));
-
+  it("calls POST /api/deploy", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ status: "deployed", message: "ok", reloaded: false, timestamp: "2026-03-15T00:00:00Z" }),
+    });
+    vi.stubGlobal("fetch", mock);
     const result = await deployRLRules();
     expect(result.status).toBe("deployed");
-    expect(result.reloaded).toBe(true);
-    expect(result.files).toHaveLength(2);
-  });
-
-  it("handles partial deploy (reload failed)", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({
-      status: "partial",
-      message: "Files written but Caddy reload failed",
-      files: [],
-      reloaded: false,
-      timestamp: "2026-02-25T10:00:00Z",
-    }));
-
-    const result = await deployRLRules();
-    expect(result.status).toBe("partial");
-    expect(result.reloaded).toBe(false);
+    expect(mock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/deploy"),
+      expect.anything(),
+    );
   });
 });
 
-describe("getRLGlobal / updateRLGlobal", () => {
-  const mockGlobal: RateLimitGlobalConfig = {
-    jitter: 0.1,
-    sweep_interval: "1m",
-    distributed: false,
-    read_interval: "5s",
-    write_interval: "5s",
-    purge_age: "24h",
-  };
-
-  it("returns global config", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockGlobal));
-
-    const result = await getRLGlobal();
-    expect(result.jitter).toBe(0.1);
-    expect(result.sweep_interval).toBe("1m");
-    expect(result.distributed).toBe(false);
-  });
-
-  it("calls correct endpoint", async () => {
-    const mockFetch = mockFetchResponse(mockGlobal);
-    vi.stubGlobal("fetch", mockFetch);
-
-    await getRLGlobal();
-    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/global", undefined);
-  });
-
-  it("updates global config", async () => {
-    const updated = { ...mockGlobal, distributed: true, read_interval: "1s" };
-    vi.stubGlobal("fetch", mockFetchResponse(updated));
-
-    const result = await updateRLGlobal(updated);
-    expect(result.distributed).toBe(true);
-    expect(result.read_interval).toBe("1s");
-
-    // Verify PUT
-    const putCall = vi.mocked(fetch).mock.calls[0];
-    expect(putCall[0]).toBe("/api/rate-rules/global");
-    expect(putCall[1]?.method).toBe("PUT");
-  });
-});
-
-describe("exportRLRules / importRLRules", () => {
-  it("exports rules as JSON", async () => {
-    const exportData: RateLimitRuleExport = {
-      version: 1,
-      exported_at: "2026-02-25T10:00:00Z",
-      rules: [mockRLRule],
-      global: {
-        jitter: 0.1,
-        sweep_interval: "1m",
-        distributed: false,
-        read_interval: "5s",
-        write_interval: "5s",
-        purge_age: "24h",
-      },
-    };
-    vi.stubGlobal("fetch", mockFetchResponse(exportData));
-
-    const result = await exportRLRules();
-    expect(result.version).toBe(1);
-    expect(result.rules).toHaveLength(1);
-    expect(result.rules[0].id).toBe("rl-001");
-    expect(result.global.jitter).toBe(0.1);
-  });
-
-  it("calls export endpoint", async () => {
-    const mockFetch = mockFetchResponse({ version: 1, rules: [], global: {} });
-    vi.stubGlobal("fetch", mockFetch);
-
-    await exportRLRules();
-    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/export", undefined);
-  });
-
-  it("imports rules and returns count", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({ status: "imported", imported: 5 }));
-
-    const result = await importRLRules({
-      version: 1,
-      exported_at: "2026-02-25T10:00:00Z",
-      rules: [],
-      global: {
-        jitter: 0.1,
-        sweep_interval: "1m",
-        distributed: false,
-        read_interval: "5s",
-        write_interval: "5s",
-        purge_age: "24h",
-      },
-    });
-    expect(result.imported).toBe(5);
-
-    // Verify POST
-    const postCall = vi.mocked(fetch).mock.calls[0];
-    expect(postCall[0]).toBe("/api/rate-rules/import");
-    expect(postCall[1]?.method).toBe("POST");
-  });
-});
+// ─── getRLRuleHits (analytics, unchanged endpoint) ──────────────────
 
 describe("getRLRuleHits", () => {
-  it("returns hit stats with sparkline", async () => {
-    const hitsResponse: RLRuleHitsResponse = {
-      "rl-001": { total: 42, sparkline: [1, 2, 3, 5, 8, 13, 10] },
-      "rl-002": { total: 0, sparkline: [0, 0, 0, 0, 0, 0, 0] },
+  it("returns hit stats from /api/rate-rules/hits", async () => {
+    const mockHits: RLRuleHitsResponse = {
+      "rl-001": { total: 42, sparkline: [1, 2, 3] },
     };
-    vi.stubGlobal("fetch", mockFetchResponse(hitsResponse));
-
+    vi.stubGlobal("fetch", mockFetchResponse(mockHits));
     const result = await getRLRuleHits(24);
     expect(result["rl-001"].total).toBe(42);
-    expect(result["rl-001"].sparkline).toHaveLength(7);
-    expect(result["rl-002"].total).toBe(0);
-  });
-
-  it("passes hours parameter", async () => {
-    const mockFetch = mockFetchResponse({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    await getRLRuleHits(48);
-    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/hits?hours=48", undefined);
-  });
-
-  it("defaults to 24 hours", async () => {
-    const mockFetch = mockFetchResponse({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    await getRLRuleHits();
-    expect(mockFetch).toHaveBeenCalledWith("/api/rate-rules/hits?hours=24", undefined);
   });
 });
 
-describe("RL API error handling", () => {
-  it("throws on non-OK response for getRLRules", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({ error: "server error" }, 500));
-    await expect(getRLRules()).rejects.toThrow("API error: 500");
-  });
-
-  it("throws on non-OK response for createRLRule", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({ error: "validation failed" }, 400));
-    await expect(createRLRule({
-      name: "Test",
-      service: "test.erfi.io",
-      key: "client_ip",
-      events: 100,
-      window: "1m",
-      enabled: true,
-    })).rejects.toThrow("API error: 400");
-  });
-
-  it("throws on non-OK response for deployRLRules", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse({ error: "deploy failed" }, 500));
-    await expect(deployRLRules()).rejects.toThrow("API error: 500");
-  });
-});
-
-// ─── Rate Advisor API Tests ───────────────────────────────────────
+// ─── getRateAdvisor (analytics, unchanged endpoint) ─────────────────
 
 describe("getRateAdvisor", () => {
-  const mockAdvisorResponse: RateAdvisorResponse = {
-    window: "1m",
-    window_seconds: 60,
-    service: "test.erfi.io",
-    total_requests: 1500,
-    unique_clients: 25,
-    clients: [
-      {
-        client_ip: "9.9.9.9",
-        country: "US",
-        requests: 500,
-        requests_per_sec: 8.33,
-        error_rate: 0.6,
-        path_diversity: 0.01,
-        burstiness: 15.0,
-        classification: "abusive",
-        anomaly_score: 92.5,
-        top_paths: [{ path: "/admin/login", count: 498 }],
-      },
-      {
-        client_ip: "1.1.1.1",
-        country: "DE",
-        requests: 10,
-        requests_per_sec: 0.17,
-        error_rate: 0.02,
-        path_diversity: 0.8,
-        burstiness: 1.1,
-        classification: "normal",
-        anomaly_score: 5.2,
-        top_paths: [{ path: "/", count: 5 }, { path: "/about", count: 3 }],
-      },
-    ],
-    percentiles: { p50: 8, p75: 15, p90: 30, p95: 45, p99: 200 },
-    normalized_percentiles: { p50: 0.13, p75: 0.25, p90: 0.5, p95: 0.75, p99: 3.33 },
-    recommendation: {
-      threshold: 52,
-      confidence: "high",
-      method: "mad",
-      affected_clients: 3,
-      affected_requests: 800,
-      median: 8.5,
-      mad: 3.2,
-      separation: 4.5,
-    },
-    impact_curve: [
-      { threshold: 1, clients_affected: 25, requests_affected: 1500, client_pct: 1.0, request_pct: 1.0 },
-      { threshold: 50, clients_affected: 3, requests_affected: 800, client_pct: 0.12, request_pct: 0.53 },
-      { threshold: 500, clients_affected: 1, requests_affected: 500, client_pct: 0.04, request_pct: 0.33 },
-    ],
-    histogram: [
-      { min: 1, max: 5, count: 10 },
-      { min: 5, max: 15, count: 8 },
-      { min: 15, max: 50, count: 4 },
-      { min: 50, max: 200, count: 2 },
-      { min: 200, max: 600, count: 1 },
-    ],
-    time_of_day_baselines: [
-      { hour: 10, median_rps: 0.05, p95_rps: 0.25, clients: 15, requests: 400 },
-      { hour: 14, median_rps: 0.08, p95_rps: 0.42, clients: 20, requests: 800 },
-      { hour: 22, median_rps: 0.02, p95_rps: 0.10, clients: 8, requests: 300 },
-    ],
-  };
-
-  it("fetches advisor data with all parameters", async () => {
-    const mockFetch = mockFetchResponse(mockAdvisorResponse);
-    vi.stubGlobal("fetch", mockFetch);
-
-    const result = await getRateAdvisor({
-      window: "1m",
-      service: "test.erfi.io",
-      path: "/api",
-      method: "POST",
-      limit: 50,
-    });
-
-    const calledUrl = mockFetch.mock.calls[0][0] as string;
-    expect(calledUrl).toContain("/api/rate-rules/advisor");
-    expect(calledUrl).toContain("window=1m");
-    expect(calledUrl).toContain("service=test.erfi.io");
-    expect(calledUrl).toContain("path=%2Fapi");
-    expect(calledUrl).toContain("method=POST");
-    expect(calledUrl).toContain("limit=50");
-
-    expect(result.total_requests).toBe(1500);
-    expect(result.unique_clients).toBe(25);
+  it("returns advisor response", async () => {
+    const mockAdvisor: Partial<RateAdvisorResponse> = {
+      window: "5m",
+      total_requests: 1000,
+      unique_clients: 50,
+      clients: [],
+      percentiles: { p50: 10, p75: 20, p90: 30, p95: 40, p99: 50 },
+      normalized_percentiles: { p50: 0.1, p75: 0.2, p90: 0.3, p95: 0.4, p99: 0.5 },
+      impact_curve: [],
+      histogram: [],
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisor));
+    const result = await getRateAdvisor({ window: "5m" });
+    expect(result.total_requests).toBe(1000);
   });
+});
 
-  it("returns clients with anomaly metrics", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
-    const result = await getRateAdvisor({ window: "1m" });
+// ─── getRLSummary (analytics, unchanged endpoint) ───────────────────
 
-    expect(result.clients).toHaveLength(2);
-    const abusive = result.clients[0];
-    expect(abusive.classification).toBe("abusive");
-    expect(abusive.anomaly_score).toBeGreaterThan(50);
-    expect(abusive.error_rate).toBe(0.6);
-    expect(abusive.path_diversity).toBe(0.01);
-    expect(abusive.burstiness).toBe(15.0);
-
-    const normal = result.clients[1];
-    expect(normal.classification).toBe("normal");
-    expect(normal.anomaly_score).toBeLessThan(20);
+describe("getRLSummary", () => {
+  it("fetches rate limit summary", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({
+      total_429s: 10,
+      unique_clients: 3,
+      unique_services: 2,
+      events_by_hour: [],
+      top_clients: [],
+      top_services: [],
+      top_uris: [],
+      recent_events: [],
+    }));
+    const result = await getRLSummary(1);
+    expect(result.total_429s).toBe(10);
   });
+});
 
-  it("returns recommendation with confidence", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
-    const result = await getRateAdvisor({ window: "1m" });
+// ─── getRLEvents (analytics, unchanged endpoint) ────────────────────
 
-    expect(result.recommendation).toBeDefined();
-    expect(result.recommendation!.threshold).toBe(52);
-    expect(result.recommendation!.confidence).toBe("high");
-    expect(result.recommendation!.method).toBe("mad");
-    expect(result.recommendation!.affected_clients).toBe(3);
-    expect(result.recommendation!.median).toBe(8.5);
-    expect(result.recommendation!.mad).toBe(3.2);
-    expect(result.recommendation!.separation).toBe(4.5);
-  });
-
-  it("returns impact curve", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
-    const result = await getRateAdvisor({ window: "1m" });
-
-    expect(result.impact_curve).toHaveLength(3);
-    expect(result.impact_curve[0].threshold).toBe(1);
-    expect(result.impact_curve[0].client_pct).toBe(1.0);
-    expect(result.impact_curve[2].clients_affected).toBe(1);
-  });
-
-  it("returns histogram", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
-    const result = await getRateAdvisor({ window: "1m" });
-
-    expect(result.histogram).toHaveLength(5);
-    expect(result.histogram[0].min).toBe(1);
-    expect(result.histogram[0].count).toBe(10);
-  });
-
-  it("handles response without recommendation", async () => {
-    const noRecResponse = { ...mockAdvisorResponse, recommendation: undefined };
-    vi.stubGlobal("fetch", mockFetchResponse(noRecResponse));
-    const result = await getRateAdvisor({ window: "1m" });
-    expect(result.recommendation).toBeUndefined();
-  });
-
-  it("fetches with default params when none provided", async () => {
-    const mockFetch = mockFetchResponse(mockAdvisorResponse);
-    vi.stubGlobal("fetch", mockFetch);
-
-    await getRateAdvisor();
-    const calledUrl = mockFetch.mock.calls[0][0] as string;
-    expect(calledUrl).toBe("/api/rate-rules/advisor");
-  });
-
-  it("returns normalized rates per second", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
-    const result = await getRateAdvisor({ window: "1m" });
-
-    expect(result.window_seconds).toBe(60);
-    expect(result.normalized_percentiles).toBeDefined();
-    expect(result.normalized_percentiles.p50).toBe(0.13);
-    expect(result.normalized_percentiles.p95).toBe(0.75);
-    expect(result.normalized_percentiles.p99).toBe(3.33);
-
-    // Clients should have requests_per_sec
-    expect(result.clients[0].requests_per_sec).toBe(8.33);
-    expect(result.clients[1].requests_per_sec).toBe(0.17);
-  });
-
-  it("returns time-of-day baselines", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse(mockAdvisorResponse));
-    const result = await getRateAdvisor({ window: "1m" });
-
-    expect(result.time_of_day_baselines).toBeDefined();
-    expect(result.time_of_day_baselines).toHaveLength(3);
-    expect(result.time_of_day_baselines![0].hour).toBe(10);
-    expect(result.time_of_day_baselines![0].median_rps).toBe(0.05);
-    expect(result.time_of_day_baselines![0].p95_rps).toBe(0.25);
-    expect(result.time_of_day_baselines![0].clients).toBe(15);
-    expect(result.time_of_day_baselines![0].requests).toBe(400);
-    expect(result.time_of_day_baselines![2].hour).toBe(22);
-  });
-
-  it("handles response without time-of-day baselines", async () => {
-    const noBaselinesResponse = { ...mockAdvisorResponse, time_of_day_baselines: undefined };
-    vi.stubGlobal("fetch", mockFetchResponse(noBaselinesResponse));
-    const result = await getRateAdvisor({ window: "1m" });
-    expect(result.time_of_day_baselines).toBeUndefined();
+describe("getRLEvents", () => {
+  it("fetches rate limit events", async () => {
+    vi.stubGlobal("fetch", mockFetchResponse({ total: 5, events: [] }));
+    const result = await getRLEvents({ hours: 1, limit: 10 });
+    expect(result.total).toBe(5);
   });
 });

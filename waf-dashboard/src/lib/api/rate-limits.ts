@@ -1,7 +1,11 @@
 import { API_BASE, fetchJSON, postJSON, putJSON, deleteJSON } from "./shared";
-import type { Condition, GroupOperator } from "./exclusions";
+import type { Condition, GroupOperator, Exclusion, DeployResult } from "./exclusions";
 
-// ─── Rate Limit Rules (Policy Engine) ───────────────────────────────
+// ─── Rate Limit Types ───────────────────────────────────────────────
+// Rate limit rules are now managed via the unified /api/rules endpoint
+// with type="rate_limit". The CRUD functions below are compatibility
+// wrappers that translate between the legacy RateLimitRule interface
+// and the unified RuleExclusion model.
 
 export type RLRuleAction = "deny" | "log_only";
 export type RLRuleKey =
@@ -14,6 +18,19 @@ export type RLRuleKey =
   | `cookie:${string}`
   | `body_json:${string}`
   | `body_form:${string}`;
+
+export interface RateLimitGlobalConfig {
+  jitter: number;
+  sweep_interval: string;
+  distributed: boolean;
+  read_interval: string;
+  write_interval: string;
+  purge_age: string;
+}
+
+// ─── Legacy RateLimitRule Type (compatibility) ──────────────────────
+// RateLimitsPanel.tsx still uses this shape. These wrappers translate
+// to/from the unified /api/rules endpoint.
 
 export interface RateLimitRule {
   id: string;
@@ -48,31 +65,103 @@ export interface RateLimitRuleCreateData {
   enabled: boolean;
 }
 
-export interface RateLimitRuleUpdateData extends Partial<RateLimitRuleCreateData> {}
+export type RateLimitRuleUpdateData = Partial<RateLimitRuleCreateData>;
 
-export interface RateLimitGlobalConfig {
-  jitter: number;
-  sweep_interval: string;
-  distributed: boolean;
-  read_interval: string;
-  write_interval: string;
-  purge_age: string;
+function exclusionToRL(e: Exclusion): RateLimitRule {
+  return {
+    id: e.id,
+    name: e.name,
+    description: e.description,
+    service: e.service ?? "*",
+    conditions: e.conditions,
+    group_operator: e.group_operator,
+    key: (e.rate_limit_key ?? "client_ip") as RLRuleKey,
+    events: e.rate_limit_events ?? 0,
+    window: e.rate_limit_window ?? "1m",
+    action: (e.rate_limit_action ?? "deny") as RLRuleAction,
+    priority: e.priority ?? 0,
+    tags: e.tags ?? [],
+    enabled: e.enabled,
+    created_at: e.created_at,
+    updated_at: e.updated_at,
+  };
 }
 
-export interface RateLimitRuleExport {
-  version: number;
-  exported_at: string;
-  rules: RateLimitRule[];
-  global: RateLimitGlobalConfig;
+function rlToUnifiedPayload(data: RateLimitRuleCreateData | RateLimitRuleUpdateData): Record<string, unknown> {
+  const result: Record<string, unknown> = { type: "rate_limit" };
+  if (data.name !== undefined) result.name = data.name;
+  if (data.description !== undefined) result.description = data.description;
+  if (data.service !== undefined) result.service = data.service;
+  if (data.conditions !== undefined) result.conditions = data.conditions;
+  if (data.group_operator !== undefined) result.group_operator = data.group_operator;
+  if (data.key !== undefined) result.rate_limit_key = data.key;
+  if (data.events !== undefined) result.rate_limit_events = data.events;
+  if (data.window !== undefined) result.rate_limit_window = data.window;
+  if (data.action !== undefined) result.rate_limit_action = data.action;
+  if (data.priority !== undefined) result.priority = data.priority;
+  if (data.tags !== undefined) result.tags = data.tags;
+  if (data.enabled !== undefined) result.enabled = data.enabled;
+  return result;
 }
 
-export interface RateLimitDeployResult {
-  status: string;
-  message: string;
-  files: string[];
-  reloaded: boolean;
-  timestamp: string;
+/** List rate limit rules (filters unified rules by type=rate_limit). */
+export async function getRLRules(): Promise<RateLimitRule[]> {
+  const all = await fetchJSON<Exclusion[]>(`${API_BASE}/rules`);
+  return (all ?? []).filter(e => e.type === "rate_limit").map(exclusionToRL);
 }
+
+export async function createRLRule(data: RateLimitRuleCreateData): Promise<RateLimitRule> {
+  const raw = await postJSON<Exclusion>(`${API_BASE}/rules`, rlToUnifiedPayload(data));
+  return exclusionToRL(raw);
+}
+
+export async function updateRLRule(id: string, data: RateLimitRuleUpdateData): Promise<RateLimitRule> {
+  const raw = await putJSON<Exclusion>(`${API_BASE}/rules/${encodeURIComponent(id)}`, rlToUnifiedPayload(data));
+  return exclusionToRL(raw);
+}
+
+export async function deleteRLRule(id: string): Promise<void> {
+  await deleteJSON<void>(`${API_BASE}/rules/${encodeURIComponent(id)}`);
+}
+
+export async function deployRLRules(): Promise<DeployResult> {
+  return postJSON<DeployResult>(`${API_BASE}/deploy`, {});
+}
+
+export async function getRLGlobal(): Promise<RateLimitGlobalConfig> {
+  const cfg = await fetchJSON<{ rate_limit_global?: RateLimitGlobalConfig }>(`${API_BASE}/config`);
+  return cfg.rate_limit_global ?? { jitter: 0, sweep_interval: "", distributed: false, read_interval: "", write_interval: "", purge_age: "" };
+}
+
+export async function updateRLGlobal(config: RateLimitGlobalConfig): Promise<RateLimitGlobalConfig> {
+  // Read current WAF config, update the rate_limit_global field, PUT back.
+  const current = await fetchJSON<Record<string, unknown>>(`${API_BASE}/config`);
+  current.rate_limit_global = config;
+  await putJSON(`${API_BASE}/config`, current);
+  return config;
+}
+
+export async function exportRLRules(): Promise<{ version: number; rules: RateLimitRule[] }> {
+  const data = await fetchJSON<{ exclusions: Exclusion[] }>(`${API_BASE}/rules/export`);
+  const rlRules = (data.exclusions ?? []).filter(e => e.type === "rate_limit").map(exclusionToRL);
+  return { version: 1, rules: rlRules };
+}
+
+export async function importRLRules(data: { rules: RateLimitRuleCreateData[] }): Promise<{ status: string; imported: number }> {
+  // Convert RL rules to unified exclusions and import via /api/rules/import
+  const exclusions = data.rules.map(r => rlToUnifiedPayload(r));
+  return postJSON<{ status: string; imported: number }>(`${API_BASE}/rules/import`, {
+    version: 1,
+    exclusions,
+  });
+}
+
+export async function reorderRLRules(ids: string[]): Promise<RateLimitRule[]> {
+  const raw = await putJSON<Exclusion[]>(`${API_BASE}/rules/reorder`, { ids });
+  return (raw ?? []).filter(e => e.type === "rate_limit").map(exclusionToRL);
+}
+
+// ─── Rate Limit Analytics Hits ──────────────────────────────────────
 
 export interface RLRuleHitStats {
   total: number;
@@ -83,104 +172,8 @@ export interface RLRuleHitsResponse {
   [ruleId: string]: RLRuleHitStats;
 }
 
-// ─── Rate Limit Rule Mapper ─────────────────────────────────────────
-
-/** Raw API response — fields may be null/omitted due to Go omitempty. */
-interface RawRateLimitRule {
-  id?: string;
-  name?: string;
-  description?: string;
-  service?: string;
-  conditions?: Condition[];
-  group_operator?: string;
-  key?: string;
-  events?: number;
-  window?: string;
-  action?: string;
-  priority?: number;
-  tags?: string[];
-  enabled?: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-function mapRLRule(raw: RawRateLimitRule): RateLimitRule {
-  return {
-    id: raw.id ?? "",
-    name: raw.name ?? "",
-    description: raw.description ?? "",
-    service: raw.service ?? "",
-    conditions: raw.conditions ?? [],
-    group_operator: (raw.group_operator as GroupOperator) || "and",
-    key: raw.key ?? "client_ip",
-    events: raw.events ?? 0,
-    window: raw.window ?? "1m",
-    action: (raw.action as RLRuleAction) || "deny",
-    priority: raw.priority ?? 0,
-    tags: raw.tags ?? [],
-    enabled: raw.enabled ?? false,
-    created_at: raw.created_at ?? "",
-    updated_at: raw.updated_at ?? "",
-  };
-}
-
-// ─── Rate Limit Rule CRUD ───────────────────────────────────────────
-
-export async function getRLRules(): Promise<RateLimitRule[]> {
-  const raw = await fetchJSON<RawRateLimitRule[]>(`${API_BASE}/rate-rules`);
-  return (raw ?? []).map(mapRLRule);
-}
-
-export async function getRLRule(id: string): Promise<RateLimitRule> {
-  const raw = await fetchJSON<RawRateLimitRule>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`);
-  return mapRLRule(raw);
-}
-
-export async function createRLRule(data: RateLimitRuleCreateData): Promise<RateLimitRule> {
-  const raw = await postJSON<RawRateLimitRule>(`${API_BASE}/rate-rules`, data);
-  return mapRLRule(raw);
-}
-
-export async function updateRLRule(id: string, data: RateLimitRuleUpdateData): Promise<RateLimitRule> {
-  const raw = await putJSON<RawRateLimitRule>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`, data);
-  return mapRLRule(raw);
-}
-
-export async function deleteRLRule(id: string): Promise<void> {
-  await deleteJSON<void>(`${API_BASE}/rate-rules/${encodeURIComponent(id)}`);
-}
-
-export async function deployRLRules(): Promise<RateLimitDeployResult> {
-  return postJSON<RateLimitDeployResult>(`${API_BASE}/rate-rules/deploy`, {});
-}
-
-// ─── Rate Limit Global Config ───────────────────────────────────────
-
-export async function getRLGlobal(): Promise<RateLimitGlobalConfig> {
-  return fetchJSON<RateLimitGlobalConfig>(`${API_BASE}/rate-rules/global`);
-}
-
-export async function updateRLGlobal(config: RateLimitGlobalConfig): Promise<RateLimitGlobalConfig> {
-  return putJSON<RateLimitGlobalConfig>(`${API_BASE}/rate-rules/global`, config);
-}
-
-// ─── Rate Limit Export / Import / Hits ──────────────────────────────
-
-export async function exportRLRules(): Promise<RateLimitRuleExport> {
-  return fetchJSON<RateLimitRuleExport>(`${API_BASE}/rate-rules/export`);
-}
-
-export async function importRLRules(data: RateLimitRuleExport): Promise<{ status: string; imported: number }> {
-  return postJSON<{ status: string; imported: number }>(`${API_BASE}/rate-rules/import`, data);
-}
-
 export async function getRLRuleHits(hours = 24): Promise<RLRuleHitsResponse> {
   return fetchJSON<RLRuleHitsResponse>(`${API_BASE}/rate-rules/hits?hours=${hours}`);
-}
-
-export async function reorderRLRules(ids: string[]): Promise<RateLimitRule[]> {
-  const raw = await putJSON<RateLimitRule[]>(`${API_BASE}/rate-rules/reorder`, { ids });
-  return raw.map(mapRLRule);
 }
 
 // ─── Rate Limit Analytics (429 events) ──────────────────────────────
