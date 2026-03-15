@@ -276,6 +276,10 @@ func runServe() int {
 	mux.HandleFunc("DELETE /api/default-rules/{id}/override", handleResetDefaultRule(defaultRuleStore))
 	mux.HandleFunc("POST /api/default-rules/bulk", handleBulkDefaultRules(defaultRuleStore))
 
+	// Rule Templates
+	mux.HandleFunc("GET /api/rules/templates", handleListTemplates())
+	mux.HandleFunc("POST /api/rules/templates/{id}/apply", handleApplyTemplate(exclusionStore))
+
 	// General Logs (all access log entries)
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))

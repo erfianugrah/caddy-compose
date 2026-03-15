@@ -444,6 +444,54 @@ func TestResponseHeaderRuleCRUD(t *testing.T) {
 	})
 }
 
+// --- Rule Templates API ---
+
+func TestRuleTemplatesAPI(t *testing.T) {
+	t.Run("list templates", func(t *testing.T) {
+		resp, body := httpGet(t, wafctlURL+"/api/rules/templates")
+		assertCode(t, "list templates", 200, resp)
+		templates := jsonArrayLen(body)
+		if templates < 2 {
+			t.Errorf("expected at least 2 templates, got %d", templates)
+		}
+		s := string(body)
+		if !strings.Contains(s, "cache-static-assets") {
+			t.Error("missing cache-static-assets template")
+		}
+		if !strings.Contains(s, "security-headers-baseline") {
+			t.Error("missing security-headers-baseline template")
+		}
+	})
+
+	t.Run("apply cache template", func(t *testing.T) {
+		resp, body := httpPost(t, wafctlURL+"/api/rules/templates/cache-static-assets/apply", struct{}{})
+		assertCode(t, "apply template", 201, resp)
+		created := jsonInt(body, "created")
+		if created < 3 {
+			t.Errorf("expected at least 3 rules created, got %d", created)
+		}
+		t.Logf("cache-static-assets template created %d rules", created)
+
+		// Clean up created rules
+		t.Cleanup(func() {
+			rules := jsonFieldArray(body, "rules")
+			for _, raw := range rules {
+				id := jsonField(raw, "id")
+				if id != "" {
+					cleanup(t, wafctlURL+"/api/rules/"+id)
+				}
+			}
+		})
+	})
+
+	t.Run("apply nonexistent template", func(t *testing.T) {
+		resp, _ := httpPost(t, wafctlURL+"/api/rules/templates/does-not-exist/apply", struct{}{})
+		if resp.StatusCode != 404 {
+			t.Errorf("expected 404 for nonexistent template, got %d", resp.StatusCode)
+		}
+	})
+}
+
 // --- CORS Store API ---
 
 func TestCORSStoreAPI(t *testing.T) {
