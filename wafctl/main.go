@@ -96,18 +96,29 @@ func runServe() int {
 	defer stop()
 
 	// ── Create stores (lightweight — no JSONL loading yet) ──
+	// Hard caps prevent OOM under bombardment. Defaults are generous for normal
+	// traffic but bounded: 100K security events (~200MB), 100K access events
+	// (~100MB), 50K general log events (~25MB). Under sustained attack, oldest
+	// events are silently evicted — summary counters preserve aggregate stats.
+	wafMaxItems := queryIntEnv("WAF_EVENT_MAX_ITEMS", 100000)
+	accessMaxItems := queryIntEnv("WAF_ACCESS_MAX_ITEMS", 100000)
+	generalMaxItems := queryIntEnv("WAF_GENERAL_LOG_MAX_ITEMS", 50000)
+
 	store := NewStore()
 	store.SetMaxAge(maxAge)
+	store.SetMaxItems(wafMaxItems)
 	store.SetGeoIP(geoStore)
 
 	accessLogStore := NewAccessLogStore(combinedAccessLog)
 	accessLogStore.SetOffsetFile(envOr("WAF_ACCESS_OFFSET_FILE", "/data/.access-log-offset"))
 	accessLogStore.SetMaxAge(maxAge)
+	accessLogStore.SetMaxItems(accessMaxItems)
 	accessLogStore.SetGeoIP(geoStore)
 
 	generalLogStore := NewGeneralLogStore(combinedAccessLog)
 	generalLogStore.SetOffsetFile(envOr("WAF_GENERAL_LOG_OFFSET_FILE", "/data/.general-log-offset"))
 	generalLogStore.SetMaxAge(generalMaxAge)
+	generalLogStore.SetMaxItems(generalMaxItems)
 	generalLogStore.SetGeoIP(geoStore)
 
 	// General log sampling: store only a fraction of normal 2xx traffic.

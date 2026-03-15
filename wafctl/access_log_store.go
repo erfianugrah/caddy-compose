@@ -199,6 +199,11 @@ type AccessLogStore struct {
 	// are evicted during each Load() call. Zero means no eviction.
 	maxAge time.Duration
 
+	// maxItems is a hard cap on in-memory events. When exceeded after ingestion,
+	// oldest events are evicted regardless of age. Zero means no cap.
+	// This prevents OOM under bombardment (791K events = 630MB JSONL).
+	maxItems int
+
 	// geoIP is an optional GeoIP store for country enrichment.
 	geoIP *GeoIPStore
 
@@ -436,6 +441,14 @@ func (s *AccessLogStore) SetMaxAge(d time.Duration) {
 	s.maxAge = d
 }
 
+// SetMaxItems configures the hard cap on in-memory events.
+// When exceeded, oldest events are evicted regardless of age.
+func (s *AccessLogStore) SetMaxItems(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxItems = n
+}
+
 // initCountersFromRLEventsLocked initializes incremental counters from the
 // current in-memory RateLimitEvents. The caller MUST hold s.mu.
 // Uses initFromRLEvents to avoid the O(N) allocation of converting
@@ -642,20 +655,26 @@ func (s *AccessLogStore) Load() {
 	s.evict()
 }
 
-// evict removes events older than maxAge from the in-memory store.
+// evict removes events older than maxAge and enforces maxItems cap.
 func (s *AccessLogStore) evict() {
-	if s.maxAge <= 0 {
-		return
-	}
-
-	cutoff := time.Now().UTC().Add(-s.maxAge)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Events are appended chronologically, so find the first event within range.
 	idx := 0
-	for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
-		idx++
+
+	// Time-based eviction.
+	if s.maxAge > 0 {
+		cutoff := time.Now().UTC().Add(-s.maxAge)
+		for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
+			idx++
+		}
+	}
+
+	// Count-based cap: if still over maxItems, evict more oldest events.
+	// Target 80% of cap to avoid evicting on every ingestion cycle.
+	if s.maxItems > 0 && len(s.events)-idx > s.maxItems {
+		target := s.maxItems * 80 / 100
+		idx = len(s.events) - target
 	}
 	if idx > 0 {
 		// Decrement incremental summary counters for evicted events.
@@ -731,6 +750,10 @@ func (s *AccessLogStore) FastSummary(hours int) SummaryResponse {
 func (s *AccessLogStore) Stats() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.statsLocked()
+}
+
+func (s *AccessLogStore) statsLocked() map[string]any {
 	stats := map[string]any{
 		"events":     len(s.events),
 		"log_file":   s.path,

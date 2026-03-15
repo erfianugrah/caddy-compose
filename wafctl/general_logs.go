@@ -31,7 +31,8 @@ type GeneralLogStore struct {
 
 	eventFile string
 
-	maxAge time.Duration
+	maxAge   time.Duration
+	maxItems int
 
 	geoIP *GeoIPStore
 
@@ -220,6 +221,12 @@ func (s *GeneralLogStore) SetMaxAge(d time.Duration) {
 	s.maxAge = d
 }
 
+func (s *GeneralLogStore) SetMaxItems(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxItems = n
+}
+
 func (s *GeneralLogStore) SetGeoIP(g *GeoIPStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -336,17 +343,23 @@ func (s *GeneralLogStore) Load() {
 }
 
 func (s *GeneralLogStore) evict() {
-	if s.maxAge <= 0 {
-		return
-	}
-
-	cutoff := time.Now().UTC().Add(-s.maxAge)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	idx := 0
-	for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
-		idx++
+
+	// Time-based eviction.
+	if s.maxAge > 0 {
+		cutoff := time.Now().UTC().Add(-s.maxAge)
+		for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
+			idx++
+		}
+	}
+
+	// Count-based cap.
+	if s.maxItems > 0 && len(s.events)-idx > s.maxItems {
+		target := s.maxItems * 80 / 100
+		idx = len(s.events) - target
 	}
 	if idx > 0 {
 		evicted := idx
@@ -395,6 +408,10 @@ func (s *GeneralLogStore) EventCount() int {
 func (s *GeneralLogStore) Stats() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.statsLocked()
+}
+
+func (s *GeneralLogStore) statsLocked() map[string]any {
 	stats := map[string]any{
 		"events":     len(s.events),
 		"log_file":   s.path,

@@ -3,7 +3,7 @@ export const API_BASE = "/api";
 // ─── HTTP Helpers ───────────────────────────────────────────────────
 
 /** Strip HTML tags and collapse whitespace for error display. */
-function sanitizeErrorBody(raw: string, maxLen = 200): string {
+function sanitizeErrorBody(raw: string, maxLen = 500): string {
   // Strip tags, decode common entities, collapse whitespace
   const text = raw
     .replace(/<[^>]*>/g, " ")

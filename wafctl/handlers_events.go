@@ -12,10 +12,9 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
+		// Use TryRLock for event stores — if they're busy loading/compacting,
+		// return a minimal health response instead of blocking for minutes.
 		stores := map[string]any{
-			"waf_events":    store.Stats(),
-			"access_events": als.Stats(),
-			"general_logs":  gls.Stats(),
 			"geoip": map[string]any{
 				"mmdb_loaded": geoStore.HasDB(),
 				"api_enabled": geoStore.HasAPI(),
@@ -27,6 +26,26 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 			"cfproxy":          cfProxyStore.Stats(),
 			"csp":              cspStore.StoreInfo(),
 			"security_headers": secStore.StoreInfo(),
+		}
+
+		// Non-blocking stats for event stores — return "loading" if locked.
+		if store.mu.TryRLock() {
+			stores["waf_events"] = store.statsLocked()
+			store.mu.RUnlock()
+		} else {
+			stores["waf_events"] = map[string]any{"status": "loading"}
+		}
+		if als.mu.TryRLock() {
+			stores["access_events"] = als.statsLocked()
+			als.mu.RUnlock()
+		} else {
+			stores["access_events"] = map[string]any{"status": "loading"}
+		}
+		if gls.mu.TryRLock() {
+			stores["general_logs"] = gls.statsLocked()
+			gls.mu.RUnlock()
+		} else {
+			stores["general_logs"] = map[string]any{"status": "loading"}
 		}
 
 		crsVer := ds.CRSVersion()

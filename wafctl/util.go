@@ -5,9 +5,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// queryIntEnv reads an integer from an environment variable with a default value.
+func queryIntEnv(key string, defaultVal int) int {
+	s := os.Getenv(key)
+	if s == "" {
+		return defaultVal
+	}
+	if v, err := strconv.Atoi(s); err == nil && v > 0 {
+		return v
+	}
+	return defaultVal
+}
 
 // headerValue extracts the first value for a header key from a map[string][]string.
 // Uses case-insensitive matching (delegates to headerValueCI in access_log_store.go).

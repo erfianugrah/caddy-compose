@@ -32,6 +32,9 @@ type Store struct {
 	// are evicted during each eviction cycle. Zero means no eviction.
 	maxAge time.Duration
 
+	// maxItems is a hard cap on in-memory events. Zero means no cap.
+	maxItems int
+
 	// geoIP is an optional GeoIP store for country enrichment.
 	geoIP *GeoIPStore
 
@@ -233,25 +236,37 @@ func (s *Store) SetMaxAge(d time.Duration) {
 	s.maxAge = d
 }
 
+// SetMaxItems configures the hard cap on in-memory events.
+func (s *Store) SetMaxItems(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxItems = n
+}
+
 // evictOld runs time-based eviction of stale events.
 func (s *Store) evictOld() {
 	s.evict()
 }
 
-// evict removes events older than maxAge from the in-memory store.
+// evict removes events older than maxAge and enforces maxItems cap.
 func (s *Store) evict() {
-	if s.maxAge <= 0 {
-		return
-	}
-
-	cutoff := time.Now().UTC().Add(-s.maxAge)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Events are appended chronologically, so find the first event within range.
 	idx := 0
-	for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
-		idx++
+
+	// Time-based eviction.
+	if s.maxAge > 0 {
+		cutoff := time.Now().UTC().Add(-s.maxAge)
+		for idx < len(s.events) && s.events[idx].Timestamp.Before(cutoff) {
+			idx++
+		}
+	}
+
+	// Count-based cap.
+	if s.maxItems > 0 && len(s.events)-idx > s.maxItems {
+		target := s.maxItems * 80 / 100
+		idx = len(s.events) - target
 	}
 	if idx > 0 {
 		// Decrement incremental summary counters for evicted events.
@@ -288,12 +303,16 @@ func (s *Store) EventCount() int {
 func (s *Store) Stats() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.statsLocked()
+}
+
+// statsLocked returns stats without acquiring the lock (caller holds RLock).
+func (s *Store) statsLocked() map[string]any {
 	stats := map[string]any{
 		"events":     len(s.events),
 		"max_age":    s.maxAge.String(),
 		"event_file": s.eventFile,
 	}
-	// Oldest / newest event timestamps.
 	if len(s.events) > 0 {
 		stats["oldest_event"] = s.events[0].Timestamp
 		stats["newest_event"] = s.events[len(s.events)-1].Timestamp
