@@ -7,7 +7,8 @@ Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbo
 skip → rate_limit → detect), outbound anomaly scoring (response headers + body),
 per-service category masks with frontend UI, 6 negated operators, managed lists, IPsum
 blocklist (8 levels, 618K IPs), unified /policy page (WAF rules + rate limits tabs),
-and e2e CI pipeline (106 e2e tests, 529 Go unit tests, 327 frontend tests).
+unified rule store (`/api/rules` + `/api/deploy`), and e2e CI pipeline
+(106 e2e tests, 500 Go unit tests, 326 frontend tests).
 
 ---
 
