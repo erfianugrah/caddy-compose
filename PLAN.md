@@ -260,23 +260,25 @@ Move header manipulation and caching rules from Caddyfile snippets into
 - [ ] Remove `(cors)` snippet after plugin handles CORS
 - [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` after plugin handles CORS
 
-### Phase 5: Rate Limits Parity (UI)
+### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
 
-After backend unification, the RL tab in `/policy` gets full parity with the
-WAF rules tab. This is simpler post-unification since both share the same API.
+Analysis concluded `RateLimitsPanel` should remain a separate component.
+It has domain-specific UI that PolicyEngine lacks: RL key selector (9 options
+with parameterized types), events/window presets, Rate Advisor (587 lines),
+Global Settings panel. The compat wrappers in `rate-limits.ts` correctly
+translate to `/api/rules` with `type: "rate_limit"` filtering.
 
-- [ ] Rewrite `RateLimitsPanel.tsx` to use unified `/api/rules` directly
-      (drop compat wrappers in `rate-limits.ts`)
-- [ ] Bulk select, move-to-edge, inline position editing in RL tab
-- [ ] Multi-drag reorder (already works for WAF rules)
-- [ ] Per-page count selector
-- [ ] Import/export rate limit rules
+- [x] Assessed merge vs keep-separate — keeping separate (17-22h merge vs 2-3h fix)
+- [x] Fixed `reorderRLRules` to preserve non-RL rules in unified store
+- [ ] Bulk select, move-to-edge, inline position editing (future enhancement)
 
-### Phase 6: CRS Automation
+### Phase 6: CRS Automation — DONE
 
-- [ ] GitHub Actions workflow to check latest CRS release
-- [ ] Auto-open PR bumping `CRS_VERSION` in Dockerfile
-- [ ] Run CRS test suite against policy engine for accuracy validation
+- [x] `crs-update.yml` workflow: weekly check against coreruleset/coreruleset
+- [x] Fetches latest release, compares with CRS_VERSION in build.yml
+- [x] Auto-opens PR with version bump + changelog link
+- [x] Duplicate PR detection, manual trigger support
+- [ ] CRS test suite accuracy validation (future)
 
 ---
 
