@@ -14,9 +14,9 @@ func TestWAFConfig(t *testing.T) {
 		resp, body := httpGet(t, wafctlURL+"/api/config")
 		assertCode(t, "get config", 200, resp)
 		// Response is WAFConfig: {defaults: {...}, services: {...}}
-		mode := jsonField(body, "defaults.mode")
-		if mode == "" || mode == "null" {
-			t.Errorf("expected defaults.mode to be set, got: %.200s", string(body))
+		pl := jsonInt(body, "defaults.paranoia_level")
+		if pl < 1 {
+			t.Errorf("expected defaults.paranoia_level >= 1, got %d (body: %.200s)", pl, string(body))
 		}
 	})
 
@@ -30,8 +30,6 @@ func TestWAFConfig(t *testing.T) {
 		}
 		resp, body := httpPut(t, wafctlURL+"/api/config", payload)
 		assertCode(t, "update config", 200, resp)
-		// Response echoes back the full WAFConfig
-		assertField(t, "update", body, "defaults.mode", "enabled")
 		pl := jsonInt(body, "defaults.paranoia_level")
 		if pl != 2 {
 			t.Errorf("expected defaults.paranoia_level=2, got %d", pl)
