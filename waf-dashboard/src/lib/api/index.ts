@@ -15,3 +15,5 @@ export * from "./managed-lists";
 export * from "./security-headers";
 export * from "./default-rules";
 export * from "./backup";
+export * from "./cors";
+export * from "./cache";
