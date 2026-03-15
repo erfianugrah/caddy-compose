@@ -13,11 +13,12 @@ export const QUICK_ACTIONS: { value: QuickActionType; label: string; description
 
 // ─── All Exclusion Types ────────────────────────────────────────────
 
-export const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; description: string; group: "quick" }[] = [
+export const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; description: string; group: "quick" | "advanced" }[] = [
   { value: "allow", label: "Allow", description: "Full bypass — terminates evaluation", group: "quick" },
   { value: "block", label: "Block", description: "Deny matching requests", group: "quick" },
   { value: "skip", label: "Skip", description: "Selective bypass — skip rules or phases", group: "quick" },
   { value: "detect", label: "Detect", description: "Trigger detection with severity level", group: "quick" },
+  { value: "response_header", label: "Response Header", description: "Set, add, or remove response headers", group: "advanced" },
 ];
 
 // ─── CRS Rule Tags ──────────────────────────────────────────────────
@@ -668,6 +669,10 @@ export interface AdvancedFormState {
   group_operator: import("@/lib/api").GroupOperator;
   tags: string[];
   enabled: boolean;
+  header_set: Record<string, string>;
+  header_add: Record<string, string>;
+  header_remove: string[];
+  header_default: Record<string, string>;
 }
 
 export const emptyAdvancedForm: AdvancedFormState = {
@@ -682,6 +687,10 @@ export const emptyAdvancedForm: AdvancedFormState = {
   group_operator: "and",
   tags: [],
   enabled: true,
+  header_set: {},
+  header_add: {},
+  header_remove: [],
+  header_default: {},
 };
 
 // ─── Phase-Filtered Field Sets ──────────────────────────────────────
@@ -689,7 +698,7 @@ export const emptyAdvancedForm: AdvancedFormState = {
 const RESPONSE_PHASE_FIELD_IDS = new Set(["response_header", "response_status", "response_content_type"]);
 
 /** Inbound-only fields (excludes response-phase fields). */
-export const INBOUND_FIELD_DEFS = CONDITION_FIELDS.filter(f => !RESPONSE_PHASE_FIELD_IDS.has(f.id));
+export const INBOUND_FIELD_DEFS = CONDITION_FIELDS.filter(f => !RESPONSE_PHASE_FIELD_IDS.has(f.value));
 
 /** All fields including response-phase (for outbound rules). */
 export const OUTBOUND_FIELD_DEFS = CONDITION_FIELDS;

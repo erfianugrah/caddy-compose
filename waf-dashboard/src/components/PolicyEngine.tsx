@@ -37,6 +37,7 @@ import {
   X,
   ArrowUpToLine,
   ArrowDownToLine,
+  LayoutTemplate,
 } from "lucide-react";
 import {
   Card,
@@ -87,12 +88,15 @@ import {
   importExclusions,
   fetchExclusionHits,
   bulkUpdateExclusions,
+  listTemplates,
+  applyTemplate,
   type Exclusion,
   type ExclusionType,
   type ExclusionCreateData,
   type ServiceDetail,
   type ExclusionHitsResponse,
   type BulkExclusionAction,
+  type RuleTemplate,
 } from "@/lib/api";
 
 import { T } from "@/lib/typography";
@@ -240,7 +244,7 @@ export default function PolicyEngine() {
   const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(sortedFilteredExclusions, rulesPage, RULES_PAGE_SIZE);
 
   // All possible exclusion types for the filter dropdown
-  const allExclusionTypes: ExclusionType[] = ["allow", "block", "skip", "detect"];
+  const allExclusionTypes: ExclusionType[] = ["allow", "block", "skip", "detect", "response_header"];
 
   // Scroll to the highlighted rule once exclusions have loaded.
   useEffect(() => {
@@ -543,8 +547,40 @@ export default function PolicyEngine() {
     [selected, loadData, autoDeploy],
   );
 
+  // ─── Templates ─────────────────────────────────────────────────────
+  const [templates, setTemplates] = useState<RuleTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateApplying, setTemplateApplying] = useState<string | null>(null);
+
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const t = await listTemplates();
+      setTemplates(t);
+    } catch {
+      // Templates are optional — fail silently
+      setTemplates([]);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
   // ─── Dialog state for create/edit ──────────────────────────────────
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  const handleApplyTemplate = useCallback(async (templateId: string) => {
+    try {
+      setTemplateApplying(templateId);
+      const result = await applyTemplate(templateId);
+      await autoDeploy(`Template applied: ${result.template} (${result.created} rules)`);
+      loadData();
+      setDialogOpen(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to apply template");
+    } finally {
+      setTemplateApplying(null);
+    }
+  }, [autoDeploy, loadData]);
 
   // Editing: determine which tab the exclusion belongs to so we show the edit form in the right tab
   const exclusionToEdit = editingId ? exclusions.find((e) => e.id === editingId) : null;
@@ -562,6 +598,10 @@ export default function PolicyEngine() {
         group_operator: exclusionToEdit.group_operator ?? "and",
         tags: exclusionToEdit.tags ?? [],
         enabled: exclusionToEdit.enabled,
+        header_set: exclusionToEdit.header_set ?? {},
+        header_add: exclusionToEdit.header_add ?? {},
+        header_remove: exclusionToEdit.header_remove ?? [],
+        header_default: exclusionToEdit.header_default ?? {},
       }
     : undefined;
 
@@ -579,6 +619,7 @@ export default function PolicyEngine() {
     setEditingId(null);
     setActiveTab("quick");
     setDialogOpen(true);
+    loadTemplates();
   };
 
   // Close dialog and reset edit state
@@ -598,18 +639,6 @@ export default function PolicyEngine() {
 
   return (
     <div className="space-y-6">
-      {/* Export/Import buttons */}
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <Download className="h-3.5 w-3.5" />
-          Export
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleImport}>
-          <Upload className="h-3.5 w-3.5" />
-          Import
-        </Button>
-      </div>
-
       {error && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
@@ -997,6 +1026,10 @@ export default function PolicyEngine() {
                       <Code2 className="h-3 w-3" />
                       Advanced
                     </TabsTrigger>
+                    <TabsTrigger value="templates" className="gap-1.5 text-xs px-3 h-7">
+                      <LayoutTemplate className="h-3 w-3" />
+                      Templates
+                    </TabsTrigger>
                   </TabsList>
                 )}
               </div>
@@ -1040,6 +1073,50 @@ export default function PolicyEngine() {
                 />
               )}
             </TabsContent>
+
+            {!editingId && (
+              <TabsContent value="templates" className="mt-4">
+                {templatesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : templates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <LayoutTemplate className="mb-2 h-6 w-6 text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground">No templates available</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Apply a pre-built rule template. This creates all rules in the template and deploys automatically.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {templates.map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          onClick={() => handleApplyTemplate(tpl.id)}
+                          disabled={templateApplying !== null}
+                          className="flex flex-col gap-1.5 rounded-lg border border-border p-4 text-left transition-all hover:border-lv-cyan/40 hover:bg-lv-cyan/5 disabled:opacity-50"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{tpl.name}</span>
+                            {templateApplying === tpl.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-lv-cyan" />
+                            ) : (
+                              <Badge variant="outline" className="text-[10px]">{tpl.category}</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{tpl.description}</p>
+                          <p className="text-[10px] text-muted-foreground/70">
+                            {tpl.rules.length} rule{tpl.rules.length !== 1 ? "s" : ""}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+            )}
           </Tabs>
         </DialogContent>
       </Dialog>

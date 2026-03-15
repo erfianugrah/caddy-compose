@@ -31,14 +31,14 @@ describe("QUICK_ACTIONS", () => {
 // ─── ALL_EXCLUSION_TYPES ────────────────────────────────────────────
 
 describe("ALL_EXCLUSION_TYPES", () => {
-  it("has exactly 4 types: allow, block, skip, detect", () => {
+  it("has exactly 5 types: allow, block, skip, detect, response_header", () => {
     const values = ALL_EXCLUSION_TYPES.map((t) => t.value);
-    expect(values).toEqual(["allow", "block", "skip", "detect"]);
+    expect(values).toEqual(["allow", "block", "skip", "detect", "response_header"]);
   });
 
-  it("all types are in the quick group", () => {
+  it("all types are in the quick or advanced group", () => {
     const groups = new Set(ALL_EXCLUSION_TYPES.map((t) => t.group));
-    expect(groups).toEqual(new Set(["quick"]));
+    expect(groups).toEqual(new Set(["quick", "advanced"]));
   });
 
   it("each type has label and description", () => {

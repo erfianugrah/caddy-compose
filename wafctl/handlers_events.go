@@ -345,26 +345,18 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 			resp = store.Services(hours)
 		}
 
-		// Merge access-log events (rate-limited and policy blocks) into service breakdown.
-		rlEvents := getRLEvents(als, tr, hours, nil)
+		// Merge access-log per-service counts. Use FastSummary (O(buckets))
+		// instead of getRLEvents (O(events)) to avoid enriching all events.
+		alsSummary := als.FastSummary(hours)
 		type svcCounts struct {
 			rl, policyBlock, detectBlock int
 		}
 		alsSvcMap := make(map[string]*svcCounts)
-		for i := range rlEvents {
-			ev := &rlEvents[i]
-			sc, ok := alsSvcMap[ev.Service]
-			if !ok {
-				sc = &svcCounts{}
-				alsSvcMap[ev.Service] = sc
-			}
-			switch ev.EventType {
-			case "policy_block":
-				sc.policyBlock++
-			case "detect_block":
-				sc.detectBlock++
-			default:
-				sc.rl++
+		for _, sd := range alsSummary.TopServices {
+			alsSvcMap[sd.Service] = &svcCounts{
+				rl:          sd.RateLimited,
+				policyBlock: sd.PolicyBlock,
+				detectBlock: sd.DetectBlock,
 			}
 		}
 

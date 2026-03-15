@@ -170,6 +170,190 @@ function SkipTargetsForm({
   );
 }
 
+// ─── Response Header Form ───────────────────────────────────────────
+
+function HeaderKeyValueSection({
+  label,
+  description,
+  entries,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  entries: Record<string, string>;
+  onChange: (entries: Record<string, string>) => void;
+}) {
+  const pairs = Object.entries(entries);
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+
+  const addPair = () => {
+    const key = newKey.trim();
+    if (!key) return;
+    onChange({ ...entries, [key]: newValue });
+    setNewKey("");
+    setNewValue("");
+  };
+
+  const removePair = (key: string) => {
+    const next = { ...entries };
+    delete next[key];
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      {pairs.length > 0 && (
+        <div className="space-y-1">
+          {pairs.map(([k, v]) => (
+            <div key={k} className="flex items-center gap-2">
+              <code className="rounded bg-muted/50 px-1.5 py-0.5 text-xs font-mono">{k}</code>
+              <span className="text-xs text-muted-foreground">:</span>
+              <code className="rounded bg-muted/50 px-1.5 py-0.5 text-xs font-mono flex-1 truncate">{v}</code>
+              <Button variant="ghost" size="icon-sm" onClick={() => removePair(k)} className="text-muted-foreground hover:text-lv-red shrink-0">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          placeholder="Header name"
+          className="h-7 text-xs flex-1"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPair(); } }}
+        />
+        <Input
+          value={newValue}
+          onChange={(e) => setNewValue(e.target.value)}
+          placeholder="Value"
+          className="h-7 text-xs flex-1"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPair(); } }}
+        />
+        <Button variant="outline" size="sm" onClick={addPair} disabled={!newKey.trim()} className="shrink-0 h-7 text-xs">
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function HeaderRemoveSection({
+  headers,
+  onChange,
+}: {
+  headers: string[];
+  onChange: (headers: string[]) => void;
+}) {
+  const [newHeader, setNewHeader] = useState("");
+
+  const addHeader = () => {
+    const h = newHeader.trim();
+    if (!h || headers.includes(h)) return;
+    onChange([...headers, h]);
+    setNewHeader("");
+  };
+
+  const removeHeader = (h: string) => {
+    onChange(headers.filter((x) => x !== h));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-sm font-medium">Remove Headers</p>
+        <p className="text-xs text-muted-foreground">Headers to strip from the response</p>
+      </div>
+      {headers.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {headers.map((h) => (
+            <span key={h} className="inline-flex items-center gap-1 rounded bg-lv-red/10 border border-lv-red/20 px-1.5 py-0.5 text-xs font-mono">
+              {h}
+              <button onClick={() => removeHeader(h)} className="text-muted-foreground hover:text-lv-red">
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          value={newHeader}
+          onChange={(e) => setNewHeader(e.target.value)}
+          placeholder="Header name to remove"
+          className="h-7 text-xs flex-1"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addHeader(); } }}
+        />
+        <Button variant="outline" size="sm" onClick={addHeader} disabled={!newHeader.trim()} className="shrink-0 h-7 text-xs">
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ResponseHeaderForm({
+  headerSet,
+  headerAdd,
+  headerRemove,
+  headerDefault,
+  onChangeSet,
+  onChangeAdd,
+  onChangeRemove,
+  onChangeDefault,
+}: {
+  headerSet: Record<string, string>;
+  headerAdd: Record<string, string>;
+  headerRemove: string[];
+  headerDefault: Record<string, string>;
+  onChangeSet: (v: Record<string, string>) => void;
+  onChangeAdd: (v: Record<string, string>) => void;
+  onChangeRemove: (v: string[]) => void;
+  onChangeDefault: (v: Record<string, string>) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Response Header Rule</p>
+        <p className="mt-1">
+          Modify response headers for matching requests. Set replaces existing values, Add appends
+          (allows multiple values), Remove strips headers, and Default sets only if not already present.
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <HeaderKeyValueSection
+          label="Set Headers"
+          description="Replace or create header with this value"
+          entries={headerSet}
+          onChange={onChangeSet}
+        />
+        <HeaderKeyValueSection
+          label="Add Headers"
+          description="Append value (allows duplicates)"
+          entries={headerAdd}
+          onChange={onChangeAdd}
+        />
+        <HeaderRemoveSection
+          headers={headerRemove}
+          onChange={onChangeRemove}
+        />
+        <HeaderKeyValueSection
+          label="Default Headers"
+          description="Set only if header is not already present"
+          entries={headerDefault}
+          onChange={onChangeDefault}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Exclusion Type Picker (Popover-based, no Radix Select scroll) ──
 
 function ExclusionTypePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -585,12 +769,13 @@ export function AdvancedBuilderForm({
 }) {
   const [form, setForm] = useState<AdvancedFormState>(initial ?? emptyAdvancedForm);
 
-  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator | string[] | SkipTargets) => {
+  const update = (field: keyof AdvancedFormState, value: string | number | boolean | Condition[] | GroupOperator | string[] | SkipTargets | Record<string, string>) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const isDetect = form.type === "detect";
   const isSkip = form.type === "skip";
+  const isResponseHeader = form.type === "response_header";
 
   // Condition management — all 3 types need conditions
   const updateCondition = (index: number, condition: Condition) => {
@@ -619,6 +804,13 @@ export function AdvancedBuilderForm({
       detect_paranoia_level: newType === "detect" ? prev.detect_paranoia_level : 0,
       // Reset skip-specific fields when switching away from skip
       skip_targets: newType === "skip" ? prev.skip_targets : {},
+      // Auto-set phase to outbound for response_header
+      phase: newType === "response_header" ? "outbound" : prev.phase,
+      // Reset header fields when switching away from response_header
+      header_set: newType === "response_header" ? prev.header_set : {},
+      header_add: newType === "response_header" ? prev.header_add : {},
+      header_remove: newType === "response_header" ? prev.header_remove : [],
+      header_default: newType === "response_header" ? prev.header_default : {},
     }));
   };
 
@@ -640,6 +832,14 @@ export function AdvancedBuilderForm({
       const hasTargets = st.all_remaining || (st.rules?.length ?? 0) > 0 || (st.phases?.length ?? 0) > 0;
       if (hasTargets) data.skip_targets = st;
     }
+    if (isResponseHeader) {
+      if (Object.keys(form.header_set).length > 0) data.header_set = form.header_set;
+      if (Object.keys(form.header_add).length > 0) data.header_add = form.header_add;
+      if (form.header_remove.length > 0) data.header_remove = form.header_remove;
+      if (Object.keys(form.header_default).length > 0) data.header_default = form.header_default;
+      // Force outbound phase
+      data.phase = "outbound";
+    }
     if (validConditions.length > 0) {
       data.conditions = validConditions;
       data.group_operator = form.group_operator;
@@ -650,9 +850,11 @@ export function AdvancedBuilderForm({
 
   const isValid = (() => {
     if (form.name.trim() === "") return false;
-    // All types need at least one condition
-    const validConds = form.conditions.filter((c) => c.value.trim() !== "");
-    if (validConds.length === 0) return false;
+    // Response header rules don't strictly require conditions (they can apply globally)
+    if (!isResponseHeader) {
+      const validConds = form.conditions.filter((c) => c.value.trim() !== "");
+      if (validConds.length === 0) return false;
+    }
     // Detect needs severity
     if (isDetect && !form.severity) return false;
     // Skip needs at least one target
@@ -660,6 +862,14 @@ export function AdvancedBuilderForm({
       const st = form.skip_targets;
       const hasTargets = st.all_remaining || (st.rules?.length ?? 0) > 0 || (st.phases?.length ?? 0) > 0;
       if (!hasTargets) return false;
+    }
+    // Response header needs at least one header action
+    if (isResponseHeader) {
+      const hasActions = Object.keys(form.header_set).length > 0 ||
+        Object.keys(form.header_add).length > 0 ||
+        form.header_remove.length > 0 ||
+        Object.keys(form.header_default).length > 0;
+      if (!hasActions) return false;
     }
     return true;
   })();
@@ -686,6 +896,7 @@ export function AdvancedBuilderForm({
           {form.type === "block" && <span className="inline-flex items-center rounded bg-lv-red/20 border border-lv-red/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-red">Block</span>}
           {form.type === "skip" && <span className="inline-flex items-center rounded bg-lv-cyan/20 border border-lv-cyan/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-cyan">Skip</span>}
           {form.type === "detect" && <span className="inline-flex items-center rounded bg-lv-peach/20 border border-lv-peach/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-peach">Detect</span>}
+          {form.type === "response_header" && <span className="inline-flex items-center rounded bg-lv-purple/20 border border-lv-purple/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-purple">Response Header</span>}
         </div>
         <ExclusionTypePicker value={form.type} onChange={handleTypeChange} />
       </div>
@@ -757,6 +968,20 @@ export function AdvancedBuilderForm({
         <SkipTargetsForm
           value={form.skip_targets}
           onChange={(targets) => update("skip_targets", targets)}
+        />
+      )}
+
+      {/* Response Header: Header Actions */}
+      {isResponseHeader && (
+        <ResponseHeaderForm
+          headerSet={form.header_set}
+          headerAdd={form.header_add}
+          headerRemove={form.header_remove}
+          headerDefault={form.header_default}
+          onChangeSet={(v) => update("header_set", v)}
+          onChangeAdd={(v) => update("header_add", v)}
+          onChangeRemove={(v) => setForm((prev) => ({ ...prev, header_remove: v }))}
+          onChangeDefault={(v) => update("header_default", v)}
         />
       )}
 
