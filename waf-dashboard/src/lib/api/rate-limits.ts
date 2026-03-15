@@ -156,8 +156,14 @@ export async function importRLRules(data: { rules: RateLimitRuleCreateData[] }):
   });
 }
 
-export async function reorderRLRules(ids: string[]): Promise<RateLimitRule[]> {
-  const raw = await putJSON<Exclusion[]>(`${API_BASE}/rules/reorder`, { ids });
+export async function reorderRLRules(rlIds: string[]): Promise<RateLimitRule[]> {
+  // The backend Reorder requires ALL rule IDs. Fetch all rules, replace
+  // the RL subset with the new order, and send the full list.
+  const all = await fetchJSON<Exclusion[]>(`${API_BASE}/rules`);
+  const rlIdSet = new Set((all ?? []).filter(e => e.type === "rate_limit").map(e => e.id));
+  const nonRL = (all ?? []).filter(e => !rlIdSet.has(e.id)).map(e => e.id);
+  const fullOrder = [...nonRL, ...rlIds];
+  const raw = await putJSON<Exclusion[]>(`${API_BASE}/rules/reorder`, { ids: fullOrder });
   return (raw ?? []).filter(e => e.type === "rate_limit").map(exclusionToRL);
 }
 
