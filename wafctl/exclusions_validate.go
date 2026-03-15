@@ -175,13 +175,16 @@ func validateExclusion(e RuleExclusion) error {
 		}
 	}
 
-	// Validate conditions — all types only support request-phase fields.
-	var allowedFields map[string]bool
-	if IsPolicyEngineType(e.Type) {
-		allowedFields = validPolicyEngineFields
-	}
-	if err := validateConditions(e.Conditions, allowedFields); err != nil {
-		return err
+	// Validate conditions — rate_limit uses a restricted field set,
+	// other policy engine types use the full set.
+	if e.Type != "rate_limit" {
+		var allowedFields map[string]bool
+		if IsPolicyEngineType(e.Type) {
+			allowedFields = validPolicyEngineFields
+		}
+		if err := validateConditions(e.Conditions, allowedFields); err != nil {
+			return err
+		}
 	}
 
 	// Type-specific validation.
@@ -216,6 +219,51 @@ func validateExclusion(e RuleExclusion) error {
 		if e.DetectParanoiaLevel != 0 && (e.DetectParanoiaLevel < 1 || e.DetectParanoiaLevel > 4) {
 			return fmt.Errorf("detect_paranoia_level must be between 0 and 4, got %d", e.DetectParanoiaLevel)
 		}
+	case "rate_limit":
+		// Service is required for rate limit rules.
+		if e.Service == "" {
+			return fmt.Errorf("rate_limit requires service (hostname or \"*\")")
+		}
+		if strings.ContainsAny(e.Service, "\n\r") {
+			return fmt.Errorf("service must not contain newlines")
+		}
+		// Key validation.
+		if e.RateLimitKey == "" {
+			return fmt.Errorf("rate_limit requires rate_limit_key")
+		}
+		if !validRLKeyPattern.MatchString(e.RateLimitKey) {
+			return fmt.Errorf("invalid rate_limit_key %q (must be client_ip, path, static, client_ip+path, client_ip+method, header:<name>, or cookie:<name>)", e.RateLimitKey)
+		}
+		// Events and window.
+		if e.RateLimitEvents < 1 {
+			return fmt.Errorf("rate_limit_events must be at least 1")
+		}
+		if e.RateLimitEvents > 100000 {
+			return fmt.Errorf("rate_limit_events must be at most 100000")
+		}
+		if e.RateLimitWindow == "" {
+			return fmt.Errorf("rate_limit requires rate_limit_window")
+		}
+		if !validWindowPattern.MatchString(e.RateLimitWindow) {
+			return fmt.Errorf("rate_limit_window must be a duration like 1m, 30s, 1h")
+		}
+		// Action validation.
+		if !validRLActions[e.RateLimitAction] {
+			return fmt.Errorf("invalid rate_limit_action %q (must be \"deny\" or \"log_only\")", e.RateLimitAction)
+		}
+		// Priority.
+		if e.Priority < 0 || e.Priority > 999 {
+			return fmt.Errorf("priority must be 0-999")
+		}
+		// GroupOp "or" not yet supported for multi-condition RL rules.
+		if e.GroupOp == "or" && len(e.Conditions) > 1 {
+			return fmt.Errorf("group_operator \"or\" is not yet supported for rate limit rules with multiple conditions")
+		}
+		// RL rules use the restricted condition field set (request-phase only).
+		if err := validateConditions(e.Conditions, validRLConditionFields); err != nil {
+			return err
+		}
+		return nil // Skip the general condition validation below (already done).
 	}
 
 	return nil

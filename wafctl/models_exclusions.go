@@ -23,21 +23,35 @@ type SkipTargets struct {
 	AllRemaining bool     `json:"all_remaining,omitempty"` // Skip everything below this rule
 }
 
-// RuleExclusion is a single WAF policy engine rule (allow, block, skip, detect).
+// RuleExclusion is a single WAF policy engine rule.
+// Types: allow, block, skip, detect, rate_limit.
 type RuleExclusion struct {
-	ID                  string       `json:"id"`
-	Name                string       `json:"name"`
-	Description         string       `json:"description"`
-	Type                string       `json:"type"`
-	Conditions          []Condition  `json:"conditions,omitempty"`            // Dynamic conditions (field/operator/value)
-	GroupOp             string       `json:"group_operator,omitempty"`        // "and" (default) or "or"
-	SkipTargets         *SkipTargets `json:"skip_targets,omitempty"`          // For skip type: what to bypass
-	Severity            string       `json:"severity,omitempty"`              // For detect type: CRITICAL, ERROR, WARNING, NOTICE
-	DetectParanoiaLevel int          `json:"detect_paranoia_level,omitempty"` // For detect type: paranoia level 1-4 (0 = all levels)
-	Tags                []string     `json:"tags,omitempty"`                  // Event classification tags (e.g., "scanner", "honeypot", "blocklist")
-	Enabled             bool         `json:"enabled"`
-	CreatedAt           time.Time    `json:"created_at"`
-	UpdatedAt           time.Time    `json:"updated_at"`
+	// ─── Common fields (all types) ──────────────────────────────────
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Type        string      `json:"type"`                     // allow|block|skip|detect|rate_limit
+	Conditions  []Condition `json:"conditions,omitempty"`     // Dynamic conditions (field/operator/value)
+	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
+	Service     string      `json:"service,omitempty"`        // hostname, "*", or short name — scopes rule to a service
+	Priority    int         `json:"priority,omitempty"`       // Explicit ordering within type band (0 = auto from position)
+	Tags        []string    `json:"tags,omitempty"`           // Event classification tags (e.g., "scanner", "honeypot", "blocklist")
+	Enabled     bool        `json:"enabled"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+
+	// ─── skip-only ──────────────────────────────────────────────────
+	SkipTargets *SkipTargets `json:"skip_targets,omitempty"` // What to bypass
+
+	// ─── detect-only ────────────────────────────────────────────────
+	Severity            string `json:"severity,omitempty"`              // CRITICAL, ERROR, WARNING, NOTICE
+	DetectParanoiaLevel int    `json:"detect_paranoia_level,omitempty"` // 1-4 (0 = all levels)
+
+	// ─── rate_limit-only ────────────────────────────────────────────
+	RateLimitKey    string `json:"rate_limit_key,omitempty"`    // "client_ip", "header:X-API-Key", "client_ip+path", etc.
+	RateLimitEvents int    `json:"rate_limit_events,omitempty"` // Max events in window
+	RateLimitWindow string `json:"rate_limit_window,omitempty"` // Duration: "1m", "30s", "1h"
+	RateLimitAction string `json:"rate_limit_action,omitempty"` // "deny" (default 429) or "log_only"
 }
 
 // ─── WAF Configuration ──────────────────────────────────────────────────────
@@ -46,8 +60,9 @@ type RuleExclusion struct {
 // Defaults are applied to any service without an explicit override.
 // Services map hostname → per-service overrides.
 type WAFConfig struct {
-	Defaults WAFServiceSettings            `json:"defaults"`
-	Services map[string]WAFServiceSettings `json:"services"`
+	Defaults        WAFServiceSettings            `json:"defaults"`
+	Services        map[string]WAFServiceSettings `json:"services"`
+	RateLimitGlobal RateLimitGlobalConfig         `json:"rate_limit_global,omitempty"` // Global RL settings (sweep interval, jitter)
 }
 
 // WAFServiceSettings controls WAF behavior for a service (or as defaults).
@@ -133,10 +148,11 @@ var validCRSExclusions = map[string]bool{
 
 // Valid exclusion types — policy engine only.
 var validExclusionTypes = map[string]bool{
-	"allow":  true, // Full bypass — terminates evaluation immediately
-	"block":  true, // Deny requests (403)
-	"skip":   true, // Selective bypass — carries skip_targets (non-terminating)
-	"detect": true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
+	"allow":      true, // Full bypass — terminates evaluation immediately
+	"block":      true, // Deny requests (403)
+	"skip":       true, // Selective bypass — carries skip_targets (non-terminating)
+	"detect":     true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
+	"rate_limit": true, // Sliding window rate limiting (429 or log_only)
 }
 
 // Valid condition fields

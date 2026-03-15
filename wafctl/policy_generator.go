@@ -108,10 +108,11 @@ type PolicyCondition struct {
 
 // policyEngineTypes are the exclusion types handled by the Caddy policy engine plugin.
 var policyEngineTypes = map[string]bool{
-	"allow":  true,
-	"block":  true,
-	"skip":   true,
-	"detect": true,
+	"allow":      true,
+	"block":      true,
+	"skip":       true,
+	"detect":     true,
+	"rate_limit": true,
 }
 
 // policyTypePriority assigns a base priority per exclusion type.
@@ -207,10 +208,34 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 			}
 		}
 
+		// Rate limit rules carry rate limit config + per-service scoping.
+		if e.Type == "rate_limit" {
+			action := e.RateLimitAction
+			if action == "" {
+				action = "deny"
+			}
+			pr.Service = resolveServiceName(e.Service, serviceMap)
+			pr.RateLimit = &PolicyRateLimitConfig{
+				Key:    e.RateLimitKey,
+				Events: e.RateLimitEvents,
+				Window: e.RateLimitWindow,
+				Action: action,
+			}
+			// Use explicit priority if set, otherwise tiebreaker from store index.
+			if e.Priority > 0 {
+				pr.Priority = policyTypePriority["rate_limit"] + e.Priority
+			}
+		}
+
+		// Per-service scoping for any rule type.
+		if e.Service != "" && e.Type != "rate_limit" {
+			pr.Service = resolveServiceName(e.Service, serviceMap)
+		}
+
 		rules = append(rules, pr)
 	}
 
-	// Convert rate limit rules.
+	// Convert legacy rate limit rules (from separate RateLimitRuleStore, if any).
 	for i, rl := range rlRules {
 		conditions := convertConditions(rl.Conditions, listStore)
 
