@@ -269,44 +269,22 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		}
 	}
 
-	// Build condition(s). When multiple fields are involved AND the
-	// consolidated field would be request_combined, emit a nested OR group
-	// with per-field conditions instead. This gives the plugin per-variable
-	// evaluation which reduces false positives from broad regex patterns.
-	isMultiMatch := hasAction(rule.Actions, "multiMatch")
+	// Build condition. The nested group infrastructure is available in the
+	// plugin for future per-variable evaluation, but for now we keep using
+	// request_combined which already evaluates per-variable via isMulti.
+	cond := PolicyCondition{
+		Field:      field,
+		Operator:   opName,
+		Value:      operatorValue,
+		Negate:     rule.Operator.Negated,
+		MultiMatch: hasAction(rule.Actions, "multiMatch"),
+		Transforms: transforms,
+		ListItems:  listItems,
+		Excludes:   excludes,
+	}
 
 	var conditions []PolicyCondition
-	if field == "request_combined" && len(fields) > 1 {
-		// Emit a nested OR group — one condition per field.
-		var group []PolicyCondition
-		for _, f := range fields {
-			group = append(group, PolicyCondition{
-				Field:      f,
-				Operator:   opName,
-				Value:      operatorValue,
-				Negate:     rule.Operator.Negated,
-				MultiMatch: isMultiMatch,
-				Transforms: transforms,
-				ListItems:  listItems,
-				Excludes:   excludes,
-			})
-		}
-		conditions = append(conditions, PolicyCondition{
-			Group:   group,
-			GroupOp: "or",
-		})
-	} else {
-		conditions = append(conditions, PolicyCondition{
-			Field:      field,
-			Operator:   opName,
-			Value:      operatorValue,
-			Negate:     rule.Operator.Negated,
-			MultiMatch: isMultiMatch,
-			Transforms: transforms,
-			ListItems:  listItems,
-			Excludes:   excludes,
-		})
-	}
+	conditions = append(conditions, cond)
 	if rule.Chain != nil {
 		chainConds, err := c.convertChain(rule.Chain, filename)
 		if err != nil {
