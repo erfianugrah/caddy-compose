@@ -89,10 +89,9 @@ export default function RulesOverview() {
 
   // Working copy of the config (only live fields: paranoia_level + inbound_threshold)
   const [defaults, setDefaults] = useState<WAFServiceSettings>({
-    mode: "enabled",
     paranoia_level: 1,
     inbound_threshold: 5,
-    outbound_threshold: 4,  // kept for API compat — not shown in UI
+    outbound_threshold: 4,
   });
   const [serviceOverrides, setServiceOverrides] = useState<Record<string, WAFServiceSettings>>({});
 

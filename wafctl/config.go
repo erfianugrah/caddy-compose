@@ -29,7 +29,6 @@ func NewConfigStore(filePath string) *ConfigStore {
 func defaultConfig() WAFConfig {
 	return WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode:              "enabled",
 			ParanoiaLevel:     1,
 			InboundThreshold:  5,
 			OutboundThreshold: 4,
@@ -65,14 +64,14 @@ func (s *ConfigStore) load() {
 
 	// Migration: detect old format by checking if Defaults has zero values
 	// and the raw JSON has the old fields (paranoia_level at root level).
-	if cfg.Defaults.Mode == "" {
+	if cfg.Defaults.ParanoiaLevel == 0 {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err == nil {
 			if _, hasOldField := raw["rule_engine"]; hasOldField {
 				cfg = migrateOldConfig(data)
 				log.Printf("migrated config from old format")
 			} else {
-				// New format but missing mode — set defaults.
+				// New format but missing paranoia_level — set defaults.
 				cfg.Defaults = defaultServiceSettings()
 			}
 		}
@@ -106,15 +105,10 @@ func migrateOldConfig(data []byte) WAFConfig {
 		return defaultConfig()
 	}
 
-	// Map old rule_engine to new mode.
-	mode := "enabled"
-	switch old.RuleEngine {
-	case "Off":
-		mode = "disabled"
-	case "DetectionOnly":
-		mode = "detection_only"
-	}
-
+	// Map old rule_engine profiles to threshold values.
+	// "Off" → detection-only (tuning thresholds 10000/10000)
+	// "DetectionOnly" → detection-only (tuning thresholds 10000/10000)
+	// Default/anything else → strict thresholds (5/4)
 	defaults := defaultConfig().Defaults
 	pl := old.ParanoiaLevel
 	if pl < 1 || pl > 4 {
@@ -129,9 +123,14 @@ func migrateOldConfig(data []byte) WAFConfig {
 		outbound = defaults.OutboundThreshold
 	}
 
+	// If old format had detection-only, use high thresholds.
+	if old.RuleEngine == "DetectionOnly" || old.RuleEngine == "Off" {
+		inbound = 10000
+		outbound = 10000
+	}
+
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode:              mode,
 			ParanoiaLevel:     pl,
 			InboundThreshold:  inbound,
 			OutboundThreshold: outbound,
@@ -147,21 +146,16 @@ func migrateOldConfig(data []byte) WAFConfig {
 		if err := json.Unmarshal(raw, &sc); err != nil {
 			continue
 		}
-		svcMode := "enabled"
 		svcPL := pl         // use clamped default paranoia level
 		svcInT := inbound   // use clamped default inbound threshold
 		svcOutT := outbound // use clamped default outbound threshold
 		switch sc.Profile {
 		case "strict":
 			svcInT, svcOutT = 5, 4
-		case "tuning":
-			svcMode = "detection_only"
+		case "tuning", "off":
 			svcInT, svcOutT = 10000, 10000
-		case "off":
-			svcMode = "disabled"
 		}
 		cfg.Services[svc] = WAFServiceSettings{
-			Mode:              svcMode,
 			ParanoiaLevel:     svcPL,
 			InboundThreshold:  svcInT,
 			OutboundThreshold: svcOutT,
@@ -268,8 +262,6 @@ func validateConfig(cfg WAFConfig) error {
 
 // validateServiceSettings validates a single WAFServiceSettings.
 func validateServiceSettings(name string, ss WAFServiceSettings) error {
-	// Note: Mode field preserved for backward compat but has no behavioral effect.
-	// The "Tuning" preset achieves detection-only by setting thresholds to 10000.
 	if ss.ParanoiaLevel < 1 || ss.ParanoiaLevel > 4 {
 		return fmt.Errorf("%s: paranoia_level must be between 1 and 4", name)
 	}

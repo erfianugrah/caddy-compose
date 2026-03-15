@@ -67,9 +67,10 @@ type WAFConfig struct {
 
 // WAFServiceSettings controls WAF behavior for a service (or as defaults).
 type WAFServiceSettings struct {
-	// Mode: preserved for backward compat — has no behavioral effect.
+	// Mode: accepted from JSON for backward compat but has no behavioral effect.
 	// Detection-only is achieved via high thresholds (Tuning preset = 10000/10000).
-	Mode string `json:"mode"`
+	// Will be removed in a future version once all configs have migrated.
+	Mode string `json:"mode,omitempty"`
 	// ParanoiaLevel: CRS paranoia level 1-4 (higher = more rules, more false positives)
 	ParanoiaLevel int `json:"paranoia_level"`
 	// InboundThreshold: anomaly score threshold for inbound requests (lower = stricter)

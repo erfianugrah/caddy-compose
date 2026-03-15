@@ -111,7 +111,6 @@ func cliConfigGet(flags cliFlags) int {
 }
 
 func printWAFSettings(tw *tabwriter.Writer, prefix string, s WAFServiceSettings) {
-	fmt.Fprintf(tw, "%sMode:\t%s\n", prefix, s.Mode)
 	fmt.Fprintf(tw, "%sParanoia Level:\t%d\n", prefix, s.ParanoiaLevel)
 	fmt.Fprintf(tw, "%sInbound Threshold:\t%d\n", prefix, s.InboundThreshold)
 	fmt.Fprintf(tw, "%sOutbound Threshold:\t%d\n", prefix, s.OutboundThreshold)

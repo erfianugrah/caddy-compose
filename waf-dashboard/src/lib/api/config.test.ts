@@ -56,7 +56,7 @@ describe("getConfig", () => {
 
     const { getConfig } = await import("@/lib/api");
     const result = await getConfig();
-    expect(result.defaults.mode).toBe("enabled");
+    // mode is deprecated and no longer set by defaults
     expect(result.defaults.paranoia_level).toBe(1);
     expect(result.defaults.inbound_threshold).toBe(5);
     expect(result.defaults.outbound_threshold).toBe(4);

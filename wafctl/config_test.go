@@ -218,27 +218,24 @@ func TestConfigMigrationFromOldFormat(t *testing.T) {
 	cs := NewConfigStore(path)
 	cfg := cs.Get()
 
-	// Check migrated defaults.
-	if cfg.Defaults.Mode != "detection_only" {
-		t.Errorf("migrated mode: want detection_only, got %s", cfg.Defaults.Mode)
-	}
+	// Check migrated defaults. DetectionOnly → high thresholds (10000/10000).
 	if cfg.Defaults.ParanoiaLevel != 2 {
 		t.Errorf("migrated paranoia: want 2, got %d", cfg.Defaults.ParanoiaLevel)
 	}
-	if cfg.Defaults.InboundThreshold != 15 {
-		t.Errorf("migrated inbound: want 15, got %d", cfg.Defaults.InboundThreshold)
+	if cfg.Defaults.InboundThreshold != 10000 {
+		t.Errorf("migrated inbound: want 10000 (detection-only), got %d", cfg.Defaults.InboundThreshold)
 	}
 
-	// Check migrated services.
+	// Check migrated services exist.
 	if ss, ok := cfg.Services["test.erfi.io"]; !ok {
 		t.Error("migrated service test.erfi.io not found")
-	} else if ss.Mode != "enabled" {
-		t.Errorf("migrated test.erfi.io mode: want enabled, got %s", ss.Mode)
+	} else if ss.InboundThreshold != 5 {
+		t.Errorf("migrated test.erfi.io inbound: want 5 (strict), got %d", ss.InboundThreshold)
 	}
 	if ss, ok := cfg.Services["qbit.erfi.io"]; !ok {
 		t.Error("migrated service qbit.erfi.io not found")
-	} else if ss.Mode != "disabled" {
-		t.Errorf("migrated qbit.erfi.io mode: want disabled, got %s", ss.Mode)
+	} else if ss.InboundThreshold != 10000 {
+		t.Errorf("migrated qbit.erfi.io inbound: want 10000 (off→tuning), got %d", ss.InboundThreshold)
 	}
 }
 

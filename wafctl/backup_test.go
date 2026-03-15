@@ -111,9 +111,7 @@ func TestBackup_EmptyStores(t *testing.T) {
 	if backup.ExportedAt.IsZero() {
 		t.Error("expected non-zero exported_at")
 	}
-	if backup.WAFConfig.Defaults.Mode != "enabled" {
-		t.Errorf("expected default mode 'enabled', got %q", backup.WAFConfig.Defaults.Mode)
-	}
+	// Mode is preserved for backward compat but no longer set by defaults.
 	if backup.WAFConfig.Defaults.ParanoiaLevel != 1 {
 		t.Errorf("expected default paranoia 1, got %d", backup.WAFConfig.Defaults.ParanoiaLevel)
 	}

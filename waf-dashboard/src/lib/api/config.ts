@@ -2,10 +2,12 @@ import { API_BASE, fetchJSON, putJSON } from "./shared";
 
 // ─── Settings / Config ──────────────────────────────────────────────
 
+/** @deprecated Mode field preserved for backward compat — no behavioral effect. */
 export type WAFMode = "enabled" | "detection_only" | "disabled";
 
 export interface WAFServiceSettings {
-  mode: WAFMode;
+  /** @deprecated Preserved for backward compat — no behavioral effect. Use thresholds instead. */
+  mode?: WAFMode;
   paranoia_level: number;
   inbound_threshold: number;
   outbound_threshold: number;
@@ -69,7 +71,7 @@ export function settingsToPreset(s: WAFServiceSettings): WAFPreset {
 export async function getConfig(): Promise<WAFConfig> {
   const raw = await fetchJSON<WAFConfig>(`${API_BASE}/config`);
   return {
-    defaults: raw.defaults ?? { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+    defaults: raw.defaults ?? { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
     services: raw.services ?? {},
   };
 }
