@@ -161,13 +161,113 @@ WAF_DOS_MAX_REPORTS=100       # keep last N spike reports
 | Recovery | Manual unban | Auto-cooldown with report |
 | Integration | Separate daemon | Built into policy engine, same condition syntax |
 
+#### Enforcement: L4 Drop + IP Jails (built into policy engine)
+
+The observation-layer dedup above handles the **logging** problem. But the real
+mitigation needs to happen at the **enforcement** layer — dropping malicious
+traffic as early as possible, ideally before L7 parsing.
+
+**L4 drop (connection-level):** For confirmed attackers, reject at TCP level before
+HTTP parsing. Caddy's `layer4` module can terminate connections by IP before the
+TLS handshake, eliminating all L7 overhead. The policy engine can maintain a
+"jail" of IPs that should be L4-dropped:
+
+```
+Tiered escalation:
+1. First offense:    rate-limit (429)           — L7, normal policy engine
+2. Repeat offender:  block (403)                — L7, policy engine block rule
+3. Sustained attack: L4 drop (TCP RST/timeout)  — connection killed pre-TLS
+4. Known bad actor:  permanent jail              — IP added to managed list
+```
+
+**IP jail:** A time-bounded blocklist managed by the policy engine itself:
+- When a fingerprint exceeds a high threshold (e.g., 1000 req in 1 min from same IP),
+  the IP is automatically added to a "jail" managed list with a TTL
+- Jail entries expire after a configurable duration (default: 1h)
+- The jail list is consumed by both L7 policy rules AND L4 connection filtering
+- API: `GET /api/dos/jail` — list jailed IPs with reason/TTL
+- API: `DELETE /api/dos/jail/{ip}` — manual unjail
+
+**Why L4 drop matters:** Under a volumetric DDoS, even returning a 403 costs
+CPU (TLS handshake, HTTP parse, header write, log). An L4 drop costs ~0 CPU —
+the kernel rejects the SYN or RSTs the connection before userspace processing.
+At 10K req/s, the difference between L7-block and L4-drop is ~8 CPU cores.
+
+**Integration with Caddy `layer4` module:**
+The policy engine plugin could write a `blocked-ips.txt` file consumed by a
+Caddy layer4 matcher, or expose a Unix socket / shared memory for real-time
+IP set updates. Alternatively, use eBPF/XDP for kernel-level packet dropping
+(most efficient, but requires Linux capabilities and a BPF loader).
+
+**Efficiency hierarchy (fastest to slowest):**
+1. **eBPF/XDP** — kernel drops packet before it reaches the network stack (~0 CPU)
+2. **iptables/nftables** — kernel drops after IP routing (~0.01ms/pkt)
+3. **Caddy layer4** — userspace TCP reject before TLS (~0.1ms/pkt)
+4. **Policy engine L7 block** — full HTTP parse + 403 response (~1ms/pkt)
+5. **Rate limit 429** — full HTTP parse + response + logging (~2ms/pkt)
+
+For a self-hosted stack without Cloudflare, the practical path is:
+- Phase 1: Policy engine L7 block with fingerprint-based jail (current infra)
+- Phase 2: Caddy layer4 integration for TCP-level drop of jailed IPs
+- Phase 3: eBPF/XDP loader for kernel-level drop (optional, maximum efficiency)
+
+#### Architecture: Separate Plugin vs Policy Engine
+
+The DDoS mitigation should be its **own lightweight Caddy plugin** (`caddy-ddos-guard`),
+not built into the policy engine. Rationale:
+
+- **Hot-path performance**: the enforcement check (is this IP jailed? is this
+  fingerprint over threshold?) must be sub-microsecond. The policy engine does
+  6-pass rule evaluation — adding DDoS checks there adds latency to every request.
+  A separate plugin does one concurrent map lookup and returns.
+- **Handler ordering**: `caddy-ddos-guard` runs FIRST (before policy engine, before
+  logging). Blocked traffic never reaches the WAF, saving all downstream CPU.
+- **Single responsibility**: the plugin is ~500 lines — concurrent IP set, sliding
+  window counters, fingerprint hash, auto-jail. No rule evaluation, no conditions.
+- **L4 path**: a separate module can also register as a layer4 matcher for TCP-level
+  drop, which the policy engine (an HTTP handler) cannot do.
+
+```
+Request flow:
+  → caddy-ddos-guard (L7, ordered first)
+    ├─ IP in jail?  → 403 + skip all downstream handlers
+    ├─ fingerprint over threshold? → auto-jail + 403
+    └─ pass → policy_engine → reverse_proxy → upstream
+
+Caddyfile:
+  order ddos_guard before policy_engine
+  ddos_guard {
+    jail_file    /data/waf/jail.json
+    threshold    1000/1m          # per-fingerprint
+    jail_ttl     1h
+    whitelist    192.168.0.0/16   # never jail private ranges
+  }
+```
+
+The wafctl sidecar handles the analytics/forensics side:
+- Reads the jail file + Caddy access logs
+- Computes spike reports, fingerprint analysis, EPS tracking
+- Provides the dashboard UI and management API (`/api/dos/*`)
+- Can add/remove jail entries via the shared jail file
+
+Communication between plugin and wafctl:
+- **Jail file** (`jail.json`): plugin reads on hot-reload interval (5s), wafctl writes
+- **Counters**: plugin maintains its own per-request counters (no shared state needed)
+- **Log fields**: plugin adds `ddos_action`, `ddos_fingerprint` to Caddy log_append
+  fields, which wafctl tails for forensic analysis
+
+This mirrors the existing architecture: `caddy-policy-engine` (plugin, per-request)
++ `wafctl` (sidecar, background analysis) communicate via file-based hot-reload.
+
 #### Implementation Phases
 
-1. `dos_mitigation.go` — DosMitigation struct, fingerprint fn, EPS tracker, mode transitions
-2. Wire into `AccessLogStore.Load()` — route new events through mitigation layer
-3. Spike report persistence + API endpoints
-4. Dashboard UI: spike indicator, EPS chart, report viewer
-5. Wire into `GeneralLogStore.Load()` — separate mitigation instance
+1. `caddy-ddos-guard` plugin: IP jail check, fingerprint counter, auto-jail, Caddyfile config
+2. wafctl: `dos_mitigation.go` — log-based spike detection, fingerprint analysis, report generation
+3. Spike report persistence + API endpoints (`/api/dos/*`)
+4. IP jail management: auto-jail on threshold, TTL expiry, wafctl API for manual jail/unjail
+5. Dashboard UI: spike indicator, EPS chart, report viewer, jail management table
+6. Caddy layer4 integration: plugin registers as L4 matcher for TCP-level drop of jailed IPs
+7. (Future) eBPF/XDP loader for kernel-level drop (maximum efficiency)
 
 ---
 
