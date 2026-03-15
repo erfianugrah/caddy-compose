@@ -258,8 +258,6 @@ type RLRuleHitStats struct {
 // event, evaluates rules in priority order and attributes the event to
 // the first matching rule.
 func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]RLRuleHitStats {
-	events := s.snapshotSince(hours)
-
 	// Pre-initialize all rules so the frontend gets zero-filled entries.
 	result := make(map[string]RLRuleHitStats, len(rules))
 	numBuckets := hours
@@ -273,7 +271,7 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 		}
 	}
 
-	if len(events) == 0 || len(rules) == 0 {
+	if len(rules) == 0 {
 		return result
 	}
 
@@ -287,8 +285,20 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 	// Build sparkline time boundaries.
 	now := time.Now().UTC()
 	bucketStart := now.Add(-time.Duration(numBuckets) * time.Hour)
+	var cutoff time.Time
+	if hours > 0 {
+		cutoff = now.Add(-time.Duration(hours) * time.Hour)
+	}
 
-	for _, evt := range events {
+	// Iterate under RLock instead of copying 579K+ events.
+	// This avoids the ~116MB snapshot allocation.
+	s.mu.RLock()
+	startIdx := 0
+	if hours > 0 {
+		startIdx = searchCutoffRL(s.events, cutoff)
+	}
+	for i := startIdx; i < len(s.events); i++ {
+		evt := &s.events[i]
 		// Skip policy engine block events (not rate limits).
 		if evt.Source == "policy" || evt.Source == "ipsum" {
 			continue
@@ -300,7 +310,7 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 			ruleName = evt.RuleName
 		} else {
 			// Legacy caddy-ratelimit 429 — heuristic condition matching.
-			ruleName = matchEventToRule(evt, sorted)
+			ruleName = matchEventToRule(*evt, sorted)
 		}
 		if ruleName == "" {
 			continue
@@ -308,13 +318,10 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 
 		stats, ok := result[ruleName]
 		if !ok {
-			// Event references a rule no longer in the active list —
-			// initialize a fresh entry so the sparkline slice is non-nil.
 			stats = RLRuleHitStats{Sparkline: make([]int, numBuckets)}
 		}
 		stats.Total++
 
-		// Sparkline bucket.
 		if evt.Timestamp.After(bucketStart) {
 			bucket := int(evt.Timestamp.Sub(bucketStart).Hours())
 			if bucket >= 0 && bucket < numBuckets {
@@ -323,6 +330,7 @@ func (s *AccessLogStore) RuleHits(rules []RateLimitRule, hours int) map[string]R
 		}
 		result[ruleName] = stats
 	}
+	s.mu.RUnlock()
 
 	return result
 }

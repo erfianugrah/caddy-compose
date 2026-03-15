@@ -76,56 +76,57 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil ||
 			uriF != nil || statusCodeF != nil || countryF != nil || requestIDF != nil || tagF != nil || blockedByF != nil
 
-		// When any filter is active, collect all events, apply filters, then
-		// summarize — this is the general-purpose filtered path.
+		// When any filter is active, collect matching events from both stores
+		// and summarize. Uses raw RLE for ALS to avoid O(N) enrichment.
 		if hasFilter {
-			var allEvents []Event
-			// Optimization: skip event sources that can't match the event_type filter.
 			needWAF, needRL := eventSourcesNeeded(eventTypeF)
+
+			// WAF events: filter inline (small store, typically <50K).
+			var filtered []Event
 			if needWAF {
-				allEvents = append(allEvents, getWAFEvents(store, tr, hours)...)
-			}
-			if needRL {
-				allEvents = append(allEvents, getRLEvents(als, tr, hours, nil)...)
+				wafEvents := getWAFEvents(store, tr, hours)
+				for i := range wafEvents {
+					ev := &wafEvents[i]
+					if !serviceF.matchField(ev.Service) || !clientF.matchField(ev.ClientIP) ||
+						!methodF.matchField(ev.Method) || !eventTypeF.matchField(ev.EventType) ||
+						!uriF.matchField(ev.URI) || !statusCodeF.matchIntField(ev.ResponseStatus) ||
+						!countryF.matchField(ev.Country) || !requestIDF.matchField(ev.RequestID) ||
+						!tagF.matchTags(ev.Tags) || !blockedByF.matchField(ev.BlockedBy) {
+						continue
+					}
+					if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
+						continue
+					}
+					filtered = append(filtered, *ev)
+				}
 			}
 
-			var filtered []Event
-			for i := range allEvents {
-				ev := &allEvents[i]
-				if !serviceF.matchField(ev.Service) {
-					continue
+			// ALS events: filter on raw RLE fields to avoid O(N) enrichment of 579K events.
+			// Only matching events are enriched for summarization.
+			if needRL {
+				rlRaw := getRawRLSnapshot(als, tr, hours)
+				lookup := buildEnrichmentLookup(als)
+				for i := range rlRaw {
+					rle := &rlRaw[i]
+					if !serviceF.matchField(rle.Service) || !clientF.matchField(rle.ClientIP) ||
+						!methodF.matchField(rle.Method) || !eventTypeF.matchField(rleEventType(rle.Source)) ||
+						!uriF.matchField(rle.URI) || !statusCodeF.matchIntField(rleResponseStatus(rle)) ||
+						!countryF.matchField(rle.Country) || !requestIDF.matchField(rle.RequestID) ||
+						!blockedByF.matchField(rleBlockedBy(rle)) {
+						continue
+					}
+					if ruleNameF != nil && !ruleNameF.matchField(rle.RuleName) {
+						continue
+					}
+					if tagF != nil && !tagF.matchTags(rleTags(rle, &lookup)) {
+						continue
+					}
+					blocked := rleIsBlocked(rle.Source)
+					if blocked != (blockedByF != nil) || true {
+						// Always enrich matching events for summary.
+						filtered = append(filtered, enrichSingleRLE(rle, &lookup))
+					}
 				}
-				if !clientF.matchField(ev.ClientIP) {
-					continue
-				}
-				if !methodF.matchField(ev.Method) {
-					continue
-				}
-				if !eventTypeF.matchField(ev.EventType) {
-					continue
-				}
-				if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
-					continue
-				}
-				if !uriF.matchField(ev.URI) {
-					continue
-				}
-				if !statusCodeF.matchIntField(ev.ResponseStatus) {
-					continue
-				}
-				if !countryF.matchField(ev.Country) {
-					continue
-				}
-				if !requestIDF.matchField(ev.RequestID) {
-					continue
-				}
-				if !tagF.matchTags(ev.Tags) {
-					continue
-				}
-				if !blockedByF.matchField(ev.BlockedBy) {
-					continue
-				}
-				filtered = append(filtered, *ev)
 			}
 
 			summary := summarizeEvents(filtered)
@@ -137,7 +138,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 			}
 			summary.UniqueClients = len(allClients)
 			summary.UniqueServices = len(allServices)
-			cache.set(cacheKey, summary, gen, 10*time.Second)
+			cache.set(cacheKey, summary, gen, 30*time.Second)
 			writeJSON(w, http.StatusOK, summary)
 			return
 		}
@@ -148,12 +149,20 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		// counters only support hour-granularity filtering.
 		if tr.Valid {
 			// Absolute time range: fall back to full-scan merge.
+			// WAF store: small, use snapshot directly.
 			sr := summarizeEventsWithSets(store.SnapshotRange(tr.Start, tr.End))
 			summary := sr.SummaryResponse
-			alsEvents := getRLEvents(als, tr, hours, nil)
-			alsSummary := summarizeEvents(alsEvents)
+			// ALS store: use raw RLE snapshot + lightweight enrichment for summary.
+			// Only convert matching events instead of enriching all 579K.
+			rlRaw := getRawRLSnapshot(als, tr, hours)
+			lookup := buildEnrichmentLookup(als)
+			rlEvents := make([]Event, len(rlRaw))
+			for i := range rlRaw {
+				rlEvents[i] = enrichSingleRLE(&rlRaw[i], &lookup)
+			}
+			alsSummary := summarizeEvents(rlEvents)
 			summary = mergeSummaryResponses(summary, alsSummary)
-			cache.set(cacheKey, summary, gen, 10*time.Second)
+			cache.set(cacheKey, summary, gen, 30*time.Second)
 			writeJSON(w, http.StatusOK, summary)
 			return
 		}
