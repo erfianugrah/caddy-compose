@@ -230,15 +230,16 @@ func TestBackupRestoreAllStores(t *testing.T) {
 	assertCode(t, "create exclusion", 201, resp)
 	excID := mustGetID(t, body)
 
-	// 2. Create a rate limit rule
-	resp, body = httpPost(t, wafctlURL+"/api/rate-rules", map[string]any{
-		"name":    rlName,
-		"service": "httpbun",
-		"key":     "client_ip",
-		"events":  100,
-		"window":  "1m",
-		"action":  "deny",
-		"enabled": true,
+	// 2. Create a rate limit rule via unified API
+	resp, body = httpPost(t, wafctlURL+"/api/rules", map[string]any{
+		"name":              rlName,
+		"type":              "rate_limit",
+		"service":           "httpbun",
+		"rate_limit_key":    "client_ip",
+		"rate_limit_events": 100,
+		"rate_limit_window": "1m",
+		"rate_limit_action": "deny",
+		"enabled":           true,
 	})
 	assertCode(t, "create rl rule", 201, resp)
 	rlID := mustGetID(t, body)
@@ -265,8 +266,8 @@ func TestBackupRestoreAllStores(t *testing.T) {
 	assertCode(t, "update CSP", 200, resp)
 
 	t.Cleanup(func() {
-		cleanupByName(t, wafctlURL+"/api/exclusions", excName)
-		cleanupByName(t, wafctlURL+"/api/rate-rules", rlName)
+		cleanupByName(t, wafctlURL+"/api/rules", excName)
+		cleanupByName(t, wafctlURL+"/api/rules", rlName)
 		// Clean up list by name
 		cleanupByName(t, wafctlURL+"/api/lists", listName)
 		// Restore original CSP
@@ -300,10 +301,10 @@ func TestBackupRestoreAllStores(t *testing.T) {
 	})
 
 	// 6. Delete all created resources
-	resp, _ = httpDelete(t, wafctlURL+"/api/exclusions/"+excID)
+	resp, _ = httpDelete(t, wafctlURL+"/api/rules/"+excID)
 	assertCode(t, "delete exclusion", 204, resp)
-	resp, _ = httpDelete(t, wafctlURL+"/api/rate-rules/"+rlID)
-	assertCode(t, "delete rl rule", 200, resp)
+	resp, _ = httpDelete(t, wafctlURL+"/api/rules/"+rlID)
+	assertCode(t, "delete rl rule", 204, resp)
 	resp, _ = httpDelete(t, wafctlURL+"/api/lists/"+listID)
 	assertCode(t, "delete list", 204, resp)
 	// Reset CSP to empty
@@ -324,7 +325,7 @@ func TestBackupRestoreAllStores(t *testing.T) {
 	})
 
 	t.Run("rate rule restored", func(t *testing.T) {
-		_, listBody := httpGet(t, wafctlURL+"/api/rate-rules")
+		_, listBody := httpGet(t, wafctlURL+"/api/rules")
 		if !strings.Contains(string(listBody), rlName) {
 			t.Errorf("RL rule %q not found after restore", rlName)
 		}

@@ -360,22 +360,23 @@ func TestBackupRestoreIntegrity(t *testing.T) {
 
 	rlName := fmt.Sprintf("e2e-backup-rl-%d", time.Now().UnixNano())
 	rlPayload := map[string]any{
-		"name":    rlName,
-		"service": "httpbun",
-		"key":     "client_ip",
-		"events":  100,
-		"window":  "1m",
-		"action":  "deny",
-		"enabled": true,
+		"name":              rlName,
+		"type":              "rate_limit",
+		"service":           "httpbun",
+		"rate_limit_key":    "client_ip",
+		"rate_limit_events": 100,
+		"rate_limit_window": "1m",
+		"rate_limit_action": "deny",
+		"enabled":           true,
 	}
-	resp, body = httpPost(t, wafctlURL+"/api/rate-rules", rlPayload)
+	resp, body = httpPost(t, wafctlURL+"/api/rules", rlPayload)
 	assertCode(t, "create rl rule", 201, resp)
 	rlID := mustGetID(t, body)
 
 	t.Cleanup(func() {
 		// Clean up any resources with our test names (IDs change after restore).
-		cleanupByName(t, wafctlURL+"/api/exclusions", excName)
-		cleanupByName(t, wafctlURL+"/api/rate-rules", rlName)
+		cleanupByName(t, wafctlURL+"/api/rules", excName)
+		cleanupByName(t, wafctlURL+"/api/rules", rlName)
 	})
 
 	t.Run("backup contains resources", func(t *testing.T) {
@@ -392,18 +393,17 @@ func TestBackupRestoreIntegrity(t *testing.T) {
 	// Take backup, delete both, restore, verify.
 	_, backupBody := httpGet(t, wafctlURL+"/api/backup")
 
-	// Exclusion DELETE returns 204 (NoContent).
-	resp, _ = httpDelete(t, wafctlURL+"/api/exclusions/"+excID)
+	// Delete both via unified API.
+	resp, _ = httpDelete(t, wafctlURL+"/api/rules/"+excID)
 	assertCode(t, "delete exclusion", 204, resp)
-	// RL rule DELETE returns 200 with {"status":"deleted"}.
-	resp, _ = httpDelete(t, wafctlURL+"/api/rate-rules/"+rlID)
-	assertCode(t, "delete rl rule", 200, resp)
+	resp, _ = httpDelete(t, wafctlURL+"/api/rules/"+rlID)
+	assertCode(t, "delete rl rule", 204, resp)
 
-	code, _ := httpGetCode(wafctlURL + "/api/exclusions/" + excID)
+	code, _ := httpGetCode(wafctlURL + "/api/rules/" + excID)
 	if code != 404 {
 		t.Fatalf("exclusion should be 404, got %d", code)
 	}
-	code, _ = httpGetCode(wafctlURL + "/api/rate-rules/" + rlID)
+	code, _ = httpGetCode(wafctlURL + "/api/rules/" + rlID)
 	if code != 404 {
 		t.Fatalf("rl rule should be 404, got %d", code)
 	}
@@ -422,7 +422,7 @@ func TestBackupRestoreIntegrity(t *testing.T) {
 	})
 
 	t.Run("rate rule restored", func(t *testing.T) {
-		_, listBody := httpGet(t, wafctlURL+"/api/rate-rules")
+		_, listBody := httpGet(t, wafctlURL+"/api/rules")
 		if !strings.Contains(string(listBody), rlName) {
 			t.Errorf("rate rule %q not found in list after restore", rlName)
 		}

@@ -15,28 +15,29 @@ func TestPolicyEngineRateLimit(t *testing.T) {
 	// Step 1: Create a rate limit rule with a very low threshold.
 	// 3 events per 10s window so we can trigger it quickly.
 	payload := map[string]any{
-		"name":    "e2e-ratelimit-test",
-		"service": "*",
-		"key":     "client_ip",
-		"events":  3,
-		"window":  "10s",
-		"action":  "deny",
-		"enabled": true,
+		"name":              "e2e-ratelimit-test",
+		"type":              "rate_limit",
+		"service":           "*",
+		"rate_limit_key":    "client_ip",
+		"rate_limit_events": 3,
+		"rate_limit_window": "10s",
+		"rate_limit_action": "deny",
+		"enabled":           true,
 		"conditions": []map[string]string{
 			{"field": "path", "operator": "begins_with", "value": "/e2e-rl-"},
 		},
 	}
-	resp, body := httpPost(t, wafctlURL+"/api/rate-rules", payload)
+	resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
 	assertCode(t, "create RL rule", 201, resp)
 	rlID := mustGetID(t, body)
 	t.Cleanup(func() {
-		cleanup(t, wafctlURL+"/api/rate-rules/"+rlID)
+		cleanup(t, wafctlURL+"/api/rules/"+rlID)
 		// Redeploy to remove the rule from policy-rules.json.
-		httpPostDeploy(t, wafctlURL+"/api/rate-rules/deploy", struct{}{})
+		httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
 	})
 
 	// Step 2: Deploy — writes to policy-rules.json, no Caddy reload needed.
-	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/rate-rules/deploy", struct{}{})
+	resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
 	assertCode(t, "deploy RL", 200, resp2)
 	assertField(t, "deploy status", deployBody, "status", "deployed")
 
@@ -101,23 +102,24 @@ func TestPolicyEngineRateLimit(t *testing.T) {
 	// Step 7: Verify log_only mode — update rule to log_only, redeploy, verify no block.
 	t.Run("log_only mode", func(t *testing.T) {
 		updatePayload := map[string]any{
-			"name":    "e2e-ratelimit-test",
-			"service": "*",
-			"key":     "client_ip",
-			"events":  3,
-			"window":  "10s",
-			"action":  "log_only",
-			"enabled": true,
+			"name":              "e2e-ratelimit-test",
+			"type":              "rate_limit",
+			"service":           "*",
+			"rate_limit_key":    "client_ip",
+			"rate_limit_events": 3,
+			"rate_limit_window": "10s",
+			"rate_limit_action": "log_only",
+			"enabled":           true,
 			"conditions": []map[string]string{
 				{"field": "path", "operator": "begins_with", "value": "/e2e-rl-"},
 			},
 		}
-		resp, body := httpPut(t, wafctlURL+"/api/rate-rules/"+rlID, updatePayload)
+		resp, body := httpPut(t, wafctlURL+"/api/rules/"+rlID, updatePayload)
 		assertCode(t, "update to log_only", 200, resp)
-		assertField(t, "update action", body, "action", "log_only")
+		assertField(t, "update action", body, "rate_limit_action", "log_only")
 
 		// Deploy and wait for hot-reload — poll until requests stop getting 429.
-		resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/rate-rules/deploy", struct{}{})
+		resp2, deployBody := httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
 		assertCode(t, "deploy log_only", 200, resp2)
 		assertField(t, "deploy log_only status", deployBody, "status", "deployed")
 		// log_only rules don't block, so counter state from the deny phase must

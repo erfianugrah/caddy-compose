@@ -3,13 +3,13 @@ package e2e_test
 import "testing"
 
 // ════════════════════════════════════════════════════════════════════
-//  9. Rate Limit Rules
+//  9. Rate Limit Rules (unified /api/rules endpoint)
 // ════════════════════════════════════════════════════════════════════
 
 func TestRateLimitRules(t *testing.T) {
-	// List — response is a bare JSON array []RateLimitRule
+	// List — response is a bare JSON array []Rule
 	t.Run("list", func(t *testing.T) {
-		resp, body := httpGet(t, wafctlURL+"/api/rate-rules")
+		resp, body := httpGet(t, wafctlURL+"/api/rules")
 		assertCode(t, "list", 200, resp)
 		n := jsonArrayLen(body)
 		if n < 0 {
@@ -21,29 +21,30 @@ func TestRateLimitRules(t *testing.T) {
 	var rlID string
 	t.Run("create", func(t *testing.T) {
 		payload := map[string]any{
-			"name":    "e2e-rl-test",
-			"service": "httpbun",
-			"key":     "client_ip",
-			"events":  100,
-			"window":  "1m",
-			"action":  "deny",
-			"enabled": true,
+			"name":              "e2e-rl-test",
+			"type":              "rate_limit",
+			"service":           "httpbun",
+			"rate_limit_key":    "client_ip",
+			"rate_limit_events": 100,
+			"rate_limit_window": "1m",
+			"rate_limit_action": "deny",
+			"enabled":           true,
 		}
-		resp, body := httpPost(t, wafctlURL+"/api/rate-rules", payload)
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
 		assertCode(t, "create RL rule", 201, resp)
 		rlID = mustGetID(t, body)
 		assertField(t, "create", body, "name", "e2e-rl-test")
-		assertField(t, "create", body, "action", "deny")
+		assertField(t, "create", body, "rate_limit_action", "deny")
 	})
 
 	if rlID == "" {
 		t.Fatal("no RL rule id, cannot continue")
 	}
-	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rate-rules/"+rlID) })
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+rlID) })
 
 	// Get
 	t.Run("get", func(t *testing.T) {
-		resp, body := httpGet(t, wafctlURL+"/api/rate-rules/"+rlID)
+		resp, body := httpGet(t, wafctlURL+"/api/rules/"+rlID)
 		assertCode(t, "get", 200, resp)
 		assertField(t, "get", body, "name", "e2e-rl-test")
 		assertField(t, "get", body, "id", rlID)
@@ -52,19 +53,20 @@ func TestRateLimitRules(t *testing.T) {
 	// Update — PUT requires full object
 	t.Run("update", func(t *testing.T) {
 		payload := map[string]any{
-			"name":    "e2e-rl-test",
-			"service": "httpbun",
-			"key":     "client_ip",
-			"events":  200,
-			"window":  "1m",
-			"action":  "deny",
-			"enabled": true,
+			"name":              "e2e-rl-test",
+			"type":              "rate_limit",
+			"service":           "httpbun",
+			"rate_limit_key":    "client_ip",
+			"rate_limit_events": 200,
+			"rate_limit_window": "1m",
+			"rate_limit_action": "deny",
+			"enabled":           true,
 		}
-		resp, body := httpPut(t, wafctlURL+"/api/rate-rules/"+rlID, payload)
+		resp, body := httpPut(t, wafctlURL+"/api/rules/"+rlID, payload)
 		assertCode(t, "update", 200, resp)
-		events := jsonInt(body, "events")
+		events := jsonInt(body, "rate_limit_events")
 		if events != 200 {
-			t.Errorf("expected events=200, got %d", events)
+			t.Errorf("expected rate_limit_events=200, got %d", events)
 		}
 		assertField(t, "update", body, "name", "e2e-rl-test")
 	})
@@ -72,7 +74,7 @@ func TestRateLimitRules(t *testing.T) {
 	// Deploy — must return status "deployed". Rate limit rules are deployed via
 	// policy-rules.json hot-reload so Caddy itself is not restarted (reloaded=false).
 	t.Run("deploy", func(t *testing.T) {
-		resp, body := httpPostDeploy(t, wafctlURL+"/api/rate-rules/deploy", struct{}{})
+		resp, body := httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
 		assertCode(t, "deploy", 200, resp)
 		assertField(t, "deploy status", body, "status", "deployed")
 		assertField(t, "deploy reloaded", body, "reloaded", "false")
@@ -81,7 +83,6 @@ func TestRateLimitRules(t *testing.T) {
 	// Read-only endpoints — use httpGetRetry because these run immediately after
 	// deploy which may briefly cause EOF/connection-reset as Caddy reloads.
 	readOnly := []string{
-		"/api/rate-rules/global",
 		"/api/rate-limits/summary?hours=1",
 		"/api/rate-limits/events?hours=1",
 		"/api/rate-rules/hits",
@@ -94,26 +95,25 @@ func TestRateLimitRules(t *testing.T) {
 		})
 	}
 
-	// Export — response is RateLimitRuleExport: {version, exported_at, rules: [...], global: {...}}
+	// Export — response is RuleExport: {version, exported_at, rules: [...]}
 	t.Run("export", func(t *testing.T) {
-		resp, body := httpGet(t, wafctlURL+"/api/rate-rules/export")
+		resp, body := httpGet(t, wafctlURL+"/api/rules/export")
 		assertCode(t, "export", 200, resp)
 		version := jsonInt(body, "version")
 		if version != 1 {
 			t.Errorf("expected export version=1, got %d", version)
 		}
-		// rules array should exist inside the export object
-		rulesRaw := jsonField(body, "rules")
-		if rulesRaw == "" || rulesRaw == "null" {
-			t.Errorf("expected rules array in export, got: %.200s", string(body))
+		// exclusions array should exist inside the export object (unified format)
+		exclusionsRaw := jsonFieldArray(body, "exclusions")
+		if exclusionsRaw == nil {
+			t.Errorf("expected exclusions array in export, got: %.200s", string(body))
 		}
 	})
 
-	// Delete — must return 200 with {status: "deleted"}
+	// Delete — unified API returns 204 No Content
 	t.Run("delete", func(t *testing.T) {
-		resp, body := httpDelete(t, wafctlURL+"/api/rate-rules/"+rlID)
-		assertCode(t, "delete RL rule", 200, resp)
-		assertField(t, "delete", body, "status", "deleted")
+		resp, _ := httpDelete(t, wafctlURL+"/api/rules/"+rlID)
+		assertCode(t, "delete RL rule", 204, resp)
 		rlID = "" // prevent cleanup double-delete
 	})
 }

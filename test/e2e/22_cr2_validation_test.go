@@ -35,17 +35,18 @@ func TestPolicyPriorityBands(t *testing.T) {
 	allowID := mustGetID(t, body)
 	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/exclusions/"+allowID) })
 
-	// Create a rate limit rule.
-	resp, body = httpPost(t, wafctlURL+"/api/rate-rules", map[string]any{
-		"name": "e2e-prio-rl", "service": "*", "key": "client_ip",
-		"events": 999, "window": "1m", "action": "deny", "enabled": true,
+	// Create a rate limit rule via unified API.
+	resp, body = httpPost(t, wafctlURL+"/api/rules", map[string]any{
+		"name": "e2e-prio-rl", "type": "rate_limit", "service": "*",
+		"rate_limit_key": "client_ip", "rate_limit_events": 999,
+		"rate_limit_window": "1m", "rate_limit_action": "deny", "enabled": true,
 		"conditions": []map[string]string{
 			{"field": "path", "operator": "eq", "value": "/e2e-prio-rl-" + t.Name()},
 		},
 	})
 	assertCode(t, "create rl", 201, resp)
 	rlID := mustGetID(t, body)
-	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rate-rules/"+rlID) })
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+rlID) })
 
 	// Call the generate (preview) endpoint.
 	resp, body = httpPost(t, wafctlURL+"/api/config/generate", struct{}{})
