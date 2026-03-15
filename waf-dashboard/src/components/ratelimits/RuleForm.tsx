@@ -140,12 +140,13 @@ export function RuleForm({ initial, services, onSubmit, onCancel, submitLabel, s
             <SelectValue placeholder="Select service..." />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="*">* (All Services)</SelectItem>
             {services.map((s) => (
               <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">The service (site block) this rate limit rule applies to.</p>
+        <p className="text-xs text-muted-foreground">The service this rule applies to. Use &ldquo;* (All Services)&rdquo; for a global rule.</p>
       </div>
 
       {/* Conditions */}
