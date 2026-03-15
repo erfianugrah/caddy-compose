@@ -157,6 +157,11 @@ func validateExclusion(e RuleExclusion) error {
 		return fmt.Errorf("invalid exclusion type: %q", e.Type)
 	}
 
+	// Validate phase.
+	if !validPhases[e.Phase] {
+		return fmt.Errorf("invalid phase: %q (must be \"inbound\" or \"outbound\")", e.Phase)
+	}
+
 	// Validate group operator.
 	if !validGroupOperators[e.GroupOp] {
 		return fmt.Errorf("invalid group_operator: %q (must be \"and\" or \"or\")", e.GroupOp)
@@ -175,12 +180,24 @@ func validateExclusion(e RuleExclusion) error {
 		}
 	}
 
-	// Validate conditions — rate_limit uses a restricted field set,
-	// other policy engine types use the full set.
+	// Validate conditions — field set depends on type and phase.
+	// rate_limit uses a restricted field set, other types use the full policy
+	// engine set. Outbound phase adds response_header, response_status, etc.
 	if e.Type != "rate_limit" {
 		var allowedFields map[string]bool
 		if IsPolicyEngineType(e.Type) {
 			allowedFields = validPolicyEngineFields
+			if e.Phase == "outbound" {
+				// Merge outbound fields into a copy of the inbound set.
+				merged := make(map[string]bool, len(allowedFields)+len(validOutboundFields))
+				for k, v := range allowedFields {
+					merged[k] = v
+				}
+				for k, v := range validOutboundFields {
+					merged[k] = v
+				}
+				allowedFields = merged
+			}
 		}
 		if err := validateConditions(e.Conditions, allowedFields); err != nil {
 			return err

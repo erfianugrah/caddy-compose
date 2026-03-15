@@ -181,6 +181,7 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 			ID:         e.ID,
 			Name:       e.Name,
 			Type:       e.Type,
+			Phase:      e.Phase, // "" (inbound default) or "outbound"
 			Conditions: conditions,
 			GroupOp:    groupOp,
 			Tags:       e.Tags,

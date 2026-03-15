@@ -31,6 +31,7 @@ type RuleExclusion struct {
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
 	Type        string      `json:"type"`                     // allow|block|skip|detect|rate_limit
+	Phase       string      `json:"phase,omitempty"`          // "inbound" (default) or "outbound" for response-phase rules
 	Conditions  []Condition `json:"conditions,omitempty"`     // Dynamic conditions (field/operator/value)
 	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
 	Service     string      `json:"service,omitempty"`        // hostname, "*", or short name — scopes rule to a service
@@ -179,10 +180,8 @@ var validConditionFields = map[string]bool{
 	"request_combined": true,
 }
 
-// validPolicyEngineFields are the condition fields supported by the Caddy
-// policy engine plugin. Only request-phase fields are available — response_header
-// and response_status are rejected because the plugin runs before the backend.
-// This is the same set as RL condition fields plus "args" (query string args).
+// validPolicyEngineFields are the inbound (request-phase) condition fields
+// supported by the Caddy policy engine plugin.
 var validPolicyEngineFields = map[string]bool{
 	"ip":           true,
 	"path":         true,
@@ -209,6 +208,21 @@ var validPolicyEngineFields = map[string]bool{
 	"all_cookies":       true,
 	"all_cookies_names": true,
 	"request_combined":  true,
+}
+
+// validOutboundFields are the response-phase condition fields available when
+// phase="outbound". These are in addition to all inbound fields.
+var validOutboundFields = map[string]bool{
+	"response_header":       true,
+	"response_status":       true,
+	"response_content_type": true,
+}
+
+// validPhases are the valid values for the Phase field on a rule.
+var validPhases = map[string]bool{
+	"":         true, // default = inbound
+	"inbound":  true,
+	"outbound": true,
 }
 
 // validTransforms are the transform function names supported by the policy

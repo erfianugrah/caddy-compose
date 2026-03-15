@@ -92,11 +92,14 @@ export interface SkipTargets {
   all_remaining?: boolean;
 }
 
+export type RulePhase = "inbound" | "outbound";
+
 export interface Exclusion {
   id: string;
   name: string;
   description: string;
   type: ExclusionType;
+  phase?: RulePhase;
   conditions: Condition[];
   group_operator: GroupOperator;
   service?: string;
@@ -119,6 +122,7 @@ export interface ExclusionCreateData {
   name: string;
   description?: string;
   type: ExclusionType;
+  phase?: RulePhase;
   conditions?: Condition[];
   group_operator?: GroupOperator;
   service?: string;
@@ -173,6 +177,7 @@ interface RawExclusion {
   name: string;
   description: string;
   type: string;
+  phase?: string;
   conditions?: Condition[];
   group_operator?: string;
   service?: string;
@@ -196,6 +201,7 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     name: raw.name,
     description: raw.description,
     type: typeFromGo[raw.type] ?? ("allow" as ExclusionType),
+    phase: (raw.phase as RulePhase) || undefined,
     conditions: raw.conditions ?? [],
     group_operator: (raw.group_operator as GroupOperator) || "and",
     service: raw.service || undefined,
@@ -219,6 +225,7 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.name !== undefined) result.name = data.name;
   if (data.description !== undefined) result.description = data.description;
   if (data.type !== undefined) result.type = typeToGo[data.type] ?? data.type;
+  if (data.phase !== undefined) result.phase = data.phase;
   if (data.conditions !== undefined) result.conditions = data.conditions;
   if (data.group_operator !== undefined) result.group_operator = data.group_operator;
   if (data.skip_targets !== undefined) result.skip_targets = data.skip_targets;

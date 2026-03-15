@@ -39,6 +39,8 @@ import {
   ALL_EXCLUSION_TYPES,
   type AdvancedFormState,
   emptyAdvancedForm,
+  INBOUND_FIELD_DEFS,
+  OUTBOUND_FIELD_DEFS,
 } from "./constants";
 import type { EventPrefill } from "./eventPrefill";
 import { PipeTagInput, RuleIdTagInput, parseRuleIds } from "./TagInputs";
@@ -474,6 +476,7 @@ export function QuickActionsForm({
                 onChange={updateCondition}
                 onRemove={removeCondition}
                 services={services}
+                fields={INBOUND_FIELD_DEFS}
               />
             </div>
           ))}
@@ -625,6 +628,7 @@ export function AdvancedBuilderForm({
       name: form.name || `${form.type} exclusion`,
       description: form.description,
       type: form.type,
+      phase: form.phase || undefined,
       enabled: form.enabled,
     };
     if (isDetect) {
@@ -684,6 +688,34 @@ export function AdvancedBuilderForm({
           {form.type === "detect" && <span className="inline-flex items-center rounded bg-lv-peach/20 border border-lv-peach/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-peach">Detect</span>}
         </div>
         <ExclusionTypePicker value={form.type} onChange={handleTypeChange} />
+      </div>
+
+      {/* Phase (inbound/outbound) */}
+      <div className="space-y-1">
+        <Label className={T.formLabel}>Phase</Label>
+        <div className="flex gap-2">
+          {(["inbound", "outbound"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => update("phase", p === "inbound" ? undefined : p)}
+              className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+                (form.phase ?? "inbound") === p
+                  ? p === "inbound"
+                    ? "border-lv-cyan/40 bg-lv-cyan/10 text-lv-cyan"
+                    : "border-lv-peach/40 bg-lv-peach/10 text-lv-peach"
+                  : "border-border bg-lovelace-950 text-muted-foreground hover:border-border/80"
+              }`}
+            >
+              {p === "inbound" ? "Inbound (Request)" : "Outbound (Response)"}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          {(form.phase ?? "inbound") === "outbound"
+            ? "Evaluates on server response — can match response_status, response_header."
+            : "Evaluates on incoming request (default)."}
+        </p>
       </div>
 
       {/* Detect: Severity and Paranoia Level */}
@@ -779,6 +811,7 @@ export function AdvancedBuilderForm({
                 onChange={updateCondition}
                 onRemove={removeCondition}
                 services={services}
+                fields={form.phase === "outbound" ? OUTBOUND_FIELD_DEFS : INBOUND_FIELD_DEFS}
               />
             </div>
           ))}

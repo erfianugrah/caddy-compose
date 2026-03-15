@@ -540,6 +540,7 @@ export default function PolicyEngine() {
         name: exclusionToEdit.name,
         description: exclusionToEdit.description,
         type: exclusionToEdit.type,
+        phase: exclusionToEdit.phase,
         severity: exclusionToEdit.severity ?? "",
         detect_paranoia_level: exclusionToEdit.detect_paranoia_level ?? 0,
         skip_targets: exclusionToEdit.skip_targets ?? {},

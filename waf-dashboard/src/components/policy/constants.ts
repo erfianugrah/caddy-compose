@@ -660,6 +660,7 @@ export interface AdvancedFormState {
   name: string;
   description: string;
   type: ExclusionType;
+  phase: import("@/lib/api").RulePhase | undefined;
   severity: string;
   detect_paranoia_level: number;
   skip_targets: import("@/lib/api").SkipTargets;
@@ -673,6 +674,7 @@ export const emptyAdvancedForm: AdvancedFormState = {
   name: "",
   description: "",
   type: "allow",
+  phase: undefined,
   severity: "",
   detect_paranoia_level: 0,
   skip_targets: {},
@@ -681,3 +683,13 @@ export const emptyAdvancedForm: AdvancedFormState = {
   tags: [],
   enabled: true,
 };
+
+// ─── Phase-Filtered Field Sets ──────────────────────────────────────
+
+const RESPONSE_PHASE_FIELD_IDS = new Set(["response_header", "response_status", "response_content_type"]);
+
+/** Inbound-only fields (excludes response-phase fields). */
+export const INBOUND_FIELD_DEFS = CONDITION_FIELDS.filter(f => !RESPONSE_PHASE_FIELD_IDS.has(f.id));
+
+/** All fields including response-phase (for outbound rules). */
+export const OUTBOUND_FIELD_DEFS = CONDITION_FIELDS;
