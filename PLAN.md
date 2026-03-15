@@ -274,6 +274,101 @@ translate to `/api/rules` with `type: "rate_limit"` filtering.
 
 ## Future Items
 
+### WebSocket + Stream Deep Inspection (Long-Term / Major Feature)
+
+Deep packet inspection of WebSocket frames and streaming connections.
+Currently the plugin only inspects the HTTP upgrade handshake — once
+a WebSocket is established or an SSE stream starts, data flows through
+uninspected. This would add per-frame/per-event inspection.
+
+**Current state:** WebSocket upgrades work (Hijack delegation), SSE streams
+work (Flush delegation), gRPC works (HTTP/2, no hijack needed). The plugin
+has no visibility into post-handshake data.
+
+**Prior art (from research):**
+- RFC 6455 §5.2: WebSocket base framing — FIN/RSV/opcode/mask/payload length
+  fields. Client→server frames MUST be masked (4-byte XOR). Fragmentation via
+  continuation frames (opcode 0x0). Control frames (close/ping/pong) max 125 bytes.
+- Caddy `reverse_proxy/streaming.go`: `handleUpgradeResponse()` hijacks both
+  client and backend connections, bidirectional copy via `io.Copy` goroutine pair.
+  No frame awareness — raw TCP relay.
+- `tailscale/tailscale` `k8s-operator/sessionrecording/ws/conn.go`: wraps hijacked
+  net.Conn to record `kubectl exec` WebSocket sessions. Parses WS frames, extracts
+  SPDY-over-WS payloads for session recording. Demonstrates the hijack-and-wrap pattern.
+- `elazarl/goproxy` `websocket.go`: detects WS upgrades via `isWebSocketHandshake()`,
+  hijacks client conn, dials backend separately, bidirectional `io.Copy`. No frame
+  parsing — raw relay. Shows the MITM proxy pattern.
+- Kubernetes `apiserver/pkg/util/proxy/streamtunnel.go`: `TunnelingHandler` wraps
+  WS connections to tunnel SPDY. Full frame-level access for protocol translation.
+
+**Architecture: MITM proxy with frame-level hooks**
+
+```
+Client ←→ [Policy Engine WS Proxy] ←→ Upstream
+               ↓
+          Per-frame inspection:
+          - Read frame (RFC 6455 §5.2)
+          - Unmask (client→server)
+          - Reassemble fragments
+          - Run text payload through compiled rules
+          - Forward or block
+```
+
+Two operating modes:
+- **Blocking (proxy):** Hold frame until inspection passes. Can drop individual
+  frames or close the connection. Adds ~1-5µs per text frame for rule evaluation.
+- **Tap (async):** Forward frame immediately, copy payload to inspection goroutine.
+  Can only tear down connection after detection, not block individual frames.
+
+**WebSocket proxy implementation:**
+- Detect Upgrade in `ServeHTTP()` before `next.ServeHTTP()`
+- Hijack client connection (per RFC 6455 §4.2)
+- Dial upstream separately (reuse Caddy's upstream resolution)
+- Two goroutines: client→upstream pump + upstream→client pump
+- Frame parser: 2-byte header, extended payload length (16/64-bit),
+  masking key (4 bytes, client→server only), payload
+- Reassemble continuation frames into complete messages before inspection
+- Text frames (opcode 0x1): extract UTF-8 payload, run through policy rules
+- Binary frames (opcode 0x2): optionally skip or size-limit inspect
+- Control frames (close 0x8, ping 0x9, pong 0xA): forward immediately, no inspection
+- Backpressure: per-connection frame rate limiting
+- Max message size: configurable (default 1 MiB), close connection on exceed
+
+**SSE event inspection:**
+- Wrap `io.Writer` on response after `next.ServeHTTP()` starts streaming
+- Buffer lines until `\n\n` delimiter (complete SSE event)
+- Parse: `data:`, `event:`, `id:`, `retry:` fields
+- Run event payload through compiled rules
+- `Flush()` after each inspected event to preserve real-time delivery
+- Simpler than WS — unidirectional, text-only, line-delimited
+
+**gRPC stream inspection:**
+- Not planned — requires protobuf schema for meaningful payload inspection
+- Could monitor frame sizes/rates for anomaly detection without decoding
+
+**Rule model:**
+- New condition fields: `ws_message`, `ws_opcode`, `sse_event`, `sse_event_type`
+- Existing operators work on these fields (contains, regex, phrase_match, etc.)
+- `phase: "stream"` for stream-phase rules (distinct from inbound/outbound)
+- Rate limiting: `rate_limit_key: "ws_connection"` counts frames per connection
+- Per-connection anomaly scoring: accumulate scores across frames
+
+**Performance budget:**
+- Per text frame: ~1-5µs (compiled regex/Aho-Corasick match)
+- Memory: one frame buffer per active WebSocket (~128KB default)
+- Goroutines: 2 per active WebSocket (Go handles thousands easily)
+- Binary frames: skip by default (configurable)
+- Connection teardown: <1ms (send close frame 1008 Policy Violation)
+
+**Implementation phases (estimated effort):**
+1. WebSocket frame parser: read/write RFC 6455 frames, masking, fragmentation (~2 days)
+2. MITM proxy mode: intercept upgrade, dial upstream, bidirectional pump (~3 days)
+3. Frame inspection: extract payload, run against compiled conditions (~1 day)
+4. SSE wrapper: intercept Writer, parse events, inspect (~1 day)
+5. Connection-level rate limiting: frames/sec per connection (~1 day)
+6. wafctl: `ws_message`, `sse_event` condition fields, `phase: "stream"` UI (~2 days)
+7. E2E tests: WS frame inspection, SSE event inspection (~1 day)
+
 ### Performance
 - [ ] Incremental summary computation — running counters on Store, O(1) reads
 
