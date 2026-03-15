@@ -7,7 +7,7 @@ Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbo
 skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
 rule types, managed lists, IPsum blocklist (8 levels, 618K IPs), CRS auto-update
-workflow, and e2e CI pipeline (108 e2e tests, 500 Go unit tests, 326 frontend tests).
+workflow, and e2e CI pipeline (113 e2e tests, 500 Go unit tests, 326 frontend tests).
 
 ---
 
@@ -78,7 +78,7 @@ workflow, and e2e CI pipeline (108 e2e tests, 500 Go unit tests, 326 frontend te
 - [x] Fixed TestLoggedEventsCollected — polling wait replaces fixed sleep
 - [x] Fixed TestDetectBlockSummarySplit — accept total=-1 for filtered queries
 - [x] Added 3 new category mask tests: validation, deploy persistence, per-service persistence
-- [x] Total: 106 e2e tests (15 in outbound/categories file), 26 e2e test files
+- [x] Total: 113 e2e tests (15 in outbound/categories, 8 in unified API), 26 e2e test files
 
 ---
 
@@ -107,19 +107,20 @@ Caddy restart. Rate limits, CSP, security headers, caching, CORS, and custom
 header manipulation all become policy-engine concerns, managed through one
 unified API and UI.
 
-### Architecture Context
+### Architecture Context (pre-unification — for historical reference)
 
-Today the deploy pipeline already reads all 6 config stores (ExclusionStore,
-RateLimitRuleStore, ConfigStore, CSPStore, SecurityHeaderStore, DefaultRuleStore)
-and writes one `policy-rules.json`. There are 4 identical deploy endpoints
-(`/api/config/deploy`, `/api/rate-rules/deploy`, `/api/csp/deploy`,
-`/api/security-headers/deploy`) that all do the same thing. The fragmentation
-is purely at the API/UI level — the data is already unified at the file level.
+Before Phase 2, the deploy pipeline read 6 separate config stores
+(ExclusionStore, RateLimitRuleStore, ConfigStore, CSPStore, SecurityHeaderStore,
+DefaultRuleStore) and wrote one `policy-rules.json`. There were 4 identical
+deploy endpoints. **After unification**: RateLimitRuleStore is deleted, rules
+are managed via a single ExclusionStore, `/api/rules` + `/api/deploy` are the
+canonical endpoints. CSPStore and SecurityHeaderStore remain (will migrate to
+response-phase rules in Phase 4).
 
 ### Phase 1: Quick Wins (pre-unification cleanup) — DONE
 
 - [x] `SecurityHeaderStore.deepCopy` — field-by-field copy via `copyStringMap`
-- [x] `IPLookupPanel` — split 893→7 files under `ip-lookup/`, recharts isolated
+- [x] `IPLookupPanel` — split 893→8 files under `ip-lookup/`, recharts isolated
 - [x] `operatorChip()` — investigated, not a bug (FilterOp matches events API)
 - [ ] Mode field removal — deferred to Phase 2h (40+ test touchpoints, zero impact)
 
@@ -176,7 +177,7 @@ type RuleExclusion struct {
 - [x] Mode field deprecated (`json:"mode,omitempty"`), no longer set by defaults
 - [x] Backup includes `default_rule_overrides`; restore gracefully handles them
 - [x] All e2e tests updated to `/api/rules` with `type: "rate_limit"` payloads
-- [x] Full suite: 529 Go unit tests, 348 frontend tests, 106 e2e tests — all pass
+- [x] Full suite: 500 Go unit tests, 326 frontend tests, 113 e2e tests — all pass
 
 ### Phase 3: Response-Phase Policy Rules
 
