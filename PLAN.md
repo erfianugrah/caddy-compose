@@ -7,7 +7,8 @@ Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbo
 skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
 rule types, managed lists, IPsum blocklist (8 levels, 618K IPs), CRS auto-update
-workflow, and e2e CI pipeline (114 e2e tests, 500 Go unit tests, 326 frontend tests).
+response_header rule type, all plugin limitations resolved (v0.17.0),
+and e2e CI pipeline (114 e2e tests, 500 Go unit tests, 326 frontend tests).
 
 ---
 
@@ -78,26 +79,41 @@ workflow, and e2e CI pipeline (114 e2e tests, 500 Go unit tests, 326 frontend te
 - [x] Fixed TestLoggedEventsCollected — polling wait replaces fixed sleep
 - [x] Fixed TestDetectBlockSummarySplit — accept total=-1 for filtered queries
 - [x] Added 3 new category mask tests: validation, deploy persistence, per-service persistence
-- [x] Total: 113 e2e tests (15 in outbound/categories, 8 in unified API), 26 e2e test files
+- [x] Total: 114 e2e tests (15 in outbound/categories, 8 in unified API), 26 e2e test files
 
 ---
 
-## Known Plugin Limitations (v0.16.0 → v0.17.0)
+## Plugin v0.17.0 + UI Improvements
 
-Architecture review found that `negate`, `multi_match`, `not_in`, and `not_in_list`
-ARE fully implemented in INBOUND evaluation (`matchCondition()` + `evalOperator()`).
-The bug was in OUTBOUND evaluation only (`evaluateOutbound()` called `evalOperator()`
-directly, skipping negate/multiMatch). This is now fixed in v0.17.0.
+### Plugin (caddy-policy-engine v0.17.0)
+- [x] `response_header` rule type: set/add/remove/default headers
+- [x] Fixed outbound negate/multiMatch: `matchConditionResponse()` replaces direct `evalOperator()`
+- [x] Outbound evaluation extended to all rule types (was detect-only)
+- [x] Outbound rate limiting: count responses (e.g., RL on 401s) → 429
+- [x] Multiple response_header rules all fire (applied inline, not returned)
+- [x] All 4 previously-skipped e2e tests unskipped and pass
 
-The skipped e2e tests may have been testing inbound behavior that actually works.
-After deploying plugin v0.17.0, unskip and re-validate:
-  `21_condition_features_test.go` (multi_match, negate),
-  `23_skip_negated_test.go` (not_in),
-  `10_policy_lists_test.go` (not_in_list).
+### UI Improvements
+- [x] Header "check all" checkbox in PolicyEngine table (select all on page)
+- [x] Header "check all" checkbox in RulesPanel (CRS rules) table
+- [x] Shift-click range selection in PolicyEngine (via lastSelectedRef + shiftKey)
+- [x] Shift-click range selection in RulesPanel (via rangeSelect callbacks)
+- [x] Indeterminate state on header checkbox when partially selected
+- [x] Total item counts added: Services, Managed Lists, Overview pagination,
+      CSP service overrides, Security Headers service overrides
 
-If tests still fail after unskipping, the issue is in how wafctl serializes the
-`negate` field or in the e2e test setup (timing, condition structure), not in the
-plugin's evaluation logic.
+---
+
+## Known Plugin Limitations — ALL RESOLVED (v0.17.0)
+
+All 4 previously-skipped features now work and are e2e tested:
+- [x] `negate` field — inversion works for inbound and outbound (v0.17.0 fixed outbound)
+- [x] `multi_match` — raw-stage matching works (evaluates at each transform stage)
+- [x] `not_in` operator — two-layer negate design works correctly
+- [x] `not_in_list` operator — list resolution + negate works
+
+E2e tests unskipped and pass (had timing issues, fixed with `waitForCondition` polling).
+Fix for test isolation: `not_contains` rule scoped to test prefix to avoid blocking others.
 
 ---
 
