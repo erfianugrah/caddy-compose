@@ -56,14 +56,14 @@ func ensureWafDir(dir string) error {
 // at startup. This ensures a stack restart always picks up the latest rules
 // without requiring a manual POST /api/config/deploy.
 // No Caddy reload is performed — Caddy reads the files fresh on its own start.
-func generateOnBoot(cs *ConfigStore, es *ExclusionStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, cacheStore *CacheStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
+func generateOnBoot(cs *ConfigStore, es *ExclusionStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) {
 	allExclusions := es.EnabledExclusions()
 
 	// Policy engine: generate JSON rules file for the Caddy plugin.
 	// Includes all rule types (allow/block/skip/detect/rate_limit) from the unified ExclusionStore.
 	rlGlobal := cs.Get().RateLimitGlobal
 	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, cacheStore, svcMap)
+	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
 	wafCfg := BuildPolicyWafConfig(cs, svcMap)
 	policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 	if err != nil {
@@ -92,7 +92,7 @@ func generateOnBoot(cs *ConfigStore, es *ExclusionStore, cspStore *CSPStore, sec
 // Used by background processes (e.g. blocklist refresh) that need to trigger
 // a full regeneration after updating managed lists. The policy engine plugin
 // detects the file change via mtime polling and hot-reloads within seconds.
-func deployAll(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, cacheStore *CacheStore, ds *DefaultRuleStore, deployCfg DeployConfig) error {
+func deployAll(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) error {
 	deployMu.Lock()
 	defer deployMu.Unlock()
 
@@ -101,7 +101,7 @@ func deployAll(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspSto
 	// Generate policy engine rules file (all rule types from unified ExclusionStore).
 	rlGlobal := cs.Get().RateLimitGlobal
 	svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, cacheStore, svcMap)
+	respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
 	wafCfg := BuildPolicyWafConfig(cs, svcMap)
 	policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 	if err != nil {

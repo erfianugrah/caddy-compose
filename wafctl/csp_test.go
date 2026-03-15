@@ -539,7 +539,7 @@ func setupCSPMux(t *testing.T) (*http.ServeMux, *CSPStore) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/csp", handleGetCSP(store))
 	mux.HandleFunc("PUT /api/csp", handleUpdateCSP(store))
-	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(store, nil, nil, nil, nil, nil, nil, nil, deployCfg))
+	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(store, nil, nil, nil, nil, nil, deployCfg))
 	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(store, deployCfg))
 	return mux, store
 }

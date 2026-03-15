@@ -444,26 +444,10 @@ func resolveServiceName(service string, serviceMap map[string]string) string {
 // wafctl builds this from the CSP store and hardcoded security headers,
 // then includes it in policy-rules.json for hot-reload.
 
-// PolicyResponseHeaderConfig holds CSP, security, CORS, and cache header configuration.
+// PolicyResponseHeaderConfig holds CSP and security header configuration.
 type PolicyResponseHeaderConfig struct {
 	CSP      *PolicyCSPConfig            `json:"csp,omitempty"`
 	Security *PolicySecurityHeaderConfig `json:"security,omitempty"`
-	CORS     *PolicyCORSConfig           `json:"cors,omitempty"`
-	Cache    *PolicyCacheConfig          `json:"cache,omitempty"`
-}
-
-// PolicyCORSConfig holds CORS configuration for the plugin.
-type PolicyCORSConfig struct {
-	Enabled    *bool                   `json:"enabled,omitempty"` // nil = true
-	Global     CORSSettings            `json:"global"`
-	PerService map[string]CORSSettings `json:"per_service,omitempty"`
-}
-
-// PolicyCacheConfig holds cache-control configuration for the plugin.
-type PolicyCacheConfig struct {
-	Enabled     *bool                  `json:"enabled,omitempty"` // nil = true
-	GlobalRules []CacheRule            `json:"global_rules,omitempty"`
-	PerService  map[string][]CacheRule `json:"per_service,omitempty"`
 }
 
 // PolicyCSPConfig holds global and per-service CSP policies.
@@ -517,7 +501,7 @@ func DefaultSecurityHeaders() *PolicySecurityHeaderConfig {
 // policy engine plugin from the CSP store and security header store.
 // The CSP policy data and service FQDNs are resolved so the plugin gets
 // FQDN-keyed services matching the Host headers it sees in production.
-func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, cacheStore *CacheStore, serviceMap map[string]string) *PolicyResponseHeaderConfig {
+func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStore, serviceMap map[string]string) *PolicyResponseHeaderConfig {
 	resp := &PolicyResponseHeaderConfig{}
 
 	// Build security header config from store (or defaults).
@@ -572,34 +556,6 @@ func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStor
 			Enabled:        cspCfg.Enabled,
 			GlobalDefaults: cspCfg.GlobalDefaults,
 			Services:       services,
-		}
-	}
-
-	// Build CORS config from store.
-	if corsStore != nil {
-		corsCfg := corsStore.Get()
-		perSvc := make(map[string]CORSSettings, len(corsCfg.PerService))
-		for svc, settings := range corsCfg.PerService {
-			perSvc[resolveServiceName(svc, serviceMap)] = settings
-		}
-		resp.CORS = &PolicyCORSConfig{
-			Enabled:    corsCfg.Enabled,
-			Global:     corsCfg.Global,
-			PerService: perSvc,
-		}
-	}
-
-	// Build cache config from store.
-	if cacheStore != nil {
-		cacheCfg := cacheStore.Get()
-		perSvc := make(map[string][]CacheRule, len(cacheCfg.PerService))
-		for svc, rules := range cacheCfg.PerService {
-			perSvc[resolveServiceName(svc, serviceMap)] = rules
-		}
-		resp.Cache = &PolicyCacheConfig{
-			Enabled:     cacheCfg.Enabled,
-			GlobalRules: cacheCfg.GlobalRules,
-			PerService:  perSvc,
 		}
 	}
 
