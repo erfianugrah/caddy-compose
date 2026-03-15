@@ -629,17 +629,7 @@ export default function RateLimitsPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Export/Import buttons */}
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <Download className="h-3.5 w-3.5" />
-          Export
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleImport}>
-          <Upload className="h-3.5 w-3.5" />
-          Import
-        </Button>
-      </div>
+      {/* Export/Import moved to UnifiedPolicyPage header */}
 
       {/* Alerts */}
       {error && (

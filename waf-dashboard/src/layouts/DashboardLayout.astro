@@ -14,14 +14,15 @@ const navLinks = [
   { id: "logs", label: "Logs", href: "/logs", icon: "file-text", section: "Observability" },
   { id: "investigate", label: "IP Lookup", href: "/analytics", icon: "search", section: "Observability" },
   { id: "services", label: "Services", href: "/services", icon: "server", section: "Infrastructure" },
-  { id: "rules", label: "Rules", href: "/rules", icon: "book-open", section: "Security" },
-  { id: "policy", label: "Policy", href: "/policy", icon: "shield", section: "Security" },
-
-  { id: "lists", label: "Lists", href: "/lists", icon: "list-tree", section: "Security" },
-  { id: "csp", label: "CSP", href: "/csp", icon: "lock", section: "Security" },
-  { id: "headers", label: "Headers", href: "/headers", icon: "file-check", section: "Security" },
-  { id: "cors", label: "CORS", href: "/cors", icon: "globe", section: "Security" },
-  { id: "templates", label: "Templates", href: "/templates", icon: "layout-template", section: "Security" },
+  // Policy: rules + rate limits + response headers + templates
+  { id: "policy", label: "Policy Engine", href: "/policy", icon: "shield", section: "Security" },
+  // CRS default rules + WAF engine settings
+  { id: "rules", label: "WAF Settings", href: "/rules", icon: "book-open", section: "Security" },
+  { id: "lists", label: "Managed Lists", href: "/lists", icon: "list-tree", section: "Security" },
+  // Response header config (structured wizards)
+  { id: "csp", label: "CSP", href: "/csp", icon: "lock", section: "Settings" },
+  { id: "headers", label: "Security Headers", href: "/headers", icon: "file-check", section: "Settings" },
+  { id: "cors", label: "CORS", href: "/cors", icon: "globe", section: "Settings" },
 ];
 
 // Group nav links by section for collapsible rendering
