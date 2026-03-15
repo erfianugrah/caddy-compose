@@ -82,20 +82,22 @@ workflow, and e2e CI pipeline (114 e2e tests, 500 Go unit tests, 326 frontend te
 
 ---
 
-## Known Plugin Limitations (v0.16.0)
+## Known Plugin Limitations (v0.16.0 → v0.17.0)
 
-These features are wired in wafctl and generated into policy-rules.json, but the
-Caddy plugin does not yet implement them. E2E tests are skipped with markers.
+Architecture review found that `negate`, `multi_match`, `not_in`, and `not_in_list`
+ARE fully implemented in INBOUND evaluation (`matchCondition()` + `evalOperator()`).
+The bug was in OUTBOUND evaluation only (`evaluateOutbound()` called `evalOperator()`
+directly, skipping negate/multiMatch). This is now fixed in v0.17.0.
 
-- [ ] `negate` field on conditions — condition inversion ignored by plugin
-- [ ] `multi_match` — evaluates only final transform stage, not at each stage
-- [ ] `not_in` operator — treats as always-true (blocks all instead of non-matching)
-- [ ] `not_in_list` operator — negated list membership check ignored
-
-When the plugin implements these, remove the `t.Skip()` calls in:
+The skipped e2e tests may have been testing inbound behavior that actually works.
+After deploying plugin v0.17.0, unskip and re-validate:
   `21_condition_features_test.go` (multi_match, negate),
   `23_skip_negated_test.go` (not_in),
   `10_policy_lists_test.go` (not_in_list).
+
+If tests still fail after unskipping, the issue is in how wafctl serializes the
+`negate` field or in the e2e test setup (timing, condition structure), not in the
+plugin's evaluation logic.
 
 ---
 
@@ -185,11 +187,15 @@ Enable all rule types (allow, block, skip, detect, rate_limit) to operate on
 response-phase fields, not just inbound. This makes rate limits and custom
 rules work on response data (status codes, headers, body).
 
-**Plugin (caddy-policy-engine):**
-- [ ] Extend rule evaluation to response phase for all types (currently only detect)
-- [ ] `phase: "outbound"` on any rule type triggers response-phase evaluation
-- [ ] Rate limit rules with `phase: "outbound"` — count responses by status code, etc.
-- [ ] Block rules on response_status/response_header — reject before client sees response
+**Plugin (caddy-policy-engine — DONE):**
+- [x] Extend rule evaluation to response phase for ALL types (was detect-only)
+- [x] `phase: "outbound"` on any rule type triggers response-phase evaluation
+- [x] Block rules on response_status/response_header — reject before client sees response
+- [x] Fixed outbound negate/multiMatch bug: `evaluateOutbound()` now uses
+      `matchConditionResponse()` instead of calling `evalOperator()` directly
+- [x] `matchRuleResponse()` + `matchConditionResponse()` — proper AND/OR, negate,
+      transforms, absent-field semantics for outbound rules
+- [ ] Rate limit rules with `phase: "outbound"` — count responses by status code (future)
 
 **wafctl (DONE):**
 - [x] `Phase` field on `RuleExclusion` ("inbound"/"outbound"), validated + wired to PolicyRule
@@ -225,10 +231,13 @@ config model (stores + rules) and requires dedicated endpoints for each header t
 - New `response_header` rules can coexist alongside the legacy sections
 - Eventually: migrate CSP/security header configs to rules, remove legacy stores
 
-**What's needed in plugin (caddy-policy-engine):**
-- [ ] `response_header` rule type: evaluate conditions on response, set/add/remove headers
+**Plugin (caddy-policy-engine — DONE):**
+- [x] `response_header` rule type: evaluate conditions on response, set/add/remove/default headers
+- [x] `applyRuleHeaders()`: set (overwrite), add (append), remove (delete), default (set-if-absent)
+- [x] Outbound evaluation handles: detect (scoring), block (403), response_header, allow (skip)
+
+**Plugin (remaining):**
 - [ ] CORS preflight handling as a built-in response_header behavior
-- [ ] Cache-Control set-if-absent (`?` prefix) semantic in response_header rules
 - [ ] CSP directive composition in response_header rules (or keep as plugin feature)
 
 **wafctl (DONE):**
