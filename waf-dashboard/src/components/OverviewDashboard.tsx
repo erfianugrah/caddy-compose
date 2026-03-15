@@ -817,7 +817,7 @@ export default function OverviewDashboard() {
         {totalEventsPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-lovelace-800">
             <span className="text-xs text-muted-foreground">
-              Page {eventsPage} of {totalEventsPages}
+              Page {eventsPage} of {totalEventsPages} ({eventsTotal.toLocaleString()} items)
             </span>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setEventsPage(1)} disabled={eventsPage <= 1}>

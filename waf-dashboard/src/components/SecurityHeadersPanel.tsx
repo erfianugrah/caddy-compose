@@ -507,7 +507,7 @@ export default function SecurityHeadersPanel() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Per-Service Overrides</CardTitle>
+              <CardTitle>Per-Service Overrides ({serviceNames.length})</CardTitle>
               <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm">

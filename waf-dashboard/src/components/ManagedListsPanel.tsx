@@ -753,7 +753,7 @@ export default function ManagedListsPanel() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className={T.pageTitle}>Managed Lists</h2>
+          <h2 className={T.pageTitle}>Managed Lists ({lists.length})</h2>
           <p className={T.pageDescription}>
             Reusable IP, hostname, and string lists for policy conditions and rate limit rules
           </p>

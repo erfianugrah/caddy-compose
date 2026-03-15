@@ -496,14 +496,28 @@ export default function PolicyEngine() {
 
   // ─── Bulk actions ─────────────────────────────────────────────────
 
-  const toggleSelect = useCallback((id: string) => {
+  const lastSelectedRef = useRef<number | null>(null);
+
+  const toggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (shiftKey && lastSelectedRef.current !== null) {
+        const start = Math.min(lastSelectedRef.current, index);
+        const end = Math.max(lastSelectedRef.current, index);
+        for (let i = start; i <= end; i++) {
+          next.add(pagedExclusions[i].id);
+        }
+      } else {
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      }
+      lastSelectedRef.current = index;
       return next;
     });
-  }, []);
+  }, [pagedExclusions]);
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
@@ -738,7 +752,28 @@ export default function PolicyEngine() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[36px] px-2" />
+                  <TableHead className="w-[36px] px-2">
+                    <input
+                      type="checkbox"
+                      checked={pagedExclusions.length > 0 && pagedExclusions.every((e) => selected.has(e.id))}
+                      ref={(el) => {
+                        if (el) {
+                          const allSelected = pagedExclusions.length > 0 && pagedExclusions.every((e) => selected.has(e.id));
+                          const someSelected = pagedExclusions.some((e) => selected.has(e.id));
+                          el.indeterminate = someSelected && !allSelected;
+                        }
+                      }}
+                      onChange={(ev) => {
+                        if (ev.target.checked) {
+                          setSelected(new Set([...selected, ...pagedExclusions.map((e) => e.id)]));
+                        } else {
+                          const pageIds = new Set(pagedExclusions.map((e) => e.id));
+                          setSelected(new Set([...selected].filter((id) => !pageIds.has(id))));
+                        }
+                      }}
+                      className="h-3.5 w-3.5 rounded border-border"
+                    />
+                  </TableHead>
                   <TableHead className="w-[36px] px-2" />
                   <TableHead className="w-[52px] px-1">#</TableHead>
                   <SortableTableHead sortKey="name" activeKey={exclSort.sortState.key} direction={exclSort.sortState.direction} onSort={exclSort.toggleSort}>Name</SortableTableHead>
@@ -766,7 +801,7 @@ export default function PolicyEngine() {
                       <input
                         type="checkbox"
                         checked={selected.has(excl.id)}
-                        onChange={() => toggleSelect(excl.id)}
+                        onChange={(e) => toggleSelect(excl.id, pageIdx, (e.nativeEvent as MouseEvent).shiftKey)}
                         className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
                       />
                     </TableCell>

@@ -202,6 +202,22 @@ export default function RulesPanel() {
     });
   }, []);
 
+  const rangeSelect = useCallback((ids: string[]) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const deselectRange = useCallback((ids: string[]) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, []);
+
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   const handleBulkAction = useCallback(
@@ -587,6 +603,8 @@ export default function RulesPanel() {
               onPLChange={handlePLChange}
               onDetail={setDetailRule}
               onToggleSelect={toggleSelect}
+              onRangeSelect={rangeSelect}
+              onDeselectRange={deselectRange}
               onBulkPL={handleBulkPL}
             />
           );
@@ -639,6 +657,8 @@ interface PLSectionProps {
   onPLChange: (rule: DefaultRule, pl: number) => void;
   onDetail: (rule: DefaultRule) => void;
   onToggleSelect: (id: string) => void;
+  onRangeSelect: (ids: string[]) => void;
+  onDeselectRange: (ids: string[]) => void;
   onBulkPL: (ids: string[], action: "enable" | "disable") => void;
 }
 
@@ -656,6 +676,8 @@ function PLSection({
   onPLChange,
   onDetail,
   onToggleSelect,
+  onRangeSelect,
+  onDeselectRange,
   onBulkPL,
 }: PLSectionProps) {
   const isActivePL = pl <= wafPL; // PL is active if <= the configured paranoia level
@@ -668,6 +690,23 @@ function PLSection({
 
   const totalPages = Math.ceil(sortedData.length / PAGE_SIZE);
   const pageData = sortedData.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const lastSelectedRef = useRef<number | null>(null);
+
+  const handleToggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
+    if (shiftKey && lastSelectedRef.current !== null) {
+      const start = Math.min(lastSelectedRef.current, index);
+      const end = Math.max(lastSelectedRef.current, index);
+      const idsToAdd: string[] = [];
+      for (let i = start; i <= end; i++) {
+        idsToAdd.push(pageData[i].id);
+      }
+      onRangeSelect(idsToAdd);
+    } else {
+      onToggleSelect(id);
+    }
+    lastSelectedRef.current = index;
+  }, [pageData, onToggleSelect, onRangeSelect]);
 
   // Reset page when rules change (e.g. filter applied)
   useEffect(() => { setPage(0); }, [rules.length]);
@@ -754,7 +793,27 @@ function PLSection({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[36px] px-2" />
+                <TableHead className="w-[36px] px-2">
+                  <input
+                    type="checkbox"
+                    checked={pageData.length > 0 && pageData.every((r) => selected.has(r.id))}
+                    ref={(el) => {
+                      if (el) {
+                        const allSelected = pageData.length > 0 && pageData.every((r) => selected.has(r.id));
+                        const someSelected = pageData.some((r) => selected.has(r.id));
+                        el.indeterminate = someSelected && !allSelected;
+                      }
+                    }}
+                    onChange={(ev) => {
+                      if (ev.target.checked) {
+                        onRangeSelect(pageData.map((r) => r.id));
+                      } else {
+                        onDeselectRange(pageData.map((r) => r.id));
+                      }
+                    }}
+                    className="h-3.5 w-3.5 rounded border-border"
+                  />
+                </TableHead>
                 <TableHead className="w-[60px]">Status</TableHead>
                 <SortableTableHead<RuleSortKey>
                   sortKey="id"
@@ -789,16 +848,17 @@ function PLSection({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pageData.map((rule) => (
+              {pageData.map((rule, pageIdx) => (
                 <RuleRow
                   key={rule.id}
                   rule={rule}
+                  pageIndex={pageIdx}
                   isSelected={selected.has(rule.id)}
                   onToggle={onToggleRule}
                   onSeverityChange={onSeverityChange}
                   onPLChange={onPLChange}
                   onDetail={onDetail}
-                  onToggleSelect={onToggleSelect}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </TableBody>
@@ -862,16 +922,18 @@ function PLSection({
 
 interface RuleRowProps {
   rule: DefaultRule;
+  pageIndex: number;
   isSelected: boolean;
   onToggle: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
   onPLChange: (rule: DefaultRule, pl: number) => void;
   onDetail: (rule: DefaultRule) => void;
-  onToggleSelect: (id: string) => void;
+  onToggleSelect: (id: string, index: number, shiftKey: boolean) => void;
 }
 
 function RuleRow({
   rule,
+  pageIndex,
   isSelected,
   onToggle,
   onSeverityChange,
@@ -895,7 +957,7 @@ function RuleRow({
         <input
           type="checkbox"
           checked={isSelected}
-          onChange={() => onToggleSelect(rule.id)}
+          onChange={(e) => onToggleSelect(rule.id, pageIndex, (e.nativeEvent as MouseEvent).shiftKey)}
           aria-label={`Select rule ${rule.id}`}
           className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
         />

@@ -378,7 +378,7 @@ export default function CSPPanel() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className={T.sectionHeading}>Service Overrides</h3>
+              <h3 className={T.sectionHeading}>Service Overrides ({Object.keys(serviceConfigs).length})</h3>
               <p className={T.muted}>
                 Per-service CSP configuration. Services without overrides get no CSP header by default.
               </p>
