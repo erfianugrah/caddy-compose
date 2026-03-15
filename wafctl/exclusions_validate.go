@@ -281,6 +281,40 @@ func validateExclusion(e RuleExclusion) error {
 			return err
 		}
 		return nil // Skip the general condition validation below (already done).
+	case "response_header":
+		// Must have at least one header action.
+		hasSet := len(e.HeaderSet) > 0
+		hasAdd := len(e.HeaderAdd) > 0
+		hasRemove := len(e.HeaderRemove) > 0
+		hasDefault := len(e.HeaderDefault) > 0
+		if !hasSet && !hasAdd && !hasRemove && !hasDefault {
+			return fmt.Errorf("response_header requires at least one of: header_set, header_add, header_remove, header_default")
+		}
+		// Validate header names don't contain newlines.
+		for k := range e.HeaderSet {
+			if strings.ContainsAny(k, "\n\r") {
+				return fmt.Errorf("header_set key must not contain newlines")
+			}
+		}
+		for k := range e.HeaderAdd {
+			if strings.ContainsAny(k, "\n\r") {
+				return fmt.Errorf("header_add key must not contain newlines")
+			}
+		}
+		for _, k := range e.HeaderRemove {
+			if strings.ContainsAny(k, "\n\r") {
+				return fmt.Errorf("header_remove value must not contain newlines")
+			}
+		}
+		for k := range e.HeaderDefault {
+			if strings.ContainsAny(k, "\n\r") {
+				return fmt.Errorf("header_default key must not contain newlines")
+			}
+		}
+		// Phase is implicitly outbound for response_header; accept both "" and "outbound".
+		if e.Phase != "" && e.Phase != "outbound" {
+			return fmt.Errorf("response_header rules must use phase \"outbound\" (or omit for default)")
+		}
 	}
 
 	return nil

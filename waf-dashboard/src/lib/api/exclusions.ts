@@ -27,7 +27,7 @@ export interface CRSCatalogResponse {
 
 // ─── Exclusions / Policy ────────────────────────────────────────────
 
-export type ExclusionType = "allow" | "block" | "skip" | "detect" | "rate_limit";
+export type ExclusionType = "allow" | "block" | "skip" | "detect" | "rate_limit" | "response_header";
 
 // Condition fields and operators for the dynamic rule builder
 export type ConditionField =
@@ -112,6 +112,11 @@ export interface Exclusion {
   rate_limit_events?: number;
   rate_limit_window?: string;
   rate_limit_action?: string;
+  // response_header fields
+  header_set?: Record<string, string>;
+  header_add?: Record<string, string>;
+  header_remove?: string[];
+  header_default?: Record<string, string>;
   tags?: string[];
   enabled: boolean;
   created_at: string;
@@ -135,6 +140,11 @@ export interface ExclusionCreateData {
   rate_limit_events?: number;
   rate_limit_window?: string;
   rate_limit_action?: string;
+  // response_header fields
+  header_set?: Record<string, string>;
+  header_add?: Record<string, string>;
+  header_remove?: string[];
+  header_default?: Record<string, string>;
   tags?: string[];
   enabled: boolean;
 }
@@ -165,6 +175,7 @@ const typeToGo: Record<ExclusionType, string> = {
   skip: "skip",
   detect: "detect",
   rate_limit: "rate_limit",
+  response_header: "response_header",
 };
 
 const typeFromGo: Record<string, ExclusionType> = Object.fromEntries(
@@ -189,6 +200,10 @@ interface RawExclusion {
   rate_limit_events?: number;
   rate_limit_window?: string;
   rate_limit_action?: string;
+  header_set?: Record<string, string>;
+  header_add?: Record<string, string>;
+  header_remove?: string[];
+  header_default?: Record<string, string>;
   tags?: string[];
   enabled: boolean;
   created_at: string;
@@ -213,6 +228,10 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     rate_limit_events: raw.rate_limit_events ?? undefined,
     rate_limit_window: raw.rate_limit_window || undefined,
     rate_limit_action: raw.rate_limit_action || undefined,
+    header_set: raw.header_set || undefined,
+    header_add: raw.header_add || undefined,
+    header_remove: raw.header_remove || undefined,
+    header_default: raw.header_default || undefined,
     tags: raw.tags,
     enabled: raw.enabled,
     created_at: raw.created_at,
@@ -237,6 +256,10 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.rate_limit_events !== undefined) result.rate_limit_events = data.rate_limit_events;
   if (data.rate_limit_window !== undefined) result.rate_limit_window = data.rate_limit_window;
   if (data.rate_limit_action !== undefined) result.rate_limit_action = data.rate_limit_action;
+  if (data.header_set !== undefined) result.header_set = data.header_set;
+  if (data.header_add !== undefined) result.header_add = data.header_add;
+  if (data.header_remove !== undefined) result.header_remove = data.header_remove;
+  if (data.header_default !== undefined) result.header_default = data.header_default;
   if (data.tags !== undefined) result.tags = data.tags;
   if (data.enabled !== undefined) result.enabled = data.enabled;
   return result;

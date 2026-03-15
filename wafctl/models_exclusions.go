@@ -24,13 +24,13 @@ type SkipTargets struct {
 }
 
 // RuleExclusion is a single WAF policy engine rule.
-// Types: allow, block, skip, detect, rate_limit.
+// Types: allow, block, skip, detect, rate_limit, response_header.
 type RuleExclusion struct {
 	// ─── Common fields (all types) ──────────────────────────────────
 	ID          string      `json:"id"`
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
-	Type        string      `json:"type"`                     // allow|block|skip|detect|rate_limit
+	Type        string      `json:"type"`                     // allow|block|skip|detect|rate_limit|response_header
 	Phase       string      `json:"phase,omitempty"`          // "inbound" (default) or "outbound" for response-phase rules
 	Conditions  []Condition `json:"conditions,omitempty"`     // Dynamic conditions (field/operator/value)
 	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
@@ -53,6 +53,14 @@ type RuleExclusion struct {
 	RateLimitEvents int    `json:"rate_limit_events,omitempty"` // Max events in window
 	RateLimitWindow string `json:"rate_limit_window,omitempty"` // Duration: "1m", "30s", "1h"
 	RateLimitAction string `json:"rate_limit_action,omitempty"` // "deny" (default 429) or "log_only"
+
+	// ─── response_header-only ───────────────────────────────────────
+	// Actions on response headers. Multiple can be combined in one rule.
+	// Plugin applies these to matching responses (conditions + phase=outbound).
+	HeaderSet     map[string]string `json:"header_set,omitempty"`     // Set header (overrides existing)
+	HeaderAdd     map[string]string `json:"header_add,omitempty"`     // Add header (appends, preserves existing)
+	HeaderRemove  []string          `json:"header_remove,omitempty"`  // Remove headers by name
+	HeaderDefault map[string]string `json:"header_default,omitempty"` // Set only if not already present (? prefix in Caddyfile)
 }
 
 // ─── WAF Configuration ──────────────────────────────────────────────────────
@@ -150,11 +158,12 @@ var validCRSExclusions = map[string]bool{
 
 // Valid exclusion types — policy engine only.
 var validExclusionTypes = map[string]bool{
-	"allow":      true, // Full bypass — terminates evaluation immediately
-	"block":      true, // Deny requests (403)
-	"skip":       true, // Selective bypass — carries skip_targets (non-terminating)
-	"detect":     true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
-	"rate_limit": true, // Sliding window rate limiting (429 or log_only)
+	"allow":           true, // Full bypass — terminates evaluation immediately
+	"block":           true, // Deny requests (403)
+	"skip":            true, // Selective bypass — carries skip_targets (non-terminating)
+	"detect":          true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
+	"rate_limit":      true, // Sliding window rate limiting (429 or log_only)
+	"response_header": true, // Set/add/remove/default response headers
 }
 
 // Valid condition fields

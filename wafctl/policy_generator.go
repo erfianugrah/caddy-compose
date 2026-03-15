@@ -42,9 +42,14 @@ type PolicyRule struct {
 	SkipTargets   *PolicySkipTargets     `json:"skip_targets,omitempty"`   // For skip: what to bypass
 	Severity      string                 `json:"severity,omitempty"`       // For detect: CRITICAL, ERROR, WARNING, NOTICE
 	ParanoiaLevel int                    `json:"paranoia_level,omitempty"` // For detect: 1-4 (0 = all levels)
-	Tags          []string               `json:"tags,omitempty"`
-	Enabled       bool                   `json:"enabled"`
-	Priority      int                    `json:"priority"`
+	// Response header actions (for response_header type)
+	HeaderSet     map[string]string `json:"header_set,omitempty"`     // Set (overwrite)
+	HeaderAdd     map[string]string `json:"header_add,omitempty"`     // Add (append)
+	HeaderRemove  []string          `json:"header_remove,omitempty"`  // Remove
+	HeaderDefault map[string]string `json:"header_default,omitempty"` // Set if not present
+	Tags          []string          `json:"tags,omitempty"`
+	Enabled       bool              `json:"enabled"`
+	Priority      int               `json:"priority"`
 }
 
 // PolicySkipTargets mirrors the plugin's SkipTargets type.
@@ -108,27 +113,30 @@ type PolicyCondition struct {
 
 // policyEngineTypes are the exclusion types handled by the Caddy policy engine plugin.
 var policyEngineTypes = map[string]bool{
-	"allow":      true,
-	"block":      true,
-	"skip":       true,
-	"detect":     true,
-	"rate_limit": true,
+	"allow":           true,
+	"block":           true,
+	"skip":            true,
+	"detect":          true,
+	"rate_limit":      true,
+	"response_header": true,
 }
 
 // policyTypePriority assigns a base priority per exclusion type.
-// Lower values evaluate first. The 5-pass evaluation order:
+// Lower values evaluate first. The 6-pass evaluation order:
 //
 //	Pass 1 — Allow (50-99): full bypass, terminates immediately
 //	Pass 2 — Block (100-199): deny list, terminates on match
 //	Pass 3 — Skip (200-299): selective bypass, non-terminating
 //	Pass 4 — Rate Limit (300-399): sliding window counters
 //	Pass 5 — Detect (400-499): CRS anomaly scoring
+//	Pass 6 — Response Header (500-599): set/add/remove/default response headers
 var policyTypePriority = map[string]int{
-	"allow":      50,
-	"block":      100,
-	"skip":       200,
-	"rate_limit": 300,
-	"detect":     400,
+	"allow":           50,
+	"block":           100,
+	"skip":            200,
+	"rate_limit":      300,
+	"detect":          400,
+	"response_header": 500,
 }
 
 // GeneratePolicyRules converts exclusions into the plugin's JSON format.
@@ -221,6 +229,18 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 			// Use explicit priority if set, otherwise tiebreaker from store index.
 			if e.Priority > 0 {
 				pr.Priority = policyTypePriority["rate_limit"] + e.Priority
+			}
+		}
+
+		// Response header rules carry header actions.
+		if e.Type == "response_header" {
+			pr.HeaderSet = e.HeaderSet
+			pr.HeaderAdd = e.HeaderAdd
+			pr.HeaderRemove = e.HeaderRemove
+			pr.HeaderDefault = e.HeaderDefault
+			// Force outbound phase for response_header rules.
+			if pr.Phase == "" {
+				pr.Phase = "outbound"
 			}
 		}
 

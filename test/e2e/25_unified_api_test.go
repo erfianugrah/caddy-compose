@@ -335,3 +335,111 @@ func TestRateLimitValidationUnified(t *testing.T) {
 		cleanup(t, wafctlURL+"/api/rules/"+id)
 	})
 }
+
+// --- response_header rule type ---
+
+func TestResponseHeaderRuleCRUD(t *testing.T) {
+	t.Run("create with header_set", func(t *testing.T) {
+		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-set", "type": "response_header", "enabled": true,
+			"header_set": map[string]string{
+				"X-Custom-Header": "e2e-test-value",
+				"Cache-Control":   "no-store",
+			},
+			"conditions": []map[string]string{
+				{"field": "host", "operator": "eq", "value": "test.erfi.io"},
+			},
+		})
+		assertCode(t, "create header_set", 201, resp)
+		id := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+id) })
+
+		// Verify roundtrip
+		resp2, body2 := httpGet(t, wafctlURL+"/api/rules/"+id)
+		assertCode(t, "get", 200, resp2)
+		assertField(t, "type", body2, "type", "response_header")
+		// Phase should be outbound (auto-set for response_header)
+		phase := jsonField(body2, "phase")
+		if phase != "" && phase != "outbound" {
+			t.Errorf("expected phase=outbound or empty, got %q", phase)
+		}
+	})
+
+	t.Run("create with header_remove", func(t *testing.T) {
+		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-remove", "type": "response_header", "enabled": true,
+			"header_remove": []string{"Server", "X-Powered-By"},
+		})
+		assertCode(t, "create header_remove", 201, resp)
+		id := mustGetID(t, body)
+		cleanup(t, wafctlURL+"/api/rules/"+id)
+	})
+
+	t.Run("create with header_default (set-if-absent)", func(t *testing.T) {
+		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-default", "type": "response_header", "enabled": true,
+			"header_default": map[string]string{
+				"Cache-Control": "public, max-age=604800",
+			},
+			"conditions": []map[string]string{
+				{"field": "path", "operator": "ends_with", "value": ".css"},
+			},
+		})
+		assertCode(t, "create header_default", 201, resp)
+		id := mustGetID(t, body)
+		cleanup(t, wafctlURL+"/api/rules/"+id)
+	})
+
+	t.Run("create with mixed actions", func(t *testing.T) {
+		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-mixed", "type": "response_header", "enabled": true,
+			"service":        "jellyfin.erfi.io",
+			"header_set":     map[string]string{"X-Frame-Options": "SAMEORIGIN"},
+			"header_remove":  []string{"X-Powered-By"},
+			"header_default": map[string]string{"Referrer-Policy": "strict-origin-when-cross-origin"},
+		})
+		assertCode(t, "create mixed", 201, resp)
+		id := mustGetID(t, body)
+		cleanup(t, wafctlURL+"/api/rules/"+id)
+	})
+
+	t.Run("rejected without any header action", func(t *testing.T) {
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-empty", "type": "response_header", "enabled": true,
+		})
+		if resp.StatusCode == 201 {
+			t.Error("expected rejection for response_header with no header actions")
+		}
+	})
+
+	t.Run("rejected with inbound phase", func(t *testing.T) {
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-inbound", "type": "response_header", "enabled": true,
+			"phase":      "inbound",
+			"header_set": map[string]string{"X-Test": "value"},
+		})
+		if resp.StatusCode == 201 {
+			t.Error("expected rejection for response_header with phase=inbound")
+		}
+	})
+
+	t.Run("appears in generated policy rules", func(t *testing.T) {
+		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-resp-hdr-gen", "type": "response_header", "enabled": true,
+			"header_set": map[string]string{"X-E2E-Header": "generated"},
+		})
+		assertCode(t, "create", 201, resp)
+		id := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+id) })
+
+		resp2, body2 := httpPost(t, wafctlURL+"/api/config/generate", struct{}{})
+		assertCode(t, "generate", 200, resp2)
+		s := string(body2)
+		if !strings.Contains(s, "X-E2E-Header") {
+			t.Error("generated policy rules should contain the response header rule")
+		}
+		if !strings.Contains(s, `"response_header"`) {
+			t.Error("generated policy rules should contain type=response_header")
+		}
+	})
+}
