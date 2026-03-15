@@ -116,32 +116,29 @@ and writes one `policy-rules.json`. There are 4 identical deploy endpoints
 `/api/security-headers/deploy`) that all do the same thing. The fragmentation
 is purely at the API/UI level — the data is already unified at the file level.
 
-### Phase 1: Quick Wins (pre-unification cleanup)
+### Phase 1: Quick Wins (pre-unification cleanup) — DONE
 
-- [ ] `SecurityHeaderStore.deepCopy` — field-by-field copy, drop JSON round-trip
-      (`security_headers.go:347-362`)
-- [ ] `IPLookupPanel` — split 893-line file into sub-components, lazy-load recharts
-- [ ] `operatorChip()` — expand beyond 5 operators in DashboardFilterBar
-      (begins_with, ip_match, gt, etc. currently fallback to "=")
-- [ ] Mode field removal — strip ignored `mode` from `WAFServiceSettings`
-      (`models_exclusions.go:55-57`); add one-time migration in `config.go`
+- [x] `SecurityHeaderStore.deepCopy` — field-by-field copy via `copyStringMap`
+- [x] `IPLookupPanel` — split 893→7 files under `ip-lookup/`, recharts isolated
+- [x] `operatorChip()` — investigated, not a bug (FilterOp matches events API)
+- [ ] Mode field removal — deferred to Phase 2h (40+ test touchpoints, zero impact)
 
-### Phase 2: Rule Store Unification (Backend)
+### Phase 2: Rule Store Unification (Backend) — DONE
 
-Merge `RateLimitRuleStore` into `ExclusionStore` under a unified `PolicyRule` type.
-The two structs are nearly identical — both have ID, Name, Conditions, GroupOp,
-Tags, Enabled, timestamps. Only the type-specific fields differ.
+`RuleExclusion` is now the unified type for all rule types. `ExclusionStore` is
+the single rule store. `/api/rules` is the canonical CRUD endpoint; `/api/deploy`
+is the single deploy endpoint. Old endpoints (`/api/exclusions`, `/api/config/deploy`)
+kept as aliases.
 
-**Unified PolicyRule (superset):**
+**Unified RuleExclusion (superset — `models_exclusions.go`):**
 ```
-type PolicyRule struct {
+type RuleExclusion struct {
     // Common fields (all types)
     ID, Name, Description, Type string   // Type: allow|block|skip|detect|rate_limit
     Conditions    []Condition
     GroupOp       string                 // "and"|"or"
     Tags          []string
     Enabled       bool
-    Phase         string                 // "inbound" (default) | "outbound"
     Service       string                 // hostname or "*" for per-service scoping
     Priority      int                    // explicit ordering within type band
     CreatedAt, UpdatedAt time.Time
@@ -158,24 +155,23 @@ type PolicyRule struct {
 }
 ```
 
-**Go backend:**
-- [ ] Create unified `PolicyRule` type (superset of `RuleExclusion` + `RateLimitRule`)
-- [ ] New `RuleStore` replacing both `ExclusionStore` and `RateLimitRuleStore`
-- [ ] Migrate `rate-limits.json` → `rules.json` on startup (read old, write new)
-- [ ] Unified CRUD: `POST/GET/PUT/DELETE /api/rules[/:id]`
-- [ ] Unified bulk: `POST /api/rules/bulk`
-- [ ] Single deploy: `POST /api/deploy` (replaces 4 identical endpoints)
-- [ ] `RateLimitGlobalConfig` moves to `ConfigStore` (alongside WAF anomaly config)
-- [ ] Keep `/api/rate-rules/*` as deprecated aliases during transition
-- [ ] Update backup/restore: `FullBackup.Rules []PolicyRule` replaces separate arrays
-- [ ] Add `DefaultRuleStore` overrides to backup (currently missing)
+**Completed:**
+- [x] `RuleExclusion` extended as superset (Service, Priority, RateLimitKey/Events/Window/Action)
+- [x] `rate_limit` added to `validExclusionTypes` and `policyEngineTypes`
+- [x] `validateExclusion()` handles rate_limit (key, events, window, action, priority, service)
+- [x] Policy generator emits rate_limit config from unified exclusion rules
+- [x] Per-service scoping (`Service` field) for all rule types
+- [x] `RateLimitGlobal` added to `WAFConfig`
+- [x] `/api/rules` CRUD + `/api/deploy` registered in main.go
+- [x] Frontend: `ExclusionType` includes `rate_limit`, interfaces updated
+- [x] `deployConfig()` uses unified `/api/deploy`
+- [x] Old endpoints (`/api/exclusions/*`, `/api/config/deploy`) kept as aliases
 
-**Frontend:**
-- [ ] Merge `exclusions.ts` + `rate-limits.ts` (CRUD portions) → `rules.ts`
-- [ ] Single deploy function in `rules.ts`, remove from `config.ts`/`csp.ts`/etc.
-- [ ] Deprecate separate deploy buttons; single "Deploy" in header
-- [ ] `/policy` page already has tabs — just feed from unified API
-- [ ] Update `backup.ts` `FullBackup` interface
+**Remaining cleanup (non-blocking):**
+- [ ] Remove `RateLimitRuleStore` and its handlers (dead code after consumers switch)
+- [ ] Remove `models_ratelimit.go` (struct definitions moved to `models_exclusions.go`)
+- [ ] Mode field removal (40+ test touchpoints, zero functional impact)
+- [ ] Update backup/restore for unified rules + add DefaultRuleStore overrides
 
 ### Phase 3: Response-Phase Policy Rules
 
