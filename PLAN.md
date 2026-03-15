@@ -7,8 +7,9 @@ Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbo
 skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
 rule types, managed lists, IPsum blocklist (8 levels, 618K IPs), CRS auto-update
-response_header rule type, all plugin limitations resolved (v0.17.0),
-and e2e CI pipeline (114 e2e tests, 500 Go unit tests, 326 frontend tests).
+response_header rule type, structured CORS, rule templates, all plugin
+limitations resolved (v0.17.0), and e2e CI pipeline (116 e2e tests,
+500 Go unit tests, 326 frontend tests).
 
 ---
 
@@ -256,15 +257,23 @@ CORS origin validation + preflight). The `response_header` rule type is for ad-h
 - [x] Frontend types updated (ExclusionType, Exclusion, ExclusionCreateData, mappings)
 - [x] E2E: TestResponseHeaderRuleCRUD (7 subtests)
 
-**Remaining:**
-- [ ] Cache-control rules via `response_header` rule templates (pattern-based Cache-Control)
-- [ ] Rule templates/presets: "Cache static assets", "Security headers baseline", etc.
-- [ ] CORS/CSP/Headers UI pages (keep as structured config pages, not merged)
+**Rule Templates (DONE):**
+- [x] `GET /api/rules/templates` — list builtin templates
+- [x] `POST /api/rules/templates/{id}/apply` — one-click create rules from template
+- [x] Templates: cache-static-assets, cache-immutable-hashed, security-headers-baseline,
+      remove-server-headers
+- [x] Frontend: `templates.ts` API module
+- [x] E2E: TestRuleTemplatesAPI
 
-**Caddyfile cleanup (after deploying plugin v0.17.0):**
-- [ ] Remove `(cors)` snippet (replaced by plugin CORS)
-- [ ] Remove `(static_cache)` snippet (can use response_header rules)
-- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` (plugin handles CORS)
+**Remaining:**
+- [ ] CORS config UI page
+- [ ] Template browser UI (list templates, preview rules, one-click apply)
+
+**Caddyfile cleanup (plugin v0.17.0 deployed):**
+- [ ] Remove `(cors)` snippet → plugin CORS handles preflight + origin validation
+- [ ] Remove `(static_cache)` snippet → apply cache-static-assets rule template
+- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` → plugin handles CORS
+- [ ] Configure CORS via `/api/cors` with production origins
 
 ### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
 
