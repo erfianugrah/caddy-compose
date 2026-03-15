@@ -26,11 +26,14 @@ Root cause: CRS uses chained rules with `ctl:ruleRemoveByTag` to suppress
 false positives in specific contexts. The converter doesn't translate these chains,
 causing 4 rules (932236, 932260, 941130, 942200) to over-match on `request_combined`.
 
-**To improve:**
-- [ ] Translate CRS exclusion chains (SecRule chain semantics)
-- [ ] Per-variable evaluation instead of concatenated `request_combined` for rules
-      that check fewer than the full variable set
-- [ ] Target: 95%+ detection rate
+**Done:**
+- [x] Variable exclusion support in converter (Excludes field from CRS negation variables)
+- [x] Plugin v0.18.0: isExcluded() filters cookies/headers during multi-field extraction
+
+**To reach 95%+ (requires multi-day refactor):**
+- [ ] Nested condition groups in plugin (OR within AND chains)
+- [ ] SecRuleUpdateTargetById processing in converter parser
+- [ ] CRS ctl:ruleRemoveByTag translation (runtime suppression chains)
 
 ### WebSocket + Stream Deep Inspection (Long-Term)
 
