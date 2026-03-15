@@ -62,6 +62,8 @@
 	}
 }
 
+# TODO: This snippet can be removed after configuring CORS via /api/cors
+# (plugin v0.17.0 handles preflight + origin validation natively).
 (cors) {
 	# CORS: validate Origin against *.erfi.io allowlist (not Host reflection).
 	@cors_origin `header_regexp("Origin", "^https://[a-z0-9-]+\\.erfi\\.io$")`
@@ -81,6 +83,9 @@
 # Respects upstream headers from apps that set their own (Jellyfin, Vaultwarden, Immich).
 # Cloudflare edge and browsers both honour these.
 # Usage: import static_cache
+# TODO: This snippet can be removed after applying the "cache-static-assets"
+# rule template via /api/rules/templates/cache-static-assets/apply
+# (plugin v0.17.0 handles response_header rules with header_default).
 (static_cache) {
 	@fonts path *.woff *.woff2 *.ttf *.eot *.otf
 	header @fonts ?Cache-Control "public, max-age=31536000, immutable"
