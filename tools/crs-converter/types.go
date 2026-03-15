@@ -79,14 +79,17 @@ type PolicyRule struct {
 
 // PolicyCondition is a single condition within a detect rule.
 type PolicyCondition struct {
-	Field      string   `json:"field"`
-	Operator   string   `json:"operator"`
+	Field      string   `json:"field,omitempty"`
+	Operator   string   `json:"operator,omitempty"`
 	Value      string   `json:"value,omitempty"`
 	Negate     bool     `json:"negate,omitempty"`
 	MultiMatch bool     `json:"multi_match,omitempty"`
 	Transforms []string `json:"transforms,omitempty"`
 	ListItems  []string `json:"list_items,omitempty"`
-	Excludes   []string `json:"excludes,omitempty"` // variable patterns to skip (e.g., "cookie:__utm")
+	Excludes   []string `json:"excludes,omitempty"`
+	// Nested condition group — when Group is non-nil, this is an OR/AND group.
+	Group   []PolicyCondition `json:"group,omitempty"`
+	GroupOp string            `json:"group_op,omitempty"`
 }
 
 // ─── Conversion Report Types ───────────────────────────────────────

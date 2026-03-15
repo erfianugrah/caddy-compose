@@ -101,14 +101,17 @@ type PolicyWafServiceConfig struct {
 
 // PolicyCondition represents a single match condition for the plugin.
 type PolicyCondition struct {
-	Field      string   `json:"field"`
-	Operator   string   `json:"operator"`
-	Value      string   `json:"value"`
-	Transforms []string `json:"transforms,omitempty"`  // ordered transform chain applied before operator
-	Negate     bool     `json:"negate,omitempty"`      // CRS !@ prefix — inverts operator result
-	MultiMatch bool     `json:"multi_match,omitempty"` // CRS multiMatch — run operator at each transform stage
-	ListItems  []string `json:"list_items,omitempty"`  // resolved by wafctl before writing
-	ListKind   string   `json:"list_kind,omitempty"`   // "ip", "hostname", "string", "asn"
+	Field      string   `json:"field,omitempty"`
+	Operator   string   `json:"operator,omitempty"`
+	Value      string   `json:"value,omitempty"`
+	Transforms []string `json:"transforms,omitempty"`
+	Negate     bool     `json:"negate,omitempty"`
+	MultiMatch bool     `json:"multi_match,omitempty"`
+	ListItems  []string `json:"list_items,omitempty"`
+	ListKind   string   `json:"list_kind,omitempty"`
+	// Nested condition group
+	Group   []PolicyCondition `json:"group,omitempty"`
+	GroupOp string            `json:"group_op,omitempty"`
 }
 
 // policyEngineTypes are the exclusion types handled by the Caddy policy engine plugin.
