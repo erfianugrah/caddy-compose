@@ -265,9 +265,10 @@ CORS origin validation + preflight). The `response_header` rule type is for ad-h
 - [x] Frontend: `templates.ts` API module
 - [x] E2E: TestRuleTemplatesAPI
 
-**Remaining:**
-- [ ] CORS config UI page
-- [ ] Template browser UI (list templates, preview rules, one-click apply)
+**UI Pages (DONE):**
+- [x] CORS config page (`/cors`): global settings, per-service overrides, save/deploy
+- [x] Template browser page (`/templates`): card grid by category, preview, one-click apply
+- [x] Nav entries in Security section sidebar
 
 **Caddyfile cleanup (plugin v0.17.0 deployed):**
 - [ ] Remove `(cors)` snippet → plugin CORS handles preflight + origin validation
