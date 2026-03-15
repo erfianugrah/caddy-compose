@@ -34,10 +34,13 @@ type Store struct {
 	// generation increments on every eviction that removes events.
 	// Used by responseCache to invalidate stale entries.
 	generation atomic.Int64
+
+	// counters holds incrementally-maintained per-hour summary statistics.
+	counters *summaryCounters
 }
 
 func NewStore() *Store {
-	return &Store{}
+	return &Store{counters: newSummaryCounters()}
 }
 
 // SetEventFile configures a JSONL file for persistent event storage.
@@ -57,6 +60,10 @@ func (s *Store) SetEventFile(path string) {
 	}
 	s.events = events
 	log.Printf("restored %d events from %s", len(events), path)
+	// Initialize incremental counters from restored events.
+	if s.counters != nil {
+		s.counters.initFromEvents(s.events)
+	}
 }
 
 // appendEventsToJSONL appends events to the JSONL file.
@@ -225,6 +232,12 @@ func (s *Store) evict() {
 		idx++
 	}
 	if idx > 0 {
+		// Decrement incremental summary counters for evicted events.
+		if s.counters != nil {
+			for i := 0; i < idx; i++ {
+				s.counters.decrementEvent(&s.events[i])
+			}
+		}
 		evicted := idx
 		// Compact the slice to release memory.
 		remaining := make([]Event, len(s.events)-idx)
@@ -373,6 +386,17 @@ func (s *Store) SnapshotRange(start, end time.Time) []Event {
 // Summary computes aggregate stats from events within the last N hours.
 func (s *Store) Summary(hours int) SummaryResponse {
 	return summarizeEvents(s.SnapshotSince(hours))
+}
+
+// FastSummary returns a SummaryResponse computed from incremental per-hour
+// counters. This is O(buckets) instead of O(events).
+// Falls back to the full-scan approach if counters are not initialized or
+// stale (e.g. events set directly without going through normal ingestion).
+func (s *Store) FastSummary(hours int) SummaryResponse {
+	if s.counters == nil || (s.counters.totalEvents() == 0 && s.EventCount() > 0) {
+		return s.Summary(hours)
+	}
+	return s.counters.buildSummary(hours)
 }
 
 // SummaryRange computes aggregate stats from events within [start, end].

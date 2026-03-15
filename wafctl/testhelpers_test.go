@@ -47,6 +47,8 @@ func storeWithEvents(t *testing.T, events []Event) *Store {
 	store.events = make([]Event, len(events))
 	copy(store.events, events)
 	store.mu.Unlock()
+	// Initialize incremental counters from the pre-populated events.
+	store.counters.initFromEvents(events)
 	return store
 }
 

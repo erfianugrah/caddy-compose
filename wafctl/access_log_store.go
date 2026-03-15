@@ -211,10 +211,15 @@ type AccessLogStore struct {
 	// advCache caches advisor scan results for 30 seconds to avoid
 	// redundant 20MB disk scans on rapid re-queries.
 	advCache *advisorCache
+
+	// counters holds incrementally-maintained per-hour summary statistics.
+	// Updated on ingestion and eviction so that summary queries are O(buckets)
+	// instead of O(events).
+	counters *summaryCounters
 }
 
 func NewAccessLogStore(path string) *AccessLogStore {
-	return &AccessLogStore{path: path, advCache: newAdvisorCache()}
+	return &AccessLogStore{path: path, advCache: newAdvisorCache(), counters: newSummaryCounters()}
 }
 
 // SetOffsetFile configures a file path to persist the access log read offset
@@ -287,6 +292,8 @@ func (s *AccessLogStore) SetEventFile(path string) {
 		log.Printf("migrated %d legacy ipsum events to policy source", migrated)
 		s.compactEventFileLocked()
 	}
+	// Initialize incremental counters from restored events.
+	s.initCountersFromRLEventsLocked()
 }
 
 // appendEventsToJSONL appends rate limit events to the JSONL file.
@@ -417,6 +424,22 @@ func (s *AccessLogStore) SetMaxAge(d time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.maxAge = d
+}
+
+// initCountersFromRLEventsLocked initializes incremental counters from the
+// current in-memory RateLimitEvents. The caller MUST hold s.mu.
+func (s *AccessLogStore) initCountersFromRLEventsLocked() {
+	if s.counters == nil {
+		return
+	}
+	// Convert RL events to unified Events for counter ingestion.
+	// Use empty rule/exclusion lists since tags aren't needed for counters —
+	// they're enriched at query time. We use a minimal conversion here.
+	events := make([]Event, len(s.events))
+	for i := range s.events {
+		events[i] = RateLimitEventToEvent(s.events[i], nil)
+	}
+	s.counters.initFromEvents(events)
 }
 
 // Load reads new lines from the combined access log and extracts 429 events.
@@ -589,6 +612,13 @@ func (s *AccessLogStore) Load() {
 		s.generation.Add(1)
 		// Persist new events to JSONL.
 		s.appendEventsToJSONL(newEvents)
+		// Update incremental summary counters for new events.
+		if s.counters != nil {
+			for i := range newEvents {
+				ev := RateLimitEventToEvent(newEvents[i], nil)
+				s.counters.incrementEvent(&ev)
+			}
+		}
 		rlCount, policyCount, policyRLCount := 0, 0, 0
 		for _, e := range newEvents {
 			switch e.Source {
@@ -623,6 +653,13 @@ func (s *AccessLogStore) evict() {
 		idx++
 	}
 	if idx > 0 {
+		// Decrement incremental summary counters for evicted events.
+		if s.counters != nil {
+			for i := 0; i < idx; i++ {
+				ev := RateLimitEventToEvent(s.events[i], nil)
+				s.counters.decrementEvent(&ev)
+			}
+		}
 		evicted := idx
 		remaining := make([]RateLimitEvent, len(s.events)-idx)
 		copy(remaining, s.events[idx:])
@@ -658,6 +695,24 @@ func (s *AccessLogStore) EventCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.events)
+}
+
+// FastSummary returns a SummaryResponse computed from incremental per-hour
+// counters. This is O(buckets) instead of O(events) — typically ~100x faster
+// for large event stores. If hours <= 0, all buckets are included.
+// Falls back to a full scan if counters are not initialized or empty
+// while events exist (e.g. events set directly without going through Load()).
+func (s *AccessLogStore) FastSummary(hours int) SummaryResponse {
+	if s.counters == nil || (s.counters.totalEvents() == 0 && s.EventCount() > 0) {
+		// Fallback: convert RL events to unified Events and summarize.
+		rlEvents := s.snapshotSince(hours)
+		events := make([]Event, len(rlEvents))
+		for i := range rlEvents {
+			events[i] = RateLimitEventToEvent(rlEvents[i], nil)
+		}
+		return summarizeEvents(events)
+	}
+	return s.counters.buildSummary(hours)
 }
 
 // Stats returns health-check information about the access log store.
