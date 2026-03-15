@@ -37,9 +37,9 @@ cd waf-dashboard && npm ci && npm run build
 
 ```bash
 make test               # Run ALL tests (Go + frontend)
-make test-go            # Go tests only (24 test files)
-make test-frontend      # Frontend Vitest only (17 test files)
-make test-e2e           # E2E smoke tests (requires Docker)
+make test-go            # Go tests only (24 test files, 500 tests)
+make test-frontend      # Frontend Vitest only (17 test files, 326 tests)
+make test-e2e           # E2E smoke tests (requires Docker, 108 tests)
 ```
 
 ### Running a single test
@@ -138,8 +138,9 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 ### API Layer
 
 - Domain modules under `src/lib/api/` — `shared.ts` (HTTP helpers), `waf-events.ts`, `analytics.ts`,
-  `exclusions.ts`, `config.ts`, `rate-limits.ts`, `blocklist.ts`, `csp.ts`, `general-logs.ts`,
-  `managed-lists.ts`, `backup.ts`, `default-rules.ts`, `security-headers.ts`, `index.ts` (barrel).
+  `exclusions.ts`, `config.ts`, `rate-limits.ts` (compat wrappers → `/api/rules`), `blocklist.ts`,
+  `csp.ts`, `general-logs.ts`, `managed-lists.ts`, `backup.ts`, `default-rules.ts`,
+  `security-headers.ts`, `index.ts` (barrel).
 - Go returns `snake_case` JSON; API modules map to `camelCase` TypeScript interfaces.
 - When adding endpoints, update the Go handler AND the matching API module.
 

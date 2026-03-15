@@ -6,9 +6,8 @@ Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbo
 59 outbound, auto-converted at Docker build time), 5-pass evaluation (allow → block →
 skip → rate_limit → detect), outbound anomaly scoring, per-service category masks,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase support for all
-rule types (Phase 3), CORS + Cache stores wired into policy-rules.json (Phase 4),
-managed lists, IPsum blocklist (8 levels, 618K IPs), and e2e CI pipeline
-(106 e2e tests, 500 Go unit tests, 326 frontend tests).
+rule types, managed lists, IPsum blocklist (8 levels, 618K IPs), CRS auto-update
+workflow, and e2e CI pipeline (108 e2e tests, 500 Go unit tests, 326 frontend tests).
 
 ---
 
@@ -199,66 +198,50 @@ rules work on response data (status codes, headers, body).
 - [x] Condition builder shows response-phase fields when phase=outbound
 - [x] `INBOUND_FIELD_DEFS` / `OUTBOUND_FIELD_DEFS` filtered field sets
 
-### Phase 4: Header & Caching Policies (Plugin-Managed)
+### Phase 4: Response-Phase Policies (Architectural Pivot)
 
-Move header manipulation and caching rules from Caddyfile snippets into
-`policy-rules.json` so they hot-reload without Caddy restart.
+**Key insight: CORS, CSP, security headers, cache-control, and custom header
+manipulation are all response-phase policies.** They should NOT be separate
+config stores — they should be expressible as response-phase rules in the
+unified store, or as a new `response_header` rule type in the policy engine.
 
-**New policy-rules.json sections:**
-```json
-{
-  "response_headers": {
-    "csp": { ... },             // Already exists
-    "security": { ... },        // Already exists
-    "custom": {                  // NEW: arbitrary per-service headers
-      "global": { "set": {}, "add": {}, "remove": [] },
-      "per_service": { "svc": { "set": {}, "add": {}, "remove": [] } }
-    },
-    "cors": {                    // NEW: replaces (cors) Caddyfile snippet
-      "allowed_origins": [],
-      "allowed_methods": [],
-      "allowed_headers": [],
-      "exposed_headers": [],
-      "max_age": 3600,
-      "per_service": {}
-    }
-  },
-  "request_headers": {           // NEW: request-phase header manipulation
-    "global": { "set": {}, "add": {}, "remove": [] },
-    "per_service": {}
-  },
-  "cache_control": {             // NEW: replaces (static_cache) snippet
-    "rules": [
-      { "path_match": "/_astro/*", "value": "public, max-age=31536000, immutable" },
-      { "path_match": "*.{css,js,woff2}", "value": "public, max-age=604800" }
-    ],
-    "per_service": {}
-  }
-}
-```
+**CORS/Cache stores removed** — initially built as separate stores (`cors_store.go`,
+`cache_store.go`), then reverted. The separate-store approach duplicates the
+config model (stores + rules) and requires dedicated endpoints for each header type.
 
-**wafctl stores (DONE):**
-- [x] `CORSStore` — per-service CORS config (origins, methods, headers, max-age, credentials)
-- [x] `CacheStore` — path-based Cache-Control rules with set/default modes
-- [x] Both wired into `BuildPolicyResponseHeaders()` → `response_headers.cors` + `response_headers.cache`
-- [x] API endpoints: `GET/PUT /api/cors`, `GET/PUT /api/cache`
-- [x] Frontend API modules: `cors.ts`, `cache.ts`
-- [ ] `CustomHeaderStore` — request/response header manipulation (deferred — not in Caddyfile today)
+**Target architecture:**
+- New rule type `type: "response_header"` with `phase: "outbound"`
+- Conditions match when to apply (host, path, response_status)
+- Action sets/adds/removes response headers
+- CSP, security headers, CORS, cache-control become rule templates/presets
+  that generate response_header rules
+- Advisors help users create appropriate rules for their services
 
-**Plugin (separate repo, not yet implemented):**
-- [ ] Parse and apply `cors` config (preflight handling, origin validation)
-- [ ] Parse and apply `cache` config (path matching, set-if-absent)
+**Migration path (existing → target):**
+- CSPStore + SecurityHeaderStore remain for now (production deployed)
+- They continue to generate `response_headers.csp` and `response_headers.security`
+  sections in policy-rules.json
+- New `response_header` rules can coexist alongside the legacy sections
+- Eventually: migrate CSP/security header configs to rules, remove legacy stores
 
-**Frontend (consolidated UI — no separate pages):**
-- [ ] Fold CORS, Cache, CSP, Security Headers into unified settings on `/rules`
-      (replace 4 separate pages with expandable config cards in WAF Engine Settings)
-- [ ] Remove `/csp`, `/headers` pages once config is accessible from `/rules`
-- [ ] Advisor panel: RL advisor + CRS tuning recommendations in one place
+**What's needed in plugin (caddy-policy-engine):**
+- [ ] `response_header` rule type: evaluate conditions on response, set/add/remove headers
+- [ ] CORS preflight handling as a built-in response_header behavior
+- [ ] Cache-Control set-if-absent (`?` prefix) semantic in response_header rules
+- [ ] CSP directive composition in response_header rules (or keep as plugin feature)
+
+**What's needed in wafctl:**
+- [ ] Add `response_header` to validExclusionTypes
+- [ ] Header action fields on RuleExclusion (header_set, header_add, header_remove)
+- [ ] Rule templates/presets: "CORS for *.erfi.io", "Cache static assets", etc.
+- [ ] Migrate CSPStore → response_header rules
+- [ ] Migrate SecurityHeaderStore → response_header rules
+- [ ] Remove `/csp`, `/headers` pages, fold into advisor/settings
 
 **Caddyfile cleanup (after plugin implements):**
-- [ ] Remove `(static_cache)` snippet after plugin handles cache rules
-- [ ] Remove `(cors)` snippet after plugin handles CORS
-- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` after plugin handles CORS
+- [ ] Remove `(static_cache)` snippet
+- [ ] Remove `(cors)` snippet
+- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)`
 
 ### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
 
