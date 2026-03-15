@@ -432,7 +432,7 @@ type SecurityHeaderDeployResponse struct {
 }
 
 // handleDeploySecurityHeaders generates security header config and triggers policy engine hot-reload.
-func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore, cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore, corsStore *CORSStore, cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -440,7 +440,7 @@ func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore,
 		allExclusions := es.EnabledExclusions()
 		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, store, svcMap)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, store, corsStore, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
 		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {

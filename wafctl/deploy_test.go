@@ -37,7 +37,7 @@ func TestDeployEndpointNoReload(t *testing.T) {
 	ds := NewDefaultRuleStore(filepath.Join(t.TempDir(), "defaults.json"), filepath.Join(t.TempDir(), "overrides.json"))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, ls, cspStore, secStore, ds, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, ls, cspStore, secStore, nil, ds, deployCfg))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
 	rec := httptest.NewRecorder()

@@ -33,6 +33,7 @@ func runServe() int {
 
 	cspFile := envOr("WAF_CSP_FILE", "/data/csp-config.json")
 	secHeadersFile := envOr("WAF_SECURITY_HEADERS_FILE", "/data/security-headers.json")
+	corsFile := envOr("WAF_CORS_FILE", "/data/cors.json")
 	managedListsFile := envOr("WAF_MANAGED_LISTS_FILE", "/data/lists.json")
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
 
@@ -121,13 +122,14 @@ func runServe() int {
 	configStore := NewConfigStore(configFile)
 	cspStore := NewCSPStore(cspFile)
 	secHeaderStore := NewSecurityHeaderStore(secHeadersFile)
+	corsStore := NewCORSStore(corsFile)
 	managedListStore := NewManagedListStore(managedListsFile, managedListsDir)
 	defaultRuleStore := NewDefaultRuleStore(defaultRulesFile, defaultRulesOverridesFile)
 
 	// Generate-on-boot: regenerate WAF, rate limit, and CSP config files from
 	// stored state so a stack restart always picks up the latest generator output.
 	// No Caddy reload is needed because Caddy reads fresh on its own startup.
-	generateOnBoot(configStore, exclusionStore, cspStore, secHeaderStore, managedListStore, defaultRuleStore, deployCfg)
+	generateOnBoot(configStore, exclusionStore, cspStore, secHeaderStore, corsStore, managedListStore, defaultRuleStore, deployCfg)
 
 	blocklistStore := NewBlocklistStore()
 
@@ -139,7 +141,7 @@ func runServe() int {
 	// After managed list sync, regenerate policy-rules.json so the plugin
 	// picks up updated IP lists, then reload Caddy.
 	blocklistStore.SetOnDeploy(func() error {
-		return deployAll(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg)
+		return deployAll(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg)
 	})
 
 	// Populate in-memory IP set from existing managed lists (for Check API).
@@ -215,13 +217,13 @@ func runServe() int {
 	// ── Unified Deploy ────────────────────────────────────────────────
 	// Single deploy endpoint for all config (replaces /api/config/deploy,
 	// /api/rate-rules/deploy, /api/csp/deploy, /api/security-headers/deploy).
-	mux.HandleFunc("POST /api/deploy", handleDeploy(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/deploy", handleDeploy(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg))
 
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
-	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/config/generate", handleGenerateConfig(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg))
 
 	// Rate Limit Analytics (kept — reads from accessLogStore, not RateLimitRuleStore)
 	mux.HandleFunc("GET /api/rate-rules/hits", handleRLRuleHits(accessLogStore, exclusionStore))
@@ -239,15 +241,19 @@ func runServe() int {
 	// CSP (Content Security Policy)
 	mux.HandleFunc("GET /api/csp", handleGetCSP(cspStore))
 	mux.HandleFunc("PUT /api/csp", handleUpdateCSP(cspStore))
-	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, secHeaderStore, configStore, exclusionStore, managedListStore, defaultRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/csp/deploy", handleDeployCSP(cspStore, secHeaderStore, corsStore, configStore, exclusionStore, managedListStore, defaultRuleStore, deployCfg))
 	mux.HandleFunc("GET /api/csp/preview", handlePreviewCSP(cspStore, deployCfg))
 
 	// Security Headers
 	mux.HandleFunc("GET /api/security-headers", handleGetSecurityHeaders(secHeaderStore))
 	mux.HandleFunc("PUT /api/security-headers", handleUpdateSecurityHeaders(secHeaderStore))
 	mux.HandleFunc("GET /api/security-headers/profiles", handleListSecurityProfiles())
-	mux.HandleFunc("POST /api/security-headers/deploy", handleDeploySecurityHeaders(secHeaderStore, cspStore, configStore, exclusionStore, managedListStore, defaultRuleStore, deployCfg))
+	mux.HandleFunc("POST /api/security-headers/deploy", handleDeploySecurityHeaders(secHeaderStore, cspStore, corsStore, configStore, exclusionStore, managedListStore, defaultRuleStore, deployCfg))
 	mux.HandleFunc("GET /api/security-headers/preview", handlePreviewSecurityHeaders(secHeaderStore, deployCfg))
+
+	// CORS
+	mux.HandleFunc("GET /api/cors", handleGetCORS(corsStore))
+	mux.HandleFunc("PUT /api/cors", handleUpdateCORS(corsStore))
 
 	// Cloudflare trusted proxies
 	mux.HandleFunc("GET /api/cfproxy/stats", handleCFProxyStats(cfProxyStore))

@@ -363,7 +363,7 @@ func TestBuildPolicyResponseHeaders_WithSecStore(t *testing.T) {
 		"httpbun": "httpbun.erfi.io",
 	}
 
-	resp := BuildPolicyResponseHeaders(nil, secStore, svcMap)
+	resp := BuildPolicyResponseHeaders(nil, secStore, nil, svcMap)
 
 	if resp.Security == nil {
 		t.Fatal("expected security config")
@@ -385,7 +385,7 @@ func TestBuildPolicyResponseHeaders_WithSecStore(t *testing.T) {
 }
 
 func TestBuildPolicyResponseHeaders_NilSecStore(t *testing.T) {
-	resp := BuildPolicyResponseHeaders(nil, nil, nil)
+	resp := BuildPolicyResponseHeaders(nil, nil, nil, nil)
 	if resp.Security == nil {
 		t.Fatal("expected fallback security config")
 	}

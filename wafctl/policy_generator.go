@@ -464,10 +464,18 @@ func resolveServiceName(service string, serviceMap map[string]string) string {
 // wafctl builds this from the CSP store and hardcoded security headers,
 // then includes it in policy-rules.json for hot-reload.
 
-// PolicyResponseHeaderConfig holds CSP and security header configuration.
+// PolicyResponseHeaderConfig holds CSP, security header, and CORS configuration.
 type PolicyResponseHeaderConfig struct {
 	CSP      *PolicyCSPConfig            `json:"csp,omitempty"`
 	Security *PolicySecurityHeaderConfig `json:"security,omitempty"`
+	CORS     *PolicyCORSConfig           `json:"cors,omitempty"`
+}
+
+// PolicyCORSConfig holds global and per-service CORS settings.
+type PolicyCORSConfig struct {
+	Enabled    *bool                   `json:"enabled,omitempty"` // nil = true
+	Global     CORSSettings            `json:"global"`
+	PerService map[string]CORSSettings `json:"per_service,omitempty"`
 }
 
 // PolicyCSPConfig holds global and per-service CSP policies.
@@ -518,10 +526,10 @@ func DefaultSecurityHeaders() *PolicySecurityHeaderConfig {
 }
 
 // BuildPolicyResponseHeaders constructs the response header config for the
-// policy engine plugin from the CSP store and security header store.
+// policy engine plugin from the CSP store, security header store, and CORS store.
 // The CSP policy data and service FQDNs are resolved so the plugin gets
 // FQDN-keyed services matching the Host headers it sees in production.
-func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStore, serviceMap map[string]string) *PolicyResponseHeaderConfig {
+func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, serviceMap map[string]string) *PolicyResponseHeaderConfig {
 	resp := &PolicyResponseHeaderConfig{}
 
 	// Build security header config from store (or defaults).
@@ -576,6 +584,25 @@ func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStor
 			Enabled:        cspCfg.Enabled,
 			GlobalDefaults: cspCfg.GlobalDefaults,
 			Services:       services,
+		}
+	}
+
+	// Build CORS config from store.
+	if corsStore != nil {
+		corsCfg := corsStore.Get()
+		perService := make(map[string]CORSSettings)
+		for svc, cs := range corsCfg.PerService {
+			fqdn := resolveServiceName(svc, serviceMap)
+			perService[fqdn] = cs
+			// Also map the short name if different from FQDN.
+			if fqdn != svc {
+				perService[svc] = cs
+			}
+		}
+		resp.CORS = &PolicyCORSConfig{
+			Enabled:    corsCfg.Enabled,
+			Global:     corsCfg.Global,
+			PerService: perService,
 		}
 	}
 
