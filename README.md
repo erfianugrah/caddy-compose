@@ -324,6 +324,50 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_MANAGED_LISTS_DIR` | `/data/lists` | Output dir for managed list files |
 | `WAF_POLICY_RULES_FILE` | `/data/coraza/policy-rules.json` | Policy engine rules JSON output path |
 
+## Event store sizing
+
+wafctl maintains three event stores in JSONL format. Sizing depends on traffic
+volume and retention period.
+
+### Stores
+
+| Store | File | Default Retention | Contents |
+|-------|------|-------------------|----------|
+| WAF events | `events.jsonl` | 90 days (`WAF_EVENT_MAX_AGE`) | CRS detect/block events |
+| Access log events | `access-events.jsonl` | 90 days (`WAF_EVENT_MAX_AGE`) | Policy blocks, rate limits, detects, skips |
+| General log events | `general-events.jsonl` | 7 days (`WAF_GENERAL_LOG_MAX_AGE`) | All access log entries (high volume) |
+
+### Disk usage estimates
+
+| Traffic level | Events/day | 90-day WAF+Access store | 7-day General store |
+|---------------|-----------|------------------------|---------------------|
+| Low (100 req/hr) | ~50 events | ~5 MB | ~50 MB |
+| Medium (1K req/hr) | ~500 events | ~50 MB | ~500 MB |
+| High (10K req/hr) | ~5,000 events | ~500 MB | ~5 GB |
+| Very high (100K req/hr) | ~50,000 events | ~5 GB | ~50 GB |
+
+Events are ~1 KB each (JSON with headers, matched rules, tags).
+General log entries are ~500 bytes each (request metadata only).
+
+### Tuning
+
+- **Reduce retention**: Set `WAF_EVENT_MAX_AGE=720h` (30 days) or `168h` (7 days)
+- **Reduce general log retention**: `WAF_GENERAL_LOG_MAX_AGE=24h` (1 day)
+- **Disable general logging**: Don't set `WAF_GENERAL_LOG_FILE`
+- **Monitor disk usage**: Check `/data/events/` directory size periodically
+- **Eviction is automatic**: Events older than max age are pruned on each tail cycle
+
+### Memory usage
+
+Events are held in memory for fast querying. Incremental summary counters
+(per-hour buckets) reduce memory pressure from full scans. Approximate memory:
+
+- 10K events in memory: ~15 MB
+- 100K events in memory: ~150 MB
+- 1M events in memory: ~1.5 GB
+
+For high-traffic deployments, reduce `WAF_EVENT_MAX_AGE` to keep memory bounded.
+
 ## Site block patterns
 
 Since Caddy runs with `network_mode: host`, it reaches backend containers by their static bridge IPs. Every site block imports a standard set of snippets. Three patterns cover most use cases:
@@ -334,9 +378,6 @@ For public services or services with their own auth:
 
 ```
 myservice.example.com {
-    import cors
-    import security_headers
-    import static_cache
     import waf
     import tls_config
     encode zstd gzip
@@ -354,9 +395,6 @@ Every request must pass through Authelia:
 
 ```
 myservice.example.com {
-    import cors
-    import security_headers
-    import static_cache
     import waf
     import forward_auth
     import tls_config
@@ -375,9 +413,6 @@ Use `route` to control evaluation order. Matching requests hit the first `revers
 
 ```
 myservice.example.com {
-    import cors
-    import security_headers
-    import static_cache
     import waf
     import tls_config
     encode zstd gzip
@@ -408,15 +443,18 @@ Every site block should include these, in order:
 
 | Snippet | Required | Purpose |
 |---------|----------|---------|
-| `import cors` | recommended | CORS preflight handling |
-| `import security_headers` | yes | HSTS, CSP, nosniff, etc. |
-| `import static_cache` | recommended | Cache-Control for static assets |
 | `import waf` or `import waf_off` | yes | Policy engine WAF with OWASP CRS + rate limiting |
 | `import forward_auth` | if authenticated | Authelia forward authentication |
 | `import tls_config` | yes | ACME DNS challenge via Cloudflare |
 | `encode zstd gzip` | recommended | Response compression |
+| `import proxy_headers` | yes (inside `reverse_proxy`) | Trusted proxy headers for real client IP |
 | `import error_pages` | yes | Custom error page templates |
 | `import site_log <name>` | yes | JSON access log + combined log for analytics |
+
+> **Note:** CORS, security headers, and static asset caching are no longer configured via Caddyfile snippets. They are now managed through the wafctl API and rule templates:
+> - **CORS** — configured per-service via `/api/cors` (plugin-level CORS handling)
+> - **Security headers** — managed via `/api/security-headers` (HSTS, CSP, nosniff, etc.)
+> - **Static asset caching** — use the `cache-static-assets` rule template to add Cache-Control headers
 
 Rate limit rules are managed by wafctl. Rate limiting is handled by the policy engine plugin via `policy-rules.json` hot-reload — no Caddy restart needed. Rules support condition-based matching (per-path, per-method, per-header), flexible rate keys (client IP, path, header values), and auto-deploy on save.
 

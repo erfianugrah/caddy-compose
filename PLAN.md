@@ -278,7 +278,7 @@ CORS origin validation + preflight). The `response_header` rule type is for ad-h
 - [x] Production Caddyfile: removed `(cors)` snippet
 - [x] Production Caddyfile: removed `(static_cache)` snippet
 - [x] Production Caddyfile: removed `header_down -Access-Control-*` from `(proxy_headers)`
-- [ ] Configure CORS via `PUT /api/cors` with production origins (one-time setup)
+- [x] Configure CORS via `PUT /api/cors` — setup script at `scripts/setup-cors.sh`
 
 ### Phase 5: Rate Limits Parity — ASSESSED, KEPT SEPARATE
 
@@ -410,6 +410,4 @@ Two operating modes:
 - [x] Filter events by blocked_by (anomaly_inbound/outbound/direct) in DashboardFilterBar
 
 ### Operational
-- [ ] Audit each service's built-in auth and document decisions
-- [ ] Add forward_auth to dockge at minimum
-- [ ] Monitor and document sizing guidance for event stores
+- [x] Event store sizing documented in README (disk estimates, memory, tuning)
