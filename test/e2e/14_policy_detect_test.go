@@ -182,7 +182,6 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 	// Step 2: Set threshold=5 — a "naked" GET (no UA, no Accept) triggers score=13.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  5,
 			"outbound_threshold": 5,
@@ -271,7 +270,6 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 	t.Run("raised threshold prevents block", func(t *testing.T) {
 		configPayload := map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     2,
 				"inbound_threshold":  20,
 				"outbound_threshold": 20,
@@ -323,7 +321,6 @@ func TestPolicyEngineDetectScoring(t *testing.T) {
 	// Step 7: Cleanup — restore config to production defaults.
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  10,
 			"outbound_threshold": 10,
@@ -364,7 +361,6 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 	// Set PL=1, threshold=8 — seeded PL1 rules score 5, below 8.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     1,
 			"inbound_threshold":  8,
 			"outbound_threshold": 10,
@@ -403,7 +399,6 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 	t.Run("PL4 rule fires at PL4 — score exceeds threshold", func(t *testing.T) {
 		configPL4 := map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     4,
 				"inbound_threshold":  8,
 				"outbound_threshold": 10,
@@ -454,7 +449,6 @@ func TestPolicyEngineDetectParanoiaLevel(t *testing.T) {
 	// Cleanup — restore defaults.
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  10,
 			"outbound_threshold": 10,
@@ -472,7 +466,6 @@ func TestPolicyEngineDetectWafConfig(t *testing.T) {
 	// Set a specific config.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     3,
 			"inbound_threshold":  15,
 			"outbound_threshold": 8,
@@ -491,7 +484,6 @@ func TestPolicyEngineDetectWafConfig(t *testing.T) {
 	// Restore defaults.
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  10,
 			"outbound_threshold": 10,

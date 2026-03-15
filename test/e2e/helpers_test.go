@@ -438,7 +438,6 @@ func ensureDefaultConfig(t *testing.T) {
 	t.Helper()
 	httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  15,
 			"outbound_threshold": 15,

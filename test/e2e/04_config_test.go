@@ -23,7 +23,6 @@ func TestWAFConfig(t *testing.T) {
 	t.Run("update", func(t *testing.T) {
 		payload := map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     2,
 				"inbound_threshold":  10,
 				"outbound_threshold": 10,

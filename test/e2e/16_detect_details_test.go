@@ -38,7 +38,6 @@ func TestPolicyEngineDetectMatchDetails(t *testing.T) {
 	// Step 2: Set threshold=3 so one CRITICAL(5) rule triggers detect_block.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  3,
 			"outbound_threshold": 10,
@@ -207,7 +206,6 @@ func TestPolicyEngineDetectMatchDetails(t *testing.T) {
 	// Step 7: Cleanup — restore config to production defaults.
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  10,
 			"outbound_threshold": 10,
@@ -246,7 +244,6 @@ func TestPolicyEngineDetectMatchDetails_PhraseMatch(t *testing.T) {
 	// Set threshold=3 so CRITICAL(5) triggers.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  3,
 			"outbound_threshold": 10,
@@ -329,7 +326,6 @@ func TestPolicyEngineDetectMatchDetails_PhraseMatch(t *testing.T) {
 				// Cleanup and return success.
 				restorePayload := map[string]any{
 					"defaults": map[string]any{
-						"mode": "enabled", "paranoia_level": 2,
 						"inbound_threshold": 10, "outbound_threshold": 10,
 					},
 				}
@@ -358,7 +354,6 @@ func TestPolicyEngineDetectMatchDetails_PhraseMatch(t *testing.T) {
 	// Cleanup
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode": "enabled", "paranoia_level": 2,
 			"inbound_threshold": 10, "outbound_threshold": 10,
 		},
 	}
@@ -393,7 +388,6 @@ func TestPolicyEngineDetectMatchDetails_MultiCondition(t *testing.T) {
 	// Threshold=3 so CRITICAL(5) triggers.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  3,
 			"outbound_threshold": 10,
@@ -482,7 +476,6 @@ func TestPolicyEngineDetectMatchDetails_MultiCondition(t *testing.T) {
 				// Success — cleanup and return.
 				restorePayload := map[string]any{
 					"defaults": map[string]any{
-						"mode": "enabled", "paranoia_level": 2,
 						"inbound_threshold": 10, "outbound_threshold": 10,
 					},
 				}
@@ -508,7 +501,6 @@ func TestPolicyEngineDetectMatchDetails_MultiCondition(t *testing.T) {
 	// Cleanup
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode": "enabled", "paranoia_level": 2,
 			"inbound_threshold": 10, "outbound_threshold": 10,
 		},
 	}

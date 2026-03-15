@@ -42,7 +42,6 @@ func setCRSv7TestConfig(t *testing.T) {
 	t.Helper()
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "detection_only",
 			"paranoia_level":     1,
 			"inbound_threshold":  5,
 			"outbound_threshold": 5,
@@ -62,7 +61,6 @@ func restoreCRSv7TestConfig(t *testing.T) {
 	t.Helper()
 	restorePayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  10,
 			"outbound_threshold": 10,
@@ -317,7 +315,6 @@ func TestCRSv7(t *testing.T) {
 	t.Run("DetectBlockIsolation/same payload passes with high threshold", func(t *testing.T) {
 		highThreshold := map[string]any{
 			"defaults": map[string]any{
-				"mode":               "detection_only",
 				"paranoia_level":     1,
 				"inbound_threshold":  999,
 				"outbound_threshold": 999,

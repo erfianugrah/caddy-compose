@@ -24,18 +24,12 @@ func TestConfigStoreDefaults(t *testing.T) {
 	if cfg.Defaults.OutboundThreshold != expected.Defaults.OutboundThreshold {
 		t.Errorf("default outbound: want %d, got %d", expected.Defaults.OutboundThreshold, cfg.Defaults.OutboundThreshold)
 	}
-	if cfg.Defaults.Mode != expected.Defaults.Mode {
-		t.Errorf("default mode: want %s, got %s", expected.Defaults.Mode, cfg.Defaults.Mode)
-	}
 }
 
 func TestDefaultServiceSettingsMatchesDefaultConfig(t *testing.T) {
 	ss := defaultServiceSettings()
 	dc := defaultConfig().Defaults
 
-	if ss.Mode != dc.Mode {
-		t.Errorf("Mode: defaultServiceSettings()=%s, defaultConfig().Defaults=%s", ss.Mode, dc.Mode)
-	}
 	if ss.ParanoiaLevel != dc.ParanoiaLevel {
 		t.Errorf("ParanoiaLevel: defaultServiceSettings()=%d, defaultConfig().Defaults=%d", ss.ParanoiaLevel, dc.ParanoiaLevel)
 	}
@@ -52,10 +46,10 @@ func TestConfigStoreUpdate(t *testing.T) {
 
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode: "detection_only", ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8,
+			ParanoiaLevel: 2, InboundThreshold: 10, OutboundThreshold: 8,
 		},
 		Services: map[string]WAFServiceSettings{
-			"test.erfi.io": {Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+			"test.erfi.io": {ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
 		},
 	}
 
@@ -74,7 +68,7 @@ func TestConfigStorePersistence(t *testing.T) {
 
 	cs1 := NewConfigStore(path)
 	cs1.Update(WAFConfig{
-		Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 3, InboundThreshold: 7, OutboundThreshold: 6},
+		Defaults: WAFServiceSettings{ParanoiaLevel: 3, InboundThreshold: 7, OutboundThreshold: 6},
 		Services: make(map[string]WAFServiceSettings),
 	})
 
@@ -94,7 +88,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid",
 			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Defaults: WAFServiceSettings{ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
 				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: false,
@@ -102,7 +96,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "paranoia too low",
 			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4},
+				Defaults: WAFServiceSettings{ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4},
 				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: true,
@@ -110,7 +104,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "paranoia too high",
 			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 5, InboundThreshold: 5, OutboundThreshold: 4},
+				Defaults: WAFServiceSettings{ParanoiaLevel: 5, InboundThreshold: 5, OutboundThreshold: 4},
 				Services: map[string]WAFServiceSettings{},
 			},
 			wantErr: true,
@@ -119,9 +113,9 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid per-service override",
 			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Defaults: WAFServiceSettings{ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
 				Services: map[string]WAFServiceSettings{
-					"test.erfi.io": {Mode: "disabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+					"test.erfi.io": {ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
 				},
 			},
 			wantErr: false,
@@ -129,9 +123,9 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid per-service paranoia",
 			cfg: WAFConfig{
-				Defaults: WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
+				Defaults: WAFServiceSettings{ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4},
 				Services: map[string]WAFServiceSettings{
-					"test.erfi.io": {Mode: "enabled", ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4},
+					"test.erfi.io": {ParanoiaLevel: 0, InboundThreshold: 5, OutboundThreshold: 4},
 				},
 			},
 			wantErr: true,
@@ -173,7 +167,7 @@ func TestConfigEndpoints(t *testing.T) {
 	}
 
 	// PUT update.
-	body := `{"defaults":{"mode":"enabled","paranoia_level":2,"inbound_threshold":10,"outbound_threshold":8},"services":{}}`
+	body := `{"defaults":{"paranoia_level":2,"inbound_threshold":10,"outbound_threshold":8},"services":{}}`
 	req = httptest.NewRequest("PUT", "/api/config", strings.NewReader(body))
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -196,7 +190,7 @@ func TestConfigEndpointInvalid(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(cs))
 
-	body := `{"defaults":{"mode":"enabled","paranoia_level":0,"inbound_threshold":5,"outbound_threshold":4},"services":{}}`
+	body := `{"defaults":{"paranoia_level":0,"inbound_threshold":5,"outbound_threshold":4},"services":{}}`
 	req := httptest.NewRequest("PUT", "/api/config", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -306,7 +300,7 @@ func TestConfigMigrationFallbacksForInvalidValues(t *testing.T) {
 // --- CRS v4 Extended Settings validation tests ---
 
 func TestValidateCRSv4ExtendedSettings(t *testing.T) {
-	base := WAFServiceSettings{Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4}
+	base := WAFServiceSettings{ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4}
 
 	tests := []struct {
 		name    string
@@ -370,12 +364,12 @@ func TestConfigDeepCopyCRSExclusions(t *testing.T) {
 	cs := newTestConfigStore(t)
 	cfg := WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+			ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
 			CRSExclusions: []string{"wordpress"},
 		},
 		Services: map[string]WAFServiceSettings{
 			"test.erfi.io": {
-				Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+				ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
 				CRSExclusions: []string{"nextcloud"},
 			},
 		},
@@ -386,7 +380,7 @@ func TestConfigDeepCopyCRSExclusions(t *testing.T) {
 	// Mutate the returned copy.
 	got.Defaults.CRSExclusions = append(got.Defaults.CRSExclusions, "drupal")
 	got.Services["test.erfi.io"] = WAFServiceSettings{
-		Mode: "enabled", ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
+		ParanoiaLevel: 1, InboundThreshold: 5, OutboundThreshold: 4,
 		CRSExclusions: []string{"xenforo"},
 	}
 

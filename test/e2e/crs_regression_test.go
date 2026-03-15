@@ -458,7 +458,6 @@ func TestCRSRegression(t *testing.T) {
 	t.Log("Configuring WAF: detection_only mode, inbound_threshold=1")
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "detection_only",
 			"paranoia_level":     4, // PL4 to match CRS test suite expectations
 			"inbound_threshold":  1,
 			"outbound_threshold": 1,
@@ -478,7 +477,6 @@ func TestCRSRegression(t *testing.T) {
 		t.Log("Restoring WAF config to defaults")
 		restorePayload := map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     2,
 				"inbound_threshold":  10,
 				"outbound_threshold": 10,

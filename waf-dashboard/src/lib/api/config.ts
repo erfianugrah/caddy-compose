@@ -2,12 +2,7 @@ import { API_BASE, fetchJSON, putJSON } from "./shared";
 
 // ─── Settings / Config ──────────────────────────────────────────────
 
-/** @deprecated Mode field preserved for backward compat — no behavioral effect. */
-export type WAFMode = "enabled" | "detection_only" | "disabled";
-
 export interface WAFServiceSettings {
-  /** @deprecated Preserved for backward compat — no behavioral effect. Use thresholds instead. */
-  mode?: WAFMode;
   paranoia_level: number;
   inbound_threshold: number;
   outbound_threshold: number;

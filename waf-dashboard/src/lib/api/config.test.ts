@@ -9,14 +9,13 @@ describe("getConfig", () => {
   it("returns WAFConfig with defaults and per-service settings", async () => {
     const apiResponse = {
       defaults: {
-        mode: "enabled",
         paranoia_level: 2,
         inbound_threshold: 10,
         outbound_threshold: 5,
       },
       services: {
-        "radarr.erfi.io": { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
-        "sonarr.erfi.io": { mode: "detection_only", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "radarr.erfi.io": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "sonarr.erfi.io": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
       },
     };
 
@@ -25,20 +24,19 @@ describe("getConfig", () => {
     const { getConfig } = await import("@/lib/api");
     const result = await getConfig();
 
-    expect(result.defaults.mode).toBe("enabled");
     expect(result.defaults.paranoia_level).toBe(2);
     expect(result.defaults.inbound_threshold).toBe(10);
     expect(result.defaults.outbound_threshold).toBe(5);
     expect(Object.keys(result.services)).toHaveLength(2);
-    expect(result.services["radarr.erfi.io"].mode).toBe("enabled");
-    expect(result.services["sonarr.erfi.io"].mode).toBe("detection_only");
+    expect(result.services["radarr.erfi.io"].paranoia_level).toBe(1);
+    expect(result.services["sonarr.erfi.io"].paranoia_level).toBe(1);
   });
 
   it("handles null/empty services gracefully", async () => {
     vi.stubGlobal(
       "fetch",
       mockFetchResponse({
-        defaults: { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        defaults: { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
         services: null,
       })
     );
@@ -56,7 +54,6 @@ describe("getConfig", () => {
 
     const { getConfig } = await import("@/lib/api");
     const result = await getConfig();
-    // mode is deprecated and no longer set by defaults
     expect(result.defaults.paranoia_level).toBe(1);
     expect(result.defaults.inbound_threshold).toBe(5);
     expect(result.defaults.outbound_threshold).toBe(4);
@@ -67,13 +64,12 @@ describe("updateConfig", () => {
   it("sends WAFConfig directly and returns result", async () => {
     const updatedConfig = {
       defaults: {
-        mode: "detection_only",
         paranoia_level: 3,
         inbound_threshold: 10,
         outbound_threshold: 8,
       },
       services: {
-        "radarr.erfi.io": { mode: "enabled", paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "radarr.erfi.io": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
       },
     };
 
@@ -82,16 +78,14 @@ describe("updateConfig", () => {
     const { updateConfig } = await import("@/lib/api");
     const result = await updateConfig(updatedConfig as any);
 
-    expect(result.defaults.mode).toBe("detection_only");
     expect(result.defaults.paranoia_level).toBe(3);
     expect(Object.keys(result.services)).toHaveLength(1);
 
     // Verify the PUT payload is sent directly (no field mapping)
     const putCall = vi.mocked(fetch).mock.calls[0];
     const putBody = JSON.parse(putCall[1]?.body as string);
-    expect(putBody.defaults.mode).toBe("detection_only");
     expect(putBody.defaults.inbound_threshold).toBe(10);
-    expect(putBody.services["radarr.erfi.io"].mode).toBe("enabled");
+    expect(putBody.services["radarr.erfi.io"].paranoia_level).toBe(1);
   });
 });
 
@@ -101,7 +95,6 @@ describe("getConfig with CRS v4 extended settings", () => {
   it("returns CRS v4 extended fields when present", async () => {
     const apiResponse = {
       defaults: {
-        mode: "enabled",
         paranoia_level: 3,
         inbound_threshold: 10,
         outbound_threshold: 8,
@@ -149,7 +142,6 @@ describe("getConfig with CRS v4 extended settings", () => {
   it("handles missing CRS v4 fields gracefully (all undefined)", async () => {
     const apiResponse = {
       defaults: {
-        mode: "enabled",
         paranoia_level: 1,
         inbound_threshold: 5,
         outbound_threshold: 4,
@@ -171,7 +163,6 @@ describe("getConfig with CRS v4 extended settings", () => {
   it("sends CRS v4 fields in updateConfig payload", async () => {
     const config = {
       defaults: {
-        mode: "enabled" as const,
         paranoia_level: 2,
         inbound_threshold: 10,
         outbound_threshold: 8,
@@ -214,7 +205,6 @@ describe("presetToSettings and settingsToPreset", () => {
 
     // Even with extended fields, if core trio matches strict, it's strict
     const settings = {
-      mode: "enabled" as const,
       paranoia_level: 1,
       inbound_threshold: 5,
       outbound_threshold: 4,

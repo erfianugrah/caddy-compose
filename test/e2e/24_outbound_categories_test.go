@@ -19,7 +19,6 @@ func TestOutboundThresholdConfig(t *testing.T) {
 	// Set outbound threshold.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  15,
 			"outbound_threshold": 8,
@@ -51,7 +50,6 @@ func TestOutboundThresholdConfig(t *testing.T) {
 	t.Cleanup(func() {
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     2,
 				"inbound_threshold":  15,
 				"outbound_threshold": 15,
@@ -63,14 +61,12 @@ func TestOutboundThresholdConfig(t *testing.T) {
 func TestOutboundThresholdPerService(t *testing.T) {
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  15,
 			"outbound_threshold": 10,
 		},
 		"services": map[string]any{
 			"httpbun.erfi.io": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     1,
 				"inbound_threshold":  5,
 				"outbound_threshold": 3,
@@ -102,7 +98,6 @@ func TestOutboundThresholdPerService(t *testing.T) {
 	t.Cleanup(func() {
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     2,
 				"inbound_threshold":  15,
 				"outbound_threshold": 15,
@@ -311,7 +306,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 	// Invalid: non-numeric prefix.
 	resp, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode":                "enabled",
 			"paranoia_level":      2,
 			"inbound_threshold":   15,
 			"outbound_threshold":  15,
@@ -324,7 +318,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 		// Restore valid config.
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode": "enabled", "paranoia_level": 2,
 				"inbound_threshold": 15, "outbound_threshold": 15,
 			},
 			"services": map[string]any{},
@@ -334,7 +327,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 	// Invalid: too short (1 digit).
 	resp2, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode":                "enabled",
 			"paranoia_level":      2,
 			"inbound_threshold":   15,
 			"outbound_threshold":  15,
@@ -346,7 +338,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 		t.Error("expected rejection for 1-digit disabled_categories, got 200")
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode": "enabled", "paranoia_level": 2,
 				"inbound_threshold": 15, "outbound_threshold": 15,
 			},
 			"services": map[string]any{},
@@ -356,7 +347,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 	// Invalid: too long (5 digits).
 	resp3, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode":                "enabled",
 			"paranoia_level":      2,
 			"inbound_threshold":   15,
 			"outbound_threshold":  15,
@@ -368,7 +358,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 		t.Error("expected rejection for 5-digit disabled_categories, got 200")
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode": "enabled", "paranoia_level": 2,
 				"inbound_threshold": 15, "outbound_threshold": 15,
 			},
 			"services": map[string]any{},
@@ -378,7 +367,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 	// Valid: 3-digit and 4-digit prefixes.
 	resp4, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode":                "enabled",
 			"paranoia_level":      2,
 			"inbound_threshold":   15,
 			"outbound_threshold":  15,
@@ -392,7 +380,6 @@ func TestDisabledCategoriesValidation(t *testing.T) {
 	t.Cleanup(func() {
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode": "enabled", "paranoia_level": 2,
 				"inbound_threshold": 15, "outbound_threshold": 15,
 			},
 			"services": map[string]any{},
@@ -407,7 +394,6 @@ func TestDisabledCategoriesInPolicyRules(t *testing.T) {
 	// and the deploy response includes the categories in policy-rules output.
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":                "enabled",
 			"paranoia_level":      2,
 			"inbound_threshold":   15,
 			"outbound_threshold":  15,
@@ -442,7 +428,6 @@ func TestDisabledCategoriesInPolicyRules(t *testing.T) {
 	t.Cleanup(func() {
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode": "enabled", "paranoia_level": 2,
 				"inbound_threshold": 15, "outbound_threshold": 15,
 			},
 			"services": map[string]any{},
@@ -456,14 +441,12 @@ func TestDisabledCategoriesInPolicyRules(t *testing.T) {
 func TestDisabledCategoriesPerServiceInPolicyRules(t *testing.T) {
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  15,
 			"outbound_threshold": 15,
 		},
 		"services": map[string]any{
 			"httpbun.erfi.io": map[string]any{
-				"mode":                "enabled",
 				"paranoia_level":      1,
 				"inbound_threshold":   5,
 				"outbound_threshold":  5,
@@ -500,7 +483,6 @@ func TestDisabledCategoriesPerServiceInPolicyRules(t *testing.T) {
 	t.Cleanup(func() {
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode": "enabled", "paranoia_level": 2,
 				"inbound_threshold": 15, "outbound_threshold": 15,
 			},
 			"services": map[string]any{},
@@ -514,7 +496,6 @@ func TestDisabledCategoriesPerServiceInPolicyRules(t *testing.T) {
 func TestDisabledCategoriesConfig(t *testing.T) {
 	configPayload := map[string]any{
 		"defaults": map[string]any{
-			"mode":                "enabled",
 			"paranoia_level":      2,
 			"inbound_threshold":   15,
 			"outbound_threshold":  15,
@@ -522,7 +503,6 @@ func TestDisabledCategoriesConfig(t *testing.T) {
 		},
 		"services": map[string]any{
 			"httpbun.erfi.io": map[string]any{
-				"mode":                "enabled",
 				"paranoia_level":      1,
 				"inbound_threshold":   5,
 				"outbound_threshold":  5,
@@ -561,7 +541,6 @@ func TestDisabledCategoriesConfig(t *testing.T) {
 	t.Cleanup(func() {
 		httpPut(t, wafctlURL+"/api/config", map[string]any{
 			"defaults": map[string]any{
-				"mode":               "enabled",
 				"paranoia_level":     2,
 				"inbound_threshold":  15,
 				"outbound_threshold": 15,

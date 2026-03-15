@@ -175,14 +175,12 @@ func TestBackup_WithData(t *testing.T) {
 	// Seed WAF config.
 	cs.Update(WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode:              "detection_only",
 			ParanoiaLevel:     3,
 			InboundThreshold:  10,
 			OutboundThreshold: 8,
 		},
 		Services: map[string]WAFServiceSettings{
 			"httpbun": {
-				Mode:              "enabled",
 				ParanoiaLevel:     2,
 				InboundThreshold:  5,
 				OutboundThreshold: 4,
@@ -211,9 +209,6 @@ func TestBackup_WithData(t *testing.T) {
 	var backup FullBackup
 	json.Unmarshal(rec.Body.Bytes(), &backup)
 
-	if backup.WAFConfig.Defaults.Mode != "detection_only" {
-		t.Errorf("expected WAF mode 'detection_only', got %q", backup.WAFConfig.Defaults.Mode)
-	}
 	if _, ok := backup.WAFConfig.Services["httpbun"]; !ok {
 		t.Error("expected httpbun service override in backup")
 	}
@@ -233,7 +228,7 @@ func TestBackup_ValidJSON(t *testing.T) {
 	// Seed data to make the JSON non-trivial.
 	cs.Update(WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode: "enabled", ParanoiaLevel: 2,
+			ParanoiaLevel:    2,
 			InboundThreshold: 5, OutboundThreshold: 4,
 		},
 		Services: map[string]WAFServiceSettings{},
@@ -310,7 +305,6 @@ func TestRestore_ValidBackup(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode:              "detection_only",
 				ParanoiaLevel:     2,
 				InboundThreshold:  8,
 				OutboundThreshold: 6,
@@ -350,9 +344,6 @@ func TestRestore_ValidBackup(t *testing.T) {
 
 	// Verify each store was updated.
 	cfg := cs.Get()
-	if cfg.Defaults.Mode != "detection_only" {
-		t.Errorf("WAF config not restored: mode=%q", cfg.Defaults.Mode)
-	}
 	if cfg.Defaults.ParanoiaLevel != 2 {
 		t.Errorf("WAF config not restored: paranoia=%d", cfg.Defaults.ParanoiaLevel)
 	}
@@ -380,7 +371,7 @@ func TestRestore_ValidBackup(t *testing.T) {
 func TestRestore_MissingVersion(t *testing.T) {
 	mux, _, _, _, _, _, _ := setupBackupMux(t)
 
-	body := []byte(`{"waf_config":{"defaults":{"mode":"enabled","paranoia_level":1,"inbound_threshold":5,"outbound_threshold":4}}}`)
+	body := []byte(`{"waf_config":{"defaults":{"paranoia_level":1,"inbound_threshold":5,"outbound_threshold":4}}}`)
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -433,7 +424,6 @@ func TestRestore_InvalidWAFConfig(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode:              "enabled",
 				ParanoiaLevel:     0, // invalid: must be 1-4
 				InboundThreshold:  5,
 				OutboundThreshold: 4,
@@ -479,7 +469,7 @@ func TestRestore_InvalidCSPConfig(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -526,7 +516,7 @@ func TestRestore_InvalidExclusion(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -568,7 +558,7 @@ func TestRestore_InvalidRLRule(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -610,7 +600,7 @@ func TestRestore_EmptyExclusions(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -653,14 +643,13 @@ func TestRestore_RoundTrip(t *testing.T) {
 	// Seed all stores with non-trivial data.
 	cs.Update(WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode:              "detection_only",
 			ParanoiaLevel:     3,
 			InboundThreshold:  15,
 			OutboundThreshold: 10,
 		},
 		Services: map[string]WAFServiceSettings{
 			"api-svc": {
-				Mode: "enabled", ParanoiaLevel: 4,
+				ParanoiaLevel:    4,
 				InboundThreshold: 5, OutboundThreshold: 3,
 			},
 		},
@@ -734,9 +723,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 	cfg2 := cs2.Get()
 	if cfg2.Defaults.ParanoiaLevel != 3 {
 		t.Errorf("expected paranoia 3, got %d", cfg2.Defaults.ParanoiaLevel)
-	}
-	if cfg2.Defaults.Mode != "detection_only" {
-		t.Errorf("expected mode detection_only, got %q", cfg2.Defaults.Mode)
 	}
 	if _, ok := cfg2.Services["api-svc"]; !ok {
 		t.Error("expected api-svc service override after restore")
@@ -819,7 +805,7 @@ func TestRestore_MultipleFailures(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "bogus", ParanoiaLevel: 99, // invalid
+				ParanoiaLevel:    99, // invalid
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 		},
@@ -877,7 +863,7 @@ func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 	// Pre-seed some data.
 	cs.Update(WAFConfig{
 		Defaults: WAFServiceSettings{
-			Mode: "enabled", ParanoiaLevel: 2,
+			ParanoiaLevel:    2,
 			InboundThreshold: 10, OutboundThreshold: 8,
 		},
 		Services: map[string]WAFServiceSettings{},
@@ -889,7 +875,7 @@ func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "detection_only", ParanoiaLevel: 3,
+				ParanoiaLevel:    3,
 				InboundThreshold: 15, OutboundThreshold: 12,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -927,16 +913,16 @@ func TestRestore_WAFConfigServiceOverrides(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 2,
+				ParanoiaLevel:    2,
 				InboundThreshold: 10, OutboundThreshold: 8,
 			},
 			Services: map[string]WAFServiceSettings{
 				"api": {
-					Mode: "detection_only", ParanoiaLevel: 4,
+					ParanoiaLevel:    4,
 					InboundThreshold: 20, OutboundThreshold: 15,
 				},
 				"web": {
-					Mode: "disabled", ParanoiaLevel: 1,
+					ParanoiaLevel:    1,
 					InboundThreshold: 5, OutboundThreshold: 4,
 				},
 			},
@@ -958,12 +944,12 @@ func TestRestore_WAFConfigServiceOverrides(t *testing.T) {
 		t.Fatalf("expected 2 service overrides, got %d", len(cfg.Services))
 	}
 	apiCfg := cfg.Services["api"]
-	if apiCfg.Mode != "detection_only" || apiCfg.ParanoiaLevel != 4 {
-		t.Errorf("api service not restored correctly: mode=%q pl=%d", apiCfg.Mode, apiCfg.ParanoiaLevel)
+	if apiCfg.ParanoiaLevel != 4 {
+		t.Errorf("api service not restored correctly: pl=%d", apiCfg.ParanoiaLevel)
 	}
 	webCfg := cfg.Services["web"]
-	if webCfg.Mode != "disabled" {
-		t.Errorf("web service not restored correctly: mode=%q", webCfg.Mode)
+	if webCfg.ParanoiaLevel != 1 {
+		t.Errorf("web service not restored correctly: pl=%d", webCfg.ParanoiaLevel)
 	}
 }
 
@@ -976,7 +962,7 @@ func TestRestore_CSPServiceOverrides(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -1037,7 +1023,7 @@ func TestRestore_ExclusionConditionsPreserved(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -1095,7 +1081,7 @@ func TestRestore_LegacyRLRulesSkipped(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},
@@ -1143,7 +1129,7 @@ func TestRestore_ManagedListDetailsPreserved(t *testing.T) {
 		Version: 1,
 		WAFConfig: WAFConfig{
 			Defaults: WAFServiceSettings{
-				Mode: "enabled", ParanoiaLevel: 1,
+				ParanoiaLevel:    1,
 				InboundThreshold: 5, OutboundThreshold: 4,
 			},
 			Services: map[string]WAFServiceSettings{},

@@ -16,7 +16,6 @@ const mockBackup: FullBackup = {
   exported_at: "2026-03-11T12:00:00Z",
   waf_config: {
     defaults: {
-      mode: "enabled",
       paranoia_level: 2,
       inbound_threshold: 10,
       outbound_threshold: 10,
@@ -68,7 +67,6 @@ describe("fetchBackup", () => {
     vi.stubGlobal("fetch", mockFetchResponse(mockBackup));
     const result = await fetchBackup();
     expect(result.version).toBe(1);
-    expect(result.waf_config.defaults.mode).toBe("enabled");
     expect(result.exclusions).toHaveLength(1);
     expect(result.rate_limits.rules).toHaveLength(1);
   });

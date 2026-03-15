@@ -325,7 +325,6 @@ func TestLoggedEventsCollected(t *testing.T) {
 	// Set a very high threshold (tuning mode) so detect rules fire but don't block.
 	resp, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode":               "enabled",
 			"paranoia_level":     2,
 			"inbound_threshold":  10000,
 			"outbound_threshold": 10000,
@@ -493,7 +492,6 @@ func TestLoggedEventHasMatchedRules(t *testing.T) {
 	// Set tuning mode — high threshold so nothing blocks.
 	resp, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"mode": "enabled", "paranoia_level": 2,
 			"inbound_threshold": 10000, "outbound_threshold": 10000,
 		},
 		"services": map[string]any{},
