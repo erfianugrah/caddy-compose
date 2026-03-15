@@ -443,3 +443,74 @@ func TestResponseHeaderRuleCRUD(t *testing.T) {
 		}
 	})
 }
+
+// --- CORS Store API ---
+
+func TestCORSStoreAPI(t *testing.T) {
+	t.Run("get default", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/cors")
+		assertCode(t, "get cors", 200, resp)
+	})
+
+	t.Run("update and verify", func(t *testing.T) {
+		corsConfig := map[string]any{
+			"enabled": true,
+			"global": map[string]any{
+				"allowed_origins": []string{"https://app.erfi.io", "https://api.erfi.io"},
+				"allowed_methods": []string{"GET", "POST", "PUT", "DELETE"},
+				"allowed_headers": []string{"Content-Type", "Authorization"},
+				"max_age":         3600,
+			},
+			"per_service": map[string]any{
+				"jellyfin.erfi.io": map[string]any{
+					"allowed_origins":   []string{"https://jellyfin.erfi.io"},
+					"allow_credentials": true,
+				},
+			},
+		}
+		resp, _ := httpPut(t, wafctlURL+"/api/cors", corsConfig)
+		assertCode(t, "update cors", 200, resp)
+
+		resp2, body2 := httpGet(t, wafctlURL+"/api/cors")
+		assertCode(t, "re-read cors", 200, resp2)
+
+		var cfg struct {
+			Global struct {
+				AllowedOrigins []string `json:"allowed_origins"`
+				MaxAge         int      `json:"max_age"`
+			} `json:"global"`
+			PerService map[string]struct {
+				AllowCredentials bool `json:"allow_credentials"`
+			} `json:"per_service"`
+		}
+		json.Unmarshal(body2, &cfg)
+
+		if len(cfg.Global.AllowedOrigins) != 2 {
+			t.Errorf("expected 2 origins, got %d", len(cfg.Global.AllowedOrigins))
+		}
+		if cfg.Global.MaxAge != 3600 {
+			t.Errorf("expected max_age=3600, got %d", cfg.Global.MaxAge)
+		}
+		svc, ok := cfg.PerService["jellyfin.erfi.io"]
+		if !ok {
+			t.Fatal("jellyfin.erfi.io not in per_service")
+		}
+		if !svc.AllowCredentials {
+			t.Error("expected allow_credentials=true for jellyfin")
+		}
+	})
+
+	t.Run("cors in deploy output", func(t *testing.T) {
+		resp, body := httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
+		assertCode(t, "deploy", 200, resp)
+		assertField(t, "status", body, "status", "deployed")
+	})
+
+	t.Cleanup(func() {
+		httpPut(t, wafctlURL+"/api/cors", map[string]any{
+			"global":      map[string]any{},
+			"per_service": map[string]any{},
+		})
+		deployWAF(t)
+	})
+}
