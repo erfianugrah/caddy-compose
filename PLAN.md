@@ -249,20 +249,24 @@ Move header manipulation and caching rules from Caddyfile snippets into
 - [ ] Parse and apply `cors` config (preflight handling, origin validation)
 - [ ] Parse and apply `cache` config (path matching, set-if-absent)
 
-**Frontend:**
-- [ ] CORS config UI page (origins, methods, headers, max-age, per-service)
-- [ ] Cache config UI page (path patterns, Cache-Control values, per-service)
+**Frontend (consolidated UI — no separate pages):**
+- [ ] Fold CORS, Cache, CSP, Security Headers into unified settings on `/rules`
+      (replace 4 separate pages with expandable config cards in WAF Engine Settings)
+- [ ] Remove `/csp`, `/headers` pages once config is accessible from `/rules`
+- [ ] Advisor panel: RL advisor + CRS tuning recommendations in one place
 
-**Caddyfile cleanup:**
-- [ ] Remove `(static_cache)` snippet after plugin handles it
-- [ ] Remove `(cors)` snippet after plugin handles it
-- [ ] Remove individual `header` directives that duplicate plugin functionality
+**Caddyfile cleanup (after plugin implements):**
+- [ ] Remove `(static_cache)` snippet after plugin handles cache rules
+- [ ] Remove `(cors)` snippet after plugin handles CORS
+- [ ] Remove `header_down -Access-Control-*` from `(proxy_headers)` after plugin handles CORS
 
 ### Phase 5: Rate Limits Parity (UI)
 
 After backend unification, the RL tab in `/policy` gets full parity with the
 WAF rules tab. This is simpler post-unification since both share the same API.
 
+- [ ] Rewrite `RateLimitsPanel.tsx` to use unified `/api/rules` directly
+      (drop compat wrappers in `rate-limits.ts`)
 - [ ] Bulk select, move-to-edge, inline position editing in RL tab
 - [ ] Multi-drag reorder (already works for WAF rules)
 - [ ] Per-page count selector
