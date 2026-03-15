@@ -63,6 +63,114 @@ from tailscale, K8s streamtunnel, goproxy.
 
 ---
 
+### DDoS/DoS Mitigation Layer
+
+First-pass mitigation layer that runs before all other policy engine evaluation.
+Reuses the same sliding-window counter and condition evaluation infrastructure
+as the existing rate limit rules, but with different response behavior.
+
+**Problem:** Under a bombardment (791K events in hours), the observation layer
+(event stores, JSONL persistence, API handlers) collapses — 2GB JSONL files,
+3-minute startup, health endpoint timeouts, dashboard unreachable. Rate limiting
+blocks the requests but the WAF still logs every single block event individually.
+
+**Solution:** Request fingerprinting + hash-bucketed dedup during volumetric attacks.
+
+#### Architecture
+
+```
+Normal traffic:     request → policy engine → store event individually
+Volumetric attack:  request → DDoS mitigation layer detects spike
+                    → fingerprint(ip, method, uri, ua) → dedup bucket
+                    → bucket: {first_event, count, first_seen, last_seen, top_ips, top_uris}
+                    → summary counters still updated (aggregates preserved)
+                    → individual event storage paused (ring buffer doesn't grow)
+                    → on cooldown: emit spike report with full forensics
+```
+
+#### Fingerprinting
+
+Hash `(client_ip, method, normalized_uri, user_agent)` with FNV-64a.
+URI normalized: strip query params, collapse path traversal.
+Same infrastructure as policy engine's `rate_limit_key` field extraction.
+
+#### Spike Detection (sliding window EPS)
+
+Reuses the same sliding-window counter pattern as rate limit rules:
+- 10-second windows, 6-window history (1 minute lookback)
+- Configurable thresholds: `WAF_DOS_EPS_TRIGGER=50`, `WAF_DOS_EPS_COOLDOWN=10`
+- Hysteresis: must sustain below cooldown for `WAF_DOS_COOLDOWN_DELAY=30s` before exiting
+
+#### Dedup Buckets
+
+During spike mode, each unique fingerprint gets a `SpikeBucket`:
+```go
+type SpikeBucket struct {
+    Fingerprint uint64
+    Count       int64
+    FirstEvent  RateLimitEvent   // full detail of first occurrence
+    FirstSeen   time.Time
+    LastSeen    time.Time
+    ClientIPs   map[string]int   // top contributing IPs
+    Services    map[string]int
+    URIs        map[string]int
+    StatusCodes map[int]int
+    Countries   map[string]int
+}
+```
+Max buckets capped at 10K to bound memory.
+
+#### Spike Reports (forensic snapshots)
+
+On cooldown, generate a `SpikeReport`:
+- Duration, total events, peak EPS, unique fingerprints
+- Top 50 fingerprints by count (with full first-event detail)
+- Top 20 IPs, URIs, countries
+- Persisted to `/data/spike-reports/` as JSON, keeps last 100
+
+#### API Endpoints
+
+- `GET /api/dos/status` — current mode (normal/spike), EPS, active buckets
+- `GET /api/dos/reports` — historical spike reports
+- `GET /api/dos/reports/{id}` — single report detail
+
+#### Dashboard
+
+- Health indicator: `MONITORING` → `SPIKE: 150 EPS` (amber pulsing)
+- Overview page: real-time EPS sparkline, active spike banner
+- New "Spike Reports" section with forensic drill-down
+
+#### Configuration
+
+```bash
+WAF_DOS_EPS_TRIGGER=50        # events/sec to enter spike mode
+WAF_DOS_EPS_COOLDOWN=10       # events/sec to exit spike mode
+WAF_DOS_COOLDOWN_DELAY=30s    # sustain below cooldown before exiting
+WAF_DOS_MAX_BUCKETS=10000     # max fingerprint buckets per spike
+WAF_DOS_MAX_REPORTS=100       # keep last N spike reports
+```
+
+#### Why Better Than Fail2Ban
+
+| Feature | Fail2Ban | This |
+|---------|----------|------|
+| Detection | IP only, regex log scan | Multi-field fingerprint (IP+method+URI+UA) |
+| Response | Binary ban (iptables) | Adaptive: dedup logging, preserve forensics |
+| Distributed attacks | Missed (each IP below threshold) | Caught (fingerprint groups by pattern) |
+| Data retention | None | Full spike reports with forensic detail |
+| Recovery | Manual unban | Auto-cooldown with report |
+| Integration | Separate daemon | Built into policy engine, same condition syntax |
+
+#### Implementation Phases
+
+1. `dos_mitigation.go` — DosMitigation struct, fingerprint fn, EPS tracker, mode transitions
+2. Wire into `AccessLogStore.Load()` — route new events through mitigation layer
+3. Spike report persistence + API endpoints
+4. Dashboard UI: spike indicator, EPS chart, report viewer
+5. Wire into `GeneralLogStore.Load()` — separate mitigation instance
+
+---
+
 ## Performance Improvements
 
 Full-stack performance audit. Branch: `perf/events-deferred-enrichment`.

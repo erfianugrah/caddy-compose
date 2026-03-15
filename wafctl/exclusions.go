@@ -291,9 +291,12 @@ func (s *ExclusionStore) Import(exclusions []RuleExclusion) error {
 	}
 
 	old := s.exclusions
+	oldVer := s.version
 	s.exclusions = exclusions
+	s.version++
 	if err := s.save(); err != nil {
 		s.exclusions = old
+		s.version = oldVer
 		return err
 	}
 	return nil
