@@ -27,7 +27,7 @@ export interface CRSCatalogResponse {
 
 // ─── Exclusions / Policy ────────────────────────────────────────────
 
-export type ExclusionType = "allow" | "block" | "skip" | "detect";
+export type ExclusionType = "allow" | "block" | "skip" | "detect" | "rate_limit";
 
 // Condition fields and operators for the dynamic rule builder
 export type ConditionField =
@@ -99,9 +99,16 @@ export interface Exclusion {
   type: ExclusionType;
   conditions: Condition[];
   group_operator: GroupOperator;
+  service?: string;
+  priority?: number;
   skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
+  // rate_limit fields
+  rate_limit_key?: string;
+  rate_limit_events?: number;
+  rate_limit_window?: string;
+  rate_limit_action?: string;
   tags?: string[];
   enabled: boolean;
   created_at: string;
@@ -114,9 +121,16 @@ export interface ExclusionCreateData {
   type: ExclusionType;
   conditions?: Condition[];
   group_operator?: GroupOperator;
+  service?: string;
+  priority?: number;
   skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
+  // rate_limit fields
+  rate_limit_key?: string;
+  rate_limit_events?: number;
+  rate_limit_window?: string;
+  rate_limit_action?: string;
   tags?: string[];
   enabled: boolean;
 }
@@ -146,6 +160,7 @@ const typeToGo: Record<ExclusionType, string> = {
   block: "block",
   skip: "skip",
   detect: "detect",
+  rate_limit: "rate_limit",
 };
 
 const typeFromGo: Record<string, ExclusionType> = Object.fromEntries(
@@ -160,9 +175,15 @@ interface RawExclusion {
   type: string;
   conditions?: Condition[];
   group_operator?: string;
+  service?: string;
+  priority?: number;
   skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
+  rate_limit_key?: string;
+  rate_limit_events?: number;
+  rate_limit_window?: string;
+  rate_limit_action?: string;
   tags?: string[];
   enabled: boolean;
   created_at: string;
@@ -177,9 +198,15 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     type: typeFromGo[raw.type] ?? ("allow" as ExclusionType),
     conditions: raw.conditions ?? [],
     group_operator: (raw.group_operator as GroupOperator) || "and",
+    service: raw.service || undefined,
+    priority: raw.priority ?? undefined,
     skip_targets: raw.skip_targets ?? undefined,
     severity: raw.severity || undefined,
     detect_paranoia_level: raw.detect_paranoia_level ?? undefined,
+    rate_limit_key: raw.rate_limit_key || undefined,
+    rate_limit_events: raw.rate_limit_events ?? undefined,
+    rate_limit_window: raw.rate_limit_window || undefined,
+    rate_limit_action: raw.rate_limit_action || undefined,
     tags: raw.tags,
     enabled: raw.enabled,
     created_at: raw.created_at,
@@ -197,6 +224,12 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.skip_targets !== undefined) result.skip_targets = data.skip_targets;
   if (data.severity !== undefined) result.severity = data.severity;
   if (data.detect_paranoia_level !== undefined) result.detect_paranoia_level = data.detect_paranoia_level;
+  if (data.service !== undefined) result.service = data.service;
+  if (data.priority !== undefined) result.priority = data.priority;
+  if (data.rate_limit_key !== undefined) result.rate_limit_key = data.rate_limit_key;
+  if (data.rate_limit_events !== undefined) result.rate_limit_events = data.rate_limit_events;
+  if (data.rate_limit_window !== undefined) result.rate_limit_window = data.rate_limit_window;
+  if (data.rate_limit_action !== undefined) result.rate_limit_action = data.rate_limit_action;
   if (data.tags !== undefined) result.tags = data.tags;
   if (data.enabled !== undefined) result.enabled = data.enabled;
   return result;
@@ -233,7 +266,7 @@ export async function deleteExclusion(id: string): Promise<void> {
 }
 
 export async function deployConfig(): Promise<DeployResult> {
-  return postJSON<DeployResult>(`${API_BASE}/config/deploy`, {});
+  return postJSON<DeployResult>(`${API_BASE}/deploy`, {});
 }
 
 export async function exportExclusions(): Promise<Exclusion[]> {

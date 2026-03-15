@@ -201,6 +201,25 @@ func runServe() int {
 	// CRS Catalog
 	mux.HandleFunc("GET /api/crs/rules", handleCRSRules)
 
+	// ── Unified Rules API ─────────────────────────────────────────────
+	// /api/rules is the canonical endpoint for all rule types (allow, block,
+	// skip, detect, rate_limit). Backed by ExclusionStore (now the unified store).
+	mux.HandleFunc("GET /api/rules", handleListExclusions(exclusionStore))
+	mux.HandleFunc("POST /api/rules", handleCreateExclusion(exclusionStore))
+	mux.HandleFunc("GET /api/rules/export", handleExportExclusions(exclusionStore))
+	mux.HandleFunc("POST /api/rules/import", handleImportExclusions(exclusionStore))
+	mux.HandleFunc("POST /api/rules/bulk", handleBulkExclusions(exclusionStore))
+	mux.HandleFunc("PUT /api/rules/reorder", handleReorderExclusions(exclusionStore))
+	mux.HandleFunc("GET /api/rules/hits", handleExclusionHits(store, accessLogStore, rlRuleStore, exclusionStore))
+	mux.HandleFunc("GET /api/rules/{id}", handleGetExclusion(exclusionStore))
+	mux.HandleFunc("PUT /api/rules/{id}", handleUpdateExclusion(exclusionStore))
+	mux.HandleFunc("DELETE /api/rules/{id}", handleDeleteExclusion(exclusionStore))
+
+	// ── Unified Deploy ────────────────────────────────────────────────
+	// Single deploy endpoint for all config (replaces /api/config/deploy,
+	// /api/rate-rules/deploy, /api/csp/deploy, /api/security-headers/deploy).
+	mux.HandleFunc("POST /api/deploy", handleDeploy(configStore, exclusionStore, rlRuleStore, managedListStore, cspStore, secHeaderStore, defaultRuleStore, deployCfg))
+
 	// WAF Config
 	mux.HandleFunc("GET /api/config", handleGetConfig(configStore))
 	mux.HandleFunc("PUT /api/config", handleUpdateConfig(configStore))
