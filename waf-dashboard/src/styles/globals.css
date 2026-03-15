@@ -1,5 +1,11 @@
 @import "tailwindcss";
-@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/space-grotesk/index.css";
+
+/* Ensure text is visible immediately with fallback font, then swaps to Space Grotesk. */
+@font-face {
+  font-family: "Space Grotesk Variable";
+  font-display: swap;
+}
 
 @theme {
   /* Lovelace palette — warm charcoal base with pastel-neon accents */

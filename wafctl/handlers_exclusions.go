@@ -112,7 +112,14 @@ func handleExclusionHits(store *Store, als *AccessLogStore, es *ExclusionStore) 
 }
 
 func handleListExclusions(es *ExclusionStore) http.HandlerFunc {
+	cache := newResponseCache(10)
 	return func(w http.ResponseWriter, r *http.Request) {
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		gen := int64(es.Version())
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
 		all := es.List()
 		// Optional type filter: ?type=rate_limit, ?type=block, etc.
 		// Avoids transferring all rule types when only one is needed.
@@ -123,9 +130,11 @@ func handleListExclusions(es *ExclusionStore) http.HandlerFunc {
 					filtered = append(filtered, exc)
 				}
 			}
+			cache.set(cacheKey, filtered, gen, 30*time.Second)
 			writeJSON(w, http.StatusOK, filtered)
 			return
 		}
+		cache.set(cacheKey, all, gen, 30*time.Second)
 		writeJSON(w, http.StatusOK, all)
 	}
 }

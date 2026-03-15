@@ -94,6 +94,13 @@ func (s *ExclusionStore) save() error {
 	return nil
 }
 
+// Version returns the store version (incremented on every mutation).
+func (s *ExclusionStore) Version() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.version
+}
+
 // Count returns the number of exclusions without deep-copying.
 func (s *ExclusionStore) Count() int {
 	s.mu.RLock()

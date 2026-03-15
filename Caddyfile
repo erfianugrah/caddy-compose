@@ -437,6 +437,7 @@ immich.erfi.io {
 	encode zstd gzip
 	reverse_proxy 172.19.22.2:2283 {
 		import proxy_headers
+		flush_interval -1
 	}
 	import error_pages
 	import site_log immich
@@ -474,6 +475,7 @@ dockge.erfi.io {
 	encode zstd gzip
 	reverse_proxy 172.17.0.2:5001 {
 		import proxy_headers
+		flush_interval -1
 	}
 	import error_pages
 	import site_log dockge

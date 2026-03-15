@@ -248,16 +248,7 @@ for (const link of navLinks) {
             <div class="text-xs text-muted-foreground" id="sidebar-version">Policy Engine WAF</div>
           </div>
           <script>
-            fetch("/api/health")
-              .then((r) => r.json())
-              .then((d) => {
-                const el = document.getElementById("sidebar-version");
-                if (el && d.version) {
-                  const crs = d.crs_version ? ` · CRS ${d.crs_version}` : "";
-                  el.textContent = `wafctl v${d.version}${crs}`;
-                }
-              })
-              .catch(() => {});
+            // Version display is updated by the shared health check below.
           </script>
         </div>
       </aside>
@@ -374,6 +365,12 @@ for (const link of navLinks) {
             if (!res.ok) { setStatus(false); return; }
             const data = await res.json();
             setStatus(data.version != null);
+            // Also update sidebar version (shared with health check to avoid duplicate fetch).
+            const versionEl = document.getElementById("sidebar-version");
+            if (versionEl && data.version) {
+              const crs = data.crs_version ? ` · CRS ${data.crs_version}` : "";
+              versionEl.textContent = `wafctl v${data.version}${crs}`;
+            }
           } catch {
             setStatus(false);
           }

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // ─── Default Rules Store ──────────────────────────────────────────
@@ -40,6 +42,7 @@ type DefaultRuleStore struct {
 	overrides     map[string]json.RawMessage // per-rule field overrides
 	overridesFile string                     // path to writable overrides file
 	crsVersion    string                     // CRS version from default-rules.json metadata
+	generation    atomic.Int64               // incremented on override changes
 }
 
 // NewDefaultRuleStore loads baked defaults from defaultsPath and user
@@ -167,6 +170,7 @@ func (ds *DefaultRuleStore) SetOverride(id string, override json.RawMessage) err
 
 	cleaned, _ := json.Marshal(check)
 	ds.overrides[id] = json.RawMessage(cleaned)
+	ds.generation.Add(1)
 	return ds.saveLocked()
 }
 
@@ -183,6 +187,7 @@ func (ds *DefaultRuleStore) RemoveOverride(id string) (bool, error) {
 		return false, nil // no override to remove
 	}
 	delete(ds.overrides, id)
+	ds.generation.Add(1)
 	return true, ds.saveLocked()
 }
 
@@ -377,8 +382,17 @@ type DefaultRuleResponse struct {
 // ─── HTTP Handlers ────────────────────────────────────────────────
 
 func handleListDefaultRules(ds *DefaultRuleStore) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, ds.List())
+	cache := newResponseCache(5)
+	return func(w http.ResponseWriter, r *http.Request) {
+		cacheKey := normalizeCacheKey(r.URL.RawQuery)
+		gen := ds.generation.Load()
+		if cached, ok := cache.get(cacheKey, gen); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
+		result := ds.List()
+		cache.set(cacheKey, result, gen, 30*time.Second)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

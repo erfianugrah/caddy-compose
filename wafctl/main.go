@@ -110,6 +110,18 @@ func runServe() int {
 	generalLogStore.SetMaxAge(generalMaxAge)
 	generalLogStore.SetGeoIP(geoStore)
 
+	// General log sampling: store only a fraction of normal 2xx traffic.
+	// Non-2xx responses (errors, WAF blocks, rate limits) are always kept.
+	// Default: 10% sampling. Set WAF_GENERAL_LOG_SAMPLE_RATE=1.0 to keep all.
+	if rateStr := envOr("WAF_GENERAL_LOG_SAMPLE_RATE", "0.1"); rateStr != "" {
+		if rate, err := strconv.ParseFloat(rateStr, 64); err == nil {
+			generalLogStore.SetSampleRate(rate)
+			if rate < 1.0 {
+				log.Printf("general log sampling: keeping %.0f%% of 2xx responses", rate*100)
+			}
+		}
+	}
+
 	// Config stores load instantly (small JSON files).
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	accessLogStore.SetExclusionStore(exclusionStore)

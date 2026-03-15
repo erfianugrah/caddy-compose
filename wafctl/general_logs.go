@@ -36,10 +36,31 @@ type GeneralLogStore struct {
 	geoIP *GeoIPStore
 
 	generation atomic.Int64
+
+	// sampleRate controls what fraction of normal (2xx) responses are stored.
+	// 0.0 = store none, 1.0 = store all, 0.1 = store 10%.
+	// Non-2xx responses (errors, redirects, auth failures) are always stored.
+	sampleRate float64
+	sampleN    uint64 // monotonic counter for deterministic sampling
 }
 
 func NewGeneralLogStore(path string) *GeneralLogStore {
-	return &GeneralLogStore{path: path}
+	return &GeneralLogStore{path: path, sampleRate: 1.0}
+}
+
+// SetSampleRate configures the fraction of normal (2xx) responses to store.
+// Non-2xx responses are always stored regardless of this setting.
+// rate=1.0 stores everything (default), rate=0.1 stores 10% of 2xx traffic.
+func (s *GeneralLogStore) SetSampleRate(rate float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if rate < 0 {
+		rate = 0
+	}
+	if rate > 1 {
+		rate = 1
+	}
+	s.sampleRate = rate
 }
 
 // ─── Offset Persistence ─────────────────────────────────────────────
@@ -249,7 +270,12 @@ func (s *GeneralLogStore) Load() {
 	geoIP := s.geoIP
 	s.mu.RUnlock()
 
+	s.mu.RLock()
+	sampleRate := s.sampleRate
+	s.mu.RUnlock()
+
 	var newEvents []GeneralLogEvent
+	var sampled int
 	reader := bufio.NewReaderSize(f, 64*1024)
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -259,6 +285,23 @@ func (s *GeneralLogStore) Load() {
 		if len(line) > 0 {
 			var entry AccessLogEntry
 			if jsonErr := json.Unmarshal(line, &entry); jsonErr == nil {
+				// Sampling: always keep non-2xx responses (errors, security events).
+				// For 2xx responses, apply the configured sample rate.
+				if sampleRate < 1.0 && entry.Status >= 200 && entry.Status < 300 {
+					s.sampleN++
+					// Deterministic modulo sampling: keep if (counter % (1/rate)) == 0.
+					interval := uint64(1.0 / sampleRate)
+					if interval < 1 {
+						interval = 1
+					}
+					if s.sampleN%interval != 0 {
+						sampled++
+						if err != nil {
+							break
+						}
+						continue
+					}
+				}
 				evt := parseGeneralLogEvent(entry, geoIP)
 				newEvents = append(newEvents, evt)
 			}
@@ -270,6 +313,7 @@ func (s *GeneralLogStore) Load() {
 			break
 		}
 	}
+	_ = sampled // suppress unused warning when logging is disabled
 
 	newOffset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
