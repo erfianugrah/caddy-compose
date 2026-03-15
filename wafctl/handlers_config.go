@@ -42,12 +42,12 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config (preview) ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, cacheStore *CacheStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		allExclusions := es.EnabledExclusions()
 		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, cacheStore, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
 		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
@@ -74,7 +74,7 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListSt
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, corsStore *CORSStore, cacheStore *CacheStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
@@ -84,7 +84,7 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, csp
 		// Generate policy engine rules file (all rule types from unified ExclusionStore).
 		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
-		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
+		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, corsStore, cacheStore, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
 		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
