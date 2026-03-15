@@ -257,25 +257,23 @@ func runCRSTest(ruleID int, test CRSTest, targetURL string) crsTestResult {
 
 	// Inject headers to suppress our custom 9100xxx rules without affecting
 	// CRS detection. CRS tests don't test for these header absences.
-	// Skip injection for 920xxx (protocol enforcement) rules — those tests
-	// specifically validate header presence/format and injecting defaults masks detection.
-	isProtocolRule := ruleID >= 920000 && ruleID < 930000
-	if !isProtocolRule {
-		if req.Header.Get("User-Agent") == "" {
-			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-		}
-		if req.Header.Get("Accept") == "" {
-			req.Header.Set("Accept", "text/html,application/xml;q=0.9,*/*;q=0.8")
-		}
-		if req.Header.Get("Referer") == "" {
-			req.Header.Set("Referer", "https://example.com/")
-		}
-		if req.Header.Get("Accept-Language") == "" {
-			req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-		}
-		if req.Header.Get("Accept-Encoding") == "" {
-			req.Header.Set("Accept-Encoding", "gzip, deflate")
-		}
+	// Always inject UA/Accept/Referer/Accept-Language to suppress 9100xxx.
+	// Only skip Accept-Encoding for protocol enforcement rules (920xxx) that
+	// specifically test Accept-Encoding validation.
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "text/html,application/xml;q=0.9,*/*;q=0.8")
+	}
+	if req.Header.Get("Referer") == "" {
+		req.Header.Set("Referer", "https://example.com/")
+	}
+	if req.Header.Get("Accept-Language") == "" {
+		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	}
+	if req.Header.Get("Accept-Encoding") == "" {
+		req.Header.Set("Accept-Encoding", "gzip, deflate")
 	}
 
 	// Set Content-Type for POST with body if not already set.
