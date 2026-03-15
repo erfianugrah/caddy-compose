@@ -16,7 +16,7 @@ import (
 //
 // Response: { "hits": { "<exclusion_name>": { "total": N, "sparkline": [n, n, ...] } } }
 // The sparkline is a 24-element array (one per hour, oldest first).
-func handleExclusionHits(store *Store, als *AccessLogStore, rs *RateLimitRuleStore, es *ExclusionStore) http.HandlerFunc {
+func handleExclusionHits(store *Store, als *AccessLogStore, es *ExclusionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		hoursStr := r.URL.Query().Get("hours")
 		hours := 24
@@ -84,7 +84,7 @@ func handleExclusionHits(store *Store, als *AccessLogStore, rs *RateLimitRuleSto
 
 		// Scan access log store for policy events (block, skip, allow, detect).
 		// ALS events carry the rule name in RuleMsg (format: "Policy Block: <name>").
-		alsEvents := getRLEvents(als, timeRange{}, hours, rs.List())
+		alsEvents := getRLEvents(als, timeRange{}, hours, nil)
 		for i := range alsEvents {
 			ev := &alsEvents[i]
 			if !strings.HasPrefix(ev.EventType, "policy_") && ev.EventType != "detect_block" {

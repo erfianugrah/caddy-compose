@@ -42,15 +42,14 @@ func handleUpdateConfig(cs *ConfigStore) http.HandlerFunc {
 
 // --- Handler: Generate Config (preview) ---
 
-func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		allExclusions := es.EnabledExclusions()
-		rlRules := rs.EnabledRules()
-		rlGlobal := rs.GetGlobal()
+		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",
@@ -75,20 +74,19 @@ func handleGenerateConfig(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRule
 
 // --- Handler: Deploy ---
 
-func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploy(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
 		allExclusions := es.EnabledExclusions()
 
-		// Generate policy engine rules file (WAF exclusions + RL rules).
-		rlRules := rs.EnabledRules()
-		rlGlobal := rs.GetGlobal()
+		// Generate policy engine rules file (all rule types from unified ExclusionStore).
+		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 		respHeaders := BuildPolicyResponseHeaders(cspStore, secStore, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",
@@ -117,8 +115,8 @@ func handleDeploy(cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, l
 				policyCount++
 			}
 		}
-		log.Printf("[deploy] wrote policy rules (%d WAF + %d RL rules) → %s",
-			policyCount, len(rlRules), deployCfg.PolicyRulesFile)
+		log.Printf("[deploy] wrote policy rules (%d rules) → %s",
+			policyCount, deployCfg.PolicyRulesFile)
 
 		// No Caddy reload needed — the policy engine plugin hot-reloads
 		// policy-rules.json via mtime polling (default 5s interval).

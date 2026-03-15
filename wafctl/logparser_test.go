@@ -204,7 +204,7 @@ func TestSummaryMergesRateLimitedEvents(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -238,7 +238,7 @@ func TestEventsMergesRateLimitedEvents(t *testing.T) {
 	// All events (no filter).
 	req := httptest.NewRequest("GET", "/api/events?limit=100", nil)
 	w := httptest.NewRecorder()
-	handleEvents(store, als, emptyRLRuleStore(t))(w, req)
+	handleEvents(store, als)(w, req)
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -276,7 +276,7 @@ func TestEventsEventTypeFilter(t *testing.T) {
 	for _, tt := range tests {
 		req := httptest.NewRequest("GET", "/api/events?event_type="+tt.eventType+"&limit=100", nil)
 		w := httptest.NewRecorder()
-		handleEvents(store, als, emptyRLRuleStore(t))(w, req)
+		handleEvents(store, als)(w, req)
 
 		var resp EventsResponse
 		json.NewDecoder(w.Body).Decode(&resp)
@@ -305,7 +305,7 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/services", nil)
 	w := httptest.NewRecorder()
-	handleServices(store, als, emptyRLRuleStore(t))(w, req)
+	handleServices(store, als)(w, req)
 
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1050,7 +1050,7 @@ func TestSummaryMergesPolicyEvents(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(wafStore, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(wafStore, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -1078,7 +1078,7 @@ func TestEventsPolicyBlockFilter(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/events?event_type=policy_block&limit=100", nil)
 	w := httptest.NewRecorder()
-	handleEvents(wafStore, als, emptyRLRuleStore(t))(w, req)
+	handleEvents(wafStore, als)(w, req)
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1102,7 +1102,7 @@ func TestSummaryMergesPolicyBlockEvents(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -1135,7 +1135,7 @@ func TestEventsRateLimitedFilterExcludesPolicyBlocks(t *testing.T) {
 	// not the policy_block events (which are now separate).
 	req := httptest.NewRequest("GET", "/api/events?event_type=rate_limited&limit=100", nil)
 	w := httptest.NewRecorder()
-	handleEvents(store, als, emptyRLRuleStore(t))(w, req)
+	handleEvents(store, als)(w, req)
 
 	var resp EventsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1159,7 +1159,7 @@ func TestServicesMergesPolicyBlockCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/services", nil)
 	w := httptest.NewRecorder()
-	handleServices(store, als, emptyRLRuleStore(t))(w, req)
+	handleServices(store, als)(w, req)
 
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1203,7 +1203,7 @@ func TestSummaryMergesClientCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("status: want 200, got %d", w.Code)

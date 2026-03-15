@@ -432,18 +432,17 @@ type SecurityHeaderDeployResponse struct {
 }
 
 // handleDeploySecurityHeaders generates security header config and triggers policy engine hot-reload.
-func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeploySecurityHeaders(store *SecurityHeaderStore, cspStore *CSPStore, cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
 		allExclusions := es.EnabledExclusions()
-		rlRules := rs.EnabledRules()
-		rlGlobal := rs.GetGlobal()
+		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 		respHeaders := BuildPolicyResponseHeaders(cspStore, store, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",

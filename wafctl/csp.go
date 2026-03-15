@@ -465,19 +465,18 @@ type CSPDeployResponse struct {
 }
 
 // handleDeployCSP generates CSP config files and reloads Caddy.
-func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigStore, es *ExclusionStore, rs *RateLimitRuleStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
+func handleDeployCSP(store *CSPStore, secStore *SecurityHeaderStore, cs *ConfigStore, es *ExclusionStore, ls *ManagedListStore, ds *DefaultRuleStore, deployCfg DeployConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		deployMu.Lock()
 		defer deployMu.Unlock()
 
 		// CSP config goes into policy-rules.json for hot-reload (no Caddy restart).
 		allExclusions := es.EnabledExclusions()
-		rlRules := rs.EnabledRules()
-		rlGlobal := rs.GetGlobal()
+		rlGlobal := cs.Get().RateLimitGlobal
 		svcMap := BuildServiceFQDNMap(deployCfg.CaddyfilePath)
 		respHeaders := BuildPolicyResponseHeaders(store, secStore, svcMap)
 		wafCfg := BuildPolicyWafConfig(cs, svcMap)
-		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlRules, rlGlobal, ls, svcMap, respHeaders, wafCfg)
+		policyData, err := GeneratePolicyRulesWithRL(allExclusions, rlGlobal, ls, svcMap, respHeaders, wafCfg)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 				Error:   "failed to generate policy rules",

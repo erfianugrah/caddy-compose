@@ -10,6 +10,30 @@ import (
 	"time"
 )
 
+// rlRulesToExclusions converts legacy RateLimitRule test data into RuleExclusion
+// format for use with the updated GeneratePolicyRulesWithRL signature.
+func rlRulesToExclusions(rules []RateLimitRule) []RuleExclusion {
+	var result []RuleExclusion
+	for _, rl := range rules {
+		result = append(result, RuleExclusion{
+			ID:              rl.ID,
+			Name:            rl.Name,
+			Type:            "rate_limit",
+			Service:         rl.Service,
+			Conditions:      rl.Conditions,
+			GroupOp:         rl.GroupOp,
+			RateLimitKey:    rl.Key,
+			RateLimitEvents: rl.Events,
+			RateLimitWindow: rl.Window,
+			RateLimitAction: rl.Action,
+			Priority:        rl.Priority,
+			Tags:            rl.Tags,
+			Enabled:         rl.Enabled,
+		})
+	}
+	return result
+}
+
 // ─── IsPolicyEngineType ──────────────────────────────────────────────
 
 func TestIsPolicyEngineType(t *testing.T) {
@@ -725,7 +749,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				Enabled: true,
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{Jitter: 0.1, SweepInterval: "30s"}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -790,7 +814,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "global-limit", Key: "client_ip", Events: 50, Window: "1m", Action: "deny", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(append(exclusions, rlRulesToExclusions(rlRules)...), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -823,7 +847,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "e-1", Name: "allow-test", Type: "allow", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(exclusions, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -844,7 +868,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 			{ID: "rl-1", Name: "high-priority", Key: "client_ip", Events: 10, Window: "1m", Priority: 5, Enabled: true},
 			{ID: "rl-2", Name: "low-priority", Key: "client_ip", Events: 100, Window: "1m", Priority: 50, Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -870,7 +894,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "no-action", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -891,7 +915,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				},
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -916,7 +940,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 				Conditions: []Condition{{Field: "ip", Operator: "in_list", Value: "blocked-ips"}},
 			},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, ls, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, ls, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -935,7 +959,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "test", Key: "client_ip", Events: 10, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -950,7 +974,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "monitor", Key: "client_ip", Events: 10, Window: "1m", Action: "log_only", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -974,7 +998,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 			"caddy":   "caddy.erfi.io",
 			"sonarr":  "sonarr.erfi.io",
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, svcMap, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, svcMap, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1007,7 +1031,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl-1", Name: "short-name", Service: "httpbun", Key: "client_ip", Events: 100, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(nil, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(rlRulesToExclusions(rlRules), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1238,7 +1262,7 @@ func TestBuildPolicyWafConfig_InPolicyRulesJSON(t *testing.T) {
 	}
 	cs.Update(cfg)
 	wafCfg := BuildPolicyWafConfig(cs, nil)
-	data, err := GeneratePolicyRulesWithRL(nil, nil, RateLimitGlobalConfig{}, nil, nil, nil, wafCfg)
+	data, err := GeneratePolicyRulesWithRL(nil, RateLimitGlobalConfig{}, nil, nil, nil, wafCfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1258,7 +1282,7 @@ func TestBuildPolicyWafConfig_InPolicyRulesJSON(t *testing.T) {
 }
 
 func TestBuildPolicyWafConfig_NilOmitsFromJSON(t *testing.T) {
-	data, err := GeneratePolicyRulesWithRL(nil, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	data, err := GeneratePolicyRulesWithRL(nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1295,7 +1319,7 @@ func TestGenerateDetectRules(t *testing.T) {
 		},
 	}
 
-	data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	data, err := GeneratePolicyRulesWithRL(exclusions, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1349,7 +1373,7 @@ func TestGenerateDetectRules_PriorityBand(t *testing.T) {
 		{ID: "d1", Name: "Detect", Type: "detect", Severity: "CRITICAL", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/sus"}}},
 	}
 
-	data, err := GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	data, err := GeneratePolicyRulesWithRL(exclusions, RateLimitGlobalConfig{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1441,7 +1465,7 @@ func TestGenerateSkipRules(t *testing.T) {
 		rlRules := []RateLimitRule{
 			{ID: "rl1", Name: "RL", Key: "client_ip", Events: 100, Window: "1m", Enabled: true},
 		}
-		data, err := GeneratePolicyRulesWithRL(exclusions, rlRules, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+		data, err := GeneratePolicyRulesWithRL(append(exclusions, rlRulesToExclusions(rlRules)...), RateLimitGlobalConfig{}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

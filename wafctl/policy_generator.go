@@ -134,31 +134,27 @@ var policyTypePriority = map[string]int{
 // GeneratePolicyRules converts exclusions into the plugin's JSON format.
 //
 // This is a convenience wrapper around GeneratePolicyRulesWithRL with no
-// rate limit rules. Use GeneratePolicyRulesWithRL when RL rules should
-// also be included in the policy-rules.json output.
+// global RL config. Use GeneratePolicyRulesWithRL when RL global settings
+// should also be included in the policy-rules.json output.
 func GeneratePolicyRules(exclusions []RuleExclusion, listStore *ManagedListStore) ([]byte, error) {
-	return GeneratePolicyRulesWithRL(exclusions, nil, RateLimitGlobalConfig{}, listStore, nil, nil, nil)
+	return GeneratePolicyRulesWithRL(exclusions, RateLimitGlobalConfig{}, listStore, nil, nil, nil)
 }
 
-// GeneratePolicyRulesWithRL converts exclusions and rate limit rules into
-// the plugin's JSON format. WAF exclusions (allow/block/skip/detect) and
-// rate limit rules are merged into a single rules array, sorted by priority.
+// GeneratePolicyRulesWithRL converts exclusions into the plugin's JSON format.
+// All rule types (allow/block/skip/detect/rate_limit) come from the unified
+// ExclusionStore via the exclusions parameter.
 //
 // Priority bands: allow=50-99, block=100-199, skip=200-299, rate_limit=300-399, detect=400-499.
-// Within rate_limit, rules with explicit Priority use it directly (offset
-// by 300); rules without explicit Priority get 300 + their store index.
-//
-// When rlRules is nil or empty, the output is identical to GeneratePolicyRules.
 //
 // The global RL config (sweep interval, jitter) is included in the output
-// when any rate limit rules are present.
+// when any rate_limit rules are present in the exclusions.
 //
 // respHeaders is included in the output when non-nil, enabling the plugin
 // to inject CSP and security headers without Caddy reload.
 //
 // wafConfig is included in the output when non-nil, enabling the plugin's
 // anomaly scoring engine with per-service paranoia levels and thresholds.
-func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRule, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string, respHeaders *PolicyResponseHeaderConfig, wafConfig *PolicyWafConfig) ([]byte, error) {
+func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlobalConfig, listStore *ManagedListStore, serviceMap map[string]string, respHeaders *PolicyResponseHeaderConfig, wafConfig *PolicyWafConfig) ([]byte, error) {
 	var rules []PolicyRule
 
 	// Convert WAF exclusions (allow/block/skip/detect).
@@ -235,52 +231,6 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 		rules = append(rules, pr)
 	}
 
-	// Convert legacy rate limit rules (from separate RateLimitRuleStore, if any).
-	for i, rl := range rlRules {
-		conditions := convertConditions(rl.Conditions, listStore)
-
-		// Determine priority: use explicit Priority if set, otherwise
-		// use the RL base (3000) + store index as tiebreaker.
-		priority := policyTypePriority["rate_limit"]
-		if rl.Priority > 0 {
-			priority += rl.Priority
-		} else {
-			tiebreaker := i
-			if tiebreaker > 999 {
-				tiebreaker = 999
-			}
-			priority += tiebreaker
-		}
-
-		groupOp := rl.GroupOp
-		if groupOp == "" {
-			groupOp = "and"
-		}
-
-		action := rl.Action
-		if action == "" {
-			action = "deny"
-		}
-
-		rules = append(rules, PolicyRule{
-			ID:         rl.ID,
-			Name:       rl.Name,
-			Type:       "rate_limit",
-			Service:    resolveServiceName(rl.Service, serviceMap),
-			Conditions: conditions,
-			GroupOp:    groupOp,
-			RateLimit: &PolicyRateLimitConfig{
-				Key:    rl.Key,
-				Events: rl.Events,
-				Window: rl.Window,
-				Action: action,
-			},
-			Tags:     rl.Tags,
-			Enabled:  rl.Enabled,
-			Priority: priority,
-		})
-	}
-
 	// Sort by priority (lower first), then by ID for deterministic output.
 	sort.Slice(rules, func(i, j int) bool {
 		if rules[i].Priority != rules[j].Priority {
@@ -297,8 +247,15 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlRules []RateLimitRu
 		Version:         1,
 	}
 
-	// Include global RL config when rate limit rules are present.
-	if len(rlRules) > 0 {
+	// Include global RL config when rate limit rules are present in the exclusions.
+	hasRLRules := false
+	for _, r := range rules {
+		if r.Type == "rate_limit" {
+			hasRLRules = true
+			break
+		}
+	}
+	if hasRLRules {
 		file.RateLimitConfig = &PolicyRateLimitGlobalConfig{
 			SweepInterval: rlGlobal.SweepInterval,
 			Jitter:        rlGlobal.Jitter,

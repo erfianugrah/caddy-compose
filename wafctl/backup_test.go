@@ -21,19 +21,18 @@ func newTestSecurityHeaderStore(t *testing.T) *SecurityHeaderStore {
 	return NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec-headers.json"))
 }
 
-func setupBackupMux(t *testing.T) (*http.ServeMux, *ConfigStore, *CSPStore, *SecurityHeaderStore, *ExclusionStore, *RateLimitRuleStore, *ManagedListStore) {
+func setupBackupMux(t *testing.T) (*http.ServeMux, *ConfigStore, *CSPStore, *SecurityHeaderStore, *ExclusionStore, *ManagedListStore) {
 	t.Helper()
 	cs := newTestConfigStore(t)
 	cspS := newTestCSPStore(t)
 	secS := newTestSecurityHeaderStore(t)
 	es := newTestExclusionStore(t)
-	rs := emptyRLRuleStore(t)
 	ls := newTestManagedListStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/backup", handleBackup(cs, cspS, secS, es, rs, ls))
-	mux.HandleFunc("POST /api/backup/restore", handleRestore(cs, cspS, secS, es, rs, ls))
-	return mux, cs, cspS, secS, es, rs, ls
+	mux.HandleFunc("GET /api/backup", handleBackup(cs, cspS, secS, es, ls))
+	mux.HandleFunc("POST /api/backup/restore", handleRestore(cs, cspS, secS, es, ls))
+	return mux, cs, cspS, secS, es, ls
 }
 
 // testAllowExclusion returns a valid allow exclusion with a condition.
@@ -90,7 +89,7 @@ func testRLRule(name, service string) RateLimitRule {
 // ─── Backup: Empty Stores ───────────────────────────────────────────────────
 
 func TestBackup_EmptyStores(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -119,9 +118,6 @@ func TestBackup_EmptyStores(t *testing.T) {
 	if backup.Exclusions == nil {
 		// nil is acceptable — it means no exclusions.
 	}
-	if backup.RateLimits.Rules == nil {
-		// nil is acceptable — it means no rules.
-	}
 	if backup.Lists == nil {
 		// nil is acceptable — it means no lists.
 	}
@@ -134,7 +130,7 @@ func TestBackup_EmptyStores(t *testing.T) {
 // ─── Backup: Content-Disposition Header ─────────────────────────────────────
 
 func TestBackup_ContentDisposition(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -158,7 +154,7 @@ func TestBackup_ContentDisposition(t *testing.T) {
 // ─── Backup: Content-Type ───────────────────────────────────────────────────
 
 func TestBackup_ContentType(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -173,7 +169,7 @@ func TestBackup_ContentType(t *testing.T) {
 // ─── Backup: With Seeded Data ───────────────────────────────────────────────
 
 func TestBackup_WithData(t *testing.T) {
-	mux, cs, _, _, es, rs, ls := setupBackupMux(t)
+	mux, cs, _, _, es, ls := setupBackupMux(t)
 
 	// Seed WAF config.
 	cs.Update(WAFConfig{
@@ -195,8 +191,6 @@ func TestBackup_WithData(t *testing.T) {
 	// Seed exclusions.
 	es.Create(testAllowExclusion("test-allow"))
 	es.Create(testBlockExclusion("test-block", []string{"honeypot"}))
-	// Seed RL rule.
-	rs.Create(testRLRule("test-rl", "httpbun"))
 	// Seed managed list.
 	ls.Create(ManagedList{
 		Name:   "my-ips",
@@ -225,9 +219,6 @@ func TestBackup_WithData(t *testing.T) {
 	if len(backup.Exclusions) != 2 {
 		t.Errorf("expected 2 exclusions, got %d", len(backup.Exclusions))
 	}
-	if len(backup.RateLimits.Rules) != 1 {
-		t.Errorf("expected 1 RL rule, got %d", len(backup.RateLimits.Rules))
-	}
 	if len(backup.Lists) != 1 {
 		t.Errorf("expected 1 list, got %d", len(backup.Lists))
 	}
@@ -236,7 +227,7 @@ func TestBackup_WithData(t *testing.T) {
 // ─── Backup: JSON Is Valid ──────────────────────────────────────────────────
 
 func TestBackup_ValidJSON(t *testing.T) {
-	mux, cs, _, _, es, rs, _ := setupBackupMux(t)
+	mux, cs, _, _, es, _ := setupBackupMux(t)
 
 	// Seed data to make the JSON non-trivial.
 	cs.Update(WAFConfig{
@@ -247,7 +238,6 @@ func TestBackup_ValidJSON(t *testing.T) {
 		Services: map[string]WAFServiceSettings{},
 	})
 	es.Create(testAllowExclusion("json-test"))
-	rs.Create(testRLRule("json-rl", "svc"))
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -292,9 +282,8 @@ func TestBackup_IpsumListsExcluded(t *testing.T) {
 	cs := newTestConfigStore(t)
 	csp := newTestCSPStore(t)
 	es := newTestExclusionStore(t)
-	rs := emptyRLRuleStore(t)
 	sec := newTestSecurityHeaderStore(t)
-	mux.HandleFunc("GET /api/backup", handleBackup(cs, csp, sec, es, rs, ipsumStore))
+	mux.HandleFunc("GET /api/backup", handleBackup(cs, csp, sec, es, ipsumStore))
 
 	req := httptest.NewRequest("GET", "/api/backup", nil)
 	rec := httptest.NewRecorder()
@@ -313,7 +302,7 @@ func TestBackup_IpsumListsExcluded(t *testing.T) {
 // ─── Restore: Valid Full Backup ─────────────────────────────────────────────
 
 func TestRestore_ValidBackup(t *testing.T) {
-	mux, cs, cspS, _, es, rs, _ := setupBackupMux(t)
+	mux, cs, cspS, _, es, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -382,20 +371,12 @@ func TestRestore_ValidBackup(t *testing.T) {
 	if exclusions[0].ID == "" {
 		t.Error("restored exclusion should have a new ID assigned")
 	}
-
-	rules := rs.List()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 RL rule, got %d", len(rules))
-	}
-	if rules[0].Name != "restored-rl" {
-		t.Errorf("RL rule name not preserved: got %q", rules[0].Name)
-	}
 }
 
 // ─── Restore: Missing Version ───────────────────────────────────────────────
 
 func TestRestore_MissingVersion(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	body := []byte(`{"waf_config":{"defaults":{"mode":"enabled","paranoia_level":1,"inbound_threshold":5,"outbound_threshold":4}}}`)
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader(body))
@@ -416,7 +397,7 @@ func TestRestore_MissingVersion(t *testing.T) {
 // ─── Restore: Invalid JSON Body ─────────────────────────────────────────────
 
 func TestRestore_InvalidJSON(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader([]byte(`{not json}`)))
 	rec := httptest.NewRecorder()
@@ -430,7 +411,7 @@ func TestRestore_InvalidJSON(t *testing.T) {
 // ─── Restore: Empty Body ────────────────────────────────────────────────────
 
 func TestRestore_EmptyBody(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	req := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader([]byte{}))
 	rec := httptest.NewRecorder()
@@ -444,7 +425,7 @@ func TestRestore_EmptyBody(t *testing.T) {
 // ─── Restore: Invalid WAF Config (partial) ──────────────────────────────────
 
 func TestRestore_InvalidWAFConfig(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -490,7 +471,7 @@ func TestRestore_InvalidWAFConfig(t *testing.T) {
 // ─── Restore: Invalid CSP Config (partial) ──────────────────────────────────
 
 func TestRestore_InvalidCSPConfig(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -537,7 +518,7 @@ func TestRestore_InvalidCSPConfig(t *testing.T) {
 // ─── Restore: Invalid Exclusion (partial) ───────────────────────────────────
 
 func TestRestore_InvalidExclusion(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -576,10 +557,10 @@ func TestRestore_InvalidExclusion(t *testing.T) {
 	}
 }
 
-// ─── Restore: Invalid RL Rule (partial) ─────────────────────────────────────
+// ─── Restore: Invalid RL Rule (now gracefully skipped) ──────────────────────
 
 func TestRestore_InvalidRLRule(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -610,20 +591,18 @@ func TestRestore_InvalidRLRule(t *testing.T) {
 	var resp map[string]interface{}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 
-	if resp["status"] != "partial" {
-		t.Errorf("expected partial, got %v", resp["status"])
-	}
+	// RL rules are now gracefully skipped (not validated/imported).
 	results := resp["results"].(map[string]interface{})
 	rlResult := results["rate_limits"].(string)
-	if !strings.HasPrefix(rlResult, "failed") {
-		t.Errorf("expected rate_limits failure, got %q", rlResult)
+	if !strings.Contains(rlResult, "skipped") {
+		t.Errorf("expected rate_limits to be skipped, got %q", rlResult)
 	}
 }
 
 // ─── Restore: Empty Sections Skipped ────────────────────────────────────────
 
 func TestRestore_EmptyExclusions(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -667,7 +646,7 @@ func TestRestore_EmptyExclusions(t *testing.T) {
 // ─── Restore: Full Round-Trip ───────────────────────────────────────────────
 
 func TestRestore_RoundTrip(t *testing.T) {
-	mux, cs, cspS, _, es, rs, ls := setupBackupMux(t)
+	mux, cs, cspS, _, es, ls := setupBackupMux(t)
 
 	// Seed all stores with non-trivial data.
 	cs.Update(WAFConfig{
@@ -698,12 +677,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 	})
 	es.Create(testDetectExclusion("roundtrip-detect", "WARNING"))
 	es.Create(testBlockExclusion("roundtrip-block", []string{"honeypot"}))
-	rs.Create(testRLRule("roundtrip-rl", "test"))
-	rs.Create(RateLimitRule{
-		Name: "roundtrip-rl2", Service: "api",
-		Key: "client_ip+path", Events: 50, Window: "5m",
-		Action: "log_only", Enabled: true,
-	})
 	ls.Create(ManagedList{
 		Name:   "test-list",
 		Kind:   "ip",
@@ -727,9 +700,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 	if len(exported.Exclusions) != 2 {
 		t.Fatalf("expected 2 exclusions in export, got %d", len(exported.Exclusions))
 	}
-	if len(exported.RateLimits.Rules) != 2 {
-		t.Fatalf("expected 2 RL rules in export, got %d", len(exported.RateLimits.Rules))
-	}
 	if len(exported.Lists) != 1 {
 		t.Fatalf("expected 1 list in export, got %d", len(exported.Lists))
 	}
@@ -741,7 +711,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 	}
 
 	// Set up a fresh set of stores.
-	mux2, cs2, csp2, _, es2, rs2, ls2 := setupBackupMux(t)
+	mux2, cs2, csp2, _, es2, ls2 := setupBackupMux(t)
 
 	// Restore into fresh stores.
 	req2 := httptest.NewRequest("POST", "/api/backup/restore", bytes.NewReader(backupJSON))
@@ -819,19 +789,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 		}
 	}
 
-	// Verify RL rules.
-	rules2 := rs2.List()
-	if len(rules2) != 2 {
-		t.Fatalf("expected 2 RL rules, got %d", len(rules2))
-	}
-	rlNames := map[string]bool{}
-	for _, r := range rules2 {
-		rlNames[r.Name] = true
-	}
-	if !rlNames["roundtrip-rl"] || !rlNames["roundtrip-rl2"] {
-		t.Errorf("expected both RL rules by name, got %v", rlNames)
-	}
-
 	// Verify managed lists.
 	lists2 := ls2.List()
 	foundTestList := false
@@ -854,7 +811,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 // ─── Restore: Multiple Failures ─────────────────────────────────────────────
 
 func TestRestore_MultipleFailures(t *testing.T) {
-	mux, _, _, _, _, _, _ := setupBackupMux(t)
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -896,19 +853,24 @@ func TestRestore_MultipleFailures(t *testing.T) {
 	}
 
 	results := resp["results"].(map[string]interface{})
-	// All stores except lists (empty=skipped) should fail.
-	for _, key := range []string{"waf_config", "csp_config", "exclusions", "rate_limits"} {
+	// waf_config, csp_config, exclusions should fail; rate_limits is now skipped.
+	for _, key := range []string{"waf_config", "csp_config", "exclusions"} {
 		result := results[key].(string)
 		if !strings.HasPrefix(result, "failed") {
 			t.Errorf("%s: expected failure, got %q", key, result)
 		}
+	}
+	// rate_limits should be skipped (not failed) since RL rules are ignored.
+	rlResult := results["rate_limits"].(string)
+	if !strings.Contains(rlResult, "skipped") {
+		t.Errorf("rate_limits: expected skipped, got %q", rlResult)
 	}
 }
 
 // ─── Restore: Preserves Existing Data on Partial Failure ────────────────────
 
 func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
-	mux, cs, _, _, es, _, _ := setupBackupMux(t)
+	mux, cs, _, _, es, _ := setupBackupMux(t)
 
 	// Pre-seed some data.
 	cs.Update(WAFConfig{
@@ -957,7 +919,7 @@ func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 // ─── Restore: WAF Config With Service Overrides ─────────────────────────────
 
 func TestRestore_WAFConfigServiceOverrides(t *testing.T) {
-	mux, cs, _, _, _, _, _ := setupBackupMux(t)
+	mux, cs, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1006,7 +968,7 @@ func TestRestore_WAFConfigServiceOverrides(t *testing.T) {
 // ─── Restore: CSP With Service Overrides ────────────────────────────────────
 
 func TestRestore_CSPServiceOverrides(t *testing.T) {
-	mux, _, cspS, _, _, _, _ := setupBackupMux(t)
+	mux, _, cspS, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1067,7 +1029,7 @@ func TestRestore_CSPServiceOverrides(t *testing.T) {
 // ─── Restore: Exclusion Conditions Preserved ────────────────────────────────
 
 func TestRestore_ExclusionConditionsPreserved(t *testing.T) {
-	mux, _, _, _, es, _, _ := setupBackupMux(t)
+	mux, _, _, _, es, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1122,10 +1084,10 @@ func TestRestore_ExclusionConditionsPreserved(t *testing.T) {
 	}
 }
 
-// ─── Restore: RL Rule Details Preserved ─────────────────────────────────────
+// ─── Restore: Legacy RL Rules Gracefully Skipped ────────────────────────────
 
-func TestRestore_RLRuleDetailsPreserved(t *testing.T) {
-	mux, _, _, _, _, rs, _ := setupBackupMux(t)
+func TestRestore_LegacyRLRulesSkipped(t *testing.T) {
+	mux, _, _, _, _, _ := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,
@@ -1140,21 +1102,13 @@ func TestRestore_RLRuleDetailsPreserved(t *testing.T) {
 		RateLimits: RateLimitBackup{
 			Rules: []RateLimitRule{
 				{
-					Name:        "detailed-rl",
-					Description: "Rate limit for API",
-					Service:     "api-svc",
-					Key:         "client_ip+path",
-					Events:      500,
-					Window:      "10m",
-					Action:      "log_only",
-					Priority:    50,
-					Tags:        []string{"api", "monitoring"},
-					Enabled:     true,
-					Conditions: []Condition{
-						{Field: "path", Operator: "begins_with", Value: "/api/v3"},
-						{Field: "method", Operator: "in", Value: "POST|PUT|DELETE"},
-					},
-					GroupOp: "and",
+					Name:    "detailed-rl",
+					Service: "api-svc",
+					Key:     "client_ip+path",
+					Events:  500,
+					Window:  "10m",
+					Action:  "log_only",
+					Enabled: true,
 				},
 			},
 		},
@@ -1169,38 +1123,19 @@ func TestRestore_RLRuleDetailsPreserved(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	rules := rs.List()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
-	}
-	r := rules[0]
-	if r.Name != "detailed-rl" {
-		t.Errorf("name: got %q", r.Name)
-	}
-	if r.Key != "client_ip+path" {
-		t.Errorf("key: got %q", r.Key)
-	}
-	if r.Events != 500 {
-		t.Errorf("events: got %d", r.Events)
-	}
-	if r.Window != "10m" {
-		t.Errorf("window: got %q", r.Window)
-	}
-	if r.Action != "log_only" {
-		t.Errorf("action: got %q", r.Action)
-	}
-	if len(r.Tags) != 2 || r.Tags[0] != "api" {
-		t.Errorf("tags: got %v", r.Tags)
-	}
-	if len(r.Conditions) != 2 {
-		t.Errorf("conditions: got %d", len(r.Conditions))
+	var resp map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	results := resp["results"].(map[string]interface{})
+	rlResult := results["rate_limits"].(string)
+	if !strings.Contains(rlResult, "skipped") {
+		t.Errorf("expected rate_limits to be skipped, got %q", rlResult)
 	}
 }
 
 // ─── Restore: Managed List Details Preserved ────────────────────────────────
 
 func TestRestore_ManagedListDetailsPreserved(t *testing.T) {
-	mux, _, _, _, _, _, ls := setupBackupMux(t)
+	mux, _, _, _, _, ls := setupBackupMux(t)
 
 	backup := FullBackup{
 		Version: 1,

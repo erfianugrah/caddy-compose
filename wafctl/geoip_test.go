@@ -230,7 +230,7 @@ func TestHandleTopCountries(t *testing.T) {
 
 	als := NewAccessLogStore("")
 
-	handler := handleTopCountries(s, als, emptyRLRuleStore(t))
+	handler := handleTopCountries(s, als)
 	req := httptest.NewRequest("GET", "/api/analytics/top-countries?hours=168&limit=10", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)

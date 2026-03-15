@@ -53,7 +53,7 @@ func TestSummaryEndpoint(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/summary", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -78,7 +78,7 @@ func TestEventsEndpointWithFilters(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/events?service=radarr.erfi.io&blocked=true&limit=10", nil)
 	w := httptest.NewRecorder()
-	handleEvents(store, als, emptyRLRuleStore(t))(w, req)
+	handleEvents(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -219,7 +219,7 @@ func TestIPLookupEndpoint(t *testing.T) {
 	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, emptyRLRuleStore(t), nil, nil))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil, nil))
 
 	req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1", nil)
 	w := httptest.NewRecorder()
@@ -241,7 +241,7 @@ func TestIPLookupEndpointInvalidIP(t *testing.T) {
 	als := emptyAccessLogStore(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, emptyRLRuleStore(t), nil, nil))
+	mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil, nil))
 
 	req := httptest.NewRequest("GET", "/api/lookup/not-an-ip", nil)
 	w := httptest.NewRecorder()
@@ -298,7 +298,7 @@ func TestIPLookupPagination(t *testing.T) {
 	t.Run("endpoint with limit/offset params", func(t *testing.T) {
 		als := emptyAccessLogStore(t)
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, emptyRLRuleStore(t), nil, nil))
+		mux.HandleFunc("GET /api/lookup/{ip}", handleIPLookup(store, als, nil, nil))
 		req := httptest.NewRequest("GET", "/api/lookup/10.0.0.1?limit=1&offset=0", nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
@@ -365,7 +365,7 @@ func TestSummaryEndpointWithHours(t *testing.T) {
 	// hours=1 should filter out old events.
 	req := httptest.NewRequest("GET", "/api/summary?hours=1", nil)
 	w := httptest.NewRecorder()
-	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(store, als)(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d", w.Code)
@@ -380,7 +380,7 @@ func TestSummaryEndpointWithHours(t *testing.T) {
 	// Without hours filter, should get all events.
 	req = httptest.NewRequest("GET", "/api/summary", nil)
 	w = httptest.NewRecorder()
-	handleSummary(store, als, emptyRLRuleStore(t))(w, req)
+	handleSummary(store, als)(w, req)
 
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp.TotalEvents != 1 {
@@ -488,8 +488,8 @@ func TestAnalyticsEndpoints(t *testing.T) {
 	store := storeWithEvents(t, sampleEvents)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, emptyAccessLogStore(t), emptyRLRuleStore(t)))
-	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store, emptyAccessLogStore(t), emptyRLRuleStore(t)))
+	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, emptyAccessLogStore(t)))
+	mux.HandleFunc("GET /api/analytics/top-uris", handleTopTargetedURIs(store, emptyAccessLogStore(t)))
 
 	// Test top-ips endpoint
 	req := httptest.NewRequest("GET", "/api/analytics/top-ips", nil)
@@ -616,7 +616,7 @@ func TestHandleEventsRuleNameFilter(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleEvents(store, als, emptyRLRuleStore(t))
+	handler := handleEvents(store, als)
 
 	// Without rule_name: should return all 3 events
 	req := httptest.NewRequest("GET", "/api/events?hours=24", nil)
@@ -694,7 +694,7 @@ func TestHandleEventsRuleNameFilterOperators(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleEvents(store, als, emptyRLRuleStore(t))
+	handler := handleEvents(store, als)
 
 	tests := []struct {
 		name      string
@@ -765,7 +765,7 @@ func TestHandleSummaryRuleNameFilterOperators(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	tests := []struct {
 		name      string
@@ -824,7 +824,7 @@ func TestHandleSummaryRuleNameFilter(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// With rule_name filter: should only see the 2 policy events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&rule_name=My+rule", nil)
@@ -884,7 +884,7 @@ func TestHandleSummaryServiceFilter(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// Filter by service=cdn.erfi.io — should return 2 events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&service=cdn.erfi.io", nil)
@@ -924,7 +924,7 @@ func TestHandleSummaryClientFilter(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// Filter by client=1.2.3.4 — should return 2 events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&client=1.2.3.4", nil)
@@ -961,7 +961,7 @@ func TestHandleSummaryMethodFilter(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// Filter by method=GET — should return 2 events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&method=GET", nil)
@@ -992,7 +992,7 @@ func TestHandleSummaryEventTypeFilter(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// Filter by event_type=detect_block — should return 2 events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&event_type=detect_block", nil)
@@ -1027,7 +1027,7 @@ func TestHandleSummaryMultipleFilters(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// service=cdn.erfi.io + event_type=detect_block + method=GET — should match only e1
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&service=cdn.erfi.io&event_type=detect_block&method=GET", nil)
@@ -1071,7 +1071,7 @@ func TestHandleSummaryEventTypeFilterWithRL(t *testing.T) {
 	}
 	als.mu.Unlock()
 
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// event_type=rate_limited — should only see 1 RL event (the 429).
 	// The policy engine block is now policy_block, not rate_limited.
@@ -1113,7 +1113,7 @@ func TestHandleSummaryNoFilterFallsThrough(t *testing.T) {
 	}
 	als.mu.Unlock()
 
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	req := httptest.NewRequest("GET", "/api/summary?hours=24", nil)
 	rec := httptest.NewRecorder()
@@ -1268,7 +1268,7 @@ func TestHandleSummaryContainsOperator(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// service contains "erfi" should match 2 events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&service=erfi&service_op=contains", nil)
@@ -1299,7 +1299,7 @@ func TestHandleSummaryInOperator(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// method in GET,POST should match 2 events
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&method=GET,POST&method_op=in", nil)
@@ -1330,7 +1330,7 @@ func TestHandleSummaryNeqOperator(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// service neq cdn.erfi.io should match 1 event (app.erfi.io)
 	req := httptest.NewRequest("GET", "/api/summary?hours=24&service=cdn.erfi.io&service_op=neq", nil)
@@ -1361,7 +1361,7 @@ func TestHandleSummaryRegexOperator(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	// service regex ^cdn\. should match 1 event
 	req := httptest.NewRequest("GET", `/api/summary?hours=24&service=^cdn\.&service_op=regex`, nil)
@@ -1392,7 +1392,7 @@ func TestHandleEventsInOperator(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleEvents(store, als, emptyRLRuleStore(t))
+	handler := handleEvents(store, als)
 
 	req := httptest.NewRequest("GET", "/api/events?hours=24&event_type=detect_block,logged&event_type_op=in", nil)
 	rec := httptest.NewRecorder()
@@ -1425,7 +1425,7 @@ func TestHandleEventsNoOpDefaultsToEq(t *testing.T) {
 	store.mu.Unlock()
 
 	als := NewAccessLogStore("")
-	handler := handleEvents(store, als, emptyRLRuleStore(t))
+	handler := handleEvents(store, als)
 
 	req := httptest.NewRequest("GET", "/api/events?hours=24&service=cdn.erfi.io", nil)
 	rec := httptest.NewRecorder()
@@ -1458,7 +1458,7 @@ func TestHandleSummaryTagFilter(t *testing.T) {
 	store.mu.Unlock()
 	als := NewAccessLogStore("")
 
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 
 	tests := []struct {
 		name      string
@@ -1503,7 +1503,7 @@ func TestHandleSummaryTagCounts(t *testing.T) {
 	store.mu.Unlock()
 	als := NewAccessLogStore("")
 
-	handler := handleSummary(store, als, emptyRLRuleStore(t))
+	handler := handleSummary(store, als)
 	req := httptest.NewRequest("GET", "/api/summary?hours=24", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1544,7 +1544,7 @@ func TestHandleEventsTagFilter(t *testing.T) {
 	store.mu.Unlock()
 	als := NewAccessLogStore("")
 
-	handler := handleEvents(store, als, emptyRLRuleStore(t))
+	handler := handleEvents(store, als)
 
 	tests := []struct {
 		name      string

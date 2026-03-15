@@ -189,9 +189,8 @@ func benchmarkHandleSummary(b *testing.B, n int) {
 	store.mu.Unlock()
 
 	als := benchAccessLogStore(b)
-	rs := NewRateLimitRuleStore(filepath.Join(b.TempDir(), "rl.json"))
 
-	handler := handleSummary(store, als, rs)
+	handler := handleSummary(store, als)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest("GET", "/api/summary?hours=24", nil)
@@ -221,9 +220,8 @@ func benchmarkHandleEvents(b *testing.B, n int) {
 	store.mu.Unlock()
 
 	als := benchAccessLogStore(b)
-	rs := NewRateLimitRuleStore(filepath.Join(b.TempDir(), "rl.json"))
 
-	handler := handleEvents(store, als, rs)
+	handler := handleEvents(store, als)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest("GET", "/api/events?hours=24&limit=50", nil)

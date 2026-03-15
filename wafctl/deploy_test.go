@@ -31,14 +31,13 @@ func TestDeployEndpointNoReload(t *testing.T) {
 	tmpDir := t.TempDir()
 	es := NewExclusionStore(filepath.Join(t.TempDir(), "exclusions.json"))
 	cs := NewConfigStore(filepath.Join(t.TempDir(), "config.json"))
-	rs := NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl.json"))
 	ls := NewManagedListStore(filepath.Join(t.TempDir(), "lists.json"), tmpDir)
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
 	secStore := NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec.json"))
 	ds := NewDefaultRuleStore(filepath.Join(t.TempDir(), "defaults.json"), filepath.Join(t.TempDir(), "overrides.json"))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, rs, ls, cspStore, secStore, ds, deployCfg))
+	mux.HandleFunc("POST /api/config/deploy", handleDeploy(cs, es, ls, cspStore, secStore, ds, deployCfg))
 
 	req := httptest.NewRequest("POST", "/api/config/deploy", nil)
 	rec := httptest.NewRecorder()

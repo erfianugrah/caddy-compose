@@ -82,13 +82,6 @@ func emptyAccessLogStore(t *testing.T) *AccessLogStore {
 	return NewAccessLogStore(filepath.Join(t.TempDir(), "empty-access.log"))
 }
 
-// emptyRLRuleStore returns a RateLimitRuleStore with no rules for tests that
-// don't care about RL tag enrichment.
-func emptyRLRuleStore(t *testing.T) *RateLimitRuleStore {
-	t.Helper()
-	return NewRateLimitRuleStore(filepath.Join(t.TempDir(), "rl-rules.json"))
-}
-
 // --- Exclusion Store tests ---
 
 func newTestExclusionStore(t *testing.T) *ExclusionStore {

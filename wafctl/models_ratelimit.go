@@ -1,33 +1,33 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"regexp"
+	"time"
+)
 
 // ─── Rate Limit Policy Engine ───────────────────────────────────────────────
 
-// RateLimitRule is a single rate-limiting policy with conditions and key config.
-// Analogous to RuleExclusion for the WAF policy engine.
+// RateLimitRule is used by access log enrichment (rl_analytics.go) to match
+// 429 events to rule tags for the event stream. The unified ExclusionStore
+// now manages rate_limit rules via RuleExclusion, but this type is kept for
+// backward compatibility with the access log enrichment pipeline and backup format.
 type RateLimitRule struct {
 	ID          string      `json:"id"`
 	Name        string      `json:"name"`
 	Description string      `json:"description,omitempty"`
-	Service     string      `json:"service"`                  // hostname or "*" for all services
-	Conditions  []Condition `json:"conditions,omitempty"`     // Reuse existing Condition type
-	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
-	Key         string      `json:"key"`                      // "client_ip", "header:X-API-Key", "client_ip+path", "static", etc.
-	Events      int         `json:"events"`                   // Max events in window
-	Window      string      `json:"window"`                   // Duration string: "1m", "30s", "1h"
-	Action      string      `json:"action,omitempty"`         // "deny" (default 429) or "log_only"
-	Priority    int         `json:"priority,omitempty"`       // Lower = evaluated first (0 = default)
-	Tags        []string    `json:"tags,omitempty"`           // Event classification tags (e.g., "api", "auth", "brute-force")
+	Service     string      `json:"service"`
+	Conditions  []Condition `json:"conditions,omitempty"`
+	GroupOp     string      `json:"group_operator,omitempty"`
+	Key         string      `json:"key"`
+	Events      int         `json:"events"`
+	Window      string      `json:"window"`
+	Action      string      `json:"action,omitempty"`
+	Priority    int         `json:"priority,omitempty"`
+	Tags        []string    `json:"tags,omitempty"`
 	Enabled     bool        `json:"enabled"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
-}
-
-// RateLimitRuleConfig wraps the list of rules plus global settings.
-type RateLimitRuleConfig struct {
-	Rules  []RateLimitRule       `json:"rules"`
-	Global RateLimitGlobalConfig `json:"global"`
 }
 
 // RateLimitGlobalConfig holds settings applied to all generated rate_limit blocks.
@@ -40,35 +40,14 @@ type RateLimitGlobalConfig struct {
 	PurgeAge      string  `json:"purge_age,omitempty"`      // Distributed: age for purging stale state
 }
 
-// RateLimitRuleExport wraps rules for export/import.
-type RateLimitRuleExport struct {
-	Version    int                   `json:"version"`
-	ExportedAt time.Time             `json:"exported_at"`
-	Rules      []RateLimitRule       `json:"rules"`
-	Global     RateLimitGlobalConfig `json:"global"`
-}
+// ─── Rate Limit Validation ──────────────────────────────────────────────────
 
-// RateLimitDeployResponse is returned by the rate limit deploy endpoint.
-type RateLimitDeployResponse struct {
-	Status    string   `json:"status"`
-	Message   string   `json:"message"`
-	Files     []string `json:"files"`
-	Reloaded  bool     `json:"reloaded"`
-	Timestamp string   `json:"timestamp"`
-}
+// validWindowPattern matches duration strings: number + unit (s, m, h).
+var validWindowPattern = regexp.MustCompile(`^\d+[smh]$`)
 
-// RateLimitZone is the legacy zone model, kept for migration only.
-type RateLimitZone struct {
-	Name    string `json:"name"`
-	Events  int    `json:"events"`
-	Window  string `json:"window"`
-	Enabled bool   `json:"enabled"`
-}
-
-// ─── Rate Limit Validation Maps ─────────────────────────────────────────────
-
-// validRLKeyPrefixes are key prefixes that take a parameter (e.g. "header:X-API-Key")
-var validRLKeyPrefixes = []string{"header:", "cookie:", "body_json:", "body_form:"}
+// validRLKeyPattern matches key formats: plain keys or prefix:name keys.
+// body_json: accepts dot-paths (e.g. body_json:.user.api_key), body_form: accepts field names.
+var validRLKeyPattern = regexp.MustCompile(`^(client_ip|path|static|client_ip\+path|client_ip\+method|header:[A-Za-z0-9_-]+|cookie:[A-Za-z0-9_-]+|body_json:\.?[A-Za-z0-9_.]+|body_form:[A-Za-z0-9_-]+)$`)
 
 // Valid rate limit actions
 var validRLActions = map[string]bool{
@@ -95,4 +74,24 @@ var validRLConditionFields = map[string]bool{
 	"uri_path":     true,
 	"referer":      true,
 	"http_version": true,
+}
+
+// validateRateLimitGlobal checks the global config.
+func validateRateLimitGlobal(cfg RateLimitGlobalConfig) error {
+	if cfg.Jitter < 0 || cfg.Jitter > 1 {
+		return fmt.Errorf("jitter must be between 0.0 and 1.0")
+	}
+	if cfg.SweepInterval != "" && !validWindowPattern.MatchString(cfg.SweepInterval) {
+		return fmt.Errorf("sweep_interval must be a duration like 1m, 30s, 1h")
+	}
+	if cfg.ReadInterval != "" && !validWindowPattern.MatchString(cfg.ReadInterval) {
+		return fmt.Errorf("read_interval must be a duration like 5s, 10s")
+	}
+	if cfg.WriteInterval != "" && !validWindowPattern.MatchString(cfg.WriteInterval) {
+		return fmt.Errorf("write_interval must be a duration like 5s, 10s")
+	}
+	if cfg.PurgeAge != "" && !validWindowPattern.MatchString(cfg.PurgeAge) {
+		return fmt.Errorf("purge_age must be a duration like 1m, 5m")
+	}
+	return nil
 }

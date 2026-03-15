@@ -36,13 +36,11 @@ func handleBackup(
 	cspS *CSPStore,
 	secS *SecurityHeaderStore,
 	es *ExclusionStore,
-	rs *RateLimitRuleStore,
 	ls *ManagedListStore,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		// Collect from all stores. Each getter returns a deep copy.
 		exclusionExport := es.Export()
-		rlExport := rs.Export()
 		listExport := ls.Export() // already excludes ipsum lists
 
 		backup := FullBackup{
@@ -52,11 +50,8 @@ func handleBackup(
 			CSPConfig:       cspS.Get(),
 			SecurityHeaders: secS.Get(),
 			Exclusions:      exclusionExport.Exclusions,
-			RateLimits: RateLimitBackup{
-				Rules:  rlExport.Rules,
-				Global: rlExport.Global,
-			},
-			Lists: listExport.Lists,
+			RateLimits:      RateLimitBackup{}, // empty — rate_limit rules are now in Exclusions
+			Lists:           listExport.Lists,
 		}
 
 		// Set Content-Disposition so browsers offer a file download.
@@ -75,7 +70,6 @@ func handleRestore(
 	cspS *CSPStore,
 	secS *SecurityHeaderStore,
 	es *ExclusionStore,
-	rs *RateLimitRuleStore,
 	ls *ManagedListStore,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -135,23 +129,12 @@ func handleRestore(
 			}
 		}
 
-		// 5. Rate Limit Rules
-		if len(backup.RateLimits.Rules) == 0 {
-			results["rate_limits"] = "skipped: no rules in backup"
+		// 5. Rate Limit Rules — skipped (rate_limit rules are now managed via the unified ExclusionStore).
+		// Old backups may contain rate_limits; we gracefully ignore them.
+		if len(backup.RateLimits.Rules) > 0 {
+			results["rate_limits"] = "skipped: legacy rate_limit rules ignored (use exclusions with type=rate_limit)"
 		} else {
-			for i, rule := range backup.RateLimits.Rules {
-				if err := validateRateLimitRule(rule); err != nil {
-					results["rate_limits"] = "failed: rule " + strconv.Itoa(i) + ": " + err.Error()
-					break
-				}
-			}
-			if _, ok := results["rate_limits"]; !ok {
-				if err := rs.Import(backup.RateLimits.Rules); err != nil {
-					results["rate_limits"] = "failed: " + err.Error()
-				} else {
-					results["rate_limits"] = "restored " + strconv.Itoa(len(backup.RateLimits.Rules)) + " rules"
-				}
-			}
+			results["rate_limits"] = "skipped: no rules in backup"
 		}
 
 		// 6. Managed Lists (ipsum lists are preserved by the store's Import method)
