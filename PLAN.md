@@ -29,9 +29,13 @@ causing 4 rules (932236, 932260, 941130, 942200) to over-match on `request_combi
 **Done:**
 - [x] Variable exclusion support in converter (Excludes field from CRS negation variables)
 - [x] Plugin v0.18.0: isExcluded() filters cookies/headers during multi-field extraction
+- [x] Plugin v0.19.0: nested condition groups (recursive AND/OR evaluation)
+- [x] Attempted per-field OR groups in converter — broke 203/238 rules (reverted).
+      request_combined's isMulti already evaluates per-variable correctly; the issue
+      is that detect_sqli/detect_xss operators don't work through nested group paths.
 
-**To reach 95%+ (requires multi-day refactor):**
-- [ ] Nested condition groups in plugin (OR within AND chains)
+**To reach 95%+ (needs deeper investigation):**
+- [ ] Fix detect_sqli/detect_xss in nested group evaluation path
 - [ ] SecRuleUpdateTargetById processing in converter parser
 - [ ] CRS ctl:ruleRemoveByTag translation (runtime suppression chains)
 
