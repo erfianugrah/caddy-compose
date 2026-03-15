@@ -62,48 +62,10 @@
 	}
 }
 
-# TODO: This snippet can be removed after configuring CORS via /api/cors
-# (plugin v0.17.0 handles preflight + origin validation natively).
-(cors) {
-	# CORS: validate Origin against *.erfi.io allowlist (not Host reflection).
-	@cors_origin `header_regexp("Origin", "^https://[a-z0-9-]+\\.erfi\\.io$")`
-	@cors_preflight method OPTIONS
-	handle @cors_preflight {
-		header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
-		header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
-		header Access-Control-Allow-Headers "Content-Type, Authorization"
-		header Access-Control-Max-Age "3600"
-		respond "" 204
-	}
-	header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
-	header @cors_origin Vary Origin
-}
-
-# Static asset caching — sets Cache-Control only if the upstream didn't already.
-# Respects upstream headers from apps that set their own (Jellyfin, Vaultwarden, Immich).
-# Cloudflare edge and browsers both honour these.
-# Usage: import static_cache
-# TODO: This snippet can be removed after applying the "cache-static-assets"
-# rule template via /api/rules/templates/cache-static-assets/apply
-# (plugin v0.17.0 handles response_header rules with header_default).
-(static_cache) {
-	@fonts path *.woff *.woff2 *.ttf *.eot *.otf
-	header @fonts ?Cache-Control "public, max-age=31536000, immutable"
-
-	@images path *.png *.jpg *.jpeg *.gif *.webp *.avif *.svg *.ico
-	header @images ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
-
-	@styles path *.css
-	header @styles ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
-
-	@scripts path *.js
-	header @scripts ?Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
-
-	@media path *.mp3 *.mp4 *.flac *.mkv *.avi *.ogg *.opus *.wav *.aac *.webm
-	header @media ?Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
-}
-
 # WAF — policy engine as sole WAF (CRS rules baked into default-rules.json).
+# CORS and static-asset caching are now managed by the policy engine plugin:
+#   CORS         → /api/cors (preflight + origin validation)
+#   Cache headers → /api/rules/templates/cache-static-assets/apply
 # (waf)     — Unified WAF snippet. Per-service settings (paranoia level,
 #             thresholds, mode) are managed via the wafctl Settings page.
 #             WebSocket upgrade requests ARE inspected — the policy engine
@@ -208,10 +170,6 @@
 (proxy_headers) {
 	trusted_proxies private_ranges
 	header_up X-Forwarded-For {client_ip}
-	header_down -Access-Control-Allow-Origin
-	header_down -Access-Control-Allow-Methods
-	header_down -Access-Control-Allow-Headers
-	header_down -Access-Control-Max-Age
 }
 
 # Custom error pages — serves /etc/caddy/errors/error.html with Caddy templates
@@ -232,7 +190,6 @@
 # Use `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` to reload.
 # Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
 caddy.erfi.io {
-	import cors
 
 	import tls_config
 	encode zstd gzip
@@ -242,7 +199,6 @@ caddy.erfi.io {
 }
 
 waf.erfi.io {
-	import cors
 	import forward_auth
 
 	import tls_config
@@ -262,7 +218,6 @@ waf.erfi.io {
 }
 
 authelia.erfi.io {
-	import static_cache
 
 	import waf
 	import tls_config
@@ -275,8 +230,6 @@ authelia.erfi.io {
 }
 
 servarr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -303,8 +256,6 @@ servarr.erfi.io {
 }
 
 sonarr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -317,8 +268,6 @@ sonarr.erfi.io {
 }
 
 radarr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -331,8 +280,6 @@ radarr.erfi.io {
 }
 
 bazarr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -345,8 +292,6 @@ bazarr.erfi.io {
 }
 
 tracearr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -359,8 +304,6 @@ tracearr.erfi.io {
 }
 
 vault.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -374,8 +317,6 @@ vault.erfi.io {
 }
 
 prowlarr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -388,8 +329,6 @@ prowlarr.erfi.io {
 }
 
 jellyfin.erfi.io {
-	# import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -402,8 +341,6 @@ jellyfin.erfi.io {
 }
 
 qbit.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -416,8 +353,6 @@ qbit.erfi.io {
 }
 
 change.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import forward_auth
@@ -431,8 +366,6 @@ change.erfi.io {
 }
 
 seerr.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -445,8 +378,6 @@ seerr.erfi.io {
 }
 
 keycloak.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -459,8 +390,6 @@ keycloak.erfi.io {
 }
 
 joplin.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -473,8 +402,6 @@ joplin.erfi.io {
 }
 
 navidrome.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -487,8 +414,6 @@ navidrome.erfi.io {
 }
 
 sabnzbd.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -501,8 +426,6 @@ sabnzbd.erfi.io {
 }
 
 immich.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -515,7 +438,6 @@ immich.erfi.io {
 }
 
 caddy-prometheus.erfi.io {
-	import cors
 	import waf_off
 
 	import tls_config
@@ -529,8 +451,6 @@ caddy-prometheus.erfi.io {
 }
 
 copyparty.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -543,8 +463,6 @@ copyparty.erfi.io {
 }
 
 dockge.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -557,8 +475,6 @@ dockge.erfi.io {
 }
 
 httpbun.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -571,8 +487,6 @@ httpbun.erfi.io {
 }
 
 httpbin.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -585,8 +499,6 @@ httpbin.erfi.io {
 }
 
 atuin.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
@@ -599,8 +511,6 @@ atuin.erfi.io {
 }
 
 cdn.erfi.io {
-	import cors
-	import static_cache
 
 	import waf
 	import tls_config
