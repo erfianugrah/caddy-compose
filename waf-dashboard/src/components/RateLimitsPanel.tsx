@@ -127,6 +127,10 @@ export default function RateLimitsPanel() {
   const [actionFilter, setActionFilter] = useState<RLRuleAction | "all">("all");
   const [rulesPage, setRulesPage] = useState(1);
 
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   // Drag-and-drop reorder
   const isFilteredBase = deferredSearch.trim() !== "" || actionFilter !== "all";
   const dndSensors = useSensors(
@@ -190,6 +194,10 @@ export default function RateLimitsPanel() {
     }
     return result;
   }, [rules, deferredSearch, actionFilter]);
+
+  const selectAllVisible = useCallback(() => {
+    setSelected(new Set(filteredRules.map((r) => r.id)));
+  }, [filteredRules]);
 
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [deferredSearch, actionFilter]);
@@ -372,6 +380,63 @@ export default function RateLimitsPanel() {
       setError(err instanceof Error ? err.message : "Failed to create rule");
     }
   }, []);
+
+  // ─── Bulk actions ─────────────────────────────────────────────────
+
+  const lastSelectedRef = useRef<number | null>(null);
+
+  const toggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastSelectedRef.current !== null) {
+        const start = Math.min(lastSelectedRef.current, index);
+        const end = Math.max(lastSelectedRef.current, index);
+        for (let i = start; i <= end; i++) {
+          next.add(pagedRules[i].id);
+        }
+      } else {
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      }
+      lastSelectedRef.current = index;
+      return next;
+    });
+  }, [pagedRules]);
+
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  const handleBulkAction = useCallback(
+    async (action: "enable" | "disable" | "delete") => {
+      if (selected.size === 0) return;
+      const confirmMsg = action === "delete"
+        ? `Delete ${selected.size} rule(s)? This cannot be undone.`
+        : undefined;
+      if (confirmMsg && !window.confirm(confirmMsg)) return;
+      try {
+        setBulkBusy(true);
+        if (action === "delete") {
+          for (const id of selected) {
+            await deleteRLRule(id);
+          }
+        } else {
+          for (const id of selected) {
+            await updateRLRule(id, { enabled: action === "enable" });
+          }
+        }
+        setSelected(new Set());
+        loadData();
+        await autoDeploy(`Bulk ${action}: ${selected.size} rules`);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : `Bulk ${action} failed`);
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selected, loadData, autoDeploy],
+  );
 
   const handleExport = async () => {
     try {
@@ -588,10 +653,56 @@ export default function RateLimitsPanel() {
             <CardContent className="p-0 overflow-x-auto">
               {rules.length > 0 ? (
                 <>
+                  {selected.size > 0 && (
+                    <div className="flex items-center gap-2 px-4 py-2 border-b border-lv-cyan/30 bg-lv-cyan/5">
+                      <span className="text-xs font-medium text-lv-cyan mr-2">
+                        {selected.size} selected
+                      </span>
+                      <Button variant="outline" size="xs" onClick={() => handleBulkAction("enable")} disabled={bulkBusy}>
+                        Enable
+                      </Button>
+                      <Button variant="outline" size="xs" onClick={() => handleBulkAction("disable")} disabled={bulkBusy}>
+                        Disable
+                      </Button>
+                      <Button variant="outline" size="xs" className="text-lv-red hover:text-lv-red" onClick={() => handleBulkAction("delete")} disabled={bulkBusy}>
+                        Delete
+                      </Button>
+                      <div className="ml-auto flex items-center gap-2">
+                        <Button variant="ghost" size="xs" onClick={selectAllVisible} className="text-xs text-muted-foreground">
+                          Select All ({filteredRules.length})
+                        </Button>
+                        <Button variant="ghost" size="xs" onClick={clearSelection} className="text-xs text-muted-foreground">
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[36px] px-2">
+                          <input
+                            type="checkbox"
+                            checked={pagedRules.length > 0 && pagedRules.every((r) => selected.has(r.id))}
+                            ref={(el) => {
+                              if (el) {
+                                const allSelected = pagedRules.length > 0 && pagedRules.every((r) => selected.has(r.id));
+                                const someSelected = pagedRules.some((r) => selected.has(r.id));
+                                el.indeterminate = someSelected && !allSelected;
+                              }
+                            }}
+                            onChange={(ev) => {
+                              if (ev.target.checked) {
+                                setSelected(new Set([...selected, ...pagedRules.map((r) => r.id)]));
+                              } else {
+                                const pageIds = new Set(pagedRules.map((r) => r.id));
+                                setSelected(new Set([...selected].filter((id) => !pageIds.has(id))));
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded border-border"
+                          />
+                        </TableHead>
                         <TableHead className="w-[52px] px-1">#</TableHead>
                         <SortableTableHead sortKey="name" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Name</SortableTableHead>
                         <SortableTableHead sortKey="service" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Service</SortableTableHead>
@@ -613,8 +724,16 @@ export default function RateLimitsPanel() {
                           key={rule.id}
                           id={rule.id}
                           disabled={isFiltered}
-                          className={!rule.enabled ? "opacity-50" : ""}
+                          className={`${!rule.enabled ? "opacity-50" : ""}${selected.has(rule.id) ? " bg-lv-purple/10" : ""}`}
                         >
+                          <TableCell className="px-2" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selected.has(rule.id)}
+                              onChange={(e) => toggleSelect(rule.id, pageIdx, (e.nativeEvent as MouseEvent).shiftKey)}
+                              className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
+                            />
+                          </TableCell>
                           <TableCell className="text-xs tabular-nums text-muted-foreground/60">
                             {globalIdx}
                           </TableCell>
