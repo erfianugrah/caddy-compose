@@ -1,0 +1,111 @@
+name: CRS Update Checker
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Weekly: Monday 08:00 UTC
+  workflow_dispatch:       # Manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CRS_REPO: coreruleset/coreruleset
+
+jobs:
+  check-crs-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get current CRS version
+        id: current
+        run: |
+          CURRENT=$(grep 'CRS_VERSION:' .github/workflows/build.yml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current CRS version: $CURRENT"
+
+      - name: Get latest CRS release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh api repos/${{ env.CRS_REPO }}/releases/latest --jq .tag_name)
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest CRS release: $LATEST"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.current.outputs.version }}" = "${{ steps.latest.outputs.version }}" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "CRS is up to date (${{ steps.current.outputs.version }})"
+          else
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+            echo "CRS update available: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
+          fi
+
+      - name: Check for existing PR
+        if: steps.compare.outputs.up_to_date == 'false'
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_COUNT=$(gh pr list --search "CRS ${{ steps.latest.outputs.version }}" --state open --json number --jq length)
+          if [ "$PR_COUNT" -gt 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "PR already exists for CRS ${{ steps.latest.outputs.version }}"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump CRS version
+        if: steps.compare.outputs.up_to_date == 'false' && steps.existing_pr.outputs.exists == 'false'
+        run: |
+          OLD="${{ steps.current.outputs.version }}"
+          NEW="${{ steps.latest.outputs.version }}"
+
+          # Update build.yml
+          sed -i "s|CRS_VERSION: \"$OLD\"|CRS_VERSION: \"$NEW\"|" .github/workflows/build.yml
+
+          # Update Dockerfile (CRS_VERSION build arg default if present)
+          if grep -q "CRS_VERSION=$OLD" Dockerfile; then
+            sed -i "s|CRS_VERSION=$OLD|CRS_VERSION=$NEW|" Dockerfile
+          fi
+
+          echo "Bumped CRS_VERSION: $OLD → $NEW"
+
+      - name: Create Pull Request
+        if: steps.compare.outputs.up_to_date == 'false' && steps.existing_pr.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OLD="${{ steps.current.outputs.version }}"
+          NEW="${{ steps.latest.outputs.version }}"
+          BRANCH="chore/crs-${NEW}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "chore: bump CRS ${OLD} → ${NEW}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: bump CRS ${OLD} → ${NEW}" \
+            --body "$(cat <<EOF
+          ## CRS Update
+
+          Automated bump of OWASP Core Rule Set version.
+
+          - **Current:** \`${OLD}\`
+          - **Latest:** \`${NEW}\`
+          - **Release:** https://github.com/${{ env.CRS_REPO }}/releases/tag/${NEW}
+
+          ### Checklist
+          - [ ] Review CRS changelog for breaking changes
+          - [ ] Build and test locally: \`make build && make test-e2e\`
+          - [ ] Verify default-rules.json regeneration (CRS converter in Dockerfile)
+          EOF
+          )" \
+            --label "dependencies"
