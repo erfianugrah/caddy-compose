@@ -53,7 +53,11 @@ func TestHealthAndBasics(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestWAFBlocking(t *testing.T) {
-	t.Parallel()
+	// Not parallel — requires WAF config at known state (default thresholds).
+	// Parallel tests that mutate config (e.g., threshold=10000) can poison results.
+	ensureDefaultConfig(t)
+	deployAndWaitForStatus(t, caddyURL+"/get", 200)
+
 	tests := []struct {
 		name string
 		url  string
@@ -66,13 +70,15 @@ func TestWAFBlocking(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			code, err := httpGetCode(tt.url)
+			req := mustNewRequest(t, "GET", tt.url)
+			setBrowserHeaders(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				t.Fatalf("request failed: %v", err)
 			}
-			if code != tt.want {
-				t.Errorf("expected %d, got %d", tt.want, code)
+			resp.Body.Close()
+			if resp.StatusCode != tt.want {
+				t.Errorf("expected %d, got %d", tt.want, resp.StatusCode)
 			}
 		})
 	}

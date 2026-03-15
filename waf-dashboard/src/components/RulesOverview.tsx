@@ -56,6 +56,7 @@ import {
 } from "@/lib/api";
 import { T } from "@/lib/typography";
 import { SensitivitySettings } from "./settings/SettingsFormSections";
+import { CategoryToggles } from "./settings/CategoryToggles";
 import { ServiceSettingsCard } from "./settings/ServiceSettingsCard";
 
 // ─── Main Rules Overview ────────────────────────────────────────────
@@ -489,6 +490,7 @@ export default function RulesOverview() {
             <h3 className="text-sm font-semibold">WAF Engine Settings</h3>
             <Badge variant="outline" className="text-xs">
               PL{defaults.paranoia_level} · In {defaults.inbound_threshold} · Out {defaults.outbound_threshold}
+              {(defaults.disabled_categories?.length ?? 0) > 0 && ` · ${defaults.disabled_categories!.length} cat off`}
             </Badge>
           </div>
           <svg
@@ -504,6 +506,10 @@ export default function RulesOverview() {
         {settingsExpanded && (
           <CardContent className="space-y-5 border-t border-border pt-4">
             <SensitivitySettings settings={defaults} onChange={handleDefaultsChange} />
+            <CategoryToggles
+              disabled={defaults.disabled_categories ?? []}
+              onChange={(cats) => handleDefaultsChange({ ...defaults, disabled_categories: cats.length > 0 ? cats : undefined })}
+            />
           </CardContent>
         )}
       </Card>

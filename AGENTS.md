@@ -8,7 +8,7 @@ Docker Compose infrastructure for a Caddy reverse proxy with a custom policy eng
 Authelia 2FA forward auth, and a WAF management sidecar. Two codebases:
 
 - **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.24+)
-- **waf-dashboard/** — Astro 5 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
+- **waf-dashboard/** — Astro 6 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
 - Root level: Caddyfile, Dockerfile (5-stage multi-stage), compose.yaml, Makefile
 
 ## Build Commands
@@ -37,8 +37,8 @@ cd waf-dashboard && npm ci && npm run build
 
 ```bash
 make test               # Run ALL tests (Go + frontend)
-make test-go            # Go tests only (1082 tests across 25 files)
-make test-frontend      # Frontend Vitest only (322 tests across 17 files)
+make test-go            # Go tests only (26 test files)
+make test-frontend      # Frontend Vitest only (17 test files)
 make test-e2e           # E2E smoke tests (requires Docker)
 ```
 
@@ -102,28 +102,24 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 - `atomic.Int64` for offset tracking; `atomic.Bool` for guard flags.
 - Return deep copies from getters to prevent concurrent modification.
 
-### File Operations
+### File Operations & Structure
 
-- Atomic writes via `atomicWriteFile()` — write to temp, fsync, rename.
+- Atomic writes via `atomicWriteFile()` in `util.go` — write to temp, fsync, rename.
+- `envOr()` helper in `main.go`; shared utilities in `util.go`.
 - Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
 - One cohesive module per `.go` file, split by domain responsibility.
-- Shared utilities in `util.go`: `envOr()`, `atomicWriteFile()`.
 
 ### Input Validation
 
 - `validateExclusion()` rejects newlines in all string fields, validates operators/fields against allowlists.
 - `validateConditions()` — shared validation used by both WAF exclusions and rate limit rules.
 - Tags: lowercase alphanumeric + hyphens (`^[a-z0-9][a-z0-9-]*$`), max 10 per rule, max 50 chars each.
-- Condition operators are validated per-field via `validOperatorsForField` map. Three categories:
+- Condition operators validated per-field via `validOperatorsForField` map:
   - **String fields** (host, path, uri_path, user_agent, header, query, cookie, body, body_json, body_form,
-    args, referer, response_header): full 16-operator set (eq, neq, contains, not_contains, begins_with,
-    not_begins_with, ends_with, not_ends_with, regex, not_regex, in, not_in, phrase_match, not_phrase_match,
-    in_list, not_in_list). `body_json` also supports `exists`.
+    args, referer, response_header): 16-operator set. `body_json` also supports `exists`.
   - **Enum fields** (method, country, response_status, http_version): eq, neq, in, not_in, in_list, not_in_list.
   - **IP field**: eq, neq, in, not_in, ip_match, not_ip_match, in_list, not_in_list.
-  - Numeric operators (gt, ge, lt, le) bypass the per-field map — accepted on any field.
-- Method values are validated against a fixed HTTP method set; this check is skipped for `in_list`/`not_in_list`
-  operators where the value is a managed list name.
+  - Numeric operators (gt, ge, lt, le) bypass per-field map — accepted on any field.
 
 ## Code Style — TypeScript/React (waf-dashboard/)
 
@@ -143,16 +139,15 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 - Domain modules under `src/lib/api/` — `shared.ts` (HTTP helpers), `waf-events.ts`, `analytics.ts`,
   `exclusions.ts`, `config.ts`, `rate-limits.ts`, `blocklist.ts`, `csp.ts`, `general-logs.ts`,
-  `managed-lists.ts`, `index.ts` (barrel re-export).
+  `managed-lists.ts`, `backup.ts`, `default-rules.ts`, `security-headers.ts`, `index.ts` (barrel).
 - Go returns `snake_case` JSON; API modules map to `camelCase` TypeScript interfaces.
 - When adding endpoints, update the Go handler AND the matching API module.
 
 ### UI Patterns
 
-- shadcn/ui components in `src/components/ui/`.
-- `cn()` utility (clsx + tailwind-merge) for className composition.
+- shadcn/ui components in `src/components/ui/`; `cn()` for className composition.
 - Components over ~500 lines split into feature subdirectories (e.g., `policy/`, `ratelimits/`, `csp/`).
-- Astro static MPA (not SPA) — each page is a pre-rendered HTML file with file-based routing.
+- Astro static MPA (not SPA) — file-based routing, pre-rendered HTML pages.
 - SSR/Hydration caveat: read URL params in `useEffect` (client-only), never in `useState` initializer.
 - Cross-page links use native `<a href>` anchors, not SPA navigation.
 
@@ -173,7 +168,7 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 ## Key Architecture Notes
 
-- Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload (no Caddy restart).
+- Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload.
 - On startup, `generateOnBoot()` regenerates all config from stored JSON state.
 - All stores use JSON file persistence with `sync.RWMutex` protection.
 - Version tags must stay in sync across: `Makefile`, `compose.yaml`, `README.md`, `.github/workflows/build.yml`.

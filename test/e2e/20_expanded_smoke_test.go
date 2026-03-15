@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -13,9 +14,25 @@ import (
 // passes through, then re-enable and verify it's blocked again.
 
 func TestDefaultRulesBulkBehavior(t *testing.T) {
+	// Ensure WAF config is at known defaults (not poisoned by parallel tests).
+	ensureDefaultConfig(t)
+	deployWAF(t)
+
 	// Rule 942100 catches "UNION SELECT" SQLi. Confirm it blocks first.
 	sentinel := fmt.Sprintf("e2e-crsbulk-%d", time.Now().UnixNano())
 	attackURL := caddyURL + "/get?q=1+UNION+SELECT+username,password+FROM+users"
+
+	// Wait for the default config (threshold=15) to take effect before testing.
+	waitForCondition(t, "SQLi blocked at default threshold", 15*time.Second, func() bool {
+		req, _ := http.NewRequest("GET", attackURL, nil)
+		setBrowserHeaders(req)
+		resp, err := client.Do(req)
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == 403
+	})
 
 	t.Run("baseline blocked", func(t *testing.T) {
 		req := mustNewRequest(t, "GET", attackURL)

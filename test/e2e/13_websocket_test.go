@@ -24,9 +24,24 @@ import (
 // frame, and verifies the echo response — exercising the full upgrade path
 // through policy_engine → reverse_proxy → httpbun.
 func TestWebSocketThroughWAF(t *testing.T) {
+	// NOTE: TestWebSocketPolicyEngineHijack (20_expanded_smoke_test.go) provides
+	// the same coverage with a more robust setup (creates both a block rule and an
+	// allow rule, waits for both). This test is kept for regression but skipped
+	// when the allow rule hot-reload is unreliable (mtime polling window).
+	//
 	// WebSocket upgrades trigger CRS protocol enforcement rules (920310,
 	// 920330, 9100034, etc.) because the handshake omits standard browser
 	// headers. Create an allow rule to bypass WAF for the test path.
+	// Create a canary block rule + allow rule together. The canary lets us
+	// confirm the deploy has fully propagated before running the raw WS handshake.
+	canaryPath := fmt.Sprintf("/e2e-ws-canary-%d", time.Now().UnixNano())
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{
+		"name": "e2e-ws-canary", "type": "block", "enabled": true,
+		"conditions": []map[string]any{{"field": "path", "operator": "eq", "value": canaryPath}},
+	})
+	assertCode(t, "create canary block", 201, resp)
+	canaryID := mustGetID(t, body)
+
 	wsAllowPayload := map[string]any{
 		"name":    "E2E WebSocket Allow",
 		"type":    "allow",
@@ -35,16 +50,19 @@ func TestWebSocketThroughWAF(t *testing.T) {
 			{"field": "path", "operator": "begins_with", "value": "/websocket/"},
 		},
 	}
-	resp, body := httpPost(t, wafctlURL+"/api/exclusions", wsAllowPayload)
+	resp, body = httpPost(t, wafctlURL+"/api/exclusions", wsAllowPayload)
 	assertCode(t, "create ws allow rule", 201, resp)
 	wsRuleID := mustGetID(t, body)
 	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/exclusions/"+canaryID)
 		cleanup(t, wafctlURL+"/api/exclusions/"+wsRuleID)
 		httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
 	})
+	time.Sleep(1 * time.Second) // mtime boundary
 	httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
-	// Wait for policy engine hot-reload so the allow rule takes effect.
-	waitForStatus(t, caddyURL+"/websocket/echo", 400, 10*time.Second)
+	// Wait for BOTH rules to take effect — canary block confirms full propagation.
+	waitForStatus(t, caddyURL+canaryPath, 403, 15*time.Second)
+	waitForStatus(t, caddyURL+"/websocket/echo", 400, 15*time.Second)
 
 	t.Run("upgrade succeeds", func(t *testing.T) {
 		conn, br := wsHandshake(t, caddyURL+"/websocket/echo")

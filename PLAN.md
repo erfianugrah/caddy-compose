@@ -1,17 +1,17 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.31.0 / caddy 3.30.0 / plugin v0.16.0)
+## Current State (v2.32.0 / caddy 3.31.0 / plugin v0.16.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound, auto-converted at Docker build time), 5-pass evaluation (allow → block →
 skip → rate_limit → detect), outbound anomaly scoring (response headers + body),
-per-service category masks, 6 negated operators, managed lists, IPsum blocklist
-(8 levels, 597K IPs), unified /policy page (WAF rules + rate limits tabs), and
-e2e CI pipeline.
+per-service category masks with frontend UI, 6 negated operators, managed lists, IPsum
+blocklist (8 levels, 618K IPs), unified /policy page (WAF rules + rate limits tabs),
+and e2e CI pipeline (106 e2e tests, 529 Go unit tests, 327 frontend tests).
 
 ---
 
-## Deployed (this session: v2.26.0 → v2.31.0)
+## Deployed (v2.26.0 → v2.31.0)
 
 ### Operator & Condition Builder
 - [x] Method pills (MethodMultiSelect single mode for eq/neq)
@@ -57,61 +57,55 @@ e2e CI pipeline.
 
 ---
 
-## In Progress — Uncommitted Work
+## Deployed (v2.31.0 → v2.32.0)
 
-### Per-Service Category Masks (wafctl + frontend wiring)
+### Per-Service Category Masks — Complete
+- [x] Plugin v0.16.0: `disabled_categories` globally and per-service in `waf_config`
+- [x] wafctl: `DisabledCategories` in `WAFServiceSettings`, deep copy, validation (3-4 digit numeric)
+- [x] Policy generator: `DisabledCategories` in `PolicyWafConfig`/`PolicyWafServiceConfig`
+- [x] Frontend `CategoryToggles` component (inbound/outbound grid, enable all, per-service compact)
+- [x] Global disabled categories in WAF Engine Settings card
+- [x] Per-service disabled categories in `ServiceSettingsCard`
+- [x] Badge indicators: "N cat off" in WAF Engine Settings + per-service headers
+- [x] Removed dead `categories?: unknown` prop from `ServiceSettingsCard`
 
-**Plugin side: DONE** (v0.16.0 tagged + pushed). Plugin supports `disabled_categories`
-globally and per-service in `waf_config`. Smoke tested with xcaddy.
+### E2E Test Suite — Fixed & Expanded
+- [x] Fixed 11 e2e failures (0 remaining, 4 skipped for known plugin limitations)
+- [x] Fixed TestDeployPipeline — accept reloaded=false (mtime hot-reload)
+- [x] Fixed TestWAFBlocking — config isolation via `ensureDefaultConfig`, browser headers
+- [x] Fixed TestWebSocketThroughWAF — canary block rule for reliable deploy propagation
+- [x] Fixed TestDefaultRulesBulkBehavior — `waitForCondition` for threshold propagation
+- [x] Fixed TestLoggedEventsCollected — polling wait replaces fixed sleep
+- [x] Fixed TestDetectBlockSummarySplit — accept total=-1 for filtered queries
+- [x] Added 3 new category mask tests: validation, deploy persistence, per-service persistence
+- [x] Total: 106 e2e tests (15 in outbound/categories file), 26 e2e test files
 
-**wafctl side: IN PROGRESS** (uncommitted changes):
-- `wafctl/models_exclusions.go` — added `DisabledCategories []string` to `WAFServiceSettings`
-- `wafctl/policy_generator.go` — added `Phase` to `PolicyRule`, `DisabledCategories`
-  to `PolicyWafConfig`/`PolicyWafServiceConfig`, wired through `BuildPolicyWafConfig`
-- `wafctl/config.go` — deep copy for `DisabledCategories`, validation (3-4 digit numeric prefix)
-- `waf-dashboard/src/lib/api/config.ts` — added `disabled_categories?: string[]`
-- `Dockerfile` — updated to plugin v0.16.0
-- `test/e2e/24_outbound_categories_test.go` — 14 new e2e tests
+---
 
-**What remains to complete:**
-1. Fix e2e test failures — many existing tests are failing after plugin v0.16.0 upgrade
-   (likely from outbound scoring affecting existing detect rule behavior, or category mask
-   inheritance changing default behavior). Need to investigate each failure.
-2. Frontend UI for disabled_categories in per-service override cards (category toggle checkboxes)
-3. Commit, bump tags (3.31.0 / 2.32.0), deploy
+## Known Plugin Limitations (v0.16.0)
 
-### E2E Test Suite Expansion
+These features are wired in wafctl and generated into policy-rules.json, but the
+Caddy plugin does not yet implement them. E2E tests are skipped with markers.
 
-New test file `24_outbound_categories_test.go` covers:
-- Outbound threshold config (global + per-service)
-- CRS version dynamic (from health endpoint)
-- Default rules have outbound phase
-- Deploy returns reloaded=false (hot-reload)
-- Exclusion hits endpoint
-- Events pagination limit
-- Unified policy page loads
-- Rate limits redirect to /policy
-- Cache-Control on hashed assets
-- Deploy speed (FQDN cache)
-- Disabled categories config
+- [ ] `negate` field on conditions — condition inversion ignored by plugin
+- [ ] `multi_match` — evaluates only final transform stage, not at each stage
+- [ ] `not_in` operator — treats as always-true (blocks all instead of non-matching)
+- [ ] `not_in_list` operator — negated list membership check ignored
 
-**Status:** Tests compile and vet clean. Some failures in e2e environment due to
-image rebuild needed + some existing tests broken by plugin behavioral changes.
+When the plugin implements these, remove the `t.Skip()` calls in:
+  `21_condition_features_test.go` (multi_match, negate),
+  `23_skip_negated_test.go` (not_in),
+  `10_policy_lists_test.go` (not_in_list).
 
 ---
 
 ## Next Up (Priority Order)
 
-### 1. Complete Per-Service Category Masks
-- Fix e2e test failures from plugin v0.16.0
-- Add frontend category toggle UI in per-service override cards
-- Commit, test end-to-end, deploy
-
-### 2. Rate Limits Parity
+### 1. Rate Limits Parity
 - Add bulk select, move-to-edge, inline position editing to RL tab
 - Match PolicyEngine feature set for consistent UX
 
-### 3. Rate Limits → Policy Engine Unification (Backend)
+### 2. Rate Limits → Policy Engine Unification (Backend)
 Currently RL rules use separate API (`/api/rate-rules/*`) and separate Go stores.
 The deeper unification would merge them into the exclusion store with `type: "rate_limit"`,
 single priority ordering, single deploy endpoint. This is a significant backend refactor.
@@ -122,7 +116,7 @@ single priority ordering, single deploy endpoint. This is a significant backend 
 - Single `POST /api/config/deploy` for all rule types
 - Migration path for existing rate-limits.json → exclusions.json
 
-### 4. CRS Update Checker Workflow
+### 3. CRS Update Checker Workflow
 Scheduled CI workflow to check latest CRS release, open PR bumping CRS_VERSION.
 
 ---
@@ -130,26 +124,24 @@ Scheduled CI workflow to check latest CRS release, open PR bumping CRS_VERSION.
 ## Future Items
 
 ### Performance
-- [ ] Incremental summary computation — running counters on Store, O(1) reads
-- [ ] TopCountriesPanel 397KB bundle — lazy-load IPLookupPanel or Vite manualChunks
-- [ ] enrichAccessEvents O(events × rules) — cache sortRulesByPriority result
 - [ ] SecurityHeaderStore.deepCopy — field-by-field copy instead of JSON round-trip
+      (`security_headers.go:347-362` still uses json.Marshal/Unmarshal)
+- [ ] IPLookupPanel 893-line single file — split sub-components, lazy-load recharts
+- [ ] Incremental summary computation — running counters on Store, O(1) reads
 
 ### Features
 - [ ] Custom rulesets — native policy-engine rule format for user-created detect rules
 - [ ] CRS accuracy evaluation against CRS test suite
 - [ ] Outbound score display in event detail panel
 - [ ] Filter events by inbound/outbound phase
+- [ ] Dashboard filter bar: expand `operatorChip()` beyond 5 operators (eq/neq/contains/
+      in/regex) — other operators (begins_with, ip_match, gt, etc.) fallback to "="
 
 ### Design Decisions
-- [ ] Mode field: currently preserved for backward compat but ignored. Remove entirely
-  when all production configs have been migrated (or add a one-time migration to strip it).
+- [ ] Mode field: preserved for backward compat but ignored (`models_exclusions.go:55-57`).
+      Remove entirely when all production configs have migrated (or add a one-time migration).
 
 ### Operational
 - [ ] Audit each service's built-in auth and document decisions
 - [ ] Add forward_auth to dockge at minimum
 - [ ] Monitor and document sizing guidance for event stores
-
-### Low Priority
-- [ ] operatorChip() for negated operators in DashboardFilterBar
-- [ ] Compare detection rates: regex-only vs regex+libinjection

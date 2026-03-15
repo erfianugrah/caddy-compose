@@ -141,8 +141,9 @@ func TestDetectBlockSummarySplit(t *testing.T) {
 		// Response is {total: N, events: [...]}.
 		total := jsonInt(body, "total")
 		t.Logf("detect_block events total: %d", total)
-		if total < 0 {
-			t.Error("expected non-negative total from events endpoint")
+		// total may be -1 for filtered queries (early-exit pagination).
+		if total < -1 {
+			t.Error("unexpected total from events endpoint")
 		}
 		// Verify events array is present.
 		events := jsonFieldArray(body, "events")

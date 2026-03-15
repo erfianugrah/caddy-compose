@@ -14,6 +14,7 @@ import {
 import type { WAFServiceSettings, ServiceDetail, Exclusion, DefaultRule } from "@/lib/api";
 import { getExclusions, createExclusion, deleteExclusion, deployConfig, listDefaultRules, getCategoryShortName } from "@/lib/api";
 import { SensitivitySettings } from "./SettingsFormSections";
+import { CategoryToggles } from "./CategoryToggles";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -49,7 +50,6 @@ export function ServiceSettingsCard({
 }: {
   hostname: string;
   settings: WAFServiceSettings;
-  categories?: unknown;
   serviceDetail?: ServiceDetail;
   onChange: (s: WAFServiceSettings) => void;
   onRemove: () => void;
@@ -191,6 +191,11 @@ export function ServiceSettingsCard({
               </div>
             </>
           )}
+          {(settings.disabled_categories?.length ?? 0) > 0 && (
+            <Badge variant="outline" className="text-xs text-lv-peach border-lv-peach/30">
+              {settings.disabled_categories!.length} cat off
+            </Badge>
+          )}
           {skippedIds.length > 0 && (
             <Badge variant="outline" className="text-xs text-lv-cyan border-lv-cyan/30">
               {skippedIds.length} skipped
@@ -205,6 +210,15 @@ export function ServiceSettingsCard({
       {expanded && (
         <CardContent className="space-y-5 border-t border-border pt-4">
           <SensitivitySettings settings={settings} onChange={onChange} compact />
+
+          <Separator />
+
+          {/* Disabled CRS Categories */}
+          <CategoryToggles
+            disabled={settings.disabled_categories ?? []}
+            onChange={(cats) => onChange({ ...settings, disabled_categories: cats.length > 0 ? cats : undefined })}
+            compact
+          />
 
           <Separator />
 

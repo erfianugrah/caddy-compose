@@ -305,6 +305,212 @@ func TestDeploySpeed(t *testing.T) {
 
 // --- Disabled Categories Config ---
 
+// --- Disabled Categories Validation ---
+
+func TestDisabledCategoriesValidation(t *testing.T) {
+	// Invalid: non-numeric prefix.
+	resp, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"mode":                "enabled",
+			"paranoia_level":      2,
+			"inbound_threshold":   15,
+			"outbound_threshold":  15,
+			"disabled_categories": []string{"abc"},
+		},
+		"services": map[string]any{},
+	})
+	if resp.StatusCode == 200 {
+		t.Error("expected rejection for non-numeric disabled_categories, got 200")
+		// Restore valid config.
+		httpPut(t, wafctlURL+"/api/config", map[string]any{
+			"defaults": map[string]any{
+				"mode": "enabled", "paranoia_level": 2,
+				"inbound_threshold": 15, "outbound_threshold": 15,
+			},
+			"services": map[string]any{},
+		})
+	}
+
+	// Invalid: too short (1 digit).
+	resp2, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"mode":                "enabled",
+			"paranoia_level":      2,
+			"inbound_threshold":   15,
+			"outbound_threshold":  15,
+			"disabled_categories": []string{"9"},
+		},
+		"services": map[string]any{},
+	})
+	if resp2.StatusCode == 200 {
+		t.Error("expected rejection for 1-digit disabled_categories, got 200")
+		httpPut(t, wafctlURL+"/api/config", map[string]any{
+			"defaults": map[string]any{
+				"mode": "enabled", "paranoia_level": 2,
+				"inbound_threshold": 15, "outbound_threshold": 15,
+			},
+			"services": map[string]any{},
+		})
+	}
+
+	// Invalid: too long (5 digits).
+	resp3, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"mode":                "enabled",
+			"paranoia_level":      2,
+			"inbound_threshold":   15,
+			"outbound_threshold":  15,
+			"disabled_categories": []string{"94200"},
+		},
+		"services": map[string]any{},
+	})
+	if resp3.StatusCode == 200 {
+		t.Error("expected rejection for 5-digit disabled_categories, got 200")
+		httpPut(t, wafctlURL+"/api/config", map[string]any{
+			"defaults": map[string]any{
+				"mode": "enabled", "paranoia_level": 2,
+				"inbound_threshold": 15, "outbound_threshold": 15,
+			},
+			"services": map[string]any{},
+		})
+	}
+
+	// Valid: 3-digit and 4-digit prefixes.
+	resp4, _ := httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"mode":                "enabled",
+			"paranoia_level":      2,
+			"inbound_threshold":   15,
+			"outbound_threshold":  15,
+			"disabled_categories": []string{"942", "9100"},
+		},
+		"services": map[string]any{},
+	})
+	assertCode(t, "valid 3+4 digit categories", 200, resp4)
+
+	// Restore.
+	t.Cleanup(func() {
+		httpPut(t, wafctlURL+"/api/config", map[string]any{
+			"defaults": map[string]any{
+				"mode": "enabled", "paranoia_level": 2,
+				"inbound_threshold": 15, "outbound_threshold": 15,
+			},
+			"services": map[string]any{},
+		})
+	})
+}
+
+// --- Disabled Categories in Policy Rules ---
+
+func TestDisabledCategoriesInPolicyRules(t *testing.T) {
+	// Set disabled_categories, deploy, then verify the config roundtrips
+	// and the deploy response includes the categories in policy-rules output.
+	configPayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":                "enabled",
+			"paranoia_level":      2,
+			"inbound_threshold":   15,
+			"outbound_threshold":  15,
+			"disabled_categories": []string{"942", "941"},
+		},
+		"services": map[string]any{},
+	}
+	resp, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
+	assertCode(t, "set config with categories", 200, resp)
+
+	// Deploy to generate policy-rules.json.
+	resp2, body2 := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy status", body2, "status", "deployed")
+
+	// Re-read config to verify disabled_categories persisted through deploy.
+	resp3, body3 := httpGet(t, wafctlURL+"/api/config")
+	assertCode(t, "re-read config", 200, resp3)
+
+	var cfg struct {
+		Defaults struct {
+			DisabledCategories []string `json:"disabled_categories"`
+		} `json:"defaults"`
+	}
+	json.Unmarshal(body3, &cfg)
+
+	if len(cfg.Defaults.DisabledCategories) != 2 {
+		t.Errorf("expected 2 disabled_categories after deploy, got %d", len(cfg.Defaults.DisabledCategories))
+	}
+
+	// Restore.
+	t.Cleanup(func() {
+		httpPut(t, wafctlURL+"/api/config", map[string]any{
+			"defaults": map[string]any{
+				"mode": "enabled", "paranoia_level": 2,
+				"inbound_threshold": 15, "outbound_threshold": 15,
+			},
+			"services": map[string]any{},
+		})
+		deployWAF(t)
+	})
+}
+
+// --- Disabled Categories Per-Service in Policy Rules ---
+
+func TestDisabledCategoriesPerServiceInPolicyRules(t *testing.T) {
+	configPayload := map[string]any{
+		"defaults": map[string]any{
+			"mode":               "enabled",
+			"paranoia_level":     2,
+			"inbound_threshold":  15,
+			"outbound_threshold": 15,
+		},
+		"services": map[string]any{
+			"httpbun.erfi.io": map[string]any{
+				"mode":                "enabled",
+				"paranoia_level":      1,
+				"inbound_threshold":   5,
+				"outbound_threshold":  5,
+				"disabled_categories": []string{"932", "933"},
+			},
+		},
+	}
+	resp, _ := httpPut(t, wafctlURL+"/api/config", configPayload)
+	assertCode(t, "set per-service config", 200, resp)
+
+	resp2, body2 := httpPostDeploy(t, wafctlURL+"/api/config/deploy", struct{}{})
+	assertCode(t, "deploy", 200, resp2)
+	assertField(t, "deploy status", body2, "status", "deployed")
+
+	// Re-read config to verify per-service disabled_categories persisted.
+	resp3, body3 := httpGet(t, wafctlURL+"/api/config")
+	assertCode(t, "re-read config", 200, resp3)
+
+	var cfg struct {
+		Services map[string]struct {
+			DisabledCategories []string `json:"disabled_categories"`
+		} `json:"services"`
+	}
+	json.Unmarshal(body3, &cfg)
+
+	svc, ok := cfg.Services["httpbun.erfi.io"]
+	if !ok {
+		t.Fatal("httpbun.erfi.io not in services after deploy")
+	}
+	if len(svc.DisabledCategories) != 2 {
+		t.Errorf("expected 2 per-service disabled_categories, got %d: %v", len(svc.DisabledCategories), svc.DisabledCategories)
+	}
+
+	t.Cleanup(func() {
+		httpPut(t, wafctlURL+"/api/config", map[string]any{
+			"defaults": map[string]any{
+				"mode": "enabled", "paranoia_level": 2,
+				"inbound_threshold": 15, "outbound_threshold": 15,
+			},
+			"services": map[string]any{},
+		})
+		deployWAF(t)
+	})
+}
+
+// --- Disabled Categories Config ---
+
 func TestDisabledCategoriesConfig(t *testing.T) {
 	configPayload := map[string]any{
 		"defaults": map[string]any{
