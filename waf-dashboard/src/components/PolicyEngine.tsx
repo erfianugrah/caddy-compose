@@ -106,6 +106,8 @@ import type { EventPrefill } from "./policy/eventPrefill";
 import { consumePrefillEvent } from "./policy/eventPrefill";
 import { conditionsSummary, exclusionTypeLabel, exclusionTypeBadgeVariant } from "./policy/exclusionHelpers";
 import { QuickActionsForm, AdvancedBuilderForm } from "./policy/PolicyForms";
+import { RuleForm } from "./ratelimits/RuleForm";
+import { updateRLRule, type RateLimitRule, type RateLimitRuleCreateData, type RLRuleKey, type RLRuleAction } from "@/lib/api";
 
 const RULES_PAGE_SIZE = 25;
 
@@ -585,7 +587,9 @@ export default function PolicyEngine() {
   // Editing: determine which tab the exclusion belongs to so we show the edit form in the right tab
   const exclusionToEdit = editingId ? exclusions.find((e) => e.id === editingId) : null;
 
-  const editFormState: AdvancedFormState | undefined = exclusionToEdit
+  const isEditingRateLimit = exclusionToEdit?.type === "rate_limit";
+
+  const editFormState: AdvancedFormState | undefined = exclusionToEdit && !isEditingRateLimit
     ? {
         name: exclusionToEdit.name,
         description: exclusionToEdit.description,
@@ -604,6 +608,40 @@ export default function PolicyEngine() {
         header_default: exclusionToEdit.header_default ?? {},
       }
     : undefined;
+
+  // Convert Exclusion → RateLimitRule for the rate limit form
+  const rlRuleToEdit: RateLimitRule | undefined = exclusionToEdit && isEditingRateLimit
+    ? {
+        id: exclusionToEdit.id,
+        name: exclusionToEdit.name,
+        description: exclusionToEdit.description,
+        service: exclusionToEdit.service ?? "*",
+        conditions: exclusionToEdit.conditions ?? [],
+        group_operator: exclusionToEdit.group_operator ?? "and",
+        key: (exclusionToEdit.rate_limit_key ?? "client_ip") as RLRuleKey,
+        events: exclusionToEdit.rate_limit_events ?? 0,
+        window: exclusionToEdit.rate_limit_window ?? "1m",
+        action: (exclusionToEdit.rate_limit_action ?? "deny") as RLRuleAction,
+        priority: exclusionToEdit.priority ?? 0,
+        tags: exclusionToEdit.tags ?? [],
+        enabled: exclusionToEdit.enabled,
+        created_at: exclusionToEdit.created_at,
+        updated_at: exclusionToEdit.updated_at,
+      }
+    : undefined;
+
+  const handleRLUpdate = async (id: string, data: RateLimitRuleCreateData) => {
+    try {
+      const updated = await updateRLRule(id, data);
+      // Refresh the full list since updateRLRule returns a RateLimitRule, not an Exclusion
+      const fresh = await getExclusions();
+      setExclusions(fresh);
+      setEditingId(null);
+      await autoDeploy("Rate limit rule updated");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    }
+  };
 
   // Controlled tab state — switches automatically when editing starts.
   const [activeTab, setActiveTab] = useState<string>("quick");
@@ -824,7 +862,8 @@ export default function PolicyEngine() {
                     id={excl.id}
                     disabled={isFiltered}
                     rowRef={isHighlighted ? highlightedRef : undefined}
-                    className={`${isHighlighted ? "ring-1 ring-emerald-500/60 bg-lv-green/5 transition-all duration-700" : ""}${selected.has(excl.id) ? " bg-lv-purple/10" : ""}`}
+                    className={`cursor-pointer ${isHighlighted ? "ring-1 ring-emerald-500/60 bg-lv-green/5 transition-all duration-700" : ""}${selected.has(excl.id) ? " bg-lv-purple/10" : ""}`}
+                    onClick={() => setEditingId(excl.id)}
                   >
                     <TableCell className="px-2" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -834,7 +873,7 @@ export default function PolicyEngine() {
                         className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
                       />
                     </TableCell>
-                    <TableCell className="text-xs tabular-nums text-muted-foreground/60 w-[40px]" title={`Rule ${globalIdx} of ${filteredExclusions.length} — click to move`}>
+                    <TableCell className="text-xs tabular-nums text-muted-foreground/60 w-[52px] px-1" title={`Rule ${globalIdx} of ${filteredExclusions.length} — click to move`} onClick={(e) => e.stopPropagation()}>
                       {editingPositionId === excl.id ? (
                         <input
                           type="number"
@@ -923,7 +962,7 @@ export default function PolicyEngine() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <Switch
                           checked={excl.enabled}
@@ -1014,7 +1053,7 @@ export default function PolicyEngine() {
             <DialogHeader className="space-y-3">
               <div className="flex items-center justify-between">
                 <DialogTitle className="text-base">
-                  {editingId ? "Edit Rule" : "Create Rule"}
+                  {editingId && isEditingRateLimit ? "Edit Rate Limit Rule" : editingId ? "Edit Rule" : "Create Rule"}
                 </DialogTitle>
                 {!editingId && (
                   <TabsList className="h-8">
@@ -1056,7 +1095,16 @@ export default function PolicyEngine() {
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-4">
-              {editingId && editFormState ? (
+              {editingId && isEditingRateLimit && rlRuleToEdit ? (
+                <RuleForm
+                  key={editingId}
+                  initial={rlRuleToEdit}
+                  services={services}
+                  onSubmit={(data) => { handleRLUpdate(editingId!, data); closeDialog(); }}
+                  onCancel={closeDialog}
+                  submitLabel="Save Changes"
+                />
+              ) : editingId && editFormState ? (
                 <AdvancedBuilderForm
                   key={editingId}
                   initial={editFormState}

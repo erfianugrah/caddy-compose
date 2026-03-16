@@ -864,7 +864,7 @@ export default function RateLimitsPanel() {
                               className="h-3.5 w-3.5 rounded border-border accent-lv-purple cursor-pointer"
                             />
                           </TableCell>
-                          <TableCell className="text-xs tabular-nums text-muted-foreground/60" title={`Rule ${globalIdx} of ${filteredRules.length} — click to move`}>
+                          <TableCell className="text-xs tabular-nums text-muted-foreground/60 px-1" title={`Rule ${globalIdx} of ${filteredRules.length} — click to move`}>
                             {editingPositionId === rule.id ? (
                               <input
                                 type="number"

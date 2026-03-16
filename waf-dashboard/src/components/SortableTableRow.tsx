@@ -12,12 +12,14 @@ export function SortableTableRow({
   children,
   className,
   rowRef,
+  onClick,
 }: {
   id: string;
   disabled?: boolean;
   children: React.ReactNode;
   className?: string;
   rowRef?: React.Ref<HTMLTableRowElement>;
+  onClick?: () => void;
 }) {
   const {
     attributes,
@@ -47,7 +49,7 @@ export function SortableTableRow({
   );
 
   return (
-    <TableRow ref={mergedRef} style={style} className={className} {...attributes}>
+    <TableRow ref={mergedRef} style={style} className={className} onClick={onClick} {...attributes}>
       <TableCell className="w-[52px] px-1">
         <div className="flex items-center gap-0.5">
           {!disabled ? (
