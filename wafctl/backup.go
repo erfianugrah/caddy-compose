@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -66,9 +67,9 @@ func handleBackup(
 }
 
 // handleRestore replaces all configuration stores from a unified backup.
-// Each store is restored independently — a failure in one store does not
-// roll back previously restored stores (partial restore is better than
-// no restore). The response reports per-store success/failure.
+// Uses a two-pass approach: first validate ALL stores, then apply changes.
+// If any validation fails, no stores are modified (prevents partial restores
+// that could weaken security).
 func handleRestore(
 	cs *ConfigStore,
 	cspS *CSPStore,
@@ -90,12 +91,58 @@ func handleRestore(
 			return
 		}
 
-		results := make(map[string]string)
+		// ── Pass 1: Validate everything before modifying any store ──
+		var validationErrors []string
 
 		// 1. WAF Config
 		if err := validateConfig(backup.WAFConfig); err != nil {
-			results["waf_config"] = "failed: " + err.Error()
-		} else if _, err := cs.Update(backup.WAFConfig); err != nil {
+			validationErrors = append(validationErrors, "waf_config: "+err.Error())
+		}
+
+		// 2. CSP Config — CSPStore.Update handles validation internally;
+		// no separate validation function exists. Validated during apply.
+
+		// 3. Security Headers — same as CSP: validated during apply.
+
+		// 4. Exclusions
+		if len(backup.Exclusions) > 0 {
+			for i, exc := range backup.Exclusions {
+				if err := validateExclusion(exc); err != nil {
+					validationErrors = append(validationErrors,
+						"exclusion "+strconv.Itoa(i)+": "+err.Error())
+					break
+				}
+			}
+		}
+
+		// 5. Managed Lists
+		if len(backup.Lists) > 0 {
+			for i, list := range backup.Lists {
+				if list.Source == "ipsum" {
+					continue // skip validation for ipsum (ignored on import)
+				}
+				if err := validateManagedList(list); err != nil {
+					validationErrors = append(validationErrors,
+						"list "+strconv.Itoa(i)+": "+err.Error())
+					break
+				}
+			}
+		}
+
+		// If any pre-apply validation failed, reject the entire restore.
+		if len(validationErrors) > 0 {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error:   "backup validation failed — no stores were modified",
+				Details: "validation errors: " + strings.Join(validationErrors, "; "),
+			})
+			return
+		}
+
+		// ── Pass 2: Apply all changes ──────────────────────────────
+		results := make(map[string]string)
+
+		// 1. WAF Config
+		if _, err := cs.Update(backup.WAFConfig); err != nil {
 			results["waf_config"] = "failed: " + err.Error()
 		} else {
 			results["waf_config"] = "restored"
@@ -119,18 +166,10 @@ func handleRestore(
 		if len(backup.Exclusions) == 0 {
 			results["exclusions"] = "skipped: no exclusions in backup"
 		} else {
-			for i, exc := range backup.Exclusions {
-				if err := validateExclusion(exc); err != nil {
-					results["exclusions"] = "failed: exclusion " + strconv.Itoa(i) + ": " + err.Error()
-					break
-				}
-			}
-			if _, ok := results["exclusions"]; !ok {
-				if err := es.Import(backup.Exclusions); err != nil {
-					results["exclusions"] = "failed: " + err.Error()
-				} else {
-					results["exclusions"] = "restored " + strconv.Itoa(len(backup.Exclusions)) + " exclusions"
-				}
+			if err := es.Import(backup.Exclusions); err != nil {
+				results["exclusions"] = "failed: " + err.Error()
+			} else {
+				results["exclusions"] = "restored " + strconv.Itoa(len(backup.Exclusions)) + " exclusions"
 			}
 		}
 
@@ -146,21 +185,10 @@ func handleRestore(
 		if len(backup.Lists) == 0 {
 			results["lists"] = "skipped: no lists in backup"
 		} else {
-			for i, list := range backup.Lists {
-				if list.Source == "ipsum" {
-					continue // skip validation for ipsum (they're ignored on import anyway)
-				}
-				if err := validateManagedList(list); err != nil {
-					results["lists"] = "failed: list " + strconv.Itoa(i) + ": " + err.Error()
-					break
-				}
-			}
-			if _, ok := results["lists"]; !ok {
-				if err := ls.Import(backup.Lists); err != nil {
-					results["lists"] = "failed: " + err.Error()
-				} else {
-					results["lists"] = "restored " + strconv.Itoa(len(backup.Lists)) + " lists"
-				}
+			if err := ls.Import(backup.Lists); err != nil {
+				results["lists"] = "failed: " + err.Error()
+			} else {
+				results["lists"] = "restored " + strconv.Itoa(len(backup.Lists)) + " lists"
 			}
 		}
 
@@ -189,7 +217,7 @@ func handleRestore(
 			"results": results,
 		}
 		if status == "partial" {
-			resp["warning"] = "Partial restore: some stores were updated before the failure. " +
+			resp["warning"] = "Some store updates failed during apply. " +
 				"Re-run the restore or manually fix the failed stores. " +
 				"A deploy is recommended to sync the live Caddy config."
 		}

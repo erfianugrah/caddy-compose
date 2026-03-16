@@ -415,7 +415,7 @@ func TestRestore_EmptyBody(t *testing.T) {
 	}
 }
 
-// ─── Restore: Invalid WAF Config (partial) ──────────────────────────────────
+// ─── Restore: Invalid WAF Config (rejected by pre-apply validation) ─────────
 
 func TestRestore_InvalidWAFConfig(t *testing.T) {
 	mux, _, _, _, _, _, _ := setupBackupMux(t)
@@ -437,26 +437,18 @@ func TestRestore_InvalidWAFConfig(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != 200 {
-		t.Fatalf("expected 200 (partial restore), got %d", rec.Code)
+	// Validate-before-apply: invalid WAF config rejects the entire restore.
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 (validation rejected), got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp ErrorResponse
 	json.Unmarshal(rec.Body.Bytes(), &resp)
-
-	if resp["status"] != "partial" {
-		t.Errorf("expected status 'partial', got %v", resp["status"])
+	if !strings.Contains(resp.Error, "validation failed") {
+		t.Errorf("expected validation failure message, got %q", resp.Error)
 	}
-
-	results := resp["results"].(map[string]interface{})
-	wafResult := results["waf_config"].(string)
-	if !strings.HasPrefix(wafResult, "failed") {
-		t.Errorf("expected waf_config to fail, got %q", wafResult)
-	}
-	// Other stores should still restore or skip.
-	cspResult := results["csp_config"].(string)
-	if cspResult != "restored" {
-		t.Errorf("expected csp_config restored, got %q", cspResult)
+	if !strings.Contains(resp.Details, "waf_config") {
+		t.Errorf("expected details to mention waf_config, got %q", resp.Details)
 	}
 }
 
@@ -507,7 +499,7 @@ func TestRestore_InvalidCSPConfig(t *testing.T) {
 	}
 }
 
-// ─── Restore: Invalid Exclusion (partial) ───────────────────────────────────
+// ─── Restore: Invalid Exclusion (rejected by pre-apply validation) ──────────
 
 func TestRestore_InvalidExclusion(t *testing.T) {
 	mux, _, _, _, _, _, _ := setupBackupMux(t)
@@ -532,20 +524,18 @@ func TestRestore_InvalidExclusion(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != 200 {
-		t.Fatalf("expected 200 (partial), got %d", rec.Code)
+	// Validate-before-apply: invalid exclusion rejects the entire restore.
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 (validation rejected), got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp ErrorResponse
 	json.Unmarshal(rec.Body.Bytes(), &resp)
-
-	if resp["status"] != "partial" {
-		t.Errorf("expected partial, got %v", resp["status"])
+	if !strings.Contains(resp.Error, "validation failed") {
+		t.Errorf("expected validation failure message, got %q", resp.Error)
 	}
-	results := resp["results"].(map[string]interface{})
-	exclResult := results["exclusions"].(string)
-	if !strings.HasPrefix(exclResult, "failed") {
-		t.Errorf("expected exclusions failure, got %q", exclResult)
+	if !strings.Contains(resp.Details, "exclusion") {
+		t.Errorf("expected details to mention exclusion, got %q", resp.Details)
 	}
 }
 
@@ -796,7 +786,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 	}
 }
 
-// ─── Restore: Multiple Failures ─────────────────────────────────────────────
+// ─── Restore: Multiple Failures (rejected by pre-apply validation) ──────────
 
 func TestRestore_MultipleFailures(t *testing.T) {
 	mux, _, _, _, _, _, _ := setupBackupMux(t)
@@ -829,33 +819,26 @@ func TestRestore_MultipleFailures(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != 200 {
-		t.Fatalf("expected 200, got %d", rec.Code)
+	// Validate-before-apply: multiple validation errors reject the entire restore.
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 (validation rejected), got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp ErrorResponse
 	json.Unmarshal(rec.Body.Bytes(), &resp)
-
-	if resp["status"] != "partial" {
-		t.Errorf("expected partial, got %v", resp["status"])
+	if !strings.Contains(resp.Error, "validation failed") {
+		t.Errorf("expected validation failure message, got %q", resp.Error)
 	}
-
-	results := resp["results"].(map[string]interface{})
-	// waf_config, csp_config, exclusions should fail; rate_limits is now skipped.
-	for _, key := range []string{"waf_config", "csp_config", "exclusions"} {
-		result := results[key].(string)
-		if !strings.HasPrefix(result, "failed") {
-			t.Errorf("%s: expected failure, got %q", key, result)
-		}
+	// Should report errors for waf_config and exclusion (both caught in Pass 1).
+	if !strings.Contains(resp.Details, "waf_config") {
+		t.Errorf("expected details to mention waf_config, got %q", resp.Details)
 	}
-	// rate_limits should be skipped (not failed) since RL rules are ignored.
-	rlResult := results["rate_limits"].(string)
-	if !strings.Contains(rlResult, "skipped") {
-		t.Errorf("rate_limits: expected skipped, got %q", rlResult)
+	if !strings.Contains(resp.Details, "exclusion") {
+		t.Errorf("expected details to mention exclusion, got %q", resp.Details)
 	}
 }
 
-// ─── Restore: Preserves Existing Data on Partial Failure ────────────────────
+// ─── Restore: Preserves All Existing Data When Validation Fails ─────────────
 
 func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 	mux, cs, _, _, es, _, _ := setupBackupMux(t)
@@ -871,6 +854,7 @@ func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 	es.Create(testAllowExclusion("existing-rule"))
 
 	// Try to restore with a valid WAF config but invalid exclusions.
+	// Validate-before-apply ensures NO stores are modified when any validation fails.
 	backup := FullBackup{
 		Version: 1,
 		WAFConfig: WAFConfig{
@@ -891,16 +875,20 @@ func TestRestore_PreservesExistingOnPartialFailure(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	// WAF config should be updated (it was valid).
-	cfg := cs.Get()
-	if cfg.Defaults.ParanoiaLevel != 3 {
-		t.Errorf("WAF config should have been updated to paranoia 3, got %d", cfg.Defaults.ParanoiaLevel)
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 (validation rejected), got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// Exclusions should NOT have been replaced (validation failed).
+	// WAF config should NOT have been updated (entire restore rejected).
+	cfg := cs.Get()
+	if cfg.Defaults.ParanoiaLevel != 2 {
+		t.Errorf("WAF config should be unchanged at paranoia 2, got %d", cfg.Defaults.ParanoiaLevel)
+	}
+
+	// Exclusions should be preserved unchanged.
 	excls := es.List()
 	if len(excls) != 1 || excls[0].Name != "existing-rule" {
-		t.Errorf("exclusions should be preserved after failed restore: got %d exclusions", len(excls))
+		t.Errorf("exclusions should be preserved after rejected restore: got %d exclusions", len(excls))
 	}
 }
 

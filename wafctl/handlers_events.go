@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// eventQueryTimeout is the maximum time allowed for event search iteration.
+// Prevents unbounded CPU usage from complex filter queries over large event stores.
+const eventQueryTimeout = 30 * time.Second
 
 // --- Handlers: Health, Summary, Events, Services ---
 
@@ -379,11 +384,23 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		// Reverse-merge WAF events ([]Event) and ALS events ([]RateLimitEvent)
 		// sorted by timestamp (newest first) with inline filtering and pagination.
 		// Only events that land in the result page are enriched/converted.
+		// Bounded by eventQueryTimeout to prevent runaway iteration on huge stores.
+		ctx, cancel := context.WithTimeout(context.Background(), eventQueryTimeout)
+		defer cancel()
+
 		wi, ri := len(wafEvents)-1, len(rlRaw)-1
 		filtered := make([]Event, 0, limit)
 		matched := 0
+		timedOut := false
 
 		for wi >= 0 || ri >= 0 {
+			// Check timeout periodically (every 1000 iterations to avoid syscall overhead).
+			if (matched+1)%1000 == 0 {
+				if ctx.Err() != nil {
+					timedOut = true
+					break
+				}
+			}
 			// Pick the newest event from either source.
 			useWAF := wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlRaw[ri].Timestamp))
 
@@ -427,6 +444,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		}
 
 		resp := EventsResponse{Total: matched, Events: filtered}
+		if timedOut {
+			resp.Total = -1 // signal: results are partial due to timeout
+		}
 		cache.set(cacheKey, resp, gen, 5*time.Second)
 		writeJSON(w, http.StatusOK, resp)
 	}

@@ -216,7 +216,7 @@ export default function EventsTable() {
     setExpanded(new Set([expandId]));
     pendingExpandRef.current = null;
     requestAnimationFrame(() => {
-      const row = document.querySelector(`[data-event-id="${expandId}"]`);
+      const row = document.querySelector(`[data-event-id="${CSS.escape(expandId)}"]`);
       row?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }, [loading, response]);

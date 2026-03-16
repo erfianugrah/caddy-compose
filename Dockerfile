@@ -5,9 +5,9 @@ FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare@v0.2.3 \
 	--with github.com/mholt/caddy-dynamicdns \
-	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.19.0 \
-	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.7.3
+	--with github.com/erfianugrah/caddy-body-matcher@v0.2.0 \
+	--with github.com/erfianugrah/caddy-policy-engine@v0.20.0 \
+	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.8.0
 
 # Convert CRS rules to policy-engine format at build time.
 # Update CRS_VERSION to pick up new CRS releases.

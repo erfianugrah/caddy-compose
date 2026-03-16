@@ -83,5 +83,5 @@ export async function fetchSpikeReports(): Promise<SpikeReport[]> {
 }
 
 export async function fetchSpikeReport(id: string): Promise<SpikeReport> {
-  return fetchJSON<SpikeReport>(`${API_BASE}/dos/reports/${id}`);
+  return fetchJSON<SpikeReport>(`${API_BASE}/dos/reports/${encodeURIComponent(id)}`);
 }

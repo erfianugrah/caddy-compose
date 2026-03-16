@@ -40,7 +40,7 @@ jobs:
       wafctl: ${{ steps.filter.outputs.wafctl }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
         id: filter
         with:
           filters: |
@@ -144,12 +144,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and load locally
         uses: docker/build-push-action@v6
-        id: build
+        id: build-local
         with:
           context: .
-          push: true
+          load: true
           tags: ${{ steps.meta.outputs.full }}
           build-args: |
             VERSION=${{ env.CADDY_VERSION }}
@@ -165,10 +165,24 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
+      - name: Push image
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.full }}
+          build-args: |
+            VERSION=${{ env.CADDY_VERSION }}
+            CRS_VERSION=${{ env.CRS_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
 
       - name: Sign image
-        run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}" || true
+        continue-on-error: true
+        run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
@@ -202,13 +216,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and load locally
         uses: docker/build-push-action@v6
-        id: build
+        id: build-local
         with:
           context: .
           file: ./wafctl/Dockerfile
-          push: true
+          load: true
           tags: ${{ steps.meta.outputs.full }}
           build-args: |
             VERSION=${{ env.WAFCTL_VERSION }}
@@ -224,10 +238,25 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
+      - name: Push image
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: ./wafctl/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.full }}
+          build-args: |
+            VERSION=${{ env.WAFCTL_VERSION }}
+            CRS_VERSION=${{ env.CRS_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
 
       - name: Sign image
-        run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}" || true
+        continue-on-error: true
+        run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
