@@ -10,6 +10,8 @@ export interface DosStatus {
   kernel_drop: boolean;
   strategy: string;
   eps_history: number[];
+  ddos_events: number;
+  updated_at: string;
 }
 
 export interface JailEntry {

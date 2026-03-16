@@ -531,10 +531,19 @@ export default function DDoSPanel() {
           <h2 className={T.pageTitle}>DDoS Protection</h2>
           <p className={T.pageDescription}>Adaptive fingerprint-based mitigation with IP jail</p>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          {status?.updated_at && (
+            <p className={T.muted}>
+              Updated {new Date(status.updated_at).toLocaleTimeString()}
+            </p>
+          )}
+          <Badge variant="outline" className={cn(T.badgeMono, "text-muted-foreground")}>
+            {status?.mode === "spike" ? "5s" : "30s"} poll
+          </Badge>
+          <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
 
       {/* Alerts */}

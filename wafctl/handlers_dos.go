@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 )
 
 // ─── GET /api/dos/status ────────────────────────────────────────────
@@ -11,27 +12,72 @@ func handleDosStatus(jailStore *JailStore, dosConfig *DosConfigStore, spike *Spi
 		cfg := dosConfig.Get()
 		spikeStatus := spike.Status()
 
-		// Compute DDoS-specific event count from the access log store
-		// for a more meaningful historical view.
+		// Compute EPS and DDoS event count from the access log store's
+		// actual event timestamps — not the volatile sliding window.
+		// This gives meaningful values when the dashboard polls every 30s.
 		ddosEvents := 0
+		var recentEPS float64
+		now := time.Now()
+		cutoff60s := now.Add(-60 * time.Second)
+		cutoff5m := now.Add(-5 * time.Minute)
+		recentCount := 0
+		var epsHistory []float64
+
 		if als.mu.TryRLock() {
-			for _, e := range als.events {
+			// Count DDoS events and compute recent EPS from all events
+			for i := len(als.events) - 1; i >= 0; i-- {
+				e := &als.events[i]
 				if e.Source == "ddos_blocked" || e.Source == "ddos_jailed" {
 					ddosEvents++
 				}
+				if e.Timestamp.After(cutoff60s) {
+					recentCount++
+				}
+				if e.Timestamp.Before(cutoff5m) {
+					break // events are sorted by time, stop scanning
+				}
 			}
+
+			// Build EPS history: count events per 5-second bucket for last 5 minutes
+			buckets := make([]float64, 60) // 60 buckets × 5s = 5 minutes
+			for i := len(als.events) - 1; i >= 0; i-- {
+				e := &als.events[i]
+				if e.Timestamp.Before(cutoff5m) {
+					break
+				}
+				age := now.Sub(e.Timestamp).Seconds()
+				bucket := int(age / 5.0)
+				if bucket >= 0 && bucket < 60 {
+					buckets[bucket]++
+				}
+			}
+			// Convert counts to EPS (count / 5s) and reverse (oldest first)
+			epsHistory = make([]float64, 60)
+			for i, c := range buckets {
+				epsHistory[59-i] = c / 5.0
+			}
+
 			als.mu.RUnlock()
+		}
+
+		recentEPS = float64(recentCount) / 60.0
+
+		// Use the higher of spike detector EPS and computed EPS
+		eps := spikeStatus.EPS
+		if recentEPS > eps {
+			eps = recentEPS
 		}
 
 		status := DosStatus{
 			Mode:       spikeStatus.Mode,
-			EPS:        spikeStatus.EPS,
+			EPS:        eps,
 			PeakEPS:    spikeStatus.PeakEPS,
 			JailCount:  jailStore.Count(),
 			KernelDrop: cfg.KernelDrop,
 			Strategy:   cfg.Strategy,
-			EPSHistory: spikeStatus.EPSHistory,
+			EPSHistory: epsHistory,
 			DDoSEvents: ddosEvents,
+			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 		}
 		writeJSON(w, http.StatusOK, status)
 	}
