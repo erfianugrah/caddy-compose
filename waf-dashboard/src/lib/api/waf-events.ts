@@ -199,7 +199,7 @@ interface RawSummary {
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
   top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
   top_countries: { country: string; count: number; total_blocked: number }[];
@@ -308,6 +308,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       rate_limited: h.rate_limited ?? 0,
       policy_block: h.policy_block ?? 0,
       detect_block: h.detect_block ?? 0,
+      ddos_blocked: h.ddos_blocked ?? 0,
       policy_allow: h.policy_allow ?? 0,
       policy_skip: h.policy_skip ?? 0,
     })),
