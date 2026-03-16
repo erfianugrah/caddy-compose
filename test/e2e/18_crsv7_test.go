@@ -196,8 +196,12 @@ func TestCRSv7(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != 403 {
-			t.Fatalf("expected 403 (policy engine detect_block), got %d; body=%.300s",
-				resp.StatusCode, string(body))
+			bodyStr := string(body)
+			if len(bodyStr) > 300 {
+				bodyStr = bodyStr[:300]
+			}
+			t.Fatalf("expected 403 (policy engine detect_block), got %d; body=%q",
+				resp.StatusCode, bodyStr)
 		}
 		evt := waitForEvent(t, sentinel, 15*time.Second)
 		verifyDetectBlockEventFromMap(t, evt, "920270", "null character")

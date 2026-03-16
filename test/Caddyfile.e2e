@@ -1,8 +1,12 @@
 # E2E test Caddyfile — policy engine as sole WAF
 {
 	admin :2019
-	# log_append must wrap policy_engine so fields are captured on blocked requests.
-	order log_append first
+	# Handler execution order:
+	#   ddos_mitigator → log_append → policy_engine → reverse_proxy
+	# ddos_mitigator runs first so blocked traffic never reaches WAF.
+	# log_append wraps policy_engine to capture WAF log fields.
+	order ddos_mitigator first
+	order log_append after ddos_mitigator
 	order policy_engine after log_append
 	log {
 		level INFO
@@ -17,8 +21,21 @@
 # CORS snippet removed — handled by plugin via /api/cors config.
 # Cache snippet removed — handled by response_header rules via templates.
 
+# DDoS mitigator — runs before WAF, adaptive fingerprint + jail
+(ddos) {
+	ddos_mitigator {
+		jail_file     /data/waf/jail.json
+		threshold     4.0
+		base_penalty  30s
+		max_penalty   1h
+		sync_interval 1s
+		whitelist     172.16.0.0/12 10.0.0.0/8
+	}
+}
+
 # WAF — policy engine only
 (waf) {
+	import ddos
 	policy_engine {
 		rules_file /data/waf/policy-rules.json
 		default_rules_file /etc/caddy/waf/default-rules.json
@@ -51,6 +68,10 @@
 
 (site_log) {
 	log_append request_id {http.request.uuid}
+	log_append ddos_action {http.vars.ddos_mitigator.action}
+	log_append ddos_fingerprint {http.vars.ddos_mitigator.fingerprint}
+	log_append ddos_z_score {http.vars.ddos_mitigator.z_score}
+	log_append ddos_spike_mode {http.vars.ddos_mitigator.spike_mode}
 	log_append policy_action {http.vars.policy_engine.action}
 	log_append policy_rule {http.vars.policy_engine.rule_name}
 	log_append policy_tags {http.vars.policy_engine.tags}

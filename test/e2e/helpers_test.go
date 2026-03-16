@@ -711,7 +711,10 @@ func setBrowserHeaders(req *http.Request) {
 	}
 	req.Header.Set("Accept", "text/html,*/*")
 	req.Header.Set("Accept-Language", "en")
-	req.Header.Set("Accept-Encoding", "gzip")
+	// NOTE: Do NOT set Accept-Encoding explicitly. Go's default transport
+	// adds "Accept-Encoding: gzip" automatically AND transparently decompresses
+	// the response. Setting it manually disables auto-decompression, causing
+	// io.ReadAll to return raw gzip bytes (binary garbage in error messages).
 }
 
 // cleanupByName finds a resource by name in a list endpoint, then DELETEs it.

@@ -187,6 +187,26 @@ func runServe() int {
 		blocklistStore.loadFromLists(managedListStore)
 	}()
 
+	// DDoS mitigation stores — jail management + config.
+	dosJailFile := envOr("WAF_DOS_JAIL_FILE", filepath.Join(deployCfg.WafDir, "jail.json"))
+	dosConfigFile := envOr("WAF_DOS_CONFIG_FILE", "/data/dos-config.json")
+	jailStore := NewJailStore(dosJailFile)
+	dosConfigStore := NewDosConfigStore(dosConfigFile)
+
+	// Periodic jail file reload (picks up entries added by the plugin).
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				jailStore.Reload()
+			}
+		}
+	}()
+
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
 
@@ -311,6 +331,14 @@ func runServe() int {
 	// General Logs (all access log entries)
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
+
+	// DDoS Mitigation
+	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore))
+	mux.HandleFunc("GET /api/dos/jail", handleListJail(jailStore))
+	mux.HandleFunc("POST /api/dos/jail", handleAddJail(jailStore))
+	mux.HandleFunc("DELETE /api/dos/jail/{ip}", handleRemoveJail(jailStore))
+	mux.HandleFunc("GET /api/dos/config", handleGetDosConfig(dosConfigStore))
+	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore))
 
 	// Backup / Restore (unified export of all config stores)
 	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore, defaultRuleStore))
