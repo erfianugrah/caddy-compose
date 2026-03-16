@@ -39,6 +39,10 @@ type AccessLogEntry struct {
 	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`  // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
 	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"` // log_append: JSON-serialized request headers (block/detect_block only)
 	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`    // log_append: truncated request body excerpt (block/detect_block only)
+	DDoSAction           string              `json:"ddos_action,omitempty"`            // log_append: ddos mitigator action (pass/blocked/jailed)
+	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`       // log_append: FNV-64a request fingerprint
+	DDoSZScore           string              `json:"ddos_z_score,omitempty"`           // log_append: z-score at time of evaluation
+	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`        // log_append: "true"/"false" — spike detection state
 }
 
 type AccessLogReq struct {
@@ -527,13 +531,14 @@ func (s *AccessLogStore) Load() {
 				// - 403 with policy engine block
 				// - policy_action=skip (selective bypass, non-terminating)
 				// - below-threshold detect (score > 0 with CRS rule matches)
+				isDDoSBlock := entry.DDoSAction == "blocked" || entry.DDoSAction == "jailed"
 				isRateLimit := entry.Status == 429
-				isPolicy := entry.Status == 403 && isPolicyBlocked(entry)
+				isPolicy := entry.Status == 403 && isPolicyBlocked(entry) && !isDDoSBlock
 				isSkip := entry.PolicyAction == "skip"
-				isLogged := !isPolicy && !isRateLimit && !isSkip &&
+				isLogged := !isPolicy && !isRateLimit && !isSkip && !isDDoSBlock &&
 					entry.PolicyScore != "" && entry.PolicyScore != "0" &&
 					(entry.PolicyDetectRules != "" || entry.PolicyDetectMatches != "")
-				if isRateLimit || isPolicy || isSkip || isLogged {
+				if isDDoSBlock || isRateLimit || isPolicy || isSkip || isLogged {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -551,7 +556,13 @@ func (s *AccessLogStore) Load() {
 						UserAgent: ua,
 						RequestID: accessLogRequestID(entry),
 					}
-					if isPolicy && isDetectBlock(entry) {
+					if isDDoSBlock {
+						evt.Source = "ddos_" + entry.DDoSAction // "ddos_blocked" or "ddos_jailed"
+						evt.RuleName = "ddos_mitigator"
+						if entry.DDoSFingerprint != "" {
+							evt.InlineTags = []string{"ddos", entry.DDoSAction}
+						}
+					} else if isPolicy && isDetectBlock(entry) {
 						evt.Source = "detect_block"
 						evt.RuleName = policyBlockedRuleName(entry)
 						evt.DetectRules = entry.PolicyDetectRules
