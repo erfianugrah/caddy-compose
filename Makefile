@@ -191,8 +191,8 @@ authelia-notification: ## Fetch and display Authelia 2FA notification.txt from r
 pull: ## Pull images on remote
 	$(COMPOSE_CMD) pull
 
-restart: ## Recreate containers on remote (picks up new images)
-	$(COMPOSE_CMD) up -d
+restart: ## Recreate containers on remote (force-recreate to pick up same-tag rebuilds)
+	$(COMPOSE_CMD) up -d --force-recreate
 
 restart-force: ## Force restart all containers (re-reads bind-mounted configs)
 	$(COMPOSE_CMD) restart
