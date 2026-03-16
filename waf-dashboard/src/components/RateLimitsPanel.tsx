@@ -810,6 +810,7 @@ export default function RateLimitsPanel() {
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[52px] px-1" />
                         <TableHead className="w-[36px] px-2">
                           <input
                             type="checkbox"
@@ -832,7 +833,6 @@ export default function RateLimitsPanel() {
                             className="h-3.5 w-3.5 rounded border-border"
                           />
                         </TableHead>
-                        <TableHead className="w-[36px] px-2" />
                         <TableHead className="w-[52px] px-1">#</TableHead>
                         <SortableTableHead sortKey="name" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Name</SortableTableHead>
                         <SortableTableHead sortKey="service" activeKey={rlSort.sortState.key} direction={rlSort.sortState.direction} onSort={rlSort.toggleSort}>Service</SortableTableHead>
