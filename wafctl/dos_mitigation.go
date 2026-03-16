@@ -94,7 +94,10 @@ func (s *JailStore) Reload() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.entries = make(map[string]jailFileEntry)
-	s.load()
+	withFileLock(s.filePath, func() error {
+		s.load()
+		return nil
+	})
 }
 
 // List returns all non-expired jail entries.
@@ -178,7 +181,9 @@ func (s *JailStore) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	return atomicWriteFile(s.filePath, data, 0644)
+	return withFileLock(s.filePath, func() error {
+		return atomicWriteFile(s.filePath, data, 0644)
+	})
 }
 
 // ─── DosConfig ──────────────────────────────────────────────────────

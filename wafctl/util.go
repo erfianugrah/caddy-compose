@@ -7,8 +7,27 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
+
+// withFileLock acquires an exclusive flock on path+".lock" for the duration
+// of fn. Coordinates jail file access with the caddy-ddos-mitigator plugin.
+func withFileLock(path string, fn func() error) error {
+	lockPath := path + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		// Fall back to unlocked operation if lock file can't be created
+		return fn()
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		// Fall back to unlocked operation if flock fails
+		return fn()
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return fn()
+}
 
 // queryIntEnv reads an integer from an environment variable with a default value.
 func queryIntEnv(key string, defaultVal int) int {
