@@ -436,6 +436,26 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 		return hourCounts[i].Hour < hourCounts[j].Hour
 	})
 
+	// Pad hourCounts to cover the full requested time range.
+	// Without this, the timeline chart x-axis compresses to only hours with data.
+	if hours > 0 {
+		existing := make(map[string]bool, len(hourCounts))
+		for _, hc := range hourCounts {
+			existing[hc.Hour] = true
+		}
+		now := time.Now().UTC()
+		for h := 0; h < hours; h++ {
+			t := now.Add(-time.Duration(hours-1-h) * time.Hour).Truncate(time.Hour)
+			key := t.Format(time.RFC3339)
+			if !existing[key] {
+				hourCounts = append(hourCounts, HourCount{Hour: key})
+			}
+		}
+		sort.Slice(hourCounts, func(i, j int) bool {
+			return hourCounts[i].Hour < hourCounts[j].Hour
+		})
+	}
+
 	// Build TopServices and ServiceBreakdown.
 	svcCounts := make([]ServiceCount, 0, len(svcMap))
 	svcBreakdown := make([]ServiceDetail, 0, len(svcMap))
