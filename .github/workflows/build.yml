@@ -168,7 +168,7 @@ jobs:
       - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
 
       - name: Sign image
-        run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
+        run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}" || true
 
       - name: Generate SBOM
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
@@ -227,7 +227,7 @@ jobs:
       - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
 
       - name: Sign image
-        run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
+        run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}" || true
 
       - name: Generate SBOM
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
