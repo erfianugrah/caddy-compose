@@ -1130,6 +1130,9 @@ func classifyRLIntoBucket(b *hourBucket, eventType string, isBlocked bool, delta
 		if isBlocked {
 			b.Blocked += delta
 		}
+	case eventType == "ddos_blocked" || eventType == "ddos_jailed":
+		b.DDoSBlocked += delta
+		b.Blocked += delta
 	case eventType == "policy_allow":
 		b.PolicyAllow += delta
 	case eventType == "policy_skip":
