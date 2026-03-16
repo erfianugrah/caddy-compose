@@ -261,13 +261,18 @@ This mirrors the existing architecture: `caddy-policy-engine` (plugin, per-reque
 
 #### Implementation Phases
 
-1. `caddy-ddos-guard` plugin: IP jail check, fingerprint counter, auto-jail, Caddyfile config
-2. wafctl: `dos_mitigation.go` — log-based spike detection, fingerprint analysis, report generation
-3. Spike report persistence + API endpoints (`/api/dos/*`)
-4. IP jail management: auto-jail on threshold, TTL expiry, wafctl API for manual jail/unjail
-5. Dashboard UI: spike indicator, EPS chart, report viewer, jail management table
-6. Caddy layer4 integration: plugin registers as L4 matcher for TCP-level drop of jailed IPs
-7. (Future) eBPF/XDP loader for kernel-level drop (maximum efficiency)
+1. [x] `caddy-ddos-mitigator` plugin: IP jail (64-shard), CMS fingerprinting (5 strategies),
+       Welford+EWMA adaptive z-score, auto-jail with exponential backoff, Caddyfile config.
+       67 tests, zero-alloc hot path (~103ns/req). Repo: `ergo/caddy-ddos-mitigator` v0.2.0.
+2. [x] wafctl: `dos_mitigation.go` — JailStore, DosConfigStore, SpikeDetector (EPS sliding
+       window, spike/normal mode with hysteresis). `handlers_dos.go` — 6 API endpoints.
+3. [x] L4 handler: `layer4.handlers.ddos_mitigator` — TCP RST via SetLinger(0), shared jail
+       registry between L7 and L4 modules, connection unwrapping for proxy_protocol.
+4. [x] Dashboard: `/dos` page — StatusBanner (mode+EPS), JailTable (CRUD), ConfigPanel
+       (threshold, penalties, strategy, whitelist, spike settings). Health check integration.
+5. [ ] nftables kernel drop: in-process ipset management via `google/nftables`, requires
+       NET_ADMIN cap on Caddy container. compose.yaml prepared (cap commented out).
+6. [ ] (Future) eBPF/XDP loader for kernel-level drop (maximum efficiency)
 
 ---
 
