@@ -919,7 +919,7 @@ const STAT_CARD_DEFS: {
   href: string;
 }[] = [
   { key: "total_events",    label: "Security Events",  icon: Shield,      color: "green",  href: "/events" },
-  { key: "total_blocked",   label: "CRS Blocked",      icon: ShieldAlert, color: "pink",   href: "/events?type=detect_block" },
+  { key: "total_blocked",   label: "Total Blocked",     icon: ShieldAlert, color: "pink",   href: "/events?blocked=true" },
   { key: "rate_limited",    label: "Rate Limited",      icon: ShieldBan,   color: "yellow", href: "/events?type=rate_limited" },
   { key: "policy_blocked",  label: "Policy Block",      icon: ShieldBan,   color: "red",    href: "/events?type=policy_block" },
   { key: "detect_blocked",  label: "Detect Block",      icon: ShieldAlert, color: "orange", href: "/events?type=detect_block" },
