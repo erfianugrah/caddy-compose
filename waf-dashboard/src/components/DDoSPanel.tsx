@@ -432,15 +432,38 @@ function ConfigPanel({
         {/* Whitelist */}
         <div>
           <p className={T.sectionLabel}>Whitelist (CIDR)</p>
-          <div className="mt-3">
-            <Input
-              value={draft.whitelist.join(", ")}
-              onChange={(e) =>
-                update("whitelist", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))
-              }
-              placeholder="192.168.0.0/16, 10.0.0.0/8"
-            />
-            <p className={cn(T.muted, "mt-1")}>Comma-separated CIDR prefixes that bypass jail checks</p>
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
+              {draft.whitelist.map((cidr, i) => (
+                <Badge key={i} variant="outline" className="text-xs px-2 py-1 bg-lovelace-950 border-lovelace-700 text-lv-cyan gap-1 font-mono">
+                  {cidr}
+                  <button
+                    type="button"
+                    className="ml-0.5 text-muted-foreground hover:text-lv-red transition-colors"
+                    onClick={() => update("whitelist", draft.whitelist.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="10.0.0.0/8"
+                className="font-mono text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    const val = (e.target as HTMLInputElement).value.trim();
+                    if (val && !draft.whitelist.includes(val)) {
+                      update("whitelist", [...draft.whitelist, val]);
+                      (e.target as HTMLInputElement).value = "";
+                    }
+                  }
+                }}
+              />
+            </div>
+            <p className={cn(T.muted, "text-xs")}>Press Enter to add a CIDR prefix. These IPs bypass jail checks.</p>
           </div>
         </div>
       </CardContent>

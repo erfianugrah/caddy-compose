@@ -9,7 +9,7 @@ import (
 
 // eventQueryTimeout is the maximum time allowed for event search iteration.
 // Prevents unbounded CPU usage from complex filter queries over large event stores.
-const eventQueryTimeout = 30 * time.Second
+const eventQueryTimeout = 60 * time.Second
 
 // --- Handlers: Health, Summary, Events, Services ---
 
@@ -389,15 +389,21 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		wi, ri := len(wafEvents)-1, len(rlRaw)-1
 		filtered := make([]Event, 0, limit)
 		matched := 0
+		iterations := 0
 		timedOut := false
 
 		for wi >= 0 || ri >= 0 {
-			// Check timeout periodically (every 1000 iterations to avoid syscall overhead).
-			if (matched+1)%1000 == 0 {
+			iterations++
+			// Check timeout every 2000 iterations to avoid syscall overhead.
+			if iterations%2000 == 0 {
 				if ctx.Err() != nil {
 					timedOut = true
 					break
 				}
+			}
+			// Early exit: if we have enough results and don't need total count, stop.
+			if len(filtered) >= limit && !exportAll {
+				break
 			}
 			// Pick the newest event from either source.
 			useWAF := wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlRaw[ri].Timestamp))

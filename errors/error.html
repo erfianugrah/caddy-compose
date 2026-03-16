@@ -12,15 +12,18 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     background:#0f1117;color:#c9d1d9;padding:2rem;text-align:center;
   }
-  .container{max-width:520px;width:100%}
+  .container{max-width:540px;width:100%}
   .code{
     font-size:clamp(5rem,15vw,8rem);font-weight:800;letter-spacing:-.04em;
     background:linear-gradient(135deg,#58a6ff 0%,#bc8cff 50%,#f778ba 100%);
     -webkit-background-clip:text;-webkit-text-fill-color:transparent;
     background-clip:text;line-height:1.1;
   }
+  .code-warn{background:linear-gradient(135deg,#f0883e 0%,#f778ba 100%);-webkit-background-clip:text;background-clip:text}
+  .code-block{background:linear-gradient(135deg,#f85149 0%,#bc8cff 100%);-webkit-background-clip:text;background-clip:text}
   .title{font-size:1.25rem;font-weight:600;color:#e6edf3;margin:.75rem 0 .5rem}
-  .desc{font-size:.95rem;color:#8b949e;line-height:1.6;margin-bottom:2rem}
+  .desc{font-size:.95rem;color:#8b949e;line-height:1.6;margin-bottom:1.5rem}
+  .icon{font-size:2.5rem;margin-bottom:.5rem}
   .actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
   a,button{
     display:inline-flex;align-items:center;gap:.4rem;
@@ -33,37 +36,77 @@
   .btn-secondary:hover{color:#c9d1d9;border-color:#58a6ff}
   .meta{margin-top:3rem;font-size:.75rem;color:#484f58}
   .divider{width:60px;height:2px;background:#21262d;margin:1.5rem auto}
+  .countdown{font-variant-numeric:tabular-nums;font-size:2rem;font-weight:700;color:#f0883e;margin:.75rem 0}
+  .countdown-label{font-size:.8rem;color:#8b949e;margin-bottom:1.5rem}
+  .ref{font-size:.75rem;color:#484f58;margin-top:.5rem;font-family:monospace}
 </style>
 </head>
 <body>
 <div class="container">
-  <div class="code">{{placeholder "http.error.status_code"}}</div>
 
-  {{if eq (placeholder "http.error.status_code") "400"}}
+  {{if eq (placeholder "http.error.status_code") "403"}}
+  <div class="icon">🛡️</div>
+  <div class="code code-block">403</div>
+  <p class="title">Access blocked</p>
+  <p class="desc">Your request was blocked by the security policy. If you believe this is an error, wait a moment and try again or contact the site administrator.</p>
+  <div class="ref">Ref: {{placeholder "http.request.uuid"}}</div>
+
+  {{else if eq (placeholder "http.error.status_code") "429"}}
+  <div class="icon">⏱️</div>
+  <div class="code code-warn">429</div>
+  <p class="title">Rate limit exceeded</p>
+  <p class="desc">You're sending requests too quickly.</p>
+  <div class="countdown" id="countdown"></div>
+  <p class="countdown-label">seconds until you can retry</p>
+  <script>
+  (function(){
+    // Read Retry-After from meta tag (Caddy template injects the header value).
+    var ra = "{{placeholder "http.error.message"}}";
+    var secs = parseInt(ra, 10) || 30;
+    var el = document.getElementById("countdown");
+    if (!el) return;
+    el.textContent = secs;
+    var iv = setInterval(function(){
+      secs--;
+      if (secs <= 0) { clearInterval(iv); location.reload(); return; }
+      el.textContent = secs;
+    }, 1000);
+  })();
+  </script>
+  <div class="ref">Ref: {{placeholder "http.request.uuid"}}</div>
+
+  {{else if eq (placeholder "http.error.status_code") "400"}}
+  <div class="code">400</div>
   <p class="title">Bad request</p>
   <p class="desc">The request was malformed or couldn't be understood by the server.</p>
-  {{else if eq (placeholder "http.error.status_code") "403"}}
-  <p class="title">Access denied</p>
-  <p class="desc">You don't have permission to view this page.</p>
+
   {{else if eq (placeholder "http.error.status_code") "404"}}
+  <div class="code">404</div>
   <p class="title">Not found</p>
   <p class="desc">The page you're looking for doesn't exist or has been moved.</p>
-  {{else if eq (placeholder "http.error.status_code") "429"}}
-  <p class="title">Slow down</p>
-  <p class="desc">You're sending requests too quickly. Wait a moment and try again.</p>
+
   {{else if eq (placeholder "http.error.status_code") "500"}}
+  <div class="code">500</div>
   <p class="title">Internal server error</p>
   <p class="desc">Something went wrong on our end. Try again in a few moments.</p>
+
   {{else if eq (placeholder "http.error.status_code") "502"}}
+  <div class="code">502</div>
   <p class="title">Bad gateway</p>
   <p class="desc">The upstream service isn't responding. It may be restarting.</p>
+
   {{else if eq (placeholder "http.error.status_code") "503"}}
+  <div class="code">503</div>
   <p class="title">Service unavailable</p>
   <p class="desc">This service is temporarily offline for maintenance.</p>
+
   {{else if eq (placeholder "http.error.status_code") "504"}}
+  <div class="code">504</div>
   <p class="title">Gateway timeout</p>
   <p class="desc">The upstream service took too long to respond.</p>
+
   {{else}}
+  <div class="code">{{placeholder "http.error.status_code"}}</div>
   <p class="title">Something went wrong</p>
   <p class="desc">An unexpected error occurred while processing your request.</p>
   {{end}}

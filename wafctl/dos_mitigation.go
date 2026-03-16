@@ -44,9 +44,10 @@ type JailEntry struct {
 // It provides CRUD for manual jail/unjail via the API, and periodic
 // reload from disk to pick up entries added by the plugin's auto-jail.
 type JailStore struct {
-	mu       sync.RWMutex
-	filePath string
-	entries  map[string]jailFileEntry
+	mu        sync.RWMutex
+	filePath  string
+	entries   map[string]jailFileEntry
+	lastCount int // for quiet reload logging — only log when count changes
 }
 
 // NewJailStore creates a jail store and loads existing entries from disk.
@@ -86,7 +87,11 @@ func (s *JailStore) load() {
 		}
 		s.entries[ip] = entry
 	}
-	log.Printf("[dos] loaded %d jail entries from %s", len(s.entries), s.filePath)
+	count := len(s.entries)
+	if count != s.lastCount {
+		log.Printf("[dos] loaded %d jail entries from %s", count, s.filePath)
+		s.lastCount = count
+	}
 }
 
 // Reload re-reads the jail file from disk, replacing in-memory state.
