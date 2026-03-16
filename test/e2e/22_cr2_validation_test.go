@@ -2,7 +2,6 @@ package e2e_test
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 )
@@ -161,7 +160,7 @@ func TestPolicyPriorityAllowOverridesBlock(t *testing.T) {
 // --- CR2-4: Backup/restore partial failure warning ---
 
 // TestBackupRestorePartialFailureWarning verifies that restoring a backup with
-// invalid data produces a "partial" status and includes a warning message.
+// invalid data is rejected entirely (validate-before-apply: no stores modified).
 func TestBackupRestorePartialFailureWarning(t *testing.T) {
 	// Take a clean backup first.
 	_, backupBody := httpGet(t, wafctlURL+"/api/backup")
@@ -175,32 +174,15 @@ func TestBackupRestorePartialFailureWarning(t *testing.T) {
 
 	tamperedJSON, _ := json.Marshal(backup)
 
+	// Validate-before-apply: should reject with 400 without modifying any stores.
 	resp, body := httpPost(t, wafctlURL+"/api/backup/restore", json.RawMessage(tamperedJSON))
-	assertCode(t, "partial restore", 200, resp)
+	assertCode(t, "rejected restore", 400, resp)
 
-	status := jsonField(body, "status")
-	if status != "partial" {
-		t.Errorf("expected status=partial, got %q", status)
+	errMsg := jsonField(body, "error")
+	if errMsg == "" {
+		t.Error("expected non-empty error on rejected restore")
 	}
-
-	warning := jsonField(body, "warning")
-	if warning == "" {
-		t.Error("expected non-empty warning on partial restore")
-	} else if !strings.Contains(warning, "Partial restore") {
-		t.Errorf("warning should contain 'Partial restore', got %q", warning)
-	}
-
-	// Check that the results map indicates the exclusions failure.
-	exclResult := jsonField(body, "results.exclusions")
-	if !strings.HasPrefix(exclResult, "failed") {
-		t.Errorf("expected exclusions result to start with 'failed', got %q", exclResult)
-	}
-
-	t.Logf("status=%q warning=%q exclusions=%q", status, warning, exclResult)
-
-	// Restore the clean backup to fix state.
-	resp2, _ := httpPost(t, wafctlURL+"/api/backup/restore", json.RawMessage(backupBody))
-	assertCode(t, "clean restore", 200, resp2)
+	t.Logf("rejected restore: error=%q details=%q", errMsg, jsonField(body, "details"))
 }
 
 // --- CR2-24: Blocklist check endpoint validates IP format ---

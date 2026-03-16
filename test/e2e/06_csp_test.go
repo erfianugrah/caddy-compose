@@ -163,6 +163,8 @@ func TestPolicyEngineResponseHeaders(t *testing.T) {
 	t.Run("blocked requests do not get response headers", func(t *testing.T) {
 		// A WAF-blocked request (403) should NOT have CSP or security headers
 		// injected by the plugin since block action returns early.
+		// Wait for WAF to be active — may need time after deploy.
+		waitForStatus(t, caddyURL+"/get?id=1%20OR%201=1%20--", 403, 30*time.Second)
 		resp, _ := httpGet(t, caddyURL+"/get?id=1%20OR%201=1%20--")
 		assertCode(t, "blocked", 403, resp)
 		// Policy engine block rules return before applyResponseHeaders() runs.
