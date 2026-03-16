@@ -229,10 +229,23 @@ type AccessLogStore struct {
 	// Updated on ingestion and eviction so that summary queries are O(buckets)
 	// instead of O(events).
 	counters *summaryCounters
+
+	// Secondary indexes for fast filtered queries. Updated on ingestion/eviction.
+	// Maps field value → sorted list of event indices into s.events.
+	idxSource  map[string][]int // Source field (event_type after rleEventType)
+	idxClient  map[string][]int // ClientIP
+	idxService map[string][]int // Service
 }
 
 func NewAccessLogStore(path string) *AccessLogStore {
-	return &AccessLogStore{path: path, advCache: newAdvisorCache(), counters: newSummaryCounters()}
+	return &AccessLogStore{
+		path:       path,
+		advCache:   newAdvisorCache(),
+		counters:   newSummaryCounters(),
+		idxSource:  make(map[string][]int),
+		idxClient:  make(map[string][]int),
+		idxService: make(map[string][]int),
+	}
 }
 
 // SetOffsetFile configures a file path to persist the access log read offset
@@ -307,6 +320,8 @@ func (s *AccessLogStore) SetEventFile(path string) {
 	}
 	// Initialize incremental counters from restored events.
 	s.initCountersFromRLEventsLocked()
+	// Rebuild secondary indexes from restored events.
+	s.rebuildIndexes()
 }
 
 // appendEventsToJSONL appends rate limit events to the JSONL file.
@@ -466,6 +481,119 @@ func (s *AccessLogStore) initCountersFromRLEventsLocked() {
 		return
 	}
 	s.counters.initFromRLEvents(s.events)
+}
+
+// --- Secondary Index Methods ---
+
+// indexEvent adds a single event at the given index to all secondary indexes.
+// Keys are lowercased for case-insensitive lookups consistent with fieldFilter.matchField.
+// The caller MUST hold s.mu (at least write lock).
+func (s *AccessLogStore) indexEvent(idx int) {
+	rle := &s.events[idx]
+	eventType := rleEventType(rle.Source)
+	s.idxSource[eventType] = append(s.idxSource[eventType], idx)
+	clientKey := strings.ToLower(rle.ClientIP)
+	s.idxClient[clientKey] = append(s.idxClient[clientKey], idx)
+	serviceKey := strings.ToLower(rle.Service)
+	s.idxService[serviceKey] = append(s.idxService[serviceKey], idx)
+}
+
+// rebuildIndexes rebuilds all secondary indexes from scratch.
+// Called after eviction shifts indices. The caller MUST hold s.mu.
+func (s *AccessLogStore) rebuildIndexes() {
+	s.idxSource = make(map[string][]int, len(s.idxSource))
+	s.idxClient = make(map[string][]int, len(s.idxClient))
+	s.idxService = make(map[string][]int, len(s.idxService))
+	for i := range s.events {
+		s.indexEvent(i)
+	}
+}
+
+// indexedRLSnapshot returns a filtered snapshot of RateLimitEvents using
+// secondary indexes when single-value "eq" filters are available.
+// Falls back to a full scan when indexes cannot be used. The caller
+// does NOT need to hold s.mu — this method acquires RLock internally.
+func (s *AccessLogStore) indexedRLSnapshot(eventType, clientIP, service string, hours int) []RateLimitEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if len(s.events) == 0 {
+		return nil
+	}
+
+	// Determine the time window.
+	var startIdx int
+	if hours > 0 {
+		cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+		startIdx = searchCutoffRL(s.events, cutoff)
+	}
+
+	// Try to use the most selective index.
+	// Keys are lowercased to match how indexEvent stores them.
+	var candidates []int
+	used := false
+
+	if eventType != "" {
+		etKey := strings.ToLower(eventType)
+		if idxList, ok := s.idxSource[etKey]; ok {
+			candidates = idxList
+			used = true
+		} else {
+			// No events with this event type — return empty.
+			return nil
+		}
+	}
+	if clientIP != "" {
+		ciKey := strings.ToLower(clientIP)
+		if idxList, ok := s.idxClient[ciKey]; ok {
+			if !used || len(idxList) < len(candidates) {
+				candidates = idxList
+				used = true
+			}
+		} else {
+			return nil
+		}
+	}
+	if service != "" {
+		svcKey := strings.ToLower(service)
+		if idxList, ok := s.idxService[svcKey]; ok {
+			if !used || len(idxList) < len(candidates) {
+				candidates = idxList
+				used = true
+			}
+		} else {
+			return nil
+		}
+	}
+
+	if !used {
+		// No index applicable — fall back to full snapshot.
+		n := len(s.events) - startIdx
+		cp := make([]RateLimitEvent, n)
+		copy(cp, s.events[startIdx:])
+		return cp
+	}
+
+	// Filter candidates by all criteria (time window + all three fields).
+	// Use case-insensitive comparison consistent with fieldFilter.matchField "eq".
+	result := make([]RateLimitEvent, 0, len(candidates)/2)
+	for _, idx := range candidates {
+		if idx < startIdx {
+			continue
+		}
+		rle := &s.events[idx]
+		if eventType != "" && !strings.EqualFold(rleEventType(rle.Source), eventType) {
+			continue
+		}
+		if clientIP != "" && !strings.EqualFold(rle.ClientIP, clientIP) {
+			continue
+		}
+		if service != "" && !strings.EqualFold(rle.Service, service) {
+			continue
+		}
+		result = append(result, *rle)
+	}
+	return result
 }
 
 // Load reads new lines from the combined access log and extracts 429 events.
@@ -643,7 +771,12 @@ func (s *AccessLogStore) Load() {
 
 	if len(newEvents) > 0 {
 		s.mu.Lock()
+		baseIdx := len(s.events)
 		s.events = append(s.events, newEvents...)
+		// Index newly appended events.
+		for i := baseIdx; i < len(s.events); i++ {
+			s.indexEvent(i)
+		}
 		s.mu.Unlock()
 		s.generation.Add(1)
 		// Persist new events to JSONL.
@@ -707,6 +840,8 @@ func (s *AccessLogStore) evict() {
 		remaining := make([]RateLimitEvent, total-idx)
 		copy(remaining, s.events[idx:])
 		s.events = remaining
+		// Rebuild secondary indexes — eviction shifts all indices.
+		s.rebuildIndexes()
 		s.generation.Add(1)
 
 		// Only compact when eviction is significant (>5% or >10K events removed).

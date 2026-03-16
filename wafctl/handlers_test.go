@@ -1574,3 +1574,482 @@ func TestHandleEventsTagFilter(t *testing.T) {
 		})
 	}
 }
+
+// --- AccessLogStore Secondary Index tests ---
+
+func TestAccessLogStore_IndexEvent(t *testing.T) {
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-3 * time.Hour), ClientIP: "10.0.0.1", Service: "cdn.erfi.io", Source: "policy"},
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "10.0.0.2", Service: "cdn.erfi.io", Source: ""},
+		{Timestamp: now.Add(-1 * time.Hour), ClientIP: "10.0.0.1", Service: "app.erfi.io", Source: "policy"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	als.mu.RLock()
+	defer als.mu.RUnlock()
+
+	// Check idxSource: policy_block should have 2 entries (idx 0 and 2).
+	if got := len(als.idxSource["policy_block"]); got != 2 {
+		t.Errorf("idxSource[policy_block] = %d, want 2", got)
+	}
+	// rate_limited should have 1 entry (idx 1, Source="").
+	if got := len(als.idxSource["rate_limited"]); got != 1 {
+		t.Errorf("idxSource[rate_limited] = %d, want 1", got)
+	}
+	// Check idxClient.
+	if got := len(als.idxClient["10.0.0.1"]); got != 2 {
+		t.Errorf("idxClient[10.0.0.1] = %d, want 2", got)
+	}
+	if got := len(als.idxClient["10.0.0.2"]); got != 1 {
+		t.Errorf("idxClient[10.0.0.2] = %d, want 1", got)
+	}
+	// Check idxService.
+	if got := len(als.idxService["cdn.erfi.io"]); got != 2 {
+		t.Errorf("idxService[cdn.erfi.io] = %d, want 2", got)
+	}
+	if got := len(als.idxService["app.erfi.io"]); got != 1 {
+		t.Errorf("idxService[app.erfi.io] = %d, want 1", got)
+	}
+}
+
+func TestAccessLogStore_RebuildIndexes(t *testing.T) {
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	// Simulate ingestion.
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-3 * time.Hour), ClientIP: "1.1.1.1", Service: "svc-a.io", Source: "policy"},
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "2.2.2.2", Service: "svc-b.io", Source: ""},
+		{Timestamp: now.Add(-1 * time.Hour), ClientIP: "1.1.1.1", Service: "svc-a.io", Source: "detect_block"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	// Verify initial index state.
+	als.mu.RLock()
+	if len(als.idxSource["policy_block"]) != 1 {
+		t.Errorf("initial idxSource[policy_block] = %d, want 1", len(als.idxSource["policy_block"]))
+	}
+	if len(als.idxSource["detect_block"]) != 1 {
+		t.Errorf("initial idxSource[detect_block] = %d, want 1", len(als.idxSource["detect_block"]))
+	}
+	als.mu.RUnlock()
+
+	// Simulate eviction of first event and rebuild.
+	als.mu.Lock()
+	als.events = als.events[1:]
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	als.mu.RLock()
+	defer als.mu.RUnlock()
+
+	// After eviction: policy_block should be gone, rate_limited and detect_block remain.
+	if got := len(als.idxSource["policy_block"]); got != 0 {
+		t.Errorf("after eviction idxSource[policy_block] = %d, want 0", got)
+	}
+	if got := len(als.idxSource["rate_limited"]); got != 1 {
+		t.Errorf("after eviction idxSource[rate_limited] = %d, want 1", got)
+	}
+	if got := len(als.idxSource["detect_block"]); got != 1 {
+		t.Errorf("after eviction idxSource[detect_block] = %d, want 1", got)
+	}
+	// Verify indices point to correct (shifted) positions.
+	if als.idxSource["rate_limited"][0] != 0 {
+		t.Errorf("rate_limited index should be 0 after eviction, got %d", als.idxSource["rate_limited"][0])
+	}
+	if als.idxSource["detect_block"][0] != 1 {
+		t.Errorf("detect_block index should be 1 after eviction, got %d", als.idxSource["detect_block"][0])
+	}
+}
+
+func TestAccessLogStore_IndexedRLSnapshot(t *testing.T) {
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-5 * time.Hour), ClientIP: "10.0.0.1", Service: "cdn.erfi.io", Source: "policy"},
+		{Timestamp: now.Add(-4 * time.Hour), ClientIP: "10.0.0.2", Service: "cdn.erfi.io", Source: ""},
+		{Timestamp: now.Add(-3 * time.Hour), ClientIP: "10.0.0.1", Service: "app.erfi.io", Source: ""},
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "10.0.0.3", Service: "cdn.erfi.io", Source: "detect_block"},
+		{Timestamp: now.Add(-1 * time.Hour), ClientIP: "10.0.0.1", Service: "cdn.erfi.io", Source: "policy"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	t.Run("filter by event_type only", func(t *testing.T) {
+		result := als.indexedRLSnapshot("policy_block", "", "", 0)
+		if len(result) != 2 {
+			t.Errorf("policy_block filter: got %d events, want 2", len(result))
+		}
+	})
+
+	t.Run("filter by client_ip only", func(t *testing.T) {
+		result := als.indexedRLSnapshot("", "10.0.0.1", "", 0)
+		if len(result) != 3 {
+			t.Errorf("client_ip filter: got %d events, want 3", len(result))
+		}
+	})
+
+	t.Run("filter by service only", func(t *testing.T) {
+		result := als.indexedRLSnapshot("", "", "cdn.erfi.io", 0)
+		if len(result) != 4 {
+			t.Errorf("service filter: got %d events, want 4", len(result))
+		}
+	})
+
+	t.Run("filter by event_type and service", func(t *testing.T) {
+		// policy_block + cdn.erfi.io: events at idx 0 and 4
+		result := als.indexedRLSnapshot("policy_block", "", "cdn.erfi.io", 0)
+		if len(result) != 2 {
+			t.Errorf("policy_block+cdn: got %d events, want 2", len(result))
+		}
+	})
+
+	t.Run("filter by event_type and client_ip", func(t *testing.T) {
+		// rate_limited + 10.0.0.1: event at idx 2
+		result := als.indexedRLSnapshot("rate_limited", "10.0.0.1", "", 0)
+		if len(result) != 1 {
+			t.Errorf("rate_limited+10.0.0.1: got %d events, want 1", len(result))
+		}
+	})
+
+	t.Run("filter with hours window", func(t *testing.T) {
+		// policy_block within last 3 hours: only event at idx 4
+		result := als.indexedRLSnapshot("policy_block", "", "", 3)
+		if len(result) != 1 {
+			t.Errorf("policy_block with hours=3: got %d events, want 1", len(result))
+		}
+	})
+
+	t.Run("no matching events", func(t *testing.T) {
+		result := als.indexedRLSnapshot("ddos_blocked", "", "", 0)
+		if len(result) != 0 {
+			t.Errorf("nonexistent type: got %d events, want 0", len(result))
+		}
+	})
+
+	t.Run("no filters returns all", func(t *testing.T) {
+		result := als.indexedRLSnapshot("", "", "", 0)
+		if len(result) != 5 {
+			t.Errorf("no filters: got %d events, want 5", len(result))
+		}
+	})
+
+	t.Run("case insensitive service lookup", func(t *testing.T) {
+		result := als.indexedRLSnapshot("", "", "CDN.ERFI.IO", 0)
+		if len(result) != 4 {
+			t.Errorf("case insensitive service: got %d events, want 4", len(result))
+		}
+	})
+}
+
+func TestAccessLogStore_IndexSurvivesIncrementalAppend(t *testing.T) {
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	// Initial load.
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "1.1.1.1", Service: "svc.io", Source: "policy"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	// Append more events (simulating what Load() does).
+	als.mu.Lock()
+	baseIdx := len(als.events)
+	als.events = append(als.events, RateLimitEvent{
+		Timestamp: now.Add(-1 * time.Hour), ClientIP: "2.2.2.2", Service: "svc.io", Source: "",
+	})
+	for i := baseIdx; i < len(als.events); i++ {
+		als.indexEvent(i)
+	}
+	als.mu.Unlock()
+
+	// Check indexes reflect both events.
+	als.mu.RLock()
+	defer als.mu.RUnlock()
+
+	if got := len(als.idxService["svc.io"]); got != 2 {
+		t.Errorf("idxService[svc.io] after append = %d, want 2", got)
+	}
+	if got := len(als.idxSource["policy_block"]); got != 1 {
+		t.Errorf("idxSource[policy_block] = %d, want 1", got)
+	}
+	if got := len(als.idxSource["rate_limited"]); got != 1 {
+		t.Errorf("idxSource[rate_limited] = %d, want 1", got)
+	}
+}
+
+// --- handleEvents indexed filter integration tests ---
+
+func TestHandleEventsIndexedFilter_EventType(t *testing.T) {
+	store := &Store{}
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-3 * time.Hour), ClientIP: "10.0.0.1", Service: "api.erfi.io", Source: "policy", RuleName: "Block Bots"},
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "10.0.0.2", Service: "api.erfi.io", Source: ""},
+		{Timestamp: now.Add(-1 * time.Hour), ClientIP: "10.0.0.3", Service: "cdn.erfi.io", Source: "policy", RuleName: "Block Scanners"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	handler := handleEvents(store, als)
+
+	// Filter by event_type=policy_block — uses the index.
+	req := httptest.NewRequest("GET", "/api/events?hours=24&event_type=policy_block", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp EventsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Events) != 2 {
+		t.Errorf("event_type=policy_block: len(events) = %d, want 2", len(resp.Events))
+	}
+}
+
+func TestHandleEventsIndexedFilter_ClientIP(t *testing.T) {
+	store := &Store{}
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-3 * time.Hour), ClientIP: "10.0.0.1", Service: "api.erfi.io", Source: ""},
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "10.0.0.2", Service: "api.erfi.io", Source: ""},
+		{Timestamp: now.Add(-1 * time.Hour), ClientIP: "10.0.0.1", Service: "cdn.erfi.io", Source: "policy"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	handler := handleEvents(store, als)
+
+	req := httptest.NewRequest("GET", "/api/events?hours=24&client=10.0.0.1", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp EventsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Events) != 2 {
+		t.Errorf("client=10.0.0.1: len(events) = %d, want 2", len(resp.Events))
+	}
+}
+
+func TestHandleEventsIndexedFilter_Service(t *testing.T) {
+	store := &Store{}
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	als.mu.Lock()
+	als.events = []RateLimitEvent{
+		{Timestamp: now.Add(-3 * time.Hour), ClientIP: "10.0.0.1", Service: "api.erfi.io", Source: ""},
+		{Timestamp: now.Add(-2 * time.Hour), ClientIP: "10.0.0.2", Service: "cdn.erfi.io", Source: ""},
+		{Timestamp: now.Add(-1 * time.Hour), ClientIP: "10.0.0.3", Service: "api.erfi.io", Source: "policy"},
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	handler := handleEvents(store, als)
+
+	req := httptest.NewRequest("GET", "/api/events?hours=24&service=cdn.erfi.io", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp EventsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Events) != 1 {
+		t.Errorf("service=cdn.erfi.io: len(events) = %d, want 1", len(resp.Events))
+	}
+}
+
+// --- Streaming JSON export tests ---
+
+func TestHandleEventsStreamingExport(t *testing.T) {
+	store := &Store{}
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	// Populate ALS with multiple events.
+	als.mu.Lock()
+	for i := 0; i < 100; i++ {
+		als.events = append(als.events, RateLimitEvent{
+			Timestamp: now.Add(-time.Duration(100-i) * time.Minute),
+			ClientIP:  "10.0.0.1",
+			Service:   "api.erfi.io",
+			Source:    "",
+			Method:    "GET",
+			URI:       "/api/test",
+		})
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	handler := handleEvents(store, als)
+
+	req := httptest.NewRequest("GET", "/api/events?hours=24&export=true&limit=50", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// The streaming response should be valid JSON.
+	var resp struct {
+		Total        int     `json:"total"`
+		Events       []Event `json:"events"`
+		TotalEmitted int     `json:"total_emitted"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("streaming export not valid JSON: %v\nbody: %s", err, rec.Body.String())
+	}
+	if resp.Total != -1 {
+		t.Errorf("streaming export total = %d, want -1", resp.Total)
+	}
+	if resp.TotalEmitted != 50 {
+		t.Errorf("streaming export total_emitted = %d, want 50", resp.TotalEmitted)
+	}
+	if len(resp.Events) != 50 {
+		t.Errorf("streaming export len(events) = %d, want 50", len(resp.Events))
+	}
+	// Events should be newest first.
+	if resp.Events[0].Timestamp.Before(resp.Events[49].Timestamp) {
+		t.Error("streaming export events not in newest-first order")
+	}
+}
+
+func TestHandleEventsStreamingExportWithFilter(t *testing.T) {
+	store := &Store{}
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	als.mu.Lock()
+	for i := 0; i < 50; i++ {
+		source := ""
+		if i%2 == 0 {
+			source = "policy"
+		}
+		als.events = append(als.events, RateLimitEvent{
+			Timestamp: now.Add(-time.Duration(50-i) * time.Minute),
+			ClientIP:  "10.0.0.1",
+			Service:   "api.erfi.io",
+			Source:    source,
+			Method:    "GET",
+			URI:       "/test",
+		})
+	}
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	handler := handleEvents(store, als)
+
+	// Export with event_type=policy_block — should get 25 events.
+	req := httptest.NewRequest("GET", "/api/events?hours=24&export=true&limit=100&event_type=policy_block", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Total        int     `json:"total"`
+		Events       []Event `json:"events"`
+		TotalEmitted int     `json:"total_emitted"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v\nbody: %s", err, rec.Body.String())
+	}
+	if resp.TotalEmitted != 25 {
+		t.Errorf("filtered export total_emitted = %d, want 25", resp.TotalEmitted)
+	}
+}
+
+func TestHandleEventsExportDefaultLimit(t *testing.T) {
+	store := &Store{}
+	als := NewAccessLogStore("")
+	now := time.Now().UTC()
+
+	als.mu.Lock()
+	als.events = append(als.events, RateLimitEvent{
+		Timestamp: now.Add(-1 * time.Minute),
+		ClientIP:  "10.0.0.1",
+		Service:   "api.erfi.io",
+		Method:    "GET",
+		URI:       "/test",
+	})
+	als.rebuildIndexes()
+	als.mu.Unlock()
+
+	handler := handleEvents(store, als)
+
+	// export=true without explicit limit.
+	req := httptest.NewRequest("GET", "/api/events?export=true", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Events       []Event `json:"events"`
+		TotalEmitted int     `json:"total_emitted"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.TotalEmitted != 1 {
+		t.Errorf("total_emitted = %d, want 1", resp.TotalEmitted)
+	}
+}
+
+// --- eqFilterValue helper tests ---
+
+func TestEqFilterValue(t *testing.T) {
+	tests := []struct {
+		name string
+		f    *fieldFilter
+		want string
+	}{
+		{"nil filter", nil, ""},
+		{"eq filter", parseFieldFilter("cdn.erfi.io", "eq"), "cdn.erfi.io"},
+		{"neq filter", parseFieldFilter("cdn.erfi.io", "neq"), ""},
+		{"contains filter", parseFieldFilter("erfi", "contains"), ""},
+		{"in filter", parseFieldFilter("a,b,c", "in"), ""},
+		{"regex filter", parseFieldFilter("^cdn", "regex"), ""},
+		{"default op (empty)", parseFieldFilter("cdn.erfi.io", ""), "cdn.erfi.io"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eqFilterValue(tt.f)
+			if got != tt.want {
+				t.Errorf("eqFilterValue() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

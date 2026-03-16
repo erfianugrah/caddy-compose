@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -285,9 +287,20 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		// avoids allocating a second []Event of equal size and running tag
 		// lookups on every event. Only events that land in the result page
 		// are enriched via enrichSingleRLE (deferred enrichment).
+		//
+		// When single-value "eq" filters are present for event_type, client_ip,
+		// or service, use the secondary index to pre-filter at the store level.
+		// This reduces the scan set from O(N) to O(matching events).
 		var rlRaw []RateLimitEvent
 		if needRL {
-			rlRaw = getRawRLSnapshot(als, tr, hours)
+			idxEventType := eqFilterValue(eventTypeF)
+			idxClient := eqFilterValue(clientF)
+			idxService := eqFilterValue(serviceF)
+			if !tr.Valid && (idxEventType != "" || idxClient != "" || idxService != "") {
+				rlRaw = als.indexedRLSnapshot(idxEventType, idxClient, idxService, hours)
+			} else {
+				rlRaw = getRawRLSnapshot(als, tr, hours)
+			}
 		}
 
 		// Build enrichment lookup tables once (cheap map builds from exclusion store).
@@ -379,6 +392,65 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			return true
 		}
 
+		// --- Streaming JSON export path ---
+		// For export=true, stream events directly to the response writer to
+		// avoid buffering 10K+ events in memory. The total is written as -1
+		// (unknown) since we stream incrementally.
+		if exportAll {
+			ctx, cancel := context.WithTimeout(context.Background(), eventQueryTimeout)
+			defer cancel()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"total":-1,"events":[`))
+
+			enc := json.NewEncoder(w)
+			enc.SetEscapeHTML(false)
+			first := true
+			emitted := 0
+			wi, ri := len(wafEvents)-1, len(rlRaw)-1
+			iterations := 0
+
+			for (wi >= 0 || ri >= 0) && emitted < limit {
+				iterations++
+				if iterations%2000 == 0 {
+					if ctx.Err() != nil {
+						break
+					}
+				}
+				useWAF := wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlRaw[ri].Timestamp))
+				if useWAF {
+					ev := &wafEvents[wi]
+					wi--
+					if !matchesWAFFilters(ev) {
+						continue
+					}
+					if !first {
+						w.Write([]byte(","))
+					}
+					enc.Encode(*ev)
+					first = false
+					emitted++
+				} else {
+					rle := &rlRaw[ri]
+					ri--
+					if !matchesRLFilters(rle) {
+						continue
+					}
+					if !first {
+						w.Write([]byte(","))
+					}
+					enc.Encode(enrichSingleRLE(rle, &lookup))
+					first = false
+					emitted++
+				}
+			}
+
+			w.Write([]byte(`],"total_emitted":` + strconv.Itoa(emitted) + `}`))
+			return
+		}
+
+		// --- Normal paginated path ---
 		// Reverse-merge WAF events ([]Event) and ALS events ([]RateLimitEvent)
 		// sorted by timestamp (newest first) with inline filtering and pagination.
 		// Only events that land in the result page are enriched/converted.
@@ -401,8 +473,8 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 					break
 				}
 			}
-			// Early exit: if we have enough results and don't need total count, stop.
-			if len(filtered) >= limit && !exportAll {
+			// Early exit: if we have enough results, stop.
+			if len(filtered) >= limit {
 				break
 			}
 			// Pick the newest event from either source.
@@ -431,10 +503,10 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				}
 			}
 
-			// Early-exit for non-export: once we have a full page and are past
+			// Early-exit: once we have a full page and are past
 			// the offset window, stop scanning. Return total=-1 to signal
 			// that more results exist but the exact count is unknown.
-			if !exportAll && len(filtered) >= limit && matched >= offset+limit {
+			if len(filtered) >= limit && matched >= offset+limit {
 				hasMore := wi >= 0 || ri >= 0
 				total := matched
 				if hasMore {

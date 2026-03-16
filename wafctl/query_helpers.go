@@ -248,6 +248,16 @@ var validFilterOps = map[string]bool{
 	"eq": true, "neq": true, "contains": true, "in": true, "regex": true,
 }
 
+// eqFilterValue returns the filter value if the filter is a single-value "eq"
+// filter (suitable for index lookups). Returns "" if the filter is nil or uses
+// a different operator.
+func eqFilterValue(f *fieldFilter) string {
+	if f == nil || f.op != "eq" {
+		return ""
+	}
+	return f.value
+}
+
 // parseFieldFilter reads a filter value and its companion _op param from query.
 // Returns nil when the field is empty (no filter).
 func parseFieldFilter(value, op string) *fieldFilter {
