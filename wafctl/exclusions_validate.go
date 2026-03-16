@@ -136,9 +136,11 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 				return fmt.Errorf("condition[%d]: unknown transform %q", i, t)
 			}
 		}
-		// Reject control characters in condition values.
-		if strings.ContainsAny(c.Value, "\n\r") {
-			return fmt.Errorf("condition[%d]: value must not contain newlines", i)
+		// Reject control characters in condition values (0x00-0x1F except tab).
+		for _, ch := range c.Value {
+			if ch < 0x20 && ch != '\t' {
+				return fmt.Errorf("condition[%d]: value contains control character (0x%02x)", i, ch)
+			}
 		}
 	}
 	return nil
@@ -290,15 +292,21 @@ func validateExclusion(e RuleExclusion) error {
 		if !hasSet && !hasAdd && !hasRemove && !hasDefault {
 			return fmt.Errorf("response_header requires at least one of: header_set, header_add, header_remove, header_default")
 		}
-		// Validate header names don't contain newlines.
-		for k := range e.HeaderSet {
+		// Validate header names and values don't contain newlines.
+		for k, v := range e.HeaderSet {
 			if strings.ContainsAny(k, "\n\r") {
 				return fmt.Errorf("header_set key must not contain newlines")
 			}
+			if strings.ContainsAny(v, "\n\r") {
+				return fmt.Errorf("header_set value for %q must not contain newlines", k)
+			}
 		}
-		for k := range e.HeaderAdd {
+		for k, v := range e.HeaderAdd {
 			if strings.ContainsAny(k, "\n\r") {
 				return fmt.Errorf("header_add key must not contain newlines")
+			}
+			if strings.ContainsAny(v, "\n\r") {
+				return fmt.Errorf("header_add value for %q must not contain newlines", k)
 			}
 		}
 		for _, k := range e.HeaderRemove {
@@ -306,9 +314,12 @@ func validateExclusion(e RuleExclusion) error {
 				return fmt.Errorf("header_remove value must not contain newlines")
 			}
 		}
-		for k := range e.HeaderDefault {
+		for k, v := range e.HeaderDefault {
 			if strings.ContainsAny(k, "\n\r") {
 				return fmt.Errorf("header_default key must not contain newlines")
+			}
+			if strings.ContainsAny(v, "\n\r") {
+				return fmt.Errorf("header_default value for %q must not contain newlines", k)
 			}
 		}
 		// Phase is implicitly outbound for response_header; accept both "" and "outbound".

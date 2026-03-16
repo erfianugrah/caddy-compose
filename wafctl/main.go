@@ -378,10 +378,22 @@ func runServe() int {
 		log.Printf("dashboard UI dir %s not found, API-only mode", uiDir)
 	}
 
-	// CORS: configure allowed origins (comma-separated). Default "*" for backward compat.
-	corsOrigins := envOr("WAF_CORS_ORIGINS", "*")
+	// Bearer token auth: protect /api/ routes (except /api/health).
+	authToken := envOr("WAF_AUTH_TOKEN", "")
+	if authToken == "" {
+		log.Printf("warning: WAF_AUTH_TOKEN not set — API endpoints are unauthenticated")
+	}
+
+	// CORS: configure allowed origins (comma-separated).
+	// When auth is enabled, default to empty (require explicit config);
+	// when auth is disabled, default to "*" for backward compat.
+	corsDefault := "*"
+	if authToken != "" {
+		corsDefault = ""
+	}
+	corsOrigins := envOr("WAF_CORS_ORIGINS", corsDefault)
 	allowedOrigins := strings.Split(corsOrigins, ",")
-	handler := newCORSMiddleware(allowedOrigins)(mux)
+	handler := newCORSMiddleware(allowedOrigins)(authMiddleware(authToken)(mux))
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -425,6 +437,40 @@ func parseDurationOr(s string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// --- Auth middleware ---
+
+// authMiddleware enforces Bearer token authentication on /api/ routes.
+// /api/health and non-API routes are exempt. If token is empty, all
+// requests are allowed (backward compat).
+func authMiddleware(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip auth for health check.
+			if r.URL.Path == "/api/health" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Skip auth for non-API routes (dashboard UI).
+			if !strings.HasPrefix(r.URL.Path, "/api/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// If no token configured, allow (backward compat).
+			if token == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Check bearer token.
+			auth := r.Header.Get("Authorization")
+			if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != token {
+				writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized: invalid or missing bearer token"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // --- CORS middleware ---

@@ -108,8 +108,7 @@ func (s *ExclusionStore) Count() int {
 	return len(s.exclusions)
 }
 
-// TagsByName returns a map from exclusion name to tags slice.
-// The tag slices are references (not deep copies) — caller must NOT modify them.
+// TagsByName returns a map from exclusion name to tags slice (deep copies).
 // Used by the enrichment path where only name→tags lookup is needed,
 // avoiding the expensive full deep copy of List().
 func (s *ExclusionStore) TagsByName() map[string][]string {
@@ -118,7 +117,9 @@ func (s *ExclusionStore) TagsByName() map[string][]string {
 	m := make(map[string][]string, len(s.exclusions))
 	for _, e := range s.exclusions {
 		if len(e.Tags) > 0 {
-			m[e.Name] = e.Tags
+			tags := make([]string, len(e.Tags))
+			copy(tags, e.Tags)
+			m[e.Name] = tags
 		}
 	}
 	return m

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 )
@@ -237,9 +238,9 @@ func (s *IPIntelStore) lookupReputation(ip string) *ReputationInfo {
 // lookupGreyNoise queries the GreyNoise Community API.
 // Response: { ip, noise, riot, classification, name, last_seen, message }
 func (s *IPIntelStore) lookupGreyNoise(ip string) *ReputationEntry {
-	url := "https://api.greynoise.io/v3/community/" + ip
+	reqURL := "https://api.greynoise.io/v3/community/" + url.PathEscape(ip)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil
 	}
@@ -300,9 +301,9 @@ func (s *IPIntelStore) lookupGreyNoise(ip string) *ReputationEntry {
 // lookupStopForumSpam queries the StopForumSpam API.
 // Response: { success, ip: { value, frequency, appears, asn, country } }
 func (s *IPIntelStore) lookupStopForumSpam(ip string) *ReputationEntry {
-	url := "https://api.stopforumspam.org/api?json&ip=" + ip
+	reqURL := "https://api.stopforumspam.org/api?json&ip=" + url.QueryEscape(ip)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil
 	}
@@ -353,9 +354,9 @@ func (s *IPIntelStore) lookupStopForumSpam(ip string) *ReputationEntry {
 // Response: { ip, ports, hostnames, cpes, tags, vulns }
 
 func (s *IPIntelStore) lookupShodan(ip string) *ShodanInfo {
-	url := "https://internetdb.shodan.io/" + ip
+	reqURL := "https://internetdb.shodan.io/" + url.PathEscape(ip)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil
 	}

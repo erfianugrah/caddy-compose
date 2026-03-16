@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -464,7 +465,30 @@ func (s *ManagedListStore) RefreshURL(id string) (ManagedList, error) {
 		}
 	}
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	// Use a custom transport that re-validates resolved IPs at connection time
+	// to prevent DNS rebinding attacks (TOCTOU between validateRefreshURL and dial).
+	var client *http.Client
+	if s.skipURLValidation {
+		client = &http.Client{Timeout: 60 * time.Second}
+	} else {
+		safeTransport := &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, port, _ := net.SplitHostPort(addr)
+				ips, err := net.DefaultResolver.LookupHost(ctx, host)
+				if err != nil {
+					return nil, err
+				}
+				for _, ipStr := range ips {
+					ip := net.ParseIP(ipStr)
+					if ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
+						return nil, fmt.Errorf("resolved to private/loopback address %s", ipStr)
+					}
+				}
+				return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(host, port))
+			},
+		}
+		client = &http.Client{Timeout: 60 * time.Second, Transport: safeTransport}
+	}
 	resp, err := client.Get(listURL)
 	if err != nil {
 		return ManagedList{}, fmt.Errorf("fetching %s: %w", listURL, err)

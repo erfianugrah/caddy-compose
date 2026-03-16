@@ -525,7 +525,7 @@ func TestValidateExclusion_SecRuleInjection(t *testing.T) {
 				Name: "test", Type: "allow",
 				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/api\n"}},
 			},
-			wantErr: "newlines",
+			wantErr: "control character",
 		},
 		{
 			name: "invalid named field name in header",

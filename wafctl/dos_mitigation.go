@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -126,6 +128,7 @@ func (s *JailStore) Count() int {
 }
 
 // Add creates a jail entry and persists to disk.
+// The write lock is held through the save to prevent concurrent mutation.
 func (s *JailStore) Add(ip, ttlStr, reason string) error {
 	ttl, err := time.ParseDuration(ttlStr)
 	if err != nil {
@@ -142,22 +145,26 @@ func (s *JailStore) Add(ip, ttlStr, reason string) error {
 
 	s.mu.Lock()
 	s.entries[ip] = entry
+	err = s.saveLocked()
 	s.mu.Unlock()
 
-	return s.save()
+	return err
 }
 
 // Remove deletes a jail entry and persists to disk.
+// The write lock is held through the save to prevent concurrent mutation.
 func (s *JailStore) Remove(ip string) error {
 	s.mu.Lock()
 	delete(s.entries, ip)
+	err := s.saveLocked()
 	s.mu.Unlock()
 
-	return s.save()
+	return err
 }
 
-func (s *JailStore) save() error {
-	s.mu.RLock()
+// saveLocked marshals and writes the jail file to disk.
+// Caller must hold s.mu (write lock).
+func (s *JailStore) saveLocked() error {
 	jf := jailFile{
 		Version:   1,
 		Entries:   make(map[string]jailFileEntry, len(s.entries)),
@@ -166,7 +173,6 @@ func (s *JailStore) save() error {
 	for ip, e := range s.entries {
 		jf.Entries[ip] = e
 	}
-	s.mu.RUnlock()
 
 	data, err := json.MarshalIndent(jf, "", "  ")
 	if err != nil {
@@ -208,6 +214,74 @@ func defaultDosConfig() DosConfig {
 		KernelDrop:    false,
 		Strategy:      "auto",
 	}
+}
+
+// validDosStrategies are the allowed values for the DosConfig Strategy field.
+var validDosStrategies = map[string]bool{
+	"auto":      true,
+	"full":      true,
+	"ip_path":   true,
+	"ip_only":   true,
+	"path_ua":   true,
+	"path_only": true,
+}
+
+// validateDosConfig validates a DosConfig before persisting.
+func validateDosConfig(cfg DosConfig) error {
+	// Validate strategy.
+	if cfg.Strategy != "" && !validDosStrategies[cfg.Strategy] {
+		return fmt.Errorf("invalid strategy %q", cfg.Strategy)
+	}
+
+	// Validate numeric thresholds are positive where they should be.
+	if cfg.Threshold < 0 {
+		return fmt.Errorf("threshold must be non-negative, got %f", cfg.Threshold)
+	}
+	if cfg.EPSTrigger < 0 {
+		return fmt.Errorf("eps_trigger must be non-negative, got %f", cfg.EPSTrigger)
+	}
+	if cfg.EPSCooldown < 0 {
+		return fmt.Errorf("eps_cooldown must be non-negative, got %f", cfg.EPSCooldown)
+	}
+	if cfg.MaxBuckets < 0 {
+		return fmt.Errorf("max_buckets must be non-negative, got %d", cfg.MaxBuckets)
+	}
+	if cfg.MaxReports < 0 {
+		return fmt.Errorf("max_reports must be non-negative, got %d", cfg.MaxReports)
+	}
+
+	// Validate durations.
+	if cfg.BasePenalty != "" {
+		if _, err := time.ParseDuration(cfg.BasePenalty); err != nil {
+			return fmt.Errorf("invalid base_penalty duration %q: %w", cfg.BasePenalty, err)
+		}
+	}
+	if cfg.MaxPenalty != "" {
+		if _, err := time.ParseDuration(cfg.MaxPenalty); err != nil {
+			return fmt.Errorf("invalid max_penalty duration %q: %w", cfg.MaxPenalty, err)
+		}
+	}
+	if cfg.CooldownDelay != "" {
+		if _, err := time.ParseDuration(cfg.CooldownDelay); err != nil {
+			return fmt.Errorf("invalid cooldown_delay duration %q: %w", cfg.CooldownDelay, err)
+		}
+	}
+
+	// Validate whitelist entries are valid CIDRs or IPs.
+	for i, entry := range cfg.Whitelist {
+		// Reject wildcard CIDRs that would whitelist everything.
+		if entry == "0.0.0.0/0" || entry == "::/0" {
+			return fmt.Errorf("whitelist[%d]: wildcard CIDR %q is not allowed", i, entry)
+		}
+		if net.ParseIP(entry) != nil {
+			continue // bare IP is valid
+		}
+		if _, _, err := net.ParseCIDR(entry); err != nil {
+			return fmt.Errorf("whitelist[%d]: invalid CIDR %q: %w", i, entry, err)
+		}
+	}
+
+	return nil
 }
 
 // ─── DosConfigStore ─────────────────────────────────────────────────
@@ -256,16 +330,24 @@ func (s *DosConfigStore) Get() DosConfig {
 }
 
 // Update replaces the config and persists to disk.
+// The write lock is held through the file write to prevent concurrent mutation.
 func (s *DosConfigStore) Update(cfg DosConfig) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	old := s.config
 	s.config = cfg
-	s.mu.Unlock()
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
+		s.config = old // roll back
 		return err
 	}
-	return atomicWriteFile(s.filePath, data, 0644)
+	if err := atomicWriteFile(s.filePath, data, 0644); err != nil {
+		s.config = old // roll back
+		return err
+	}
+	return nil
 }
 
 // ─── DosStatus (API response) ───────────────────────────────────────

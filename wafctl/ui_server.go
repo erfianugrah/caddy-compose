@@ -19,12 +19,14 @@ import (
 // create Web Cache Deception vulnerabilities.
 func uiFileServer(dir string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Sanitize: strip leading slash, reject path traversal.
+		// Sanitize: strip leading slash, clean path, reject traversal.
 		p := strings.TrimPrefix(r.URL.Path, "/")
-		if strings.Contains(p, "..") {
+		cleaned := filepath.Clean(p)
+		if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
 			http.Error(w, "invalid path", http.StatusBadRequest)
 			return
 		}
+		p = cleaned
 
 		// 1. Exact file match (static assets, e.g. /_astro/index.DxN2a.css)
 		full := filepath.Join(dir, p)

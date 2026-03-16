@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	"time"
 )
@@ -110,6 +111,10 @@ func handleAddJail(jailStore *JailStore) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "ip is required"})
 			return
 		}
+		if net.ParseIP(req.IP) == nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid IP address"})
+			return
+		}
 		if req.TTL == "" {
 			req.TTL = "1h"
 		}
@@ -168,6 +173,11 @@ func handleUpdateDosConfig(store *DosConfigStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg DosConfig
 		if _, failed := decodeJSON(w, r, &cfg); failed {
+			return
+		}
+
+		if err := validateDosConfig(cfg); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid config", Details: err.Error()})
 			return
 		}
 
