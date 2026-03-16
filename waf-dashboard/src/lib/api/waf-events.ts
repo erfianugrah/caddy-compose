@@ -116,6 +116,10 @@ export interface WAFEvent {
   // Caddy-generated UUID for request correlation
   request_id?: string;
   tags?: string[];
+  // DDoS mitigator fields (ddos_blocked/ddos_jailed events)
+  ddos_action?: string;
+  ddos_fingerprint?: string;
+  ddos_score?: string;
 }
 
 export interface MatchedRuleDetailInfo {
@@ -231,6 +235,9 @@ interface RawEvent {
   request_args?: Record<string, string>;
   request_id?: string;
   tags?: string[];
+  ddos_action?: string;
+  ddos_fingerprint?: string;
+  ddos_score?: string;
 }
 
 export function mapEvent(raw: RawEvent): WAFEvent {
@@ -267,6 +274,9 @@ export function mapEvent(raw: RawEvent): WAFEvent {
     request_args: raw.request_args,
     request_id: raw.request_id,
     tags: raw.tags,
+    ddos_action: raw.ddos_action,
+    ddos_fingerprint: raw.ddos_fingerprint,
+    ddos_score: raw.ddos_score,
   };
 }
 

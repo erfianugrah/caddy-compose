@@ -46,6 +46,10 @@ type Event struct {
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"`
 	RequestBody    string              `json:"request_body,omitempty"`
 	RequestArgs    map[string]string   `json:"request_args,omitempty"`
+	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
+	DDoSAction      string `json:"ddos_action,omitempty"`
+	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`
+	DDoSScore       string `json:"ddos_score,omitempty"` // behavioral anomaly score
 }
 
 // MatchedRule represents a single CRS or policy engine rule match.

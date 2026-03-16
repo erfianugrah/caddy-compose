@@ -88,6 +88,10 @@ type RateLimitEvent struct {
 	InlineTags     []string            `json:"inline_tags,omitempty"`     // detect_block/logged: tags from policy_tags log_append field
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"` // block/detect_block: captured request headers
 	RequestBody    string              `json:"request_body,omitempty"`    // block/detect_block: truncated body excerpt
+	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
+	DDoSAction      string `json:"ddos_action,omitempty"`
+	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`
+	DDoSScore       string `json:"ddos_score,omitempty"`
 }
 
 // headerValuesCI does a case-insensitive header lookup on a map[string][]string
@@ -559,6 +563,9 @@ func (s *AccessLogStore) Load() {
 					if isDDoSBlock {
 						evt.Source = "ddos_" + entry.DDoSAction // "ddos_blocked" or "ddos_jailed"
 						evt.RuleName = "ddos_mitigator"
+						evt.DDoSAction = entry.DDoSAction
+						evt.DDoSFingerprint = entry.DDoSFingerprint
+						evt.DDoSScore = entry.DDoSZScore
 						if entry.DDoSFingerprint != "" {
 							evt.InlineTags = []string{"ddos", entry.DDoSAction}
 						}
@@ -923,6 +930,14 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		EventType:      eventType,
 		Tags:           tags,
 		RequestID:      rle.RequestID,
+	}
+	// For DDoS mitigator blocks, pass through fingerprint and score.
+	if rle.Source == "ddos_blocked" || rle.Source == "ddos_jailed" {
+		evt.DDoSAction = rle.DDoSAction
+		evt.DDoSFingerprint = rle.DDoSFingerprint
+		evt.DDoSScore = rle.DDoSScore
+		evt.BlockedBy = "ddos_mitigator"
+		evt.RuleMsg = "DDoS Mitigator: " + rle.DDoSAction
 	}
 	// For policy engine blocks, set the rule message from X-Blocked-Rule header.
 	if rle.Source == "policy" && rle.RuleName != "" {

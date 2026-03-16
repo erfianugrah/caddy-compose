@@ -365,7 +365,9 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
 
         <div className="space-y-2">
           <h4 className={T.sectionLabel}>
-            {event.event_type === "rate_limited" ? "Rate Limit Details"
+            {event.event_type === "ddos_blocked" || event.event_type === "ddos_jailed"
+              ? "DDoS Mitigator"
+              : event.event_type === "rate_limited" ? "Rate Limit Details"
               : event.event_type === "detect_block" || event.event_type === "logged" ? "Rule Match"
               : event.event_type?.startsWith("policy_") ? "Policy Engine Match"
               : event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound"
@@ -373,7 +375,50 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                 : "Rule Match"}
           </h4>
           <div className="space-y-1 rounded-md bg-lovelace-950 p-3 text-xs overflow-hidden">
-            {event.event_type === "rate_limited" ? (
+            {(event.event_type === "ddos_blocked" || event.event_type === "ddos_jailed") ? (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Action:</span>
+                  <span className="text-lv-purple font-medium">
+                    {event.event_type === "ddos_jailed" ? "Auto-Jailed (behavioral anomaly)" : "Blocked (IP in jail)"}
+                  </span>
+                </div>
+                {event.ddos_score && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Anomaly Score:</span>
+                    <span className="text-lv-peach font-medium">{event.ddos_score}</span>
+                  </div>
+                )}
+                {event.ddos_fingerprint && (
+                  <div className="flex gap-2 items-center">
+                    <span className="text-muted-foreground">Fingerprint:</span>
+                    <code className="text-muted-foreground/70 font-data">{event.ddos_fingerprint}</code>
+                    <CopyBtn text={event.ddos_fingerprint} />
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Response:</span>
+                  <span className="text-lv-red">403 Forbidden</span>
+                </div>
+                {event.user_agent && (
+                  <div className="flex gap-2 items-start">
+                    <span className="text-muted-foreground shrink-0">User-Agent:</span>
+                    <TruncatedCode value={event.user_agent} className="text-foreground" />
+                    <CopyBtn text={event.user_agent} />
+                  </div>
+                )}
+                {event.tags && event.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="text-muted-foreground">Tags:</span>
+                    {event.tags.map((tag) => (
+                      <span key={tag} className="inline-flex items-center rounded bg-lv-purple/10 border border-lv-purple/30 px-2 py-0.5 text-xs font-data text-lv-purple">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : event.event_type === "rate_limited" ? (
               <>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
