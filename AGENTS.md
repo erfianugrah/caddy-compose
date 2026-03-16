@@ -37,9 +37,9 @@ cd waf-dashboard && npm ci && npm run build
 
 ```bash
 make test               # Run ALL tests (Go + frontend)
-make test-go            # Go tests only (24 test files, 500 tests)
-make test-frontend      # Frontend Vitest only (17 test files, 326 tests)
-make test-e2e           # E2E smoke tests (requires Docker, 117 tests)
+make test-go            # Go tests only (24 test files, ~500 tests)
+make test-frontend      # Frontend Vitest only (17 test files, ~326 tests)
+make test-e2e           # E2E smoke tests (requires Docker, ~117 tests)
 ```
 
 ### Running a single test
@@ -67,10 +67,12 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 ## Code Style — Go (wafctl/)
 
-### Imports
+### Imports & Structure
 
-- Standard library only — zero external dependencies.
-- Single import block, alphabetically sorted.
+- Standard library only — zero external dependencies. Single import block, alphabetically sorted.
+- One cohesive module per `.go` file, split by domain responsibility.
+- Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
+- Shared utilities in `util.go`; `envOr()` in `main.go`.
 
 ### Naming
 
@@ -91,9 +93,8 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 - Go 1.22+ route patterns: `mux.HandleFunc("GET /api/health", handleHealth)`
 - Closure pattern for DI: `handleSummary(store, als) http.HandlerFunc`
-- All JSON responses via `writeJSON()` helper (sets Content-Type, disables HTML escaping).
-- All JSON request bodies via `decodeJSON()` helper (`MaxBytesReader` 5 MB limit).
-- Query filters: `fieldFilter` type with `parseFieldFilter(value, op)` and `matchField(target)`.
+- All JSON responses via `writeJSON()` helper; request bodies via `decodeJSON()` (5 MB limit).
+- Query filters: `fieldFilter` with `parseFieldFilter(value, op)` and `matchField(target)`.
   Operators: `eq` (default), `neq`, `contains`, `in`, `regex`. Param format: `field=val&field_op=op`.
 
 ### Concurrency
@@ -102,45 +103,31 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 - `atomic.Int64` for offset tracking; `atomic.Bool` for guard flags.
 - Return deep copies from getters to prevent concurrent modification.
 
-### File Operations & Structure
+### File Operations
 
 - Atomic writes via `atomicWriteFile()` in `util.go` — write to temp, fsync, rename.
-- `envOr()` helper in `main.go`; shared utilities in `util.go`.
-- Section headers: `// --- Section Name ---` or `// ─── Section Name ──────────`
-- One cohesive module per `.go` file, split by domain responsibility.
+- All stores use JSON file persistence with `sync.RWMutex` protection.
 
 ### Input Validation
 
 - `validateExclusion()` rejects newlines in all string fields, validates operators/fields against allowlists.
-- `validateConditions()` — shared validation used by both WAF exclusions and rate limit rules.
+- `validateConditions()` — shared validation for WAF exclusions and rate limit rules.
 - Tags: lowercase alphanumeric + hyphens (`^[a-z0-9][a-z0-9-]*$`), max 10 per rule, max 50 chars each.
-- Condition operators validated per-field via `validOperatorsForField` map:
-  - **String fields** (host, path, uri_path, user_agent, header, query, cookie, body, body_json, body_form,
-    args, referer, response_header): 16-operator set. `body_json` also supports `exists`.
-  - **Enum fields** (method, country, response_status, http_version): eq, neq, in, not_in, in_list, not_in_list.
-  - **IP field**: eq, neq, in, not_in, ip_match, not_ip_match, in_list, not_in_list.
-  - Numeric operators (gt, ge, lt, le) bypass per-field map — accepted on any field.
+- Condition operators validated per-field via `validOperatorsForField` map.
+  Numeric operators (gt, ge, lt, le) accepted on any field.
 
 ## Code Style — TypeScript/React (waf-dashboard/)
 
-### Imports
+### Imports & Naming
 
-- Framework imports first (`react`, `vitest`), then local imports.
-- Path alias: `@/` maps to `./src/`.
-
-### Naming
-
+- Framework imports first (`react`, `vitest`), then local imports. Path alias: `@/` → `./src/`.
 - Interfaces/types: `PascalCase` — `SummaryData`, `WAFEvent`, `TimelinePoint`
 - Components: `PascalCase` filenames — `OverviewDashboard.tsx`, `PolicyEngine.tsx`
 - API functions: `camelCase` — `fetchSummary`, `fetchEvents`, `lookupIP`
-- API base: `const API_BASE = "/api"`
 
 ### API Layer
 
-- Domain modules under `src/lib/api/` — `shared.ts` (HTTP helpers), `waf-events.ts`, `analytics.ts`,
-  `exclusions.ts`, `config.ts`, `rate-limits.ts` (compat wrappers → `/api/rules`), `blocklist.ts`,
-  `csp.ts`, `general-logs.ts`, `managed-lists.ts`, `backup.ts`, `default-rules.ts`,
-  `security-headers.ts`, `index.ts` (barrel).
+- Domain modules under `src/lib/api/` with barrel export via `index.ts`.
 - Go returns `snake_case` JSON; API modules map to `camelCase` TypeScript interfaces.
 - When adding endpoints, update the Go handler AND the matching API module.
 
@@ -171,34 +158,18 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 - Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload.
 - On startup, `generateOnBoot()` regenerates all config from stored JSON state.
-- All stores use JSON file persistence with `sync.RWMutex` protection.
 - Version tags must stay in sync across: `Makefile`, `compose.yaml`, `README.md`, `.github/workflows/build.yml`.
 - **Unified rule store**: `ExclusionStore` handles ALL rule types (allow/block/skip/detect/rate_limit).
   `RuleExclusion` is the single model. `/api/rules` is the canonical CRUD endpoint.
   `/api/deploy` is the single deploy endpoint. Old `/api/exclusions` kept as alias.
-  `RateLimitRuleStore` has been removed — rate limit rules use `type: "rate_limit"` on `RuleExclusion`.
-- Policy engine handles all rule evaluation (allow/block/skip/detect/rate_limit). Coraza has been removed.
+- Policy engine handles all rule evaluation. Coraza has been removed.
 - Service FQDN resolution: `BuildServiceFQDNMap()` parses Caddyfile to map short names → FQDNs.
-- **DDoS mitigator**: `caddy-ddos-mitigator` plugin v0.7.3 (separate repo: `ergo/caddy-ddos-mitigator`).
-  Compiled into Caddy via xcaddy. Registers as `http.handlers.ddos_mitigator` (L7) and
-  `layer4.handlers.ddos_mitigator` (L4). Runs after `log_append` but before `policy_engine`.
-  Uses behavioral IP profiling (path diversity scoring) instead of raw frequency z-score.
+- **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
+  Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).
   Enforces via 4 layers: L7 403, L4 TCP RST, nftables kernel drop, eBPF/XDP NIC drop.
-  CIDR aggregation promotes /24 prefix when 5+ IPs from same subnet are jailed.
-  All detection parameters configurable via Caddyfile (threshold, warmup, CIDR thresholds, etc.).
-  Profile reset on unjail (prevents re-jail from stale behavioral data).
   Shares IP jail with wafctl via `/data/waf/jail.json` (bidirectional file sync).
-  - wafctl DDoS stores: `JailStore`, `DosConfigStore`, `SpikeDetector`, `SpikeReporter`
-  - wafctl DDoS API: `/api/dos/status` (EPS from access log, sparkline, ddos_events count),
-    `/api/dos/jail` (CRUD), `/api/dos/config` (CRUD),
-    `/api/dos/reports` (spike forensics) in `handlers_dos.go`
-  - Dashboard: `/dos` page (`DDoSPanel.tsx`) with StatusBanner (EPS sparkline, poll indicator),
-    StatCards, JailTable (CRUD), SpikeReports, ConfigPanel
-  - Overview: DDoS Blocked stat card (purple), DDoS series in timeline/donut/bar charts
-  - Security Events: purple `DDOS BLOCKED` / `DDOS JAILED` badges via EventTypeBadge
-  - Access Logs: optional DDoS column showing ddos_action with purple badge
-  - General Logs: ddos_action, ddos_fingerprint, ddos_z_score fields passed through
-  - Frontend API module: `src/lib/api/dos.ts`
+  - wafctl stores: `JailStore`, `DosConfigStore`, `SpikeDetector`, `SpikeReporter`
+  - API: `/api/dos/status`, `/api/dos/jail`, `/api/dos/config`, `/api/dos/reports`
+  - Dashboard: `/dos` page (`DDoSPanel.tsx`); frontend API in `src/lib/api/dos.ts`
   - Log fields: `ddos_action`, `ddos_fingerprint`, `ddos_z_score`, `ddos_spike_mode`
   - Handler ordering: `order log_append first`, `order ddos_mitigator after log_append`
-  - k6 load tests: `test/k6/stress.js` (baseline + flood + sustain, 300 VUs)
