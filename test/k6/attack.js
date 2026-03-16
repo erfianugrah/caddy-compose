@@ -19,7 +19,7 @@ const total403 = new Counter("total_403");
 const total200 = new Counter("total_200");
 const timeToBlock = new Trend("time_to_first_block");
 
-const BASE_URL = __ENV.TARGET_URL || "http://caddy:8080";
+const BASE_URL = __ENV.TARGET_URL || "http://caddy-e2e:8080";
 const ATTACK_PATH = __ENV.ATTACK_PATH || "/anything/api/v1/vulnerable-endpoint";
 
 // Single user agent to maximize fingerprint collision

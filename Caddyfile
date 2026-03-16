@@ -15,18 +15,18 @@
 	dns cloudflare {$CF_API_TOKEN}
 	ech ech.erfi.io
 
-	# Handler execution order (Caddy evaluates in this sequence):
-	#   ddos_mitigator → log_append → policy_engine → reverse_proxy
+	# Handler execution order (Caddy middleware wrapping, outermost first):
+	#   log_append wraps everything → ddos_mitigator → policy_engine → reverse_proxy
 	#
-	# ddos_mitigator runs first: adaptive fingerprint + IP jail. Blocked
-	# traffic never reaches the WAF, saving all downstream CPU.
+	# log_append is outermost so it captures ddos_action/policy_action fields
+	# even when ddos_mitigator or policy_engine blocks (returns without calling next).
+	# Placeholders are resolved lazily at log-write time.
 	#
-	# log_append wraps policy_engine so log fields (policy_action, ddos_action,
-	# etc.) are captured even when a handler blocks the request. Placeholders
-	# are resolved lazily at log-write time.
-	order ddos_mitigator first
-	order log_append after ddos_mitigator
-	order policy_engine after log_append
+	# ddos_mitigator runs before policy_engine: adaptive fingerprint + IP jail.
+	# Blocked traffic never reaches the WAF, saving all downstream CPU.
+	order log_append first
+	order ddos_mitigator after log_append
+	order policy_engine after ddos_mitigator
 
 	log {
 		level INFO

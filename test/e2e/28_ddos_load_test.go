@@ -36,8 +36,8 @@ func TestDDoS_Load_BaselineThenAttack(t *testing.T) {
 	httpDelete(t, wafctlURL+"/api/dos/jail/0.0.0.0") // no-op if empty
 
 	// Raise WAF threshold so CRS detect rules don't block k6 traffic.
-	// k6 triggers CRS anomaly score ~10 even with browser headers (missing
-	// some headers that real browsers send). Restore after test.
+	// k6 triggers CRS anomaly score ~10 even with browser headers.
+	// We raise the threshold to 25 so ONLY the DDoS mitigator can block.
 	cfgResp, cfgBody := httpGet(t, wafctlURL+"/api/config")
 	assertCode(t, "get config", 200, cfgResp)
 	origConfig := string(cfgBody)
@@ -48,29 +48,44 @@ func TestDDoS_Load_BaselineThenAttack(t *testing.T) {
 			"outbound_threshold": 25,
 		},
 	})
-	httpPost(t, wafctlURL+"/api/deploy", struct{}{})
-	time.Sleep(6 * time.Second) // wait for policy engine hot-reload
-	t.Log("WAF threshold raised for load test")
+	// Clear the DDoS whitelist so k6 traffic (from 127.0.0.1 via host network)
+	// is evaluated by the behavioral profiler instead of bypassing it.
+	httpPut(t, wafctlURL+"/api/dos/config", map[string]any{
+		"enabled": true, "threshold": 0.65, "base_penalty": "30s", "max_penalty": "1h",
+		"eps_trigger": 50, "eps_cooldown": 10, "cooldown_delay": "30s",
+		"max_buckets": 10000, "max_reports": 100,
+		"whitelist":   []string{}, // empty whitelist — all IPs evaluated
+		"kernel_drop": false, "strategy": "auto",
+	})
+	httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
+	time.Sleep(6 * time.Second)
+	t.Log("WAF threshold raised, DDoS whitelist cleared for load test")
 	defer func() {
-		// Restore original config
 		httpPut(t, wafctlURL+"/api/config", json.RawMessage(origConfig))
-		httpPost(t, wafctlURL+"/api/deploy", struct{}{})
+		httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
 		t.Log("WAF threshold restored")
 	}()
 
-	// ── Phase 1: Baseline ───────────────────────────────────────────
-	t.Log("Phase 1: Running k6 baseline (diverse browsing)...")
+	// ── Run combined stress test (baseline → flood → sustain) ──────
+	t.Log("Running k6 stress test (baseline 30s → flood 30s → sustain 60s)...")
 
-	// k6 runs inside Docker — use the container hostname, not localhost
-	baselineOut, err := runK6(t, "baseline.js", map[string]string{
-		"TARGET_URL": "http://caddy:8080",
+	// k6 on test_default network — Caddy sees 172.19.x.x which is whitelisted.
+	// The whitelist was cleared via /api/dos/config above, but that only updates
+	// the wafctl config, not the running plugin. The Caddyfile whitelist is baked
+	// in at startup. For the stress test to trigger auto-jail, either:
+	// a) The e2e Caddyfile must NOT whitelist the Docker bridge range, OR
+	// b) k6 must come from a non-whitelisted IP.
+	// We use the Docker network with container hostname targeting.
+	// k6 on k6_attack network (192.168.200.x) — NOT whitelisted.
+	// caddy-e2e is connected to both networks, reachable as caddy-e2e.
+	stressOut, err := runK6(t, "stress.js", map[string]string{
+		"TARGET_URL":  "http://caddy-e2e:8080",
+		"ATTACK_PATH": "/anything/api/v1/stress-target",
 	})
-	// k6 may exit non-zero if thresholds fail (expected — single-IP k6 will
-	// eventually get flagged by the mitigator after warmup). Log but don't fail.
 	if err != nil {
-		t.Logf("k6 baseline exit: %v (expected if mitigator activated after warmup)", err)
+		t.Logf("k6 exit: %v (expected if thresholds crossed)", err)
 	}
-	t.Logf("Baseline output:\n%s", lastLines(baselineOut, 15))
+	t.Logf("Stress output:\n%s", lastLines(stressOut, 25))
 
 	// Check jail after baseline. With all k6 VUs coming from one Docker IP,
 	// the mitigator may flag it after 1000+ observations (correct behavior —
@@ -208,9 +223,20 @@ func TestDDoS_Load_ConnectionFlood(t *testing.T) {
 func runK6(t *testing.T, script string, envVars map[string]string) (string, error) {
 	t.Helper()
 
+	// Create a non-whitelisted network for k6 (192.168.200.0/24, outside the
+	// 10/8 + 172.16/12 + 127/8 whitelist). Connect it to test_default so k6
+	// can reach caddy.
+	exec.Command("docker", "network", "create", "--subnet=192.168.200.0/24", "k6_attack").Run()
+	// Connect caddy-e2e to the k6 network so it's reachable
+	exec.Command("docker", "network", "connect", "k6_attack", "caddy-e2e").Run()
+	t.Cleanup(func() {
+		exec.Command("docker", "network", "disconnect", "k6_attack", "caddy-e2e").Run()
+		exec.Command("docker", "network", "rm", "k6_attack").Run()
+	})
+
 	args := []string{
 		"run", "--rm",
-		"--network", "test_default", // same Docker network as the e2e stack
+		"--network", "k6_attack", // k6 gets 192.168.200.x — NOT whitelisted
 	}
 
 	for k, v := range envVars {

@@ -1,13 +1,13 @@
 # E2E test Caddyfile — policy engine as sole WAF
 {
 	admin :2019
-	# Handler execution order:
-	#   ddos_mitigator → log_append → policy_engine → reverse_proxy
-	# ddos_mitigator runs first so blocked traffic never reaches WAF.
-	# log_append wraps policy_engine to capture WAF log fields.
-	order ddos_mitigator first
-	order log_append after ddos_mitigator
-	order policy_engine after log_append
+	# Handler execution order (outermost middleware first):
+	#   log_append wraps everything → ddos_mitigator → policy_engine
+	# log_append must be outermost to capture ddos_action/policy_action fields
+	# even when ddos_mitigator blocks (returns 403 without calling next).
+	order log_append first
+	order ddos_mitigator after log_append
+	order policy_engine after ddos_mitigator
 	log {
 		level INFO
 		output stdout

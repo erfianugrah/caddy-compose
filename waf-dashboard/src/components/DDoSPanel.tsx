@@ -147,13 +147,19 @@ function StatsRow({ status, jail, loading }: { status: DosStatus | null; jail: J
         color={jail.length > 0 ? "red" : "green"}
         loading={loading}
       />
-      <StatCard
-        title="Strategy"
-        value={0}
-        icon={Fingerprint}
-        color="purple"
-        loading={loading}
-      />
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardDescription className={T.statLabelUpper}>Strategy</CardDescription>
+          <div className="rounded-md p-2 text-lv-purple bg-lv-purple/15">
+            <Fingerprint className="h-4 w-4" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? <Skeleton className="h-7 w-20" /> : (
+            <p className={cn(T.statValue, "text-lv-purple")}>{status?.strategy || "auto"}</p>
+          )}
+        </CardContent>
+      </Card>
       <StatCard
         title="Peak EPS"
         value={status ? Math.round(status.peak_eps * 10) / 10 : 0}
