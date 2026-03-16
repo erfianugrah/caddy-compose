@@ -560,6 +560,9 @@ func parseGeneralLogEvent(entry AccessLogEntry, geoIP *GeoIPStore) GeneralLogEve
 		Level:           entry.Level,
 		RequestID:       accessLogRequestID(entry),
 		SecurityHeaders: extractSecurityHeaders(entry.RespHeaders),
+		DDoSAction:      entry.DDoSAction,
+		DDoSFingerprint: entry.DDoSFingerprint,
+		DDoSZScore:      entry.DDoSZScore,
 	}
 
 	// Convert raw TLS numeric codes to human-readable names.

@@ -4,6 +4,7 @@ import { formatNumber, formatTime, formatDate, countryFlag } from "@/lib/format"
 import { downloadJSON } from "@/lib/download";
 import type { GeneralLogEvent, GeneralLogsResponse } from "@/lib/api";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -33,7 +34,7 @@ import { LogDetailPanel } from "./LogDetailPanel";
 
 // ─── Column Definitions ─────────────────────────────────────────────
 
-type ColumnId = "time" | "status" | "method" | "service" | "uri" | "latency" | "size" | "country" | "protocol" | "tls" | "headers";
+type ColumnId = "time" | "status" | "method" | "service" | "uri" | "latency" | "size" | "country" | "protocol" | "tls" | "headers" | "ddos";
 
 interface ColumnDef {
   id: ColumnId;
@@ -53,6 +54,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: "protocol", label: "Protocol", defaultVisible: false },
   { id: "tls",      label: "TLS",      defaultVisible: false },
   { id: "headers",  label: "Headers",  defaultVisible: true },
+  { id: "ddos",     label: "DDoS",     defaultVisible: false },
 ];
 
 const STORAGE_KEY = "waf-log-columns";
@@ -211,6 +213,7 @@ export default function LogStreamTab({
                 {isVisible("protocol") && <TableHead className="text-xs w-[80px]">Protocol</TableHead>}
                 {isVisible("tls") && <TableHead className="text-xs w-[70px]">TLS</TableHead>}
                 {isVisible("headers") && <TableHead className="text-xs w-[60px]">Headers</TableHead>}
+                {isVisible("ddos") && <TableHead className="text-xs w-[60px]">DDoS</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -307,6 +310,17 @@ export default function LogStreamTab({
                         {isVisible("headers") && (
                           <TableCell>
                             <HeaderDots headers={evt.security_headers} />
+                          </TableCell>
+                        )}
+                        {isVisible("ddos") && (
+                          <TableCell className="text-xs">
+                            {evt.ddos_action && evt.ddos_action !== "pass" ? (
+                              <Badge variant="outline" className="text-xs px-1.5 py-0 bg-lv-purple/20 border-lv-purple/30 text-lv-purple">
+                                {evt.ddos_action.toUpperCase()}
+                              </Badge>
+                            ) : evt.ddos_action === "pass" ? (
+                              <span className="text-muted-foreground">pass</span>
+                            ) : null}
                           </TableCell>
                         )}
                       </TableRow>

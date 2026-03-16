@@ -47,6 +47,9 @@ export interface GeneralLogEvent {
   request_id?: string;
   tls?: TLSInfo | null;
   security_headers: SecurityHeaderInfo;
+  ddos_action?: string;
+  ddos_fingerprint?: string;
+  ddos_z_score?: string;
 }
 
 export interface GeneralLogsResponse {

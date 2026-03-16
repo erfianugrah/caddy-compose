@@ -321,6 +321,7 @@ export default function OverviewDashboard() {
           ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
           ...(data.policy_blocked > 0 ? [{ name: "Policy Block", value: data.policy_blocked }] : []),
           ...(data.detect_blocked > 0 ? [{ name: "Detect Block", value: data.detect_blocked }] : []),
+          ...(data.ddos_blocked > 0 ? [{ name: "DDoS Blocked", value: data.ddos_blocked }] : []),
           ...(data.policy_allowed > 0 ? [{ name: "Policy Allow", value: data.policy_allowed }] : []),
           ...(data.policy_skipped > 0 ? [{ name: "Policy Skip", value: data.policy_skipped }] : []),
           ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
@@ -450,6 +451,10 @@ export default function OverviewDashboard() {
                     <stop offset="5%" stopColor={ACTION_COLORS.detect_block} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={ACTION_COLORS.detect_block} stopOpacity={0} />
                   </linearGradient>
+                  <linearGradient id="gradDDoSBlocked" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={ACTION_COLORS.ddos_blocked} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={ACTION_COLORS.ddos_blocked} stopOpacity={0} />
+                  </linearGradient>
                   <linearGradient id="gradPolicyAllow" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={ACTION_COLORS.policy_allow} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={ACTION_COLORS.policy_allow} stopOpacity={0} />
@@ -503,6 +508,7 @@ export default function OverviewDashboard() {
                 <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" hide={hiddenSeries.has("total_blocked")} />
                 <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" hide={hiddenSeries.has("policy_block")} />
                 <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" hide={hiddenSeries.has("detect_block")} />
+                <Area type="monotone" dataKey="ddos_blocked" stroke={ACTION_COLORS.ddos_blocked} fill="url(#gradDDoSBlocked)" strokeWidth={2} name="DDoS Blocked" hide={hiddenSeries.has("ddos_blocked")} />
                 <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" hide={hiddenSeries.has("policy_allow")} />
                 <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" hide={hiddenSeries.has("policy_skip")} />
                 {/* Selection overlay while dragging */}
@@ -646,6 +652,7 @@ export default function OverviewDashboard() {
                         <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
                         <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
                         <Bar dataKey="detect_block" name="Detect Block" fill={ACTION_COLORS.detect_block} stackId="a" />
+                        <Bar dataKey="ddos_blocked" name="DDoS Blocked" fill={ACTION_COLORS.ddos_blocked} stackId="a" />
                         <Bar dataKey="policy_allow" name="Policy Allow" fill={ACTION_COLORS.policy_allow} stackId="a" />
                         <Bar dataKey="policy_skip" name="Policy Skip" fill={ACTION_COLORS.policy_skip} stackId="a" />
                         <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
@@ -702,6 +709,7 @@ export default function OverviewDashboard() {
                       <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
                       <Bar dataKey="detect_block" name="Detect Block" fill={ACTION_COLORS.detect_block} stackId="a" />
                       <Bar dataKey="policy_allow" name="Policy Allow" fill={ACTION_COLORS.policy_allow} stackId="a" />
+                      <Bar dataKey="ddos_blocked" name="DDoS Blocked" fill={ACTION_COLORS.ddos_blocked} stackId="a" />
                       <Bar dataKey="policy_skip" name="Policy Skip" fill={ACTION_COLORS.policy_skip} stackId="a" />
                       <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                     </BarChart>

@@ -108,6 +108,7 @@ type HourCount struct {
 	RateLimited  int    `json:"rate_limited"`
 	PolicyBlock  int    `json:"policy_block"`
 	DetectBlock  int    `json:"detect_block"`
+	DDoSBlocked  int    `json:"ddos_blocked"`
 	PolicyAllow  int    `json:"policy_allow"`
 	PolicySkip   int    `json:"policy_skip"`
 }
@@ -120,6 +121,7 @@ type ServiceCount struct {
 	RateLimited  int    `json:"rate_limited"`
 	PolicyBlock  int    `json:"policy_block"`
 	DetectBlock  int    `json:"detect_block"`
+	DDoSBlocked  int    `json:"ddos_blocked"`
 	PolicyAllow  int    `json:"policy_allow"`
 	PolicySkip   int    `json:"policy_skip"`
 }
@@ -132,6 +134,7 @@ type ClientCount struct {
 	RateLimited  int    `json:"rate_limited"`
 	PolicyBlock  int    `json:"policy_block"`
 	DetectBlock  int    `json:"detect_block"`
+	DDoSBlocked  int    `json:"ddos_blocked"`
 	PolicyAllow  int    `json:"policy_allow"`
 	PolicySkip   int    `json:"policy_skip"`
 }

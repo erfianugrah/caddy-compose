@@ -38,6 +38,7 @@ export interface TimelinePoint {
   rate_limited: number;
   policy_block: number;
   detect_block: number;
+  ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
 }
@@ -50,6 +51,7 @@ export interface ServiceStat {
   rate_limited: number;
   policy_block: number;
   detect_block: number;
+  ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
   block_rate: number;
@@ -63,6 +65,7 @@ export interface ClientStat {
   rate_limited: number;
   policy_block: number;
   detect_block: number;
+  ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
 }
@@ -75,6 +78,7 @@ export interface ServiceBreakdown {
   rate_limited: number;
   policy_block: number;
   detect_block: number;
+  ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
 }

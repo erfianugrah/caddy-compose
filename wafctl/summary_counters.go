@@ -366,6 +366,7 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 			RateLimited:  b.RateLimited,
 			PolicyBlock:  b.PolicyBlock,
 			DetectBlock:  b.DetectBlock,
+			DDoSBlocked:  b.DDoSBlocked,
 			PolicyAllow:  b.PolicyAllow,
 			PolicySkip:   b.PolicySkip,
 		})
