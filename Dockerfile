@@ -7,7 +7,7 @@ RUN xcaddy build \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.1.1 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.19.0 \
-	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.6.0
+	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.7.0
 
 # Convert CRS rules to policy-engine format at build time.
 # Update CRS_VERSION to pick up new CRS releases.
@@ -39,7 +39,7 @@ RUN wget -qO /tmp/cf_ipv4 https://www.cloudflare.com/ips-v4 \
 	   } > /tmp/cf_trusted_proxies.caddy
 
 FROM caddy:${VERSION}-alpine
-RUN apk upgrade --no-cache
+RUN apk upgrade --no-cache && apk add --no-cache nftables
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY errors/ /etc/caddy/errors/

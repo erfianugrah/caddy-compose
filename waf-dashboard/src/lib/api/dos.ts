@@ -9,6 +9,7 @@ export interface DosStatus {
   jail_count: number;
   kernel_drop: boolean;
   strategy: string;
+  eps_history: number[];
 }
 
 export interface JailEntry {

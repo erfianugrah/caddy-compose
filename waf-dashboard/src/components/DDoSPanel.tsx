@@ -55,6 +55,27 @@ import {
 
 // ─── Status Banner ──────────────────────────────────────────────────
 
+// Mini SVG sparkline for EPS history
+function Sparkline({ data, width = 200, height = 40 }: { data: number[]; width?: number; height?: number }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const points = data
+    .map((v, i) => `${(i / (data.length - 1)) * width},${height - (v / max) * height}`)
+    .join(" ");
+  return (
+    <svg width={width} height={height} className="opacity-60">
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function StatusBanner({ status, loading }: { status: DosStatus | null; loading: boolean }) {
   if (loading || !status) {
     return (
@@ -80,21 +101,26 @@ function StatusBanner({ status, loading }: { status: DosStatus | null; loading: 
       isSpike && "border-lv-peach-bright/50 bg-lv-peach-bright/5"
     )}>
       <CardContent className="pt-6">
-        <div className="flex items-center gap-4">
-          <div className={cn(
-            "rounded-full p-3",
-            isSpike ? "bg-lv-peach-bright/15 text-lv-peach-bright animate-pulse" : "bg-lv-green/15 text-lv-green"
-          )}>
-            {isSpike ? <ShieldAlert className="h-6 w-6" /> : <ShieldCheck className="h-6 w-6" />}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "rounded-full p-3",
+              isSpike ? "bg-lv-peach-bright/15 text-lv-peach-bright animate-pulse" : "bg-lv-green/15 text-lv-green"
+            )}>
+              {isSpike ? <ShieldAlert className="h-6 w-6" /> : <ShieldCheck className="h-6 w-6" />}
+            </div>
+            <div>
+              <p className={cn(T.pageTitle, isSpike ? "text-lv-peach-bright" : "text-lv-green")}>
+                {isSpike ? "SPIKE DETECTED" : "MONITORING"}
+              </p>
+              <p className={T.muted}>
+                {status.eps.toFixed(1)} events/sec
+                {isSpike && ` \u00b7 peak: ${status.peak_eps.toFixed(1)}`}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className={cn(T.pageTitle, isSpike ? "text-lv-peach-bright" : "text-lv-green")}>
-              {isSpike ? "SPIKE DETECTED" : "MONITORING"}
-            </p>
-            <p className={T.muted}>
-              {status.eps.toFixed(1)} events/sec
-              {isSpike && ` \u00b7 peak: ${status.peak_eps.toFixed(1)}`}
-            </p>
+          <div className={cn("text-muted-foreground", isSpike && "text-lv-peach-bright")}>
+            <Sparkline data={status.eps_history} />
           </div>
         </div>
       </CardContent>

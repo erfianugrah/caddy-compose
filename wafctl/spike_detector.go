@@ -39,6 +39,10 @@ type SpikeDetector struct {
 	bucketTime int64 // unix second of current bucket
 	totalCount int64 // sum of all buckets
 
+	// EPS history for sparkline (last 60 readings at 5s intervals = 5 min)
+	epsHistory [60]float64
+	epsHistIdx int
+
 	// Callback for spike end (generates forensic report)
 	onSpikeEnd func(start, end time.Time, peakEPS float64, totalEvents int64)
 
@@ -88,10 +92,17 @@ func (d *SpikeDetector) Status() DosStatus {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
+	// Build ordered history: oldest first, starting after current index
+	history := make([]float64, len(d.epsHistory))
+	for i := range history {
+		history[i] = d.epsHistory[(d.epsHistIdx+i)%len(d.epsHistory)]
+	}
+
 	return DosStatus{
-		Mode:    d.mode,
-		EPS:     d.currentEPS,
-		PeakEPS: d.peakEPS,
+		Mode:       d.mode,
+		EPS:        d.currentEPS,
+		PeakEPS:    d.peakEPS,
+		EPSHistory: history,
 	}
 }
 
@@ -171,6 +182,10 @@ func (d *SpikeDetector) updateMode() {
 	// Advance window to current time (flush stale buckets)
 	d.advanceTo(time.Now().Unix())
 	d.recomputeEPS()
+
+	// Record EPS into sparkline history
+	d.epsHistory[d.epsHistIdx] = d.currentEPS
+	d.epsHistIdx = (d.epsHistIdx + 1) % len(d.epsHistory)
 
 	switch d.mode {
 	case "normal":

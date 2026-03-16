@@ -272,10 +272,11 @@ func (s *DosConfigStore) Update(cfg DosConfig) error {
 
 // DosStatus is the response for GET /api/dos/status.
 type DosStatus struct {
-	Mode       string  `json:"mode"`        // "normal" or "spike"
-	EPS        float64 `json:"eps"`         // current events per second
-	PeakEPS    float64 `json:"peak_eps"`    // peak EPS in current/last spike
-	JailCount  int     `json:"jail_count"`  // number of jailed IPs
-	KernelDrop bool    `json:"kernel_drop"` // nftables active
-	Strategy   string  `json:"strategy"`    // active fingerprint strategy
+	Mode       string    `json:"mode"`        // "normal" or "spike"
+	EPS        float64   `json:"eps"`         // current events per second
+	PeakEPS    float64   `json:"peak_eps"`    // peak EPS in current/last spike
+	JailCount  int       `json:"jail_count"`  // number of jailed IPs
+	KernelDrop bool      `json:"kernel_drop"` // nftables active
+	Strategy   string    `json:"strategy"`    // active fingerprint strategy
+	EPSHistory []float64 `json:"eps_history"` // last 60 readings for sparkline
 }
