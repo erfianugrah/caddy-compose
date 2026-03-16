@@ -468,6 +468,14 @@ The CI pipeline (GitHub Actions) includes:
 - **Cosign** keyless image signing via Sigstore/Fulcio OIDC
 - **Syft** SBOM generation (SPDX + CycloneDX) attached as cosign attestations
 
+## Security
+
+caddy 3.47.0 / wafctl 2.51.0 includes a comprehensive security audit (March 2026):
+- **wafctl**: Bearer token auth (WAF_AUTH_TOKEN), DDoS config validation, jail IP validation, SSRF DNS rebinding protection, header CRLF validation, validate-before-apply backup restore
+- **Dashboard**: DDoS event classification and detail panel, DETECT BLOCK/DDOS BLOCKED badges, timeline with DDoS data, CIDR whitelist pills UI, streaming JSON export, indexed event queries
+- **Error pages**: Distinct 403 (shield icon + ref ID), 429 with Retry-After countdown, per-status gradients
+- **Cross-repo**: All 123 security audit findings addressed across caddy-body-matcher, caddy-policy-engine, caddy-ddos-mitigator, and caddy-compose
+
 ## Testing
 
 ```bash
