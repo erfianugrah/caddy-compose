@@ -381,6 +381,8 @@ var wafEventTypes = map[string]bool{
 // rlEventTypes lists event types originating from the access log (RL/policy) event store.
 var rlEventTypes = map[string]bool{
 	"rate_limited": true, "policy_block": true, "detect_block": true,
+	"ddos_blocked": true, "ddos_jailed": true,
+	"policy_skip": true, "logged": true,
 }
 
 // eventSourcesNeeded determines which event stores to query based on the event_type filter.
