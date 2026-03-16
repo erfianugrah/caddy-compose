@@ -32,7 +32,7 @@
 		max_penalty   1h
 		sync_interval 1s
 		cms_width     512
-		whitelist     10.0.0.0/8 127.0.0.0/8
+		whitelist     10.0.0.0/8 172.16.0.0/12 127.0.0.0/8
 	}
 }
 
