@@ -279,4 +279,5 @@ type DosStatus struct {
 	KernelDrop bool      `json:"kernel_drop"` // nftables active
 	Strategy   string    `json:"strategy"`    // active fingerprint strategy
 	EPSHistory []float64 `json:"eps_history"` // last 60 readings for sparkline
+	DDoSEvents int       `json:"ddos_events"` // total DDoS block/jail events in current window
 }

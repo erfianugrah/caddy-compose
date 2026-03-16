@@ -6,10 +6,23 @@ import (
 
 // ─── GET /api/dos/status ────────────────────────────────────────────
 
-func handleDosStatus(jailStore *JailStore, dosConfig *DosConfigStore, spike *SpikeDetector) http.HandlerFunc {
+func handleDosStatus(jailStore *JailStore, dosConfig *DosConfigStore, spike *SpikeDetector, als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := dosConfig.Get()
 		spikeStatus := spike.Status()
+
+		// Compute DDoS-specific event count from the access log store
+		// for a more meaningful historical view.
+		ddosEvents := 0
+		if als.mu.TryRLock() {
+			for _, e := range als.events {
+				if e.Source == "ddos_blocked" || e.Source == "ddos_jailed" {
+					ddosEvents++
+				}
+			}
+			als.mu.RUnlock()
+		}
+
 		status := DosStatus{
 			Mode:       spikeStatus.Mode,
 			EPS:        spikeStatus.EPS,
@@ -17,6 +30,8 @@ func handleDosStatus(jailStore *JailStore, dosConfig *DosConfigStore, spike *Spi
 			JailCount:  jailStore.Count(),
 			KernelDrop: cfg.KernelDrop,
 			Strategy:   cfg.Strategy,
+			EPSHistory: spikeStatus.EPSHistory,
+			DDoSEvents: ddosEvents,
 		}
 		writeJSON(w, http.StatusOK, status)
 	}

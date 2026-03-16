@@ -52,13 +52,25 @@ type SpikeDetector struct {
 
 // NewSpikeDetector creates a new detector with the given config.
 func NewSpikeDetector(logFile string, triggerEPS, cooldownEPS float64, cooldownDelay time.Duration) *SpikeDetector {
-	return &SpikeDetector{
+	d := &SpikeDetector{
 		logFile:       logFile,
 		triggerEPS:    triggerEPS,
 		cooldownEPS:   cooldownEPS,
 		cooldownDelay: cooldownDelay,
 		mode:          "normal",
 	}
+	// Skip the backlog on first tail — seek to end so only new events
+	// feed the real-time EPS counter. Historical events are already
+	// in the access log store's event pipeline.
+	if logFile != "" {
+		if f, err := os.Open(logFile); err == nil {
+			if info, err := f.Stat(); err == nil {
+				d.offset.Store(info.Size())
+			}
+			f.Close()
+		}
+	}
+	return d
 }
 
 // SetOnSpikeEnd registers a callback invoked when spike mode exits.

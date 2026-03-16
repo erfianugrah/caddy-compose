@@ -355,7 +355,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
 	// DDoS Mitigation
-	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore, spikeDetector))
+	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore, spikeDetector, accessLogStore))
 	mux.HandleFunc("GET /api/dos/jail", handleListJail(jailStore))
 	mux.HandleFunc("POST /api/dos/jail", handleAddJail(jailStore))
 	mux.HandleFunc("DELETE /api/dos/jail/{ip}", handleRemoveJail(jailStore))

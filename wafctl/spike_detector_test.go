@@ -95,12 +95,15 @@ func TestSpikeDetector_LogTailing(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "access.log")
 
-	// Write some log lines with ddos_action
-	f, err := os.Create(logFile)
+	// Create empty file first, then create the detector (seeks to end)
+	os.WriteFile(logFile, nil, 0644)
+	d := NewSpikeDetector(logFile, 50, 10, 30*time.Second)
+
+	// Now append events AFTER the detector's initial seek
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	for i := range 100 {
 		entry := map[string]any{
 			"level":       "info",
@@ -119,7 +122,6 @@ func TestSpikeDetector_LogTailing(t *testing.T) {
 	}
 	f.Close()
 
-	d := NewSpikeDetector(logFile, 50, 10, 30*time.Second)
 	d.tail()
 
 	// Should have recorded 100 events (all lines have ddos_action)
@@ -133,8 +135,12 @@ func TestSpikeDetector_LogTailingIncremental(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "access.log")
 
-	// Write initial lines
-	f, _ := os.Create(logFile)
+	// Create empty file, then detector (seeks to end)
+	os.WriteFile(logFile, nil, 0644)
+	d := NewSpikeDetector(logFile, 50, 10, 30*time.Second)
+
+	// Write initial lines AFTER detector created
+	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0644)
 	for range 10 {
 		entry := map[string]any{"ddos_action": "pass"}
 		line, _ := json.Marshal(entry)
@@ -143,7 +149,6 @@ func TestSpikeDetector_LogTailingIncremental(t *testing.T) {
 	}
 	f.Close()
 
-	d := NewSpikeDetector(logFile, 50, 10, 30*time.Second)
 	d.tail()
 	eps1 := d.EPS()
 
@@ -169,7 +174,12 @@ func TestSpikeDetector_IgnoresLinesWithoutDDoSAction(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "access.log")
 
-	f, _ := os.Create(logFile)
+	// Create empty file, then detector (seeks to end)
+	os.WriteFile(logFile, nil, 0644)
+	d := NewSpikeDetector(logFile, 50, 10, 30*time.Second)
+
+	// Append lines AFTER detector created
+	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0644)
 	// Lines without ddos_action
 	for range 50 {
 		entry := map[string]any{"status": 200, "msg": "handled request"}
@@ -186,7 +196,6 @@ func TestSpikeDetector_IgnoresLinesWithoutDDoSAction(t *testing.T) {
 	}
 	f.Close()
 
-	d := NewSpikeDetector(logFile, 50, 10, 30*time.Second)
 	d.tail()
 
 	// Only the 10 lines with ddos_action should be counted
