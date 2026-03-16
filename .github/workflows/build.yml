@@ -25,7 +25,7 @@ env:
   CADDY_VERSION: "2.11.1"
   CRS_VERSION: "v4.24.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "2.36.0"
+  WAFCTL_VERSION: "2.37.0"
 
 permissions:
   contents: read
@@ -47,13 +47,15 @@ jobs:
             caddy:
               - 'Dockerfile'
               - 'Caddyfile'
-              - 'waf-dashboard/**'
-              - 'wafctl/**'
               - 'waf/**'
               - 'scripts/**'
               - 'errors/**'
+              - 'tools/**'
             wafctl:
               - 'wafctl/**'
+              - 'waf-dashboard/**'
+              - 'waf/**'
+              - 'tools/**'
 
   # ── Run tests (gate builds) ─────────────────────────────────────
   test-go:
@@ -149,7 +151,6 @@ jobs:
           tags: ${{ steps.meta.outputs.full }}
           build-args: |
             VERSION=${{ env.CADDY_VERSION }}
-            WAFCTL_VERSION=${{ env.WAFCTL_VERSION }}
             CRS_VERSION=${{ env.CRS_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

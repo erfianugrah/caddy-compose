@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import {
@@ -135,6 +135,19 @@ export default function OverviewDashboard() {
   const [zoomLeft, setZoomLeft] = useState<string | null>(null);
   const [zoomRight, setZoomRight] = useState<string | null>(null);
 
+  // ── Timeline legend toggle (hide/show individual series) ──
+  const [hiddenSeries, toggleSeries] = useReducer(
+    (state: Set<string>, name: string) => {
+      const next = new Set(state);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    },
+    new Set<string>(),
+  );
+
+  // ── Log scale toggle for Y-axis ──
+  const [logScale, setLogScale] = useState(false);
+
   // ── Collapsible analytics section ──
   // Default collapsed to avoid 3 extra API calls on page load.
   // Users can expand to see top IPs/URIs/countries on demand.
@@ -206,6 +219,23 @@ export default function OverviewDashboard() {
     if (!zoomLeft || !zoomRight) return timeline;
     return timeline.filter((d) => d.hour >= zoomLeft && d.hour <= zoomRight);
   }, [data?.timeline, zoomLeft, zoomRight]);
+
+  // ── Log-safe timeline: replace 0 → null so log(0) doesn't break the chart ──
+  const TIMELINE_SERIES_KEYS = [
+    "logged", "rate_limited", "total_blocked",
+    "policy_block", "detect_block", "policy_allow", "policy_skip",
+  ] as const;
+
+  const chartTimeline = useMemo(() => {
+    if (!logScale) return displayTimeline;
+    return displayTimeline.map((d) => {
+      const safe: Record<string, unknown> = { ...d };
+      for (const k of TIMELINE_SERIES_KEYS) {
+        if ((d[k] ?? 0) === 0) safe[k] = null;
+      }
+      return safe;
+    });
+  }, [displayTimeline, logScale]);
 
   // ── Fetch events (responds to page, timeRange, zoomTimeParams, filters changes) ──
   const loadEvents = useCallback(() => {
@@ -378,16 +408,27 @@ export default function OverviewDashboard() {
                   : "Click and drag on the chart to zoom into a time window"}
               </CardDescription>
             </div>
-            {zoomTimeParams && (
+            <div className="flex items-center gap-2">
               <Button
-                variant="ghost"
+                variant={logScale ? "secondary" : "ghost"}
                 size="xs"
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={resetZoom}
+                onClick={() => setLogScale((v) => !v)}
+                title="Toggle logarithmic Y-axis scale — useful when one series dwarfs the others"
               >
-                Reset zoom
+                {logScale ? "Log" : "Linear"}
               </Button>
-            )}
+              {zoomTimeParams && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={resetZoom}
+                >
+                  Reset zoom
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -396,7 +437,7 @@ export default function OverviewDashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart
-                data={displayTimeline}
+                data={chartTimeline}
                 margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -447,6 +488,7 @@ export default function OverviewDashboard() {
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={formatNumber}
+                  {...(logScale ? { scale: "log", domain: [1, "auto"], allowDataOverflow: true } : {})}
                 />
                 <Tooltip {...chartTooltipStyle} labelFormatter={formatTooltipLabel} />
                 <Legend
@@ -454,15 +496,29 @@ export default function OverviewDashboard() {
                   height={28}
                   iconType="square"
                   iconSize={10}
-                  wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }}
+                  wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1", cursor: "pointer" }}
+                  onClick={(entry) => {
+                    if (entry.dataKey) toggleSeries(entry.dataKey as string);
+                  }}
+                  formatter={(value, entry) => (
+                    <span
+                      style={{
+                        color: hiddenSeries.has(entry.dataKey as string) ? "#666" : (entry.color ?? "#bdbdc1"),
+                        textDecoration: hiddenSeries.has(entry.dataKey as string) ? "line-through" : "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {value}
+                    </span>
+                  )}
                 />
-                <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} />
-                <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} />
-                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" />
-                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" />
-                <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" />
-                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" />
-                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" />
+                <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} hide={hiddenSeries.has("logged")} connectNulls />
+                <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} hide={hiddenSeries.has("rate_limited")} connectNulls />
+                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" hide={hiddenSeries.has("total_blocked")} connectNulls />
+                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" hide={hiddenSeries.has("policy_block")} connectNulls />
+                <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" hide={hiddenSeries.has("detect_block")} connectNulls />
+                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" hide={hiddenSeries.has("policy_allow")} connectNulls />
+                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" hide={hiddenSeries.has("policy_skip")} connectNulls />
                 {/* Selection overlay while dragging */}
                 {refAreaLeft && refAreaRight && (
                   <ReferenceArea

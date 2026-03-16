@@ -15,7 +15,7 @@
 
 # ── Image tags ──────────────────────────────────────────────────────
 CADDY_IMAGE   ?= erfianugrah/caddy:3.35.0-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.36.0
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.37.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -88,7 +88,7 @@ endif
 build: ## Build both images in parallel
 	$(MAKE) -j2 build-caddy build-wafctl
 
-build-caddy: ## Build Caddy image (includes waf-dashboard)
+build-caddy: ## Build Caddy image (reverse proxy + policy engine)
 	docker build $(DOCKER_BUILD_FLAGS) -t $(CADDY_IMAGE) .
 
 WAFCTL_VERSION := $(lastword $(subst :, ,$(WAFCTL_IMAGE)))

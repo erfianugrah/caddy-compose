@@ -9,7 +9,7 @@ Authelia 2FA forward auth, and a WAF management sidecar. Two codebases:
 
 - **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.24+)
 - **waf-dashboard/** — Astro 6 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
-- Root level: Caddyfile, Dockerfile (5-stage multi-stage), compose.yaml, Makefile
+- Root level: Caddyfile, Dockerfile (4-stage multi-stage), compose.yaml, Makefile
 
 ## Build Commands
 

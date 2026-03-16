@@ -14,7 +14,7 @@ import (
 )
 
 // version is the wafctl release version, shown in /api/health.
-// Set at build time via: -ldflags="-X main.version=2.20.0"
+// Set at build time via: -ldflags="-X main.version=2.37.0"
 var version = "dev"
 
 // startTime records when the process started, used for uptime calculation.

@@ -1,6 +1,6 @@
 # caddy-compose
 
-Docker Compose stack for a Caddy reverse proxy with Coraza WAF (OWASP CRS v4), Authelia 2FA, condition-based rate limiting, and a WAF management sidecar + dashboard.
+Docker Compose stack for a Caddy reverse proxy with a custom policy engine WAF (OWASP CRS v4), Authelia 2FA, condition-based rate limiting, and a WAF management sidecar + dashboard.
 
 ## Architecture
 
@@ -14,9 +14,8 @@ graph LR
 
     subgraph WAF Pipeline
         direction TB
-        AuditLog[Coraza audit log] --> wafctl2[wafctl]
-        AccessLog[Caddy access log] --> wafctl2
-        wafctl2 -->|generate SecRules + reload| CaddyAdmin[Caddy Admin API :2019]
+        AccessLog[Caddy access log] --> wafctl2[wafctl]
+        wafctl2 -->|generate policy rules + reload| CaddyAdmin[Caddy Admin API :2019]
     end
 
     wafctl2 -.- Dashboard[WAF Dashboard - Astro/React]
@@ -26,9 +25,7 @@ Three containers run on separate Docker networks:
 
 - **Caddy** uses `network_mode: host` and binds ports 80, 443, and 2019 (admin). It reaches backend containers by their static bridge IPs.
 - **Authelia** sits on an isolated bridge network. Caddy calls it at `:9091` for forward authentication.
-- **wafctl** sits on its own bridge network. It reads Coraza audit logs and Caddy access logs, generates SecRule config files, and reloads Caddy through a restricted admin proxy on `:2020`.
-
-The WAF dashboard (Astro + React + shadcn/ui) is built as static files and served directly by Caddy.
+- **wafctl** sits on its own bridge network. It reads Caddy access logs, generates policy engine rules, and reloads Caddy through a restricted admin proxy on `:2020`. The WAF dashboard (Astro + React + shadcn/ui) is bundled into the wafctl image and served by it.
 
 ## Quick start
 
@@ -91,7 +88,7 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 ```bash
 # In Makefile (lines 17-18)
 CADDY_IMAGE   ?= <your-registry>/caddy:3.35.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.36.0
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.37.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -157,19 +154,15 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.35.0-2.11.1`), wafctl is plain semver (e.g. `2.36.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.35.0-2.11.1`), wafctl is plain semver (e.g. `2.37.0`).
 
 ## WAF configuration
 
-All WAF settings are managed through the dashboard or wafctl CLI. No hand-editing of SecRule files is needed.
+All WAF settings are managed through the dashboard or wafctl CLI.
 
-A single `(waf)` Caddyfile snippet loads the Coraza WAF for any site block that imports it. Per-service settings (paranoia level, anomaly thresholds, WAF mode) are stored in `waf-config.json` and written to generated `.conf` files by wafctl.
-
-WebSocket connections bypass WAF entirely via a `@not_websocket` matcher in the `(waf)` snippet. A [fork of coraza-caddy](https://github.com/erfianugrah/coraza-caddy/tree/fix/websocket-hijack) ([upstream PR](https://github.com/corazawaf/coraza-caddy/pull/259)) adds hijack tracking to prevent panics on upgraded connections, but the Caddyfile-level bypass is still required — without it, WebSocket connections fail with `NS_ERROR_WEBSOCKET_CONNECTION_REFUSED`. The fork also fixes the `drop` action status code — upstream returns HTTP 200 for `drop` rules since coraza-caddy can't perform TCP-level resets; the fork treats `drop` the same as `deny` (uses the rule's status or defaults to 403) so `handle_errors` serves the correct error page.
+A custom [caddy-policy-engine](https://github.com/erfianugrah/caddy-policy-engine) plugin evaluates allow/block/honeypot/detect rules and handles rate limiting. The plugin uses hash-set lookups for `in` operator matching. Rules are hot-reloaded from `policy-rules.json` without Caddy restarts.
 
 A custom [caddy-body-matcher](https://github.com/erfianugrah/caddy-body-matcher) plugin provides request body matching (raw, JSON, form) and a `body_vars` handler that extracts body field values as Caddy placeholders. This enables body-aware rate limiting (e.g., rate limit by a JSON API key field) and body-based WAF conditions.
-
-A custom [caddy-policy-engine](https://github.com/erfianugrah/caddy-policy-engine) plugin evaluates allow/block/honeypot/detect rules and handles rate limiting — replacing Coraza entirely. The plugin uses hash-set lookups for `in` operator matching, fixing the core security bug where Coraza's `@pm` substring match causes `/admin` to match `/administrator`. Rules are hot-reloaded from `policy-rules.json` without Caddy restarts.
 
 ### WAF modes
 
@@ -181,22 +174,9 @@ A custom [caddy-policy-engine](https://github.com/erfianugrah/caddy-policy-engin
 
 Per-service overrides let you run individual services in a different mode than the global default.
 
-### Config loading order
-
-Inside the `(waf)` snippet, files load in this order:
-
-1. `pre-crs.conf` — baked-in defaults (body limits, JSON processor, XXE rules)
-2. `custom-pre-crs.conf` — dynamic pre-CRS policy engine exclusions
-3. CRS setup + detection rules
-4. `custom-waf-settings.conf` — dynamic settings (engine mode, paranoia, thresholds, per-service overrides)
-5. `post-crs.conf` — baked-in post-CRS rules
-6. `custom-post-crs.conf` — dynamic post-CRS policy engine exclusions
-
 ### Config persistence
 
-Dynamic config survives container restarts. wafctl stores state in JSON files on a Docker volume and regenerates all `.conf` files on boot (`generateOnBoot`). Caddy reads them fresh on its own startup, so a `docker compose restart` picks up changes without a manual deploy.
-
-The entrypoint script starts crond (for audit log rotation) and Caddy.
+Dynamic config survives container restarts. wafctl stores state in JSON files on a Docker volume and regenerates `policy-rules.json` on boot (`generateOnBoot`). The policy engine plugin detects mtime changes and hot-reloads rules automatically.
 
 ### Reload fingerprint
 
@@ -204,7 +184,7 @@ When only included `.conf` files change (not the Caddyfile itself), Caddy's `/lo
 
 ## WAF dashboard
 
-The dashboard is an Astro 5 + React 19 static site served by Caddy, protected by Authelia 2FA.
+The dashboard is an Astro 6 + React 19 static site bundled in the wafctl image and served by wafctl, protected by Authelia 2FA.
 
 **Pages:**
 
@@ -299,7 +279,7 @@ All configurable via `envOr()` with sensible defaults:
 |---|---|---|
 | `WAFCTL_PORT` | `8080` | API server port |
 | `WAF_CORS_ORIGINS` | `*` | Allowed CORS origins |
-| `WAF_AUDIT_LOG` | — | Path to Coraza audit log |
+| `WAF_AUDIT_LOG` | — | Path to audit log (legacy, unused) |
 | `WAF_COMBINED_ACCESS_LOG` | — | Path to Caddy combined access log |
 | `WAF_EXCLUSIONS_FILE` | — | Path to exclusions JSON store |
 | `WAF_CONFIG_FILE` | — | Path to WAF config JSON store |
@@ -312,7 +292,7 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_GEOIP_DB` | `/data/geoip/country.mmdb` | Path to MMDB file for GeoIP lookups |
 | `WAF_GEOIP_API_URL` | (disabled) | Online GeoIP API URL (e.g. `https://ipinfo.io/%s/json`) |
 | `WAF_GEOIP_API_KEY` | (empty) | Bearer token for online GeoIP API |
-| `WAF_AUDIT_OFFSET_FILE` | `/data/.audit-log-offset` | Persists audit log read offset across restarts |
+| `WAF_AUDIT_OFFSET_FILE` | `/data/.audit-log-offset` | Persists audit log read offset (legacy) |
 | `WAF_ACCESS_OFFSET_FILE` | `/data/.access-log-offset` | Persists access log read offset across restarts |
 | `WAF_CADDYFILE_PATH` | `/data/Caddyfile` | Path to Caddyfile for service FQDN resolution |
 | `WAF_CSP_FILE` | `/data/csp-config.json` | CSP configuration store path |
@@ -322,7 +302,7 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_BLOCKLIST_REFRESH_HOUR` | `6` | UTC hour (0–23) for daily IPsum blocklist refresh |
 | `WAF_MANAGED_LISTS_FILE` | `/data/lists.json` | Managed lists store path |
 | `WAF_MANAGED_LISTS_DIR` | `/data/lists` | Output dir for managed list files |
-| `WAF_POLICY_RULES_FILE` | `/data/coraza/policy-rules.json` | Policy engine rules JSON output path |
+| `WAF_POLICY_RULES_FILE` | `/data/waf/policy-rules.json` | Policy engine rules JSON output path |
 
 ## Event store sizing
 
@@ -512,21 +492,18 @@ cd waf-dashboard && npx vitest run -t "test description"
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + site blocks)
-  Dockerfile             # 5-stage multi-stage build (uses erfianugrah/coraza-caddy fork + caddy-body-matcher + caddy-policy-engine plugins)
+  Dockerfile             # 4-stage multi-stage build (caddy-body-matcher + caddy-policy-engine plugins)
   Makefile               # Build, push, deploy, test, WAF operations
   compose.yaml           # Caddy + Authelia + wafctl services
   .env                   # SOPS-encrypted secrets (CF token, email)
   authelia/
     configuration.yml    # Authelia config
     users_database.yml   # SOPS-encrypted user/password hashes
-  coraza/
-    pre-crs.conf         # Pre-CRS WAF rules (body settings, XXE, etc.)
-    post-crs.conf        # Post-CRS WAF rules (RCE, CRLF)
   errors/
     error.html           # Custom error page template
   scripts/
-    entrypoint.sh        # Container entrypoint (crond for log rotation + caddy run)
-    rotate-audit-log.sh  # Hourly audit log rotation (256 MB copytruncate)
+    entrypoint.sh        # Container entrypoint (seeds CF proxies + caddy run)
+    setup-cors.sh        # CORS setup helper
     update-geoip.sh      # GeoIP database updater (manual)
   wafctl/                # Go sidecar (zero external dependencies)
     main.go              # Server setup, CORS middleware, route registration
@@ -540,12 +517,9 @@ caddy-compose/
     config.go            # WAF config store (CRS v4 extended settings)
     exclusions.go        # Policy engine exclusion store CRUD, persistence
     exclusions_validate.go # Exclusion/condition validation, regex patterns
-    generator.go         # SecRule generation (chained rules, ctl: placement, CRS v4 setvar)
-    generator_helpers.go # Condition-to-SecRule mapping, escape utilities
-    waf_settings_generator.go # WAF settings config generation
-    validate.go          # Config validation engine (quote balance, self-ref, msg commas)
+    policy_generator.go  # Policy engine rules generation (policy-rules.json)
     logparser.go         # Audit log parser, offset/JSONL persistence, eviction
-    event_parser.go      # parseEvent, anomaly score extraction
+    summary_counters.go  # Summary counter helpers
     waf_summary.go       # summarizeEvents
     waf_analytics.go     # Services/IP/top-N analytics
     access_log_store.go  # AccessLogStore struct, persistence, snapshots
@@ -556,7 +530,6 @@ caddy-compose/
     handlers_ratelimit.go # RL rule CRUD + analytics handlers
     json_helpers.go      # writeJSON, decodeJSON, queryInt
     query_helpers.go     # parseHours, parseTimeRange, fieldFilter
-    rl_rules.go          # Rate limit rule store (CRUD, validation, v1 migration)
     rl_analytics.go      # Rate limit analytics, condition-based 429 attribution
     rl_advisor.go        # Rate advisor (anomaly detection, recommendations)
     rl_advisor_stats.go  # MAD/IQR/Fano statistical functions, distribution analysis
@@ -569,17 +542,24 @@ caddy-compose/
     ip_intel_sources.go  # External API clients (Shodan, reputation, BGP)
     tls_helpers.go       # TLS version/cipher suite name helpers
     crs_rules.go         # CRS rule catalog (141 rules, 11 categories)
+    cors_store.go        # CORS configuration store
     csp.go               # CSP store (CRUD, validation, header builder)
-    csp_generator.go     # CSP Caddy config generator
+    default_rules.go     # Default CRS rules management
     general_logs.go      # General log store
     general_logs_handlers.go # General log handlers + aggregation
+    backup.go            # Backup/restore functionality
+    managed_lists.go     # Managed lists store
+    handlers_lists.go    # Managed lists handlers
+    security_headers.go  # Security headers management
+    rule_templates.go    # Rule template definitions
     cfproxy.go           # Cloudflare proxy stats/refresh
     cache.go             # In-memory cache (24h/100k entries)
+    ui_server.go         # Dashboard static file server
     util.go              # Shared utilities (envOr, atomicWriteFile)
-    *_test.go            # 24 test files (1375 tests)
-    Dockerfile           # Standalone wafctl image
+    *_test.go            # Test files
+    Dockerfile           # wafctl image (includes waf-dashboard build)
     go.mod
-  waf-dashboard/         # Astro 5 + React 19 + shadcn/ui frontend
+  waf-dashboard/         # Astro 6 + React 19 + shadcn/ui frontend
     src/
       components/        # Dashboard components
         RateLimitsPanel.tsx   # RL rules CRUD + global settings
@@ -599,6 +579,10 @@ caddy-compose/
           blocklist.ts   # Blocklist types and functions
           csp.ts         # CSP types and functions
           general-logs.ts # General log types and functions
+          managed-lists.ts # Managed lists types and functions
+          backup.ts      # Backup/restore types and functions
+          default-rules.ts # Default CRS rules types and functions
+          security-headers.ts # Security headers types and functions
           index.ts       # Barrel re-export
       pages/             # Astro file-based routing (11 pages)
     package.json
