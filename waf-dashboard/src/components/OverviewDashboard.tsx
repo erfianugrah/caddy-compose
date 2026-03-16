@@ -220,22 +220,8 @@ export default function OverviewDashboard() {
     return timeline.filter((d) => d.hour >= zoomLeft && d.hour <= zoomRight);
   }, [data?.timeline, zoomLeft, zoomRight]);
 
-  // ── Log-safe timeline: replace 0 → null so log(0) doesn't break the chart ──
-  const TIMELINE_SERIES_KEYS = [
-    "logged", "rate_limited", "total_blocked",
-    "policy_block", "detect_block", "policy_allow", "policy_skip",
-  ] as const;
-
-  const chartTimeline = useMemo(() => {
-    if (!logScale) return displayTimeline;
-    return displayTimeline.map((d) => {
-      const safe: Record<string, unknown> = { ...d };
-      for (const k of TIMELINE_SERIES_KEYS) {
-        if ((d[k] ?? 0) === 0) safe[k] = null;
-      }
-      return safe;
-    });
-  }, [displayTimeline, logScale]);
+  // ── Chart data (sqrt scale handles zeros natively, no null-replacement needed) ──
+  const chartTimeline = displayTimeline;
 
   // ── Fetch events (responds to page, timeRange, zoomTimeParams, filters changes) ──
   const loadEvents = useCallback(() => {
@@ -414,9 +400,9 @@ export default function OverviewDashboard() {
                 size="xs"
                 className="text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setLogScale((v) => !v)}
-                title="Toggle logarithmic Y-axis scale — useful when one series dwarfs the others"
+                title="Toggle compressed Y-axis scale — useful when one series dwarfs the others"
               >
-                {logScale ? "Log" : "Linear"}
+                {logScale ? "Sqrt" : "Linear"}
               </Button>
               {zoomTimeParams && (
                 <Button
@@ -488,7 +474,7 @@ export default function OverviewDashboard() {
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={formatNumber}
-                  {...(logScale ? { scale: "log", domain: [1, "auto"], allowDataOverflow: true } : {})}
+                  {...(logScale ? { scale: "sqrt", domain: [0, "auto"] } : {})}
                 />
                 <Tooltip {...chartTooltipStyle} labelFormatter={formatTooltipLabel} />
                 <Legend
@@ -512,13 +498,13 @@ export default function OverviewDashboard() {
                     </span>
                   )}
                 />
-                <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} hide={hiddenSeries.has("logged")} connectNulls />
-                <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} hide={hiddenSeries.has("rate_limited")} connectNulls />
-                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" hide={hiddenSeries.has("total_blocked")} connectNulls />
-                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" hide={hiddenSeries.has("policy_block")} connectNulls />
-                <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" hide={hiddenSeries.has("detect_block")} connectNulls />
-                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" hide={hiddenSeries.has("policy_allow")} connectNulls />
-                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" hide={hiddenSeries.has("policy_skip")} connectNulls />
+                <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} hide={hiddenSeries.has("logged")} />
+                <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} hide={hiddenSeries.has("rate_limited")} />
+                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" hide={hiddenSeries.has("total_blocked")} />
+                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" hide={hiddenSeries.has("policy_block")} />
+                <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" hide={hiddenSeries.has("detect_block")} />
+                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" hide={hiddenSeries.has("policy_allow")} />
+                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" hide={hiddenSeries.has("policy_skip")} />
                 {/* Selection overlay while dragging */}
                 {refAreaLeft && refAreaRight && (
                   <ReferenceArea
