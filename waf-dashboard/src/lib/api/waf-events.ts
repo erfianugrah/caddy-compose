@@ -389,8 +389,19 @@ export async function fetchEvents(params: EventsParams = {}): Promise<EventsResp
   };
 }
 
-/** Fetch all events matching the current filters (export mode, no pagination limit). */
-export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEvent[]> {
+/** Result from export-mode fetch, includes truncation metadata. */
+export interface ExportResult {
+  events: WAFEvent[];
+  /** Number of events actually returned (may be less than total matching). */
+  totalEmitted: number;
+  /** True when the backend's 10K export cap was reached. */
+  truncated: boolean;
+}
+
+/** Fetch all events matching the current filters (export mode, capped at 10K by backend). */
+export async function fetchAllEvents(
+  params: EventsParams = {},
+): Promise<ExportResult> {
   const searchParams = new URLSearchParams();
   searchParams.set("export", "true");
   if (params.blocked !== null && params.blocked !== undefined)
@@ -398,10 +409,18 @@ export async function fetchAllEvents(params: EventsParams = {}): Promise<WAFEven
   applyFilterParams(searchParams, params);
 
   const qs = searchParams.toString();
-  const raw = await fetchJSON<{ total: number; events: RawEvent[] }>(
-    `${API_BASE}/events${qs ? `?${qs}` : ""}`
-  );
-  return (raw.events ?? []).map(mapEvent);
+  const raw = await fetchJSON<{
+    total: number;
+    events: RawEvent[];
+    total_emitted?: number;
+  }>(`${API_BASE}/events${qs ? `?${qs}` : ""}`);
+  const events = (raw.events ?? []).map(mapEvent);
+  const totalEmitted = raw.total_emitted ?? events.length;
+  return {
+    events,
+    totalEmitted,
+    truncated: totalEmitted >= 10_000,
+  };
 }
 
 // Services

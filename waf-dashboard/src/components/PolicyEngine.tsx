@@ -1,20 +1,19 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useRuleReorder } from "@/hooks/useRuleReorder";
+import { useRuleSelection } from "@/hooks/useRuleSelection";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
+import { StatusAlerts, BulkActionsBar, InlinePositionEditor, DeleteConfirmDialog } from "./rules";
 import {
   DndContext,
-  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -26,13 +25,9 @@ import {
   Plus,
   Trash2,
   Pencil,
-  AlertTriangle,
   Code2,
   Zap,
-  Download,
-  Upload,
   Loader2,
-  Check,
   Search,
   X,
   ArrowUpToLine,
@@ -59,7 +54,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 import {
   Table,
   TableBody,
@@ -72,7 +67,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -127,8 +121,7 @@ export default function PolicyEngine() {
   const [typeFilter, setTypeFilter] = useState<ExclusionType | "all">("all");
   const [rulesPage, setRulesPage] = useState(1);
 
-  // Bulk selection
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Bulk selection (shared via useRuleSelection — wired up after filteredExclusions)
   const [bulkBusy, setBulkBusy] = useState(false);
 
   // Inline position editing — click an order number to type a new position.
@@ -225,10 +218,6 @@ export default function PolicyEngine() {
     return result;
   }, [exclusions, deferredSearch, typeFilter]);
 
-  const selectAllVisible = useCallback(() => {
-    setSelected(new Set(filteredExclusions.map((e) => e.id)));
-  }, [filteredExclusions]);
-
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [deferredSearch, typeFilter]);
 
@@ -244,6 +233,10 @@ export default function PolicyEngine() {
   const isSorted = exclSort.sortState.key !== null;
   const isFiltered = isFilteredBase || isSorted;
   const { items: pagedExclusions, totalPages: rulesTotalPages } = paginateArray(sortedFilteredExclusions, rulesPage, RULES_PAGE_SIZE);
+
+  // Selection hook — wired after pagedExclusions/filteredExclusions are defined.
+  const { selected, setSelected, toggleSelect, selectAllVisible, clearSelection } =
+    useRuleSelection(pagedExclusions, filteredExclusions);
 
   // All possible exclusion types for the filter dropdown
   const allExclusionTypes: ExclusionType[] = ["allow", "block", "skip", "detect", "response_header"];
@@ -282,143 +275,21 @@ export default function PolicyEngine() {
     }
   }, []);
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    // Multi-drag: if the dragged item is selected and there are other selections,
-    // move all selected items as a group to the drop target position.
-    if (selected.size > 1 && selected.has(activeId)) {
-      const selectedIds = new Set(selected);
-      const overIdx = exclusions.findIndex((e) => e.id === overId);
-      if (overIdx === -1) return;
-
-      // Remove all selected items, preserving their relative order.
-      const remaining = exclusions.filter((e) => !selectedIds.has(e.id));
-      const moved = exclusions.filter((e) => selectedIds.has(e.id));
-
-      // Find where to insert: the position of the drop target in the remaining array.
-      const targetInRemaining = remaining.findIndex((e) => e.id === overId);
-      const insertIdx = targetInRemaining === -1 ? overIdx : targetInRemaining;
-
-      const newExclusions = [...remaining.slice(0, insertIdx), ...moved, ...remaining.slice(insertIdx)];
-
-      const prev = exclusions;
-      setExclusions(newExclusions);
-      try {
-        const result = await reorderExclusions(newExclusions.map((e) => e.id));
-        setExclusions(result);
-        await autoDeploy(`${moved.length} rules reordered`);
-      } catch (err: unknown) {
-        setExclusions(prev);
-        setError(err instanceof Error ? err.message : "Reorder failed");
-      }
-      return;
-    }
-
-    // Single-drag: reorder within the current page.
-    const pageStartIdx = (rulesPage - 1) * RULES_PAGE_SIZE;
-    const pageIds = exclusions.slice(pageStartIdx, pageStartIdx + RULES_PAGE_SIZE).map((e) => e.id);
-    const oldIdx = pageIds.indexOf(activeId);
-    const newIdx = pageIds.indexOf(overId);
-    if (oldIdx === -1 || newIdx === -1) return;
-
-    const newExclusions = [...exclusions];
-    const pageSlice = newExclusions.splice(pageStartIdx, pageIds.length);
-    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
-    newExclusions.splice(pageStartIdx, 0, ...reorderedPage);
-
-    const prev = exclusions;
-    setExclusions(newExclusions);
-    try {
-      const result = await reorderExclusions(newExclusions.map((e) => e.id));
-      setExclusions(result);
-      await autoDeploy("Rules reordered");
-    } catch (err: unknown) {
-      setExclusions(prev);
-      setError(err instanceof Error ? err.message : "Reorder failed");
-    }
-  }, [exclusions, selected, rulesPage, autoDeploy]);
-
-  const handleMoveToEdge = useCallback(async (id: string, edge: "top" | "bottom") => {
-    const idx = exclusions.findIndex((e) => e.id === id);
-    if (idx === -1) return;
-    if (edge === "top" && idx === 0) return;
-    if (edge === "bottom" && idx === exclusions.length - 1) return;
-
-    const newExclusions = [...exclusions];
-    const [item] = newExclusions.splice(idx, 1);
-    if (edge === "top") {
-      newExclusions.unshift(item);
-      setRulesPage(1); // jump to first page so user sees the moved rule
-    } else {
-      newExclusions.push(item);
-      setRulesPage(Math.ceil(newExclusions.length / RULES_PAGE_SIZE)); // jump to last page
-    }
-
-    const prev = exclusions;
-    setExclusions(newExclusions);
-    try {
-      const result = await reorderExclusions(newExclusions.map((e) => e.id));
-      setExclusions(result);
-      await autoDeploy(`Rule moved to ${edge}`);
-    } catch (err: unknown) {
-      setExclusions(prev);
-      setError(err instanceof Error ? err.message : "Move failed");
-    }
-  }, [exclusions, autoDeploy]);
-
-  const handleMoveToPosition = useCallback(async (id: string, targetPos: number) => {
-    const fromIdx = exclusions.findIndex((e) => e.id === id);
-    if (fromIdx === -1) return;
-    const toIdx = Math.max(0, Math.min(exclusions.length - 1, targetPos - 1));
-    if (fromIdx === toIdx) return;
-
-    const newExclusions = [...exclusions];
-    const [item] = newExclusions.splice(fromIdx, 1);
-    newExclusions.splice(toIdx, 0, item);
-
-    // Navigate to the page where the rule landed.
-    setRulesPage(Math.ceil((toIdx + 1) / RULES_PAGE_SIZE));
-
-    const prev = exclusions;
-    setExclusions(newExclusions);
-    try {
-      const result = await reorderExclusions(newExclusions.map((e) => e.id));
-      setExclusions(result);
-      await autoDeploy(`Rule moved to position ${toIdx + 1}`);
-    } catch (err: unknown) {
-      setExclusions(prev);
-      setError(err instanceof Error ? err.message : "Move failed");
-    }
-  }, [exclusions, autoDeploy]);
-
-  const handleBulkMoveToPosition = useCallback(async (targetPos: number) => {
-    if (selected.size === 0) return;
-    const selectedIds = new Set(selected);
-    // Remove selected from array, insert them at target position in selection order.
-    const remaining = exclusions.filter((e) => !selectedIds.has(e.id));
-    const moved = exclusions.filter((e) => selectedIds.has(e.id));
-    const insertIdx = Math.max(0, Math.min(remaining.length, targetPos - 1));
-    const newExclusions = [...remaining.slice(0, insertIdx), ...moved, ...remaining.slice(insertIdx)];
-
-    setRulesPage(Math.ceil((insertIdx + 1) / RULES_PAGE_SIZE));
-
-    const prev = exclusions;
-    setExclusions(newExclusions);
-    try {
-      const result = await reorderExclusions(newExclusions.map((e) => e.id));
-      setExclusions(result);
-      setSelected(new Set());
-      await autoDeploy(`${moved.length} rules moved to position ${insertIdx + 1}`);
-    } catch (err: unknown) {
-      setExclusions(prev);
-      setError(err instanceof Error ? err.message : "Bulk move failed");
-    }
-  }, [exclusions, selected, autoDeploy]);
+  // Reorder hook — handles drag, move-to-edge, move-to-position, bulk move.
+  const { handleDragEnd, handleMoveToEdge, handleMoveToPosition, handleBulkMoveToPosition } =
+    useRuleReorder({
+      items: exclusions,
+      setItems: setExclusions,
+      getId: (e) => e.id,
+      reorderApi: reorderExclusions,
+      pageSize: RULES_PAGE_SIZE,
+      page: rulesPage,
+      setPage: setRulesPage,
+      setError,
+      autoDeploy,
+      selected,
+      setSelected,
+    });
 
   const handleCreate = async (data: ExclusionCreateData) => {
     try {
@@ -501,31 +372,6 @@ export default function PolicyEngine() {
   };
 
   // ─── Bulk actions ─────────────────────────────────────────────────
-
-  const lastSelectedRef = useRef<number | null>(null);
-
-  const toggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (shiftKey && lastSelectedRef.current !== null) {
-        const start = Math.min(lastSelectedRef.current, index);
-        const end = Math.max(lastSelectedRef.current, index);
-        for (let i = start; i <= end; i++) {
-          next.add(pagedExclusions[i].id);
-        }
-      } else {
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-      }
-      lastSelectedRef.current = index;
-      return next;
-    });
-  }, [pagedExclusions]);
-
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   const handleBulkAction = useCallback(
     async (action: BulkExclusionAction) => {
@@ -677,36 +523,16 @@ export default function PolicyEngine() {
 
   return (
     <div className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {successMsg && (
-        <Alert variant="success">
-          <Check className="h-4 w-4" />
-          <AlertTitle>Success</AlertTitle>
-          <AlertDescription className="flex items-center gap-3">
-            {successMsg}
-            {cameFromEvents && (
-              <a href="/events" className="inline-flex items-center gap-1 text-xs font-medium text-lv-cyan hover:underline ml-2">
-                Back to Events
-              </a>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {deployStep && (
-        <Alert>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertTitle>Deploying</AlertTitle>
-          <AlertDescription>{deployStep}</AlertDescription>
-        </Alert>
-      )}
+      <StatusAlerts
+        error={error}
+        successMsg={successMsg}
+        deployStep={deployStep}
+        successExtra={cameFromEvents ? (
+          <a href="/events" className="inline-flex items-center gap-1 text-xs font-medium text-lv-cyan hover:underline ml-2">
+            Back to Events
+          </a>
+        ) : undefined}
+      />
 
       {/* Exclusion List */}
       <Card>
@@ -771,49 +597,19 @@ export default function PolicyEngine() {
           ) : exclusions.length > 0 ? (
             <>
             {selected.size > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-lv-cyan/30 bg-lv-cyan/5">
-                <span className="text-xs font-medium text-lv-cyan mr-2">
-                  {selected.size} selected
-                </span>
-                <Button variant="outline" size="xs" onClick={() => handleBulkAction("enable")} disabled={bulkBusy}>
-                  Enable
-                </Button>
-                <Button variant="outline" size="xs" onClick={() => handleBulkAction("disable")} disabled={bulkBusy}>
-                  Disable
-                </Button>
-                <Button variant="outline" size="xs" className="text-lv-red hover:text-lv-red" onClick={() => handleBulkAction("delete")} disabled={bulkBusy}>
-                  Delete
-                </Button>
-                {!isFiltered && (
-                  <form className="inline-flex items-center gap-1 ml-2" onSubmit={(e) => {
-                    e.preventDefault();
-                    const input = (e.target as HTMLFormElement).elements.namedItem("bulkPos") as HTMLInputElement;
-                    const pos = parseInt(input.value, 10);
-                    if (!isNaN(pos) && pos >= 1) {
-                      handleBulkMoveToPosition(pos);
-                      input.value = "";
-                    }
-                  }}>
-                    <span className="text-xs text-muted-foreground">Move to #</span>
-                    <input
-                      name="bulkPos"
-                      type="number"
-                      min={1}
-                      max={exclusions.length}
-                      className="w-[50px] h-6 bg-transparent border border-border rounded px-1 text-xs text-center outline-none focus:border-lv-cyan"
-                      placeholder="#"
-                    />
-                  </form>
-                )}
-                <div className="ml-auto flex items-center gap-2">
-                  <Button variant="ghost" size="xs" onClick={selectAllVisible} className="text-xs text-muted-foreground">
-                    Select All ({filteredExclusions.length})
-                  </Button>
-                  <Button variant="ghost" size="xs" onClick={clearSelection} className="text-xs text-muted-foreground">
-                    Clear
-                  </Button>
-                </div>
-              </div>
+              <BulkActionsBar
+                selectedCount={selected.size}
+                filteredCount={filteredExclusions.length}
+                totalCount={exclusions.length}
+                isFiltered={isFiltered}
+                bulkBusy={bulkBusy}
+                onEnable={() => handleBulkAction("enable")}
+                onDisable={() => handleBulkAction("disable")}
+                onDelete={() => handleBulkAction("delete")}
+                onBulkMoveToPosition={handleBulkMoveToPosition}
+                onSelectAll={selectAllVisible}
+                onClear={clearSelection}
+              />
             )}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <Table>
@@ -874,36 +670,15 @@ export default function PolicyEngine() {
                       />
                     </TableCell>
                     <TableCell className="text-xs tabular-nums text-muted-foreground/60 w-[52px] px-1" title={`Rule ${globalIdx} of ${filteredExclusions.length} — click to move`} onClick={(e) => e.stopPropagation()}>
-                      {editingPositionId === excl.id ? (
-                        <input
-                          type="number"
-                          min={1}
-                          max={exclusions.length}
-                          defaultValue={globalIdx}
-                          autoFocus
-                          className="w-[40px] bg-transparent border border-lv-cyan/50 rounded px-1 py-0 text-xs text-center text-lv-cyan outline-none"
-                          onBlur={(e) => {
-                            setEditingPositionId(null);
-                            const v = parseInt(e.target.value, 10);
-                            if (!isNaN(v) && v !== globalIdx) handleMoveToPosition(excl.id, v);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              (e.target as HTMLInputElement).blur();
-                            } else if (e.key === "Escape") {
-                              setEditingPositionId(null);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <button
-                          onClick={() => !isFiltered && setEditingPositionId(excl.id)}
-                          className={`${isFiltered ? "cursor-default" : "cursor-pointer hover:text-lv-cyan hover:bg-lv-cyan/10 rounded px-1"} transition-colors`}
-                          disabled={isFiltered}
-                        >
-                          {globalIdx}
-                        </button>
-                      )}
+                      <InlinePositionEditor
+                        globalIndex={globalIdx}
+                        totalItems={exclusions.length}
+                        isEditing={editingPositionId === excl.id}
+                        isFiltered={isFiltered}
+                        onStartEdit={() => setEditingPositionId(excl.id)}
+                        onMove={(pos) => handleMoveToPosition(excl.id, pos)}
+                        onCancel={() => setEditingPositionId(null)}
+                      />
                     </TableCell>
                     <TableCell>
                       <div>
@@ -1170,18 +945,11 @@ export default function PolicyEngine() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Rule</DialogTitle>
-            <DialogDescription>Are you sure you want to delete this rule? This action cannot be undone.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteConfirmId !== null}
+        onOpenChange={(open) => !open && setDeleteConfirmId(null)}
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+      />
     </div>
   );
 }

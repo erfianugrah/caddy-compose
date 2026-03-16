@@ -324,11 +324,20 @@ export default function EventsTable() {
                   try {
                     const timeParams = rangeToParams(timeRange);
                     const filterParams = filtersToEventsParams(filters);
-                    const all = await fetchAllEvents({
+                    const result = await fetchAllEvents({
                       ...filterParams,
                       ...timeParams,
                     });
-                    downloadJSON(all, `events-all-${new Date().toISOString().slice(0, 10)}.json`);
+                    downloadJSON(
+                      result.events,
+                      `events-all-${new Date().toISOString().slice(0, 10)}.json`,
+                    );
+                    if (result.truncated) {
+                      alert(
+                        `Export capped at ${result.totalEmitted.toLocaleString()} events. ` +
+                          "Apply narrower filters or a shorter time range to export fewer events.",
+                      );
+                    }
                   } catch {
                     // Best-effort: alert on failure since this is a transient action
                     alert("Failed to export events. Please try again.");

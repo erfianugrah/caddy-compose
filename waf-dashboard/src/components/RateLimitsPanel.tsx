@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useRuleReorder } from "@/hooks/useRuleReorder";
+import { useRuleSelection } from "@/hooks/useRuleSelection";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { TablePagination, paginateArray } from "./TablePagination";
+import { StatusAlerts, BulkActionsBar, InlinePositionEditor, DeleteConfirmDialog } from "./rules";
 import {
   DndContext,
   closestCenter,
@@ -9,10 +12,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -24,11 +25,7 @@ import {
   Plus,
   Trash2,
   Pencil,
-  AlertTriangle,
-  Download,
-  Upload,
   Loader2,
-  Check,
   Search,
   X,
   Settings2,
@@ -48,7 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 import {
   Table,
   TableBody,
@@ -68,7 +65,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -130,8 +126,7 @@ export default function RateLimitsPanel() {
   const [actionFilter, setActionFilter] = useState<RLRuleAction | "all">("all");
   const [rulesPage, setRulesPage] = useState(1);
 
-  // Bulk selection
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Bulk selection (shared via useRuleSelection — wired after filteredRules/pagedRules)
   const [bulkBusy, setBulkBusy] = useState(false);
 
   // Inline position editing — click an order number to type a new position.
@@ -201,10 +196,6 @@ export default function RateLimitsPanel() {
     return result;
   }, [rules, deferredSearch, actionFilter]);
 
-  const selectAllVisible = useCallback(() => {
-    setSelected(new Set(filteredRules.map((r) => r.id)));
-  }, [filteredRules]);
-
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [deferredSearch, actionFilter]);
 
@@ -223,6 +214,10 @@ export default function RateLimitsPanel() {
   const isSorted = rlSort.sortState.key !== null;
   const isFiltered = isFilteredBase || isSorted;
   const { items: pagedRules, totalPages: rulesTotalPages } = paginateArray(sortedFilteredRules, rulesPage, RL_RULES_PAGE_SIZE);
+
+  // Selection hook
+  const { selected, setSelected, toggleSelect, selectAllVisible, clearSelection } =
+    useRuleSelection(pagedRules, filteredRules);
 
   // Success toast
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -256,139 +251,21 @@ export default function RateLimitsPanel() {
     }
   }, []);
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const pageStartIdx = (rulesPage - 1) * RL_RULES_PAGE_SIZE;
-    const pageIds = rules.slice(pageStartIdx, pageStartIdx + RL_RULES_PAGE_SIZE).map((r) => r.id);
-    const oldIdx = pageIds.indexOf(active.id as string);
-    const newIdx = pageIds.indexOf(over.id as string);
-    if (oldIdx === -1 || newIdx === -1) return;
-
-    const newRules = [...rules];
-    const pageSlice = newRules.splice(pageStartIdx, pageIds.length);
-    const reorderedPage = arrayMove(pageSlice, oldIdx, newIdx);
-    newRules.splice(pageStartIdx, 0, ...reorderedPage);
-
-    const prev = rules;
-    setRules(newRules);
-    try {
-      const result = await reorderRLRules(newRules.map((r) => r.id));
-      setRules(result);
-      await autoDeploy("Rules reordered");
-    } catch (err: unknown) {
-      setRules(prev);
-      setError(err instanceof Error ? err.message : "Reorder failed");
-    }
-  }, [rules, rulesPage, autoDeploy]);
-
-  // ─── Move to edge (top / bottom) ───────────────────────────────────
-
-  const handleMoveToEdge = useCallback(async (id: string, edge: "top" | "bottom") => {
-    const idx = rules.findIndex((r) => r.id === id);
-    if (idx === -1) return;
-    if (edge === "top" && idx === 0) return;
-    if (edge === "bottom" && idx === rules.length - 1) return;
-
-    const newRules = [...rules];
-    const [item] = newRules.splice(idx, 1);
-    if (edge === "top") {
-      newRules.unshift(item);
-      setRulesPage(1);
-    } else {
-      newRules.push(item);
-      setRulesPage(Math.ceil(newRules.length / RL_RULES_PAGE_SIZE));
-    }
-
-    const prev = rules;
-    setRules(newRules);
-    try {
-      const result = await reorderRLRules(newRules.map((r) => r.id));
-      setRules(result);
-      await autoDeploy(`Rule moved to ${edge}`);
-    } catch (err: unknown) {
-      setRules(prev);
-      setError(err instanceof Error ? err.message : "Move failed");
-    }
-  }, [rules, autoDeploy]);
-
-  // ─── Move single rule to a specific position ─────────────────────
-
-  const handleMoveToPosition = useCallback(async (id: string, targetPos: number) => {
-    const fromIdx = rules.findIndex((r) => r.id === id);
-    if (fromIdx === -1) return;
-    const toIdx = Math.max(0, Math.min(rules.length - 1, targetPos - 1));
-    if (fromIdx === toIdx) return;
-
-    const newRules = [...rules];
-    const [item] = newRules.splice(fromIdx, 1);
-    newRules.splice(toIdx, 0, item);
-
-    setRulesPage(Math.ceil((toIdx + 1) / RL_RULES_PAGE_SIZE));
-
-    const prev = rules;
-    setRules(newRules);
-    try {
-      const result = await reorderRLRules(newRules.map((r) => r.id));
-      setRules(result);
-      await autoDeploy(`Rule moved to position ${toIdx + 1}`);
-    } catch (err: unknown) {
-      setRules(prev);
-      setError(err instanceof Error ? err.message : "Move failed");
-    }
-  }, [rules, autoDeploy]);
-
-  // ─── Bulk move to position / edge ─────────────────────────────────
-
-  const handleBulkMoveToPosition = useCallback(async (targetPos: number) => {
-    if (selected.size === 0) return;
-    const selectedIds = new Set(selected);
-    const remaining = rules.filter((r) => !selectedIds.has(r.id));
-    const moved = rules.filter((r) => selectedIds.has(r.id));
-    const insertIdx = Math.max(0, Math.min(remaining.length, targetPos - 1));
-    const newRules = [...remaining.slice(0, insertIdx), ...moved, ...remaining.slice(insertIdx)];
-
-    setRulesPage(Math.ceil((insertIdx + 1) / RL_RULES_PAGE_SIZE));
-
-    const prev = rules;
-    setRules(newRules);
-    try {
-      const result = await reorderRLRules(newRules.map((r) => r.id));
-      setRules(result);
-      setSelected(new Set());
-      await autoDeploy(`${moved.length} rules moved to position ${insertIdx + 1}`);
-    } catch (err: unknown) {
-      setRules(prev);
-      setError(err instanceof Error ? err.message : "Bulk move failed");
-    }
-  }, [rules, selected, autoDeploy]);
-
-  const handleBulkMoveToEdge = useCallback(async (edge: "top" | "bottom") => {
-    if (selected.size === 0) return;
-    const selectedIds = new Set(selected);
-    const remaining = rules.filter((r) => !selectedIds.has(r.id));
-    const moved = rules.filter((r) => selectedIds.has(r.id));
-    const newRules = edge === "top" ? [...moved, ...remaining] : [...remaining, ...moved];
-
-    if (edge === "top") {
-      setRulesPage(1);
-    } else {
-      setRulesPage(Math.ceil(newRules.length / RL_RULES_PAGE_SIZE));
-    }
-
-    const prev = rules;
-    setRules(newRules);
-    try {
-      const result = await reorderRLRules(newRules.map((r) => r.id));
-      setRules(result);
-      setSelected(new Set());
-      await autoDeploy(`${moved.length} rules moved to ${edge}`);
-    } catch (err: unknown) {
-      setRules(prev);
-      setError(err instanceof Error ? err.message : "Bulk move failed");
-    }
-  }, [rules, selected, autoDeploy]);
+  // Reorder hook — handles drag, move-to-edge, move-to-position, bulk move.
+  const { handleDragEnd, handleMoveToEdge, handleMoveToPosition, handleBulkMoveToPosition, handleBulkMoveToEdge } =
+    useRuleReorder({
+      items: rules,
+      setItems: setRules,
+      getId: (r) => r.id,
+      reorderApi: reorderRLRules,
+      pageSize: RL_RULES_PAGE_SIZE,
+      page: rulesPage,
+      setPage: setRulesPage,
+      setError,
+      autoDeploy,
+      selected,
+      setSelected,
+    });
 
   const handleCreate = async (data: RateLimitRuleCreateData) => {
     setError(null);
@@ -498,31 +375,6 @@ export default function RateLimitsPanel() {
 
   // ─── Bulk actions ─────────────────────────────────────────────────
 
-  const lastSelectedRef = useRef<number | null>(null);
-
-  const toggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (shiftKey && lastSelectedRef.current !== null) {
-        const start = Math.min(lastSelectedRef.current, index);
-        const end = Math.max(lastSelectedRef.current, index);
-        for (let i = start; i <= end; i++) {
-          next.add(pagedRules[i].id);
-        }
-      } else {
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-      }
-      lastSelectedRef.current = index;
-      return next;
-    });
-  }, [pagedRules]);
-
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
-
   const handleBulkAction = useCallback(
     async (action: "enable" | "disable" | "delete") => {
       if (selected.size === 0) return;
@@ -627,27 +479,7 @@ export default function RateLimitsPanel() {
       {/* Export/Import moved to UnifiedPolicyPage header */}
 
       {/* Alerts */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {successMsg && (
-        <Alert variant="success">
-          <Check className="h-4 w-4" />
-          <AlertTitle>Success</AlertTitle>
-          <AlertDescription>{successMsg}</AlertDescription>
-        </Alert>
-      )}
-      {deployStep && (
-        <Alert>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertTitle>Deploying</AlertTitle>
-          <AlertDescription>{deployStep}</AlertDescription>
-        </Alert>
-      )}
+      <StatusAlerts error={error} successMsg={successMsg} deployStep={deployStep} />
 
       {/* Tabs: Rules | Advisor | Global Settings */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -751,60 +583,20 @@ export default function RateLimitsPanel() {
               {rules.length > 0 ? (
                 <>
                   {selected.size > 0 && (
-                    <div className="flex items-center gap-2 px-4 py-2 border-b border-lv-cyan/30 bg-lv-cyan/5">
-                      <span className="text-xs font-medium text-lv-cyan mr-2">
-                        {selected.size} selected
-                      </span>
-                      <Button variant="outline" size="xs" onClick={() => handleBulkAction("enable")} disabled={bulkBusy}>
-                        Enable
-                      </Button>
-                      <Button variant="outline" size="xs" onClick={() => handleBulkAction("disable")} disabled={bulkBusy}>
-                        Disable
-                      </Button>
-                      <Button variant="outline" size="xs" className="text-lv-red hover:text-lv-red" onClick={() => handleBulkAction("delete")} disabled={bulkBusy}>
-                        Delete
-                      </Button>
-                      {!isFiltered && (
-                        <>
-                          <span className="mx-1 h-4 w-px bg-border" />
-                          <Button variant="outline" size="xs" onClick={() => handleBulkMoveToEdge("top")} disabled={bulkBusy}>
-                            <ArrowUpToLine className="h-3 w-3 mr-1" />
-                            Move to Top
-                          </Button>
-                          <Button variant="outline" size="xs" onClick={() => handleBulkMoveToEdge("bottom")} disabled={bulkBusy}>
-                            <ArrowDownToLine className="h-3 w-3 mr-1" />
-                            Move to Bottom
-                          </Button>
-                          <form className="inline-flex items-center gap-1 ml-1" onSubmit={(e) => {
-                            e.preventDefault();
-                            const input = (e.target as HTMLFormElement).elements.namedItem("bulkPos") as HTMLInputElement;
-                            const pos = parseInt(input.value, 10);
-                            if (!isNaN(pos) && pos >= 1) {
-                              handleBulkMoveToPosition(pos);
-                              input.value = "";
-                            }
-                          }}>
-                            <span className="text-xs text-muted-foreground">Move to #</span>
-                            <input
-                              name="bulkPos"
-                              type="number"
-                              min={1}
-                              max={rules.length}
-                              className="w-[50px] h-6 bg-transparent border border-border rounded px-1 text-xs text-center outline-none focus:border-lv-cyan"
-                              placeholder="#"
-                            />
-                          </form>
-                        </>
-                      )}
-                      <div className="ml-auto flex items-center gap-2">
-                        <Button variant="ghost" size="xs" onClick={selectAllVisible} className="text-xs text-muted-foreground">
-                          Select All ({filteredRules.length})
-                        </Button>
-                        <Button variant="ghost" size="xs" onClick={clearSelection} className="text-xs text-muted-foreground">
-                          Clear
-                        </Button>
-                      </div>
-                    </div>
+                    <BulkActionsBar
+                      selectedCount={selected.size}
+                      filteredCount={filteredRules.length}
+                      totalCount={rules.length}
+                      isFiltered={isFiltered}
+                      bulkBusy={bulkBusy}
+                      onEnable={() => handleBulkAction("enable")}
+                      onDisable={() => handleBulkAction("disable")}
+                      onDelete={() => handleBulkAction("delete")}
+                      onBulkMoveToPosition={handleBulkMoveToPosition}
+                      onBulkMoveToEdge={handleBulkMoveToEdge}
+                      onSelectAll={selectAllVisible}
+                      onClear={clearSelection}
+                    />
                   )}
                   <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <Table>
@@ -865,36 +657,15 @@ export default function RateLimitsPanel() {
                             />
                           </TableCell>
                           <TableCell className="text-xs tabular-nums text-muted-foreground/60 px-1" title={`Rule ${globalIdx} of ${filteredRules.length} — click to move`}>
-                            {editingPositionId === rule.id ? (
-                              <input
-                                type="number"
-                                min={1}
-                                max={rules.length}
-                                defaultValue={globalIdx}
-                                autoFocus
-                                className="w-[40px] bg-transparent border border-lv-cyan/50 rounded px-1 py-0 text-xs text-center text-lv-cyan outline-none"
-                                onBlur={(e) => {
-                                  setEditingPositionId(null);
-                                  const v = parseInt(e.target.value, 10);
-                                  if (!isNaN(v) && v !== globalIdx) handleMoveToPosition(rule.id, v);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    (e.target as HTMLInputElement).blur();
-                                  } else if (e.key === "Escape") {
-                                    setEditingPositionId(null);
-                                  }
-                                }}
-                              />
-                            ) : (
-                              <button
-                                onClick={() => !isFiltered && setEditingPositionId(rule.id)}
-                                className={`${isFiltered ? "cursor-default" : "cursor-pointer hover:text-lv-cyan hover:bg-lv-cyan/10 rounded px-1"} transition-colors`}
-                                disabled={isFiltered}
-                              >
-                                {globalIdx}
-                              </button>
-                            )}
+                            <InlinePositionEditor
+                              globalIndex={globalIdx}
+                              totalItems={rules.length}
+                              isEditing={editingPositionId === rule.id}
+                              isFiltered={isFiltered}
+                              onStartEdit={() => setEditingPositionId(rule.id)}
+                              onMove={(pos) => handleMoveToPosition(rule.id, pos)}
+                              onCancel={() => setEditingPositionId(null)}
+                            />
                           </TableCell>
                           <TableCell>
                             <div>
@@ -1085,23 +856,13 @@ export default function RateLimitsPanel() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Rate Limit Rule</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this rule? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmId(null)} disabled={saving}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)} disabled={saving}>
-              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {saving ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteConfirmId !== null}
+        onOpenChange={(open) => !open && setDeleteConfirmId(null)}
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+        title="Delete Rate Limit Rule"
+        saving={saving}
+      />
     </div>
   );
 }
