@@ -21,15 +21,18 @@
 # CORS snippet removed — handled by plugin via /api/cors config.
 # Cache snippet removed — handled by response_header rules via templates.
 
-# DDoS mitigator — runs before WAF, adaptive fingerprint + jail
+# DDoS mitigator — runs before WAF, adaptive fingerprint + jail.
+# In e2e: lower CMS width for faster collision, narrow whitelist so k6
+# (running on the Docker bridge) is NOT whitelisted and can be jailed.
 (ddos) {
 	ddos_mitigator {
 		jail_file     /data/waf/jail.json
-		threshold     4.0
+		threshold     0.65
 		base_penalty  30s
 		max_penalty   1h
 		sync_interval 1s
-		whitelist     172.16.0.0/12 10.0.0.0/8
+		cms_width     512
+		whitelist     10.0.0.0/8 127.0.0.0/8
 	}
 }
 

@@ -159,7 +159,7 @@ func TestDDoS_ConfigValues(t *testing.T) {
 		name   string
 		substr string
 	}{
-		{"threshold", `"threshold":4`},
+		{"threshold", `"threshold":0.65`},
 		{"jail_file", `"jail_file":"/data/waf/jail.json"`},
 		{"base_penalty", `"base_penalty"`},
 		{"max_penalty", `"max_penalty"`},

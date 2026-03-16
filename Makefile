@@ -121,6 +121,12 @@ test-e2e: ## Run e2e smoke tests (requires Docker)
 	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
 	exit $$rc
 
+test-e2e-load: ## Run e2e + DDoS load tests with k6 (requires Docker + k6 image)
+	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
+	cd test/e2e && DDOS_LOAD=1 go test -v -count=1 -timeout 600s -run "TestDDoS" ./...; rc=$$?; \
+	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
+	exit $$rc
+
 check: test ## Run tests + type check + build (pre-push validation)
 	cd waf-dashboard && npx tsc --noEmit
 	cd waf-dashboard && npm run build
