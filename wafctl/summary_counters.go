@@ -19,6 +19,7 @@ type hourBucket struct {
 	RateLimited int
 	PolicyBlock int
 	DetectBlock int
+	DDoSBlocked int
 	PolicyAllow int
 	PolicySkip  int
 	// Per-service, per-client, per-country, per-URI, per-tag counts.
@@ -289,6 +290,7 @@ func classifyEventIntoBucket(b *hourBucket, ev *Event, delta int) {
 		}
 	case ev.EventType == "ddos_blocked" || ev.EventType == "ddos_jailed":
 		b.Blocked += delta
+		b.DDoSBlocked += delta
 	case ev.EventType == "policy_allow":
 		b.PolicyAllow += delta
 	case ev.EventType == "policy_skip":
@@ -324,7 +326,7 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 	}
 
 	var totalEvents, totalBlocked, totalLogged, totalRateLimited int
-	var totalPolicyBlock, totalDetectBlock, totalPolicyAllow, totalPolicySkip int
+	var totalPolicyBlock, totalDetectBlock, totalDDoSBlocked, totalPolicyAllow, totalPolicySkip int
 
 	hourCounts := make([]HourCount, 0, len(sc.hours))
 	svcMap := make(map[string]*[8]int)    // [total, blocked, logged, rl, policyBlock, detectBlock, policyAllow, policySkip]
@@ -347,6 +349,7 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 		totalRateLimited += b.RateLimited
 		totalPolicyBlock += b.PolicyBlock
 		totalDetectBlock += b.DetectBlock
+		totalDDoSBlocked += b.DDoSBlocked
 		totalPolicyAllow += b.PolicyAllow
 		totalPolicySkip += b.PolicySkip
 
@@ -542,6 +545,7 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 		PolicyEvents:     totalPolicy,
 		PolicyBlocked:    totalPolicyBlock,
 		DetectBlocked:    totalDetectBlock,
+		DDoSBlocked:      totalDDoSBlocked,
 		PolicyAllowed:    totalPolicyAllow,
 		PolicySkipped:    totalPolicySkip,
 		UniqueClients:    len(clientMap),

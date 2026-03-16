@@ -16,6 +16,7 @@ export interface SummaryData {
   policy_events: number;
   policy_blocked: number;
   detect_blocked: number;
+  ddos_blocked: number;
   policy_allowed: number;
   policy_skipped: number;
   unique_clients: number;
@@ -80,7 +81,7 @@ export interface ServiceBreakdown {
 
 // ─── Events ─────────────────────────────────────────────────────────
 
-export type EventType = "detect_block" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block";
+export type EventType = "detect_block" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block" | "ddos_blocked" | "ddos_jailed";
 
 export interface WAFEvent {
   id: string;

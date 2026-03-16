@@ -915,6 +915,7 @@ const STAT_CARD_DEFS: {
   { key: "rate_limited",    label: "Rate Limited",      icon: ShieldBan,   color: "yellow", href: "/events?type=rate_limited" },
   { key: "policy_blocked",  label: "Policy Block",      icon: ShieldBan,   color: "red",    href: "/events?type=policy_block" },
   { key: "detect_blocked",  label: "Detect Block",      icon: ShieldAlert, color: "orange", href: "/events?type=detect_block" },
+  { key: "ddos_blocked",   label: "DDoS Blocked",      icon: ShieldAlert, color: "purple", href: "/dos" },
   { key: "policy_allowed",  label: "Policy Allow",      icon: ShieldCheck, color: "green",  href: "/events?type=policy_allow" },
   { key: "policy_skipped",  label: "Policy Skip",       icon: ShieldCheck, color: "blue",   href: "/events?type=policy_skip" },
   { key: "logged",          label: "Logged",            icon: Shield,      color: "cyan",   href: "/events?type=logged" },

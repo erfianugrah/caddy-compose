@@ -85,6 +85,7 @@ type SummaryResponse struct {
 	PolicyEvents     int             `json:"policy_events"`
 	PolicyBlocked    int             `json:"policy_blocked"`
 	DetectBlocked    int             `json:"detect_blocked"`
+	DDoSBlocked      int             `json:"ddos_blocked"`
 	PolicyAllowed    int             `json:"policy_allowed"`
 	PolicySkipped    int             `json:"policy_skipped"`
 	UniqueClients    int             `json:"unique_clients"`
