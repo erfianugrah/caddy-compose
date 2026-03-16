@@ -6,13 +6,14 @@ import (
 
 // ─── GET /api/dos/status ────────────────────────────────────────────
 
-func handleDosStatus(jailStore *JailStore, dosConfig *DosConfigStore) http.HandlerFunc {
+func handleDosStatus(jailStore *JailStore, dosConfig *DosConfigStore, spike *SpikeDetector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := dosConfig.Get()
+		spikeStatus := spike.Status()
 		status := DosStatus{
-			Mode:       "normal", // TODO: SpikeDetector integration
-			EPS:        0,        // TODO: compute from access log
-			PeakEPS:    0,
+			Mode:       spikeStatus.Mode,
+			EPS:        spikeStatus.EPS,
+			PeakEPS:    spikeStatus.PeakEPS,
 			JailCount:  jailStore.Count(),
 			KernelDrop: cfg.KernelDrop,
 			Strategy:   cfg.Strategy,

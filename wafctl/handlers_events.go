@@ -8,12 +8,13 @@ import (
 
 // --- Handlers: Health, Summary, Events, Services ---
 
-func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore) http.HandlerFunc {
+func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, jailStore *JailStore, spike *SpikeDetector) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
 		// Use TryRLock for event stores — if they're busy loading/compacting,
 		// return a minimal health response instead of blocking for minutes.
+		spikeStatus := spike.Status()
 		stores := map[string]any{
 			"geoip": map[string]any{
 				"mmdb_loaded": geoStore.HasDB(),
@@ -26,6 +27,11 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 			"cfproxy":          cfProxyStore.Stats(),
 			"csp":              cspStore.StoreInfo(),
 			"security_headers": secStore.StoreInfo(),
+			"dos": map[string]any{
+				"mode":       spikeStatus.Mode,
+				"eps":        spikeStatus.EPS,
+				"jail_count": jailStore.Count(),
+			},
 		}
 
 		// Non-blocking stats for event stores — return "loading" if locked.

@@ -187,11 +187,21 @@ func runServe() int {
 		blocklistStore.loadFromLists(managedListStore)
 	}()
 
-	// DDoS mitigation stores — jail management + config.
+	// DDoS mitigation stores — jail management + config + spike detection.
 	dosJailFile := envOr("WAF_DOS_JAIL_FILE", filepath.Join(deployCfg.WafDir, "jail.json"))
 	dosConfigFile := envOr("WAF_DOS_CONFIG_FILE", "/data/dos-config.json")
 	jailStore := NewJailStore(dosJailFile)
 	dosConfigStore := NewDosConfigStore(dosConfigFile)
+
+	// Spike detector — tails access log for ddos_action fields, computes EPS.
+	dosCfg := dosConfigStore.Get()
+	spikeDetector := NewSpikeDetector(
+		combinedAccessLog,
+		dosCfg.EPSTrigger,
+		dosCfg.EPSCooldown,
+		parseDurationOr(dosCfg.CooldownDelay, 30*time.Second),
+	)
+	spikeDetector.StartTailing(ctx, tailInterval)
 
 	// Periodic jail file reload (picks up entries added by the plugin).
 	go func() {
@@ -220,7 +230,7 @@ func runServe() int {
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore, jailStore, spikeDetector))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
@@ -333,7 +343,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
 	// DDoS Mitigation
-	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore))
+	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore, spikeDetector))
 	mux.HandleFunc("GET /api/dos/jail", handleListJail(jailStore))
 	mux.HandleFunc("POST /api/dos/jail", handleAddJail(jailStore))
 	mux.HandleFunc("DELETE /api/dos/jail/{ip}", handleRemoveJail(jailStore))
@@ -393,6 +403,14 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func parseDurationOr(s string, fallback time.Duration) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return fallback
+	}
+	return d
 }
 
 // --- CORS middleware ---

@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../layouts/DashboardLayout.astro";
+import DDoSPanel from "../components/DDoSPanel";
+---
+
+<DashboardLayout title="wafctl — DDoS Protection" active="dos">
+  <DDoSPanel client:load />
+</DashboardLayout>

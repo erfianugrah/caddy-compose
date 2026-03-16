@@ -67,7 +67,9 @@ func testHealthHandler(t *testing.T) http.HandlerFunc {
 	cspStore := NewCSPStore(filepath.Join(t.TempDir(), "csp.json"))
 	secStore := NewSecurityHeaderStore(filepath.Join(t.TempDir(), "sec.json"))
 	ds := NewDefaultRuleStore(filepath.Join(t.TempDir(), "defaults.json"), filepath.Join(t.TempDir(), "overrides.json"))
-	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore, secStore, ds)
+	js := NewJailStore(filepath.Join(t.TempDir(), "jail.json"))
+	sd := NewSpikeDetector("", 50, 10, 30*time.Second)
+	return handleHealth(store, als, gls, geoStore, exclStore, blStore, cfStore, cspStore, secStore, ds, js, sd)
 }
 
 // emptyWAFStore returns a Store with no events for tests that only need

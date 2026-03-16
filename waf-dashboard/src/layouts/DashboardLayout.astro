@@ -14,6 +14,8 @@ const navLinks = [
   { id: "logs", label: "Logs", href: "/logs", icon: "file-text", section: "Observability" },
   { id: "investigate", label: "IP Lookup", href: "/analytics", icon: "search", section: "Observability" },
   { id: "services", label: "Services", href: "/services", icon: "server", section: "Infrastructure" },
+  // DDoS Protection: adaptive mitigation + IP jail
+  { id: "dos", label: "DDoS Protection", href: "/dos", icon: "shield-alert", section: "Security" },
   // Policy: rules + rate limits + response headers + templates
   { id: "policy", label: "Policy Engine", href: "/policy", icon: "shield", section: "Security" },
   // CRS default rules + WAF engine settings
@@ -181,11 +183,17 @@ for (const link of navLinks) {
                           </svg>
                         )}
                         {/* Shield / Policy */}
-                        {link.icon === "shield" && (
-                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                          </svg>
-                        )}
+                        {link.icon === "shield-alert" && (
+                           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                             <path d="M12 8v4" /><path d="M12 16h.01" />
+                           </svg>
+                         )}
+                         {link.icon === "shield" && (
+                           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                           </svg>
+                         )}
                         {/* List Tree / Managed Lists */}
                         {link.icon === "list-tree" && (
                           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
