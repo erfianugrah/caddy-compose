@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -1036,10 +1038,17 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 
 	sc.hours = make(map[string]*hourBucket)
 
+	ddosDebugCount := 0
 	for i := range events {
 		rle := &events[i]
 		eventType := rleEventType(rle.Source)
 		isBlocked := rleIsBlocked(rle.Source)
+		if strings.Contains(rle.Source, "ddos") {
+			ddosDebugCount++
+			if ddosDebugCount <= 3 {
+				log.Printf("[debug] initFromRLEvents: source=%q eventType=%q isBlocked=%v uri=%s", rle.Source, eventType, isBlocked, rle.URI)
+			}
+		}
 		key := hourKey(rle.Timestamp)
 		b, ok := sc.hours[key]
 		if !ok {
@@ -1111,6 +1120,17 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 		if len(b.RecentEvents) > recentCap {
 			b.RecentEvents = b.RecentEvents[len(b.RecentEvents)-recentCap:]
 		}
+	}
+	if ddosDebugCount > 0 {
+		log.Printf("[debug] initFromRLEvents: %d DDoS events found in %d total events", ddosDebugCount, len(events))
+		// Check bucket totals
+		for key, b := range sc.hours {
+			if b.DDoSBlocked > 0 {
+				log.Printf("[debug] bucket %s: ddos=%d blocked=%d total=%d", key, b.DDoSBlocked, b.Blocked, b.Total)
+			}
+		}
+	} else {
+		log.Printf("[debug] initFromRLEvents: 0 DDoS events in %d total events", len(events))
 	}
 }
 
