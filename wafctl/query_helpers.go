@@ -114,6 +114,10 @@ func rleEventType(source string) string {
 		return "policy_block"
 	case "detect_block":
 		return "detect_block"
+	case "ddos_blocked":
+		return "ddos_blocked"
+	case "ddos_jailed":
+		return "ddos_jailed"
 	case "logged":
 		return "logged"
 	case "policy_skip":
@@ -131,7 +135,7 @@ func rleIsBlocked(source string) bool {
 // rleResponseStatus returns the HTTP status code for a RateLimitEvent.
 func rleResponseStatus(rle *RateLimitEvent) int {
 	switch rle.Source {
-	case "policy", "ipsum", "detect_block":
+	case "policy", "ipsum", "detect_block", "ddos_blocked", "ddos_jailed":
 		return 403
 	case "policy_skip", "logged":
 		return rle.Status
@@ -147,6 +151,8 @@ func rleBlockedBy(rle *RateLimitEvent) string {
 		return "policy-engine"
 	case "detect_block":
 		return "anomaly_inbound"
+	case "ddos_blocked", "ddos_jailed":
+		return "ddos_mitigator"
 	default:
 		return ""
 	}

@@ -178,8 +178,8 @@ func TestDosConfigStore_Defaults(t *testing.T) {
 	s := NewDosConfigStore(path)
 	cfg := s.Get()
 
-	if cfg.Threshold != 4.0 {
-		t.Fatalf("default threshold: got %f, want 4.0", cfg.Threshold)
+	if cfg.Threshold != 0.65 {
+		t.Fatalf("default threshold: got %f, want 0.65", cfg.Threshold)
 	}
 	if cfg.BasePenalty != "60s" {
 		t.Fatalf("default base_penalty: got %s, want 60s", cfg.BasePenalty)

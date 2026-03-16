@@ -122,7 +122,7 @@ func TestDDoS_BurstTrafficAutoJails(t *testing.T) {
 	}
 
 	if !got403 {
-		// The threshold is 4.0 with default CMS — it's possible the e2e
+		// The behavioral threshold is 0.65 — it's possible the e2e
 		// environment doesn't trigger it. Log rather than fail hard.
 		t.Log("WARNING: burst traffic did not trigger auto-jail in e2e. " +
 			"This may be expected if threshold is too high for the test volume. " +

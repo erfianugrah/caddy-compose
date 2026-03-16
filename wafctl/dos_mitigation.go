@@ -196,7 +196,7 @@ type DosConfig struct {
 func defaultDosConfig() DosConfig {
 	return DosConfig{
 		Enabled:       true,
-		Threshold:     4.0,
+		Threshold:     0.65,
 		BasePenalty:   "60s",
 		MaxPenalty:    "24h",
 		EPSTrigger:    50,
