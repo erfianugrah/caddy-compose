@@ -179,14 +179,20 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
   `RateLimitRuleStore` has been removed — rate limit rules use `type: "rate_limit"` on `RuleExclusion`.
 - Policy engine handles all rule evaluation (allow/block/skip/detect/rate_limit). Coraza has been removed.
 - Service FQDN resolution: `BuildServiceFQDNMap()` parses Caddyfile to map short names → FQDNs.
-- **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
+- **DDoS mitigator**: `caddy-ddos-mitigator` plugin v0.7.1 (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Registers as `http.handlers.ddos_mitigator` (L7) and
-  `layer4.handlers.ddos_mitigator` (L4). Runs before `log_append` and `policy_engine`.
-  Uses adaptive z-score thresholds (Welford + EWMA) with Count-Min Sketch fingerprinting.
+  `layer4.handlers.ddos_mitigator` (L4). Runs after `log_append` but before `policy_engine`.
+  Uses behavioral IP profiling (path diversity scoring) instead of raw frequency z-score.
+  Enforces via 4 layers: L7 403, L4 TCP RST, nftables kernel drop, eBPF/XDP NIC drop.
+  CIDR aggregation promotes /24 prefix when 5+ IPs from same subnet are jailed.
+  All detection parameters configurable via Caddyfile (threshold, warmup, CIDR thresholds, etc.).
   Shares IP jail with wafctl via `/data/waf/jail.json` (bidirectional file sync).
-  - wafctl DDoS stores: `JailStore`, `DosConfigStore`, `SpikeDetector` in `dos_mitigation.go` / `spike_detector.go`
-  - wafctl DDoS API: `/api/dos/status`, `/api/dos/jail` (CRUD), `/api/dos/config` (CRUD) in `handlers_dos.go`
-  - Dashboard: `/dos` page (`DDoSPanel.tsx`) with StatusBanner, JailTable, ConfigPanel
+  - wafctl DDoS stores: `JailStore`, `DosConfigStore`, `SpikeDetector`, `SpikeReporter`
+  - wafctl DDoS API: `/api/dos/status`, `/api/dos/jail` (CRUD), `/api/dos/config` (CRUD),
+    `/api/dos/reports` (spike forensics) in `handlers_dos.go`
+  - Dashboard: `/dos` page (`DDoSPanel.tsx`) with StatusBanner (EPS sparkline),
+    StatCards, JailTable (CRUD), SpikeReports, ConfigPanel
   - Frontend API module: `src/lib/api/dos.ts`
   - Log fields: `ddos_action`, `ddos_fingerprint`, `ddos_z_score`, `ddos_spike_mode`
-  - Handler ordering: `order ddos_mitigator first` in Caddyfile global options
+  - Handler ordering: `order log_append first`, `order ddos_mitigator after log_append`
+  - k6 load tests: `test/k6/stress.js` (baseline + flood + sustain, 300 VUs)

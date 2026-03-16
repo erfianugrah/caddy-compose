@@ -261,18 +261,20 @@ This mirrors the existing architecture: `caddy-policy-engine` (plugin, per-reque
 
 #### Implementation Phases
 
-1. [x] `caddy-ddos-mitigator` plugin: IP jail (64-shard), CMS fingerprinting (5 strategies),
-       Welford+EWMA adaptive z-score, auto-jail with exponential backoff, Caddyfile config.
-       67 tests, zero-alloc hot path (~103ns/req). Repo: `ergo/caddy-ddos-mitigator` v0.2.0.
-2. [x] wafctl: `dos_mitigation.go` — JailStore, DosConfigStore, SpikeDetector (EPS sliding
-       window, spike/normal mode with hysteresis). `handlers_dos.go` — 6 API endpoints.
-3. [x] L4 handler: `layer4.handlers.ddos_mitigator` — TCP RST via SetLinger(0), shared jail
-       registry between L7 and L4 modules, connection unwrapping for proxy_protocol.
-4. [x] Dashboard: `/dos` page — StatusBanner (mode+EPS), JailTable (CRUD), ConfigPanel
-       (threshold, penalties, strategy, whitelist, spike settings). Health check integration.
-5. [ ] nftables kernel drop: in-process ipset management via `google/nftables`, requires
-       NET_ADMIN cap on Caddy container. compose.yaml prepared (cap commented out).
-6. [ ] (Future) eBPF/XDP loader for kernel-level drop (maximum efficiency)
+1. [x] `caddy-ddos-mitigator` plugin v0.7.1: behavioral IP profiling (path diversity scoring),
+       IP jail (64-shard), CMS, CIDR /24 aggregation, all params configurable via Caddyfile.
+       116 tests, zero-alloc hot path (~90ns/req). Repo: `ergo/caddy-ddos-mitigator`.
+2. [x] wafctl: JailStore, DosConfigStore, SpikeDetector (EPS sliding window, hysteresis),
+       SpikeReporter (forensic snapshots on cooldown). 8 API endpoints + spike reports.
+3. [x] L4 handler: `layer4.handlers.ddos_mitigator` — TCP RST via SetLinger(0), shared jail.
+4. [x] Dashboard: `/dos` page — StatusBanner (EPS sparkline), StatCards, JailTable (CRUD),
+       SpikeReports, ConfigPanel. DDoS events in Security Events log. Health check integration.
+5. [x] nftables kernel drop: in-process ipset via `google/nftables`, NET_ADMIN cap enabled.
+       `nft` CLI bundled in Alpine image. Duplicate rules fix on hot-reload.
+6. [x] eBPF/XDP: compiled in (`cilium/ebpf` + `bpf2go`), XDP C program for NIC-level drop.
+       Disabled by default (Unraid bridge interface limitation). Ready for non-bridged setups.
+7. [x] k6 load tests: `test/k6/stress.js` — 300 VU sustained flood, 4.5M req baseline,
+       non-whitelisted 192.168.200.0/24 network for behavioral profiling exercise.
 
 ---
 
