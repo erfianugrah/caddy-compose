@@ -59,10 +59,11 @@ func TestWAFBlocking(t *testing.T) {
 	// Not parallel — requires WAF config at known state (default thresholds).
 	// Parallel tests that mutate config (e.g., threshold=10000) can poison results.
 	ensureDefaultConfig(t)
-	deployWAF(t)
+	status := deployWAF(t)
+	t.Logf("deploy status: %s", status)
 	// Wait for SQLi to actually be blocked (confirms threshold took effect).
-	// CI may need longer than local — policy engine hot-reload is 5s interval.
-	waitForCondition(t, "SQLi blocked", 30*time.Second, func() bool {
+	// CI needs 45s+: wafctl boot → generateOnBoot → deploy → engine hot-reload.
+	waitForCondition(t, "SQLi blocked", 45*time.Second, func() bool {
 		req, _ := http.NewRequest("GET", caddyURL+"/get?id=1%20OR%201=1%20--", nil)
 		setBrowserHeaders(req)
 		resp, err := client.Do(req)
