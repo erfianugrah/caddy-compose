@@ -23,6 +23,8 @@ Reviewed: March 2026
 
 ### C-1. wafctl API has zero authentication
 
+**Status: FIXED** — Bearer token auth middleware added via WAF_AUTH_TOKEN env var. Health endpoint exempt. CORS default restricted when auth enabled.
+
 **Component:** wafctl
 **Files:** `wafctl/main.go:242-370`, `wafctl/main.go:382-384`
 
@@ -61,6 +63,8 @@ opening port 8080, exposes the entire management plane. There is no defense-in-d
 
 ### C-2. Rate limit bypass via absent header/cookie key
 
+**Status: FIXED** (in caddy-policy-engine) — Empty rate-limit key now falls back to client IP.
+
 **Component:** caddy-policy-engine
 **Files:** `ratelimit.go:320-330`, `ratelimit.go:724`
 
@@ -92,6 +96,8 @@ if key == "" {
 ---
 
 ### C-3. DDoS behavioral scoring defeated with ~33 unique paths
+
+**Status: OPEN** — Architectural change to scoring model. Deferred.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `profile.go:55-72`, `profile.go:138-168`
@@ -147,6 +153,8 @@ The attacker gets 30,000 free requests before detection.
 
 ### H-1. JailStore and DosConfigStore: lock released before save
 
+**Status: FIXED** — JailStore.Add/Remove and DosConfigStore.Update now hold write lock through saveLocked().
+
 **Component:** wafctl
 **Files:** `dos_mitigation.go:129-157`, `dos_mitigation.go:259-269`
 
@@ -193,6 +201,8 @@ func (s *JailStore) Add(ip, ttlStr, reason string) error {
 
 ### H-2. DDoS config update accepts arbitrary values with zero validation
 
+**Status: FIXED** — validateDosConfig() validates strategy, thresholds, duration fields, and whitelist CIDRs.
+
 **Component:** wafctl
 **Files:** `handlers_dos.go:167-181`
 
@@ -224,6 +234,8 @@ An attacker with API access (see C-1) can:
 ---
 
 ### H-3. Jail IP not validated
+
+**Status: FIXED** — net.ParseIP() validation added to handleAddJail.
 
 **Component:** wafctl
 **Files:** `handlers_dos.go:103-131`, `dos_mitigation.go:129-148`
@@ -258,6 +270,8 @@ if net.ParseIP(req.IP) == nil {
 
 ### H-4. Allow rules bypass rate limiting entirely
 
+**Status: OPEN** — Requires caddy-policy-engine architectural change to evaluation order. Deferred.
+
 **Component:** caddy-policy-engine
 **Files:** `policyengine.go:540-544`, `policyengine.go:629`
 
@@ -274,6 +288,8 @@ rule should bypass block/detect phases but not rate limiting.
 ---
 
 ### H-5. IPv4-mapped-v6 whitelist bypass in DDoS mitigator
+
+**Status: FIXED** (in caddy-ddos-mitigator) — .Unmap() added to clientAddr().
 
 **Component:** caddy-ddos-mitigator
 **Files:** `mitigator.go:431-451`, `mitigator_l4.go:141`, `util.go:39-46`
@@ -297,6 +313,8 @@ addr = addr.Unmap()  // normalize before returning
 ---
 
 ### H-6. Data race on profile pointer in DDoS mitigator
+
+**Status: OPEN** — Requires tracker sharding refactor in caddy-ddos-mitigator. Deferred.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `profile.go:206-219`
@@ -343,6 +361,8 @@ func (t *Tracker) Score(addr netip.Addr) float64 {
 
 ### H-7. NET_ADMIN + host network mode on Caddy container
 
+**Status: OPEN** — Architecturally required for kernel-level DDoS mitigation. Documented risk.
+
 **Component:** caddy-compose
 **Files:** `compose.yaml:7`, `compose.yaml:14`
 
@@ -376,6 +396,8 @@ communicates with Caddy via Unix socket, limiting the blast radius.
 
 ### M-1. :2020 admin API proxy binds on 0.0.0.0
 
+**Status: OPEN** — Caddyfile change requiring operator decision on bind address.
+
 **Component:** caddy-compose
 **Files:** `Caddyfile:577-590`
 
@@ -407,6 +429,8 @@ plaintext.
 ---
 
 ### M-2. 17+ services lack Authelia forward-auth
+
+**Status: OPEN** — Per-service deployment decision.
 
 **Component:** caddy-compose
 **Files:** `Caddyfile` (various site blocks)
@@ -450,6 +474,8 @@ authentication, or document the intentional reliance on app-level auth.
 
 ### M-3. Hot-reload config inconsistency in policy engine
 
+**Status: FIXED** (in caddy-policy-engine) — Split RLock sections merged into single acquisition.
+
 **Component:** caddy-policy-engine
 **Files:** `policyengine.go:479-484`, `policyengine.go:509-511`
 
@@ -480,6 +506,8 @@ If a hot-reload occurs between these two reads, `rules` is from the old config w
 ---
 
 ### M-4. SSRF via DNS rebinding in managed list refresh
+
+**Status: FIXED** — Custom http.Transport with DialContext re-validates resolved IPs at connection time.
 
 **Component:** wafctl
 **Files:** `managed_lists.go:391-427`, `managed_lists.go:460-479`
@@ -515,6 +543,8 @@ transport := &http.Transport{
 
 ### M-5. Response header value CRLF injection
 
+**Status: FIXED** — Header values validated for CR/LF in HeaderSet, HeaderAdd, HeaderDefault.
+
 **Component:** wafctl
 **Files:** `exclusions_validate.go:284-317`
 
@@ -542,6 +572,8 @@ layer since Go 1.21, providing a safety net. But this is not defense-in-depth.
 
 ### M-6. Jail file TOCTOU race between Caddy and wafctl
 
+**Status: OPEN** — Requires coordinated flock between ddos-mitigator and wafctl. Deferred.
+
 **Component:** caddy-ddos-mitigator / wafctl
 **Files:** `caddy-ddos-mitigator/mitigator.go:485-518`, `caddy-ddos-mitigator/util.go:131-171`
 
@@ -563,6 +595,8 @@ re-applied. The 5-second sync interval limits the window.
 ---
 
 ### M-7. nftables/XDP sync creates brief drop gap
+
+**Status: OPEN** — Requires double-buffer strategy. Deferred.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `nftables.go:200-246`, `xdp.go:122-181`
@@ -592,6 +626,8 @@ reference it, then flush the old set. This provides atomic switchover with zero 
 
 ### M-8. /24 CIDR promotion collateral damage
 
+**Status: OPEN** — Requires design work for fractional thresholds. Deferred.
+
 **Component:** caddy-ddos-mitigator
 **Files:** `cidr.go:46-92`
 
@@ -616,6 +652,8 @@ prefix are blocked.
 
 ### M-9. cosign sign failures silently swallowed in CI
 
+**Status: OPEN** — CI workflow change. Deferred.
+
 **Component:** caddy-compose
 **Files:** `.github/workflows/build.yml:171`, `.github/workflows/build.yml:230`
 
@@ -633,6 +671,8 @@ step on failure rather than silent swallowing.
 
 ### M-10. Trivy scans run AFTER image push in CI
 
+**Status: OPEN** — CI workflow change. Deferred.
+
 **Component:** caddy-compose
 **Files:** `.github/workflows/build.yml:160-166`, `.github/workflows/build.yml:219-225`
 
@@ -644,6 +684,8 @@ finds CRITICAL/HIGH vulnerabilities, the vulnerable image is already public.
 ---
 
 ### M-11. Shared /data/waf volume is bidirectional read-write
+
+**Status: OPEN** — Docker architecture change. Deferred.
 
 **Component:** caddy-compose
 **Files:** `compose.yaml` (volume mounts)
@@ -663,6 +705,8 @@ Consider separate mount paths with appropriate permissions.
 ---
 
 ### M-12. IP intelligence: unsanitized IP in external API URLs
+
+**Status: FIXED** — URL construction uses url.PathEscape/url.QueryEscape.
 
 **Component:** wafctl
 **Files:** `ip_intel_sources.go:240`, `ip_intel_sources.go:302-303`, `ip_intel_sources.go:355-356`
@@ -686,6 +730,8 @@ parameters.
 
 ### M-13. Condition value validation only rejects newlines
 
+**Status: FIXED** — Rejects all ASCII control characters (0x00-0x1F except tab).
+
 **Component:** wafctl
 **Files:** `exclusions_validate.go:139-142`
 
@@ -704,6 +750,8 @@ truncation or unexpected matching behavior in regex operations.
 ---
 
 ### M-14. Regex DoS potential in query filters
+
+**Status: OPEN** — RE2 + 1024-char limit provides baseline protection. Context timeout deferred.
 
 **Component:** wafctl
 **Files:** `query_helpers.go:260-271`
@@ -737,6 +785,8 @@ is good.
 
 ### L-1. Double URL encoding bypass in policy engine transforms
 
+**Status: OPEN** — CRS-consistent behavior. Documentation only.
+
 **Component:** caddy-policy-engine
 **Files:** `transforms.go:93-117`
 
@@ -750,6 +800,8 @@ Document this in rule-authoring guidelines.
 ---
 
 ### L-2. `compiledRegex` nil check missing in body matcher
+
+**Status: FIXED** (in caddy-body-matcher) — Match() now checks `m.compiledRegex != nil`.
 
 **Component:** caddy-body-matcher
 **Files:** `bodymatcher.go:263` vs `bodymatcher.go:299`, `bodymatcher.go:401`
@@ -781,6 +833,8 @@ case m.Regex != "" && m.compiledRegex != nil:
 
 ### L-3. No MaxSize upper bound in body matcher
 
+**Status: FIXED** (in caddy-body-matcher) — MaxSize capped at 256 MiB.
+
 **Component:** caddy-body-matcher
 **Files:** `bodymatcher.go:158-160`, `bodymatcher.go:671-674`
 
@@ -800,6 +854,8 @@ if m.MaxSize > absoluteMaxSize {
 ---
 
 ### L-4. Invalid whitelist CIDRs silently ignored in DDoS mitigator
+
+**Status: FIXED** (in caddy-ddos-mitigator) — newWhitelist() returns error.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `util.go:26-36`
@@ -829,6 +885,8 @@ if any whitelist entry is invalid.
 
 ### L-5. Non-atomic backup restore in wafctl
 
+**Status: OPEN** — Deferred.
+
 **Component:** wafctl
 **Files:** `backup.go:72-198`
 
@@ -850,6 +908,8 @@ exclusions could cause a partial restore that weakens the WAF while appearing to
 
 ### L-6. Error template XSS via Host header
 
+**Status: OPEN** — Requires template change. Deferred.
+
 **Component:** caddy-compose
 **Files:** `errors/error.html`
 
@@ -867,6 +927,8 @@ string.
 
 ### L-7. Remember-me cookie valid for 1 month
 
+**Status: OPEN** — Config change. Deferred.
+
 **Component:** caddy-compose
 **Files:** `authelia/configuration.yml:82`
 
@@ -883,6 +945,8 @@ remain valid for 30 days.
 
 ### L-8. GitHub Actions not consistently SHA-pinned
 
+**Status: OPEN** — CI change. Deferred.
+
 **Component:** caddy-compose
 **Files:** `.github/workflows/build.yml`, `.github/workflows/release.yml`
 
@@ -898,6 +962,8 @@ ARE properly SHA-pinned. The inconsistency suggests incremental adoption.
 ---
 
 ### L-9. Rules with zero conditions match all requests
+
+**Status: OPEN** — Validated at wafctl layer. Engine guard deferred.
 
 **Component:** caddy-policy-engine
 **Files:** `policyengine.go:1196-1199`
@@ -918,6 +984,8 @@ wafctl layer, but the engine itself does not guard against it.
 
 ### L-10. Limited HTML entity coverage in transforms
 
+**Status: FIXED** (in caddy-policy-engine) — 16 security-critical entities added.
+
 **Component:** caddy-policy-engine
 **Files:** `transforms.go:227-242`
 
@@ -931,6 +999,8 @@ ModSecurity's `htmlEntityDecode` handles a larger set.
 
 ### L-11. `cmdLine` transform does not strip backtick characters
 
+**Status: FIXED** (in caddy-policy-engine) — Backtick added to deletion set.
+
 **Component:** caddy-policy-engine
 **Files:** `transforms.go:557-595`
 
@@ -942,6 +1012,8 @@ backticks are used for command substitution (`` `whoami` ``). Consistent with Mo
 
 ### L-12. `jsDecode` does not handle ES6 `\u{HHHHH}` escapes
 
+**Status: OPEN** — Deferred.
+
 **Component:** caddy-policy-engine
 **Files:** `transforms.go:414-429`
 
@@ -951,6 +1023,8 @@ ES6 introduced `\u{1F600}` syntax for Unicode code points beyond the BMP. Only `
 ---
 
 ### L-13. Profile TTL reset enables cyclic DDoS evasion
+
+**Status: OPEN** — Inherent to behavioral profiling design.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `profile.go:214-218`
@@ -963,6 +1037,8 @@ slate indefinitely. Even if jailed, `Reset()` on unjail guarantees a clean slate
 
 ### L-14. CMS decay is not atomic in DDoS mitigator
 
+**Status: FIXED** (in caddy-ddos-mitigator) — CompareAndSwap retry loop.
+
 **Component:** caddy-ddos-mitigator
 **Files:** `cms.go:99-109`
 
@@ -974,6 +1050,8 @@ data correctness issue.
 ---
 
 ### L-15. CMS computed but never used for decisions
+
+**Status: OPEN** — Architectural decision pending.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `mitigator.go:351-353`
@@ -989,6 +1067,8 @@ future use.
 
 ### L-16. Jail file world-readable (0644 permissions)
 
+**Status: FIXED** (in caddy-ddos-mitigator) — Permissions tightened to 0660.
+
 **Component:** caddy-ddos-mitigator
 **Files:** `util.go:125`
 
@@ -1001,6 +1081,8 @@ entries.
 ---
 
 ### L-17. XDP program not cleaned up on unclean shutdown
+
+**Status: OPEN** — Deferred.
 
 **Component:** caddy-ddos-mitigator
 **Files:** `xdp.go:104-113`
@@ -1017,6 +1099,8 @@ on the interface before attaching the new one.
 
 ### L-18. Snapshot under CIDR lock creates latency on hot path
 
+**Status: OPEN** — Deferred.
+
 **Component:** caddy-ddos-mitigator
 **Files:** `cidr.go:70`
 
@@ -1032,6 +1116,8 @@ read path of `IsPromoted`.
 
 ### L-19. `extractMultiField` excludes silently ignored on args/headers
 
+**Status: OPEN** — Deferred.
+
 **Component:** caddy-policy-engine
 **Files:** `policyengine.go:1598-1739`
 
@@ -1043,6 +1129,8 @@ expecting them to work on these fields, the exclusions are silently ignored.
 ---
 
 ### L-20. CORS regex patterns not auto-anchored in policy engine
+
+**Status: FIXED** (in caddy-policy-engine) — Auto-anchored with ^ and $.
 
 **Component:** caddy-policy-engine
 **Files:** `responseheaders.go:365`, `responseheaders.go:549-550`
@@ -1058,6 +1146,8 @@ this requirement prominently.
 
 ### L-21. `body_form` parsed regardless of Content-Type
 
+**Status: OPEN** — By design.
+
 **Component:** caddy-policy-engine
 **Files:** `policyengine.go:375-387`
 
@@ -1069,6 +1159,8 @@ detect rule firing (false positives, not bypasses).
 ---
 
 ### L-22. No rate limit zone counter cardinality limit
+
+**Status: OPEN** — Deferred.
 
 **Component:** caddy-policy-engine
 **Files:** `ratelimit.go:108-114`
@@ -1083,6 +1175,8 @@ pressure is possible.
 ---
 
 ### L-23. UI server path traversal check is simplistic
+
+**Status: FIXED** — filepath.Clean() + prefix verification replaces simple string check.
 
 **Component:** wafctl
 **Files:** `ui_server.go:21-51`
@@ -1103,6 +1197,8 @@ defense-in-depth.
 
 ### L-24. UUID fallback to UnixNano
 
+**Status: OPEN** — Extremely unlikely scenario.
+
 **Component:** wafctl
 **Files:** `util.go:94-103`
 
@@ -1112,6 +1208,8 @@ timestamp-based ID. Could lead to ID collision or predictability.
 ---
 
 ### L-25. `fetchSpikeReport` missing `encodeURIComponent`
+
+**Status: OPEN** — Frontend change. Deferred.
 
 **Component:** waf-dashboard
 **Files:** `src/lib/api/dos.ts:86`
@@ -1126,6 +1224,8 @@ interpolated path segments.
 ---
 
 ### L-26. Unsanitized event ID in CSS selector
+
+**Status: OPEN** — Frontend change. Deferred.
 
 **Component:** waf-dashboard
 **Files:** `src/components/EventsTable.tsx:219`
@@ -1143,6 +1243,8 @@ or match unexpectedly. Event IDs are server-generated UUIDs so risk is minimal.
 
 ### L-27. Caddy main Dockerfile runs as root
 
+**Status: OPEN** — Required for NET_ADMIN.
+
 **Component:** caddy-compose
 **Files:** `Dockerfile` (no USER directive in final stage)
 
@@ -1156,6 +1258,8 @@ Note: The wafctl Dockerfile correctly uses `USER 65534:65534` (nobody).
 
 ### L-28. L4 handler lacks PROXY protocol awareness
 
+**Status: OPEN** — Feature request.
+
 **Component:** caddy-ddos-mitigator
 **Files:** `mitigator_l4.go:84`, `mitigator_l4.go:136-155`
 
@@ -1166,6 +1270,8 @@ share one IP for jail purposes. If it IS whitelisted, all clients bypass jail.
 ---
 
 ### L-29. `RawDirectives` CSP field allows directive injection
+
+**Status: FIXED** (in caddy-policy-engine) — RawDirectives validated at compile time.
 
 **Component:** caddy-policy-engine
 **Files:** `responseheaders.go:189-191`
@@ -1182,6 +1288,8 @@ A malicious admin could inject directive-separator semicolons to override earlie
 ---
 
 ### L-30. TagsByName returns shared slice references
+
+**Status: FIXED** — TagsByName now returns deep-copied tag slices.
 
 **Component:** wafctl
 **Files:** `exclusions.go:115-125`
