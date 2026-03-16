@@ -8,7 +8,7 @@ import (
 
 // --- Handlers: Health, Summary, Events, Services ---
 
-func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, jailStore *JailStore, spike *SpikeDetector) http.HandlerFunc {
+func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoStore *GeoIPStore, exclusionStore *ExclusionStore, blocklistStore *BlocklistStore, cfProxyStore *CFProxyStore, cspStore *CSPStore, secStore *SecurityHeaderStore, ds *DefaultRuleStore, jailStore *JailStore, spike *SpikeDetector, reporter *SpikeReporter) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		uptime := time.Since(startTime).Truncate(time.Second)
 
@@ -28,9 +28,10 @@ func handleHealth(store *Store, als *AccessLogStore, gls *GeneralLogStore, geoSt
 			"csp":              cspStore.StoreInfo(),
 			"security_headers": secStore.StoreInfo(),
 			"dos": map[string]any{
-				"mode":       spikeStatus.Mode,
-				"eps":        spikeStatus.EPS,
-				"jail_count": jailStore.Count(),
+				"mode":          spikeStatus.Mode,
+				"eps":           spikeStatus.EPS,
+				"jail_count":    jailStore.Count(),
+				"spike_reports": reporter.Count(),
 			},
 		}
 

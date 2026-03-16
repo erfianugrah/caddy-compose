@@ -201,6 +201,18 @@ func runServe() int {
 		dosCfg.EPSCooldown,
 		parseDurationOr(dosCfg.CooldownDelay, 30*time.Second),
 	)
+
+	// Spike reports — forensic snapshots on spike → normal transition.
+	spikeReportsDir := envOr("WAF_DOS_SPIKE_REPORTS_DIR", "/data/spike-reports")
+	spikeMaxReports := 100
+	if dosCfg.MaxReports > 0 {
+		spikeMaxReports = dosCfg.MaxReports
+	}
+	spikeReporter := NewSpikeReporter(spikeReportsDir, spikeMaxReports, jailStore)
+	spikeDetector.SetOnSpikeEnd(func(start, end time.Time, peakEPS float64, totalEvents int64) {
+		spikeReporter.Generate(start, end, peakEPS, totalEvents)
+	})
+
 	spikeDetector.StartTailing(ctx, tailInterval)
 
 	// Periodic jail file reload (picks up entries added by the plugin).
@@ -230,7 +242,7 @@ func runServe() int {
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore, jailStore, spikeDetector))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore, jailStore, spikeDetector, spikeReporter))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
@@ -349,6 +361,8 @@ func runServe() int {
 	mux.HandleFunc("DELETE /api/dos/jail/{ip}", handleRemoveJail(jailStore))
 	mux.HandleFunc("GET /api/dos/config", handleGetDosConfig(dosConfigStore))
 	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore))
+	mux.HandleFunc("GET /api/dos/reports", handleListSpikeReports(spikeReporter))
+	mux.HandleFunc("GET /api/dos/reports/{id}", handleGetSpikeReport(spikeReporter))
 
 	// Backup / Restore (unified export of all config stores)
 	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore, defaultRuleStore))

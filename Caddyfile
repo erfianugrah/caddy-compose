@@ -75,6 +75,7 @@
 		sweep_interval  10s
 		decay_interval  30s
 		sync_interval   5s
+		kernel_drop     true
 		whitelist       192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128
 	}
 }

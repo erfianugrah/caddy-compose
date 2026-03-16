@@ -46,9 +46,11 @@ import {
   removeJail,
   getDosConfig,
   updateDosConfig,
+  fetchSpikeReports,
   type DosStatus,
   type JailEntry,
   type DosConfig,
+  type SpikeReport,
 } from "@/lib/api";
 
 // ─── Status Banner ──────────────────────────────────────────────────
@@ -420,6 +422,7 @@ export default function DDoSPanel() {
   const [status, setStatus] = useState<DosStatus | null>(null);
   const [jail, setJail] = useState<JailEntry[]>([]);
   const [config, setConfig] = useState<DosConfig | null>(null);
+  const [reports, setReports] = useState<SpikeReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -427,10 +430,11 @@ export default function DDoSPanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const [s, j, c] = await Promise.all([fetchDosStatus(), fetchJail(), getDosConfig()]);
+      const [s, j, c, r] = await Promise.all([fetchDosStatus(), fetchJail(), getDosConfig(), fetchSpikeReports()]);
       setStatus(s);
       setJail(j);
       setConfig(c);
+      setReports(r || []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -523,6 +527,42 @@ export default function DDoSPanel() {
 
       {/* Jail table */}
       <JailTable entries={jail} loading={loading} onRemove={handleRemoveJail} onAdd={handleAddJail} />
+
+      {/* Spike Reports */}
+      {reports.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className={T.cardTitle}>Spike Reports ({reports.length})</CardTitle>
+            <CardDescription>Forensic snapshots from detected traffic spikes</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>ID</TableHead>
+                  <TableHead>Start</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead className="text-right">Peak EPS</TableHead>
+                  <TableHead className="text-right">Events</TableHead>
+                  <TableHead className="text-right">Jailed</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reports.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className={T.tableCellMono}>{r.id}</TableCell>
+                    <TableCell className={T.muted}>{new Date(r.start_time).toLocaleString()}</TableCell>
+                    <TableCell className={T.tableCellMono}>{r.duration}</TableCell>
+                    <TableCell className={T.tableCellNumeric}>{r.peak_eps.toFixed(1)}</TableCell>
+                    <TableCell className={T.tableCellNumeric}>{r.total_events.toLocaleString()}</TableCell>
+                    <TableCell className={T.tableCellNumeric}>{r.jailed_ips}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Configuration */}
       <ConfigPanel config={config} loading={loading} onSave={handleSaveConfig} saving={saving} />

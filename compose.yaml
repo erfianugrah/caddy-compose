@@ -11,8 +11,7 @@ services:
     cap_add:
       - NET_BIND_SERVICE
       - DAC_OVERRIDE
-      # Uncomment for ddos_mitigator nftables kernel drop (Phase 4):
-      # - NET_ADMIN
+      - NET_ADMIN  # ddos_mitigator nftables kernel drop
     security_opt:
       - no-new-privileges:true
     deploy:

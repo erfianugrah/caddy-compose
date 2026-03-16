@@ -39,6 +39,9 @@ type SpikeDetector struct {
 	bucketTime int64 // unix second of current bucket
 	totalCount int64 // sum of all buckets
 
+	// Callback for spike end (generates forensic report)
+	onSpikeEnd func(start, end time.Time, peakEPS float64, totalEvents int64)
+
 	// Log tailing
 	offset atomic.Int64
 }
@@ -52,6 +55,13 @@ func NewSpikeDetector(logFile string, triggerEPS, cooldownEPS float64, cooldownD
 		cooldownDelay: cooldownDelay,
 		mode:          "normal",
 	}
+}
+
+// SetOnSpikeEnd registers a callback invoked when spike mode exits.
+func (d *SpikeDetector) SetOnSpikeEnd(fn func(start, end time.Time, peakEPS float64, totalEvents int64)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.onSpikeEnd = fn
 }
 
 // StartTailing begins background log tailing and EPS computation.
@@ -179,8 +189,15 @@ func (d *SpikeDetector) updateMode() {
 			if d.belowCooldown.IsZero() {
 				d.belowCooldown = time.Now()
 			} else if time.Since(d.belowCooldown) >= d.cooldownDelay {
+				spikeEnd := time.Now()
+				spikeDuration := spikeEnd.Sub(d.spikeStart)
+				peakEPS := d.peakEPS
+				totalEvents := d.totalCount
 				log.Printf("[dos] spike mode EXITED: duration=%s peak_eps=%.1f",
-					time.Since(d.spikeStart).Truncate(time.Second), d.peakEPS)
+					spikeDuration.Truncate(time.Second), peakEPS)
+				if d.onSpikeEnd != nil {
+					go d.onSpikeEnd(d.spikeStart, spikeEnd, peakEPS, totalEvents)
+				}
 				d.mode = "normal"
 				d.peakEPS = 0
 				d.belowCooldown = time.Time{}

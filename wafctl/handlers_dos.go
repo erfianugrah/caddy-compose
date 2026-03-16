@@ -119,4 +119,27 @@ func handleUpdateDosConfig(store *DosConfigStore) http.HandlerFunc {
 	}
 }
 
+// ─── GET /api/dos/reports ────────────────────────────────────────────
+
+func handleListSpikeReports(reporter *SpikeReporter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		reports := reporter.List()
+		writeJSON(w, http.StatusOK, reports)
+	}
+}
+
+// ─── GET /api/dos/reports/{id} ──────────────────────────────────────
+
+func handleGetSpikeReport(reporter *SpikeReporter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		report := reporter.Get(id)
+		if report == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "report not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	}
+}
+
 // writeJSON and decodeJSON are defined in json_helpers.go.

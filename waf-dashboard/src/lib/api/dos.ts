@@ -60,3 +60,25 @@ export async function getDosConfig(): Promise<DosConfig> {
 export async function updateDosConfig(config: DosConfig): Promise<DosConfig> {
   return putJSON<DosConfig>(`${API_BASE}/dos/config`, config);
 }
+
+// ─── Spike Reports ──────────────────────────────────────────────────
+
+export interface SpikeReport {
+  id: string;
+  start_time: string;
+  end_time: string;
+  duration: string;
+  total_events: number;
+  peak_eps: number;
+  jailed_ips: number;
+  top_ips?: { key: string; count: number }[];
+  top_paths?: { key: string; count: number }[];
+}
+
+export async function fetchSpikeReports(): Promise<SpikeReport[]> {
+  return fetchJSON<SpikeReport[]>(`${API_BASE}/dos/reports`);
+}
+
+export async function fetchSpikeReport(id: string): Promise<SpikeReport> {
+  return fetchJSON<SpikeReport>(`${API_BASE}/dos/reports/${id}`);
+}
