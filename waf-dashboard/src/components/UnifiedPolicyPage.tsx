@@ -101,12 +101,14 @@ export default function UnifiedPolicyPage() {
           </div>
         </div>
 
+        {/* key={activeTab} forces remount on tab switch, ensuring fresh data
+            after deleting rules in the other tab (no stale cache). */}
         <TabsContent value="rules" className="mt-4">
-          <PolicyEngine />
+          <PolicyEngine key={`rules-${activeTab}`} />
         </TabsContent>
 
         <TabsContent value="rate-limits" className="mt-4">
-          <RateLimitsPanel />
+          <RateLimitsPanel key={`rl-${activeTab}`} />
         </TabsContent>
       </Tabs>
     </div>

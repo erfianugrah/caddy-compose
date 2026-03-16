@@ -179,19 +179,25 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
   `RateLimitRuleStore` has been removed — rate limit rules use `type: "rate_limit"` on `RuleExclusion`.
 - Policy engine handles all rule evaluation (allow/block/skip/detect/rate_limit). Coraza has been removed.
 - Service FQDN resolution: `BuildServiceFQDNMap()` parses Caddyfile to map short names → FQDNs.
-- **DDoS mitigator**: `caddy-ddos-mitigator` plugin v0.7.1 (separate repo: `ergo/caddy-ddos-mitigator`).
+- **DDoS mitigator**: `caddy-ddos-mitigator` plugin v0.7.3 (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Registers as `http.handlers.ddos_mitigator` (L7) and
   `layer4.handlers.ddos_mitigator` (L4). Runs after `log_append` but before `policy_engine`.
   Uses behavioral IP profiling (path diversity scoring) instead of raw frequency z-score.
   Enforces via 4 layers: L7 403, L4 TCP RST, nftables kernel drop, eBPF/XDP NIC drop.
   CIDR aggregation promotes /24 prefix when 5+ IPs from same subnet are jailed.
   All detection parameters configurable via Caddyfile (threshold, warmup, CIDR thresholds, etc.).
+  Profile reset on unjail (prevents re-jail from stale behavioral data).
   Shares IP jail with wafctl via `/data/waf/jail.json` (bidirectional file sync).
   - wafctl DDoS stores: `JailStore`, `DosConfigStore`, `SpikeDetector`, `SpikeReporter`
-  - wafctl DDoS API: `/api/dos/status`, `/api/dos/jail` (CRUD), `/api/dos/config` (CRUD),
+  - wafctl DDoS API: `/api/dos/status` (EPS from access log, sparkline, ddos_events count),
+    `/api/dos/jail` (CRUD), `/api/dos/config` (CRUD),
     `/api/dos/reports` (spike forensics) in `handlers_dos.go`
-  - Dashboard: `/dos` page (`DDoSPanel.tsx`) with StatusBanner (EPS sparkline),
+  - Dashboard: `/dos` page (`DDoSPanel.tsx`) with StatusBanner (EPS sparkline, poll indicator),
     StatCards, JailTable (CRUD), SpikeReports, ConfigPanel
+  - Overview: DDoS Blocked stat card (purple), DDoS series in timeline/donut/bar charts
+  - Security Events: purple `DDOS BLOCKED` / `DDOS JAILED` badges via EventTypeBadge
+  - Access Logs: optional DDoS column showing ddos_action with purple badge
+  - General Logs: ddos_action, ddos_fingerprint, ddos_z_score fields passed through
   - Frontend API module: `src/lib/api/dos.ts`
   - Log fields: `ddos_action`, `ddos_fingerprint`, `ddos_z_score`, `ddos_spike_mode`
   - Handler ordering: `order log_append first`, `order ddos_mitigator after log_append`
