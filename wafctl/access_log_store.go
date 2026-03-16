@@ -887,6 +887,14 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// Policy engine rate limit — still a 429/rate_limited but with rule attribution.
 		status = 429
 		eventType = "rate_limited"
+	case "ddos_blocked":
+		// DDoS mitigator blocked the IP (behavioral anomaly detected).
+		status = 403
+		eventType = "ddos_blocked"
+	case "ddos_jailed":
+		// DDoS mitigator auto-jailed the IP (first offense).
+		status = 403
+		eventType = "ddos_jailed"
 	case "policy_skip":
 		// Policy engine skip: selective bypass, request passed through.
 		status = rle.Status

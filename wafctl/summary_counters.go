@@ -287,6 +287,8 @@ func classifyEventIntoBucket(b *hourBucket, ev *Event, delta int) {
 		if ev.IsBlocked {
 			b.Blocked += delta
 		}
+	case ev.EventType == "ddos_blocked" || ev.EventType == "ddos_jailed":
+		b.Blocked += delta
 	case ev.EventType == "policy_allow":
 		b.PolicyAllow += delta
 	case ev.EventType == "policy_skip":
