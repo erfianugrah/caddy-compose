@@ -72,6 +72,7 @@ describe("fetchSummary", () => {
       rate_limited: 0,
       policy_block: 0,
       detect_block: 0,
+      ddos_blocked: 0,
       policy_allow: 0,
       policy_skip: 0,
     });
