@@ -15,6 +15,8 @@ export const ACTION_COLORS = {
   policy_block: "#ff4870", // lv-red-bright — policy engine blocks
   policy_allow: "#5adecd", // lv-green    — policy engine allows (safe bypass)
   policy_skip:  "#8796f4", // lv-blue     — policy engine rule skips (tuning)
+  ddos_blocked: "#c9a0dc", // lv-purple   — DDoS mitigator behavioral block
+  ddos_jailed:  "#c9a0dc", // lv-purple   — DDoS mitigator auto-jail
   logged:       "#79e6f3", // lv-cyan     — benign baseline (high volume, calm)
   total_blocked: "#f37e96", // lv-red     — aggregate blocked (detect_block + policy_block + residual)
 } as const;
@@ -27,6 +29,8 @@ export const ACTION_LABELS: Record<string, string> = {
   policy_block: "Policy Block",
   policy_allow: "Policy Allow",
   policy_skip:  "Policy Skip",
+  ddos_blocked: "DDoS Blocked",
+  ddos_jailed:  "DDoS Jailed",
   total_blocked: "Total Blocked",
 };
 
@@ -38,6 +42,8 @@ export const ACTION_BADGE_CLASSES: Record<string, string> = {
   policy_block:  "bg-lv-red-bright/20 border-lv-red-bright/30 text-lv-red-bright",
   policy_allow:  "bg-lv-green/20 border-lv-green/30 text-lv-green",
   policy_skip:   "bg-lv-blue/20 border-lv-blue/30 text-lv-blue",
+  ddos_blocked:  "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
+  ddos_jailed:   "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
   logged:        "bg-lv-cyan/20 border-lv-cyan/30 text-lv-cyan",
 };
 
