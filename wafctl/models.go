@@ -218,6 +218,7 @@ type ServiceDetail struct {
 	RateLimited  int           `json:"rate_limited"`
 	PolicyBlock  int           `json:"policy_block"`
 	DetectBlock  int           `json:"detect_block"`
+	DDoSBlocked  int           `json:"ddos_blocked"`
 	PolicyAllow  int           `json:"policy_allow"`
 	PolicySkip   int           `json:"policy_skip"`
 	TopURIs      []ServiceURI  `json:"top_uris,omitempty"`

@@ -202,11 +202,9 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		alsSummary := als.FastSummary(hours)
 		summary := mergeSummaryResponses(wafSummary, alsSummary)
 
-		// Preserve backward compatibility: TotalBlocked counts only WAF-store
-		// blocked events. ALS policy blocks are tracked separately in
-		// PolicyBlocked/DetectBlocked. The old merge path did not add ALS
-		// blocked counts to TotalBlocked.
-		summary.TotalBlocked = wafSummary.TotalBlocked
+		// Post-Coraza: all blocks now come through the ALS (access log store).
+		// The merged TotalBlocked from both stores is the correct value.
+		// (Legacy code previously overrode with wafSummary.TotalBlocked only.)
 
 		cache.set(cacheKey, summary, gen, 30*time.Second)
 		writeJSON(w, http.StatusOK, summary)

@@ -1119,8 +1119,9 @@ func TestSummaryMergesPolicyBlockEvents(t *testing.T) {
 	if resp.RateLimited != 1 {
 		t.Errorf("rate_limited: want 1, got %d", resp.RateLimited)
 	}
-	if resp.TotalBlocked != 0 {
-		t.Errorf("total_blocked: want 0 (empty WAF store), got %d", resp.TotalBlocked)
+	// Post-Coraza: TotalBlocked now includes ALS blocks (policy + detect).
+	if resp.TotalBlocked != 2 {
+		t.Errorf("total_blocked: want 2 (ALS policy blocks), got %d", resp.TotalBlocked)
 	}
 }
 

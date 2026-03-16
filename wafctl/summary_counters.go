@@ -1,9 +1,7 @@
 package main
 
 import (
-	"log"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -597,6 +595,7 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 	merged.PolicyEvents += b.PolicyEvents
 	merged.PolicyBlocked += b.PolicyBlocked
 	merged.DetectBlocked += b.DetectBlocked
+	merged.DDoSBlocked += b.DDoSBlocked
 	merged.PolicyAllowed += b.PolicyAllowed
 	merged.PolicySkipped += b.PolicySkipped
 
@@ -613,6 +612,7 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.EventsByHour[idx].RateLimited += hc.RateLimited
 			merged.EventsByHour[idx].PolicyBlock += hc.PolicyBlock
 			merged.EventsByHour[idx].DetectBlock += hc.DetectBlock
+			merged.EventsByHour[idx].DDoSBlocked += hc.DDoSBlocked
 			merged.EventsByHour[idx].PolicyAllow += hc.PolicyAllow
 			merged.EventsByHour[idx].PolicySkip += hc.PolicySkip
 		} else {
@@ -637,6 +637,7 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.ServiceBreakdown[idx].RateLimited += sd.RateLimited
 			merged.ServiceBreakdown[idx].PolicyBlock += sd.PolicyBlock
 			merged.ServiceBreakdown[idx].DetectBlock += sd.DetectBlock
+			merged.ServiceBreakdown[idx].DDoSBlocked += sd.DDoSBlocked
 			merged.ServiceBreakdown[idx].PolicyAllow += sd.PolicyAllow
 			merged.ServiceBreakdown[idx].PolicySkip += sd.PolicySkip
 		} else {
@@ -661,6 +662,7 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.TopServices[idx].RateLimited += sc.RateLimited
 			merged.TopServices[idx].PolicyBlock += sc.PolicyBlock
 			merged.TopServices[idx].DetectBlock += sc.DetectBlock
+			merged.TopServices[idx].DDoSBlocked += sc.DDoSBlocked
 			merged.TopServices[idx].PolicyAllow += sc.PolicyAllow
 			merged.TopServices[idx].PolicySkip += sc.PolicySkip
 		} else {
@@ -687,6 +689,7 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.TopClients[idx].RateLimited += cc.RateLimited
 			merged.TopClients[idx].PolicyBlock += cc.PolicyBlock
 			merged.TopClients[idx].DetectBlock += cc.DetectBlock
+			merged.TopClients[idx].DDoSBlocked += cc.DDoSBlocked
 			merged.TopClients[idx].PolicyAllow += cc.PolicyAllow
 			merged.TopClients[idx].PolicySkip += cc.PolicySkip
 			if merged.TopClients[idx].Country == "" && cc.Country != "" {
@@ -1038,17 +1041,10 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 
 	sc.hours = make(map[string]*hourBucket)
 
-	ddosDebugCount := 0
 	for i := range events {
 		rle := &events[i]
 		eventType := rleEventType(rle.Source)
 		isBlocked := rleIsBlocked(rle.Source)
-		if strings.Contains(rle.Source, "ddos") {
-			ddosDebugCount++
-			if ddosDebugCount <= 3 {
-				log.Printf("[debug] initFromRLEvents: source=%q eventType=%q isBlocked=%v uri=%s", rle.Source, eventType, isBlocked, rle.URI)
-			}
-		}
 		key := hourKey(rle.Timestamp)
 		b, ok := sc.hours[key]
 		if !ok {
@@ -1120,17 +1116,6 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 		if len(b.RecentEvents) > recentCap {
 			b.RecentEvents = b.RecentEvents[len(b.RecentEvents)-recentCap:]
 		}
-	}
-	if ddosDebugCount > 0 {
-		log.Printf("[debug] initFromRLEvents: %d DDoS events found in %d total events", ddosDebugCount, len(events))
-		// Check bucket totals
-		for key, b := range sc.hours {
-			if b.DDoSBlocked > 0 {
-				log.Printf("[debug] bucket %s: ddos=%d blocked=%d total=%d", key, b.DDoSBlocked, b.Blocked, b.Total)
-			}
-		}
-	} else {
-		log.Printf("[debug] initFromRLEvents: 0 DDoS events in %d total events", len(events))
 	}
 }
 
