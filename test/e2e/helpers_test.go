@@ -47,7 +47,10 @@ func (bt *browserTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; e2e-test/1.0)")
 	}
 	if _, ok := req.Header["Accept"]; !ok {
-		req.Header.Set("Accept", "*/*")
+		req.Header.Set("Accept", "text/html,*/*")
+	}
+	if _, ok := req.Header["Accept-Language"]; !ok {
+		req.Header.Set("Accept-Language", "en")
 	}
 	return bt.base.RoundTrip(req)
 }
