@@ -21,7 +21,6 @@ import (
 // in the summary.
 
 func TestDetectBlockSummarySplit(t *testing.T) {
-	t.Parallel()
 	// Wait for wafctl to parse the access log entries from earlier tests.
 	// Poll until detect_blocked > 0 appears (replaces fixed 3s sleep).
 	var body []byte

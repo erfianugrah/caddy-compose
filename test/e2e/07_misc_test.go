@@ -10,15 +10,12 @@ import (
 // ════════════════════════════════════════════════════════════════════
 
 func TestBlocklist(t *testing.T) {
-	t.Parallel()
 	t.Run("stats", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpGet(t, wafctlURL+"/api/blocklist/stats")
 		assertCode(t, "stats", 200, resp)
 	})
 
 	t.Run("check clean IP", func(t *testing.T) {
-		t.Parallel()
 		resp, body := httpGet(t, wafctlURL+"/api/blocklist/check/8.8.8.8")
 		assertCode(t, "check", 200, resp)
 		assertField(t, "check", body, "blocked", "false")
@@ -30,15 +27,12 @@ func TestBlocklist(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestGeneralLogs(t *testing.T) {
-	t.Parallel()
 	t.Run("logs", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpGet(t, wafctlURL+"/api/logs?hours=1")
 		assertCode(t, "logs", 200, resp)
 	})
 
 	t.Run("summary", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpGet(t, wafctlURL+"/api/logs/summary?hours=1")
 		assertCode(t, "summary", 200, resp)
 	})
@@ -49,9 +43,7 @@ func TestGeneralLogs(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestWAFDashboardUI(t *testing.T) {
-	t.Parallel()
 	t.Run("index", func(t *testing.T) {
-		t.Parallel()
 		resp, body := httpGet(t, dashURL+"/")
 		assertCode(t, "index", 200, resp)
 		if !strings.Contains(string(body), "_astro/") {
@@ -65,14 +57,12 @@ func TestWAFDashboardUI(t *testing.T) {
 	}
 	for _, page := range pages {
 		t.Run(page, func(t *testing.T) {
-			t.Parallel()
 			resp, _ := httpGet(t, dashURL+"/"+page+"/")
 			assertCode(t, page, 200, resp)
 		})
 	}
 
 	t.Run("404", func(t *testing.T) {
-		t.Parallel()
 		code, err := httpGetCode(dashURL + "/nonexistent-page-xyz")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -88,9 +78,7 @@ func TestWAFDashboardUI(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestErrorHandling(t *testing.T) {
-	t.Parallel()
 	t.Run("invalid exclusion type", func(t *testing.T) {
-		t.Parallel()
 		resp, body := httpPost(t, wafctlURL+"/api/exclusions", map[string]any{"name": "bad", "type": "invalid_type"})
 		if resp.StatusCode != 400 {
 			t.Errorf("expected 400 for invalid type, got %d", resp.StatusCode)
@@ -102,7 +90,6 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
-		t.Parallel()
 		code, err := httpPostRaw(wafctlURL+"/api/exclusions", []byte("{invalid json}"))
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -113,7 +100,6 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("non-existent exclusion", func(t *testing.T) {
-		t.Parallel()
 		code, err := httpGetCode(wafctlURL + "/api/exclusions/nonexistent-id-12345")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -124,7 +110,6 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("oversized body rejected", func(t *testing.T) {
-		t.Parallel()
 		// MaxBytesReader is set to 5MB. Send 6MB.
 		largeBody := generateLargeBody(6_000_000)
 		code, err := httpPostRaw(wafctlURL+"/api/exclusions", largeBody)

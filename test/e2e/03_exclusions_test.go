@@ -71,7 +71,6 @@ func TestExclusionCRUD(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestCRSRulesCatalog(t *testing.T) {
-	t.Parallel()
 	t.Run("rules", func(t *testing.T) {
 		resp, body := httpGet(t, wafctlURL+"/api/crs/rules")
 		assertCode(t, "rules", 200, resp)
@@ -89,7 +88,6 @@ func TestCRSRulesCatalog(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestExclusionOperations(t *testing.T) {
-	t.Parallel()
 	endpoints := []struct {
 		method string
 		path   string
@@ -99,7 +97,6 @@ func TestExclusionOperations(t *testing.T) {
 	}
 	for _, ep := range endpoints {
 		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
-			t.Parallel()
 			var resp *http.Response
 			if ep.method == "POST" {
 				resp, _ = httpPost(t, wafctlURL+ep.path, struct{}{})

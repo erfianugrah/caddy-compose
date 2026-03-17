@@ -224,7 +224,6 @@ func TestWafctlServesUI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			code, err := httpGetCode(wafctlURL + tt.path)
 			if err != nil {
 				t.Fatalf("request failed: %v", err)
@@ -252,7 +251,6 @@ func TestDashboardViaProxy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			code, err := httpGetCode(dashURL + tt.path)
 			if err != nil {
 				t.Fatalf("request failed: %v", err)

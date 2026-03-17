@@ -11,34 +11,28 @@ import (
 // ════════════════════════════════════════════════════════════════════
 
 func TestHealthAndBasics(t *testing.T) {
-	t.Parallel()
 	t.Run("wafctl health", func(t *testing.T) {
-		t.Parallel()
 		resp, body := httpGet(t, wafctlURL+"/api/health")
 		assertCode(t, "health", 200, resp)
 		assertField(t, "health", body, "status", "ok")
 	})
 
 	t.Run("Caddy admin", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpGet(t, caddyAdmin+"/config/")
 		assertCode(t, "caddy admin", 200, resp)
 	})
 
 	t.Run("proxy GET", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpGet(t, caddyURL+"/get")
 		assertCode(t, "proxy GET", 200, resp)
 	})
 
 	t.Run("proxy POST", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpPost(t, caddyURL+"/post", map[string]string{"hello": "world"})
 		assertCode(t, "proxy POST", 200, resp)
 	})
 
 	t.Run("security headers", func(t *testing.T) {
-		t.Parallel()
 		resp, _ := httpGet(t, caddyURL+"/get")
 		// Security headers are only present when configured and deployed via
 		// wafctl. In a fresh CI stack they may not exist yet. Log instead of fail.
@@ -105,7 +99,6 @@ func TestWAFBlocking(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestWAFEventsAndSummary(t *testing.T) {
-	t.Parallel()
 	// Give the log tailer time to pick up the blocked requests from TestWAFBlocking.
 	time.Sleep(2 * time.Second)
 
@@ -139,7 +132,6 @@ func TestWAFEventsAndSummary(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestAnalytics(t *testing.T) {
-	t.Parallel()
 	endpoints := []string{
 		"/api/analytics/top-ips?hours=1",
 		"/api/analytics/top-uris?hours=1",
@@ -148,7 +140,6 @@ func TestAnalytics(t *testing.T) {
 	}
 	for _, ep := range endpoints {
 		t.Run(ep, func(t *testing.T) {
-			t.Parallel()
 			resp, _ := httpGet(t, wafctlURL+ep)
 			assertCode(t, ep, 200, resp)
 		})
