@@ -1625,6 +1625,42 @@ func TestParseDetectRulesDetail_Empty(t *testing.T) {
 	}
 }
 
+func TestParseDetectRulesDetail_LogOnly(t *testing.T) {
+	// New format with :log_only suffix on the 4th field.
+	rules := parseDetectRulesDetail("920350:WARNING:3,941100:CRITICAL:5:log_only")
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(rules))
+	}
+
+	// First rule: normal scoring rule.
+	if rules[0].Msg != "920350 (WARNING, score 3)" {
+		t.Errorf("expected scoring msg, got %q", rules[0].Msg)
+	}
+	hasLogOnly := false
+	for _, tag := range rules[0].Tags {
+		if tag == "log_only" {
+			hasLogOnly = true
+		}
+	}
+	if hasLogOnly {
+		t.Error("scoring rule should NOT have log_only tag")
+	}
+
+	// Second rule: log_only.
+	if rules[1].Msg != "941100 (CRITICAL, log only)" {
+		t.Errorf("expected log_only msg, got %q", rules[1].Msg)
+	}
+	hasLogOnly = false
+	for _, tag := range rules[1].Tags {
+		if tag == "log_only" {
+			hasLogOnly = true
+		}
+	}
+	if !hasLogOnly {
+		t.Error("log_only rule should have log_only tag")
+	}
+}
+
 func TestEnrichMatchedRulesWithDetails(t *testing.T) {
 	rules := []MatchedRule{
 		{Name: "920350", Msg: "920350 (WARNING, score 3)", Severity: 4},

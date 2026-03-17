@@ -17,6 +17,8 @@ export interface PolicyCondition {
   list_items?: string[];
 }
 
+export type DetectAction = "score" | "log_only";
+
 export interface DefaultRule {
   id: string;
   name: string;
@@ -27,6 +29,7 @@ export interface DefaultRule {
   group_op: string;
   severity?: RuleSeverity;
   paranoia_level?: number;
+  action?: string;  // "score" (default / empty) or "log_only"
   tags?: string[];
   enabled: boolean;
   priority: number;
@@ -39,6 +42,7 @@ export interface DefaultRuleOverride {
   enabled?: boolean;
   severity?: RuleSeverity;
   paranoia_level?: number;
+  action?: DetectAction;
 }
 
 // ─── CRS Category Helpers ───────────────────────────────────────────

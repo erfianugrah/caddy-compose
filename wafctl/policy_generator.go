@@ -42,6 +42,7 @@ type PolicyRule struct {
 	SkipTargets   *PolicySkipTargets     `json:"skip_targets,omitempty"`   // For skip: what to bypass
 	Severity      string                 `json:"severity,omitempty"`       // For detect: CRITICAL, ERROR, WARNING, NOTICE
 	ParanoiaLevel int                    `json:"paranoia_level,omitempty"` // For detect: 1-4 (0 = all levels)
+	Action        string                 `json:"action,omitempty"`         // For detect: "" (default=score) or "log_only" (evaluate but don't score)
 	// Response header actions (for response_header type)
 	HeaderSet     map[string]string `json:"header_set,omitempty"`     // Set (overwrite)
 	HeaderAdd     map[string]string `json:"header_add,omitempty"`     // Add (append)
@@ -50,6 +51,11 @@ type PolicyRule struct {
 	Tags          []string          `json:"tags,omitempty"`
 	Enabled       bool              `json:"enabled"`
 	Priority      int               `json:"priority"`
+	// CRS metadata — populated by the crs-converter at build time, preserved
+	// through DefaultRuleStore for catalog/enrichment use at runtime.
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"` // e.g., "REQUEST-932-APPLICATION-ATTACK-RCE"
+	CRSFile     string `json:"crs_file,omitempty"` // source .conf filename
 }
 
 // PolicySkipTargets mirrors the plugin's SkipTargets type.
@@ -200,11 +206,12 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 			Priority:   basePriority + tiebreaker,
 		}
 
-		// Detect rules carry severity and paranoia level for the plugin's
-		// anomaly scoring engine.
+		// Detect rules carry severity, paranoia level, and action for the
+		// plugin's anomaly scoring engine.
 		if e.Type == "detect" {
 			pr.Severity = e.Severity
 			pr.ParanoiaLevel = e.DetectParanoiaLevel
+			pr.Action = e.DetectAction
 		}
 
 		// Skip rules carry skip_targets for the plugin's selective bypass.

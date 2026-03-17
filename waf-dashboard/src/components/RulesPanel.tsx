@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import {
   type DefaultRule,
   type RuleSeverity,
+  type DetectAction,
   type WAFConfig,
   CRS_CATEGORIES,
   getCategoryForRule,
@@ -89,6 +90,7 @@ export default function RulesPanel() {
   const [crsVersion, setCrsVersion] = useState("CRS");
   const [deploying, setDeploying] = useState(false);
   const [deployMsg, setDeployMsg] = useState<string | null>(null);
+  const [deploySuccess, setDeploySuccess] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   // Filters
@@ -170,6 +172,20 @@ export default function RulesPanel() {
     async (rule: DefaultRule, paranoia_level: number) => {
       try {
         const updated = await overrideDefaultRule(rule.id, { paranoia_level });
+        setRules((prev) => prev.map((r) => (r.id === rule.id ? updated : r)));
+        setDetailRule((prev) => (prev?.id === rule.id ? updated : prev));
+        setDirty(true);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [],
+  );
+
+  const handleActionChange = useCallback(
+    async (rule: DefaultRule, action: DetectAction) => {
+      try {
+        const updated = await overrideDefaultRule(rule.id, { action });
         setRules((prev) => prev.map((r) => (r.id === rule.id ? updated : r)));
         setDetailRule((prev) => (prev?.id === rule.id ? updated : prev));
         setDirty(true);
@@ -263,6 +279,24 @@ export default function RulesPanel() {
     [selected, load],
   );
 
+  const handleBulkDetectAction = useCallback(
+    async (action: DetectAction) => {
+      if (selected.size === 0) return;
+      try {
+        setBulkBusy(true);
+        await bulkOverrideDefaultRules([...selected], { action });
+        setDirty(true);
+        setSelected(new Set());
+        await load();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selected, load],
+  );
+
   const deployTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (deployTimerRef.current) clearTimeout(deployTimerRef.current); }, []);
 
@@ -290,13 +324,16 @@ export default function RulesPanel() {
     try {
       setDeploying(true);
       setDeployMsg(null);
+      setDeploySuccess(false);
       await deployConfig();
       setDeployMsg("Deployed successfully");
+      setDeploySuccess(true);
       setDirty(false);
       if (deployTimerRef.current) clearTimeout(deployTimerRef.current);
-      deployTimerRef.current = setTimeout(() => setDeployMsg(null), 3000);
+      deployTimerRef.current = setTimeout(() => { setDeployMsg(null); setDeploySuccess(false); }, 3000);
     } catch (e: unknown) {
       setDeployMsg(e instanceof Error ? e.message : String(e));
+      setDeploySuccess(false);
     } finally {
       setDeploying(false);
     }
@@ -434,7 +471,7 @@ export default function RulesPanel() {
               <span
                 className={cn(
                   "text-xs px-2 py-1 rounded",
-                  deployMsg.includes("success")
+                  deploySuccess
                     ? "bg-emerald-500/20 text-emerald-400"
                     : "bg-rose-500/20 text-rose-400",
                 )}
@@ -562,6 +599,15 @@ export default function RulesPanel() {
                 <SelectItem value="NOTICE">Notice</SelectItem>
               </SelectContent>
             </Select>
+            <Select onValueChange={(v) => handleBulkDetectAction(v as DetectAction)} disabled={bulkBusy}>
+              <SelectTrigger className="h-7 w-[100px] text-xs">
+                <SelectValue placeholder="Set Action" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score">Score</SelectItem>
+                <SelectItem value="log_only">Log Only</SelectItem>
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="xs" onClick={() => {
               if (window.confirm(`Reset ${selected.size} rule(s) to defaults? This will remove all overrides.`)) {
                 handleBulkAction("reset");
@@ -601,6 +647,7 @@ export default function RulesPanel() {
               onToggleRule={handleToggle}
               onSeverityChange={handleSeverityChange}
               onPLChange={handlePLChange}
+              onActionChange={handleActionChange}
               onDetail={setDetailRule}
               onToggleSelect={toggleSelect}
               onRangeSelect={rangeSelect}
@@ -624,6 +671,7 @@ export default function RulesPanel() {
             onToggle={handleToggle}
             onSeverityChange={handleSeverityChange}
             onPLChange={handlePLChange}
+            onActionChange={handleActionChange}
             onReset={handleReset}
           />
         )}
@@ -655,6 +703,7 @@ interface PLSectionProps {
   onToggleRule: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
   onPLChange: (rule: DefaultRule, pl: number) => void;
+  onActionChange: (rule: DefaultRule, action: DetectAction) => void;
   onDetail: (rule: DefaultRule) => void;
   onToggleSelect: (id: string) => void;
   onRangeSelect: (ids: string[]) => void;
@@ -674,6 +723,7 @@ function PLSection({
   onToggleRule,
   onSeverityChange,
   onPLChange,
+  onActionChange,
   onDetail,
   onToggleSelect,
   onRangeSelect,
@@ -834,6 +884,7 @@ function PLSection({
                 >
                   Severity
                 </SortableTableHead>
+                <TableHead className="w-[90px]">Action</TableHead>
                 <TableHead className="w-[60px]">PL</TableHead>
                 <SortableTableHead<RuleSortKey>
                   sortKey="category"
@@ -857,6 +908,7 @@ function PLSection({
                   onToggle={onToggleRule}
                   onSeverityChange={onSeverityChange}
                   onPLChange={onPLChange}
+                  onActionChange={onActionChange}
                   onDetail={onDetail}
                   onToggleSelect={handleToggleSelect}
                 />
@@ -927,6 +979,7 @@ interface RuleRowProps {
   onToggle: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
   onPLChange: (rule: DefaultRule, pl: number) => void;
+  onActionChange: (rule: DefaultRule, action: DetectAction) => void;
   onDetail: (rule: DefaultRule) => void;
   onToggleSelect: (id: string, index: number, shiftKey: boolean) => void;
 }
@@ -938,6 +991,7 @@ function RuleRow({
   onToggle,
   onSeverityChange,
   onPLChange,
+  onActionChange,
   onDetail,
   onToggleSelect,
 }: RuleRowProps) {
@@ -1017,6 +1071,24 @@ function RuleRow({
       <TableCell onClick={(e) => e.stopPropagation()}>
         {rule.type === "detect" ? (
           <Select
+            value={rule.action === "log_only" ? "log_only" : "score"}
+            onValueChange={(v) => onActionChange(rule, v as DetectAction)}
+          >
+            <SelectTrigger className="h-6 w-[80px] text-xs border-0 bg-transparent p-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="score">Score</SelectItem>
+              <SelectItem value="log_only">Log Only</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="text-xs text-muted-foreground">--</span>
+        )}
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        {rule.type === "detect" ? (
+          <Select
             value={String(rule.paranoia_level ?? 1)}
             onValueChange={(v) => onPLChange(rule, parseInt(v, 10))}
           >
@@ -1080,6 +1152,7 @@ interface RuleDetailDialogProps {
   onToggle: (rule: DefaultRule) => void;
   onSeverityChange: (rule: DefaultRule, severity: RuleSeverity) => void;
   onPLChange: (rule: DefaultRule, pl: number) => void;
+  onActionChange: (rule: DefaultRule, action: DetectAction) => void;
   onReset: (rule: DefaultRule) => void;
 }
 
@@ -1089,6 +1162,7 @@ function RuleDetailDialog({
   onToggle,
   onSeverityChange,
   onPLChange,
+  onActionChange,
   onReset,
 }: RuleDetailDialogProps) {
   const category = getCategoryForRule(rule.id);
@@ -1108,7 +1182,7 @@ function RuleDetailDialog({
 
         <div className="space-y-4 py-2">
           {/* Status + controls */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className={`grid gap-4 ${rule.type === "detect" ? "grid-cols-4" : "grid-cols-3"}`}>
             <div className="space-y-1">
               <label className={T.sectionLabel}>Status</label>
               <div className="flex items-center gap-2">
@@ -1140,6 +1214,28 @@ function RuleDetailDialog({
                     <SelectItem value="NOTICE">Notice (+2)</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+            {rule.type === "detect" && (
+              <div className="space-y-1">
+                <label className={T.sectionLabel}>Action</label>
+                <Select
+                  value={rule.action === "log_only" ? "log_only" : "score"}
+                  onValueChange={(v) => onActionChange(rule, v as DetectAction)}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="score">Score</SelectItem>
+                    <SelectItem value="log_only">Log Only</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {rule.action === "log_only"
+                    ? "Rule evaluates but does not add to anomaly score"
+                    : "Rule contributes to anomaly score when matched"}
+                </p>
               </div>
             )}
             {rule.type === "detect" && (

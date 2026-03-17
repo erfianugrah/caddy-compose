@@ -87,8 +87,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.49.1-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.53.1
+CADDY_IMAGE   ?= <your-registry>/caddy:3.50.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.54.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -154,7 +154,7 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.49.1-2.11.1`), wafctl is plain semver (e.g. `2.53.1`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.50.0-2.11.1`), wafctl is plain semver (e.g. `2.54.0`).
 
 ## WAF configuration
 
@@ -469,6 +469,8 @@ The CI pipeline (GitHub Actions) includes:
 - **Syft** SBOM generation (SPDX + CycloneDX) attached as cosign attestations
 
 ## Security
+
+caddy 3.50.0 / wafctl 2.54.0 — CRS converter accuracy improvements (+33 rules), per-rule log_only action, dynamic CRS catalog.
 
 caddy 3.49.1 / wafctl 2.53.1 includes a comprehensive security audit (March 2026):
 - **wafctl**: Bearer token auth (WAF_AUTH_TOKEN), DDoS config validation, jail IP validation, SSRF DNS rebinding protection, header CRLF validation, validate-before-apply backup restore

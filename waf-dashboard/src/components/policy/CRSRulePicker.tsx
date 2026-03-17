@@ -25,14 +25,19 @@ export function CRSRulePicker({
   const ids = parseRuleIds(selectedRuleIds);
 
   const filteredRules = useMemo(() => {
-    if (!search) return rules.slice(0, 50);
-    const q = search.toLowerCase();
-    return rules.filter(
-      (r) =>
-        r.id.includes(q) ||
-        r.description.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q)
-    ).slice(0, 50);
+    let matched: CRSRule[];
+    if (!search) {
+      matched = rules;
+    } else {
+      const q = search.toLowerCase();
+      matched = rules.filter(
+        (r) =>
+          r.id.includes(q) ||
+          r.description.toLowerCase().includes(q) ||
+          r.category.toLowerCase().includes(q)
+      );
+    }
+    return { rules: matched.slice(0, 50), total: matched.length, truncated: matched.length > 50 };
   }, [rules, search]);
 
   const categoryMap = useMemo(() => {
@@ -81,8 +86,13 @@ export function CRSRulePicker({
               />
             </div>
             <div className="max-h-[300px] overflow-y-auto p-1">
-              {filteredRules.length > 0 ? (
-                filteredRules.map((rule) => {
+              {filteredRules.truncated && (
+                <p className="px-2 py-1 text-[10px] text-muted-foreground bg-muted/30 rounded mx-1 mb-1">
+                  Showing 50 of {filteredRules.total} rules — refine your search to see more
+                </p>
+              )}
+              {filteredRules.rules.length > 0 ? (
+                filteredRules.rules.map((rule) => {
                   const isSelected = ids.includes(rule.id);
                   return (
                     <button

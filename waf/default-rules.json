@@ -230,6 +230,80 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
+      "id": "920171",
+      "name": "GET or HEAD Request with Transfer-Encoding",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "method",
+          "operator": "regex",
+          "value": "^(?:GET|HEAD)$"
+        },
+        {
+          "field": "header:Transfer-Encoding",
+          "operator": "eq",
+          "value": "0",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "GET or HEAD Request with Transfer-Encoding",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920180",
+      "name": "POST without Content-Length and Transfer-Encoding headers",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "http_version",
+          "operator": "in",
+          "value": "HTTP/2|HTTP/2.0|HTTP/3|HTTP/3.0",
+          "negate": true
+        },
+        {
+          "field": "method",
+          "operator": "eq",
+          "value": "POST"
+        },
+        {
+          "field": "content_length",
+          "operator": "eq",
+          "value": "0"
+        },
+        {
+          "field": "header:Transfer-Encoding",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "POST without Content-Length and Transfer-Encoding headers",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920180",
       "name": "POST request missing Content-Type header",
       "type": "detect",
@@ -255,6 +329,64 @@
       "enabled": true,
       "priority": 400,
       "description": "POST requests should include a Content-Type header to describe the body format. CRS 920180."
+    },
+    {
+      "id": "920181",
+      "name": "Content-Length and Transfer-Encoding headers present",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Transfer-Encoding",
+          "operator": "eq",
+          "negate": true
+        },
+        {
+          "field": "content_length",
+          "operator": "eq",
+          "value": "0",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Content-Length and Transfer-Encoding headers present",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920190",
+      "name": "Range: Invalid Last Byte Value",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Range",
+          "operator": "regex",
+          "value": "(\\d+)-(\\d+)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Range: Invalid Last Byte Value",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920200",
@@ -471,7 +603,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "path",
+          "field": "body",
           "operator": "regex",
           "value": "(?i)%uff[0-9a-f]{2}"
         }
@@ -498,7 +630,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "validate_byte_range",
           "value": "1-255",
           "transforms": [
@@ -527,7 +659,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "validate_byte_range",
           "value": "9,10,13,32-126,128-255",
           "transforms": [
@@ -556,7 +688,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "validate_byte_range",
           "value": "32-36,38-126",
           "transforms": [
@@ -585,7 +717,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "validate_byte_range",
           "value": "38,44-46,48-58,61,65-90,95,97-122",
           "transforms": [
@@ -619,6 +751,14 @@
           "value": "32,34,38,42-59,61,65-90,95,97-122",
           "transforms": [
             "urlDecodeUni"
+          ],
+          "excludes": [
+            "header:User-Agent",
+            "header:Referer",
+            "header:Cookie",
+            "header:Sec-Fetch-User",
+            "header:Sec-CH-UA",
+            "header:Sec-CH-UA-Mobile"
           ]
         }
       ],
@@ -690,6 +830,46 @@
       "enabled": true,
       "priority": 400,
       "description": "Empty Host Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920300",
+      "name": "Request Missing an Accept Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Accept",
+          "operator": "eq"
+        },
+        {
+          "field": "method",
+          "operator": "regex",
+          "value": "^(?:OPTIONS|CONNECT)$",
+          "negate": true
+        },
+        {
+          "field": "user_agent",
+          "operator": "phrase_match",
+          "negate": true,
+          "list_items": [
+            "AppleWebKit",
+            "Android"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 3,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request Missing an Accept Header",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -787,6 +967,68 @@
       "description": "Excessively long parameter values may indicate buffer overflow or payload injection. Default limit: 400 characters. CRS 920311."
     },
     {
+      "id": "920311",
+      "name": "Request Has an Empty Accept Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Accept",
+          "operator": "regex",
+          "value": "^$"
+        },
+        {
+          "field": "method",
+          "operator": "regex",
+          "value": "^OPTIONS$",
+          "negate": true
+        },
+        {
+          "field": "user_agent",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request Has an Empty Accept Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920320",
+      "name": "Missing User Agent Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "user_agent",
+          "operator": "eq"
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Missing User Agent Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920330",
       "name": "Empty User Agent Header",
       "type": "detect",
@@ -813,6 +1055,38 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
+      "id": "920340",
+      "name": "Content-Type header missing from request with non-zero Content-Length",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "content_length",
+          "operator": "regex",
+          "value": "^0$",
+          "negate": true
+        },
+        {
+          "field": "content_type",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Content-Type header missing from request with non-zero Content-Length",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920350",
       "name": "Host header is a numeric IP address",
       "type": "detect",
@@ -835,6 +1109,32 @@
       "enabled": true,
       "priority": 400,
       "description": "Host header is a numeric IP address",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920420",
+      "name": "Request content type is not allowed by policy",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "content_type",
+          "operator": "regex",
+          "value": "^[^;\\s]+"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request content type is not allowed by policy",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -941,6 +1241,64 @@
       "description": "Blocks requests for file extensions commonly associated with sensitive files. Override list_items to customize. CRS 920440."
     },
     {
+      "id": "920440",
+      "name": "URL file extension is restricted by policy",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "request_basename",
+          "operator": "regex",
+          "value": "\\.([^.]+)$",
+          "transforms": [
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "URL file extension is restricted by policy",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920450",
+      "name": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_headers_names",
+          "operator": "regex",
+          "value": "^.*$",
+          "transforms": [
+            "lowercase"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920450",
       "name": "HTTP header restricted by policy",
       "type": "detect",
@@ -973,12 +1331,41 @@
       "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded — they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450."
     },
     {
+      "id": "920451",
+      "name": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_headers_names",
+          "operator": "regex",
+          "value": "^.*$",
+          "transforms": [
+            "lowercase"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920460",
       "name": "Abnormal character escapes in request",
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "regex",
           "value": "(?:^|[^\\x5c])\\x5c[cdeghijklmpqwxyz123456789]",
           "transforms": [
@@ -1033,6 +1420,61 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
+      "id": "920480",
+      "name": "Request content type charset is not allowed by policy",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "content_type",
+          "operator": "regex",
+          "value": "charset\\s*=\\s*[\"']?([^;\"'\\s]+)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request content type charset is not allowed by policy",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920490",
+      "name": "Request header x-up-devcap-post-charset detected in combination with prefix \\'UP\\' to User-Agent",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:x-up-devcap-post-charset",
+          "operator": "neq"
+        },
+        {
+          "field": "user_agent",
+          "operator": "regex",
+          "value": "^(?i)up"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 3,
+      "tags": [
+        "language-aspnet",
+        "platform-windows",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request header x-up-devcap-post-charset detected in combination with prefix \\'UP\\' to User-Agent",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920500",
       "name": "Attempt to access a backup or working file",
       "type": "detect",
@@ -1058,6 +1500,38 @@
       "enabled": true,
       "priority": 400,
       "description": "Attempt to access a backup or working file",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920510",
+      "name": "Invalid Cache-Control request header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Cache-Control",
+          "operator": "neq"
+        },
+        {
+          "field": "header:Cache-Control",
+          "operator": "regex",
+          "value": "^(?:(?:max-age=[0-9]+|min-fresh=[0-9]+|no-cache|no-store|no-transform|only-if-cached|max-stale(?:=[0-9]+)?)(?:\\s*\\,\\s*|$)){1,7}$",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 3,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol",
+        "header-allowlist"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Invalid Cache-Control request header",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -1177,12 +1651,37 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
+      "id": "920660",
+      "name": "Obsolete Request-Range header detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Request-Range",
+          "operator": "neq"
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Obsolete Request-Range header detected",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "921110",
       "name": "HTTP Request Smuggling Attack",
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "regex",
           "value": "(?:get|p(?:(?:os|u)t|atch|rop(?:find|atch))|head|options|co(?:nnect|py)|delete|trac[ek]|m(?:kcol|ove)|(?:un)?lock)[\\s\\x0b]+[^\\s\\x0b]+[\\s\\x0b]+http/[0-9]",
           "transforms": [
@@ -1271,7 +1770,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "all_headers_names",
+          "field": "all_headers",
           "operator": "regex",
           "value": "[\\n\\r]",
           "transforms": [
@@ -1510,6 +2009,31 @@
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
     },
     {
+      "id": "921230",
+      "name": "HTTP Range Header detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Range",
+          "operator": "neq"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 3,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "HTTP Range Header detected",
+      "category": "REQUEST-921-PROTOCOL-ATTACK",
+      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+    },
+    {
       "id": "921240",
       "name": "mod_proxy attack attempt detected",
       "type": "detect",
@@ -1536,34 +2060,6 @@
       "enabled": true,
       "priority": 400,
       "description": "mod_proxy attack attempt detected",
-      "category": "REQUEST-921-PROTOCOL-ATTACK",
-      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
-    },
-    {
-      "id": "921250",
-      "name": "Old Cookies V1 usage attempt detected",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "all_cookies",
-          "operator": "eq",
-          "value": "1",
-          "transforms": [
-            "lowercase"
-          ]
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Old Cookies V1 usage attempt detected",
       "category": "REQUEST-921-PROTOCOL-ATTACK",
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
     },
@@ -1624,6 +2120,32 @@
       "description": "Content-Type header: Dangerous content type outside the mime type declaration",
       "category": "REQUEST-921-PROTOCOL-ATTACK",
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+    },
+    {
+      "id": "922100",
+      "name": "Multipart content type global _charset_ definition is not allowed by policy",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "multipart_part_headers",
+          "operator": "eq",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-multipart-header"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Multipart content type global _charset_ definition is not allowed by policy",
+      "category": "REQUEST-922-MULTIPART-ATTACK",
+      "crs_file": "REQUEST-922-MULTIPART-ATTACK.conf"
     },
     {
       "id": "922120",
@@ -1690,9 +2212,12 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "regex",
-          "value": "(?i)(?:[/\\x5c]|%(?:2(?:f|5(?:2f|5c|c(?:1%259c|0%25af))|%46)|5c|c(?:0%(?:[2aq]f|5c|9v)|1%(?:[19p]c|8s|af))|(?:bg%q|(?:e|f(?:8%8)?0%8)0%80%a)f|u(?:221[56]|EFC8|F025|002f)|%3(?:2(?:%(?:%6|4)6|F)|5%%63)|1u)|0x(?:2f|5c))(?:\\.(?:%0[01]|\\?)?|\\?\\.?|%(?:2(?:(?:5(?:2|c0%25a))?e|%45)|c0(?:\\.|%[256aef]e)|u(?:(?:ff0|002)e|2024)|%32(?:%(?:%6|4)5|E)|(?:e|f(?:(?:8|c%80)%8)?0%8)0%80%ae)|0x2e){2,3}(?:[/\\x5c]|%(?:2(?:f|5(?:2f|5c|c(?:1%259c|0%25af))|%46)|5c|c(?:0%(?:[2aq]f|5c|9v)|1%(?:[19p]c|8s|af))|(?:bg%q|(?:e|f(?:8%8)?0%8)0%80%a)f|u(?:221[56]|EFC8|F025|002f)|%3(?:2(?:%(?:%6|4)6|F)|5%%63)|1u)|0x(?:2f|5c))"
+          "value": "(?i)(?:[/\\x5c]|%(?:2(?:f|5(?:2f|5c|c(?:1%259c|0%25af))|%46)|5c|c(?:0%(?:[2aq]f|5c|9v)|1%(?:[19p]c|8s|af))|(?:bg%q|(?:e|f(?:8%8)?0%8)0%80%a)f|u(?:221[56]|EFC8|F025|002f)|%3(?:2(?:%(?:%6|4)6|F)|5%%63)|1u)|0x(?:2f|5c))(?:\\.(?:%0[01]|\\?)?|\\?\\.?|%(?:2(?:(?:5(?:2|c0%25a))?e|%45)|c0(?:\\.|%[256aef]e)|u(?:(?:ff0|002)e|2024)|%32(?:%(?:%6|4)5|E)|(?:e|f(?:(?:8|c%80)%8)?0%8)0%80%ae)|0x2e){2,3}(?:[/\\x5c]|%(?:2(?:f|5(?:2f|5c|c(?:1%259c|0%25af))|%46)|5c|c(?:0%(?:[2aq]f|5c|9v)|1%(?:[19p]c|8s|af))|(?:bg%q|(?:e|f(?:8%8)?0%8)0%80%a)f|u(?:221[56]|EFC8|F025|002f)|%3(?:2(?:%(?:%6|4)6|F)|5%%63)|1u)|0x(?:2f|5c))",
+          "excludes": [
+            "header:Referer"
+          ]
         }
       ],
       "group_op": "and",
@@ -1716,7 +2241,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "regex",
           "value": "(?:^|[/;\\x5c])\\.{2,3}[/;\\x5c]",
           "multi_match": true,
@@ -1725,6 +2250,9 @@
             "urlDecodeUni",
             "removeNulls",
             "cmdLine"
+          ],
+          "excludes": [
+            "header:Referer"
           ]
         }
       ],
@@ -4422,7 +4950,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "query",
+          "field": "body",
           "operator": "regex",
           "value": "(?i)(?:\\binclude\\s*\\([^)]*|mosConfig_absolute_path|_CONF\\[path\\]|_SERVER\\[DOCUMENT_ROOT\\]|GALLERY_BASEDIR|path\\[docroot\\]|appserv_root|config\\[root_dir\\])=(?:file|ftps?|https?)://",
           "transforms": [
@@ -4468,6 +4996,32 @@
       "enabled": true,
       "priority": 400,
       "description": "Possible Remote File Inclusion (RFI) Attack: URL Payload Used w/Trailing Question Mark Character (?)",
+      "category": "REQUEST-931-APPLICATION-ATTACK-RFI",
+      "crs_file": "REQUEST-931-APPLICATION-ATTACK-RFI.conf"
+    },
+    {
+      "id": "931130",
+      "name": "Possible Remote File Inclusion (RFI) Attack: Off-Domain Reference/Link",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_values",
+          "operator": "regex",
+          "value": "(?i)(?:(?:url|jar):)?(?:a(?:cap|f[ps]|ttachment)|b(?:eshare|itcoin|lob)|c(?:a(?:llto|p)|id|vs|ompress.(?:zlib|bzip2))|d(?:a(?:v|ta)|ict|n(?:s|tp))|e(?:d2k|xpect)|f(?:(?:ee)?d|i(?:le|nger|sh)|tps?)|g(?:it|o(?:pher)?|lob)|h(?:323|ttps?)|i(?:ax|cap|(?:ma|p)ps?|rc[6s]?)|ja(?:bbe)?r|l(?:dap[is]?|ocal_file)|m(?:a(?:ilto|ven)|ms|umble)|n(?:e(?:tdoc|ws)|fs|ntps?)|ogg|p(?:aparazzi|h(?:ar|p)|op(?:2|3s?)|r(?:es|oxy)|syc)|r(?:mi|sync|tm(?:f?p)?|ar)|s(?:3|ftp|ips?|m(?:[bs]|tps?)|n(?:ews|mp)|sh(?:2(?:.(?:s(?:hell|(?:ft|c)p)|exec|tunnel))?)?|vn(?:\\+ssh)?)|t(?:e(?:amspeak|lnet)|ftp|urns?)|u(?:dp|nreal|t2004)|v(?:entrilo|iew-source|nc)|w(?:ebcal|ss?)|x(?:mpp|ri)|zip)://?(?:[^@]+@)?([^/]*)"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-rfi"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Possible Remote File Inclusion (RFI) Attack: Off-Domain Reference/Link",
       "category": "REQUEST-931-APPLICATION-ATTACK-RFI",
       "crs_file": "REQUEST-931-APPLICATION-ATTACK-RFI.conf"
     },
@@ -5915,7 +6469,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "user_agent",
+          "field": "referer",
           "operator": "phrase_match",
           "transforms": [
             "cmdLine",
@@ -6802,6 +7356,449 @@
       "description": "Detects uploads of files with dangerous extensions that could enable code execution on the server. CRS 932180."
     },
     {
+      "id": "932180",
+      "name": "Restricted File Upload Attempt",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "files",
+          "operator": "phrase_match",
+          "list_items": [
+            ".DS_Store",
+            ".access/",
+            ".addressbook",
+            ".bash_",
+            ".bashrc",
+            ".boto",
+            ".bowerrc",
+            ".cache/",
+            ".config.local.php",
+            ".coverage",
+            ".coveralls.yml",
+            ".credentials",
+            ".cshrc",
+            ".cvs",
+            ".deployment-secrets.txt",
+            ".dockerignore",
+            ".env",
+            ".envrc",
+            ".eslintignore",
+            ".eslintrc",
+            ".fbcindex",
+            ".fish",
+            ".forward",
+            ".ftpconfig",
+            ".gitattributes",
+            ".gitconfig",
+            ".gitignore",
+            ".gitkeep",
+            ".gitlab-ci.yml",
+            ".gitmodules",
+            ".google_authenticator",
+            ".hgignore",
+            ".history",
+            ".htaccess",
+            ".htdigest",
+            ".htpasswd",
+            ".idea",
+            ".ipynb_checkpoints/",
+            ".jshintrc",
+            ".ksh_history",
+            ".lesshst",
+            ".lhistory",
+            ".lighttpdpassword",
+            ".lldb-history",
+            ".lynx_cookies",
+            ".msmtprc",
+            ".my.cnf",
+            ".myscmserverinfo",
+            ".mysql_history",
+            ".nano_history",
+            ".netrc",
+            ".node_repl_history",
+            ".npmrc",
+            ".nsconfig",
+            ".nsr",
+            ".oh-my-",
+            ".pac",
+            ".pass",
+            ".passwd",
+            ".password-store",
+            ".pearrc",
+            ".pgpass",
+            ".php_cs.dist",
+            ".php_history",
+            ".phpcs.xml",
+            ".phpcs.xml.dist",
+            ".pinerc",
+            ".proclog",
+            ".procmailrc",
+            ".profile",
+            ".psql_history",
+            ".pwd",
+            ".pytest_cache/",
+            ".python_history",
+            ".rediscli_history",
+            ".remote-sync.json",
+            ".rhistory",
+            ".rhosts",
+            ".s3cfg",
+            ".secrets",
+            ".selected_editor",
+            ".settings/",
+            ".sh_history",
+            ".sql.001",
+            ".sql.7z",
+            ".sql.ace",
+            ".sql.arj",
+            ".sql.bz",
+            ".sql.cpio",
+            ".sql.gz",
+            ".sql.lha",
+            ".sql.lz",
+            ".sql.pa",
+            ".sql.pea",
+            ".sql.r00",
+            ".sql.r01",
+            ".sql.r02",
+            ".sql.r03",
+            ".sql.r04",
+            ".sql.r05",
+            ".sql.r06",
+            ".sql.r07",
+            ".sql.r08",
+            ".sql.r09",
+            ".sql.rar",
+            ".sql.rev",
+            ".sql.tar",
+            ".sql.taz",
+            ".sql.tbz",
+            ".sql.tgz",
+            ".sql.txz",
+            ".sql.uha",
+            ".sql.xz",
+            ".sql.yz1",
+            ".sql.z",
+            ".sqlite_history",
+            ".svnignore",
+            ".tcshrc",
+            ".terraform.lock.hcl",
+            ".terraform/",
+            ".tmux.conf",
+            ".tools/",
+            ".travis.yaml",
+            ".travis.yml",
+            ".user.ini",
+            ".viminfo",
+            ".vimrc",
+            ".vscode",
+            ".web.config.swp",
+            ".wget-hsts",
+            ".ws_ftp.ini",
+            ".www_acl",
+            ".wwwacl",
+            ".xauthority",
+            ".yarnrc",
+            ".zhistory",
+            ".zsh_history",
+            ".zshenv",
+            ".zshrc",
+            "BlockCypher.log",
+            "__pycache__/",
+            "acpi",
+            "asound",
+            "auth.json",
+            "aws-key.yaml",
+            "aws-key.yml",
+            "aws.yaml",
+            "aws.yml",
+            "boot.ini",
+            "bootconfig",
+            "bower.json",
+            "buddyinfo",
+            "cgroups",
+            "cmdline",
+            "compose.yaml",
+            "compose.yml",
+            "composer.json",
+            "composer.lock",
+            "config-dev.asp",
+            "config-dev.ini",
+            "config-dev.json",
+            "config-dev.php",
+            "config-dev.pl",
+            "config-dev.py",
+            "config-dev.rb",
+            "config-dev.toml",
+            "config-dev.txt",
+            "config-dev.xml",
+            "config-dev.yaml",
+            "config-dev.yml",
+            "config-prod.asp",
+            "config-prod.ini",
+            "config-prod.json",
+            "config-prod.php",
+            "config-prod.pl",
+            "config-prod.py",
+            "config-prod.rb",
+            "config-prod.toml",
+            "config-prod.txt",
+            "config-prod.xml",
+            "config-prod.yaml",
+            "config-prod.yml",
+            "config-sample.asp",
+            "config-sample.ini",
+            "config-sample.json",
+            "config-sample.php",
+            "config-sample.pl",
+            "config-sample.py",
+            "config-sample.rb",
+            "config-sample.toml",
+            "config-sample.txt",
+            "config-sample.xml",
+            "config-sample.yaml",
+            "config-sample.yml",
+            "config-test.asp",
+            "config-test.ini",
+            "config-test.json",
+            "config-test.php",
+            "config-test.pl",
+            "config-test.py",
+            "config-test.rb",
+            "config-test.toml",
+            "config-test.txt",
+            "config-test.xml",
+            "config-test.yaml",
+            "config-test.yml",
+            "config.asp",
+            "config.dev.asp",
+            "config.dev.ini",
+            "config.dev.json",
+            "config.dev.php",
+            "config.dev.pl",
+            "config.dev.py",
+            "config.dev.rb",
+            "config.dev.toml",
+            "config.dev.txt",
+            "config.dev.xml",
+            "config.dev.yaml",
+            "config.dev.yml",
+            "config.gz",
+            "config.inc.php",
+            "config.ini",
+            "config.json",
+            "config.php",
+            "config.pl",
+            "config.prod.asp",
+            "config.prod.ini",
+            "config.prod.json",
+            "config.prod.php",
+            "config.prod.pl",
+            "config.prod.py",
+            "config.prod.rb",
+            "config.prod.toml",
+            "config.prod.txt",
+            "config.prod.xml",
+            "config.prod.yaml",
+            "config.prod.yml",
+            "config.py",
+            "config.rb",
+            "config.sample.asp",
+            "config.sample.inc.php",
+            "config.sample.ini",
+            "config.sample.json",
+            "config.sample.php",
+            "config.sample.pl",
+            "config.sample.py",
+            "config.sample.rb",
+            "config.sample.toml",
+            "config.sample.txt",
+            "config.sample.xml",
+            "config.sample.yaml",
+            "config.sample.yml",
+            "config.test.asp",
+            "config.test.ini",
+            "config.test.json",
+            "config.test.php",
+            "config.test.pl",
+            "config.test.py",
+            "config.test.rb",
+            "config.test.toml",
+            "config.test.txt",
+            "config.test.xml",
+            "config.test.yaml",
+            "config.test.yml",
+            "config.toml",
+            "config.txt",
+            "config.xml",
+            "config.yaml",
+            "config.yml",
+            "config_dev.asp",
+            "config_dev.ini",
+            "config_dev.json",
+            "config_dev.php",
+            "config_dev.pl",
+            "config_dev.py",
+            "config_dev.rb",
+            "config_dev.toml",
+            "config_dev.txt",
+            "config_dev.xml",
+            "config_dev.yaml",
+            "config_dev.yml",
+            "config_prod.asp",
+            "config_prod.ini",
+            "config_prod.json",
+            "config_prod.php",
+            "config_prod.pl",
+            "config_prod.py",
+            "config_prod.rb",
+            "config_prod.toml",
+            "config_prod.txt",
+            "config_prod.xml",
+            "config_prod.yaml",
+            "config_prod.yml",
+            "config_sample.asp",
+            "config_sample.ini",
+            "config_sample.json",
+            "config_sample.php",
+            "config_sample.pl",
+            "config_sample.py",
+            "config_sample.rb",
+            "config_sample.toml",
+            "config_sample.txt",
+            "config_sample.xml",
+            "config_sample.yaml",
+            "config_sample.yml",
+            "config_test.asp",
+            "config_test.ini",
+            "config_test.json",
+            "config_test.php",
+            "config_test.pl",
+            "config_test.py",
+            "config_test.rb",
+            "config_test.toml",
+            "config_test.txt",
+            "config_test.xml",
+            "config_test.yaml",
+            "config_test.yml",
+            "coverage.xml",
+            "cpuinfo",
+            "credentials.json",
+            "database.yaml",
+            "database.yml",
+            "debian.cnf",
+            "debug.log",
+            "default.settings.php",
+            "defaults.inc.php",
+            "Desktop.ini",
+            "diskstats",
+            "Dockerfile",
+            "dynamic_debug",
+            "env.php",
+            "execdomains",
+            "filesystems",
+            "fish_variables",
+            "ftp-sync.json",
+            "gitlab.rb",
+            "gitlab_config_",
+            "gruntfile.js",
+            "hplip.conf",
+            "hypervisor",
+            "initial_root_password",
+            "iomem",
+            "ioports",
+            "ipmi",
+            "kallsyms",
+            "kcore",
+            "key-users",
+            "kmsg",
+            "kpagecgroup",
+            "kpagecount",
+            "kpageflags",
+            "latency_stats",
+            "ldap-authentication-report.csv",
+            "loadavg",
+            "local.xml",
+            "mdstat",
+            "meminfo",
+            "mtrr",
+            "my.cnf",
+            "mysql.cnf",
+            "mysqldump.cnf",
+            "notify-osd.log",
+            "npm-debug.log",
+            "npm-shrinkwrap.json",
+            "package-lock.json",
+            "package.json",
+            "packages.json",
+            "pagetypeinfo",
+            "parameters.php",
+            "parameters.yml",
+            "php.ini",
+            "php_error.log",
+            "php_errors.log",
+            "phpcs.xml",
+            "phpcs.xml.dist",
+            "phpinfo.php",
+            "pm2.log",
+            "routing.yml",
+            "sched_debug",
+            "schedstat",
+            "scsi",
+            "secrets.json",
+            "secrets.yaml",
+            "secrets.yml",
+            "security.yml",
+            "sendgrid.env",
+            "services.yml",
+            "settings.inc.php",
+            "settings.local.php",
+            "settings.php",
+            "sftp.json",
+            "slabinfo",
+            "softirqs",
+            "sslvpn_websession",
+            "sysrq-trigger",
+            "system.ini",
+            "sysvipc",
+            "thread-self",
+            "Thumbs.db",
+            "timer_list",
+            "timer_stats",
+            "user_secrets.yml",
+            "version_signature",
+            "vmallocinfo",
+            "vmstat",
+            "Web.config",
+            "weblogic.xml",
+            "webpack.config.js",
+            "win.ini",
+            "wp-config-",
+            "wp-config.",
+            "wp-config_",
+            "yarn-debug.log",
+            "yarn-error.log",
+            "yarn.lock",
+            "zoneinfo"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Restricted File Upload Attempt",
+      "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
+    },
+    {
       "id": "932190",
       "name": "Remote Command Execution: Wildcard bypass technique attempt",
       "type": "detect",
@@ -6828,6 +7825,126 @@
       "enabled": true,
       "priority": 400,
       "description": "Remote Command Execution: Wildcard bypass technique attempt",
+      "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
+    },
+    {
+      "id": "932200",
+      "name": "RCE Bypass Technique",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "request_combined",
+          "operator": "regex",
+          "value": "['\\*\\?\\x5c`][^\\n/]+/|/[^/]+?['\\*\\?\\x5c`]|\\$[!#\\$\\(\\*\\-0-9\\?-\\[_a-\\{]",
+          "transforms": [
+            "lowercase",
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "RCE Bypass Technique",
+      "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
+    },
+    {
+      "id": "932205",
+      "name": "RCE Bypass Technique",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "referer",
+          "operator": "regex",
+          "value": "^[^#]+",
+          "transforms": [
+            "lowercase",
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "RCE Bypass Technique",
+      "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
+    },
+    {
+      "id": "932206",
+      "name": "RCE Bypass Technique",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "referer",
+          "operator": "regex",
+          "value": "^[^\\.]*?(?:['\\*\\?\\x5c`][^\\n/]+/|/[^/]+?['\\*\\?\\x5c`]|\\$[!#\\$\\(\\*\\-0-9\\?-\\[_a-\\{])",
+          "transforms": [
+            "lowercase",
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "RCE Bypass Technique",
+      "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
+    },
+    {
+      "id": "932207",
+      "name": "RCE Bypass Technique",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "referer",
+          "operator": "regex",
+          "value": "#.*",
+          "transforms": [
+            "lowercase",
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "RCE Bypass Technique",
       "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
       "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
     },
@@ -7100,6 +8217,32 @@
       "enabled": true,
       "priority": 400,
       "description": "Remote Command Execution: Unix Command Injection found in user-agent or referer header",
+      "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
+    },
+    {
+      "id": "932240",
+      "name": "Remote Command Execution: Unix Command Injection evasion attempt detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_values",
+          "operator": "regex",
+          "value": "(?i)[\\-0-9_a-z]+(?:[\\s\\x0b]*[\"'][^\\s\\x0b\"',:]+[\"']|(?:[\"'][\"']+|[\\[-\\]]+|\\$+[!#\\*\\-0-9\\?@\\x5c_a-\\{]+|``|[\\$\u003c\u003e]\\(\\))[\\s\\x0b]*)[\\-0-9_a-z]+"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-shell",
+        "platform-unix",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Remote Command Execution: Unix Command Injection evasion attempt detected",
       "category": "REQUEST-932-APPLICATION-ATTACK-RCE",
       "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
     },
@@ -7647,7 +8790,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X-Filename",
+          "field": "header:X.Filename",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\.*$",
           "transforms": [
@@ -7676,7 +8819,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X-File-Name",
+          "field": "header:X.Filename",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\..*$",
           "transforms": [
@@ -7859,6 +9002,267 @@
       "enabled": true,
       "priority": 400,
       "description": "PHP Injection Attack: I/O Stream Found",
+      "category": "REQUEST-933-APPLICATION-ATTACK-PHP",
+      "crs_file": "REQUEST-933-APPLICATION-ATTACK-PHP.conf"
+    },
+    {
+      "id": "933150",
+      "name": "PHP Injection Attack: High-Risk PHP Function Name Found",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "request_combined",
+          "operator": "phrase_match",
+          "list_items": [
+            "array_diff_uassoc",
+            "array_diff_ukey",
+            "array_filter",
+            "array_intersect_uassoc",
+            "array_intersect_ukey",
+            "array_key_exists",
+            "array_map",
+            "array_push",
+            "array_reduce",
+            "array_shift",
+            "array_udiff",
+            "array_udiff_assoc",
+            "array_udiff_uassoc",
+            "array_uintersect",
+            "array_uintersect_assoc",
+            "array_uintersect_uassoc",
+            "array_values",
+            "base64_decode",
+            "base64_encode",
+            "bson_decode",
+            "bson_encode",
+            "bzdecompress",
+            "bzopen",
+            "call_user_func",
+            "class_exists",
+            "convert_uuencode",
+            "curl_exec",
+            "curl_file_create",
+            "curl_init",
+            "debug_backtrace",
+            "dirname",
+            "error_reporting",
+            "escapeshellarg",
+            "escapeshellcmd",
+            "exif_imagetype",
+            "exif_read_data",
+            "exif_tagname",
+            "exif_thumbnail",
+            "fclose",
+            "file_exists",
+            "file_get_contents",
+            "finfo_open",
+            "fsockopen",
+            "ftp_connect",
+            "ftp_get",
+            "ftp_nb_get",
+            "ftp_nb_put",
+            "ftp_put",
+            "function_exists",
+            "fwrite",
+            "get_cfg_var",
+            "get_class",
+            "get_class_methods",
+            "get_class_vars",
+            "get_current_user",
+            "get_defined_constants",
+            "get_defined_functions",
+            "get_defined_vars",
+            "get_meta_tags",
+            "getcwd",
+            "getenv",
+            "getimagesize",
+            "getlastmod",
+            "getmygid",
+            "getmyinode",
+            "getmypid",
+            "getmyuid",
+            "gzcompress",
+            "gzdecode",
+            "gzdeflate",
+            "gzencode",
+            "gzfile",
+            "gzinflate",
+            "gzopen",
+            "gzread",
+            "gzuncompress",
+            "gzwrite",
+            "hash_file",
+            "hash_hmac_file",
+            "hash_update_file",
+            "header_register_callback",
+            "hex2bin",
+            "highlight_file",
+            "html_entity_decode",
+            "htmlentities",
+            "htmlspecialchars",
+            "htmlspecialchars_decode",
+            "image2wbmp",
+            "imagecreatefromgif",
+            "imagecreatefromjpeg",
+            "imagecreatefrompng",
+            "imagecreatefromwbmp",
+            "imagecreatefromxbm",
+            "imagecreatefromxpm",
+            "imagegd",
+            "imagegd2",
+            "ini_get",
+            "ini_get_all",
+            "ini_set",
+            "iptcembed",
+            "is_array",
+            "is_dir",
+            "is_executable",
+            "is_file",
+            "is_int",
+            "is_null",
+            "is_numeric",
+            "is_object",
+            "is_readable",
+            "is_writable",
+            "is_writeable",
+            "iterator_apply",
+            "json_decode",
+            "json_encode",
+            "mb_ereg",
+            "mb_ereg_match",
+            "mb_ereg_replace",
+            "mb_ereg_replace_callback",
+            "mb_eregi",
+            "mb_eregi_replace",
+            "mb_parse_str",
+            "md5_file",
+            "method_exists",
+            "move_uploaded_file",
+            "mysql_query",
+            "number_format",
+            "ob_clean",
+            "ob_end_clean",
+            "ob_end_flush",
+            "ob_flush",
+            "ob_get_clean",
+            "ob_get_contents",
+            "ob_get_flush",
+            "ob_start",
+            "odbc_connect",
+            "odbc_exec",
+            "odbc_execute",
+            "odbc_result",
+            "odbc_result_all",
+            "parse_ini_file",
+            "parse_str",
+            "parse_url",
+            "pfsockopen",
+            "pg_connect",
+            "pg_execute",
+            "pg_prepare",
+            "pg_query",
+            "php_strip_whitespace",
+            "php_uname",
+            "phpversion",
+            "posix_getegid",
+            "posix_geteuid",
+            "posix_getgid",
+            "posix_getlogin",
+            "posix_getpwnam",
+            "posix_getpwuid",
+            "posix_kill",
+            "posix_mkfifo",
+            "posix_mknod",
+            "posix_ttyname",
+            "preg_match",
+            "preg_match_all",
+            "preg_replace",
+            "preg_replace_callback",
+            "preg_replace_callback_array",
+            "preg_split",
+            "print_r",
+            "proc_close",
+            "proc_get_status",
+            "proc_nice",
+            "proc_open",
+            "proc_terminate",
+            "putenv",
+            "rawurldecode",
+            "rawurlencode",
+            "read_exif_data",
+            "readdir",
+            "readgzfile",
+            "register_shutdown_function",
+            "register_tick_function",
+            "rename_function",
+            "runkit_constant_add",
+            "runkit_constant_redefine",
+            "runkit_function_add",
+            "runkit_function_copy",
+            "runkit_function_redefine",
+            "runkit_function_rename",
+            "runkit_method_add",
+            "runkit_method_copy",
+            "runkit_method_redefine",
+            "runkit_method_rename",
+            "session_set_save_handler",
+            "session_start",
+            "set_error_handler",
+            "set_exception_handler",
+            "set_include_path",
+            "set_magic_quotes_runtime",
+            "setdefaultstub",
+            "settype",
+            "sha1_file",
+            "shell_exec",
+            "show_source",
+            "simplexml_load_file",
+            "simplexml_load_string",
+            "socket_connect",
+            "socket_create",
+            "spl_autoload_register",
+            "sqlite_array_query",
+            "sqlite_create_aggregate",
+            "sqlite_create_function",
+            "sqlite_exec",
+            "sqlite_open",
+            "sqlite_popen",
+            "sqlite_query",
+            "sqlite_single_query",
+            "sqlite_unbuffered_query",
+            "str_replace",
+            "stream_context_create",
+            "stream_socket_client",
+            "stripcslashes",
+            "stripslashes",
+            "strlen",
+            "strpos",
+            "strrev",
+            "strtolower",
+            "strtotime",
+            "strtoupper",
+            "uasort",
+            "ucfirst",
+            "uksort",
+            "urldecode",
+            "urlencode",
+            "var_dump",
+            "zlib_decode"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-php",
+        "platform-multi",
+        "attack-injection-php"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "PHP Injection Attack: High-Risk PHP Function Name Found",
       "category": "REQUEST-933-APPLICATION-ATTACK-PHP",
       "crs_file": "REQUEST-933-APPLICATION-ATTACK-PHP.conf"
     },
@@ -8175,7 +9579,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "files",
+          "field": "header:X-File-Name",
           "operator": "regex",
           "value": "(?:^|[/\\x5c])sess_[,\\-0-9a-z]{20,256}$",
           "transforms": [
@@ -8748,6 +10152,9 @@
             "jsDecode",
             "cssDecode",
             "removeNulls"
+          ],
+          "excludes": [
+            "header:Cookie"
           ]
         }
       ],
@@ -8783,6 +10190,9 @@
             "jsDecode",
             "cssDecode",
             "removeNulls"
+          ],
+          "excludes": [
+            "header:Cookie"
           ]
         }
       ],
@@ -9483,6 +10893,39 @@
       "crs_file": "REQUEST-941-APPLICATION-ATTACK-XSS.conf"
     },
     {
+      "id": "941310",
+      "name": "US-ASCII Malformed Encoding XSS Filter - Attack Detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "request_combined",
+          "operator": "regex",
+          "value": "\\xbc[^\\xbe\u003e]*[\\xbe\u003e]|\u003c[^\\xbe]*\\xbe",
+          "transforms": [
+            "lowercase",
+            "urlDecodeUni",
+            "htmlEntityDecode",
+            "jsDecode"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-tomcat",
+        "attack-xss",
+        "xss-perf-disable"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "US-ASCII Malformed Encoding XSS Filter - Attack Detected",
+      "category": "REQUEST-941-APPLICATION-ATTACK-XSS",
+      "crs_file": "REQUEST-941-APPLICATION-ATTACK-XSS.conf"
+    },
+    {
       "id": "941320",
       "name": "Possible XSS Attack Detected - HTML Tag Handler",
       "type": "detect",
@@ -9639,7 +11082,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "regex",
           "value": "(?:self|document|t(?:his|op)|window)[\\s\\x0b]*(?:/\\*|[\\)\\[]).+?(?:\\]|\\*/)",
           "transforms": [
@@ -9817,7 +11260,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "request_combined",
+          "field": "all_args_values",
           "operator": "regex",
           "value": "(?i)[!=]=|\u0026\u0026|\\|\\||-\u003e|\u003e[=\u003e]|\u003c(?:[\u003c=]|\u003e(?:[\\s\\x0b]+binary)?)|\\b(?:(?:xor|r(?:egexp|like)|i(?:snull|like)|notnull)\\b|collate(?:[^0-9A-Z_a-z]*?(?:U\u0026)?[\"'`]|[^0-9A-Z_a-z]+(?:(?:binary|nocase|rtrim)\\b|[0-9A-Z_a-z]*?_))|(?:likel(?:ihood|y)|unlikely)[\\s\\x0b]*\\()|r(?:egexp|like)[\\s\\x0b]+binary|not[\\s\\x0b]+between[\\s\\x0b]+(?:0[\\s\\x0b]+and|(?:'[^']*'|\"[^\"]*\")[\\s\\x0b]+and[\\s\\x0b]+(?:'[^']*'|\"[^\"]*\"))|is[\\s\\x0b]+null|like[\\s\\x0b]+(?:null|[0-9A-Z_a-z]+[\\s\\x0b]+escape\\b)|(?:^|[^0-9A-Z_a-z])in[\\s\\x0b\\+]*\\([\\s\\x0b\"0-9]+[^\\(\\)]*\\)|[!\u003c-\u003e][\\s\\x0b]*all\\b",
           "transforms": [
@@ -9838,6 +11281,67 @@
       "enabled": true,
       "priority": 400,
       "description": "SQL Injection Attack: SQL Operator Detected",
+      "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+      "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
+    },
+    {
+      "id": "942130",
+      "name": "SQL Injection Attack: SQL Boolean-based attack detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_values",
+          "operator": "regex",
+          "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:=|\u003c=\u003e|(?:sounds[\\s\\x0b]+)?like|glob|r(?:like|egexp))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
+          "transforms": [
+            "urlDecodeUni",
+            "removeComments"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-sqli"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "SQL Injection Attack: SQL Boolean-based attack detected",
+      "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+      "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
+    },
+    {
+      "id": "942131",
+      "name": "SQL Injection Attack: SQL Boolean-based attack detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_values",
+          "operator": "regex",
+          "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:![\u003c-\u003e]|\u003c[=\u003e]?|\u003e=?|\\^|is[\\s\\x0b]+not|not[\\s\\x0b]+(?:like|r(?:like|egexp)))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
+          "multi_match": true,
+          "transforms": [
+            "urlDecodeUni",
+            "removeComments"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-sqli"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "SQL Injection Attack: SQL Boolean-based attack detected",
       "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
       "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
     },
@@ -10812,6 +12316,9 @@
           "value": "(?i)\\b(?:a(?:(?:b|co)s|vg)|bin|c(?:(?:as|o(?:nver|un))t|h(?:ar(?:set)?|r))|d(?:a(?:te|y)|e(?:fault|grees))|elt|f(?:ield|loor|ormat)|(?:hou|quarte|yea)r|i[fns]|l(?:ast|e(?:ft|ngth)|n|ikelihood|o(?:cal|g|wer))|m(?:ax|in(?:ute)?|o(?:d|nth))|now|p(?:assword|i|o(?:sition|wer))|r(?:awtonhex(?:toraw)?|e(?:p(?:eat|lace)|verse)|ight|ound)|s(?:econd|ign|leep|pace|tddev|um)|t(?:an|ime|o_(?:n?char|(?:day|second)s))|u(?:nlikely|(?:pp|s)er)|v(?:alues|ersion)|week)[^0-9A-Z_a-z]*?\\(",
           "transforms": [
             "urlDecodeUni"
+          ],
+          "excludes": [
+            "cookie:_pk_ref"
           ]
         }
       ],
@@ -10865,7 +12372,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "all_cookies_names",
+          "field": "all_cookies",
           "operator": "regex",
           "value": "((?:(?:[!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]|\\x{c2}\\x{b4}|\\x{e2}\\x80[\\x98\\x99])[^!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]*?){3})",
           "transforms": [
@@ -10928,6 +12435,10 @@
           "value": "((?:(?:[!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]|\\x{c2}\\x{b4}|\\x{e2}\\x80[\\x98\\x99])[^!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]*?){6})",
           "transforms": [
             "urlDecodeUni"
+          ],
+          "excludes": [
+            "args:^[\\w]+\\[[\\w\\-]+\\]\\[[\\w\\-]*?\\]$",
+            "args:^[\\w]+\\[[\\w\\-]+\\]\\[[\\w\\-]+\\]\\[[\\w\\-]*?\\]$"
           ]
         }
       ],
@@ -10972,6 +12483,35 @@
       "enabled": true,
       "priority": 400,
       "description": "Restricted SQL Character Anomaly Detection (args): # of special characters exceeded (2)",
+      "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+      "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
+    },
+    {
+      "id": "942440",
+      "name": "SQL Comment Sequence Detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "request_combined",
+          "operator": "regex",
+          "value": "/\\*!?|\\*/|[';]--|--(?:[\\s\\x0b]|[^\\-]*?-)|[^\u0026\\-]#.*?[\\s\\x0b]|;?\\x00",
+          "transforms": [
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-sqli"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "SQL Comment Sequence Detected",
       "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
       "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
     },
@@ -11070,6 +12610,9 @@
           "value": "(?i)\\b(?:(?:d(?:bms_[0-9A-Z_a-z]+\\.|elete\\b[^0-9A-Z_a-z]*?\\bfrom)|(?:group\\b.*?\\bby\\b.{1,100}?\\bhav|overlay\\b[^0-9A-Z_a-z]*?\\(.*?\\b[^0-9A-Z_a-z]*?plac)ing|in(?:ner\\b[^0-9A-Z_a-z]*?\\bjoin|sert\\b[^0-9A-Z_a-z]*?\\binto|to\\b[^0-9A-Z_a-z]*?\\b(?:dump|out)file)|load\\b[^0-9A-Z_a-z]*?\\bdata\\b.*?\\binfile|s(?:elect\\b.{1,100}?\\b(?:(?:.*?\\bdump\\b.*|(?:count|length)\\b.{1,100}?)\\bfrom|(?:data_typ|from\\b.{1,100}?\\bwher)e|instr|to(?:_(?:cha|numbe)r|p\\b.{1,100}?\\bfrom))|ys_context)|u(?:nion\\b.{1,100}?\\bselect|tl_inaddr))\\b|print\\b[^0-9A-Z_a-z]*?@@)|(?:collation[^0-9A-Z_a-z]*?\\(a|@@version|;[^0-9A-Z_a-z]*?\\b(?:drop|shutdown))\\b|'(?:dbo|msdasql|s(?:a|qloledb))'",
           "transforms": [
             "urlDecodeUni"
+          ],
+          "excludes": [
+            "header:Cookie"
           ]
         }
       ],
@@ -11231,6 +12774,35 @@
       "enabled": true,
       "priority": 400,
       "description": "Detects basic SQL authentication bypass attempts 4.0/4",
+      "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+      "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
+    },
+    {
+      "id": "942521",
+      "name": "Detects basic SQL authentication bypass attempts 4.1/4",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_values",
+          "operator": "regex",
+          "value": "(?i)^(?:[^']*?(?:'[^']*?'[^']*?)*?'|[^\"]*?(?:\"[^\"]*?\"[^\"]*?)*?\"|[^`]*?(?:`[^`]*?`[^`]*?)*?`)[\\s\\x0b]*([0-9A-Z_a-z]+)\\b",
+          "transforms": [
+            "urlDecodeUni"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-sqli"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Detects basic SQL authentication bypass attempts 4.1/4",
       "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
       "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
     },
@@ -11412,6 +12984,74 @@
       "crs_file": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf"
     },
     {
+      "id": "943110",
+      "name": "Possible Session Fixation Attack: SessionID Parameter Name with Off-Domain Referer",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_names",
+          "operator": "regex",
+          "value": "^(?:j(?:se(?:ssionid|rvsession)|wsession)|(?:asp(?:\\.net_)?session|zend_session_)id|p(?:hpsessi(?:on|d)|lay_session)|(?:(?:w(?:eblogic|l)|rack\\.|laravel_)sessio|(?:next-auth\\.session-|meteor_login_)toke)n|s(?:(?:ession[\\-_]?|ails\\.s)id|hiny-token)|_(?:session_id|(?:(?:flask|rails)_sessio|_(?:secure|host)-next-auth\\.session-toke)n)|c(?:f(?:s?id|token)|onnect\\.sid|akephp|i_session)|koa[\\.:]sess)$",
+          "transforms": [
+            "lowercase"
+          ]
+        },
+        {
+          "field": "referer",
+          "operator": "regex",
+          "value": "^(?:ht|f)tps?://(.*?)/"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-fixation"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Possible Session Fixation Attack: SessionID Parameter Name with Off-Domain Referer",
+      "category": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION",
+      "crs_file": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf"
+    },
+    {
+      "id": "943120",
+      "name": "Possible Session Fixation Attack: SessionID Parameter Name with No Referer",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_names",
+          "operator": "regex",
+          "value": "^(?:jsessionid|aspsessionid|asp\\.net_sessionid|phpsession|phpsessid|weblogicsession|session_id|session-id|sessionid|cfid|cftoken|cfsid|jservsession|jwsession|_flask_session|_session_id|connect\\.sid|laravel_session)$",
+          "transforms": [
+            "lowercase"
+          ]
+        },
+        {
+          "field": "referer",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-fixation"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Possible Session Fixation Attack: SessionID Parameter Name with No Referer",
+      "category": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION",
+      "crs_file": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf"
+    },
+    {
       "id": "943120",
       "name": "Session fixation — session ID parameter without referer",
       "type": "detect",
@@ -11519,6 +13159,35 @@
       "crs_file": "REQUEST-944-APPLICATION-ATTACK-JAVA.conf"
     },
     {
+      "id": "944120",
+      "name": "Remote Command Execution: Java serialization (CVE-2015-4852)",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "request_combined",
+          "operator": "regex",
+          "value": "(?:clonetransform|xmldecod)er|f(?:orclosure|ilewriter)|in(?:stantiate(?:factory|transformer)|vokertransformer)|(?:prototype(?:clone|serialization)factor|getpropert)y|whileclosure",
+          "transforms": [
+            "lowercase"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-java",
+        "platform-multi",
+        "attack-rce"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Remote Command Execution: Java serialization (CVE-2015-4852)",
+      "category": "REQUEST-944-APPLICATION-ATTACK-JAVA",
+      "crs_file": "REQUEST-944-APPLICATION-ATTACK-JAVA.conf"
+    },
+    {
       "id": "944130",
       "name": "Suspicious Java class detected",
       "type": "detect",
@@ -11619,7 +13288,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X.Filename",
+          "field": "files",
           "operator": "regex",
           "value": ".*\\.(?:jsp|jspx)\\.*$",
           "transforms": [
@@ -15875,5 +17544,5 @@
   ],
   "version": 7,
   "crs_version": "4.24.1",
-  "generated": "2026-03-14T18:39:22Z"
+  "generated": "2026-03-17T08:34:10Z"
 }

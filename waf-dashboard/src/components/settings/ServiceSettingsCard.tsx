@@ -63,6 +63,7 @@ export function ServiceSettingsCard({
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // CRS rules for the picker
   const [crsRules, setCrsRules] = useState<DefaultRule[]>([]);
@@ -77,8 +78,8 @@ export function ServiceSettingsCard({
       setSkipRules(hostSkips);
       setSkippedIds(collectSkippedRuleIds(hostSkips));
       setCrsRules(rules);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("Failed to load skip rules:", err);
     } finally {
       setLoadingSkips(false);
     }
@@ -126,6 +127,7 @@ export function ServiceSettingsCard({
       await loadData();
     } catch (err) {
       console.error("Failed to update skip rules:", err);
+      setError(err instanceof Error ? err.message : "Failed to save skip rule");
     } finally {
       setSaving(false);
     }
@@ -147,6 +149,7 @@ export function ServiceSettingsCard({
       setDirty(false);
     } catch (err) {
       console.error("Deploy failed:", err);
+      setError(err instanceof Error ? err.message : "Deploy failed");
     } finally {
       setDeploying(false);
     }
@@ -318,6 +321,16 @@ export function ServiceSettingsCard({
               <p className="text-xs text-muted-foreground">
                 No CRS rules disabled. Click "Add Rule" to skip specific rules for this service.
               </p>
+            )}
+
+            {/* Error display */}
+            {error && (
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded px-3 py-2 text-xs text-rose-400 flex items-center justify-between">
+                <span>{error}</span>
+                <button onClick={() => setError(null)} className="ml-2 text-rose-400/60 hover:text-rose-400">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
             )}
 
             {/* Deploy */}

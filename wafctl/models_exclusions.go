@@ -47,6 +47,7 @@ type RuleExclusion struct {
 	// ─── detect-only ────────────────────────────────────────────────
 	Severity            string `json:"severity,omitempty"`              // CRITICAL, ERROR, WARNING, NOTICE
 	DetectParanoiaLevel int    `json:"detect_paranoia_level,omitempty"` // 1-4 (0 = all levels)
+	DetectAction        string `json:"detect_action,omitempty"`         // "" (default=score) or "log_only" (evaluate & log but don't add to anomaly score)
 
 	// ─── rate_limit-only ────────────────────────────────────────────
 	RateLimitKey    string `json:"rate_limit_key,omitempty"`    // "client_ip", "header:X-API-Key", "client_ip+path", etc.

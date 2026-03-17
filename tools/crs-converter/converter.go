@@ -247,6 +247,14 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 			return nil, fmt.Errorf("PCRE regex: %w", err)
 		}
 		operatorValue = fixed
+	case "within":
+		// CRS @within checks if a value is in a space-delimited list.
+		// Convert to "in" operator with pipe-delimited value.
+		// Skip if value references TX variables (%{tx.*}).
+		if strings.Contains(operatorValue, "%{tx.") || strings.Contains(operatorValue, "%{TX") {
+			return nil, fmt.Errorf("@within with TX variable reference: %s", operatorValue)
+		}
+		operatorValue = strings.Join(strings.Fields(operatorValue), "|")
 	}
 
 	// Convert negation variable exclusions to exclude patterns.
@@ -266,6 +274,39 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		}
 		if v.Key != "" {
 			excludes = append(excludes, prefix+v.Key)
+		}
+	}
+
+	// Transform numeric header-count checks into presence/absence checks.
+	// CRS uses &REQUEST_HEADERS:Name @eq 0 to check "header missing" and
+	// @gt 0 / @ge 1 to check "header present". Since the count: prefix was
+	// resolved to the scalar field, convert the numeric operator:
+	//   @eq 0  → eq ""  (field is empty/missing)
+	//   !@eq 0 → neq "" (field is present)
+	//   @gt 0  → neq "" (field has at least one value)
+	//   @ge 1  → neq "" (field has at least one value)
+	//   @gt 1  → skip (duplicate detection needs real count support)
+	if isNumericOp(opName) && !strings.HasPrefix(field, "count:") {
+		switch {
+		case opName == "eq" && operatorValue == "0":
+			opName = "eq"
+			operatorValue = ""
+		case opName == "eq" && operatorValue != "0":
+			// @eq N where N>0 on a scalar = skip (can't count)
+			return nil, fmt.Errorf("count check @eq %s on scalar field %s (need count: support)", operatorValue, field)
+		case opName == "gt" && operatorValue == "0":
+			opName = "neq"
+			operatorValue = ""
+		case opName == "ge" && operatorValue == "1":
+			opName = "neq"
+			operatorValue = ""
+		case opName == "gt" && operatorValue == "1":
+			return nil, fmt.Errorf("duplicate header check @gt 1 on %s (need count: support)", field)
+		case (opName == "gt" || opName == "ge") && operatorValue != "0" && operatorValue != "1":
+			return nil, fmt.Errorf("count check @%s %s on scalar field %s (need count: support)", opName, operatorValue, field)
+		default:
+			// lt/le on scalar field — skip
+			return nil, fmt.Errorf("count check @%s %s on scalar field %s (need count: support)", opName, operatorValue, field)
 		}
 	}
 
@@ -327,22 +368,23 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 }
 
 // convertChain recursively converts chained rules into conditions.
+// If a chain link has only unmappable variables (e.g., TX-only), it is
+// skipped and subsequent chain links are still processed. This preserves
+// the head rule's detection value when chain links are CRS internal logic.
 func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondition, error) {
 	// Map operator
-	opName, supported, note := mapOperator(rule.Operator)
-	if !supported {
-		return nil, fmt.Errorf("chain: unsupported operator @%s: %s", rule.Operator.Name, note)
-	}
+	opName, supported, _ := mapOperator(rule.Operator)
 
 	// Map transforms
 	transforms, _ := mapTransforms(rule.Transforms)
 
-	// Map variables
+	// Map variables — chain links with only TX variables are dropped (not an error).
 	fields, _, _ := mapVariablesToConditions(rule.Variables, rule.Operator)
-	if len(fields) == 0 {
-		return nil, fmt.Errorf("chain: no mappable variables")
+	skipThisLink := !supported || len(fields) == 0
+	var field string
+	if !skipThisLink {
+		field = consolidateFields(fields)
 	}
-	field := consolidateFields(fields)
 
 	// Resolve operator
 	operatorValue := rule.Operator.Value
@@ -367,19 +409,28 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 			return nil, fmt.Errorf("chain: PCRE regex: %w", err)
 		}
 		operatorValue = fixed
+	case "within":
+		if strings.Contains(operatorValue, "%{tx.") || strings.Contains(operatorValue, "%{TX") {
+			skipThisLink = true
+		} else {
+			operatorValue = strings.Join(strings.Fields(operatorValue), "|")
+		}
 	}
 
-	cond := PolicyCondition{
-		Field:      field,
-		Operator:   opName,
-		Value:      operatorValue,
-		Negate:     rule.Operator.Negated,
-		MultiMatch: hasAction(rule.Actions, "multiMatch"),
-		Transforms: transforms,
-		ListItems:  listItems,
-	}
+	var conditions []PolicyCondition
 
-	conditions := []PolicyCondition{cond}
+	if !skipThisLink {
+		cond := PolicyCondition{
+			Field:      field,
+			Operator:   opName,
+			Value:      operatorValue,
+			Negate:     rule.Operator.Negated,
+			MultiMatch: hasAction(rule.Actions, "multiMatch"),
+			Transforms: transforms,
+			ListItems:  listItems,
+		}
+		conditions = append(conditions, cond)
+	}
 
 	// Recurse for deeper chains
 	if rule.Chain != nil {
@@ -394,6 +445,11 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
+
+// isNumericOp returns true for numeric comparison operators.
+func isNumericOp(op string) bool {
+	return op == "eq" || op == "neq" || op == "gt" || op == "ge" || op == "lt" || op == "le"
+}
 
 // splitPMPatterns splits a @pm pattern string into individual phrases.
 // @pm uses space-separated values.

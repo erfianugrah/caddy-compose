@@ -11,12 +11,15 @@ import { CRS_CATEGORIES, type RuleCategory } from "@/lib/api";
 //
 // Per-service overrides replace the global list (not merge).
 
-/** Group categories into inbound vs outbound for visual separation. */
+/** Group categories into inbound vs outbound for visual separation.
+ *  Custom rules (9100) are inbound request-phase rules, not outbound.
+ *  Outbound categories are response-phase CRS rules (950-956). */
+const OUTBOUND_PREFIXES = new Set(["950", "951", "952", "953", "954", "955", "956"]);
 const INBOUND_CATEGORIES = CRS_CATEGORIES.filter(
-  (c) => parseInt(c.prefix) < 950 && c.prefix !== "9100",
+  (c) => !OUTBOUND_PREFIXES.has(c.prefix),
 );
 const OUTBOUND_CATEGORIES = CRS_CATEGORIES.filter(
-  (c) => parseInt(c.prefix) >= 950,
+  (c) => OUTBOUND_PREFIXES.has(c.prefix),
 );
 
 interface CategoryTogglesProps {

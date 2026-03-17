@@ -393,3 +393,194 @@ SecRule REQUEST_URI "@rx /target" "t:none"`
 		t.Error("chain condition should have MultiMatch=false (not in its actions)")
 	}
 }
+
+// --- Numeric operator tests ---
+
+func TestConvertNumericEqZero_PresenceCheck(t *testing.T) {
+	// CRS: &REQUEST_HEADERS:Host @eq 0 → "host is empty" (header missing)
+	// Transformed to: field=host, operator=eq, value="" (empty string check)
+	input := `SecRule &REQUEST_HEADERS:Host "@eq 0" "id:920280,phase:1,block,msg:'Request missing a Host header',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	if pr.ID != "920280" {
+		t.Errorf("ID: got %q", pr.ID)
+	}
+	// &REQUEST_HEADERS:Host → scalar "host" field (via headerShortcuts)
+	if pr.Conditions[0].Field != "host" {
+		t.Errorf("Field: expected 'host', got %q", pr.Conditions[0].Field)
+	}
+	// @eq 0 on scalar → eq "" (empty = missing)
+	if pr.Conditions[0].Operator != "eq" {
+		t.Errorf("Operator: expected 'eq', got %q", pr.Conditions[0].Operator)
+	}
+	if pr.Conditions[0].Value != "" {
+		t.Errorf("Value: expected empty string (presence check), got %q", pr.Conditions[0].Value)
+	}
+}
+
+func TestConvertNumericGtZero_PresenceCheck(t *testing.T) {
+	// CRS: &REQUEST_HEADERS:Content-Type @gt 0 → "Content-Type is present"
+	// Transformed to: field=content_type, operator=neq, value="" (non-empty)
+	input := `SecRule &REQUEST_HEADERS:Content-Type "@gt 0" "id:920730,phase:1,block,msg:'Content-Type header present',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	if pr.Conditions[0].Field != "content_type" {
+		t.Errorf("Field: expected 'content_type', got %q", pr.Conditions[0].Field)
+	}
+	if pr.Conditions[0].Operator != "neq" {
+		t.Errorf("Operator: expected 'neq', got %q", pr.Conditions[0].Operator)
+	}
+	if pr.Conditions[0].Value != "" {
+		t.Errorf("Value: expected empty string, got %q", pr.Conditions[0].Value)
+	}
+}
+
+func TestConvertNumericGtOne_DuplicateCheck_Skipped(t *testing.T) {
+	// CRS: &REQUEST_HEADERS:Content-Length @gt 1 → duplicate header check
+	// This can't be expressed without real count: support → skipped
+	input := `SecRule &REQUEST_HEADERS:Content-Length "@gt 1" "id:920161,phase:1,block,msg:'Multiple Content-Length headers',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 rules (duplicate check not expressible), got %d", len(result))
+	}
+}
+
+func TestConvertCountAggregateField(t *testing.T) {
+	// &ARGS_NAMES (aggregate field) should use count: pseudo-field
+	input := `SecRule &ARGS_NAMES "@gt 255" "id:920300,phase:2,block,msg:'Too many arguments',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	// Aggregate field should keep count: prefix
+	if pr.Conditions[0].Field != "count:all_args_names" {
+		t.Errorf("Field: expected 'count:all_args_names', got %q", pr.Conditions[0].Field)
+	}
+	if pr.Conditions[0].Operator != "gt" {
+		t.Errorf("Operator: expected 'gt', got %q", pr.Conditions[0].Operator)
+	}
+	if pr.Conditions[0].Value != "255" {
+		t.Errorf("Value: expected '255', got %q", pr.Conditions[0].Value)
+	}
+}
+
+func TestConvertWithinLiteralValue(t *testing.T) {
+	// @within with a literal value (not a TX variable reference)
+	input := `SecRule REQUEST_PROTOCOL "!@within HTTP/2 HTTP/2.0 HTTP/3 HTTP/3.0" "id:920180,phase:1,block,msg:'Unsupported protocol',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	if pr.Conditions[0].Operator != "in" {
+		t.Errorf("Operator: expected 'in', got %q", pr.Conditions[0].Operator)
+	}
+	if !pr.Conditions[0].Negate {
+		t.Error("expected Negate=true for !@within")
+	}
+	// Space-separated values should become pipe-separated
+	expected := "HTTP/2|HTTP/2.0|HTTP/3|HTTP/3.0"
+	if pr.Conditions[0].Value != expected {
+		t.Errorf("Value: expected %q, got %q", expected, pr.Conditions[0].Value)
+	}
+}
+
+func TestConvertWithinTXVariable_Skipped(t *testing.T) {
+	// @within with a TX variable reference — should be skipped (not convertible)
+	input := `SecRule REQUEST_METHOD "!@within %{tx.allowed_methods}" "id:911100,phase:1,block,msg:'Method not allowed',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-911-METHOD-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-911-METHOD-ENFORCEMENT.conf")
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 converted rules (TX ref should be skipped), got %d", len(result))
+	}
+}
+
+func TestConvertChainWithTXLink_HeadPreserved(t *testing.T) {
+	// Head condition checks real field, chain link checks TX variable.
+	// Chain link should be dropped but head preserved.
+	input := `SecRule REQUEST_HEADERS:Content-Type "@rx ^application/" \
+	"id:920420,phase:1,block,capture,msg:'Content type check',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1',chain"
+	SecRule TX:content_type "!@within %{tx.allowed_request_content_type}" "t:lowercase"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule (head preserved, TX chain dropped), got %d", len(result))
+	}
+
+	pr := result[0]
+	if pr.ID != "920420" {
+		t.Errorf("ID: got %q", pr.ID)
+	}
+	// Head condition should be present
+	if len(pr.Conditions) != 1 {
+		t.Errorf("expected 1 condition (head only, chain TX link dropped), got %d", len(pr.Conditions))
+	}
+	if pr.Conditions[0].Field != "content_type" {
+		t.Errorf("Field: expected 'content_type', got %q", pr.Conditions[0].Field)
+	}
+}

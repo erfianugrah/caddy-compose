@@ -238,6 +238,9 @@ func validateExclusion(e RuleExclusion) error {
 		if e.DetectParanoiaLevel != 0 && (e.DetectParanoiaLevel < 1 || e.DetectParanoiaLevel > 4) {
 			return fmt.Errorf("detect_paranoia_level must be between 0 and 4, got %d", e.DetectParanoiaLevel)
 		}
+		if e.DetectAction != "" && e.DetectAction != "log_only" {
+			return fmt.Errorf("invalid detect_action %q (must be empty or \"log_only\")", e.DetectAction)
+		}
 	case "rate_limit":
 		// Service is required for rate limit rules.
 		if e.Service == "" {

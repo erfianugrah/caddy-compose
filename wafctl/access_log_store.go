@@ -1191,8 +1191,9 @@ func enrichAccessEvents(rlEvents []RateLimitEvent, rules []RateLimitRule, exclus
 	return events
 }
 
-// parseDetectRulesDetail parses the "id:severity:score,id:severity:score,..."
+// parseDetectRulesDetail parses the "id:severity:score[,id:severity:score,...]"
 // string from the policy engine's detect_rules log field into MatchedRule structs.
+// Format: "920350:WARNING:3" or "920350:WARNING:3:log_only" (4th field = action).
 func parseDetectRulesDetail(detail string) []MatchedRule {
 	parts := strings.Split(detail, ",")
 	var rules []MatchedRule
@@ -1201,14 +1202,15 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		if p == "" {
 			continue
 		}
-		// Format: "920350:WARNING:3" (or legacy "PE-920350:WARNING:3")
-		fields := strings.SplitN(p, ":", 3)
+		// Split into up to 4 fields: id:severity:score[:action]
+		fields := strings.SplitN(p, ":", 4)
 		if len(fields) < 3 {
 			continue
 		}
 		ruleID := fields[0]
 		severity := fields[1]
 		score, _ := strconv.Atoi(fields[2])
+		isLogOnly := len(fields) >= 4 && fields[3] == "log_only"
 		// Strip PE- prefix if present (backward compat with pre-v6 default rules).
 		cleanID := strings.TrimPrefix(ruleID, "PE-")
 		// Try to parse as numeric rule ID for the int field.
@@ -1225,12 +1227,18 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		case "NOTICE":
 			sevNum = 5
 		}
+		tags := []string{"detect", "score:" + strconv.Itoa(score)}
+		msg := cleanID + " (" + severity + ", score " + strconv.Itoa(score) + ")"
+		if isLogOnly {
+			tags = append(tags, "log_only")
+			msg = cleanID + " (" + severity + ", log only)"
+		}
 		rules = append(rules, MatchedRule{
 			ID:       numID,
 			Name:     cleanID,
-			Msg:      cleanID + " (" + severity + ", score " + strconv.Itoa(score) + ")",
+			Msg:      msg,
 			Severity: sevNum,
-			Tags:     []string{"detect", "score:" + strconv.Itoa(score)},
+			Tags:     tags,
 		})
 	}
 	return rules

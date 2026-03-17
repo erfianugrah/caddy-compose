@@ -93,6 +93,19 @@ var headerShortcuts = map[string]string{
 	"Host":           "host",
 }
 
+// multiFields are the aggregate (multi-value) fields that support the
+// count: pseudo-field in the policy engine plugin.
+var multiFields = map[string]bool{
+	"all_args":          true,
+	"all_args_values":   true,
+	"all_args_names":    true,
+	"all_headers":       true,
+	"all_headers_names": true,
+	"all_cookies":       true,
+	"all_cookies_names": true,
+	"request_combined":  true,
+}
+
 // ─── Operator Mapping ──────────────────────────────────────────────
 
 // operatorMap maps SecRule operator names to policy engine operators.
@@ -111,13 +124,21 @@ var operatorMap = map[string]string{
 	"detectXSS":         "detect_xss",
 	"validateByteRange": "validate_byte_range",
 
-	// Numeric / flow control — handled by scoring system, not needed
-	"lt":     "",
-	"le":     "",
-	"gt":     "",
-	"ge":     "",
-	"eq":     "",
-	"within": "",
+	// Numeric comparison — supported by the policy engine plugin (gt, ge, lt, le
+	// are valid on any field, eq is valid per-field). Many CRS rules using these
+	// operate on TX variables (flow control) and are filtered by the TX-only skip,
+	// but others check real request fields (content-length, header counts, etc.).
+	"lt": "lt",
+	"le": "le",
+	"gt": "gt",
+	"ge": "ge",
+	"eq": "eq",
+
+	// Set membership — CRS @within checks if value appears in a space-delimited
+	// list. Most CRS @within rules reference TX variables (allowed_methods, etc.)
+	// which are filtered by the TX-only skip. The few with literal values are
+	// converted to "in" with pipe-delimited value.
+	"within": "in",
 
 	// Unconditional — used by SecAction
 	"unconditionalMatch": "",
@@ -200,9 +221,37 @@ func mapVariablesToConditions(vars []Variable, op Operator) (fields []string, ex
 			continue
 		}
 
-		// Skip count prefix variables — these are for CRS internal checks
+		// Count prefix (&VARIABLE) — CRS uses & to count variable occurrences.
+		// For aggregate fields the plugin supports count: pseudo-fields.
+		// For named headers (&REQUEST_HEADERS:Name), we map to the scalar field
+		// and let convertRule transform the numeric operator into a presence check
+		// (e.g., @eq 0 → eq "" for "header missing").
 		if v.IsCount {
-			issues = append(issues, "count prefix (&) on "+v.Name)
+			// Named header count → scalar field (presence check handled in convertRule)
+			if v.Name == "REQUEST_HEADERS" && v.Key != "" {
+				if shortcut, ok := headerShortcuts[v.Key]; ok {
+					fieldSet[shortcut] = true
+				} else {
+					fieldSet["header:"+v.Key] = true
+				}
+				continue
+			}
+			// Named multipart header count
+			if v.Name == "MULTIPART_PART_HEADERS" && v.Key != "" {
+				fieldSet["multipart_part_headers"] = true
+				continue
+			}
+			// Aggregate variable count — plugin supports count: on these
+			if field, ok := variableMap[v.Name]; ok && field != "" {
+				if multiFields[field] {
+					fieldSet["count:"+field] = true
+				} else {
+					// Scalar field count → map to scalar (presence check)
+					fieldSet[field] = true
+				}
+				continue
+			}
+			issues = append(issues, "count prefix (&) on unmappable variable "+v.Name)
 			continue
 		}
 
