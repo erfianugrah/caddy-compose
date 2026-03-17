@@ -396,9 +396,10 @@ SecRule REQUEST_URI "@rx /target" "t:none"`
 
 // --- Numeric operator tests ---
 
-func TestConvertNumericEqZero_PresenceCheck(t *testing.T) {
-	// CRS: &REQUEST_HEADERS:Host @eq 0 → "host is empty" (header missing)
-	// Transformed to: field=host, operator=eq, value="" (empty string check)
+func TestConvertNumericCountPrefix_Skipped(t *testing.T) {
+	// CRS: &REQUEST_HEADERS:Host @eq 0 — named header count check.
+	// The plugin only supports count: on aggregate fields, not named headers.
+	// These rules should be skipped until the plugin adds named count support.
 	input := `SecRule &REQUEST_HEADERS:Host "@eq 0" "id:920280,phase:1,block,msg:'Request missing a Host header',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
 
 	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
@@ -409,71 +410,8 @@ func TestConvertNumericEqZero_PresenceCheck(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
 
-	if len(result) != 1 {
-		t.Fatalf("expected 1 converted rule, got %d", len(result))
-	}
-
-	pr := result[0]
-	if pr.ID != "920280" {
-		t.Errorf("ID: got %q", pr.ID)
-	}
-	// &REQUEST_HEADERS:Host → scalar "host" field (via headerShortcuts)
-	if pr.Conditions[0].Field != "host" {
-		t.Errorf("Field: expected 'host', got %q", pr.Conditions[0].Field)
-	}
-	// @eq 0 on scalar → eq "" (empty = missing)
-	if pr.Conditions[0].Operator != "eq" {
-		t.Errorf("Operator: expected 'eq', got %q", pr.Conditions[0].Operator)
-	}
-	if pr.Conditions[0].Value != "" {
-		t.Errorf("Value: expected empty string (presence check), got %q", pr.Conditions[0].Value)
-	}
-}
-
-func TestConvertNumericGtZero_PresenceCheck(t *testing.T) {
-	// CRS: &REQUEST_HEADERS:Content-Type @gt 0 → "Content-Type is present"
-	// Transformed to: field=content_type, operator=neq, value="" (non-empty)
-	input := `SecRule &REQUEST_HEADERS:Content-Type "@gt 0" "id:920730,phase:1,block,msg:'Content-Type header present',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
-
-	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
-	if err != nil {
-		t.Fatalf("ParseFile: %v", err)
-	}
-
-	converter := NewConverter(nil)
-	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
-
-	if len(result) != 1 {
-		t.Fatalf("expected 1 converted rule, got %d", len(result))
-	}
-
-	pr := result[0]
-	if pr.Conditions[0].Field != "content_type" {
-		t.Errorf("Field: expected 'content_type', got %q", pr.Conditions[0].Field)
-	}
-	if pr.Conditions[0].Operator != "neq" {
-		t.Errorf("Operator: expected 'neq', got %q", pr.Conditions[0].Operator)
-	}
-	if pr.Conditions[0].Value != "" {
-		t.Errorf("Value: expected empty string, got %q", pr.Conditions[0].Value)
-	}
-}
-
-func TestConvertNumericGtOne_DuplicateCheck_Skipped(t *testing.T) {
-	// CRS: &REQUEST_HEADERS:Content-Length @gt 1 → duplicate header check
-	// This can't be expressed without real count: support → skipped
-	input := `SecRule &REQUEST_HEADERS:Content-Length "@gt 1" "id:920161,phase:1,block,msg:'Multiple Content-Length headers',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1'"`
-
-	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
-	if err != nil {
-		t.Fatalf("ParseFile: %v", err)
-	}
-
-	converter := NewConverter(nil)
-	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
-
 	if len(result) != 0 {
-		t.Errorf("expected 0 rules (duplicate check not expressible), got %d", len(result))
+		t.Errorf("expected 0 rules (named header count not supported), got %d", len(result))
 	}
 }
 

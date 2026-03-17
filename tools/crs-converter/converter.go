@@ -277,39 +277,6 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		}
 	}
 
-	// Transform numeric header-count checks into presence/absence checks.
-	// CRS uses &REQUEST_HEADERS:Name @eq 0 to check "header missing" and
-	// @gt 0 / @ge 1 to check "header present". Since the count: prefix was
-	// resolved to the scalar field, convert the numeric operator:
-	//   @eq 0  → eq ""  (field is empty/missing)
-	//   !@eq 0 → neq "" (field is present)
-	//   @gt 0  → neq "" (field has at least one value)
-	//   @ge 1  → neq "" (field has at least one value)
-	//   @gt 1  → skip (duplicate detection needs real count support)
-	if isNumericOp(opName) && !strings.HasPrefix(field, "count:") {
-		switch {
-		case opName == "eq" && operatorValue == "0":
-			opName = "eq"
-			operatorValue = ""
-		case opName == "eq" && operatorValue != "0":
-			// @eq N where N>0 on a scalar = skip (can't count)
-			return nil, fmt.Errorf("count check @eq %s on scalar field %s (need count: support)", operatorValue, field)
-		case opName == "gt" && operatorValue == "0":
-			opName = "neq"
-			operatorValue = ""
-		case opName == "ge" && operatorValue == "1":
-			opName = "neq"
-			operatorValue = ""
-		case opName == "gt" && operatorValue == "1":
-			return nil, fmt.Errorf("duplicate header check @gt 1 on %s (need count: support)", field)
-		case (opName == "gt" || opName == "ge") && operatorValue != "0" && operatorValue != "1":
-			return nil, fmt.Errorf("count check @%s %s on scalar field %s (need count: support)", opName, operatorValue, field)
-		default:
-			// lt/le on scalar field — skip
-			return nil, fmt.Errorf("count check @%s %s on scalar field %s (need count: support)", opName, operatorValue, field)
-		}
-	}
-
 	// Build condition. The nested group infrastructure is available in the
 	// plugin for future per-variable evaluation, but for now we keep using
 	// request_combined which already evaluates per-variable via isMulti.

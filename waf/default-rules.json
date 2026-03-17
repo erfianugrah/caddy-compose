@@ -238,12 +238,6 @@
           "field": "method",
           "operator": "regex",
           "value": "^(?:GET|HEAD)$"
-        },
-        {
-          "field": "header:Transfer-Encoding",
-          "operator": "eq",
-          "value": "0",
-          "negate": true
         }
       ],
       "group_op": "and",
@@ -276,16 +270,6 @@
           "field": "method",
           "operator": "eq",
           "value": "POST"
-        },
-        {
-          "field": "content_length",
-          "operator": "eq",
-          "value": "0"
-        },
-        {
-          "field": "header:Transfer-Encoding",
-          "operator": "eq",
-          "value": "0"
         }
       ],
       "group_op": "and",
@@ -329,38 +313,6 @@
       "enabled": true,
       "priority": 400,
       "description": "POST requests should include a Content-Type header to describe the body format. CRS 920180."
-    },
-    {
-      "id": "920181",
-      "name": "Content-Length and Transfer-Encoding headers present",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Transfer-Encoding",
-          "operator": "eq",
-          "negate": true
-        },
-        {
-          "field": "content_length",
-          "operator": "eq",
-          "value": "0",
-          "negate": true
-        }
-      ],
-      "group_op": "and",
-      "severity": "WARNING",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Content-Length and Transfer-Encoding headers present",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920190",
@@ -835,46 +787,6 @@
     },
     {
       "id": "920300",
-      "name": "Request Missing an Accept Header",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Accept",
-          "operator": "eq"
-        },
-        {
-          "field": "method",
-          "operator": "regex",
-          "value": "^(?:OPTIONS|CONNECT)$",
-          "negate": true
-        },
-        {
-          "field": "user_agent",
-          "operator": "phrase_match",
-          "negate": true,
-          "list_items": [
-            "AppleWebKit",
-            "Android"
-          ]
-        }
-      ],
-      "group_op": "and",
-      "severity": "NOTICE",
-      "paranoia_level": 3,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Request Missing an Accept Header",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
-      "id": "920300",
       "name": "Max number of request arguments exceeded",
       "type": "detect",
       "conditions": [
@@ -942,6 +854,38 @@
     },
     {
       "id": "920311",
+      "name": "Request Has an Empty Accept Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Accept",
+          "operator": "regex",
+          "value": "^$"
+        },
+        {
+          "field": "method",
+          "operator": "regex",
+          "value": "^OPTIONS$",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request Has an Empty Accept Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920311",
       "name": "Argument value too long",
       "type": "detect",
       "conditions": [
@@ -965,68 +909,6 @@
       "enabled": true,
       "priority": 400,
       "description": "Excessively long parameter values may indicate buffer overflow or payload injection. Default limit: 400 characters. CRS 920311."
-    },
-    {
-      "id": "920311",
-      "name": "Request Has an Empty Accept Header",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Accept",
-          "operator": "regex",
-          "value": "^$"
-        },
-        {
-          "field": "method",
-          "operator": "regex",
-          "value": "^OPTIONS$",
-          "negate": true
-        },
-        {
-          "field": "user_agent",
-          "operator": "eq",
-          "value": "0"
-        }
-      ],
-      "group_op": "and",
-      "severity": "NOTICE",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Request Has an Empty Accept Header",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
-      "id": "920320",
-      "name": "Missing User Agent Header",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "user_agent",
-          "operator": "eq"
-        }
-      ],
-      "group_op": "and",
-      "severity": "NOTICE",
-      "paranoia_level": 2,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Missing User Agent Header",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920330",
@@ -1064,11 +946,6 @@
           "operator": "regex",
           "value": "^0$",
           "negate": true
-        },
-        {
-          "field": "content_type",
-          "operator": "eq",
-          "value": "0"
         }
       ],
       "group_op": "and",
@@ -1446,35 +1323,6 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
-      "id": "920490",
-      "name": "Request header x-up-devcap-post-charset detected in combination with prefix \\'UP\\' to User-Agent",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:x-up-devcap-post-charset",
-          "operator": "neq"
-        },
-        {
-          "field": "user_agent",
-          "operator": "regex",
-          "value": "^(?i)up"
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 3,
-      "tags": [
-        "language-aspnet",
-        "platform-windows",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Request header x-up-devcap-post-charset detected in combination with prefix \\'UP\\' to User-Agent",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
       "id": "920500",
       "name": "Attempt to access a backup or working file",
       "type": "detect",
@@ -1504,34 +1352,32 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
-      "id": "920510",
-      "name": "Invalid Cache-Control request header",
+      "id": "920520",
+      "name": "Accept-Encoding header exceeded sensible length",
       "type": "detect",
       "conditions": [
         {
-          "field": "header:Cache-Control",
-          "operator": "neq"
-        },
-        {
-          "field": "header:Cache-Control",
-          "operator": "regex",
-          "value": "^(?:(?:max-age=[0-9]+|min-fresh=[0-9]+|no-cache|no-store|no-transform|only-if-cached|max-stale(?:=[0-9]+)?)(?:\\s*\\,\\s*|$)){1,7}$",
-          "negate": true
+          "field": "header:Accept-Encoding",
+          "operator": "gt",
+          "value": "100",
+          "transforms": [
+            "lowercase",
+            "length"
+          ]
         }
       ],
       "group_op": "and",
       "severity": "CRITICAL",
-      "paranoia_level": 3,
+      "paranoia_level": 1,
       "tags": [
         "application-multi",
         "language-multi",
         "platform-multi",
-        "attack-protocol",
-        "header-allowlist"
+        "attack-protocol"
       ],
       "enabled": true,
       "priority": 400,
-      "description": "Invalid Cache-Control request header",
+      "description": "Accept-Encoding header exceeded sensible length",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -1647,31 +1493,6 @@
       "enabled": true,
       "priority": 400,
       "description": "Raw (unencoded) fragment in request URI",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
-      "id": "920660",
-      "name": "Obsolete Request-Range header detected",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Request-Range",
-          "operator": "neq"
-        }
-      ],
-      "group_op": "and",
-      "severity": "WARNING",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Obsolete Request-Range header detected",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -2009,31 +1830,6 @@
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
     },
     {
-      "id": "921230",
-      "name": "HTTP Range Header detected",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Range",
-          "operator": "neq"
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 3,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "HTTP Range Header detected",
-      "category": "REQUEST-921-PROTOCOL-ATTACK",
-      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
-    },
-    {
       "id": "921240",
       "name": "mod_proxy attack attempt detected",
       "type": "detect",
@@ -2060,6 +1856,34 @@
       "enabled": true,
       "priority": 400,
       "description": "mod_proxy attack attempt detected",
+      "category": "REQUEST-921-PROTOCOL-ATTACK",
+      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+    },
+    {
+      "id": "921250",
+      "name": "Old Cookies V1 usage attempt detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_cookies",
+          "operator": "eq",
+          "value": "1",
+          "transforms": [
+            "lowercase"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Old Cookies V1 usage attempt detected",
       "category": "REQUEST-921-PROTOCOL-ATTACK",
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
     },
@@ -2120,32 +1944,6 @@
       "description": "Content-Type header: Dangerous content type outside the mime type declaration",
       "category": "REQUEST-921-PROTOCOL-ATTACK",
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
-    },
-    {
-      "id": "922100",
-      "name": "Multipart content type global _charset_ definition is not allowed by policy",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "multipart_part_headers",
-          "operator": "eq",
-          "negate": true
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-multipart-header"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Multipart content type global _charset_ definition is not allowed by policy",
-      "category": "REQUEST-922-MULTIPART-ATTACK",
-      "crs_file": "REQUEST-922-MULTIPART-ATTACK.conf"
     },
     {
       "id": "922120",
@@ -6469,7 +6267,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "referer",
+          "field": "user_agent",
           "operator": "phrase_match",
           "transforms": [
             "cmdLine",
@@ -7276,87 +7074,6 @@
     },
     {
       "id": "932180",
-      "name": "Restricted file upload attempt",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "all_args",
-          "operator": "phrase_match",
-          "transforms": [
-            "lowercase"
-          ],
-          "list_items": [
-            ".php",
-            ".phtml",
-            ".php3",
-            ".php4",
-            ".php5",
-            ".phps",
-            ".phar",
-            ".jsp",
-            ".jspx",
-            ".jsw",
-            ".jsv",
-            ".jspf",
-            ".java",
-            ".asp",
-            ".aspx",
-            ".asa",
-            ".asax",
-            ".ascx",
-            ".ashx",
-            ".asmx",
-            ".cer",
-            ".shtml",
-            ".exe",
-            ".com",
-            ".bat",
-            ".cmd",
-            ".vbs",
-            ".vbe",
-            ".js",
-            ".wsf",
-            ".wsh",
-            ".ps1",
-            ".psm1",
-            ".psd1",
-            ".sh",
-            ".bash",
-            ".csh",
-            ".ksh",
-            ".zsh",
-            ".py",
-            ".pyc",
-            ".pyo",
-            ".pl",
-            ".pm",
-            ".cgi",
-            ".rb",
-            ".war",
-            ".ear",
-            ".jar",
-            ".htaccess",
-            ".htpasswd",
-            ".swp",
-            ".bak",
-            ".config"
-          ]
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 1,
-      "tags": [
-        "attack-rce",
-        "932xxx",
-        "file-upload"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Detects uploads of files with dangerous extensions that could enable code execution on the server. CRS 932180."
-    },
-    {
-      "id": "932180",
       "name": "Restricted File Upload Attempt",
       "type": "detect",
       "conditions": [
@@ -7799,6 +7516,87 @@
       "crs_file": "REQUEST-932-APPLICATION-ATTACK-RCE.conf"
     },
     {
+      "id": "932180",
+      "name": "Restricted file upload attempt",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args",
+          "operator": "phrase_match",
+          "transforms": [
+            "lowercase"
+          ],
+          "list_items": [
+            ".php",
+            ".phtml",
+            ".php3",
+            ".php4",
+            ".php5",
+            ".phps",
+            ".phar",
+            ".jsp",
+            ".jspx",
+            ".jsw",
+            ".jsv",
+            ".jspf",
+            ".java",
+            ".asp",
+            ".aspx",
+            ".asa",
+            ".asax",
+            ".ascx",
+            ".ashx",
+            ".asmx",
+            ".cer",
+            ".shtml",
+            ".exe",
+            ".com",
+            ".bat",
+            ".cmd",
+            ".vbs",
+            ".vbe",
+            ".js",
+            ".wsf",
+            ".wsh",
+            ".ps1",
+            ".psm1",
+            ".psd1",
+            ".sh",
+            ".bash",
+            ".csh",
+            ".ksh",
+            ".zsh",
+            ".py",
+            ".pyc",
+            ".pyo",
+            ".pl",
+            ".pm",
+            ".cgi",
+            ".rb",
+            ".war",
+            ".ear",
+            ".jar",
+            ".htaccess",
+            ".htpasswd",
+            ".swp",
+            ".bak",
+            ".config"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "attack-rce",
+        "932xxx",
+        "file-upload"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Detects uploads of files with dangerous extensions that could enable code execution on the server. CRS 932180."
+    },
+    {
       "id": "932190",
       "name": "Remote Command Execution: Wildcard bypass technique attempt",
       "type": "detect",
@@ -8140,7 +7938,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "user_agent",
+          "field": "referer",
           "operator": "regex",
           "value": "(?i)\\b(?:(?:7z[arx]?|(?:GE|POS)T|y(?:e(?:s|lp)|um|arn)|HEAD)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|a(?:a-[^\\s\\x0b]{1,10}\\b|(?:b|t(?:obm)?|w[ks]|l(?:ias|pine)|xel)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|p(?:t(?:(?:itude)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-get)|parmor_[^\\s\\x0b]{1,10}\\b)|r(?:(?:p|ch)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|j(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-register|disp)|ia2c)|s(?:h?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|cii(?:-xfr|85)|pell)|dd(?:group|user)|getty|nsible|u(?:ditctl|repot|search))|b(?:z(?:(?:z|c(?:at|mp))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|diff|e(?:grep|xe[\\s\\x0b\u0026\\),\u003c\u003e\\|])|f?grep|ip2(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|recover)|less|more)|a(?:s(?:e(?:32|64|n(?:ame[\\s\\x0b\u0026\\),\u003c\u003e\\|]|c))|h[\\s\\x0b\u0026\\),\u003c\u003e\\|])|tch[\\s\\x0b\u0026\\),\u003c\u003e\\|])|lkid[\\s\\x0b\u0026\\),\u003c\u003e\\|]|pftrace|r(?:eaksw|(?:idge|wap)[\\s\\x0b\u0026\\),\u003c\u003e\\|])|sd(?:cat|iff|tar)|u(?:iltin|n(?:dler[\\s\\x0b\u0026\\),\u003c\u003e\\|]|zip2)|s(?:ctl|ybox))|y(?:ebug|obu[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|c(?:[89]9(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-gcc)|(?:a(?:t|ncel|psh)|c|mp)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|p(?:(?:an|io)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|ulimit)|s(?:(?:h|cli)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|plit|vtool)|u(?:t[\\s\\x0b\u0026\\),\u003c\u003e\\|]|psfilter)|ertbot|h(?:(?:(?:att|di)r|mod|o(?:om|wn)|root|sh)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|e(?:ck_(?:by_ssh|cups|log|memory|raid|s(?:sl_cert|tatusfile))|f[\\s\\x0b\u0026\\),\\-\u003c\u003e\\|])|(?:flag|pas)s|g(?:passwd|rp[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|lang(?:\\+\\+|[\\s\\x0b\u0026\\),\u003c\u003e\\|])|o(?:bc(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|run)|(?:lumn|m(?:m(?:and)?|p(?:oser|ress)))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|proc|w(?:say|think))|r(?:ash[\\s\\x0b\u0026\\),\u003c\u003e\\|]|on(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|tab)))|d(?:(?:[dfu]|i(?:(?:alo)?g|r|ff)|a(?:sh|te)|vips)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|nf[\\s\\x0b\u0026\\),\u003c\u003e\\|]?|hclient|m(?:esg[\\s\\x0b\u0026\\),\u003c\u003e\\|]|idecode|setup)|o(?:(?:as|ne)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|cker[\\s\\x0b\u0026\\),\\-\u003c\u003e\\|]|sbox)|pkg[\\s\\x0b\u0026\\),\\-\u003c\u003e\\|])|e(?:(?:[bd]|qn|s(?:h|ac)?|cho|fax|grep|macs|val)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|n(?:v(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-update)|d(?:if|sw)[\\s\\x0b\u0026\\),\u003c\u003e\\|])|x(?:(?:ec|p(?:and|(?:ec|or)t|r))?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|iftool)|2fsck|asy_install)|f(?:(?:c|g(?:rep)?|mt|etch|lock|unction)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|i(?:(?:n(?:d|ger)|sh)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|le(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|test))|tp(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|stats|who)|acter|d(?:(?:find|isk)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|u?mount)|o(?:ld[\\s\\x0b\u0026\\),\u003c\u003e\\|]|reach)|ping[\\s\\x0b\u0026\\),6\u003c\u003e\\|])|g(?:c(?:c[^\\s\\x0b]{1,10}\\b|ore[\\s\\x0b\u0026\\),\u003c\u003e\\|])|(?:db|i(?:t|mp|nsh)|o|pg|awk|z(?:cat|exe|ip))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|e(?:m[\\s\\x0b\u0026\\),\u003c\u003e\\|]|ni(?:e[\\s\\x0b\u0026\\),\u003c\u003e\\|]|soimage)|t(?:cap|facl[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|hc(?:-?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|i[\\s\\x0b\u0026\\),\\-\u003c\u003e\\|])|r(?:(?:c(?:at)?|ep)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|oupmod)|tester|unzip)|h(?:(?:d|up|ash|i(?:ghlight|story))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|e(?:ad[\\s\\x0b\u0026\\),\u003c\u003e\\|]|xdump)|ost(?:id|name)|ping3|t(?:digest|op[\\s\\x0b\u0026\\),\u003c\u003e\\|]|passwd))|i(?:(?:d|rb|conv|nstall)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|p(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|6?tables|config|p(?:eveprinter|find|tool))|f(?:config|top[\\s\\x0b\u0026\\),\u003c\u003e\\|])|onice|spell)|j(?:(?:js|q|ava|exec)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|o(?:(?:bs|in)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|urnalctl)|runscript)|k(?:s(?:h[\\s\\x0b\u0026\\),\u003c\u003e\\|]|shell)|ill(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|all)|nife[\\s\\x0b\u0026\\),\u003c\u003e\\|])|l(?:d(?:d?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|config)|(?:[np]|ynx)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|s(?:(?:-F|cpu|hw|mod|of|pci|usb)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|b_release)|ua(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|(?:la)?tex)|z(?:4(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|c(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|at))|(?:c(?:at|mp))?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|diff|[ef]?grep|less|m(?:a(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|dec|info)|ore))|a(?:st(?:(?:comm)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|log(?:in)?)|tex[\\s\\x0b\u0026\\),\u003c\u003e\\|])|ess(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|echo|(?:fil|pip)e)|ftp(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|get)|o(?:(?:ca(?:l|te)|ok)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|g(?:inctl|(?:nam|sav)e)|setup)|trace|wp-(?:d(?:ownload|ump)|mirror|request))|m(?:(?:a(?:n|il[qx]?|ke|wk)|tr|v|utt)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|k(?:(?:dir|nod)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|fifo|temp)|locate|o(?:(?:re|unt)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|squitto)|sg(?:attrib|c(?:at|onv)|filter|merge|uniq)|ysql(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|admin|dump(?:slow)?|hotcopy|show))|n(?:c(?:(?:at)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|\\.(?:openbsd|traditional))|e(?:t(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|(?:c|st)at|kit-ftp|plan)|ofetch)|(?:l|m(?:ap)?|p(?:m|ing)|a(?:no|sm|wk)|ice|o(?:de|hup)|roff)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|s(?:enter|lookup|tat[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|o(?:(?:d|ctave)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|nintr|p(?:en(?:ssl|v(?:pn|t))|kg[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|p(?:a(?:(?:x|cman|rted|tch)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|s(?:swd|te[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|d(?:b(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|2mb|3[\\s\\x0b\u0026\\),\\.\u003c\u003e\\|])|f(?:la)?tex|ksh[\\s\\x0b\u0026\\),\u003c\u003e\\|])|(?:f(?:tp)?|g(?:rep)?|(?:w|op)d|xz|u(?:ppet|shd))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|hp(?:[57]?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-cgi)|i(?:(?:co?|gz|ng6?)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|p(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|[^\\s\\x0b]{1,10}\\b)|dstat)|k(?:g(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|_?info)|exec|ill[\\s\\x0b\u0026\\),\u003c\u003e\\|])|r(?:y?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|int(?:env|f[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|s(?:(?:ed|ql)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|ftp)|t(?:x[\\s\\x0b\u0026\\),\u003c\u003e\\|]|ar(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|diff|grep))|er(?:(?:f|ms)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|l(?:5?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|sh))|y(?:3?versions|thon[23]))|r(?:(?:a(?:r|k[eu])|cp?|bash|nano|oute|vi(?:ew|m))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|e(?:(?:d(?:carpet)?|v|boot|name|p(?:eat|lace))[\\s\\x0b\u0026\\),\u003c\u003e\\|]|a(?:delf|lpath)|stic)|m(?:(?:dir)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|t(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-(?:dump|tar))|user)|pm(?:(?:db)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|(?:quer|verif)y)|l(?:ogin|wrap)|sync(?:-ssl|[\\s\\x0b\u0026\\),\u003c\u003e\\|])|u(?:by[^\\s\\x0b]{1,10}\\b|n(?:-(?:mailcap|parts)|c[\\s\\x0b\u0026\\),\u003c\u003e\\|])))|s(?:(?:c(?:p|hed|r(?:een|ipt))|g|ash|diff|ftp|l(?:eep|sh)|plit)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|e(?:(?:d|ndmail|rvice)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|t(?:(?:facl)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|arch|cap|env|sid))|h(?:(?:u(?:f|tdown))?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|\\.distrib)|s(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|h(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|-(?:a(?:dd|gent)|copy-id|key(?:ge|sca)n)|pass))|u(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|do(?:-rs|[\\s\\x0b\u0026\\),\u003c\u003e_\\|]|edit|replay))|vn(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|a(?:dmin|uthz)|bench|dumpfilter|fsfs|look|mucc|rdump|s(?:erve|ync)|version)|mbclient|o(?:(?:(?:ca|r)t|urce)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|elim)|qlite3|t(?:art-stop-daemon|dbuf|r(?:ace|ings[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|ys(?:ctl|tem(?:ctl|d-resolve)))|t(?:a(?:(?:[cr]|ilf?)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|sk(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|set))|(?:bl|o(?:p|uch)|ftp|mux)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|e(?:[ex][\\s\\x0b\u0026\\),\u003c\u003e\\|]|lnet)|i(?:c[\\s\\x0b\u0026\\),\u003c\u003e\\|]|me(?:(?:out)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|datectl))|c(?:l?sh[\\s\\x0b\u0026\\),\u003c\u003e\\|]|p(?:dump|ing|traceroute))|r(?:a(?:ceroute6?|p[\\s\\x0b\u0026\\),\u003c\u003e\\|])|off[\\s\\x0b\u0026\\),\u003c\u003e\\|])|shark)|u(?:l(?:imit)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|n(?:(?:ame|compress|iq|rar|s(?:et|hare)|xz)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|expand|l(?:ink[\\s\\x0b\u0026\\),\u003c\u003e\\|]|z(?:4[\\s\\x0b\u0026\\),\u003c\u003e\\|]|ma))|pigz|z(?:ip[\\s\\x0b\u0026\\),\u003c\u003e\\|]|std))|p(?:2date[\\s\\x0b\u0026\\),\u003c\u003e\\|]|date-alternatives)|ser(?:(?:ad|mo)d|del)|u(?:de|en)code)|v(?:i(?:(?:[ep]w|gr|rsh)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|m(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|diff)|sudo(?:-rs)?)|algrind|olatility[\\s\\x0b\u0026\\),\u003c\u003e\\|])|w(?:(?:c|a(?:ll|tch))?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|h(?:o(?:(?:is)?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|ami)?|iptail[\\s\\x0b\u0026\\),\u003c\u003e\\|])|i(?:reshark|sh[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|x(?:(?:(?:x|pa)d|args|term)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|z(?:(?:c(?:at|mp))?[\\s\\x0b\u0026\\),\u003c\u003e\\|]|d(?:ec[\\s\\x0b\u0026\\),\u003c\u003e\\|]|iff)|[ef]?grep|less|more)|e(?:latex|tex[\\s\\x0b\u0026\\),\u003c\u003e\\|])|mo(?:dmap|re[\\s\\x0b\u0026\\),\u003c\u003e\\|]))|z(?:ip(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|c(?:loak|mp)|details|grep|info|(?:merg|not)e|split|tool)|s(?:h[\\s\\x0b\u0026\\),\u003c\u003e\\|]|oelim|td(?:[\\s\\x0b\u0026\\),\u003c\u003e\\|]|(?:ca|m)t|grep|less))|athura|(?:c(?:at|mp)|diff|grep|less|run)[\\s\\x0b\u0026\\),\u003c\u003e\\|]|[ef]grep|mo(?:dload|re[\\s\\x0b\u0026\\),\u003c\u003e\\|])|ypper))(?:\\b|[^0-9A-Z_a-z])",
           "transforms": [
@@ -8790,7 +8588,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X.Filename",
+          "field": "header:X-File-Name",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\.*$",
           "transforms": [
@@ -8819,7 +8617,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X.Filename",
+          "field": "files",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\..*$",
           "transforms": [
@@ -9579,7 +9377,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X-File-Name",
+          "field": "files",
           "operator": "regex",
           "value": "(?:^|[/\\x5c])sess_[,\\-0-9a-z]{20,256}$",
           "transforms": [
@@ -13029,11 +12827,6 @@
           "transforms": [
             "lowercase"
           ]
-        },
-        {
-          "field": "referer",
-          "operator": "eq",
-          "value": "0"
         }
       ],
       "group_op": "and",
@@ -13288,7 +13081,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "files",
+          "field": "header:X.Filename",
           "operator": "regex",
           "value": ".*\\.(?:jsp|jspx)\\.*$",
           "transforms": [
@@ -17544,5 +17337,5 @@
   ],
   "version": 7,
   "crs_version": "4.24.1",
-  "generated": "2026-03-17T08:34:10Z"
+  "generated": "2026-03-17T11:37:10Z"
 }

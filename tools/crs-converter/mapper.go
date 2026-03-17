@@ -222,36 +222,22 @@ func mapVariablesToConditions(vars []Variable, op Operator) (fields []string, ex
 		}
 
 		// Count prefix (&VARIABLE) — CRS uses & to count variable occurrences.
-		// For aggregate fields the plugin supports count: pseudo-fields.
-		// For named headers (&REQUEST_HEADERS:Name), we map to the scalar field
-		// and let convertRule transform the numeric operator into a presence check
-		// (e.g., @eq 0 → eq "" for "header missing").
+		// The plugin supports count: on aggregate fields only (count:all_headers,
+		// count:all_args, etc.). Named header counts like &REQUEST_HEADERS:Host
+		// (count a specific header) need per-variable count support in the plugin;
+		// skip them to avoid false positives from counting ALL headers.
 		if v.IsCount {
-			// Named header count → scalar field (presence check handled in convertRule)
-			if v.Name == "REQUEST_HEADERS" && v.Key != "" {
-				if shortcut, ok := headerShortcuts[v.Key]; ok {
-					fieldSet[shortcut] = true
-				} else {
-					fieldSet["header:"+v.Key] = true
-				}
-				continue
-			}
-			// Named multipart header count
-			if v.Name == "MULTIPART_PART_HEADERS" && v.Key != "" {
-				fieldSet["multipart_part_headers"] = true
+			// Named variable count (&REQUEST_HEADERS:Host) — skip, needs per-name count
+			if v.Key != "" {
+				issues = append(issues, "count prefix (&) on named "+v.Name+":"+v.Key)
 				continue
 			}
 			// Aggregate variable count — plugin supports count: on these
-			if field, ok := variableMap[v.Name]; ok && field != "" {
-				if multiFields[field] {
-					fieldSet["count:"+field] = true
-				} else {
-					// Scalar field count → map to scalar (presence check)
-					fieldSet[field] = true
-				}
+			if field, ok := variableMap[v.Name]; ok && field != "" && multiFields[field] {
+				fieldSet["count:"+field] = true
 				continue
 			}
-			issues = append(issues, "count prefix (&) on unmappable variable "+v.Name)
+			issues = append(issues, "count prefix (&) on "+v.Name)
 			continue
 		}
 
