@@ -12,6 +12,21 @@ import (
 func TestServiceReadiness(t *testing.T) {
 	waitForService(t, "Caddy admin", caddyAdmin+"/config/", 60*time.Second)
 	waitForService(t, "wafctl API", wafctlURL+"/api/health", 60*time.Second)
+
+	// Set a high inbound threshold before the httpbun check (which goes through
+	// Caddy's policy engine). With 346 CRS rules, legitimate requests accumulate
+	// ~20-30 anomaly points from header presence checks. A threshold of 60
+	// prevents false-positive blocks on e2e test traffic.
+	httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"paranoia_level":     1,
+			"inbound_threshold":  60,
+			"outbound_threshold": 15,
+		},
+		"services": map[string]any{},
+	})
+	httpPostDeploy(t, wafctlURL+"/api/deploy", struct{}{})
+
 	waitForService(t, "httpbun upstream", caddyURL+"/get", 60*time.Second)
 }
 
