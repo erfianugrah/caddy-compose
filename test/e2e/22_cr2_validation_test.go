@@ -189,7 +189,6 @@ func TestBackupRestorePartialFailureWarning(t *testing.T) {
 
 // TestBlocklistCheckInvalidIP verifies that the check endpoint rejects invalid IPs.
 func TestBlocklistCheckInvalidIP(t *testing.T) {
-	t.Parallel()
 
 	tests := []struct {
 		name string

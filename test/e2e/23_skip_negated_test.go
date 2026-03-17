@@ -54,7 +54,6 @@ func TestSkipActionCRUD(t *testing.T) {
 // TestSkipActionValidation verifies that skip rules without skip_targets
 // are rejected, and that invalid skip_targets are caught.
 func TestSkipActionValidation(t *testing.T) {
-	t.Parallel()
 
 	tests := []struct {
 		name    string
@@ -230,7 +229,6 @@ func TestNegatedOperatorBlockRule(t *testing.T) {
 // TestNegatedOperatorValidation verifies that the API accepts all 6 negated
 // operators via create/validate.
 func TestNegatedOperatorValidation(t *testing.T) {
-	t.Parallel()
 
 	operators := []struct {
 		op    string

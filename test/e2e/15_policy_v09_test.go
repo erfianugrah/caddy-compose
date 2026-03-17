@@ -486,11 +486,9 @@ func TestPolicyEngineCountField(t *testing.T) {
 }
 
 func TestV090ValidationEndpoints(t *testing.T) {
-	t.Parallel()
 	// Test that wafctl validation correctly accepts and rejects v0.9.0 features.
 
 	t.Run("aggregate field accepted for policy engine type", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-aggregate",
 			"type":    "block",
@@ -506,7 +504,6 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("phrase_match without list_items rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-pm-no-items",
 			"type":    "block",
@@ -520,7 +517,6 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("count: with non-aggregate field rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-count-bad",
 			"type":    "block",
@@ -534,7 +530,6 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("count: with non-numeric operator rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-count-op",
 			"type":    "block",
@@ -548,7 +543,6 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("numeric operator with non-numeric value rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-numeric-bad",
 			"type":    "block",
@@ -562,7 +556,6 @@ func TestV090ValidationEndpoints(t *testing.T) {
 	})
 
 	t.Run("numeric operator on named field accepted", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-val-numeric-named",
 			"type":    "block",
@@ -580,11 +573,9 @@ func TestV090ValidationEndpoints(t *testing.T) {
 }
 
 func TestPolicyEngineTransformValidation(t *testing.T) {
-	t.Parallel()
 	// Test that wafctl rejects unknown transform names via the API.
 
 	t.Run("invalid transform name rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-bad-transform",
 			"type":    "block",
@@ -607,7 +598,6 @@ func TestPolicyEngineTransformValidation(t *testing.T) {
 	})
 
 	t.Run("valid transforms accepted", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":    "e2e-valid-transforms",
 			"type":    "block",

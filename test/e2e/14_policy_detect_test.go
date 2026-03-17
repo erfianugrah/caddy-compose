@@ -61,10 +61,8 @@ func TestPolicyEngineDetectCRUD(t *testing.T) {
 }
 
 func TestPolicyEngineDetectValidation(t *testing.T) {
-	t.Parallel()
 	// Missing severity — should fail.
 	t.Run("missing severity rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":       "e2e-bad-detect",
 			"type":       "detect",
@@ -82,7 +80,6 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 
 	// Invalid severity — should fail.
 	t.Run("invalid severity rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":       "e2e-bad-detect2",
 			"type":       "detect",
@@ -100,7 +97,6 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 
 	// Invalid paranoia level — should fail.
 	t.Run("invalid PL rejected", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":                  "e2e-bad-detect3",
 			"type":                  "detect",
@@ -119,7 +115,6 @@ func TestPolicyEngineDetectValidation(t *testing.T) {
 
 	// Empty value with eq operator — should succeed (matching missing headers).
 	t.Run("empty value with eq allowed", func(t *testing.T) {
-		t.Parallel()
 		payload := map[string]any{
 			"name":       "e2e-detect-empty-val",
 			"type":       "detect",
@@ -493,7 +488,6 @@ func TestPolicyEngineDetectWafConfig(t *testing.T) {
 }
 
 func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
-	t.Parallel()
 	// v4 migration is now a no-op and v5 removes previously-seeded heuristic
 	// detect rules. These rules now ship in default-rules.json instead.
 	// Verify the user store has zero seeded detect rules.
@@ -529,7 +523,6 @@ func TestPolicyEngineDetectMigrationSeedRules(t *testing.T) {
 }
 
 func TestDefaultRulesAPI(t *testing.T) {
-	t.Parallel()
 	// Verify the default rules API returns all baked-in rules.
 	// v7: 255 rules (233 auto-converted CRS 4.24.1 + 12 hand-ported CRS + 10 custom 9100xxx)
 	resp, body := httpGet(t, wafctlURL+"/api/default-rules")
