@@ -438,13 +438,31 @@ func logBody(t *testing.T, label string, body []byte) {
 // ensureDefaultConfig sets the WAF config to known defaults (PL2, thresholds 15/15).
 // Use this before tests that depend on CRS scoring to avoid config poisoning from
 // parallel tests that set high thresholds (tuning mode).
+// ensureDefaultConfig sets WAF to observation-only mode (threshold 0 = no blocking).
+// All CRS categories disabled so custom detect rules are tested in isolation.
 func ensureDefaultConfig(t *testing.T) {
 	t.Helper()
 	httpPut(t, wafctlURL+"/api/config", map[string]any{
 		"defaults": map[string]any{
-			"paranoia_level":     2,
-			"inbound_threshold":  60,
-			"outbound_threshold": 15,
+			"paranoia_level":      1,
+			"inbound_threshold":   0,
+			"outbound_threshold":  0,
+			"disabled_categories": []string{"913", "920", "921", "922", "930", "931", "932", "933", "934", "941", "942", "943", "944", "9100"},
+		},
+		"services": map[string]any{},
+	})
+}
+
+// ensureDetectConfig sets WAF to blocking mode with CRS categories disabled.
+// Use this for tests that create custom detect rules and need a specific threshold.
+func ensureDetectConfig(t *testing.T, threshold int) {
+	t.Helper()
+	httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"paranoia_level":      1,
+			"inbound_threshold":   threshold,
+			"outbound_threshold":  0,
+			"disabled_categories": []string{"913", "920", "921", "922", "930", "931", "932", "933", "934", "941", "942", "943", "944", "9100"},
 		},
 		"services": map[string]any{},
 	})
@@ -748,5 +766,36 @@ func cleanupByName(t *testing.T, listURL, name string) {
 				cleanup(t, listURL+"/"+id)
 			}
 		}
+	}
+}
+
+// allCRSCategories disables all CRS default rule categories so custom detect
+// rules are tested in isolation without CRS background scoring interference.
+var allCRSCategories = []string{"913", "920", "921", "922", "930", "931", "932", "933", "934", "941", "942", "943", "944", "9100"}
+
+// wafDefaults builds a WAF defaults config map with CRS categories disabled.
+// This is the standard config for policy engine tests — custom rules only, no CRS interference.
+func wafDefaults(pl, inThreshold, outThreshold int) map[string]any {
+	return map[string]any{
+		"paranoia_level":      pl,
+		"inbound_threshold":   inThreshold,
+		"outbound_threshold":  outThreshold,
+		"disabled_categories": allCRSCategories,
+	}
+}
+
+// wafConfig builds a full WAF config payload with CRS disabled.
+func wafConfig(pl, inThreshold, outThreshold int) map[string]any {
+	return map[string]any{
+		"defaults": wafDefaults(pl, inThreshold, outThreshold),
+		"services": map[string]any{},
+	}
+}
+
+// wafConfigWithServices builds a WAF config with per-service overrides, CRS disabled.
+func wafConfigWithServices(pl, inThreshold, outThreshold int, services map[string]any) map[string]any {
+	return map[string]any{
+		"defaults": wafDefaults(pl, inThreshold, outThreshold),
+		"services": services,
 	}
 }

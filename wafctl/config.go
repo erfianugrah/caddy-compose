@@ -26,17 +26,15 @@ func NewConfigStore(filePath string) *ConfigStore {
 }
 
 // defaultConfig returns sensible defaults for WAF configuration.
-// InboundThreshold 15 matches the CRS recommendation for PL1 with tuning.
-// With the converted CRS ruleset (~330 rules), legitimate browser requests
-// score ~2-8 points (most PL1 header checks don't fire with proper headers).
-// API clients without browser headers may score higher — adjust threshold
-// per-service for API endpoints.
+// Thresholds default to 0 = blocking disabled. CRS detect rules evaluate
+// and log (visible in the dashboard) but never block until the operator
+// sets a threshold via the UI or API.
 func defaultConfig() WAFConfig {
 	return WAFConfig{
 		Defaults: WAFServiceSettings{
 			ParanoiaLevel:     1,
-			InboundThreshold:  15,
-			OutboundThreshold: 4,
+			InboundThreshold:  0,
+			OutboundThreshold: 0,
 		},
 		Services: make(map[string]WAFServiceSettings),
 	}

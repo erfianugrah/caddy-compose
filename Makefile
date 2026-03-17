@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.51.0-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.55.0
+CADDY_IMAGE   ?= erfianugrah/caddy:3.52.0-2.11.1
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.56.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -116,6 +116,8 @@ test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
 
 test-e2e: ## Run e2e smoke tests (requires Docker)
+	docker build -t caddy-e2e:local .
+	docker build -t wafctl-e2e:local --build-arg VERSION=e2e -f wafctl/Dockerfile .
 	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
 	cd test/e2e && go test -v -count=1 -timeout 600s ./...; rc=$$?; \
 	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
