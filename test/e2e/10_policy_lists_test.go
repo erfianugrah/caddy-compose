@@ -87,7 +87,7 @@ func TestPolicyEngineNotInList(t *testing.T) {
 		"name":   "e2e-safe-agents",
 		"kind":   "string",
 		"source": "manual",
-		"items":  []string{"Go-http-client/1.1", "Mozilla/5.0 (compatible; e2e-test/1.0)"},
+		"items":  []string{"Go-http-client/1.1", "Mozilla/5.0 (compatible; e2e-test/1.0)", "E2E-Browser/1.0"},
 	}
 	resp, body := httpPost(t, wafctlURL+"/api/lists", listPayload)
 	assertCode(t, "create safe list", 201, resp)

@@ -135,6 +135,7 @@ func httpGetCode(url string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	setBrowserHeaders(req)
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
@@ -531,6 +532,9 @@ func mustNewRequest(t *testing.T, method, url string) *http.Request {
 	if err != nil {
 		t.Fatalf("creating request: %v", err)
 	}
+	// Set browser-like headers on all e2e requests to avoid CRS false positives
+	// from header presence checks (920310, 920320, 9100033, 9100034, etc.).
+	setBrowserHeaders(req)
 	return req
 }
 
