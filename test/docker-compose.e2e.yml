@@ -41,7 +41,7 @@ services:
       WAF_COMBINED_ACCESS_LOG: /data/logs/combined-access.log
       WAF_EXCLUSIONS_FILE: /data/exclusions.json
       WAF_CONFIG_FILE: /data/waf-config.json
-      WAF_RATELIMIT_FILE: /data/ratelimit.json
+      # WAF_RATELIMIT_FILE removed — rate limits are in unified ExclusionStore
       WAF_DIR: /data/waf
       WAF_CSP_FILE: /data/csp-config.json
       WAF_CADDY_ADMIN_URL: http://caddy:2019
