@@ -162,9 +162,9 @@ function StatsRow({ status, jail, loading }: { status: DosStatus | null; jail: J
       </Card>
       <StatCard
         title="Peak EPS"
-        value={status ? Math.round(status.peak_eps * 10) / 10 : 0}
+        value={status ? Math.round(Math.max(status.peak_eps, ...(status.eps_history ?? [0])) * 10) / 10 : 0}
         icon={AlertTriangle}
-        color={status && status.peak_eps > 50 ? "orange" : "blue"}
+        color={status && Math.max(status.peak_eps, ...(status.eps_history ?? [0])) > 50 ? "orange" : "blue"}
         loading={loading}
       />
     </div>
