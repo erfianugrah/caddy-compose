@@ -347,7 +347,7 @@ func TestResponseHeaderRuleCRUD(t *testing.T) {
 				"Cache-Control":   "no-store",
 			},
 			"conditions": []map[string]string{
-				{"field": "host", "operator": "eq", "value": "test.erfi.io"},
+				{"field": "host", "operator": "eq", "value": "test.example.test"},
 			},
 		})
 		assertCode(t, "create header_set", 201, resp)
@@ -393,7 +393,7 @@ func TestResponseHeaderRuleCRUD(t *testing.T) {
 	t.Run("create with mixed actions", func(t *testing.T) {
 		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
 			"name": "e2e-resp-hdr-mixed", "type": "response_header", "enabled": true,
-			"service":        "jellyfin.erfi.io",
+			"service":        "media.example.test",
 			"header_set":     map[string]string{"X-Frame-Options": "SAMEORIGIN"},
 			"header_remove":  []string{"X-Powered-By"},
 			"header_default": map[string]string{"Referrer-Policy": "strict-origin-when-cross-origin"},
@@ -504,14 +504,14 @@ func TestCORSStoreAPI(t *testing.T) {
 		corsConfig := map[string]any{
 			"enabled": true,
 			"global": map[string]any{
-				"allowed_origins": []string{"https://app.erfi.io", "https://api.erfi.io"},
+				"allowed_origins": []string{"https://app.example.test", "https://api.example.test"},
 				"allowed_methods": []string{"GET", "POST", "PUT", "DELETE"},
 				"allowed_headers": []string{"Content-Type", "Authorization"},
 				"max_age":         3600,
 			},
 			"per_service": map[string]any{
-				"jellyfin.erfi.io": map[string]any{
-					"allowed_origins":   []string{"https://jellyfin.erfi.io"},
+				"media.example.test": map[string]any{
+					"allowed_origins":   []string{"https://media.example.test"},
 					"allow_credentials": true,
 				},
 			},
@@ -539,12 +539,12 @@ func TestCORSStoreAPI(t *testing.T) {
 		if cfg.Global.MaxAge != 3600 {
 			t.Errorf("expected max_age=3600, got %d", cfg.Global.MaxAge)
 		}
-		svc, ok := cfg.PerService["jellyfin.erfi.io"]
+		svc, ok := cfg.PerService["media.example.test"]
 		if !ok {
-			t.Fatal("jellyfin.erfi.io not in per_service")
+			t.Fatal("media.example.test not in per_service")
 		}
 		if !svc.AllowCredentials {
-			t.Error("expected allow_credentials=true for jellyfin")
+			t.Error("expected allow_credentials=true for media")
 		}
 	})
 

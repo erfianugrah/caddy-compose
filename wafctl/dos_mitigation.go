@@ -95,14 +95,20 @@ func (s *JailStore) load() {
 }
 
 // Reload re-reads the jail file from disk, replacing in-memory state.
+// On failure (lock error, read error), preserves existing entries to avoid
+// showing 0 jailed IPs when the plugin is actively enforcing them.
 func (s *JailStore) Reload() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	old := s.entries
 	s.entries = make(map[string]jailFileEntry)
-	withFileLock(s.filePath, func() error {
+	if err := withFileLock(s.filePath, func() error {
 		s.load()
 		return nil
-	})
+	}); err != nil {
+		log.Printf("[dos] jail reload failed, keeping %d previous entries: %v", len(old), err)
+		s.entries = old
+	}
 }
 
 // List returns all non-expired jail entries.

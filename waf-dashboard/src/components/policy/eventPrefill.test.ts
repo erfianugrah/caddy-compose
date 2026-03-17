@@ -8,7 +8,7 @@ describe("extractPrefillFromEvent", () => {
   const baseEvent: WAFEvent = {
     id: "tx-001",
     timestamp: "2026-02-22T08:30:00Z",
-    service: "radarr.erfi.io",
+    service: "app.example.test",
     method: "POST",
     uri: "/api/v1/upload?token=abc",
     client_ip: "10.0.0.1",
@@ -78,7 +78,7 @@ describe("extractPrefillFromEvent", () => {
     const prefill = extractPrefillFromEvent(baseEvent);
     const hostCond = prefill.conditions.find((c) => c.field === "host");
     expect(hostCond).toBeDefined();
-    expect(hostCond!.value).toBe("radarr.erfi.io");
+    expect(hostCond!.value).toBe("app.example.test");
     expect(hostCond!.operator).toBe("eq");
   });
 
@@ -154,7 +154,7 @@ describe("extractPrefillFromEvent", () => {
     expect(prefill.name).toContain("Allow");
     expect(prefill.name).toContain("942100");
     expect(prefill.name).toContain("/api/v1/upload");
-    expect(prefill.name).toContain("radarr.erfi.io");
+    expect(prefill.name).toContain("app.example.test");
   });
 
   it("uses rule_msg in name when no rule IDs available (policy events)", () => {
@@ -289,7 +289,7 @@ describe("consumePrefillEvent", () => {
     const event: WAFEvent = {
       id: "tx-001",
       timestamp: "2026-02-22T08:30:00Z",
-      service: "radarr.erfi.io",
+      service: "app.example.test",
       method: "GET",
       uri: "/api/test",
       client_ip: "10.0.0.1",

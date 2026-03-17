@@ -23,7 +23,7 @@ const mockUnifiedRL = {
   name: "API rate limit",
   description: "Protect API from abuse",
   type: "rate_limit",
-  service: "api.erfi.io",
+  service: "svc.example.test",
   conditions: [
     { field: "path", operator: "begins_with", value: "/api/" },
   ],
@@ -64,7 +64,7 @@ describe("getRLRules", () => {
     expect(rules[0].events).toBe(100);
     expect(rules[0].window).toBe("1m");
     expect(rules[0].action).toBe("deny");
-    expect(rules[0].service).toBe("api.erfi.io");
+    expect(rules[0].service).toBe("svc.example.test");
   });
 
   it("calls /api/rules?type=rate_limit endpoint", async () => {
@@ -93,7 +93,7 @@ describe("createRLRule", () => {
 
     const result = await createRLRule({
       name: "API rate limit",
-      service: "api.erfi.io",
+      service: "svc.example.test",
       key: "client_ip",
       events: 100,
       window: "1m",

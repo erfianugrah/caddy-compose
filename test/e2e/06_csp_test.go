@@ -19,7 +19,7 @@ func TestCSPManagement(t *testing.T) {
 	// The e2e test uses "localhost" as the CSP service name because the plugin
 	// resolves CSP by matching the Host header (stripped of port). In e2e,
 	// the test client sends Host: localhost:18080, which resolves to "localhost".
-	// In production, FQDN resolution maps "httpbun" → "httpbun.erfi.io".
+	// In production, FQDN resolution maps "httpbun" → "httpbun.example.test".
 	t.Run("update", func(t *testing.T) {
 		payload := map[string]any{
 			"enabled": true,

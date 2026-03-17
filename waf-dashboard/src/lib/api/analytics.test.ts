@@ -23,8 +23,8 @@ describe("lookupIP", () => {
       first_seen: "2026-02-22T07:00:00Z",
       last_seen: "2026-02-22T09:00:00Z",
       services: [
-        { service: "radarr.erfi.io", total: 30, total_blocked: 5, logged: 25 },
-        { service: "sonarr.erfi.io", total: 20, total_blocked: 5, logged: 15 },
+        { service: "app.example.test", total: 30, total_blocked: 5, logged: 25 },
+        { service: "api.example.test", total: 20, total_blocked: 5, logged: 15 },
       ],
       events_by_hour: [
         { hour: "2026-02-22T07:00:00Z", count: 20, total_blocked: 5, logged: 15, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
@@ -34,7 +34,7 @@ describe("lookupIP", () => {
         {
           id: "E1",
           timestamp: "2026-02-22T09:00:00Z",
-          service: "radarr.erfi.io",
+          service: "app.example.test",
           method: "GET",
           uri: "/api/v3/queue",
           client_ip: "10.0.0.1",

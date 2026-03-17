@@ -66,7 +66,7 @@ func TestOutboundThresholdPerService(t *testing.T) {
 			"outbound_threshold": 10,
 		},
 		"services": map[string]any{
-			"httpbun.erfi.io": map[string]any{
+			"httpbun.example.test": map[string]any{
 				"paranoia_level":     1,
 				"inbound_threshold":  5,
 				"outbound_threshold": 3,
@@ -87,9 +87,9 @@ func TestOutboundThresholdPerService(t *testing.T) {
 	}
 	json.Unmarshal(body, &cfg)
 
-	svc, ok := cfg.Services["httpbun.erfi.io"]
+	svc, ok := cfg.Services["httpbun.example.test"]
 	if !ok {
-		t.Fatal("httpbun.erfi.io not in services")
+		t.Fatal("httpbun.example.test not in services")
 	}
 	if svc.OutboundThreshold != 3 {
 		t.Errorf("expected outbound_threshold=3, got %d", svc.OutboundThreshold)
@@ -446,7 +446,7 @@ func TestDisabledCategoriesPerServiceInPolicyRules(t *testing.T) {
 			"outbound_threshold": 15,
 		},
 		"services": map[string]any{
-			"httpbun.erfi.io": map[string]any{
+			"httpbun.example.test": map[string]any{
 				"paranoia_level":      1,
 				"inbound_threshold":   5,
 				"outbound_threshold":  5,
@@ -472,9 +472,9 @@ func TestDisabledCategoriesPerServiceInPolicyRules(t *testing.T) {
 	}
 	json.Unmarshal(body3, &cfg)
 
-	svc, ok := cfg.Services["httpbun.erfi.io"]
+	svc, ok := cfg.Services["httpbun.example.test"]
 	if !ok {
-		t.Fatal("httpbun.erfi.io not in services after deploy")
+		t.Fatal("httpbun.example.test not in services after deploy")
 	}
 	if len(svc.DisabledCategories) != 2 {
 		t.Errorf("expected 2 per-service disabled_categories, got %d: %v", len(svc.DisabledCategories), svc.DisabledCategories)
@@ -502,7 +502,7 @@ func TestDisabledCategoriesConfig(t *testing.T) {
 			"disabled_categories": []string{"942", "941"},
 		},
 		"services": map[string]any{
-			"httpbun.erfi.io": map[string]any{
+			"httpbun.example.test": map[string]any{
 				"paranoia_level":      1,
 				"inbound_threshold":   5,
 				"outbound_threshold":  5,
@@ -530,9 +530,9 @@ func TestDisabledCategoriesConfig(t *testing.T) {
 		t.Errorf("expected 2 global disabled categories, got %d", len(cfg.Defaults.DisabledCategories))
 	}
 
-	svc, ok := cfg.Services["httpbun.erfi.io"]
+	svc, ok := cfg.Services["httpbun.example.test"]
 	if !ok {
-		t.Fatal("httpbun.erfi.io not in services")
+		t.Fatal("httpbun.example.test not in services")
 	}
 	if len(svc.DisabledCategories) != 1 || svc.DisabledCategories[0] != "932" {
 		t.Errorf("expected httpbun disabled_categories=[932], got %v", svc.DisabledCategories)

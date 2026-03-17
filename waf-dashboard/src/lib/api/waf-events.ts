@@ -194,17 +194,18 @@ interface RawSummary {
   policy_events: number;
   policy_blocked: number;
   detect_blocked: number;
+  ddos_blocked: number;
   policy_allowed: number;
   policy_skipped: number;
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
   events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
-  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
-  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
+  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
   top_countries: { country: string; count: number; total_blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
   recent_events: RawEvent[];
 }
 
@@ -295,6 +296,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
     policy_events: raw.policy_events ?? 0,
     policy_blocked: raw.policy_blocked ?? 0,
     detect_blocked: raw.detect_blocked ?? 0,
+    ddos_blocked: raw.ddos_blocked ?? 0,
     policy_allowed: raw.policy_allowed ?? 0,
     policy_skipped: raw.policy_skipped ?? 0,
     unique_clients: raw.unique_clients ?? 0,
@@ -320,6 +322,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
       detect_block: s.detect_block ?? 0,
+      ddos_blocked: s.ddos_blocked ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
       block_rate: s.count > 0 ? ((s.total_blocked ?? 0) / s.count) * 100 : 0,
@@ -332,6 +335,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       rate_limited: c.rate_limited ?? 0,
       policy_block: c.policy_block ?? 0,
       detect_block: c.detect_block ?? 0,
+      ddos_blocked: c.ddos_blocked ?? 0,
       policy_allow: c.policy_allow ?? 0,
       policy_skip: c.policy_skip ?? 0,
     })),
@@ -349,6 +353,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       rate_limited: s.rate_limited ?? 0,
       policy_block: s.policy_block ?? 0,
       detect_block: s.detect_block ?? 0,
+      ddos_blocked: s.ddos_blocked ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
     })),

@@ -22,8 +22,8 @@ describe("parseFiltersFromURL", () => {
   });
 
   it("parses service param with default eq operator", () => {
-    const result = parseFiltersFromURL("?service=cdn.erfi.io");
-    expect(result).toEqual([{ field: "service", operator: "eq", value: "cdn.erfi.io" }]);
+    const result = parseFiltersFromURL("?service=cdn.example.test");
+    expect(result).toEqual([{ field: "service", operator: "eq", value: "cdn.example.test" }]);
   });
 
   it("parses client param", () => {
@@ -67,9 +67,9 @@ describe("parseFiltersFromURL", () => {
   });
 
   it("parses multiple params at once", () => {
-    const result = parseFiltersFromURL("?service=cdn.erfi.io&client=1.2.3.4&event_type=detect_block");
+    const result = parseFiltersFromURL("?service=cdn.example.test&client=1.2.3.4&event_type=detect_block");
     expect(result).toHaveLength(3);
-    expect(result).toContainEqual({ field: "service", operator: "eq", value: "cdn.erfi.io" });
+    expect(result).toContainEqual({ field: "service", operator: "eq", value: "cdn.example.test" });
     expect(result).toContainEqual({ field: "client", operator: "eq", value: "1.2.3.4" });
     expect(result).toContainEqual({ field: "event_type", operator: "eq", value: "detect_block" });
   });
@@ -173,8 +173,8 @@ describe("filtersToSummaryParams", () => {
   });
 
   it("maps service filter with default eq operator", () => {
-    const filters: DashboardFilter[] = [{ field: "service", operator: "eq", value: "cdn.erfi.io" }];
-    expect(filtersToSummaryParams(filters)).toEqual({ service: "cdn.erfi.io", service_op: "eq" });
+    const filters: DashboardFilter[] = [{ field: "service", operator: "eq", value: "cdn.example.test" }];
+    expect(filtersToSummaryParams(filters)).toEqual({ service: "cdn.example.test", service_op: "eq" });
   });
 
   it("maps client filter", () => {
@@ -286,7 +286,7 @@ describe("filterDisplayValue", () => {
   });
 
   it("returns raw value for free-text fields", () => {
-    expect(filterDisplayValue("service", "cdn.erfi.io")).toBe("cdn.erfi.io");
+    expect(filterDisplayValue("service", "cdn.example.test")).toBe("cdn.example.test");
     expect(filterDisplayValue("client", "1.2.3.4")).toBe("1.2.3.4");
     expect(filterDisplayValue("rule_name", "My Rule")).toBe("My Rule");
   });

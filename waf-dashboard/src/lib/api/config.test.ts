@@ -14,8 +14,8 @@ describe("getConfig", () => {
         outbound_threshold: 5,
       },
       services: {
-        "radarr.erfi.io": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
-        "sonarr.erfi.io": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "app.example.test": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "api.example.test": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
       },
     };
 
@@ -28,8 +28,8 @@ describe("getConfig", () => {
     expect(result.defaults.inbound_threshold).toBe(10);
     expect(result.defaults.outbound_threshold).toBe(5);
     expect(Object.keys(result.services)).toHaveLength(2);
-    expect(result.services["radarr.erfi.io"].paranoia_level).toBe(1);
-    expect(result.services["sonarr.erfi.io"].paranoia_level).toBe(1);
+    expect(result.services["app.example.test"].paranoia_level).toBe(1);
+    expect(result.services["api.example.test"].paranoia_level).toBe(1);
   });
 
   it("handles null/empty services gracefully", async () => {
@@ -69,7 +69,7 @@ describe("updateConfig", () => {
         outbound_threshold: 8,
       },
       services: {
-        "radarr.erfi.io": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
+        "app.example.test": { paranoia_level: 1, inbound_threshold: 5, outbound_threshold: 4 },
       },
     };
 
@@ -85,7 +85,7 @@ describe("updateConfig", () => {
     const putCall = vi.mocked(fetch).mock.calls[0];
     const putBody = JSON.parse(putCall[1]?.body as string);
     expect(putBody.defaults.inbound_threshold).toBe(10);
-    expect(putBody.services["radarr.erfi.io"].paranoia_level).toBe(1);
+    expect(putBody.services["app.example.test"].paranoia_level).toBe(1);
   });
 });
 

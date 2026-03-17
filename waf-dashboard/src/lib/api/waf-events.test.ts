@@ -26,8 +26,8 @@ describe("fetchSummary", () => {
         { hour: "2026-02-22T08:00:00Z", count: 60, total_blocked: 20, logged: 40 },
       ],
       top_services: [
-        { service: "radarr.erfi.io", count: 60, total_blocked: 15, logged: 45 },
-        { service: "sonarr.erfi.io", count: 40, total_blocked: 15, logged: 25 },
+        { service: "app.example.test", count: 60, total_blocked: 15, logged: 45 },
+        { service: "api.example.test", count: 40, total_blocked: 15, logged: 25 },
       ],
       top_clients: [
         { client: "10.0.0.1", count: 50, total_blocked: 20 },
@@ -35,14 +35,14 @@ describe("fetchSummary", () => {
       ],
       top_uris: [{ uri: "/.env", count: 20 }],
       service_breakdown: [
-        { service: "radarr.erfi.io", total: 60, total_blocked: 15, logged: 45 },
-        { service: "sonarr.erfi.io", total: 40, total_blocked: 15, logged: 25 },
+        { service: "app.example.test", total: 60, total_blocked: 15, logged: 45 },
+        { service: "api.example.test", total: 40, total_blocked: 15, logged: 25 },
       ],
       recent_events: [
         {
           id: "tx-001",
           timestamp: "2026-02-22T08:30:00Z",
-          service: "radarr.erfi.io",
+          service: "app.example.test",
           method: "GET",
           uri: "/.env",
           client_ip: "10.0.0.1",
@@ -79,7 +79,7 @@ describe("fetchSummary", () => {
 
     // Top services mapped (now includes blocked/logged)
     expect(result.top_services).toHaveLength(2);
-    expect(result.top_services[0].service).toBe("radarr.erfi.io");
+    expect(result.top_services[0].service).toBe("app.example.test");
     expect(result.top_services[0].total).toBe(60);
     expect(result.top_services[0].total_blocked).toBe(15);
     expect(result.top_services[0].logged).toBe(45);
@@ -99,13 +99,14 @@ describe("fetchSummary", () => {
     // Service breakdown from dedicated field
     expect(result.service_breakdown).toHaveLength(2);
     expect(result.service_breakdown[0]).toEqual({
-      service: "radarr.erfi.io",
+      service: "app.example.test",
       total: 60,
       total_blocked: 15,
       logged: 45,
       rate_limited: 0,
       policy_block: 0,
       detect_block: 0,
+      ddos_blocked: 0,
       policy_allow: 0,
       policy_skip: 0,
     });
@@ -176,7 +177,7 @@ describe("fetchSummary", () => {
 
     await fetchSummary({
       hours: 12,
-      service: "cdn.erfi.io",
+      service: "cdn.example.test",
       client: "1.2.3.4",
       method: "GET",
       event_type: "detect_block",
@@ -186,7 +187,7 @@ describe("fetchSummary", () => {
     const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     const params = new URLSearchParams(calledUrl.split("?")[1]);
     expect(params.get("hours")).toBe("12");
-    expect(params.get("service")).toBe("cdn.erfi.io");
+    expect(params.get("service")).toBe("cdn.example.test");
     expect(params.get("client")).toBe("1.2.3.4");
     expect(params.get("method")).toBe("GET");
     expect(params.get("event_type")).toBe("detect_block");
@@ -207,12 +208,12 @@ describe("fetchSummary", () => {
     });
     vi.stubGlobal("fetch", mockFetch);
 
-    await fetchSummary({ hours: 24, service: "cdn.erfi.io" });
+    await fetchSummary({ hours: 24, service: "cdn.example.test" });
 
     const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     const params = new URLSearchParams(calledUrl.split("?")[1]);
     expect(params.get("hours")).toBe("24");
-    expect(params.get("service")).toBe("cdn.erfi.io");
+    expect(params.get("service")).toBe("cdn.example.test");
     expect(params.has("client")).toBe(false);
     expect(params.has("method")).toBe(false);
     expect(params.has("event_type")).toBe(false);
@@ -255,11 +256,11 @@ describe("fetchSummary", () => {
     });
     vi.stubGlobal("fetch", mockFetch);
 
-    await fetchSummary({ hours: 24, service: "cdn.erfi.io", service_op: "eq" });
+    await fetchSummary({ hours: 24, service: "cdn.example.test", service_op: "eq" });
 
     const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     const params = new URLSearchParams(calledUrl.split("?")[1]);
-    expect(params.get("service")).toBe("cdn.erfi.io");
+    expect(params.get("service")).toBe("cdn.example.test");
     expect(params.has("service_op")).toBe(false);
   });
 });
@@ -274,7 +275,7 @@ describe("fetchEvents", () => {
         {
           id: "AAA111",
           timestamp: "2026-02-22T07:19:01Z",
-          service: "dockge-sg.erfi.io",
+          service: "dockge-svc.example.test",
           method: "POST",
           uri: "/socket.io/?EIO=4",
           client_ip: "195.240.81.42",
@@ -285,7 +286,7 @@ describe("fetchEvents", () => {
         {
           id: "BBB222",
           timestamp: "2026-02-22T07:20:00Z",
-          service: "radarr.erfi.io",
+          service: "app.example.test",
           method: "GET",
           uri: "/.env",
           client_ip: "10.0.0.1",
@@ -326,7 +327,7 @@ describe("fetchEvents", () => {
         {
           id: "CCC333",
           timestamp: "2026-02-22T08:00:00Z",
-          service: "app.erfi.io",
+          service: "svc.example.test",
           method: "GET",
           uri: "/etc/passwd",
           client_ip: "10.0.0.5",
@@ -367,10 +368,10 @@ describe("fetchEvents", () => {
     const mockFetch = mockFetchResponse({ total: 0, events: [] });
     vi.stubGlobal("fetch", mockFetch);
 
-    await fetchEvents({ service: "radarr.erfi.io", blocked: true });
+    await fetchEvents({ service: "app.example.test", blocked: true });
 
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain("service=radarr.erfi.io");
+    expect(url).toContain("service=app.example.test");
     expect(url).toContain("blocked=true");
   });
 
@@ -410,8 +411,8 @@ describe("fetchServices", () => {
   it("unwraps services wrapper and computes derived fields", async () => {
     const goResponse = {
       services: [
-        { service: "radarr.erfi.io", total: 100, total_blocked: 25, logged: 75 },
-        { service: "sonarr.erfi.io", total: 50, total_blocked: 0, logged: 50 },
+        { service: "app.example.test", total: 100, total_blocked: 25, logged: 75 },
+        { service: "api.example.test", total: 50, total_blocked: 0, logged: 50 },
       ],
     };
 
@@ -422,7 +423,7 @@ describe("fetchServices", () => {
     expect(result).toHaveLength(2);
 
     // First service
-    expect(result[0].service).toBe("radarr.erfi.io");
+    expect(result[0].service).toBe("app.example.test");
     expect(result[0].total_events).toBe(100); // total -> total_events
     expect(result[0].total_blocked).toBe(25);
     expect(result[0].logged).toBe(75);
@@ -525,7 +526,7 @@ describe("country field mapping", () => {
       events: [{
         id: "tx-geo",
         timestamp: "2026-02-23T10:00:00Z",
-        service: "test.erfi.io",
+        service: "svc.example.test",
         method: "GET",
         uri: "/test",
         client_ip: "8.8.8.8",
@@ -546,7 +547,7 @@ describe("country field mapping", () => {
       events: [{
         id: "tx-nocountry",
         timestamp: "2026-02-23T10:00:00Z",
-        service: "test.erfi.io",
+        service: "svc.example.test",
         method: "GET",
         uri: "/test",
         client_ip: "10.0.0.1",
@@ -576,7 +577,7 @@ describe("event_type mapping in fetchEvents", () => {
         events: [{
           id: `tx-${eventType}`,
           timestamp: "2026-02-23T10:00:00Z",
-          service: "test.erfi.io",
+          service: "svc.example.test",
           method: "GET",
           uri: "/test",
           client_ip: "10.0.0.1",
@@ -598,7 +599,7 @@ describe("event_type mapping in fetchEvents", () => {
       events: [{
         id: "tx-fallback",
         timestamp: "2026-02-23T10:00:00Z",
-        service: "test.erfi.io",
+        service: "svc.example.test",
         method: "GET",
         uri: "/test",
         client_ip: "10.0.0.1",
@@ -618,7 +619,7 @@ describe("event_type mapping in fetchEvents", () => {
       events: [{
         id: "tx-fallback",
         timestamp: "2026-02-23T10:00:00Z",
-        service: "test.erfi.io",
+        service: "svc.example.test",
         method: "GET",
         uri: "/test",
         client_ip: "10.0.0.1",
@@ -638,7 +639,7 @@ describe("event_type mapping in fetchEvents", () => {
       events: [{
         id: "tx-invalid",
         timestamp: "2026-02-23T10:00:00Z",
-        service: "test.erfi.io",
+        service: "svc.example.test",
         method: "GET",
         uri: "/test",
         client_ip: "10.0.0.1",
@@ -660,7 +661,7 @@ describe("fetchServices breakdown fields", () => {
   it("maps policy breakdown/rate_limited fields from Go API", async () => {
     const goResponse = {
       services: [{
-        service: "web.erfi.io",
+        service: "svc.example.test",
         total: 100,
         total_blocked: 40,
         logged: 60,
@@ -683,7 +684,7 @@ describe("fetchServices breakdown fields", () => {
   it("defaults new fields to 0 when missing", async () => {
     const goResponse = {
       services: [{
-        service: "old.erfi.io",
+        service: "svc.example.test",
         total: 50,
         total_blocked: 10,
         logged: 40,

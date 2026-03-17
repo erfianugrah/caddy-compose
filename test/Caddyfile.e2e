@@ -83,17 +83,6 @@
 	log_append policy_detect_matches {http.vars.policy_engine.detect_matches}
 	log_append policy_request_headers {http.vars.policy_engine.request_headers}
 	log_append policy_request_body {http.vars.policy_engine.request_body}
-	log {
-		level INFO
-		output file /var/log/{args[0]}-access.log {
-			roll_size 256mb
-			roll_keep 2
-			roll_keep_for 24h
-		}
-		format json {
-			time_format wall
-		}
-	}
 	log combined {
 		level INFO
 		output file /var/log/combined-access.log {

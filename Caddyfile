@@ -28,17 +28,9 @@
 	order ddos_mitigator after log_append
 	order policy_engine after ddos_mitigator
 
-	log {
-		level INFO
-		output file /var/log/access.log {
-			roll_size 128mb
-			roll_keep 3
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
+	# Global access log disabled — the combined log in (site_log) is the single
+	# source of truth, tailed by wafctl for the dashboard event store.
+	# Eliminating duplicate logs reduces per-request I/O from 3 JSON writes to 1.
 	servers {
 		strict_sni_host on
 		protocols h1 h2 h3
@@ -130,21 +122,17 @@
 	}
 }
 
-# Standard log config — INFO level, per-site log file + combined log
-# log_append adds custom fields to every access log entry:
+# Standard log config — single combined log file tailed by wafctl.
+# Per-site and global logs removed: every request was being JSON-encoded
+# and written 3 times (global + per-site + combined). During DDoS at 50k
+# req/s, the synchronous JSON encoding in request goroutines was the
+# primary CPU bottleneck. Now each request writes to exactly 1 log file.
+#
+# log_append adds custom fields to every access log entry (resolved lazily
+# at log-write time, not during middleware execution):
 # - request_id: Caddy UUID for cross-log correlation
-# - ddos_action: ddos mitigator decision (pass/blocked/jailed)
-# - ddos_fingerprint: FNV-64a hash of request signature
-# - ddos_z_score: statistical deviation score
-# - ddos_spike_mode: true/false — whether system is under volumetric attack
-# - policy_action: policy engine decision (allow/block/honeypot/detect_block, empty if no rule matched)
-# - policy_rule: name of the matched rule, or detect block summary
-# - policy_tags: comma-separated tags from matched rule(s)
-# - policy_score: anomaly score (detect rules only, empty if no detect rules fired)
-# - policy_detect_rules: matched detect rule details "id:severity:score,..." (detect_block only)
-# - policy_detect_matches: JSON array of per-rule match details with field/var_name/value/matched_data
-# - policy_request_headers: JSON-serialized request headers (only set on block/detect_block events)
-# - policy_request_body: truncated request body excerpt (only set on block/detect_block when body was read)
+# - ddos_*: DDoS mitigator decision, fingerprint, anomaly score, spike mode
+# - policy_*: policy engine decision, matched rules, anomaly score, match details
 (site_log) {
 	log_append request_id {http.request.uuid}
 	log_append ddos_action {http.vars.ddos_mitigator.action}
@@ -159,17 +147,6 @@
 	log_append policy_detect_matches {http.vars.policy_engine.detect_matches}
 	log_append policy_request_headers {http.vars.policy_engine.request_headers}
 	log_append policy_request_body {http.vars.policy_engine.request_body}
-	log {
-		level INFO
-		output file /var/log/{args[0]}-access.log {
-			roll_size 128mb
-			roll_keep 3
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
 	log combined {
 		level INFO
 		output file /var/log/combined-access.log {
