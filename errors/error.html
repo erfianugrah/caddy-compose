@@ -3,121 +3,108 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{html .Req.Host}} &mdash; {{placeholder "http.error.status_code"}}</title>
+<title>{{placeholder "http.error.status_code"}} &mdash; {{html .Req.Host}}</title>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html{height:100%}
   body{
-    min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-    background:#0f1117;color:#c9d1d9;padding:2rem;text-align:center;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+    background:#0c0d10;color:#9ca3af;padding:1.5rem;
   }
-  .container{max-width:540px;width:100%}
-  .code{
-    font-size:clamp(5rem,15vw,8rem);font-weight:800;letter-spacing:-.04em;
-    background:linear-gradient(135deg,#58a6ff 0%,#bc8cff 50%,#f778ba 100%);
-    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-    background-clip:text;line-height:1.1;
+  .card{
+    max-width:420px;width:100%;border:1px solid #1e2028;border-radius:12px;
+    background:#12131a;padding:2.5rem 2rem;text-align:center;
   }
-  .code-warn{background:linear-gradient(135deg,#f0883e 0%,#f778ba 100%);-webkit-background-clip:text;background-clip:text}
-  .code-block{background:linear-gradient(135deg,#f85149 0%,#bc8cff 100%);-webkit-background-clip:text;background-clip:text}
-  .title{font-size:1.25rem;font-weight:600;color:#e6edf3;margin:.75rem 0 .5rem}
-  .desc{font-size:.95rem;color:#8b949e;line-height:1.6;margin-bottom:1.5rem}
-  .icon{font-size:2.5rem;margin-bottom:.5rem}
-  .actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
-  a,button{
-    display:inline-flex;align-items:center;gap:.4rem;
-    padding:.6rem 1.4rem;border-radius:8px;font-size:.875rem;font-weight:500;
-    text-decoration:none;cursor:pointer;transition:all .15s ease;border:none;
+  .status{
+    font-size:4.5rem;font-weight:700;letter-spacing:-.03em;line-height:1;
+    color:#e5e7eb;margin-bottom:.25rem;
   }
-  .btn-primary{background:#58a6ff;color:#0f1117}
-  .btn-primary:hover{background:#79b8ff}
-  .btn-secondary{background:transparent;color:#8b949e;border:1px solid #30363d}
-  .btn-secondary:hover{color:#c9d1d9;border-color:#58a6ff}
-  .meta{margin-top:3rem;font-size:.75rem;color:#484f58}
-  .divider{width:60px;height:2px;background:#21262d;margin:1.5rem auto}
-  .countdown{font-variant-numeric:tabular-nums;font-size:2rem;font-weight:700;color:#f0883e;margin:.75rem 0}
-  .countdown-label{font-size:.8rem;color:#8b949e;margin-bottom:1.5rem}
-  .ref{font-size:.75rem;color:#484f58;margin-top:.5rem;font-family:monospace}
+  .status span{opacity:.3}
+  .label{
+    font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    color:#6b7280;margin-bottom:1.25rem;display:block;
+  }
+  .msg{font-size:.875rem;line-height:1.6;color:#9ca3af;margin-bottom:1.75rem}
+  .actions{display:flex;gap:.5rem;justify-content:center}
+  .btn{
+    padding:.5rem 1.25rem;border-radius:6px;font-size:.8rem;font-weight:500;
+    text-decoration:none;cursor:pointer;border:1px solid #1e2028;
+    background:transparent;color:#9ca3af;transition:all .15s ease;
+  }
+  .btn:hover{border-color:#374151;color:#e5e7eb}
+  .btn-fill{background:#e5e7eb;color:#0c0d10;border-color:#e5e7eb}
+  .btn-fill:hover{background:#f3f4f6}
+  .sep{width:40px;height:1px;background:#1e2028;margin:1.5rem auto}
+  .ref{font-size:.65rem;color:#374151;font-family:ui-monospace,monospace}
+  .host{font-size:.65rem;color:#374151;margin-top:.75rem}
+  .countdown{font-variant-numeric:tabular-nums;font-size:1.75rem;font-weight:600;color:#e5e7eb;margin:.5rem 0}
+  .countdown-sub{font-size:.7rem;color:#6b7280;margin-bottom:1rem}
 </style>
 </head>
 <body>
-<div class="container">
+<div class="card">
 
   {{if eq (placeholder "http.error.status_code") "403"}}
-  <div class="icon">🛡️</div>
-  <div class="code code-block">403</div>
-  <p class="title">Access blocked</p>
-  <p class="desc">Your request was blocked by the security policy. If you believe this is an error, wait a moment and try again or contact the site administrator.</p>
-  <div class="ref">Ref: {{placeholder "http.request.uuid"}}</div>
+  <div class="status">4<span>0</span>3</div>
+  <span class="label">Blocked</span>
+  <p class="msg">This request was blocked by the security policy.<br>If this is unexpected, wait a moment and try again.</p>
+  <p class="ref">{{placeholder "http.request.uuid"}}</p>
 
   {{else if eq (placeholder "http.error.status_code") "429"}}
-  <div class="icon">⏱️</div>
-  <div class="code code-warn">429</div>
-  <p class="title">Rate limit exceeded</p>
-  <p class="desc">You're sending requests too quickly.</p>
-  <div class="countdown" id="countdown"></div>
-  <p class="countdown-label">seconds until you can retry</p>
+  <div class="status">4<span>2</span>9</div>
+  <span class="label">Rate Limited</span>
+  <div class="countdown" id="cd"></div>
+  <p class="countdown-sub">seconds</p>
+  <p class="msg">Too many requests. Slow down.</p>
   <script>
-  (function(){
-    // Read Retry-After from meta tag (Caddy template injects the header value).
-    var ra = "{{placeholder "http.error.message"}}";
-    var secs = parseInt(ra, 10) || 30;
-    var el = document.getElementById("countdown");
-    if (!el) return;
-    el.textContent = secs;
-    var iv = setInterval(function(){
-      secs--;
-      if (secs <= 0) { clearInterval(iv); location.reload(); return; }
-      el.textContent = secs;
-    }, 1000);
-  })();
+  !function(){var s=parseInt("{{placeholder "http.error.message"}}",10)||30,e=document.getElementById("cd");
+  if(!e)return;e.textContent=s;setInterval(function(){--s<=0?location.reload():e.textContent=s},1e3)}();
   </script>
-  <div class="ref">Ref: {{placeholder "http.request.uuid"}}</div>
 
   {{else if eq (placeholder "http.error.status_code") "400"}}
-  <div class="code">400</div>
-  <p class="title">Bad request</p>
-  <p class="desc">The request was malformed or couldn't be understood by the server.</p>
+  <div class="status">4<span>0</span>0</div>
+  <span class="label">Bad Request</span>
+  <p class="msg">The request was malformed.</p>
 
   {{else if eq (placeholder "http.error.status_code") "404"}}
-  <div class="code">404</div>
-  <p class="title">Not found</p>
-  <p class="desc">The page you're looking for doesn't exist or has been moved.</p>
+  <div class="status">4<span>0</span>4</div>
+  <span class="label">Not Found</span>
+  <p class="msg">This page doesn't exist.</p>
 
   {{else if eq (placeholder "http.error.status_code") "500"}}
-  <div class="code">500</div>
-  <p class="title">Internal server error</p>
-  <p class="desc">Something went wrong on our end. Try again in a few moments.</p>
+  <div class="status">5<span>0</span>0</div>
+  <span class="label">Server Error</span>
+  <p class="msg">Something went wrong. Try again shortly.</p>
 
   {{else if eq (placeholder "http.error.status_code") "502"}}
-  <div class="code">502</div>
-  <p class="title">Bad gateway</p>
-  <p class="desc">The upstream service isn't responding. It may be restarting.</p>
+  <div class="status">5<span>0</span>2</div>
+  <span class="label">Bad Gateway</span>
+  <p class="msg">The upstream service isn't responding.</p>
 
   {{else if eq (placeholder "http.error.status_code") "503"}}
-  <div class="code">503</div>
-  <p class="title">Service unavailable</p>
-  <p class="desc">This service is temporarily offline for maintenance.</p>
+  <div class="status">5<span>0</span>3</div>
+  <span class="label">Unavailable</span>
+  <p class="msg">This service is temporarily offline.</p>
 
   {{else if eq (placeholder "http.error.status_code") "504"}}
-  <div class="code">504</div>
-  <p class="title">Gateway timeout</p>
-  <p class="desc">The upstream service took too long to respond.</p>
+  <div class="status">5<span>0</span>4</div>
+  <span class="label">Timeout</span>
+  <p class="msg">The upstream service took too long to respond.</p>
 
   {{else}}
-  <div class="code">{{placeholder "http.error.status_code"}}</div>
-  <p class="title">Something went wrong</p>
-  <p class="desc">An unexpected error occurred while processing your request.</p>
+  <div class="status">{{placeholder "http.error.status_code"}}</div>
+  <span class="label">Error</span>
+  <p class="msg">An unexpected error occurred.</p>
   {{end}}
 
   <div class="actions">
-    <a href="javascript:location.reload()" class="btn-primary">Try again</a>
-    <a href="/" class="btn-secondary">Go home</a>
+    <a href="javascript:location.reload()" class="btn btn-fill">Retry</a>
+    <a href="/" class="btn">Home</a>
   </div>
 
-  <div class="divider"></div>
-  <p class="meta">{{html .Req.Host}}</p>
+  <div class="sep"></div>
+  <p class="host">{{html .Req.Host}}</p>
 </div>
 </body>
 </html>
