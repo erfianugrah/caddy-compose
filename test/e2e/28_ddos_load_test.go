@@ -1,10 +1,10 @@
 package e2e_test
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"strings"
@@ -40,16 +40,16 @@ type floodResult struct {
 func (r floodResult) rps() float64 { return float64(r.total) / r.elapsed.Seconds() }
 
 // flood sends concurrent HTTP requests to target for the given duration.
-// Uses HTTP/2 multiplexing — fewer TCP connections, more pipelined requests.
+// Uncapped connection pool — goroutines are never blocked waiting for a slot.
 // Returns metrics about the run.
 func flood(target string, workers int, duration time.Duration) floodResult {
 	transport := &http.Transport{
-		MaxIdleConnsPerHost: 100,
-		MaxConnsPerHost:     100, // fewer connections, HTTP/2 multiplexes on each
+		MaxIdleConnsPerHost: workers,
+		MaxConnsPerHost:     0, // unlimited — avoids goroutines blocking on connection pool
 		IdleConnTimeout:     90 * time.Second,
-		TLSClientConfig:     &tls.Config{},
 		DisableKeepAlives:   false,
-		ForceAttemptHTTP2:   true,
+		WriteBufferSize:     32 << 10,
+		ReadBufferSize:      32 << 10,
 	}
 	c := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 
@@ -148,8 +148,7 @@ func TestDDoS_Load_BaselineThenAttack(t *testing.T) {
 	var baselineWg sync.WaitGroup
 	baselineTransport := &http.Transport{
 		MaxIdleConnsPerHost: 50,
-		TLSClientConfig:     &tls.Config{},
-		ForceAttemptHTTP2:   true,
+		MaxConnsPerHost:     0,
 	}
 	baselineClient := &http.Client{Timeout: 5 * time.Second, Transport: baselineTransport}
 	for i := 0; i < 50; i++ {
@@ -162,7 +161,7 @@ func TestDDoS_Load_BaselineThenAttack(t *testing.T) {
 					return
 				default:
 				}
-				p := paths[id%len(paths)]
+				p := paths[rand.Intn(len(paths))]
 				req, _ := http.NewRequest("GET", caddyURL+p, nil)
 				req.Header.Set("User-Agent", fmt.Sprintf("ddos-baseline-%d/1.0", id))
 				req.Header.Set("Accept", "*/*")
@@ -180,9 +179,8 @@ func TestDDoS_Load_BaselineThenAttack(t *testing.T) {
 	baselineWg.Wait()
 	t.Logf("Baseline: %d requests across %d paths", baselineReqs.Load(), len(paths))
 
-	// Phase 2: Attack — flood single endpoint with high concurrency
-	// HTTP/2 multiplexing: 100 TCP connections * many streams each.
-	// 2000 goroutines pipeline requests without waiting per-connection.
+	// Phase 2: Attack — flood single endpoint with high concurrency.
+	// Uncapped connection pool — goroutines open as many connections as needed.
 	t.Log("Phase 2: Flood attack (2000 workers, single path, 30s)...")
 	attackURL := caddyURL + "/anything/api/v1/vulnerable-endpoint"
 	result := flood(attackURL, 2000, 30*time.Second)
@@ -250,18 +248,25 @@ func TestDDoS_Load_ConnectionFlood(t *testing.T) {
 		host += ":443"
 	}
 
-	t.Logf("Connection flood: 500 rapid TCP connections to %s", host)
-	var connected, failed int
-	for range 500 {
-		conn, err := net.DialTimeout("tcp", host, 2*time.Second)
-		if err != nil {
-			failed++
-			continue
-		}
-		conn.Close()
-		connected++
+	const connCount = 500
+	t.Logf("Connection flood: %d concurrent TCP connections to %s", connCount, host)
+	var connected, failed atomic.Int64
+	var wg sync.WaitGroup
+	for range connCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conn, err := net.DialTimeout("tcp", host, 2*time.Second)
+			if err != nil {
+				failed.Add(1)
+				return
+			}
+			conn.Close()
+			connected.Add(1)
+		}()
 	}
-	t.Logf("Connected: %d, Failed: %d", connected, failed)
+	wg.Wait()
+	t.Logf("Connected: %d, Failed: %d", connected.Load(), failed.Load())
 
 	// Caddy should still be healthy
 	resp, _ := httpGet(t, wafctlURL+"/api/health")
@@ -280,7 +285,7 @@ func TestDDoS_Load_SustainedPressure(t *testing.T) {
 
 	transport := &http.Transport{
 		MaxIdleConnsPerHost: 100,
-		TLSClientConfig:     &tls.Config{},
+		MaxConnsPerHost:     0,
 	}
 	c := &http.Client{Transport: transport, Timeout: 10 * time.Second}
 
@@ -324,7 +329,7 @@ func TestDDoS_Load_SustainedPressure(t *testing.T) {
 					return
 				default:
 				}
-				p := paths[id%len(paths)]
+				p := paths[rand.Intn(len(paths))]
 				req, _ := http.NewRequest("GET", caddyURL+p, nil)
 				req.Header.Set("User-Agent", fmt.Sprintf("legit-user-%d/1.0", id))
 				req.Header.Set("Accept", "text/html,*/*")

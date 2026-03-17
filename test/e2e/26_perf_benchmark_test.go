@@ -22,8 +22,8 @@ func TestPerfSeedAndMeasure(t *testing.T) {
 	// the WAF store (CRS detections) and the access log store (policy blocks,
 	// rate limits, logged events).
 
-	const seedCount = 200 // requests to generate
-	const concurrency = 10
+	const seedCount = 1000 // requests to generate
+	const concurrency = 50
 
 	// Ensure WAF is at default config (PL2, threshold 15).
 	ensureDefaultConfig(t)
@@ -49,6 +49,14 @@ func TestPerfSeedAndMeasure(t *testing.T) {
 	t.Logf("Seeding %d events (%d concurrent)...", seedCount, concurrency)
 	start := time.Now()
 
+	// Dedicated transport — the shared client wraps DefaultTransport which
+	// caps at MaxIdleConnsPerHost=2, starving the worker pool.
+	seedTransport := &http.Transport{
+		MaxIdleConnsPerHost: concurrency,
+		MaxConnsPerHost:     0,
+	}
+	seedClient := &http.Client{Transport: seedTransport, Timeout: 5 * time.Second}
+
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, concurrency)
 	for i := 0; i < seedCount; i++ {
@@ -62,7 +70,7 @@ func TestPerfSeedAndMeasure(t *testing.T) {
 			req, _ := http.NewRequest("GET", caddyURL+path, nil)
 			setBrowserHeaders(req)
 			req.Header.Set("User-Agent", ua)
-			resp, err := client.Do(req)
+			resp, err := seedClient.Do(req)
 			if err == nil {
 				resp.Body.Close()
 			}
@@ -131,7 +139,7 @@ func TestPerfSeedAndMeasure(t *testing.T) {
 	// ── Phase 3: Concurrent load test ────────────────────────────────
 	// Hit summary + services + events concurrently (simulates dashboard load).
 
-	t.Log("Concurrent dashboard load test (3 endpoints × 5 iterations)...")
+	t.Log("Concurrent dashboard load test (3 endpoints × 20 iterations)...")
 	concEndpoints := []string{
 		wafctlURL + "/api/summary?hours=24",
 		wafctlURL + "/api/services",
@@ -140,7 +148,7 @@ func TestPerfSeedAndMeasure(t *testing.T) {
 
 	start = time.Now()
 	var concWg sync.WaitGroup
-	const loadIterations = 5
+	const loadIterations = 20
 	for iter := 0; iter < loadIterations; iter++ {
 		for _, url := range concEndpoints {
 			concWg.Add(1)
@@ -159,7 +167,7 @@ func TestPerfSeedAndMeasure(t *testing.T) {
 	totalReqs := loadIterations * len(concEndpoints)
 	t.Logf("Concurrent load: %d requests in %v (%.0f req/s)", totalReqs, concDuration, float64(totalReqs)/concDuration.Seconds())
 
-	if concDuration > 5*time.Second {
-		t.Errorf("Concurrent dashboard load too slow: %v (max 5s for %d requests)", concDuration, totalReqs)
+	if concDuration > 10*time.Second {
+		t.Errorf("Concurrent dashboard load too slow: %v (max 10s for %d requests)", concDuration, totalReqs)
 	}
 }

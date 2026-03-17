@@ -29,9 +29,11 @@ func main() {
 
 	transport := &http.Transport{
 		MaxIdleConnsPerHost: *workers,
-		MaxConnsPerHost:     *workers,
+		MaxConnsPerHost:     0, // unlimited — let the OS handle connection limits
 		IdleConnTimeout:     30 * time.Second,
 		DisableKeepAlives:   false,
+		WriteBufferSize:     32 << 10,
+		ReadBufferSize:      32 << 10,
 	}
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 
