@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:3.48.0-2.11.1
+    image: erfianugrah/caddy:3.49.0-2.11.1
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -114,7 +114,7 @@ services:
     build:
       context: .
       dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.52.0
+    image: erfianugrah/wafctl:2.53.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
@@ -175,10 +175,8 @@ services:
       - /mnt/cache/caddy/wafctl/lists:/data/lists
     environment:
       - TZ=Asia/Singapore
-      - WAF_AUDIT_LOG=/var/log/waf-audit.log
       - WAF_EXCLUSIONS_FILE=/data/exclusions.json
       - WAF_CONFIG_FILE=/data/waf-config.json
-      - WAF_RATELIMIT_FILE=/data/rate-limits.json
       - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
       - WAF_DIR=/data/waf
       - WAF_CADDYFILE_PATH=/data/Caddyfile

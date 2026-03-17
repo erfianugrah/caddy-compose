@@ -1,6 +1,6 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.52.0 / caddy 3.48.0 / body-matcher v0.2.0 / policy-engine v0.20.0 / ddos-mitigator v0.8.2)
+## Current State (v2.53.0 / caddy 3.49.0 / body-matcher v0.2.1 / policy-engine v0.20.1 / ddos-mitigator v0.9.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound), 6-pass evaluation (allow → block → skip → rate_limit → detect →
@@ -10,7 +10,7 @@ templates, per-service category masks, outbound anomaly scoring + rate limiting,
 incremental summary (O(hours)), managed lists, IPsum blocklist (618K IPs), CRS
 auto-update workflow, and e2e CI pipeline (117 e2e tests, 500 Go tests, 334 frontend).
 
-DDoS mitigator: `caddy-ddos-mitigator` v0.8.2 — behavioral IP profiling, 4-layer
+DDoS mitigator: `caddy-ddos-mitigator` v0.9.0 — behavioral IP profiling, 4-layer
 enforcement (L7 403, L4 TCP RST, nftables kernel drop, eBPF/XDP NIC drop), 64-shard
 IP jail shared with wafctl, CMS, CIDR /24 aggregation. 116 tests, ~90ns/req hot path.
 
@@ -305,6 +305,15 @@ resilient to transient origin errors.
 ---
 
 ## Completed (changelog)
+
+### v2.53.0 / caddy 3.49.0
+
+- **Cross-repo audit**: Fixed unjail-via-wafctl for long-TTL entries (ddos-mitigator
+  file sync was additive-only), aligned withFileLock error handling between wafctl and
+  plugin, fixed Makefile stale endpoint, removed dead env vars (WAF_AUDIT_LOG,
+  WAF_RATELIMIT_FILE), fixed WAF_CADDY_ADMIN_URL default, corrected doc comments and
+  README across all 4 repos.
+- Plugin bumps: body-matcher v0.2.1, policy-engine v0.20.1, ddos-mitigator v0.9.0.
 
 ### v2.52.0 / caddy 3.48.0
 

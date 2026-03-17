@@ -45,7 +45,7 @@ func runServe() int {
 	deployCfg := DeployConfig{
 		WafDir:          envOr("WAF_DIR", "/data/waf"),
 		CaddyfilePath:   envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
-		CaddyAdminURL:   envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2019"),
+		CaddyAdminURL:   envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2020"),
 		PolicyRulesFile: policyRulesFile,
 	}
 

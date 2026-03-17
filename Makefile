@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.48.0-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.52.0
+CADDY_IMAGE   ?= erfianugrah/caddy:3.49.0-2.11.1
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.53.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -236,10 +236,9 @@ release: deploy-all sign sbom ## Full deploy + sign + SBOM
 	@echo "Full release complete (signed + SBOM attached)."
 
 # ── Caddy operations ────────────────────────────────────────────────
-caddy-reload: ## SCP Caddyfile, deploy WAF + RL + CSP + security headers, reload Caddy
+caddy-reload: ## SCP Caddyfile, deploy WAF + CSP + security headers, reload Caddy
 	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
-	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/config/deploy --post-data=""
-	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/rate-rules/deploy --post-data=""
+	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/deploy --post-data=""
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/csp/deploy --post-data=""
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/security-headers/deploy --post-data=""
 

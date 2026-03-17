@@ -13,17 +13,17 @@ import (
 
 // withFileLock acquires an exclusive flock on path+".lock" for the duration
 // of fn. Coordinates jail file access with the caddy-ddos-mitigator plugin.
+// Returns an error if the lock cannot be acquired (matching the plugin's
+// behavior to prevent uncoordinated writes).
 func withFileLock(path string, fn func() error) error {
 	lockPath := path + ".lock"
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		// Fall back to unlocked operation if lock file can't be created
-		return fn()
+		return fmt.Errorf("open lock file: %w", err)
 	}
 	defer f.Close()
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		// Fall back to unlocked operation if flock fails
-		return fn()
+		return fmt.Errorf("acquire file lock: %w", err)
 	}
 	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	return fn()
