@@ -169,7 +169,7 @@ func handleGetDosConfig(store *DosConfigStore) http.HandlerFunc {
 
 // ─── PUT /api/dos/config ────────────────────────────────────────────
 
-func handleUpdateDosConfig(store *DosConfigStore) http.HandlerFunc {
+func handleUpdateDosConfig(store *DosConfigStore, jailStore *JailStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg DosConfig
 		if _, failed := decodeJSON(w, r, &cfg); failed {
@@ -184,6 +184,11 @@ func handleUpdateDosConfig(store *DosConfigStore) http.HandlerFunc {
 		if err := store.Update(cfg); err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to save config", Details: err.Error()})
 			return
+		}
+
+		// Sync whitelist to jail.json for the DDoS mitigator plugin to pick up.
+		if jailStore != nil {
+			jailStore.SetWhitelist(cfg.Whitelist)
 		}
 
 		writeJSON(w, http.StatusOK, cfg)

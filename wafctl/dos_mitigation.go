@@ -16,6 +16,7 @@ import (
 type jailFile struct {
 	Version   int                      `json:"version"`
 	Entries   map[string]jailFileEntry `json:"entries"`
+	Whitelist []string                 `json:"whitelist,omitempty"` // Synced to plugin via jail.json
 	UpdatedAt string                   `json:"updated_at"`
 }
 
@@ -47,7 +48,8 @@ type JailStore struct {
 	mu        sync.RWMutex
 	filePath  string
 	entries   map[string]jailFileEntry
-	lastCount int // for quiet reload logging — only log when count changes
+	whitelist []string // current DDoS whitelist CIDRs, synced to plugin via jail.json
+	lastCount int      // for quiet reload logging — only log when count changes
 }
 
 // NewJailStore creates a jail store and loads existing entries from disk.
@@ -178,10 +180,25 @@ func (s *JailStore) Remove(ip string) error {
 
 // saveLocked marshals and writes the jail file to disk.
 // Caller must hold s.mu (write lock).
+// SetWhitelist updates the whitelist CIDRs that get synced to the plugin via jail.json.
+// Called when the DDoS config is updated via the API.
+func (s *JailStore) SetWhitelist(cidrs []string) {
+	s.mu.Lock()
+	s.whitelist = cidrs
+	s.mu.Unlock()
+	// Trigger a save to propagate to the plugin immediately.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.saveLocked(); err != nil {
+		log.Printf("[dos] whitelist sync save failed: %v", err)
+	}
+}
+
 func (s *JailStore) saveLocked() error {
 	jf := jailFile{
 		Version:   1,
 		Entries:   make(map[string]jailFileEntry, len(s.entries)),
+		Whitelist: s.whitelist,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	for ip, e := range s.entries {

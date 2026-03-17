@@ -12,45 +12,61 @@ import (
 
 // --- Log-Only Action Flow ---
 
-func TestDefaultRuleLogOnlyAction(t *testing.T) {
-	t.Skip("TODO: UNION SELECT triggers multiple CRS rules; disabling one via log_only may not suffice to prevent blocking")
-	// Set a low threshold so a scoring CRITICAL rule would block.
+func TestLogOnlyAction(t *testing.T) {
+	// Strategy: create a custom detect rule that's the ONLY rule matching a
+	// specific test path. Then toggle it to log_only and verify it stops blocking.
+	// This avoids the CRS multi-rule problem where disabling one rule isn't enough.
+
+	// Step 1: Create a custom detect rule targeting a unique path.
+	rulePayload := map[string]any{
+		"name":        "e2e-log-only-test",
+		"type":        "detect",
+		"description": "E2E test rule for log_only action",
+		"severity":    "CRITICAL",
+		"enabled":     true,
+		"conditions":  []map[string]any{{"field": "path", "operator": "begins_with", "value": "/e2e-logonly-test"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/exclusions", rulePayload)
+	assertCode(t, "create detect rule", 201, resp)
+	ruleID := mustGetID(t, body)
+	defer cleanup(t, wafctlURL+"/api/exclusions/"+ruleID)
+
+	// Set threshold=3 so a single CRITICAL(5) blocks.
 	httpPut(t, wafctlURL+"/api/config", map[string]any{
-		"defaults": map[string]any{"paranoia_level": 4, "inbound_threshold": 3, "outbound_threshold": 15},
+		"defaults": map[string]any{"paranoia_level": 1, "inbound_threshold": 3, "outbound_threshold": 15},
 		"services": map[string]any{},
 	})
 	deployWAF(t)
 
-	// Find a CRS detect rule that fires on UNION SELECT.
-	// Rule 942100: SQL injection attack detected via libinjection.
-	sqliURL := caddyURL + "/get?q=1+UNION+SELECT+username,password+FROM+users"
+	testURL := caddyURL + "/e2e-logonly-test"
+	waitForStatus(t, testURL, 403, 15*time.Second)
 
-	// Verify it blocks at low threshold.
-	waitForStatus(t, sqliURL, 403, 15*time.Second)
-
-	t.Run("baseline: SQLi blocked at low threshold", func(t *testing.T) {
-		code, err := httpGetCode(sqliURL)
+	t.Run("baseline: custom detect rule blocks", func(t *testing.T) {
+		code, err := httpGetCode(testURL)
 		if err != nil {
 			t.Fatalf("request: %v", err)
 		}
 		if code != 403 {
-			t.Fatalf("expected 403, got %d", code)
+			t.Fatalf("expected 403 from custom detect rule, got %d", code)
 		}
 	})
 
-	// Set rule 942100 to log_only.
-	resp, _ := httpPut(t, wafctlURL+"/api/default-rules/942100", map[string]any{
-		"action": "log_only",
+	// Step 2: Update the rule to log_only via detect_action.
+	resp2, _ := httpPut(t, wafctlURL+"/api/exclusions/"+ruleID, map[string]any{
+		"name":          "e2e-log-only-test",
+		"type":          "detect",
+		"severity":      "CRITICAL",
+		"enabled":       true,
+		"detect_action": "log_only",
+		"conditions":    []map[string]any{{"field": "path", "operator": "begins_with", "value": "/e2e-logonly-test"}},
 	})
-	assertCode(t, "set log_only", 200, resp)
+	assertCode(t, "update to log_only", 200, resp2)
 	deployWAF(t)
 
-	// Wait for the log_only override to take effect — the policy engine
-	// hot-reloads every 5s, so the SQLi URL should stop being blocked.
-	waitForStatus(t, sqliURL, 200, 20*time.Second)
+	waitForStatus(t, testURL, 200, 15*time.Second)
 
-	t.Run("log_only: SQLi passes through (not scored)", func(t *testing.T) {
-		code, err := httpGetCode(sqliURL)
+	t.Run("log_only: rule matches but doesn't block", func(t *testing.T) {
+		code, err := httpGetCode(testURL)
 		if err != nil {
 			t.Fatalf("request: %v", err)
 		}
@@ -59,9 +75,7 @@ func TestDefaultRuleLogOnlyAction(t *testing.T) {
 		}
 	})
 
-	// Reset the override and restore safe config BEFORE returning.
-	// t.Cleanup runs after the test but before subsequent tests see the state.
-	httpDelete(t, wafctlURL+"/api/default-rules/942100/override")
+	// Step 3: Restore config.
 	ensureDefaultConfig(t)
 	deployWAF(t)
 }

@@ -197,6 +197,9 @@ func runServe() int {
 	dosConfigFile := envOr("WAF_DOS_CONFIG_FILE", "/data/dos-config.json")
 	jailStore := NewJailStore(dosJailFile)
 	dosConfigStore := NewDosConfigStore(dosConfigFile)
+	// Seed whitelist in jail.json from current DDoS config so the plugin
+	// picks it up on its next sync cycle.
+	jailStore.SetWhitelist(dosConfigStore.Get().Whitelist)
 
 	// Spike detector — tails access log for ddos_action fields, computes EPS.
 	dosCfg := dosConfigStore.Get()
@@ -365,7 +368,7 @@ func runServe() int {
 	mux.HandleFunc("POST /api/dos/jail", handleAddJail(jailStore))
 	mux.HandleFunc("DELETE /api/dos/jail/{ip}", handleRemoveJail(jailStore))
 	mux.HandleFunc("GET /api/dos/config", handleGetDosConfig(dosConfigStore))
-	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore))
+	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore, jailStore))
 	mux.HandleFunc("GET /api/dos/reports", handleListSpikeReports(spikeReporter))
 	mux.HandleFunc("GET /api/dos/reports/{id}", handleGetSpikeReport(spikeReporter))
 
