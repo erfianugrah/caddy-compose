@@ -281,13 +281,13 @@ func NewSecurityHeaderStore(path string) *SecurityHeaderStore {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("warning: could not read security headers config %s: %v", path, err)
+			log.Printf("[headers] warning: could not read security headers config %s: %v", path, err)
 		}
 		return s
 	}
 	var cfg SecurityHeaderConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("warning: could not parse security headers config %s: %v", path, err)
+		log.Printf("[headers] warning: could not parse security headers config %s: %v", path, err)
 		return s
 	}
 	if cfg.Services == nil {
@@ -305,7 +305,7 @@ func NewSecurityHeaderStore(path string) *SecurityHeaderStore {
 		}
 	}
 	s.cfg = cfg
-	log.Printf("loaded security headers config: profile=%s, %d services", cfg.Profile, len(cfg.Services))
+	log.Printf("[headers] loaded security headers config: profile=%s, %d services", cfg.Profile, len(cfg.Services))
 	return s
 }
 

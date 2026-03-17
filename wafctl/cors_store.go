@@ -79,20 +79,20 @@ func NewCORSStore(path string) *CORSStore {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("warning: could not read CORS config %s: %v", path, err)
+			log.Printf("[cors] warning: could not read CORS config %s: %v", path, err)
 		}
 		return s
 	}
 	var cfg CORSConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("warning: could not parse CORS config %s: %v", path, err)
+		log.Printf("[cors] warning: could not parse CORS config %s: %v", path, err)
 		return s
 	}
 	if cfg.PerService == nil {
 		cfg.PerService = make(map[string]CORSSettings)
 	}
 	s.cfg = cfg
-	log.Printf("loaded CORS config: %d per-service overrides", len(cfg.PerService))
+	log.Printf("[cors] loaded CORS config: %d per-service overrides", len(cfg.PerService))
 	return s
 }
 

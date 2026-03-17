@@ -41,12 +41,12 @@ func (s *ExclusionStore) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("exclusions file not found at %s, starting empty", s.filePath)
+			log.Printf("[rules] exclusions file not found at %s, starting empty", s.filePath)
 			s.exclusions = []RuleExclusion{}
 			s.version = currentStoreVersion
 			return
 		}
-		log.Printf("error reading exclusions file: %v", err)
+		log.Printf("[rules] error reading exclusions file: %v", err)
 		s.exclusions = []RuleExclusion{}
 		s.version = currentStoreVersion
 		return
@@ -56,14 +56,14 @@ func (s *ExclusionStore) load() {
 	if err := json.Unmarshal(data, &sf); err == nil && sf.Version > 0 {
 		s.exclusions = sf.Exclusions
 		s.version = sf.Version
-		log.Printf("loaded %d exclusions from %s (store v%d)", len(sf.Exclusions), s.filePath, sf.Version)
+		log.Printf("[rules] loaded %d exclusions from %s (store v%d)", len(sf.Exclusions), s.filePath, sf.Version)
 		return
 	}
 
 	// Legacy bare-array format — treat as current version.
 	var exclusions []RuleExclusion
 	if err := json.Unmarshal(data, &exclusions); err != nil {
-		log.Printf("error parsing exclusions file: %v", err)
+		log.Printf("[rules] error parsing exclusions file: %v", err)
 		s.exclusions = []RuleExclusion{}
 		s.version = currentStoreVersion
 		return
@@ -71,9 +71,9 @@ func (s *ExclusionStore) load() {
 
 	s.exclusions = exclusions
 	s.version = currentStoreVersion
-	log.Printf("loaded %d exclusions from %s (legacy format)", len(exclusions), s.filePath)
+	log.Printf("[rules] loaded %d exclusions from %s (legacy format)", len(exclusions), s.filePath)
 	if err := s.save(); err != nil {
-		log.Printf("error saving after format upgrade: %v", err)
+		log.Printf("[rules] error saving after format upgrade: %v", err)
 	}
 }
 

@@ -287,20 +287,20 @@ func NewCSPStore(path string) *CSPStore {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("warning: could not read CSP config %s: %v", path, err)
+			log.Printf("[csp] warning: could not read CSP config %s: %v", path, err)
 		}
 		return s
 	}
 	var cfg CSPConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("warning: could not parse CSP config %s: %v", path, err)
+		log.Printf("[csp] warning: could not parse CSP config %s: %v", path, err)
 		return s
 	}
 	if cfg.Services == nil {
 		cfg.Services = make(map[string]CSPServiceConfig)
 	}
 	s.cfg = cfg
-	log.Printf("loaded CSP config: %d service overrides", len(cfg.Services))
+	log.Printf("[csp] loaded CSP config: %d service overrides", len(cfg.Services))
 	return s
 }
 

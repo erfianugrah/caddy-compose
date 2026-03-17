@@ -145,7 +145,7 @@ func (s *IPIntelStore) lookupRPKI(asNumber, route string) rpkiResult {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		log.Printf("ipintel: RPKI lookup failed: %v", err)
+		log.Printf("[ipintel] RPKI lookup failed: %v", err)
 		return rpkiResult{validity: "unknown"}
 	}
 	defer resp.Body.Close()

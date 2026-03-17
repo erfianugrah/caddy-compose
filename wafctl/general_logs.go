@@ -73,7 +73,7 @@ func (s *GeneralLogStore) SetOffsetFile(path string) {
 	if data, err := os.ReadFile(path); err == nil {
 		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
 			s.offset.Store(v)
-			log.Printf("restored general log offset %d from %s", v, path)
+			log.Printf("[general-log] restored offset %d from %s", v, path)
 		}
 	}
 }
@@ -84,7 +84,7 @@ func (s *GeneralLogStore) saveOffset() {
 	}
 	data := []byte(strconv.FormatInt(s.offset.Load(), 10) + "\n")
 	if err := atomicWriteFile(s.offsetFile, data, 0644); err != nil {
-		log.Printf("error saving general log offset to %s: %v", s.offsetFile, err)
+		log.Printf("[general-log] error saving offset to %s: %v", s.offsetFile, err)
 	}
 }
 
@@ -97,12 +97,12 @@ func (s *GeneralLogStore) SetEventFile(path string) {
 	events, err := loadGeneralEventsFromJSONL(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("error loading general events from %s: %v", path, err)
+			log.Printf("[general-log] error loading events from %s: %v", path, err)
 		}
 		return
 	}
 	s.events = events
-	log.Printf("restored %d general log events from %s", len(events), path)
+	log.Printf("[general-log] restored %d events from %s", len(events), path)
 }
 
 func (s *GeneralLogStore) appendEventsToJSONL(events []GeneralLogEvent) {
@@ -111,7 +111,7 @@ func (s *GeneralLogStore) appendEventsToJSONL(events []GeneralLogEvent) {
 	}
 	f, err := os.OpenFile(s.eventFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("error opening general event file for append: %v", err)
+		log.Printf("[general-log] error opening event file for append: %v", err)
 		return
 	}
 	defer f.Close()
@@ -123,12 +123,12 @@ func (s *GeneralLogStore) appendEventsToJSONL(events []GeneralLogEvent) {
 		}
 		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
-			log.Printf("error writing general event to JSONL: %v", err)
+			log.Printf("[general-log] error writing event to JSONL: %v", err)
 			return
 		}
 	}
 	if err := f.Sync(); err != nil {
-		log.Printf("error syncing general event file: %v", err)
+		log.Printf("[general-log] error syncing event file: %v", err)
 	}
 }
 
@@ -147,7 +147,7 @@ func writeCompactedGeneralEvents(path string, events []GeneralLogEvent) {
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
-		log.Printf("error creating temp general event file for compaction: %v", err)
+		log.Printf("[general-log] error creating temp event file for compaction: %v", err)
 		return
 	}
 
@@ -168,22 +168,22 @@ func writeCompactedGeneralEvents(path string, events []GeneralLogEvent) {
 	if writeErr != nil {
 		f.Close()
 		os.Remove(tmp)
-		log.Printf("error writing compacted general event file: %v", writeErr)
+		log.Printf("[general-log] error writing compacted event file: %v", writeErr)
 		return
 	}
 
 	if err := f.Sync(); err != nil {
 		f.Close()
 		os.Remove(tmp)
-		log.Printf("error syncing compacted general event file: %v", err)
+		log.Printf("[general-log] error syncing compacted event file: %v", err)
 		return
 	}
 	f.Close()
 	if err := os.Rename(tmp, path); err != nil {
-		log.Printf("error renaming compacted general event file: %v", err)
+		log.Printf("[general-log] error renaming compacted event file: %v", err)
 		return
 	}
-	log.Printf("compacted general event file: %d events", count)
+	log.Printf("[general-log] compacted event file: %d events", count)
 }
 
 func loadGeneralEventsFromJSONL(path string) ([]GeneralLogEvent, error) {
@@ -239,23 +239,23 @@ func (s *GeneralLogStore) Load() {
 	f, err := os.Open(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("combined access log (general) not found at %s, will retry", s.path)
+			log.Printf("[general-log] combined access log not found at %s, will retry", s.path)
 			return
 		}
-		log.Printf("error opening combined access log (general): %v", err)
+		log.Printf("[general-log] error opening combined access log: %v", err)
 		return
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		log.Printf("error stat combined access log (general): %v", err)
+		log.Printf("[general-log] error stat combined access log: %v", err)
 		return
 	}
 
 	curOffset := s.offset.Load()
 	if info.Size() < curOffset {
-		log.Printf("combined access log (general) rotated (size %d < offset %d), re-reading", info.Size(), curOffset)
+		log.Printf("[general-log] combined access log rotated (size %d < offset %d), re-reading", info.Size(), curOffset)
 		s.offset.Store(0)
 		curOffset = 0
 		s.saveOffset()
@@ -268,7 +268,7 @@ func (s *GeneralLogStore) Load() {
 
 	if curOffset > 0 {
 		if _, err := f.Seek(curOffset, io.SeekStart); err != nil {
-			log.Printf("error seeking combined access log (general): %v", err)
+			log.Printf("[general-log] error seeking combined access log: %v", err)
 			return
 		}
 	}
@@ -315,7 +315,7 @@ func (s *GeneralLogStore) Load() {
 		}
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("error reading combined access log (general): %v", err)
+				log.Printf("[general-log] error reading combined access log: %v", err)
 			}
 			break
 		}
@@ -324,7 +324,7 @@ func (s *GeneralLogStore) Load() {
 
 	newOffset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
-		log.Printf("error getting combined access log (general) offset: %v", err)
+		log.Printf("[general-log] error getting combined access log offset: %v", err)
 	} else {
 		s.offset.Store(newOffset)
 		s.saveOffset()
@@ -336,7 +336,7 @@ func (s *GeneralLogStore) Load() {
 		s.mu.Unlock()
 		s.generation.Add(1)
 		s.appendEventsToJSONL(newEvents)
-		log.Printf("loaded %d new general log events — %d total", len(newEvents), s.EventCount())
+		log.Printf("[general-log] loaded %d new events — %d total", len(newEvents), s.EventCount())
 	}
 
 	s.evict()
@@ -371,10 +371,10 @@ func (s *GeneralLogStore) evict() {
 
 		evictPct := float64(evicted) / float64(total) * 100
 		if evicted > 10000 || evictPct > 5.0 {
-			log.Printf("evicted %d general log events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
+			log.Printf("[general-log] evicted %d events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
 			s.compactEventFileLocked()
 		} else {
-			log.Printf("evicted %d general log events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
+			log.Printf("[general-log] evicted %d events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
 		}
 	}
 }

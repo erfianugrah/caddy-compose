@@ -48,17 +48,17 @@ func (s *ConfigStore) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("config file not found at %s, using defaults", s.filePath)
+			log.Printf("[config] config file not found at %s, using defaults", s.filePath)
 			return
 		}
-		log.Printf("error reading config file: %v", err)
+		log.Printf("[config] error reading config file: %v", err)
 		return
 	}
 
 	// Try new format first.
 	var cfg WAFConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("error parsing config file: %v", err)
+		log.Printf("[config] error parsing config file: %v", err)
 		return
 	}
 
@@ -69,7 +69,7 @@ func (s *ConfigStore) load() {
 		if err := json.Unmarshal(data, &raw); err == nil {
 			if _, hasOldField := raw["rule_engine"]; hasOldField {
 				cfg = migrateOldConfig(data)
-				log.Printf("migrated config from old format")
+				log.Printf("[config] migrated config from old format")
 			} else {
 				// New format but missing paranoia_level — set defaults.
 				cfg.Defaults = defaultServiceSettings()
@@ -83,13 +83,13 @@ func (s *ConfigStore) load() {
 
 	// Validate loaded/migrated config. If invalid, log warning and use defaults.
 	if err := validateConfig(cfg); err != nil {
-		log.Printf("WARNING: loaded config is invalid (%v), using defaults", err)
+		log.Printf("[config] warning: loaded config is invalid (%v), using defaults", err)
 		s.config = defaultConfig()
 		return
 	}
 
 	s.config = cfg
-	log.Printf("loaded config from %s", s.filePath)
+	log.Printf("[config] loaded config from %s", s.filePath)
 }
 
 // migrateOldConfig converts the old flat WAFConfig format to the new per-service format.

@@ -257,7 +257,7 @@ func (s *AccessLogStore) SetOffsetFile(path string) {
 	if data, err := os.ReadFile(path); err == nil {
 		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
 			s.offset.Store(v)
-			log.Printf("restored access log offset %d from %s", v, path)
+			log.Printf("[access-log] restored offset %d from %s", v, path)
 		}
 	}
 }
@@ -269,7 +269,7 @@ func (s *AccessLogStore) saveOffset() {
 	}
 	data := []byte(strconv.FormatInt(s.offset.Load(), 10) + "\n")
 	if err := atomicWriteFile(s.offsetFile, data, 0644); err != nil {
-		log.Printf("error saving access log offset to %s: %v", s.offsetFile, err)
+		log.Printf("[access-log] error saving offset to %s: %v", s.offsetFile, err)
 	}
 }
 
@@ -298,7 +298,7 @@ func (s *AccessLogStore) SetEventFile(path string) {
 	events, err := loadRLEventsFromJSONL(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("error loading RL events from %s: %v", path, err)
+			log.Printf("[access-log] error loading RL events from %s: %v", path, err)
 		}
 		return
 	}
@@ -313,9 +313,9 @@ func (s *AccessLogStore) SetEventFile(path string) {
 		}
 	}
 	s.events = events
-	log.Printf("restored %d RL events from %s", len(events), path)
+	log.Printf("[access-log] restored %d RL events from %s", len(events), path)
 	if migrated > 0 {
-		log.Printf("migrated %d legacy ipsum events to policy source", migrated)
+		log.Printf("[access-log] migrated %d legacy ipsum events to policy source", migrated)
 		s.compactEventFileLocked()
 	}
 	// Initialize incremental counters from restored events.
@@ -331,7 +331,7 @@ func (s *AccessLogStore) appendEventsToJSONL(events []RateLimitEvent) {
 	}
 	f, err := os.OpenFile(s.eventFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("error opening RL event file for append: %v", err)
+		log.Printf("[access-log] error opening RL event file for append: %v", err)
 		return
 	}
 	defer f.Close()
@@ -343,12 +343,12 @@ func (s *AccessLogStore) appendEventsToJSONL(events []RateLimitEvent) {
 		}
 		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
-			log.Printf("error writing RL event to JSONL: %v", err)
+			log.Printf("[access-log] error writing RL event to JSONL: %v", err)
 			return
 		}
 	}
 	if err := f.Sync(); err != nil {
-		log.Printf("error syncing RL event file: %v", err)
+		log.Printf("[access-log] error syncing RL event file: %v", err)
 	}
 }
 
@@ -389,7 +389,7 @@ func writeCompactedRLEvents(path string, events []RateLimitEvent) {
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
-		log.Printf("error creating temp RL event file for compaction: %v", err)
+		log.Printf("[access-log] error creating temp RL event file for compaction: %v", err)
 		return
 	}
 
@@ -410,22 +410,22 @@ func writeCompactedRLEvents(path string, events []RateLimitEvent) {
 	if writeErr != nil {
 		f.Close()
 		os.Remove(tmp)
-		log.Printf("error writing compacted RL event file: %v", writeErr)
+		log.Printf("[access-log] error writing compacted RL event file: %v", writeErr)
 		return
 	}
 
 	if err := f.Sync(); err != nil {
 		f.Close()
 		os.Remove(tmp)
-		log.Printf("error syncing compacted RL event file: %v", err)
+		log.Printf("[access-log] error syncing compacted RL event file: %v", err)
 		return
 	}
 	f.Close()
 	if err := os.Rename(tmp, path); err != nil {
-		log.Printf("error renaming compacted RL event file: %v", err)
+		log.Printf("[access-log] error renaming compacted RL event file: %v", err)
 		return
 	}
-	log.Printf("compacted RL event file: %d events", count)
+	log.Printf("[access-log] compacted RL event file: %d events", count)
 }
 
 // loadRLEventsFromJSONL reads rate limit events from a JSONL file.
@@ -601,24 +601,24 @@ func (s *AccessLogStore) Load() {
 	f, err := os.Open(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("combined access log not found at %s, will retry", s.path)
+			log.Printf("[access-log] combined access log not found at %s, will retry", s.path)
 			return
 		}
-		log.Printf("error opening combined access log: %v", err)
+		log.Printf("[access-log] error opening combined access log: %v", err)
 		return
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		log.Printf("error stat combined access log: %v", err)
+		log.Printf("[access-log] error stat combined access log: %v", err)
 		return
 	}
 
 	// Detect rotation.
 	curOffset := s.offset.Load()
 	if info.Size() < curOffset {
-		log.Printf("combined access log rotated (size %d < offset %d), re-reading", info.Size(), curOffset)
+		log.Printf("[access-log] combined access log rotated (size %d < offset %d), re-reading", info.Size(), curOffset)
 		s.offset.Store(0)
 		curOffset = 0
 		s.saveOffset()
@@ -635,7 +635,7 @@ func (s *AccessLogStore) Load() {
 
 	if curOffset > 0 {
 		if _, err := f.Seek(curOffset, io.SeekStart); err != nil {
-			log.Printf("error seeking combined access log: %v", err)
+			log.Printf("[access-log] error seeking combined access log: %v", err)
 			return
 		}
 	}
@@ -755,7 +755,7 @@ func (s *AccessLogStore) Load() {
 		}
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("error reading combined access log: %v", err)
+				log.Printf("[access-log] error reading combined access log: %v", err)
 			}
 			break
 		}
@@ -763,7 +763,7 @@ func (s *AccessLogStore) Load() {
 
 	newOffset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
-		log.Printf("error getting combined access log offset: %v", err)
+		log.Printf("[access-log] error getting combined access log offset: %v", err)
 	} else {
 		s.offset.Store(newOffset)
 		s.saveOffset()
@@ -799,7 +799,7 @@ func (s *AccessLogStore) Load() {
 				rlCount++
 			}
 		}
-		log.Printf("loaded %d new events (%d rate-limit, %d policy-rl, %d policy-block) — %d total", len(newEvents), rlCount, policyRLCount, policyCount, s.EventCount())
+		log.Printf("[access-log] loaded %d new events (%d rate-limit, %d policy-rl, %d policy-block) — %d total", len(newEvents), rlCount, policyRLCount, policyCount, s.EventCount())
 	}
 
 	// Evict events older than maxAge.
@@ -848,10 +848,10 @@ func (s *AccessLogStore) evict() {
 		// Rewriting 460MB of JSONL for 21 evicted events out of 208K is wasteful.
 		evictPct := float64(evicted) / float64(total) * 100
 		if evicted > 10000 || evictPct > 5.0 {
-			log.Printf("evicted %d events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
+			log.Printf("[access-log] evicted %d events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
 			s.compactEventFileLocked()
 		} else {
-			log.Printf("evicted %d events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
+			log.Printf("[access-log] evicted %d events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
 		}
 	}
 }
@@ -887,7 +887,7 @@ func (s *AccessLogStore) EventCount() int {
 // while events exist (e.g. events set directly without going through Load()).
 func (s *AccessLogStore) FastSummary(hours int) SummaryResponse {
 	if s.counters == nil || (s.counters.totalEvents() == 0 && s.EventCount() > 0) {
-		log.Printf("[perf] ALS FastSummary falling back to O(N) scan (%d events)", s.EventCount())
+		log.Printf("[access-log] perf: FastSummary falling back to O(N) scan (%d events)", s.EventCount())
 		// Fallback: convert RL events to unified Events and summarize.
 		rlEvents := s.snapshotSince(hours)
 		events := make([]Event, len(rlEvents))
@@ -1255,7 +1255,7 @@ func enrichMatchedRulesWithDetails(rules []MatchedRule, detectMatchesJSON string
 
 	var entries []detectMatchEntry
 	if err := json.Unmarshal([]byte(detectMatchesJSON), &entries); err != nil {
-		log.Printf("[WARN] failed to parse policy_detect_matches JSON: %v", err)
+		log.Printf("[access-log] warning: failed to parse policy_detect_matches JSON: %v", err)
 		return
 	}
 

@@ -75,13 +75,13 @@ func (s *Store) SetEventFile(path string) {
 	events, err := loadEventsFromJSONL(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("error loading events from %s: %v", path, err)
+			log.Printf("[waf-events] error loading events from %s: %v", path, err)
 		}
 		return
 	}
 	s.events = events
 	s.rebuildIDIndex()
-	log.Printf("restored %d events from %s", len(events), path)
+	log.Printf("[waf-events] restored %d events from %s", len(events), path)
 	// Initialize incremental counters from restored events.
 	if s.counters != nil {
 		s.counters.initFromEvents(s.events)
@@ -95,7 +95,7 @@ func (s *Store) appendEventsToJSONL(events []Event) {
 	}
 	f, err := os.OpenFile(s.eventFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("error opening event file for append: %v", err)
+		log.Printf("[waf-events] error opening event file for append: %v", err)
 		return
 	}
 	defer f.Close()
@@ -103,17 +103,17 @@ func (s *Store) appendEventsToJSONL(events []Event) {
 	for i := range events {
 		data, err := json.Marshal(events[i])
 		if err != nil {
-			log.Printf("error marshaling event for persistence: %v", err)
+			log.Printf("[waf-events] error marshaling event for persistence: %v", err)
 			continue
 		}
 		data = append(data, '\n')
 		if _, err := f.Write(data); err != nil {
-			log.Printf("error writing event to JSONL: %v", err)
+			log.Printf("[waf-events] error writing event to JSONL: %v", err)
 			return
 		}
 	}
 	if err := f.Sync(); err != nil {
-		log.Printf("error syncing event file: %v", err)
+		log.Printf("[waf-events] error syncing event file: %v", err)
 	}
 }
 
@@ -148,7 +148,7 @@ func writeCompactedEvents(path string, events []Event) {
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
-		log.Printf("error creating temp event file for compaction: %v", err)
+		log.Printf("[waf-events] error creating temp event file for compaction: %v", err)
 		return
 	}
 
@@ -169,22 +169,22 @@ func writeCompactedEvents(path string, events []Event) {
 	if writeErr != nil {
 		f.Close()
 		os.Remove(tmp)
-		log.Printf("error writing compacted event file: %v", writeErr)
+		log.Printf("[waf-events] error writing compacted event file: %v", writeErr)
 		return
 	}
 
 	if err := f.Sync(); err != nil {
 		f.Close()
 		os.Remove(tmp)
-		log.Printf("error syncing compacted event file: %v", err)
+		log.Printf("[waf-events] error syncing compacted event file: %v", err)
 		return
 	}
 	f.Close()
 	if err := os.Rename(tmp, path); err != nil {
-		log.Printf("error renaming compacted event file: %v", err)
+		log.Printf("[waf-events] error renaming compacted event file: %v", err)
 		return
 	}
-	log.Printf("compacted event file: %d events", count)
+	log.Printf("[waf-events] compacted event file: %d events", count)
 }
 
 // loadEventsFromJSONL reads events from a JSONL file.
@@ -285,10 +285,10 @@ func (s *Store) evict() {
 
 		evictPct := float64(evicted) / float64(total) * 100
 		if evicted > 10000 || evictPct > 5.0 {
-			log.Printf("evicted %d events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
+			log.Printf("[waf-events] evicted %d events older than %s (%d remaining, %.1f%%) — compacting", evicted, s.maxAge, len(s.events), evictPct)
 			s.compactEventFileLocked()
 		} else {
-			log.Printf("evicted %d events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
+			log.Printf("[waf-events] evicted %d events older than %s (%d remaining, %.1f%%) — skipping compaction", evicted, s.maxAge, len(s.events), evictPct)
 		}
 	}
 }
@@ -441,7 +441,7 @@ func (s *Store) Summary(hours int) SummaryResponse {
 // stale (e.g. events set directly without going through normal ingestion).
 func (s *Store) FastSummary(hours int) SummaryResponse {
 	if s.counters == nil || (s.counters.totalEvents() == 0 && s.EventCount() > 0) {
-		log.Printf("[perf] WAF Store FastSummary falling back to O(N) scan (%d events)", s.EventCount())
+		log.Printf("[waf-events] perf: FastSummary falling back to O(N) scan (%d events)", s.EventCount())
 		return s.Summary(hours)
 	}
 	return s.counters.buildSummary(hours)

@@ -36,7 +36,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
-		log.Printf("error encoding JSON response: %v", err)
+		log.Printf("[http] error encoding JSON response: %v", err)
 	}
 }
 

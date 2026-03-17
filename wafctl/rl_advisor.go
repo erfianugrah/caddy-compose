@@ -52,7 +52,7 @@ func (s *AccessLogStore) scanRatesUncached(req RateAdvisorRequest) RateAdvisorRe
 
 	f, err := os.Open(s.path)
 	if err != nil {
-		log.Printf("advisor: error opening access log: %v", err)
+		log.Printf("[advisor] error opening access log: %v", err)
 		return RateAdvisorResponse{Window: req.Window, WindowSeconds: windowSecs}
 	}
 	defer f.Close()

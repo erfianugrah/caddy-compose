@@ -51,14 +51,14 @@ func runServe() int {
 
 	// Ensure WAF config directory and placeholder files exist.
 	if err := ensureWafDir(deployCfg.WafDir); err != nil {
-		log.Printf("warning: could not initialize waf dir: %v", err)
+		log.Printf("[boot] warning: could not initialize waf dir: %v", err)
 	}
 
 	// Event retention: maximum age for in-memory events (default 2160h = 90 days).
 	maxAgeStr := envOr("WAF_EVENT_MAX_AGE", "2160h")
 	maxAge, err := time.ParseDuration(maxAgeStr)
 	if err != nil {
-		log.Printf("warning: invalid WAF_EVENT_MAX_AGE %q, using 2160h", maxAgeStr)
+		log.Printf("[boot] warning: invalid WAF_EVENT_MAX_AGE %q, using 2160h", maxAgeStr)
 		maxAge = 2160 * time.Hour
 	}
 
@@ -66,7 +66,7 @@ func runServe() int {
 	generalMaxAgeStr := envOr("WAF_GENERAL_LOG_MAX_AGE", "168h")
 	generalMaxAge, err := time.ParseDuration(generalMaxAgeStr)
 	if err != nil {
-		log.Printf("warning: invalid WAF_GENERAL_LOG_MAX_AGE %q, using 168h", generalMaxAgeStr)
+		log.Printf("[boot] warning: invalid WAF_GENERAL_LOG_MAX_AGE %q, using 168h", generalMaxAgeStr)
 		generalMaxAge = 168 * time.Hour
 	}
 
@@ -74,7 +74,7 @@ func runServe() int {
 	tailIntervalStr := envOr("WAF_TAIL_INTERVAL", "5s")
 	tailInterval, err := time.ParseDuration(tailIntervalStr)
 	if err != nil {
-		log.Printf("warning: invalid WAF_TAIL_INTERVAL %q, using 5s", tailIntervalStr)
+		log.Printf("[boot] warning: invalid WAF_TAIL_INTERVAL %q, using 5s", tailIntervalStr)
 		tailInterval = 5 * time.Second
 	}
 
@@ -143,6 +143,11 @@ func runServe() int {
 	managedListStore := NewManagedListStore(managedListsFile, managedListsDir)
 	defaultRuleStore := NewDefaultRuleStore(defaultRulesFile, defaultRulesOverridesFile)
 
+	// Set up the CRS catalog backed by the default rule store. This replaces
+	// the old hardcoded crsRules slice — all catalog data now comes from
+	// default-rules.json (built by crs-converter at Docker build time).
+	SetCRSCatalog(NewCRSCatalog(defaultRuleStore))
+
 	// Generate-on-boot: regenerate policy-rules.json from stored config so
 	// Caddy's policy engine has fresh rules on startup. This only reads small
 	// config files (exclusions, config, CSP, etc.) — not event stores.
@@ -162,7 +167,7 @@ func runServe() int {
 		if n, err := strconv.Atoi(h); err == nil && n >= 0 && n <= 23 {
 			refreshHour = n
 		} else {
-			log.Printf("warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
+			log.Printf("[blocklist] warning: invalid WAF_BLOCKLIST_REFRESH_HOUR %q, using 6", h)
 		}
 	}
 	blocklistStore.StartScheduledRefresh(ctx, refreshHour)
@@ -381,7 +386,7 @@ func runServe() int {
 	// Bearer token auth: protect /api/ routes (except /api/health).
 	authToken := envOr("WAF_AUTH_TOKEN", "")
 	if authToken == "" {
-		log.Printf("warning: WAF_AUTH_TOKEN not set — API endpoints are unauthenticated")
+		log.Printf("[boot] warning: WAF_AUTH_TOKEN not set — API endpoints are unauthenticated")
 	}
 
 	// CORS: configure allowed origins (comma-separated).

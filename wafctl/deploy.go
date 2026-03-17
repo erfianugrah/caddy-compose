@@ -180,7 +180,7 @@ func reloadCaddy(caddyfilePath, adminURL string, configFiles ...string) error {
 		return fmt.Errorf("Caddy reload failed (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	log.Printf("Caddy reload successful via %s (fingerprint: %s)", url, fingerprint)
+	log.Printf("[deploy] Caddy reload successful via %s (fingerprint: %s)", url, fingerprint)
 	return nil
 }
 

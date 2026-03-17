@@ -56,14 +56,14 @@ func NewGeoIPStore(dbPath string, apiCfg *GeoIPAPIConfig) *GeoIPStore {
 		if _, err := os.Stat(dbPath); err == nil {
 			db, err := newGeoIPDB(dbPath)
 			if err != nil {
-				log.Printf("geoip: failed to load MMDB %s: %v", dbPath, err)
+				log.Printf("[geoip] failed to load MMDB %s: %v", dbPath, err)
 			} else {
 				s.db = db
-				log.Printf("geoip: loaded MMDB %s (ipVersion=%d, nodeCount=%d, recordSize=%d)",
+				log.Printf("[geoip] loaded MMDB %s (ipVersion=%d, nodeCount=%d, recordSize=%d)",
 					dbPath, db.ipVersion, db.nodeCount, db.recordSize)
 			}
 		} else {
-			log.Printf("geoip: MMDB file not found at %s, running in header-only mode", dbPath)
+			log.Printf("[geoip] MMDB file not found at %s, running in header-only mode", dbPath)
 		}
 	}
 
@@ -75,7 +75,7 @@ func NewGeoIPStore(dbPath string, apiCfg *GeoIPAPIConfig) *GeoIPStore {
 		}
 		s.api = apiCfg
 		s.client = &http.Client{Timeout: timeout}
-		log.Printf("geoip: online API fallback enabled (url=%s, timeout=%s)", apiCfg.URL, timeout)
+		log.Printf("[geoip] online API fallback enabled (url=%s, timeout=%s)", apiCfg.URL, timeout)
 	}
 
 	return s
@@ -224,7 +224,7 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("geoip: online API request error: %v", err)
+		log.Printf("[geoip] online API request error: %v", err)
 		return ""
 	}
 	if s.api.Key != "" {
@@ -234,19 +234,19 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		log.Printf("geoip: online API request failed for %s: %v", ip, err)
+		log.Printf("[geoip] online API request failed for %s: %v", ip, err)
 		return ""
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("geoip: online API returned status %d for %s", resp.StatusCode, ip)
+		log.Printf("[geoip] online API returned status %d for %s", resp.StatusCode, ip)
 		return ""
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
-		log.Printf("geoip: online API read error for %s: %v", ip, err)
+		log.Printf("[geoip] online API read error for %s: %v", ip, err)
 		return ""
 	}
 
@@ -255,7 +255,7 @@ func (s *GeoIPStore) lookupOnline(ip string) string {
 	// ip-api.com: {"countryCode": "US", ...}
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		log.Printf("geoip: online API JSON parse error for %s: %v", ip, err)
+		log.Printf("[geoip] online API JSON parse error for %s: %v", ip, err)
 		return ""
 	}
 
@@ -309,7 +309,7 @@ func (s *GeoIPStore) lookupOnlineFull(ip string) *GeoIPInfo {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		log.Printf("geoip: online full lookup failed for %s: %v", ip, err)
+		log.Printf("[geoip] online full lookup failed for %s: %v", ip, err)
 		return nil
 	}
 	defer resp.Body.Close()
