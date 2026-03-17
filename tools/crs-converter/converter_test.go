@@ -396,10 +396,8 @@ SecRule REQUEST_URI "@rx /target" "t:none"`
 
 // --- Numeric operator tests ---
 
-func TestConvertNumericCountPrefix_Skipped(t *testing.T) {
-	// CRS: &REQUEST_HEADERS:Host @eq 0 — named header count check.
-	// The plugin only supports count: on aggregate fields, not named headers.
-	// These rules should be skipped until the plugin adds named count support.
+func TestConvertNamedHeaderCount(t *testing.T) {
+	// CRS: &REQUEST_HEADERS:Host @eq 0 → count:host eq 0 (header missing check)
 	input := `SecRule &REQUEST_HEADERS:Host "@eq 0" "id:920280,phase:1,block,msg:'Request missing a Host header',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
 
 	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
@@ -410,8 +408,40 @@ func TestConvertNumericCountPrefix_Skipped(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
 
-	if len(result) != 0 {
-		t.Errorf("expected 0 rules (named header count not supported), got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	pr := result[0]
+	if pr.Conditions[0].Field != "count:host" {
+		t.Errorf("Field: expected 'count:host', got %q", pr.Conditions[0].Field)
+	}
+	if pr.Conditions[0].Operator != "eq" {
+		t.Errorf("Operator: expected 'eq', got %q", pr.Conditions[0].Operator)
+	}
+	if pr.Conditions[0].Value != "0" {
+		t.Errorf("Value: expected '0', got %q", pr.Conditions[0].Value)
+	}
+}
+
+func TestConvertNamedHeaderCount_NonShortcut(t *testing.T) {
+	// &REQUEST_HEADERS:Transfer-Encoding → count:header:Transfer-Encoding
+	input := `SecRule &REQUEST_HEADERS:Transfer-Encoding "@gt 1" "id:920210,phase:1,block,msg:'Multiple Transfer-Encoding',severity:'WARNING',tag:'attack-protocol',tag:'paranoia-level/1'"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 converted rule, got %d", len(result))
+	}
+
+	if result[0].Conditions[0].Field != "count:header:Transfer-Encoding" {
+		t.Errorf("Field: expected 'count:header:Transfer-Encoding', got %q", result[0].Conditions[0].Field)
 	}
 }
 

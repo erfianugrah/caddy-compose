@@ -473,8 +473,32 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 					break
 				}
 			}
-			// Early exit: if we have enough results, stop.
-			if len(filtered) >= limit {
+			// Early exit: if we have a full page AND passed the offset window,
+			// do a fast count-only pass to get the real total instead of returning -1.
+			if len(filtered) >= limit && matched >= offset+limit {
+				for wi >= 0 || ri >= 0 {
+					iterations++
+					if iterations%5000 == 0 {
+						if ctx.Err() != nil {
+							timedOut = true
+							break
+						}
+					}
+					useWAF := wi >= 0 && (ri < 0 || !wafEvents[wi].Timestamp.Before(rlRaw[ri].Timestamp))
+					if useWAF {
+						ev := &wafEvents[wi]
+						wi--
+						if matchesWAFFilters(ev) {
+							matched++
+						}
+					} else {
+						rle := &rlRaw[ri]
+						ri--
+						if matchesRLFilters(rle) {
+							matched++
+						}
+					}
+				}
 				break
 			}
 			// Pick the newest event from either source.
@@ -503,20 +527,6 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				}
 			}
 
-			// Early-exit: once we have a full page and are past
-			// the offset window, stop scanning. Return total=-1 to signal
-			// that more results exist but the exact count is unknown.
-			if len(filtered) >= limit && matched >= offset+limit {
-				hasMore := wi >= 0 || ri >= 0
-				total := matched
-				if hasMore {
-					total = -1 // signal: more results exist
-				}
-				resp := EventsResponse{Total: total, Events: filtered}
-				cache.set(cacheKey, resp, gen, 5*time.Second)
-				writeJSON(w, http.StatusOK, resp)
-				return
-			}
 		}
 
 		resp := EventsResponse{Total: matched, Events: filtered}

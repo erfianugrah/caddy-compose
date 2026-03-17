@@ -238,6 +238,12 @@
           "field": "method",
           "operator": "regex",
           "value": "^(?:GET|HEAD)$"
+        },
+        {
+          "field": "count:header:Transfer-Encoding",
+          "operator": "eq",
+          "value": "0",
+          "negate": true
         }
       ],
       "group_op": "and",
@@ -252,38 +258,6 @@
       "enabled": true,
       "priority": 400,
       "description": "GET or HEAD Request with Transfer-Encoding",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
-      "id": "920180",
-      "name": "POST without Content-Length and Transfer-Encoding headers",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "http_version",
-          "operator": "in",
-          "value": "HTTP/2|HTTP/2.0|HTTP/3|HTTP/3.0",
-          "negate": true
-        },
-        {
-          "field": "method",
-          "operator": "eq",
-          "value": "POST"
-        }
-      ],
-      "group_op": "and",
-      "severity": "WARNING",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "POST without Content-Length and Transfer-Encoding headers",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -313,6 +287,81 @@
       "enabled": true,
       "priority": 400,
       "description": "POST requests should include a Content-Type header to describe the body format. CRS 920180."
+    },
+    {
+      "id": "920180",
+      "name": "POST without Content-Length and Transfer-Encoding headers",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "http_version",
+          "operator": "in",
+          "value": "HTTP/2|HTTP/2.0|HTTP/3|HTTP/3.0",
+          "negate": true
+        },
+        {
+          "field": "method",
+          "operator": "eq",
+          "value": "POST"
+        },
+        {
+          "field": "count:content_length",
+          "operator": "eq",
+          "value": "0"
+        },
+        {
+          "field": "count:header:Transfer-Encoding",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "POST without Content-Length and Transfer-Encoding headers",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920181",
+      "name": "Content-Length and Transfer-Encoding headers present",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:header:Transfer-Encoding",
+          "operator": "eq",
+          "value": "0",
+          "negate": true
+        },
+        {
+          "field": "count:content_length",
+          "operator": "eq",
+          "value": "0",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Content-Length and Transfer-Encoding headers present",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920190",
@@ -809,6 +858,47 @@
       "description": "Requests with an excessive number of parameters may indicate HashDoS or parameter pollution attacks. Default limit: 255. CRS 920300."
     },
     {
+      "id": "920300",
+      "name": "Request Missing an Accept Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:header:Accept",
+          "operator": "eq",
+          "value": "0"
+        },
+        {
+          "field": "method",
+          "operator": "regex",
+          "value": "^(?:OPTIONS|CONNECT)$",
+          "negate": true
+        },
+        {
+          "field": "user_agent",
+          "operator": "phrase_match",
+          "negate": true,
+          "list_items": [
+            "AppleWebKit",
+            "Android"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 3,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request Missing an Accept Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920310",
       "name": "Request Has an Empty Accept Header",
       "type": "detect",
@@ -854,38 +944,6 @@
     },
     {
       "id": "920311",
-      "name": "Request Has an Empty Accept Header",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Accept",
-          "operator": "regex",
-          "value": "^$"
-        },
-        {
-          "field": "method",
-          "operator": "regex",
-          "value": "^OPTIONS$",
-          "negate": true
-        }
-      ],
-      "group_op": "and",
-      "severity": "NOTICE",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Request Has an Empty Accept Header",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
-      "id": "920311",
       "name": "Argument value too long",
       "type": "detect",
       "conditions": [
@@ -909,6 +967,69 @@
       "enabled": true,
       "priority": 400,
       "description": "Excessively long parameter values may indicate buffer overflow or payload injection. Default limit: 400 characters. CRS 920311."
+    },
+    {
+      "id": "920311",
+      "name": "Request Has an Empty Accept Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "header:Accept",
+          "operator": "regex",
+          "value": "^$"
+        },
+        {
+          "field": "method",
+          "operator": "regex",
+          "value": "^OPTIONS$",
+          "negate": true
+        },
+        {
+          "field": "count:user_agent",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request Has an Empty Accept Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920320",
+      "name": "Missing User Agent Header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:user_agent",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "NOTICE",
+      "paranoia_level": 2,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Missing User Agent Header",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920330",
@@ -946,6 +1067,11 @@
           "operator": "regex",
           "value": "^0$",
           "negate": true
+        },
+        {
+          "field": "count:content_type",
+          "operator": "eq",
+          "value": "0"
         }
       ],
       "group_op": "and",
@@ -1148,35 +1274,6 @@
     },
     {
       "id": "920450",
-      "name": "HTTP header is restricted by policy (%{MATCHED_VAR})",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "all_headers_names",
-          "operator": "regex",
-          "value": "^.*$",
-          "transforms": [
-            "lowercase"
-          ]
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "HTTP header is restricted by policy (%{MATCHED_VAR})",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
-      "id": "920450",
       "name": "HTTP header restricted by policy",
       "type": "detect",
       "conditions": [
@@ -1206,6 +1303,35 @@
       "enabled": true,
       "priority": 400,
       "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded — they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450."
+    },
+    {
+      "id": "920450",
+      "name": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_headers_names",
+          "operator": "regex",
+          "value": "^.*$",
+          "transforms": [
+            "lowercase"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920451",
@@ -1323,6 +1449,36 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
+      "id": "920490",
+      "name": "Request header x-up-devcap-post-charset detected in combination with prefix \\'UP\\' to User-Agent",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:header:x-up-devcap-post-charset",
+          "operator": "ge",
+          "value": "1"
+        },
+        {
+          "field": "user_agent",
+          "operator": "regex",
+          "value": "^(?i)up"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 3,
+      "tags": [
+        "language-aspnet",
+        "platform-windows",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Request header x-up-devcap-post-charset detected in combination with prefix \\'UP\\' to User-Agent",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
       "id": "920500",
       "name": "Attempt to access a backup or working file",
       "type": "detect",
@@ -1348,6 +1504,39 @@
       "enabled": true,
       "priority": 400,
       "description": "Attempt to access a backup or working file",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920510",
+      "name": "Invalid Cache-Control request header",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:header:Cache-Control",
+          "operator": "gt",
+          "value": "0"
+        },
+        {
+          "field": "header:Cache-Control",
+          "operator": "regex",
+          "value": "^(?:(?:max-age=[0-9]+|min-fresh=[0-9]+|no-cache|no-store|no-transform|only-if-cached|max-stale(?:=[0-9]+)?)(?:\\s*\\,\\s*|$)){1,7}$",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 3,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol",
+        "header-allowlist"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Invalid Cache-Control request header",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -1493,6 +1682,58 @@
       "enabled": true,
       "priority": 400,
       "description": "Raw (unencoded) fragment in request URI",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920620",
+      "name": "Multiple Content-Type Request Headers",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:content_type",
+          "operator": "gt",
+          "value": "1"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Multiple Content-Type Request Headers",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
+    },
+    {
+      "id": "920660",
+      "name": "Obsolete Request-Range header detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:header:Request-Range",
+          "operator": "gt",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Obsolete Request-Range header detected",
       "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
@@ -1830,6 +2071,32 @@
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
     },
     {
+      "id": "921230",
+      "name": "HTTP Range Header detected",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:header:Range",
+          "operator": "gt",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 3,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "HTTP Range Header detected",
+      "category": "REQUEST-921-PROTOCOL-ATTACK",
+      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+    },
+    {
       "id": "921240",
       "name": "mod_proxy attack attempt detected",
       "type": "detect",
@@ -1944,6 +2211,33 @@
       "description": "Content-Type header: Dangerous content type outside the mime type declaration",
       "category": "REQUEST-921-PROTOCOL-ATTACK",
       "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+    },
+    {
+      "id": "922100",
+      "name": "Multipart content type global _charset_ definition is not allowed by policy",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "count:multipart_part_headers",
+          "operator": "eq",
+          "value": "0",
+          "negate": true
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-multipart-header"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Multipart content type global _charset_ definition is not allowed by policy",
+      "category": "REQUEST-922-MULTIPART-ATTACK",
+      "crs_file": "REQUEST-922-MULTIPART-ATTACK.conf"
     },
     {
       "id": "922120",
@@ -7078,7 +7372,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "files",
+          "field": "header:X-File-Name",
           "operator": "phrase_match",
           "list_items": [
             ".DS_Store",
@@ -8588,7 +8882,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X-File-Name",
+          "field": "header:X.Filename",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\.*$",
           "transforms": [
@@ -8617,7 +8911,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "files",
+          "field": "header:X-Filename",
           "operator": "regex",
           "value": ".*\\.ph(?:p\\d*|tml|ar|ps|t|pt)\\..*$",
           "transforms": [
@@ -9377,7 +9671,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "files",
+          "field": "header:X-Filename",
           "operator": "regex",
           "value": "(?:^|[/\\x5c])sess_[,\\-0-9a-z]{20,256}$",
           "transforms": [
@@ -12817,35 +13111,6 @@
     },
     {
       "id": "943120",
-      "name": "Possible Session Fixation Attack: SessionID Parameter Name with No Referer",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "all_args_names",
-          "operator": "regex",
-          "value": "^(?:jsessionid|aspsessionid|asp\\.net_sessionid|phpsession|phpsessid|weblogicsession|session_id|session-id|sessionid|cfid|cftoken|cfsid|jservsession|jwsession|_flask_session|_session_id|connect\\.sid|laravel_session)$",
-          "transforms": [
-            "lowercase"
-          ]
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-fixation"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Possible Session Fixation Attack: SessionID Parameter Name with No Referer",
-      "category": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION",
-      "crs_file": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf"
-    },
-    {
-      "id": "943120",
       "name": "Session fixation — session ID parameter without referer",
       "type": "detect",
       "conditions": [
@@ -12887,6 +13152,40 @@
       "enabled": true,
       "priority": 400,
       "description": "Detects common session ID parameter names in requests with no Referer header — suggests an attacker is injecting a session token via a crafted link. CRS 943110/943120."
+    },
+    {
+      "id": "943120",
+      "name": "Possible Session Fixation Attack: SessionID Parameter Name with No Referer",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_args_names",
+          "operator": "regex",
+          "value": "^(?:jsessionid|aspsessionid|asp\\.net_sessionid|phpsession|phpsessid|weblogicsession|session_id|session-id|sessionid|cfid|cftoken|cfsid|jservsession|jwsession|_flask_session|_session_id|connect\\.sid|laravel_session)$",
+          "transforms": [
+            "lowercase"
+          ]
+        },
+        {
+          "field": "count:referer",
+          "operator": "eq",
+          "value": "0"
+        }
+      ],
+      "group_op": "and",
+      "severity": "CRITICAL",
+      "paranoia_level": 1,
+      "tags": [
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-fixation"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Possible Session Fixation Attack: SessionID Parameter Name with No Referer",
+      "category": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION",
+      "crs_file": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf"
     },
     {
       "id": "944100",
@@ -13081,7 +13380,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "header:X.Filename",
+          "field": "header:X-Filename",
           "operator": "regex",
           "value": ".*\\.(?:jsp|jspx)\\.*$",
           "transforms": [
@@ -17337,5 +17636,5 @@
   ],
   "version": 7,
   "crs_version": "4.24.1",
-  "generated": "2026-03-17T11:37:10Z"
+  "generated": "2026-03-17T12:03:28Z"
 }
