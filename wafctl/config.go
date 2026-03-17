@@ -26,14 +26,16 @@ func NewConfigStore(filePath string) *ConfigStore {
 }
 
 // defaultConfig returns sensible defaults for WAF configuration.
-// InboundThreshold 25 accommodates ~346 CRS rules at PL1 without false
-// positives on legitimate requests. CRS v4.24.1 includes header presence
-// checks (NOTICE=2) that accumulate on requests missing optional headers.
+// InboundThreshold 60 accommodates ~346 CRS rules at PL1 where header
+// presence checks (NOTICE=2, WARNING=3) can accumulate 20-30 points on
+// legitimate requests missing optional browser headers. A threshold of 60
+// ensures only genuine attack patterns (multiple CRITICAL=5 rules) trigger
+// blocking, while still providing anomaly scoring visibility for all events.
 func defaultConfig() WAFConfig {
 	return WAFConfig{
 		Defaults: WAFServiceSettings{
 			ParanoiaLevel:     1,
-			InboundThreshold:  25,
+			InboundThreshold:  60,
 			OutboundThreshold: 4,
 		},
 		Services: make(map[string]WAFServiceSettings),

@@ -14,8 +14,16 @@ import (
 // passes through, then re-enable and verify it's blocked again.
 
 func TestDefaultRulesBulkBehavior(t *testing.T) {
-	// Ensure WAF config is at known defaults (not poisoned by parallel tests).
-	ensureDefaultConfig(t)
+	// Set a low threshold so SQLi attacks (CRITICAL=5) trigger blocking.
+	// The default threshold (60) is too high for single-rule attack detection.
+	httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{
+			"paranoia_level":     2,
+			"inbound_threshold":  15,
+			"outbound_threshold": 15,
+		},
+		"services": map[string]any{},
+	})
 	deployWAF(t)
 
 	// Rule 942100 catches "UNION SELECT" SQLi. Confirm it blocks first.
