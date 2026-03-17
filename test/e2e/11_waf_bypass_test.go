@@ -11,9 +11,17 @@ import (
 // ════════════════════════════════════════════════════════════════════
 
 func TestE2EWAFBypass(t *testing.T) {
-	sqliURL := caddyURL + "/get?id=1%27%20OR%20%271%27=%271"
+	// Low threshold so a single CRS CRITICAL rule triggers blocking.
+	httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{"paranoia_level": 4, "inbound_threshold": 3, "outbound_threshold": 15},
+		"services": map[string]any{},
+	})
+	deployWAF(t)
+	sqliURL := caddyURL + "/get?q=1+UNION+SELECT+username,password+FROM+users"
 
-	// Step 1: Confirm blocked before exclusion.
+	// Wait for the low threshold config to take effect.
+	waitForStatus(t, sqliURL, 403, 15*time.Second)
+
 	t.Run("pre-exclusion blocked", func(t *testing.T) {
 		code, err := httpGetCode(sqliURL)
 		if err != nil {

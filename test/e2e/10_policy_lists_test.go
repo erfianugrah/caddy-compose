@@ -11,6 +11,8 @@ import (
 // ════════════════════════════════════════════════════════════════════
 
 func TestPolicyEngineInList(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test the full pipeline: managed list → exclusion with in_list → deploy →
 	// plugin hot reload → request matching. This validates the core security fix:
 	// exact path matching via hash set instead of @pm substring matching.
@@ -79,6 +81,8 @@ func TestPolicyEngineInList(t *testing.T) {
 }
 
 func TestPolicyEngineNotInList(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test not_in_list: block all paths NOT in the safe list.
 	// This uses method field to avoid interfering with other tests.
 
@@ -181,6 +185,8 @@ func TestPolicyEngineNotInList(t *testing.T) {
 }
 
 func TestPolicyEngineInListIP(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test in_list with IP kind list. Uses a CIDR that covers Docker bridge
 	// networks (172.16.0.0/12) to match the E2E test client's IP.
 
@@ -235,6 +241,8 @@ func TestPolicyEngineInListIP(t *testing.T) {
 }
 
 func TestPolicyEngineInListLarge(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Stress test: create a large IP list (10K entries), reference it in a
 	// block rule, deploy, and verify the plugin handles it without timeout.
 

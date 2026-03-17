@@ -10,6 +10,8 @@ import (
 // ════════════════════════════════════════════════════════════════════
 
 func TestPolicyEngineBlock(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Create a block rule for a specific path.
 	payload := map[string]any{
 		"name":        "e2e-policy-block",
@@ -47,6 +49,8 @@ func TestPolicyEngineBlock(t *testing.T) {
 }
 
 func TestPolicyEngineHoneypot(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Create a block rule with honeypot tag and in operator — tests exact matching.
 	payload := map[string]any{
 		"name":        "e2e-honeypot",
@@ -92,10 +96,18 @@ func TestPolicyEngineHoneypot(t *testing.T) {
 }
 
 func TestPolicyEngineAllow(t *testing.T) {
-	// Use /get (valid httpbun endpoint) with SQLi in query string.
-	sqliURL := caddyURL + "/get?id=1%27%20OR%20%271%27=%271"
+	// Low threshold so a single CRS CRITICAL rule (score 5) triggers blocking.
+	httpPut(t, wafctlURL+"/api/config", map[string]any{
+		"defaults": map[string]any{"paranoia_level": 4, "inbound_threshold": 3, "outbound_threshold": 15},
+		"services": map[string]any{},
+	})
+	deployWAF(t)
+	// Use /get with UNION SELECT — triggers CRS 942100 (detectSQLi) at CRITICAL severity.
+	sqliURL := caddyURL + "/get?q=1+UNION+SELECT+username,password+FROM+users"
 
-	// Verify the SQLi is blocked before the allow rule.
+	// Wait for the low threshold config to take effect.
+	waitForStatus(t, sqliURL, 403, 15*time.Second)
+
 	t.Run("pre-allow blocked", func(t *testing.T) {
 		code, err := httpGetCode(sqliURL)
 		if err != nil {
@@ -139,6 +151,8 @@ func TestPolicyEngineAllow(t *testing.T) {
 }
 
 func TestPolicyEngineBodyJSON(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Create a block rule that matches a JSON body field: .action == "delete_all".
 	payload := map[string]any{
 		"name":        "e2e-body-json-block",

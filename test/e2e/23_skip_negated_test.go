@@ -185,6 +185,8 @@ func TestSkipGeneratesPolicyRule(t *testing.T) {
 // TestNegatedOperatorBlockRule verifies that not_contains creates a block rule
 // that blocks requests whose path does NOT contain the specified substring.
 func TestNegatedOperatorBlockRule(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	safePath := "/e2e-negated-safe-" + time.Now().Format("150405")
 	blockedPath := "/e2e-negated-blocked-" + time.Now().Format("150405")
 
@@ -265,6 +267,8 @@ func TestNegatedOperatorValidation(t *testing.T) {
 // TestNegatedOperatorNotInBlock verifies not_in operator: block requests
 // whose method is NOT in the specified set.
 func TestNegatedOperatorNotInBlock(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	testPath := "/e2e-not-in-" + time.Now().Format("150405")
 
 	// Block if method not_in GET|HEAD — so POST should be blocked.

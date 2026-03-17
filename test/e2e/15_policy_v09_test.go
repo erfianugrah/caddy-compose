@@ -11,6 +11,8 @@ import (
 // ════════════════════════════════════════════════════════════════════
 
 func TestPolicyEngineTransforms(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test transform functions end-to-end:
 	// 1. Create a block rule with transforms: ["urlDecode", "lowercase"]
 	//    that blocks requests containing "/admin" in the path after decoding.
@@ -98,6 +100,8 @@ func TestPolicyEngineTransforms(t *testing.T) {
 // ════════════════════════════════════════════════════════════════════
 
 func TestPolicyEnginePhraseMatch(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test phrase_match operator with Aho-Corasick multi-pattern matching.
 	// Use user_agent field with custom bot-name patterns to avoid CRS interference
 	// (CRS inspects query strings for SQLi but doesn't block arbitrary UA strings).
@@ -228,6 +232,8 @@ func TestPolicyEnginePhraseMatch(t *testing.T) {
 }
 
 func TestPolicyEngineAggregateFields(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test aggregate field matching. Create a block rule that matches
 	// any header value containing a specific pattern.
 
@@ -315,6 +321,8 @@ func TestPolicyEngineAggregateFields(t *testing.T) {
 }
 
 func TestPolicyEnginePhraseMatchAggregateField(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test phrase_match on an aggregate field: scan ALL header values for
 	// SQL injection patterns using Aho-Corasick. This is the core CRS-like
 	// use case — multi-pattern scanning across all request variables.
@@ -400,6 +408,8 @@ func TestPolicyEnginePhraseMatchAggregateField(t *testing.T) {
 }
 
 func TestPolicyEngineCountField(t *testing.T) {
+	ensureDefaultConfig(t)
+	deployWAF(t)
 	// Test count: pseudo-field with numeric operators.
 	// count:all_args_names counts just the query param names (not values).
 	// Block requests to /e2e-count-test that have more than 3 query param names.
