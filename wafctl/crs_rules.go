@@ -1,6 +1,9 @@
 package main
 
-import "log"
+import (
+	"log"
+	"sync/atomic"
+)
 
 // ─── CRS Catalog Types ─────────────────────────────────────────────
 //
@@ -57,7 +60,7 @@ var crsCategories = []CRSCategory{
 	{ID: "rfi", Name: "Remote File Inclusion", Description: "Remote file inclusion attempts", RuleRange: "931000-931999", Tag: "attack-rfi"},
 	{ID: "rce", Name: "Remote Code Execution", Description: "Command injection and RCE", RuleRange: "932000-932999", Tag: "attack-rce"},
 	{ID: "php", Name: "PHP Injection", Description: "PHP code injection attacks", RuleRange: "933000-933999", Tag: "attack-injection-php"},
-	{ID: "nodejs", Name: "Node.js Injection", Description: "Node.js code injection attacks", RuleRange: "934000-934999", Tag: "attack-injection-nodejs"},
+	{ID: "generic-attack", Name: "Generic Attack", Description: "Generic application attack patterns (CRS v4)", RuleRange: "934000-934999", Tag: "attack-generic"},
 	{ID: "xss", Name: "Cross-Site Scripting", Description: "XSS attack detection", RuleRange: "941000-941999", Tag: "attack-xss"},
 	{ID: "sqli", Name: "SQL Injection", Description: "SQL injection detection", RuleRange: "942000-942999", Tag: "attack-sqli"},
 	{ID: "session-fixation", Name: "Session Fixation", Description: "Session fixation attacks", RuleRange: "943000-943999", Tag: "attack-fixation"},
@@ -76,11 +79,18 @@ var categoryFromCRSFile = map[string]string{
 	"REQUEST-931-APPLICATION-ATTACK-RFI":              "rfi",
 	"REQUEST-932-APPLICATION-ATTACK-RCE":              "rce",
 	"REQUEST-933-APPLICATION-ATTACK-PHP":              "php",
-	"REQUEST-934-APPLICATION-ATTACK-GENERIC":          "nodejs",
+	"REQUEST-934-APPLICATION-ATTACK-GENERIC":          "generic-attack",
 	"REQUEST-941-APPLICATION-ATTACK-XSS":              "xss",
 	"REQUEST-942-APPLICATION-ATTACK-SQLI":             "sqli",
 	"REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION": "session-fixation",
 	"REQUEST-944-APPLICATION-ATTACK-JAVA":             "java",
+	// Response-phase categories (outbound rules)
+	"RESPONSE-950-DATA-LEAKAGES":      "data-leakage",
+	"RESPONSE-951-DATA-LEAKAGES-SQL":  "data-leakage-sql",
+	"RESPONSE-952-DATA-LEAKAGES-JAVA": "data-leakage-java",
+	"RESPONSE-953-DATA-LEAKAGES-PHP":  "data-leakage-php",
+	"RESPONSE-954-DATA-LEAKAGES-IIS":  "data-leakage-iis",
+	"RESPONSE-955-WEB-SHELLS":         "web-shells",
 }
 
 // normalizeCRSCategory maps a converter's full category string to a short ID.
@@ -219,23 +229,28 @@ func (c *CRSCatalog) GetCatalog() CRSCatalogResponse {
 // ─── Package-level convenience (backward compat for tests) ──────────
 
 // defaultCRSCatalog is the package-level catalog instance, set during
-// server startup by SetCRSCatalog. Tests that don't call SetCRSCatalog
-// get a nil-store catalog that falls back to customRulesFallback.
-var defaultCRSCatalog = &CRSCatalog{}
+// server startup by SetCRSCatalog. Uses atomic.Pointer for thread-safe
+// access without a mutex. Tests that don't call SetCRSCatalog get a
+// nil-store catalog that falls back to customRulesFallback.
+var defaultCRSCatalog atomic.Pointer[CRSCatalog]
+
+func init() {
+	defaultCRSCatalog.Store(&CRSCatalog{})
+}
 
 // SetCRSCatalog sets the package-level CRS catalog used by LookupCRSRule.
 // Called once during server startup after DefaultRuleStore is initialized.
 func SetCRSCatalog(c *CRSCatalog) {
-	defaultCRSCatalog = c
+	defaultCRSCatalog.Store(c)
 }
 
 // LookupCRSRule returns the CRS or custom rule for the given ID, or ok=false.
 // Uses the package-level catalog (set by SetCRSCatalog at startup).
 func LookupCRSRule(id string) (CRSRule, bool) {
-	return defaultCRSCatalog.Lookup(id)
+	return defaultCRSCatalog.Load().Lookup(id)
 }
 
 // GetCRSCatalog returns the full catalog. Uses the package-level catalog.
 func GetCRSCatalog() CRSCatalogResponse {
-	return defaultCRSCatalog.GetCatalog()
+	return defaultCRSCatalog.Load().GetCatalog()
 }

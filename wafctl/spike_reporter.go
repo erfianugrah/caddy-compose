@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,16 +16,13 @@ import (
 
 // SpikeReport is a forensic snapshot generated when a spike ends.
 type SpikeReport struct {
-	ID              string       `json:"id"`
-	StartTime       string       `json:"start_time"`
-	EndTime         string       `json:"end_time"`
-	Duration        string       `json:"duration"`
-	TotalEvents     int64        `json:"total_events"`
-	PeakEPS         float64      `json:"peak_eps"`
-	JailedIPs       int          `json:"jailed_ips"`
-	TopIPs          []CountEntry `json:"top_ips,omitempty"`
-	TopPaths        []CountEntry `json:"top_paths,omitempty"`
-	TopFingerprints []CountEntry `json:"top_fingerprints,omitempty"`
+	ID          string  `json:"id"`
+	StartTime   string  `json:"start_time"`
+	EndTime     string  `json:"end_time"`
+	Duration    string  `json:"duration"`
+	TotalEvents int64   `json:"total_events"`
+	PeakEPS     float64 `json:"peak_eps"`
+	JailedIPs   int     `json:"jailed_ips"`
 }
 
 // CountEntry is a key-count pair for top-N lists.
@@ -138,12 +136,20 @@ func (r *SpikeReporter) cleanDir() {
 	if err != nil {
 		return
 	}
+	// Filter to only spike report files (spike-*.json) to avoid
+	// counting unrelated .json files toward the maxKeep limit.
+	var spikeFiles []os.DirEntry
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "spike-") && filepath.Ext(e.Name()) == ".json" {
+			spikeFiles = append(spikeFiles, e)
+		}
+	}
 	// Sort by name descending (spike-TIMESTAMP, newer = larger number)
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() > entries[j].Name()
+	sort.Slice(spikeFiles, func(i, j int) bool {
+		return spikeFiles[i].Name() > spikeFiles[j].Name()
 	})
-	for i, e := range entries {
-		if i >= r.maxKeep && filepath.Ext(e.Name()) == ".json" {
+	for i, e := range spikeFiles {
+		if i >= r.maxKeep {
 			os.Remove(filepath.Join(r.dir, e.Name()))
 		}
 	}

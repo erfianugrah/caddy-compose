@@ -202,7 +202,7 @@ func TestBackupIncludesDefaultRuleOverrides(t *testing.T) {
 		t.Skipf("cannot override default rule 920270 (status %d)", resp.StatusCode)
 	}
 	t.Cleanup(func() {
-		httpDelete(t, wafctlURL+"/api/default-rules/920270")
+		httpDelete(t, wafctlURL+"/api/default-rules/920270/override")
 	})
 
 	// Take backup

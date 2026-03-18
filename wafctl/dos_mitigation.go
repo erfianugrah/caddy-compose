@@ -138,9 +138,22 @@ func (s *JailStore) List() []JailEntry {
 	return result
 }
 
-// Count returns the number of non-expired entries.
+// Count returns the number of non-expired entries without allocating
+// a full JailEntry slice.
 func (s *JailStore) Count() int {
-	return len(s.List())
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	count := 0
+	for _, e := range s.entries {
+		expiresAt, err := time.Parse(time.RFC3339, e.ExpiresAt)
+		if err != nil || now.After(expiresAt) {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 // Add creates a jail entry and persists to disk.
@@ -178,21 +191,19 @@ func (s *JailStore) Remove(ip string) error {
 	return err
 }
 
-// saveLocked marshals and writes the jail file to disk.
-// Caller must hold s.mu (write lock).
 // SetWhitelist updates the whitelist CIDRs that get synced to the plugin via jail.json.
 // Called when the DDoS config is updated via the API.
 func (s *JailStore) SetWhitelist(cidrs []string) {
 	s.mu.Lock()
-	s.whitelist = cidrs
-	s.mu.Unlock()
-	// Trigger a save to propagate to the plugin immediately.
-	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.whitelist = cidrs
 	if err := s.saveLocked(); err != nil {
 		log.Printf("[dos] whitelist sync save failed: %v", err)
 	}
 }
+
+// saveLocked marshals and writes the jail file to disk.
+// Caller must hold s.mu (write lock).
 
 func (s *JailStore) saveLocked() error {
 	jf := jailFile{

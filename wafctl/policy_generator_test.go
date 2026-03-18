@@ -45,6 +45,8 @@ func TestIsPolicyEngineType(t *testing.T) {
 		{"block", true},
 		{"skip", true},
 		{"detect", true},
+		{"rate_limit", true},
+		{"response_header", true},
 		{"honeypot", false},
 		{"skip_rule", false},
 		{"anomaly", false},
@@ -136,7 +138,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 		if len(file.Rules) != 2 {
 			t.Fatalf("expected 2 rules, got %d", len(file.Rules))
 		}
-		// New 5-pass order: allow (50+) < block (100+).
+		// 6-pass order: allow (50+) < block (100+).
 		if file.Rules[0].Type != "allow" {
 			t.Errorf("rules[0].Type = %q, want allow", file.Rules[0].Type)
 		}
@@ -418,7 +420,7 @@ func TestGeneratePolicyRules(t *testing.T) {
 			t.Fatalf("expected 3 rules, got %d", len(file.Rules))
 		}
 		// Verify ordering: allow (a1), block (b1, b2).
-		// New 5-pass order: allow(50) < block(100).
+		// 6-pass order: allow(50) < block(100).
 		if file.Rules[0].ID != "a1" {
 			t.Errorf("first rule ID = %q, want a1", file.Rules[0].ID)
 		}
@@ -824,7 +826,7 @@ func TestGeneratePolicyRulesWithRL(t *testing.T) {
 		if len(file.Rules) != 3 {
 			t.Fatalf("want 3 rules, got %d", len(file.Rules))
 		}
-		// New 5-pass order: allow (50) < block (100) < rate_limit (300).
+		// 6-pass order: allow (50) < block (100) < rate_limit (300).
 		if file.Rules[0].Type != "allow" {
 			t.Errorf("rules[0].Type = %q, want allow", file.Rules[0].Type)
 		}
@@ -1453,7 +1455,7 @@ func TestGenerateSkipRules(t *testing.T) {
 		}
 	})
 
-	t.Run("full 5-pass priority ordering", func(t *testing.T) {
+	t.Run("full 6-pass priority ordering", func(t *testing.T) {
 		exclusions := []RuleExclusion{
 			{ID: "d1", Name: "Detect", Type: "detect", Severity: "CRITICAL", Enabled: true,
 				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/sus"}}},
@@ -1475,7 +1477,7 @@ func TestGenerateSkipRules(t *testing.T) {
 		if len(file.Rules) != 5 {
 			t.Fatalf("expected 5 rules, got %d", len(file.Rules))
 		}
-		// Full 5-pass order: allow(50) < block(100) < skip(200) < rate_limit(300) < detect(400).
+		// Full 6-pass order: allow(50) < block(100) < skip(200) < rate_limit(300) < detect(400) < response_header(500).
 		wantOrder := []string{"allow", "block", "skip", "rate_limit", "detect"}
 		for i, want := range wantOrder {
 			if file.Rules[i].Type != want {
@@ -1507,6 +1509,95 @@ func TestGenerateSkipRules(t *testing.T) {
 }
 
 // ─── Negated Operator & request_combined Validation ───────────────
+
+// ─── Response Header Rule Generation ──────────────────────────────
+
+func TestGenerateResponseHeaderRules(t *testing.T) {
+	t.Run("header_set and header_remove", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "rh1", Name: "Set security headers", Type: "response_header", Enabled: true,
+				HeaderSet:    map[string]string{"X-Custom": "value1"},
+				HeaderRemove: []string{"Server"},
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var file PolicyRulesFile
+		if err := json.Unmarshal(data, &file); err != nil {
+			t.Fatal(err)
+		}
+		if len(file.Rules) != 1 {
+			t.Fatalf("expected 1 rule, got %d", len(file.Rules))
+		}
+		r := file.Rules[0]
+		if r.Type != "response_header" {
+			t.Errorf("type = %q, want response_header", r.Type)
+		}
+		if r.Phase != "outbound" {
+			t.Errorf("phase = %q, want outbound (forced for response_header)", r.Phase)
+		}
+		if r.HeaderSet["X-Custom"] != "value1" {
+			t.Errorf("header_set = %v, want X-Custom:value1", r.HeaderSet)
+		}
+		if len(r.HeaderRemove) != 1 || r.HeaderRemove[0] != "Server" {
+			t.Errorf("header_remove = %v, want [Server]", r.HeaderRemove)
+		}
+	})
+
+	t.Run("header_add and header_default", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{
+				ID: "rh2", Name: "Add headers", Type: "response_header", Enabled: true,
+				Phase:         "outbound",
+				HeaderAdd:     map[string]string{"X-Extra": "extra"},
+				HeaderDefault: map[string]string{"X-Default": "fallback"},
+			},
+		}
+		data, err := GeneratePolicyRules(exclusions, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		r := file.Rules[0]
+		if r.HeaderAdd["X-Extra"] != "extra" {
+			t.Errorf("header_add = %v, want X-Extra:extra", r.HeaderAdd)
+		}
+		if r.HeaderDefault["X-Default"] != "fallback" {
+			t.Errorf("header_default = %v, want X-Default:fallback", r.HeaderDefault)
+		}
+	})
+
+	t.Run("priority in response_header band", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{ID: "rh3", Name: "RH rule", Type: "response_header", Enabled: true,
+				HeaderSet: map[string]string{"X-Test": "1"}},
+		}
+		data, _ := GeneratePolicyRules(exclusions, nil)
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if file.Rules[0].Priority < 500 || file.Rules[0].Priority >= 600 {
+			t.Errorf("priority = %d, want [500,600)", file.Rules[0].Priority)
+		}
+	})
+
+	t.Run("detect action passthrough", func(t *testing.T) {
+		exclusions := []RuleExclusion{
+			{ID: "d1", Name: "Detect log only", Type: "detect", Severity: "WARNING",
+				DetectAction: "log_only", Enabled: true,
+				Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}}},
+		}
+		data, _ := GeneratePolicyRules(exclusions, nil)
+		var file PolicyRulesFile
+		json.Unmarshal(data, &file)
+		if file.Rules[0].Action != "log_only" {
+			t.Errorf("action = %q, want log_only", file.Rules[0].Action)
+		}
+	})
+}
 
 func TestValidateNegatedOperators(t *testing.T) {
 	tests := []struct {

@@ -268,13 +268,13 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 	if ss.ParanoiaLevel < 1 || ss.ParanoiaLevel > 4 {
 		return fmt.Errorf("%s: paranoia_level must be between 1 and 4", name)
 	}
-	if ss.InboundThreshold < 1 {
-		return fmt.Errorf("%s: inbound_threshold must be at least 1", name)
+	if ss.InboundThreshold < 0 {
+		return fmt.Errorf("%s: inbound_threshold must be non-negative (0 = blocking disabled)", name)
 	}
-	if ss.OutboundThreshold < 1 {
-		return fmt.Errorf("%s: outbound_threshold must be at least 1", name)
+	if ss.OutboundThreshold < 0 {
+		return fmt.Errorf("%s: outbound_threshold must be non-negative (0 = blocking disabled)", name)
 	}
-	// Validate disabled_categories — must be 3-4 digit CRS rule ID prefixes.
+	// Validate disabled_categories — must be known CRS rule ID prefixes.
 	for _, cat := range ss.DisabledCategories {
 		if len(cat) < 3 || len(cat) > 4 {
 			return fmt.Errorf("%s: disabled_categories entry %q must be a 3-4 digit CRS rule ID prefix", name, cat)
@@ -283,6 +283,9 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 			if c < '0' || c > '9' {
 				return fmt.Errorf("%s: disabled_categories entry %q must be numeric", name, cat)
 			}
+		}
+		if !validCRSCategoryPrefixes[cat] {
+			return fmt.Errorf("%s: disabled_categories entry %q is not a known CRS category prefix", name, cat)
 		}
 	}
 
@@ -330,4 +333,29 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 	}
 
 	return nil
+}
+
+// validCRSCategoryPrefixes are the known CRS rule ID prefixes that can be
+// used in disabled_categories. Derived from the OWASP CRS 4.x rule numbering.
+var validCRSCategoryPrefixes = map[string]bool{
+	"913":  true, // Scanner Detection
+	"920":  true, // Protocol Enforcement
+	"921":  true, // Protocol Attack
+	"922":  true, // Multipart Attack
+	"930":  true, // Local File Inclusion
+	"931":  true, // Remote File Inclusion
+	"932":  true, // Remote Code Execution
+	"933":  true, // PHP Injection
+	"934":  true, // Generic Attack (formerly Node.js)
+	"941":  true, // Cross-Site Scripting
+	"942":  true, // SQL Injection
+	"943":  true, // Session Fixation
+	"944":  true, // Java Injection
+	"950":  true, // Data Leakages
+	"951":  true, // Data Leakages - SQL
+	"952":  true, // Data Leakages - Java
+	"953":  true, // Data Leakages - PHP
+	"954":  true, // Data Leakages - IIS
+	"955":  true, // Web Shells
+	"9100": true, // Custom policy engine rules
 }

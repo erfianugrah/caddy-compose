@@ -412,6 +412,15 @@ var validOperatorsForField = map[string]map[string]bool{
 		"eq": true, "neq": true, "in": true, "not_in": true,
 		"in_list": true, "not_in_list": true,
 	},
+	"response_content_type": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"in": true, "not_in": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
 	"http_version": {
 		"eq": true, "neq": true, "in": true, "not_in": true,
 		"in_list": true, "not_in_list": true,

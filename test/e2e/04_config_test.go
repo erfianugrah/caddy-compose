@@ -36,6 +36,9 @@ func TestWAFConfig(t *testing.T) {
 		}
 	})
 
+	// Restore defaults (threshold 0 = disabled) and wait for plugin to reload.
+	ensureDefaultConfig(t)
+	deployAndWaitForStatus(t, caddyURL+"/get", 200)
 }
 
 // ════════════════════════════════════════════════════════════════════

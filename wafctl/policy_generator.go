@@ -186,6 +186,9 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 		// Add store index as tiebreaker (0-999 range, capped).
 		tiebreaker := i
 		if tiebreaker > 999 {
+			if tiebreaker == 1000 {
+				log.Printf("[policy] warning: >1000 rules of type %q — priority tiebreaker capped at 999; ordering may be indeterminate", e.Type)
+			}
 			tiebreaker = 999
 		}
 
@@ -237,8 +240,14 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 				Action: action,
 			}
 			// Use explicit priority if set, otherwise tiebreaker from store index.
+			// Cap at 99 to prevent bleeding into the detect band (400+).
 			if e.Priority > 0 {
-				pr.Priority = policyTypePriority["rate_limit"] + e.Priority
+				cappedPriority := e.Priority
+				if cappedPriority > 99 {
+					cappedPriority = 99
+					log.Printf("[policy] warning: rate_limit rule %q priority %d capped to 99 to stay within band", e.ID, e.Priority)
+				}
+				pr.Priority = policyTypePriority["rate_limit"] + cappedPriority
 			}
 		}
 
@@ -391,6 +400,16 @@ var fqdnCache struct {
 	data  map[string]string
 }
 
+// ResetFQDNCache clears the FQDN cache. Exported for use in tests and benchmarks
+// to prevent cross-test contamination from the global cache.
+func ResetFQDNCache() {
+	fqdnCache.mu.Lock()
+	defer fqdnCache.mu.Unlock()
+	fqdnCache.path = ""
+	fqdnCache.mtime = time.Time{}
+	fqdnCache.data = nil
+}
+
 // BuildServiceFQDNMap parses the Caddyfile and builds a mapping from short
 // service names to FQDNs. For a site block "httpbun.erfi.io {", the short
 // name is "httpbun" (everything before the first dot). This allows the
@@ -449,6 +468,17 @@ func BuildServiceFQDNMap(caddyfilePath string) map[string]string {
 	fqdnCache.mtime = mtime
 	fqdnCache.data = m
 	return m
+}
+
+// mapServiceBoth maps a value to both the FQDN and the short name in the given map.
+// This ensures the plugin can match by either the original short name or
+// the resolved FQDN from the Host header.
+func mapServiceBoth[V any](m map[string]V, svc string, serviceMap map[string]string, val V) {
+	fqdn := resolveServiceName(svc, serviceMap)
+	m[fqdn] = val
+	if fqdn != svc {
+		m[svc] = val
+	}
 }
 
 // resolveServiceName maps a short service name to its FQDN using the
@@ -557,19 +587,12 @@ func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStor
 		if len(cfg.Services) > 0 {
 			sec.PerService = make(map[string]PolicySecurityServiceOverride)
 			for svc := range cfg.Services {
-				fqdn := resolveServiceName(svc, serviceMap)
 				resolved := resolveSecurityHeaders(cfg, svc)
-				sec.PerService[fqdn] = PolicySecurityServiceOverride{
+				override := PolicySecurityServiceOverride{
 					Headers: resolved.Headers,
 					Remove:  resolved.Remove,
 				}
-				// Also map the short name if different from FQDN.
-				if fqdn != svc {
-					sec.PerService[svc] = PolicySecurityServiceOverride{
-						Headers: resolved.Headers,
-						Remove:  resolved.Remove,
-					}
-				}
+				mapServiceBoth(sec.PerService, svc, serviceMap, override)
 			}
 		}
 		resp.Security = sec
@@ -602,12 +625,7 @@ func BuildPolicyResponseHeaders(cspStore *CSPStore, secStore *SecurityHeaderStor
 		corsCfg := corsStore.Get()
 		perService := make(map[string]CORSSettings)
 		for svc, cs := range corsCfg.PerService {
-			fqdn := resolveServiceName(svc, serviceMap)
-			perService[fqdn] = cs
-			// Also map the short name if different from FQDN.
-			if fqdn != svc {
-				perService[svc] = cs
-			}
+			mapServiceBoth(perService, svc, serviceMap, cs)
 		}
 		resp.CORS = &PolicyCORSConfig{
 			Enabled:    corsCfg.Enabled,
@@ -642,18 +660,13 @@ func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *Policy
 	if len(cfg.Services) > 0 {
 		pwc.PerService = make(map[string]PolicyWafServiceConfig, len(cfg.Services))
 		for svc, ss := range cfg.Services {
-			fqdn := resolveServiceName(svc, serviceMap)
 			psc := PolicyWafServiceConfig{
 				ParanoiaLevel:      ss.ParanoiaLevel,
 				InboundThreshold:   ss.InboundThreshold,
 				OutboundThreshold:  ss.OutboundThreshold,
 				DisabledCategories: ss.DisabledCategories,
 			}
-			pwc.PerService[fqdn] = psc
-			// Also map the short name if different from FQDN.
-			if fqdn != svc {
-				pwc.PerService[svc] = psc
-			}
+			mapServiceBoth(pwc.PerService, svc, serviceMap, psc)
 		}
 	}
 

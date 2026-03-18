@@ -368,7 +368,7 @@ func runServe() int {
 	mux.HandleFunc("POST /api/dos/jail", handleAddJail(jailStore))
 	mux.HandleFunc("DELETE /api/dos/jail/{ip}", handleRemoveJail(jailStore))
 	mux.HandleFunc("GET /api/dos/config", handleGetDosConfig(dosConfigStore))
-	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore, jailStore))
+	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore, jailStore, spikeDetector))
 	mux.HandleFunc("GET /api/dos/reports", handleListSpikeReports(spikeReporter))
 	mux.HandleFunc("GET /api/dos/reports/{id}", handleGetSpikeReport(spikeReporter))
 

@@ -185,7 +185,14 @@ func TestDDoS_ConcurrentRequests(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range perGoroutine {
-				resp, _ := httpGet(t, caddyURL+"/get")
+				// Use raw HTTP client instead of httpGet to avoid t.Fatalf
+				// from goroutines, which panics in Go's testing framework.
+				resp, err := client.Get(caddyURL + "/get")
+				if err != nil {
+					errs <- fmt.Errorf("GET /get: %v", err)
+					return
+				}
+				resp.Body.Close()
 				if resp.StatusCode != 200 {
 					errs <- fmt.Errorf("got status %d, want 200", resp.StatusCode)
 					return
@@ -261,9 +268,16 @@ func TestDDoS_API_JailCRUD(t *testing.T) {
 
 // TestDDoS_API_ConfigCRUD tests reading and updating DDoS config.
 func TestDDoS_API_ConfigCRUD(t *testing.T) {
-	// Get default config
+	// Get default config and restore it on cleanup.
 	resp, body := httpGet(t, wafctlURL+"/api/dos/config")
 	assertCode(t, "get dos config", 200, resp)
+
+	t.Cleanup(func() {
+		// Restore original config to avoid state pollution for subsequent tests.
+		var original map[string]any
+		json.Unmarshal(body, &original)
+		httpPut(t, wafctlURL+"/api/dos/config", original)
+	})
 	if !strings.Contains(string(body), `"threshold"`) {
 		t.Fatalf("config should contain threshold, got: %s", truncate(body, 200))
 	}

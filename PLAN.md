@@ -1,6 +1,6 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.53.0 / caddy 3.49.0 / body-matcher v0.2.1 / policy-engine v0.20.1 / ddos-mitigator v0.9.0)
+## Current State (v2.57.0 / caddy 3.53.0 / body-matcher v0.2.1 / policy-engine v0.23.0 / ddos-mitigator v0.9.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound), 6-pass evaluation (allow → block → skip → rate_limit → detect →
@@ -21,6 +21,167 @@ AbortController/visibility API/memoization, Makefile parallel build.
 ---
 
 ## Pending Work
+
+### CRS Metadata: Converter-Driven Single Source of Truth
+
+**Problem**: CRS category taxonomy is hardcoded across 4 files that drift independently:
+
+| File | What it hardcodes | Lines |
+|------|-------------------|-------|
+| `wafctl/crs_rules.go` | `crsCategories` (14 entries), `categoryFromCRSFile` (19 entries), `customRulesFallback` (11 rules) | ~80 lines of static data |
+| `wafctl/config.go` | `validCRSCategoryPrefixes` (21 entries) | ~25 lines |
+| `waf-dashboard/src/lib/api/default-rules.ts` | `CRS_CATEGORIES` (20 entries with shortName, color, icon) | ~45 lines |
+| `wafctl/access_log_store.go` | Severity-to-numeric mapping, `"PE-"` prefix, `"Matched Data: "` format | scattered |
+
+When CRS bumps from v4.24 to v4.25+ (or eventually v5), every one of these must be
+manually updated. The `crs-converter` already parses every `.conf` file at build time
+and knows all categories, rule IDs, severities, and tags — but none of that knowledge
+flows back to inform the Go code or frontend.
+
+**Goal**: The converter becomes the single source of truth. CRS version bumps require
+re-running the converter — zero manual Go/TS edits.
+
+#### Phase 1 — Converter emits `crs-metadata.json` at build time
+
+Extend `tools/crs-converter/` to emit a second output file alongside `default-rules.json`:
+
+```json
+{
+  "crs_version": "4.24.1",
+  "generated_at": "2025-03-18T09:00:00Z",
+  "categories": [
+    {
+      "id": "protocol-enforcement",
+      "name": "Protocol Enforcement",
+      "description": "HTTP protocol violations and anomalies",
+      "prefix": "920",
+      "rule_range": "920000-920999",
+      "tag": "attack-protocol",
+      "phase": "inbound",
+      "rule_count": 42
+    }
+  ],
+  "category_map": {
+    "REQUEST-920-PROTOCOL-ENFORCEMENT": "protocol-enforcement",
+    "RESPONSE-950-DATA-LEAKAGES": "data-leakage"
+  },
+  "valid_prefixes": ["913", "920", "921", "922", "930", "931", "932", "933", "934", "941", "942", "943", "944", "950", "951", "952", "953", "954", "955"],
+  "severity_levels": {
+    "CRITICAL": 2,
+    "ERROR": 3,
+    "WARNING": 4,
+    "NOTICE": 5
+  },
+  "custom_rule_prefix": "9100"
+}
+```
+
+The converter already iterates `.conf` filenames to derive categories. Adding metadata
+emission is ~100 lines of Go in the converter. The `rule_count` per category and
+`phase` (inbound/outbound from `REQUEST-` vs `RESPONSE-` prefix) come for free.
+
+**Converter changes** (`tools/crs-converter/main.go`):
+- New flag: `-metadata-output /path/to/crs-metadata.json`
+- After processing all `.conf` files, build the metadata struct from observed categories
+- Emit as indented JSON alongside `default-rules.json`
+
+**Dockerfile changes** (stage `crs-rules`):
+- Add `-metadata-output /build/crs-metadata.json` to the converter invocation
+- `COPY --from=crs-rules /build/crs-metadata.json /etc/caddy/waf/crs-metadata.json`
+
+#### Phase 2 — Go code loads metadata at startup
+
+New file: `wafctl/crs_metadata.go`
+
+```go
+// CRSMetadata is loaded from crs-metadata.json at startup.
+// All category taxonomy, prefix validation, and normalization
+// is derived from this rather than hardcoded Go maps.
+type CRSMetadata struct {
+    CRSVersion     string                       `json:"crs_version"`
+    Categories     []CRSCategory                `json:"categories"`
+    CategoryMap    map[string]string             `json:"category_map"`
+    ValidPrefixes  []string                      `json:"valid_prefixes"`
+    SeverityLevels map[string]int                `json:"severity_levels"`
+}
+
+var defaultMetadata atomic.Pointer[CRSMetadata]
+```
+
+**What each file drops:**
+
+| File | Removed | Replaced by |
+|------|---------|-------------|
+| `crs_rules.go` | `crsCategories` slice | `defaultMetadata.Load().Categories` |
+| `crs_rules.go` | `categoryFromCRSFile` map | `defaultMetadata.Load().CategoryMap` |
+| `config.go` | `validCRSCategoryPrefixes` map | `defaultMetadata.Load().ValidPrefixes` as a set |
+| `access_log_store.go` | Severity switch statement | `defaultMetadata.Load().SeverityLevels` |
+
+The hardcoded Go maps remain as **compile-time fallbacks** for tests that don't load
+metadata (same pattern as `customRulesFallback` today). But production always loads
+from the generated file.
+
+**Startup sequence** (`main.go`):
+```go
+meta, err := LoadCRSMetadata(filepath.Join(wafDir, "crs-metadata.json"))
+if err != nil {
+    log.Printf("[crs] warning: %v, using fallback metadata", err)
+    meta = fallbackMetadata() // hardcoded Go maps, current behavior
+}
+SetCRSMetadata(meta)
+```
+
+#### Phase 3 — Frontend drops its category constant
+
+The frontend already fetches categories from `GET /api/crs/rules` (which returns
+`CRSCatalogResponse.Categories`). The `CRS_CATEGORIES` constant in
+`waf-dashboard/src/lib/api/default-rules.ts` is only used for:
+1. Mapping category IDs to display names/colors in the UI
+2. Populating category filter dropdowns
+
+**Changes:**
+- `/api/crs/rules` response already includes categories — add `color` and `icon` fields
+  to `CRSCategory` struct (or let the frontend derive them from the category ID via a
+  small lookup, which is already partially done)
+- Remove the `CRS_CATEGORIES` constant from `default-rules.ts`
+- Category filter dropdowns fetch from the API on mount (with caching)
+
+This decouples the frontend entirely from CRS version knowledge. Adding a new category
+in CRS v5 would automatically appear in the UI without any frontend code change.
+
+#### Phase 4 — Test infrastructure
+
+**Converter tests** (`tools/crs-converter/`):
+- Test that the metadata output contains all observed categories
+- Test that `category_map` keys match `.conf` filenames
+- Test that `valid_prefixes` covers all observed rule ID prefixes
+
+**Go unit tests** (`wafctl/`):
+- `TestLoadCRSMetadata_FromFile` — loads test fixture, verifies categories
+- `TestLoadCRSMetadata_Missing` — falls back to hardcoded, logs warning
+- `TestNormalizeCRSCategory_Dynamic` — uses loaded metadata instead of static map
+- `TestValidateCategoryPrefix_Dynamic` — validates against loaded prefixes
+- Remove or relax tests that assert specific category counts (they change with CRS versions)
+
+**E2E tests**:
+- `GET /api/crs/rules` already tested; verify `categories[].rule_count` is populated
+- Verify that `disabled_categories` accepts all prefixes from the metadata
+
+#### Migration path
+
+This is backward-compatible. The fallback metadata (hardcoded maps) ensures the code
+works without `crs-metadata.json` — same behavior as today. The migration is:
+
+1. PR 1: Converter emits `crs-metadata.json` (additive, no Go changes)
+2. PR 2: Go loads metadata at startup, falls back to hardcoded (no behavior change)
+3. PR 3: Frontend fetches categories from API, removes constant
+4. PR 4: Remove hardcoded maps (breaking change — requires metadata file)
+
+PRs 1-3 can each be deployed independently with zero risk. PR 4 is optional cleanup.
+
+**Estimated effort**: ~3-4 days total (converter: 1 day, Go loader: 1 day, frontend: 0.5 day, tests: 1 day).
+
+---
 
 ### CRS Converter Fidelity
 
@@ -305,6 +466,33 @@ resilient to transient origin errors.
 ---
 
 ## Completed (changelog)
+
+### v2.57.0 / caddy 3.53.0
+
+- **Code review sweep (31 fixes)**: Critical bug fixes, test coverage, and design improvements
+  across CRS, policy engine, DDoS mitigation, and E2E test suite.
+- **Critical fixes**: `response_content_type` field made usable (added operator map),
+  rate limit priority capped to prevent detect-band collision, `JailStore.SetWhitelist`
+  double-lock race eliminated, `SpikeDetector` thresholds now updateable at runtime via
+  `PUT /api/dos/config`.
+- **DDoS improvements**: `SpikeReport.TotalEvents` tracks cumulative spike events (not
+  sliding window), log tailing uses actual timestamps (prevents false burst on restart),
+  `JailStore.Count()` optimized from O(n) alloc to O(n) count-only, `SpikeReporter.cleanDir()`
+  filters only `spike-*.json` files, removed dead `TopIPs`/`TopPaths`/`TopFingerprints`
+  fields from `SpikeReport`.
+- **Policy engine**: `mapServiceBoth` generic helper replaces 3 copy-pasted dual-mapping
+  blocks, `ResetFQDNCache()` exported for test isolation, `defaultCRSCatalog` uses
+  `atomic.Pointer` for thread-safe access, tiebreaker cap logs warning at >1000 rules.
+- **CRS**: Category 934 renamed from "Node.js Injection" to "Generic Attack" (CRS v4),
+  response-phase categories added to `categoryFromCRSFile`, `disabled_categories` validated
+  against known CRS prefixes, threshold validation accepts 0 as "blocking disabled".
+- **New test coverage**: `handlers_dos_test.go` (6 handler tests), `spike_reporter_test.go`
+  (7 tests), `response_header` rule generation tests (4 tests), `IsPolicyEngineType` test
+  covers all 6 types, `detect_action` passthrough test.
+- **E2E fixes**: Wrong `DELETE /api/default-rules/{id}` → correct `/override` suffix,
+  `t.Fatalf` in goroutines replaced with error channel, summary test gracefully skips when
+  no detect_block events exist, DDoS config test restores original config on cleanup,
+  WAF config test restores defaults after update.
 
 ### v2.53.0 / caddy 3.49.0
 

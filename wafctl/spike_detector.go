@@ -39,6 +39,9 @@ type SpikeDetector struct {
 	bucketTime int64 // unix second of current bucket
 	totalCount int64 // sum of all buckets
 
+	// Cumulative event count during current spike (reset on spike start).
+	spikeEvents int64
+
 	// EPS history for sparkline (last 60 readings at 5s intervals = 5 min)
 	epsHistory [60]float64
 	epsHistIdx int
@@ -78,6 +81,19 @@ func (d *SpikeDetector) SetOnSpikeEnd(fn func(start, end time.Time, peakEPS floa
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.onSpikeEnd = fn
+}
+
+// UpdateThresholds updates the EPS thresholds and cooldown delay at runtime.
+// Called when DDoS config is updated via the API so the running detector
+// picks up new values without requiring a process restart.
+func (d *SpikeDetector) UpdateThresholds(triggerEPS, cooldownEPS float64, cooldownDelay time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.triggerEPS = triggerEPS
+	d.cooldownEPS = cooldownEPS
+	d.cooldownDelay = cooldownDelay
+	log.Printf("[dos] spike detector thresholds updated: trigger=%.1f cooldown=%.1f delay=%s",
+		triggerEPS, cooldownEPS, cooldownDelay)
 }
 
 // StartTailing begins background log tailing and EPS computation.
@@ -140,6 +156,12 @@ func (d *SpikeDetector) RecordEvent() {
 	d.recordEventAt(time.Now())
 }
 
+// RecordEventAtTime records a single event at the given timestamp.
+// Used when tailing log files to use the actual event time instead of Now().
+func (d *SpikeDetector) RecordEventAtTime(t time.Time) {
+	d.recordEventAt(t)
+}
+
 func (d *SpikeDetector) recordEventAt(t time.Time) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -148,6 +170,9 @@ func (d *SpikeDetector) recordEventAt(t time.Time) {
 	d.advanceTo(sec)
 	d.buckets[d.bucketIdx]++
 	d.totalCount++
+	if d.mode == "spike" {
+		d.spikeEvents++
+	}
 	d.recomputeEPS()
 }
 
@@ -205,6 +230,7 @@ func (d *SpikeDetector) updateMode() {
 			d.mode = "spike"
 			d.spikeStart = time.Now()
 			d.peakEPS = d.currentEPS
+			d.spikeEvents = 0
 			d.belowCooldown = time.Time{}
 			log.Printf("[dos] spike mode ENTERED: eps=%.1f trigger=%.1f", d.currentEPS, d.triggerEPS)
 		}
@@ -219,7 +245,7 @@ func (d *SpikeDetector) updateMode() {
 				spikeEnd := time.Now()
 				spikeDuration := spikeEnd.Sub(d.spikeStart)
 				peakEPS := d.peakEPS
-				totalEvents := d.totalCount
+				totalEvents := d.spikeEvents
 				log.Printf("[dos] spike mode EXITED: duration=%s peak_eps=%.1f",
 					spikeDuration.Truncate(time.Second), peakEPS)
 				if d.onSpikeEnd != nil {
@@ -237,10 +263,10 @@ func (d *SpikeDetector) updateMode() {
 
 // ─── Log Tailing ────────────────────────────────────────────────────
 
-// ddosLogEntry is a minimal struct to extract ddos_action from access log lines.
+// ddosLogEntry is a minimal struct to extract ddos_action and timestamp from access log lines.
 type ddosLogEntry struct {
 	DDoSAction string  `json:"ddos_action"`
-	Ts         float64 `json:"ts"` // unix timestamp (might be string in wall format)
+	Ts         float64 `json:"ts"` // unix timestamp
 }
 
 func (d *SpikeDetector) tail() {
@@ -282,9 +308,15 @@ func (d *SpikeDetector) tail() {
 			continue
 		}
 
-		// Only count lines that have a ddos_action field
+		// Only count lines that have a ddos_action field.
+		// Use the log entry's timestamp when available instead of Now()
+		// to avoid artificial bursts when processing backlog.
 		if entry.DDoSAction != "" {
-			d.RecordEvent()
+			if entry.Ts > 0 {
+				d.RecordEventAtTime(time.Unix(int64(entry.Ts), 0))
+			} else {
+				d.RecordEvent()
+			}
 			count++
 		}
 	}

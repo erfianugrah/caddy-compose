@@ -169,7 +169,7 @@ func handleGetDosConfig(store *DosConfigStore) http.HandlerFunc {
 
 // ─── PUT /api/dos/config ────────────────────────────────────────────
 
-func handleUpdateDosConfig(store *DosConfigStore, jailStore *JailStore) http.HandlerFunc {
+func handleUpdateDosConfig(store *DosConfigStore, jailStore *JailStore, spike *SpikeDetector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg DosConfig
 		if _, failed := decodeJSON(w, r, &cfg); failed {
@@ -189,6 +189,12 @@ func handleUpdateDosConfig(store *DosConfigStore, jailStore *JailStore) http.Han
 		// Sync whitelist to jail.json for the DDoS mitigator plugin to pick up.
 		if jailStore != nil {
 			jailStore.SetWhitelist(cfg.Whitelist)
+		}
+
+		// Propagate threshold changes to the running spike detector.
+		if spike != nil && cfg.EPSTrigger > 0 {
+			cooldownDelay, _ := time.ParseDuration(cfg.CooldownDelay)
+			spike.UpdateThresholds(cfg.EPSTrigger, cfg.EPSCooldown, cooldownDelay)
 		}
 
 		writeJSON(w, http.StatusOK, cfg)
