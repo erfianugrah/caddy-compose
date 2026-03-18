@@ -36,7 +36,7 @@
   .btn-fill{background:#e5e7eb;color:#0c0d10;border-color:#e5e7eb}
   .btn-fill:hover{background:#f3f4f6}
   .sep{width:40px;height:1px;background:#1e2028;margin:1.5rem auto}
-  .ref{font-size:.65rem;color:#374151;font-family:ui-monospace,monospace}
+  .ref{font-size:.7rem;color:#4b5563;font-family:ui-monospace,monospace;margin-bottom:.5rem;word-break:break-all}
   .host{font-size:.65rem;color:#374151;margin-top:.75rem}
   .countdown{font-variant-numeric:tabular-nums;font-size:1.75rem;font-weight:600;color:#e5e7eb;margin:.5rem 0}
   .countdown-sub{font-size:.7rem;color:#6b7280;margin-bottom:1rem}
@@ -49,7 +49,6 @@
   <div class="status">4<span>0</span>3</div>
   <span class="label">Blocked</span>
   <p class="msg">This request was blocked by the security policy.<br>If this is unexpected, wait a moment and try again.</p>
-  <p class="ref">{{placeholder "http.request.uuid"}}</p>
 
   {{else if eq (placeholder "http.error.status_code") "429"}}
   <div class="status">4<span>2</span>9</div>
@@ -104,6 +103,9 @@
   </div>
 
   <div class="sep"></div>
+  {{if eq (placeholder "http.error.status_code") "403"}}
+  <p class="ref">{{placeholder "http.request.uuid"}}</p>
+  {{end}}
   <p class="host">{{html .Req.Host}}</p>
 </div>
 </body>
