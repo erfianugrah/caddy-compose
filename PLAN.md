@@ -1,18 +1,21 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.57.0 / caddy 3.53.0 / body-matcher v0.2.1 / policy-engine v0.23.0 / ddos-mitigator v0.9.0)
+## Current State (v2.59.0 / caddy 3.55.0 / body-matcher v0.2.1 / policy-engine v0.23.0 / ddos-mitigator v0.14.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound), 6-pass evaluation (allow → block → skip → rate_limit → detect →
 response_header), unified rule store (`/api/rules` + `/api/deploy`), response-phase
 support for all rule types, structured CORS (preflight + origin validation), rule
 templates, per-service category masks, outbound anomaly scoring + rate limiting,
-incremental summary (O(hours)), managed lists, IPsum blocklist (618K IPs), CRS
-auto-update workflow, and e2e CI pipeline (117 e2e tests, 500 Go tests, 334 frontend).
+incremental summary (O(hours)), managed lists, IPsum blocklist (571K IPs), CRS
+metadata driven by converter (crs-metadata.json), auto-update workflow, and e2e CI
+pipeline (118 e2e tests, ~530 Go tests, 334 frontend tests).
 
-DDoS mitigator: `caddy-ddos-mitigator` v0.9.0 — behavioral IP profiling, 4-layer
-enforcement (L7 403, L4 TCP RST, nftables kernel drop, eBPF/XDP NIC drop), 64-shard
-IP jail shared with wafctl, CMS, CIDR /24 aggregation. 116 tests, ~90ns/req hot path.
+DDoS mitigator: `caddy-ddos-mitigator` v0.14.0 — behavioral IP profiling, 4-layer
+enforcement (L3 nftables kernel drop, L4 TCP RST, L7 HTTP 403, eBPF/XDP NIC drop),
+immediate nftables sync on jail (zero propagation window), 64-shard IP jail shared
+with wafctl, CMS, CIDR /24 aggregation. ~90ns/req hot path. Load tested at 30K RPS
+from loopback: 0.97% CPU, zero goroutine leaks, instant recovery.
 
 Full-stack performance audit complete: deferred enrichment, response caches (5-10s TTL),
 O(1) event-by-ID index, streaming JSON export, JSONL single-syscall writes, frontend
@@ -22,9 +25,13 @@ AbortController/visibility API/memoization, Makefile parallel build.
 
 ## Pending Work
 
-### CRS Metadata: Converter-Driven Single Source of Truth
+### CRS Metadata: Converter-Driven Single Source of Truth — COMPLETED (v2.57.0)
 
-**Problem**: CRS category taxonomy is hardcoded across 4 files that drift independently:
+> **Status**: All 4 phases implemented. CRS version bumps now require zero manual
+> Go/TS edits — re-run the converter only. Auto-discovered RESPONSE-956 (Ruby
+> Data Leakages) that was missing from all hardcoded maps.
+
+**Problem** (now solved): CRS category taxonomy was hardcoded across 4 files that drifted independently:
 
 | File | What it hardcodes | Lines |
 |------|-------------------|-------|
@@ -466,6 +473,28 @@ resilient to transient origin errors.
 ---
 
 ## Completed (changelog)
+
+### v2.59.0 / caddy 3.55.0
+
+- **DDoS mitigator v0.14.0**: Immediate nftables sync on jail — zero propagation window
+  between L7 behavioral jail and L3 kernel drop. Previously 1-5s sync interval allowed
+  10K-50K connections to queue in Caddy during DDoS storms, causing goroutine leaks in
+  Caddy's reverse proxy health-check metrics. Now the first jailing request triggers
+  nftables sync via a buffered channel, and subsequent packets are kernel-dropped.
+  Load tested: 30K RPS loopback → 0.97% Caddy CPU, instant recovery, zero goroutine leak.
+- **CRS metadata (converter-driven)**: `crs-converter` now emits `crs-metadata.json` at
+  Docker build time. All hardcoded category maps removed from `crs_rules.go`, `config.go`,
+  and `access_log_store.go`. Replaced by `crs_metadata.go` loader with `atomic.Pointer`.
+  Auto-discovered RESPONSE-956 (Ruby Data Leakages) missing from all previous maps.
+  Frontend `CRS_CATEGORIES` now refreshable from API via `refreshCRSCategories()`.
+- **E2E fixes**: All 3 pre-existing failures resolved — `TestPolicyEngineResponseHeaders`
+  (uses explicit block rule instead of CRS with threshold=0), `TestEventRequestID` (uses
+  block rule to generate events), `TestUnifiedRulesCRUD` (cache-bust + unique names).
+  New `TestDDoS_JailSyncToPlugin` verifies jail propagation to plugin within sync interval.
+- **Go 1.26.1**: Fixes CVE-2026-25679 (net/url IPv6 parsing). All Dockerfiles and CI updated.
+- **Error page**: Request ID moved below buttons, improved visibility.
+- Caddyfile: `sync_interval 1s`, `idle timeout 30s` for faster jail propagation and
+  connection cleanup.
 
 ### v2.57.0 / caddy 3.53.0
 

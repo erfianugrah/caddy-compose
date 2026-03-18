@@ -87,8 +87,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.54.0-2.11.1
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.58.0
+CADDY_IMAGE   ?= <your-registry>/caddy:3.55.0-2.11.1
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.59.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -154,7 +154,7 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.54.0-2.11.1`), wafctl is plain semver (e.g. `2.58.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.55.0-2.11.1`), wafctl is plain semver (e.g. `2.59.0`).
 
 ## WAF configuration
 
@@ -482,9 +482,9 @@ caddy 3.49.1 / wafctl 2.53.1 includes a comprehensive security audit (March 2026
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (1375 tests across 24 files)
-make test-frontend     # Vitest frontend tests (312 tests across 14 files)
-make test-e2e          # Docker-based e2e smoke tests (79 tests)
+make test-go           # Go tests only (~530 tests across 29 files)
+make test-frontend     # Vitest frontend tests (334 tests across 18 files)
+make test-e2e          # Docker-based e2e smoke tests (118 tests)
 ```
 
 Run a single test:
@@ -502,7 +502,7 @@ cd waf-dashboard && npx vitest run -t "test description"
 ```
 caddy-compose/
   Caddyfile              # Caddy config (snippets + site blocks)
-  Dockerfile             # 4-stage multi-stage build (caddy-body-matcher + caddy-policy-engine plugins)
+  Dockerfile             # 4-stage multi-stage build (caddy-body-matcher + caddy-policy-engine + caddy-ddos-mitigator plugins)
   Makefile               # Build, push, deploy, test, WAF operations
   compose.yaml           # Caddy + Authelia + wafctl services
   .env                   # SOPS-encrypted secrets (CF token, email)
@@ -551,7 +551,8 @@ caddy-compose/
     ip_intel.go          # BGP routing, RPKI validation, orchestration
     ip_intel_sources.go  # External API clients (Shodan, reputation, BGP)
     tls_helpers.go       # TLS version/cipher suite name helpers
-    crs_rules.go         # CRS rule catalog (141 rules, 11 categories)
+    crs_rules.go         # CRS rule catalog (dynamic from crs-metadata.json + DefaultRuleStore)
+    crs_metadata.go      # CRS metadata loader (atomic.Pointer, category taxonomy, prefix validation)
     cors_store.go        # CORS configuration store
     csp.go               # CSP store (CRUD, validation, header builder)
     default_rules.go     # Default CRS rules management
@@ -594,7 +595,7 @@ caddy-compose/
           default-rules.ts # Default CRS rules types and functions
           security-headers.ts # Security headers types and functions
           index.ts       # Barrel re-export
-      pages/             # Astro file-based routing (11 pages)
+      pages/             # Astro file-based routing (13 pages)
     package.json
     astro.config.mjs
     vitest.config.ts
@@ -603,7 +604,7 @@ caddy-compose/
     Caddyfile.e2e           # Test Caddyfile for e2e tests
     ipsum_block.caddy       # Stub blocklist for tests
     e2e/                    # Go e2e smoke tests
-      smoke_test.go         # 79 tests covering all API endpoints
+      01_infra_test.go .. 27_ddos_mitigator_test.go  # 118 tests across 16 files
       helpers_test.go       # HTTP/JSON/assertion helpers
       go.mod
   .github/
