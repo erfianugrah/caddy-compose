@@ -46,6 +46,11 @@ export interface DefaultRuleOverride {
 }
 
 // ─── CRS Category Helpers ───────────────────────────────────────────
+//
+// Categories are loaded from the API (/api/crs/rules) at runtime.
+// The initial seed below is a compile-time fallback that matches the
+// converter-generated crs-metadata.json. When refreshCRSCategories()
+// is called, it replaces this with live data from the backend.
 
 export interface RuleCategory {
   prefix: string;
@@ -53,7 +58,34 @@ export interface RuleCategory {
   shortName: string;
 }
 
-export const CRS_CATEGORIES: RuleCategory[] = [
+// shortNameMap derives concise display names from category IDs.
+// Used when converting API categories (which have id/name but no shortName).
+const shortNameMap: Record<string, string> = {
+  "scanner-detection": "Scanner",
+  "protocol-enforcement": "Protocol",
+  "protocol-attack": "HTTP Attack",
+  "multipart-attack": "Multipart",
+  "lfi": "LFI",
+  "rfi": "RFI",
+  "rce": "RCE",
+  "php": "PHP",
+  "generic-attack": "Generic",
+  "xss": "XSS",
+  "sqli": "SQLi",
+  "session-fixation": "Session",
+  "java": "Java",
+  "bot-detection": "Bot",
+  "data-leakage": "Leakage",
+  "data-leakage-sql": "SQL Leak",
+  "data-leakage-java": "Java Leak",
+  "data-leakage-php": "PHP Leak",
+  "data-leakage-iis": "IIS Leak",
+  "web-shells": "Web Shell",
+  "data-leakages-ruby": "Ruby Leak",
+};
+
+// Compile-time fallback — replaced by API data via refreshCRSCategories().
+export let CRS_CATEGORIES: RuleCategory[] = [
   { prefix: "913", name: "Scanner Detection", shortName: "Scanner" },
   { prefix: "920", name: "Protocol Enforcement", shortName: "Protocol" },
   { prefix: "921", name: "Protocol Attack", shortName: "HTTP Attack" },
@@ -68,7 +100,6 @@ export const CRS_CATEGORIES: RuleCategory[] = [
   { prefix: "943", name: "Session Fixation", shortName: "Session" },
   { prefix: "944", name: "Java Injection", shortName: "Java" },
   { prefix: "9100", name: "Custom Rules", shortName: "Custom" },
-  // Response-phase (outbound) categories
   { prefix: "950", name: "Data Leakages", shortName: "Leakage" },
   { prefix: "951", name: "SQL Data Leakages", shortName: "SQL Leak" },
   { prefix: "952", name: "Java Data Leakages", shortName: "Java Leak" },
@@ -77,6 +108,26 @@ export const CRS_CATEGORIES: RuleCategory[] = [
   { prefix: "955", name: "Web Shell Detection", shortName: "Web Shell" },
   { prefix: "956", name: "Ruby Data Leakages", shortName: "Ruby Leak" },
 ];
+
+/** Fetch categories from /api/crs/rules and update CRS_CATEGORIES.
+ *  Call once on app init. Existing fallback is used until this completes. */
+export async function refreshCRSCategories(): Promise<void> {
+  try {
+    const resp = await fetchJSON<{
+      categories: Array<{ id: string; name: string; rule_range: string; }>;
+    }>(`${API_BASE}/crs/rules`);
+    if (resp.categories && resp.categories.length > 0) {
+      CRS_CATEGORIES = resp.categories.map((c) => {
+        // Extract prefix from rule_range (e.g., "920000-920999" → "920")
+        const prefix = c.rule_range?.replace(/000-.*$/, "") ?? "";
+        const shortName = shortNameMap[c.id] ?? c.name.split(" ")[0];
+        return { prefix, name: c.name, shortName };
+      });
+    }
+  } catch {
+    // Silently keep fallback — API may not be reachable during SSG build.
+  }
+}
 
 export function getCategoryForRule(ruleId: string): RuleCategory | undefined {
   // Custom rules (9100xxx) must match before 91x CRS ranges.

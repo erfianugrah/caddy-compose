@@ -45,60 +45,35 @@ type CRSCatalogResponse struct {
 	Total      int           `json:"total"`
 }
 
-// ─── Category Taxonomy ──────────────────────────────────────────────
+// ─── Category Taxonomy (loaded from CRS metadata) ──────────────────
 //
-// Maps the converter's full category strings (e.g. "REQUEST-932-APPLICATION-ATTACK-RCE")
-// to short, human-friendly IDs. The converter category comes from the CRS .conf filename.
+// All category data is now loaded from crs-metadata.json at startup
+// via the CRSMetadata system (crs_metadata.go). The converter generates
+// this file at Docker build time from actual CRS .conf filenames.
+// No hardcoded category maps here — see fallbackMetadata() for the
+// compile-time fallback used when the metadata file is not available.
 
-// CRS 4.x rule categories
-var crsCategories = []CRSCategory{
-	{ID: "scanner-detection", Name: "Scanner Detection", Description: "Known security scanner detection", RuleRange: "913000-913999", Tag: "attack-reputation-scanner"},
-	{ID: "protocol-enforcement", Name: "Protocol Enforcement", Description: "HTTP protocol violations and anomalies", RuleRange: "920000-920999", Tag: "attack-protocol"},
-	{ID: "protocol-attack", Name: "Protocol Attack", Description: "HTTP request smuggling, response splitting", RuleRange: "921000-921999", Tag: "attack-protocol"},
-	{ID: "multipart-attack", Name: "Multipart Attack", Description: "Multipart request attack patterns", RuleRange: "922000-922999", Tag: "attack-protocol"},
-	{ID: "lfi", Name: "Local File Inclusion", Description: "Path traversal and LFI attacks", RuleRange: "930000-930999", Tag: "attack-lfi"},
-	{ID: "rfi", Name: "Remote File Inclusion", Description: "Remote file inclusion attempts", RuleRange: "931000-931999", Tag: "attack-rfi"},
-	{ID: "rce", Name: "Remote Code Execution", Description: "Command injection and RCE", RuleRange: "932000-932999", Tag: "attack-rce"},
-	{ID: "php", Name: "PHP Injection", Description: "PHP code injection attacks", RuleRange: "933000-933999", Tag: "attack-injection-php"},
-	{ID: "generic-attack", Name: "Generic Attack", Description: "Generic application attack patterns (CRS v4)", RuleRange: "934000-934999", Tag: "attack-generic"},
-	{ID: "xss", Name: "Cross-Site Scripting", Description: "XSS attack detection", RuleRange: "941000-941999", Tag: "attack-xss"},
-	{ID: "sqli", Name: "SQL Injection", Description: "SQL injection detection", RuleRange: "942000-942999", Tag: "attack-sqli"},
-	{ID: "session-fixation", Name: "Session Fixation", Description: "Session fixation attacks", RuleRange: "943000-943999", Tag: "attack-fixation"},
-	{ID: "java", Name: "Java Injection", Description: "Java/Spring code injection", RuleRange: "944000-944999", Tag: "attack-injection-java"},
-	{ID: "bot-detection", Name: "Bot Detection", Description: "Bot signal and heuristic rules", RuleRange: "9100030-9100036", Tag: "bot-signal"},
-}
-
-// categoryFromCRSFile maps a converter category string (derived from .conf filename)
-// to a short category ID. Returns the input unchanged if no mapping is found.
-var categoryFromCRSFile = map[string]string{
-	"REQUEST-913-SCANNER-DETECTION":                   "scanner-detection",
-	"REQUEST-920-PROTOCOL-ENFORCEMENT":                "protocol-enforcement",
-	"REQUEST-921-PROTOCOL-ATTACK":                     "protocol-attack",
-	"REQUEST-922-MULTIPART-ATTACK":                    "multipart-attack",
-	"REQUEST-930-APPLICATION-ATTACK-LFI":              "lfi",
-	"REQUEST-931-APPLICATION-ATTACK-RFI":              "rfi",
-	"REQUEST-932-APPLICATION-ATTACK-RCE":              "rce",
-	"REQUEST-933-APPLICATION-ATTACK-PHP":              "php",
-	"REQUEST-934-APPLICATION-ATTACK-GENERIC":          "generic-attack",
-	"REQUEST-941-APPLICATION-ATTACK-XSS":              "xss",
-	"REQUEST-942-APPLICATION-ATTACK-SQLI":             "sqli",
-	"REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION": "session-fixation",
-	"REQUEST-944-APPLICATION-ATTACK-JAVA":             "java",
-	// Response-phase categories (outbound rules)
-	"RESPONSE-950-DATA-LEAKAGES":      "data-leakage",
-	"RESPONSE-951-DATA-LEAKAGES-SQL":  "data-leakage-sql",
-	"RESPONSE-952-DATA-LEAKAGES-JAVA": "data-leakage-java",
-	"RESPONSE-953-DATA-LEAKAGES-PHP":  "data-leakage-php",
-	"RESPONSE-954-DATA-LEAKAGES-IIS":  "data-leakage-iis",
-	"RESPONSE-955-WEB-SHELLS":         "web-shells",
+// crsMetadataCategories returns the current CRS categories from loaded metadata.
+// Used by GetCatalog() and the /api/crs/rules endpoint.
+func crsMetadataCategories() []CRSCategory {
+	meta := GetCRSMetadata()
+	cats := make([]CRSCategory, len(meta.Categories))
+	for i, mc := range meta.Categories {
+		cats[i] = CRSCategory{
+			ID:          mc.ID,
+			Name:        mc.Name,
+			Description: mc.Description,
+			RuleRange:   mc.RuleRange,
+			Tag:         mc.Tag,
+		}
+	}
+	return cats
 }
 
 // normalizeCRSCategory maps a converter's full category string to a short ID.
+// Uses the loaded CRS metadata (from crs-metadata.json) as the source of truth.
 func normalizeCRSCategory(category string) string {
-	if short, ok := categoryFromCRSFile[category]; ok {
-		return short
-	}
-	return category
+	return GetCRSMetadata().NormalizeCategory(category)
 }
 
 // ─── Custom Rules (not in default-rules.json) ──────────────────────
@@ -191,9 +166,8 @@ func (c *CRSCatalog) Lookup(id string) (CRSRule, bool) {
 // every rule in default-rules.json is included, plus any static custom
 // rules not already present in the store.
 func (c *CRSCatalog) GetCatalog() CRSCatalogResponse {
-	// Deep copy categories.
-	cats := make([]CRSCategory, len(crsCategories))
-	copy(cats, crsCategories)
+	// Get categories from loaded CRS metadata (dynamic, not hardcoded).
+	cats := crsMetadataCategories()
 
 	var rules []CRSRule
 	seen := make(map[string]bool)

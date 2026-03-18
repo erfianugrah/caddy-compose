@@ -25,6 +25,7 @@ import (
 func main() {
 	crsDir := flag.String("crs-dir", "", "Path to CRS rules directory (containing *.conf and *.data files)")
 	output := flag.String("output", "default-rules.json", "Output file path")
+	metadataOutput := flag.String("metadata-output", "", "Output path for crs-metadata.json (category taxonomy for wafctl)")
 	version := flag.String("crs-version", "", "CRS version string (e.g., 4.8.0)")
 	customRules := flag.String("custom-rules", "", "Path to custom rules JSON file to merge into output")
 	reportOnly := flag.Bool("report", false, "Print conversion report without generating output")
@@ -132,6 +133,20 @@ func main() {
 	}
 
 	fmt.Printf("\nWrote %d rules to %s\n", len(allRules), *output)
+
+	// Generate CRS metadata if requested
+	if *metadataOutput != "" {
+		meta := BuildMetadata(allRules, crsVer)
+		metaData, err := json.MarshalIndent(meta, "", "  ")
+		if err != nil {
+			log.Fatalf("Marshaling CRS metadata: %v", err)
+		}
+		if err := os.WriteFile(*metadataOutput, metaData, 0644); err != nil {
+			log.Fatalf("Writing CRS metadata: %v", err)
+		}
+		fmt.Printf("Wrote CRS metadata (%d categories, %d prefixes) to %s\n",
+			len(meta.Categories), len(meta.ValidPrefixes), *metadataOutput)
+	}
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
