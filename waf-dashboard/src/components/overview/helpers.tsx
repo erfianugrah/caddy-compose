@@ -67,14 +67,14 @@ export function LinkTickRenderer({
 export const chartTooltipStyle = CHART_TOOLTIP_STYLE;
 
 export const DONUT_COLOR_MAP: Record<string, string> = {
-  "WAF Blocked":                ACTION_COLORS.total_blocked,
-  [ACTION_LABELS.logged]:       ACTION_COLORS.logged,
-  [ACTION_LABELS.rate_limited]: ACTION_COLORS.rate_limited,
-  [ACTION_LABELS.policy_block]: ACTION_COLORS.policy_block,
-  [ACTION_LABELS.detect_block]: ACTION_COLORS.detect_block,
-  [ACTION_LABELS.policy_allow]: ACTION_COLORS.policy_allow,
-  [ACTION_LABELS.policy_skip]:  ACTION_COLORS.policy_skip,
-  [ACTION_LABELS.ddos_blocked]: ACTION_COLORS.ddos_blocked,
+  [ACTION_LABELS.total_blocked]: ACTION_COLORS.total_blocked,
+  [ACTION_LABELS.logged]:        ACTION_COLORS.logged,
+  [ACTION_LABELS.rate_limited]:  ACTION_COLORS.rate_limited,
+  [ACTION_LABELS.policy_block]:  ACTION_COLORS.policy_block,
+  [ACTION_LABELS.detect_block]:  ACTION_COLORS.detect_block,
+  [ACTION_LABELS.policy_allow]:  ACTION_COLORS.policy_allow,
+  [ACTION_LABELS.policy_skip]:   ACTION_COLORS.policy_skip,
+  [ACTION_LABELS.ddos_blocked]:  ACTION_COLORS.ddos_blocked,
 };
 
 // ─── Event link builder ─────────────────────────────────────────────

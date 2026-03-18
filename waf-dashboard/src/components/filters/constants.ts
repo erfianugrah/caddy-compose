@@ -1,4 +1,5 @@
 import type { FilterOp } from "@/lib/api";
+import { ACTION_LABELS } from "@/lib/utils";
 import type { FilterField, LogFilterField, OpMeta, FieldMeta, FilterConfig } from "./types";
 
 // ─── Operator metadata ──────────────────────────────────────────────
@@ -14,12 +15,12 @@ export const OP_META: Record<FilterOp, OpMeta> = {
 // ─── Shared option lists ────────────────────────────────────────────
 
 export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "detect_block", label: "CRS Blocked" },
-  { value: "logged", label: "Logged" },
-  { value: "rate_limited", label: "Rate Limited" },
-  { value: "policy_skip", label: "Policy Skip" },
-  { value: "policy_allow", label: "Policy Allow" },
-  { value: "policy_block", label: "Policy Block" },
+  { value: "detect_block", label: ACTION_LABELS.detect_block },
+  { value: "logged",       label: ACTION_LABELS.logged },
+  { value: "rate_limited", label: ACTION_LABELS.rate_limited },
+  { value: "policy_skip",  label: ACTION_LABELS.policy_skip },
+  { value: "policy_allow", label: ACTION_LABELS.policy_allow },
+  { value: "policy_block", label: ACTION_LABELS.policy_block },
 ];
 
 export const METHOD_OPTIONS: { value: string; label: string }[] = [

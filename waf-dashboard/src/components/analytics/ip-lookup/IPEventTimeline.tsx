@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ACTION_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
+import { ACTION_COLORS, ACTION_LABELS, CHART_TOOLTIP_STYLE } from "@/lib/utils";
 import { T } from "@/lib/typography";
 
 const chartTooltipStyle = CHART_TOOLTIP_STYLE;
@@ -73,8 +73,8 @@ export function IPEventTimeline({ timeline }: { timeline: TimelinePoint[] }) {
               <XAxis dataKey="hour" stroke="#bdbdc1" fontSize={T.chartAxisTick} tickLine={false} axisLine={false} tickFormatter={formatIPTimelineTick} interval="preserveStartEnd" />
               <YAxis stroke="#bdbdc1" fontSize={T.chartAxisTick} tickLine={false} axisLine={false} />
               <Tooltip {...chartTooltipStyle} labelFormatter={formatIPTimelineTooltip} />
-              <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#ipGradBlocked)" strokeWidth={2} name="Total Blocked" />
-              <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} />
+              <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#ipGradBlocked)" strokeWidth={2} name={ACTION_LABELS.total_blocked} />
+              <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#ipGradLogged)" strokeWidth={2} name={ACTION_LABELS.logged} />
             </AreaChart>
           </ResponsiveContainer>
         ) : (

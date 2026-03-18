@@ -68,7 +68,7 @@ import DashboardFilterBar, {
   type DashboardFilter,
 } from "./DashboardFilterBar";
 import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/TimeRangePicker";
-import { ACTION_COLORS } from "@/lib/utils";
+import { ACTION_COLORS, ACTION_LABELS } from "@/lib/utils";
 import { T } from "@/lib/typography";
 import { StatCard } from "./StatCard";
 import { TopBlockedIPsPanel, TopTargetedURIsPanel, TopCountriesPanel } from "./AnalyticsDashboard";
@@ -317,14 +317,14 @@ export default function OverviewDashboard() {
   const donutData = useMemo(() =>
     data && (data.total_blocked > 0 || data.logged > 0 || data.rate_limited > 0 || data.policy_events > 0)
       ? [
-          ...(data.total_blocked > 0 ? [{ name: "WAF Blocked", value: data.total_blocked }] : []),
-          ...(data.rate_limited > 0 ? [{ name: "Rate Limited", value: data.rate_limited }] : []),
-          ...(data.policy_blocked > 0 ? [{ name: "Policy Block", value: data.policy_blocked }] : []),
-          ...(data.detect_blocked > 0 ? [{ name: "Detect Block", value: data.detect_blocked }] : []),
-          ...(data.ddos_blocked > 0 ? [{ name: "DDoS Blocked", value: data.ddos_blocked }] : []),
-          ...(data.policy_allowed > 0 ? [{ name: "Policy Allow", value: data.policy_allowed }] : []),
-          ...(data.policy_skipped > 0 ? [{ name: "Policy Skip", value: data.policy_skipped }] : []),
-          ...(data.logged > 0 ? [{ name: "Logged", value: data.logged }] : []),
+          ...(data.total_blocked > 0 ? [{ name: ACTION_LABELS.total_blocked, value: data.total_blocked }] : []),
+          ...(data.rate_limited > 0 ? [{ name: ACTION_LABELS.rate_limited, value: data.rate_limited }] : []),
+          ...(data.policy_blocked > 0 ? [{ name: ACTION_LABELS.policy_block, value: data.policy_blocked }] : []),
+          ...(data.detect_blocked > 0 ? [{ name: ACTION_LABELS.detect_block, value: data.detect_blocked }] : []),
+          ...(data.ddos_blocked > 0 ? [{ name: ACTION_LABELS.ddos_blocked, value: data.ddos_blocked }] : []),
+          ...(data.policy_allowed > 0 ? [{ name: ACTION_LABELS.policy_allow, value: data.policy_allowed }] : []),
+          ...(data.policy_skipped > 0 ? [{ name: ACTION_LABELS.policy_skip, value: data.policy_skipped }] : []),
+          ...(data.logged > 0 ? [{ name: ACTION_LABELS.logged, value: data.logged }] : []),
         ]
       : [],
   [data]);
@@ -503,14 +503,14 @@ export default function OverviewDashboard() {
                     </span>
                   )}
                 />
-                <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} hide={hiddenSeries.has("logged")} />
-                <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} hide={hiddenSeries.has("rate_limited")} />
-                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name="Total Blocked" hide={hiddenSeries.has("total_blocked")} />
-                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name="Policy Block" hide={hiddenSeries.has("policy_block")} />
-                <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name="Detect Block" hide={hiddenSeries.has("detect_block")} />
-                <Area type="monotone" dataKey="ddos_blocked" stroke={ACTION_COLORS.ddos_blocked} fill="url(#gradDDoSBlocked)" strokeWidth={2} name="DDoS Blocked" hide={hiddenSeries.has("ddos_blocked")} />
-                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name="Policy Allow" hide={hiddenSeries.has("policy_allow")} />
-                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name="Policy Skip" hide={hiddenSeries.has("policy_skip")} />
+                <Area type="monotone" dataKey="logged" stroke={ACTION_COLORS.logged} fill="url(#gradLogged)" strokeWidth={2} name={ACTION_LABELS.logged} hide={hiddenSeries.has("logged")} />
+                <Area type="monotone" dataKey="rate_limited" stroke={ACTION_COLORS.rate_limited} fill="url(#gradRateLimited)" strokeWidth={2} name={ACTION_LABELS.rate_limited} hide={hiddenSeries.has("rate_limited")} />
+                <Area type="monotone" dataKey="total_blocked" stroke={ACTION_COLORS.total_blocked} fill="url(#gradBlocked)" strokeWidth={2} name={ACTION_LABELS.total_blocked} hide={hiddenSeries.has("total_blocked")} />
+                <Area type="monotone" dataKey="policy_block" stroke={ACTION_COLORS.policy_block} fill="url(#gradPolicyBlock)" strokeWidth={2} name={ACTION_LABELS.policy_block} hide={hiddenSeries.has("policy_block")} />
+                <Area type="monotone" dataKey="detect_block" stroke={ACTION_COLORS.detect_block} fill="url(#gradDetectBlock)" strokeWidth={2} name={ACTION_LABELS.detect_block} hide={hiddenSeries.has("detect_block")} />
+                <Area type="monotone" dataKey="ddos_blocked" stroke={ACTION_COLORS.ddos_blocked} fill="url(#gradDDoSBlocked)" strokeWidth={2} name={ACTION_LABELS.ddos_blocked} hide={hiddenSeries.has("ddos_blocked")} />
+                <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name={ACTION_LABELS.policy_allow} hide={hiddenSeries.has("policy_allow")} />
+                <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name={ACTION_LABELS.policy_skip} hide={hiddenSeries.has("policy_skip")} />
                 {/* Selection overlay while dragging */}
                 {refAreaLeft && refAreaRight && (
                   <ReferenceArea
@@ -648,14 +648,14 @@ export default function OverviewDashboard() {
                           }}
                         />
                         <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }} />
-                        <Bar dataKey="total_blocked" name="Total Blocked" fill={ACTION_COLORS.total_blocked} stackId="a" />
-                        <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
-                        <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
-                        <Bar dataKey="detect_block" name="Detect Block" fill={ACTION_COLORS.detect_block} stackId="a" />
-                        <Bar dataKey="ddos_blocked" name="DDoS Blocked" fill={ACTION_COLORS.ddos_blocked} stackId="a" />
-                        <Bar dataKey="policy_allow" name="Policy Allow" fill={ACTION_COLORS.policy_allow} stackId="a" />
-                        <Bar dataKey="policy_skip" name="Policy Skip" fill={ACTION_COLORS.policy_skip} stackId="a" />
-                        <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="total_blocked" name={ACTION_LABELS.total_blocked} fill={ACTION_COLORS.total_blocked} stackId="a" />
+                        <Bar dataKey="rate_limited" name={ACTION_LABELS.rate_limited} fill={ACTION_COLORS.rate_limited} stackId="a" />
+                        <Bar dataKey="policy_block" name={ACTION_LABELS.policy_block} fill={ACTION_COLORS.policy_block} stackId="a" />
+                        <Bar dataKey="detect_block" name={ACTION_LABELS.detect_block} fill={ACTION_COLORS.detect_block} stackId="a" />
+                        <Bar dataKey="ddos_blocked" name={ACTION_LABELS.ddos_blocked} fill={ACTION_COLORS.ddos_blocked} stackId="a" />
+                        <Bar dataKey="policy_allow" name={ACTION_LABELS.policy_allow} fill={ACTION_COLORS.policy_allow} stackId="a" />
+                        <Bar dataKey="policy_skip" name={ACTION_LABELS.policy_skip} fill={ACTION_COLORS.policy_skip} stackId="a" />
+                        <Bar dataKey="logged" name={ACTION_LABELS.logged} fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -704,14 +704,14 @@ export default function OverviewDashboard() {
                       />
                       <Tooltip {...chartTooltipStyle} />
                       <Legend verticalAlign="top" height={28} iconType="square" iconSize={10} wrapperStyle={{ fontSize: `${T.chartLabel}px`, color: "#bdbdc1" }} />
-                      <Bar dataKey="total_blocked" name="Total Blocked" fill={ACTION_COLORS.total_blocked} stackId="a" />
-                      <Bar dataKey="rate_limited" name="Rate Limited" fill={ACTION_COLORS.rate_limited} stackId="a" />
-                      <Bar dataKey="policy_block" name="Policy Block" fill={ACTION_COLORS.policy_block} stackId="a" />
-                      <Bar dataKey="detect_block" name="Detect Block" fill={ACTION_COLORS.detect_block} stackId="a" />
-                      <Bar dataKey="policy_allow" name="Policy Allow" fill={ACTION_COLORS.policy_allow} stackId="a" />
-                      <Bar dataKey="ddos_blocked" name="DDoS Blocked" fill={ACTION_COLORS.ddos_blocked} stackId="a" />
-                      <Bar dataKey="policy_skip" name="Policy Skip" fill={ACTION_COLORS.policy_skip} stackId="a" />
-                      <Bar dataKey="logged" name="Logged" fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="total_blocked" name={ACTION_LABELS.total_blocked} fill={ACTION_COLORS.total_blocked} stackId="a" />
+                      <Bar dataKey="rate_limited" name={ACTION_LABELS.rate_limited} fill={ACTION_COLORS.rate_limited} stackId="a" />
+                      <Bar dataKey="policy_block" name={ACTION_LABELS.policy_block} fill={ACTION_COLORS.policy_block} stackId="a" />
+                      <Bar dataKey="detect_block" name={ACTION_LABELS.detect_block} fill={ACTION_COLORS.detect_block} stackId="a" />
+                      <Bar dataKey="policy_allow" name={ACTION_LABELS.policy_allow} fill={ACTION_COLORS.policy_allow} stackId="a" />
+                      <Bar dataKey="ddos_blocked" name={ACTION_LABELS.ddos_blocked} fill={ACTION_COLORS.ddos_blocked} stackId="a" />
+                      <Bar dataKey="policy_skip" name={ACTION_LABELS.policy_skip} fill={ACTION_COLORS.policy_skip} stackId="a" />
+                      <Bar dataKey="logged" name={ACTION_LABELS.logged} fill={ACTION_COLORS.logged} stackId="a" opacity={0.7} radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -918,15 +918,15 @@ const STAT_CARD_DEFS: {
   color: string;
   href: string;
 }[] = [
-  { key: "total_events",    label: "Security Events",  icon: Shield,      color: "green",  href: "/events" },
-  { key: "total_blocked",   label: "Total Blocked",     icon: ShieldAlert, color: "pink",   href: "/events?blocked=true" },
-  { key: "rate_limited",    label: "Rate Limited",      icon: ShieldBan,   color: "yellow", href: "/events?type=rate_limited" },
-  { key: "policy_blocked",  label: "Policy Block",      icon: ShieldBan,   color: "red",    href: "/events?type=policy_block" },
-  { key: "detect_blocked",  label: "Detect Block",      icon: ShieldAlert, color: "orange", href: "/events?type=detect_block" },
-  { key: "ddos_blocked",   label: "DDoS Blocked",      icon: ShieldAlert, color: "purple", href: "/dos" },
-  { key: "policy_allowed",  label: "Policy Allow",      icon: ShieldCheck, color: "green",  href: "/events?type=policy_allow" },
-  { key: "policy_skipped",  label: "Policy Skip",       icon: ShieldCheck, color: "blue",   href: "/events?type=policy_skip" },
-  { key: "logged",          label: "Logged",            icon: Shield,      color: "cyan",   href: "/events?type=logged" },
+  { key: "total_events",    label: "Security Events",           icon: Shield,      color: "green",  href: "/events" },
+  { key: "total_blocked",   label: ACTION_LABELS.total_blocked, icon: ShieldAlert, color: "pink",   href: "/events?blocked=true" },
+  { key: "rate_limited",    label: ACTION_LABELS.rate_limited,  icon: ShieldBan,   color: "yellow", href: "/events?type=rate_limited" },
+  { key: "policy_blocked",  label: ACTION_LABELS.policy_block,  icon: ShieldBan,   color: "red",    href: "/events?type=policy_block" },
+  { key: "detect_blocked",  label: ACTION_LABELS.detect_block,  icon: ShieldAlert, color: "orange", href: "/events?type=detect_block" },
+  { key: "ddos_blocked",   label: ACTION_LABELS.ddos_blocked,   icon: ShieldAlert, color: "purple", href: "/dos" },
+  { key: "policy_allowed",  label: ACTION_LABELS.policy_allow,  icon: ShieldCheck, color: "green",  href: "/events?type=policy_allow" },
+  { key: "policy_skipped",  label: ACTION_LABELS.policy_skip,   icon: ShieldCheck, color: "blue",   href: "/events?type=policy_skip" },
+  { key: "logged",          label: ACTION_LABELS.logged,        icon: Shield,      color: "cyan",   href: "/events?type=logged" },
 ];
 
 /**

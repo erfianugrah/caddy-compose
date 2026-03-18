@@ -21,16 +21,17 @@ export const ACTION_COLORS = {
   total_blocked: "#f37e96", // lv-red     — aggregate blocked (detect_block + policy_block + residual)
 } as const;
 
-// Human-readable labels for chart legends (keyed same as ACTION_COLORS)
+// Human-readable labels for chart legends, filters, and badges.
+// Single source of truth — every UI surface should derive from this map.
 export const ACTION_LABELS: Record<string, string> = {
-  detect_block: "CRS Blocked",
-  logged:       "Logged",
-  rate_limited: "Rate Limited",
-  policy_block: "Policy Block",
-  policy_allow: "Policy Allow",
-  policy_skip:  "Policy Skip",
-  ddos_blocked: "DDoS Blocked",
-  ddos_jailed:  "DDoS Jailed",
+  detect_block:  "Detect Block",
+  logged:        "Logged",
+  rate_limited:  "Rate Limited",
+  policy_block:  "Policy Block",
+  policy_allow:  "Policy Allow",
+  policy_skip:   "Policy Skip",
+  ddos_blocked:  "DDoS Blocked",
+  ddos_jailed:   "DDoS Jailed",
   total_blocked: "Total Blocked",
 };
 
