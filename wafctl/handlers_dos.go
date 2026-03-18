@@ -193,7 +193,7 @@ func handleUpdateDosConfig(store *DosConfigStore, jailStore *JailStore, spike *S
 
 		// Propagate threshold changes to the running spike detector.
 		if spike != nil && cfg.EPSTrigger > 0 {
-			cooldownDelay, _ := time.ParseDuration(cfg.CooldownDelay)
+			cooldownDelay, _ := parseExtendedDuration(cfg.CooldownDelay)
 			spike.UpdateThresholds(cfg.EPSTrigger, cfg.EPSCooldown, cooldownDelay)
 		}
 

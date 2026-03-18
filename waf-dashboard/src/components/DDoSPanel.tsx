@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DurationInput } from "@/components/ui/duration-input";
 import {
   Table,
   TableBody,
@@ -354,14 +355,22 @@ function ConfigPanel({
           <div className="grid gap-4 sm:grid-cols-2 mt-3">
             <div>
               <label className={T.formLabel}>Z-Score Threshold</label>
-              <Input
-                type="number"
-                step="0.5"
-                min="1"
-                max="10"
-                value={draft.threshold}
-                onChange={(e) => update("threshold", parseFloat(e.target.value) || 4)}
-              />
+              <Select
+                value={String(draft.threshold)}
+                onValueChange={(v) => update("threshold", parseFloat(v) || 4)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 — Very aggressive</SelectItem>
+                  <SelectItem value="2">2 — Aggressive</SelectItem>
+                  <SelectItem value="3">3 — Moderate</SelectItem>
+                  <SelectItem value="4">4 — Balanced (default)</SelectItem>
+                  <SelectItem value="5">5 — Permissive</SelectItem>
+                  <SelectItem value="6">6 — Very permissive</SelectItem>
+                  <SelectItem value="8">8 — Minimal</SelectItem>
+                  <SelectItem value="10">10 — Almost disabled</SelectItem>
+                </SelectContent>
+              </Select>
               <p className={cn(T.muted, "mt-1")}>Higher = fewer auto-jails</p>
             </div>
             <div>
@@ -389,11 +398,21 @@ function ConfigPanel({
           <div className="grid gap-4 sm:grid-cols-2 mt-3">
             <div>
               <label className={T.formLabel}>Base Penalty</label>
-              <Input value={draft.base_penalty} onChange={(e) => update("base_penalty", e.target.value)} />
+              <DurationInput
+                value={draft.base_penalty}
+                onChange={(v) => update("base_penalty", v)}
+                presets={["30s", "60s", "2m", "5m", "10m", "30m"]}
+              />
+              <p className={cn(T.muted, "mt-1")}>First offense jail duration</p>
             </div>
             <div>
               <label className={T.formLabel}>Max Penalty</label>
-              <Input value={draft.max_penalty} onChange={(e) => update("max_penalty", e.target.value)} />
+              <DurationInput
+                value={draft.max_penalty}
+                onChange={(v) => update("max_penalty", v)}
+                presets={["1h", "6h", "12h", "24h", "3d", "7d"]}
+              />
+              <p className={cn(T.muted, "mt-1")}>Cap for exponential backoff</p>
             </div>
           </div>
         </div>
@@ -406,23 +425,47 @@ function ConfigPanel({
           <div className="grid gap-4 sm:grid-cols-3 mt-3">
             <div>
               <label className={T.formLabel}>EPS Trigger</label>
-              <Input
-                type="number"
-                value={draft.eps_trigger}
-                onChange={(e) => update("eps_trigger", parseFloat(e.target.value) || 50)}
-              />
+              <Select
+                value={String(draft.eps_trigger)}
+                onValueChange={(v) => update("eps_trigger", parseFloat(v) || 50)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 — Low traffic</SelectItem>
+                  <SelectItem value="25">25 — Light</SelectItem>
+                  <SelectItem value="50">50 — Moderate (default)</SelectItem>
+                  <SelectItem value="100">100 — Busy</SelectItem>
+                  <SelectItem value="250">250 — High traffic</SelectItem>
+                  <SelectItem value="500">500 — Very high</SelectItem>
+                  <SelectItem value="1000">1000 — Enterprise</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className={cn(T.muted, "mt-1")}>Events/sec to trigger spike mode</p>
             </div>
             <div>
               <label className={T.formLabel}>EPS Cooldown</label>
-              <Input
-                type="number"
-                value={draft.eps_cooldown}
-                onChange={(e) => update("eps_cooldown", parseFloat(e.target.value) || 10)}
-              />
+              <Select
+                value={String(draft.eps_cooldown)}
+                onValueChange={(v) => update("eps_cooldown", parseFloat(v) || 10)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5 — Quick recovery</SelectItem>
+                  <SelectItem value="10">10 — Normal (default)</SelectItem>
+                  <SelectItem value="20">20 — Cautious</SelectItem>
+                  <SelectItem value="50">50 — Conservative</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className={cn(T.muted, "mt-1")}>EPS to exit spike mode</p>
             </div>
             <div>
               <label className={T.formLabel}>Cooldown Delay</label>
-              <Input value={draft.cooldown_delay} onChange={(e) => update("cooldown_delay", e.target.value)} />
+              <DurationInput
+                value={draft.cooldown_delay}
+                onChange={(v) => update("cooldown_delay", v)}
+                presets={["10s", "15s", "30s", "60s", "2m"]}
+              />
+              <p className={cn(T.muted, "mt-1")}>Wait before exiting spike mode</p>
             </div>
           </div>
         </div>

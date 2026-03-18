@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -449,8 +450,41 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// parseExtendedDuration parses a duration string supporting Go's standard units
+// (ns, us, ms, s, m, h) plus extended units: "d" (24h) and "w" (168h).
+// This matches Caddy's duration parser behavior for user-facing config.
+func parseExtendedDuration(s string) (time.Duration, error) {
+	// Try Go stdlib first (handles ns, us, ms, s, m, h)
+	if d, err := time.ParseDuration(s); err == nil {
+		return d, nil
+	}
+
+	// Handle extended units: "7d" → "168h", "2w" → "336h"
+	if len(s) > 1 {
+		suffix := s[len(s)-1]
+		numStr := s[:len(s)-1]
+		var multiplier time.Duration
+		switch suffix {
+		case 'd':
+			multiplier = 24 * time.Hour
+		case 'w':
+			multiplier = 7 * 24 * time.Hour
+		default:
+			return 0, fmt.Errorf("time: unknown unit %q in duration %q", string(suffix), s)
+		}
+
+		var n float64
+		if _, err := fmt.Sscanf(numStr, "%f", &n); err != nil {
+			return 0, fmt.Errorf("time: invalid number %q in duration %q", numStr, s)
+		}
+		return time.Duration(n * float64(multiplier)), nil
+	}
+
+	return 0, fmt.Errorf("time: invalid duration %q", s)
+}
+
 func parseDurationOr(s string, fallback time.Duration) time.Duration {
-	d, err := time.ParseDuration(s)
+	d, err := parseExtendedDuration(s)
 	if err != nil {
 		return fallback
 	}

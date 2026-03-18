@@ -159,7 +159,7 @@ func (s *JailStore) Count() int {
 // Add creates a jail entry and persists to disk.
 // The write lock is held through the save to prevent concurrent mutation.
 func (s *JailStore) Add(ip, ttlStr, reason string) error {
-	ttl, err := time.ParseDuration(ttlStr)
+	ttl, err := parseExtendedDuration(ttlStr)
 	if err != nil {
 		return err
 	}
@@ -294,19 +294,19 @@ func validateDosConfig(cfg DosConfig) error {
 		return fmt.Errorf("max_reports must be non-negative, got %d", cfg.MaxReports)
 	}
 
-	// Validate durations.
+	// Validate durations (supports d/w units via parseExtendedDuration).
 	if cfg.BasePenalty != "" {
-		if _, err := time.ParseDuration(cfg.BasePenalty); err != nil {
+		if _, err := parseExtendedDuration(cfg.BasePenalty); err != nil {
 			return fmt.Errorf("invalid base_penalty duration %q: %w", cfg.BasePenalty, err)
 		}
 	}
 	if cfg.MaxPenalty != "" {
-		if _, err := time.ParseDuration(cfg.MaxPenalty); err != nil {
+		if _, err := parseExtendedDuration(cfg.MaxPenalty); err != nil {
 			return fmt.Errorf("invalid max_penalty duration %q: %w", cfg.MaxPenalty, err)
 		}
 	}
 	if cfg.CooldownDelay != "" {
-		if _, err := time.ParseDuration(cfg.CooldownDelay); err != nil {
+		if _, err := parseExtendedDuration(cfg.CooldownDelay); err != nil {
 			return fmt.Errorf("invalid cooldown_delay duration %q: %w", cfg.CooldownDelay, err)
 		}
 	}
