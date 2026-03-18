@@ -60,7 +60,7 @@ configurable via Caddyfile `listener_wrappers`. ~90ns/req hot path. Load tested 
 | **caddy-body-matcher** | None. Stateless, request-scoped. | 0 | Yes |
 | **caddy-policy-engine** | In-memory compiled rules + 16-shard rate-limit counters. Config loaded from JSON file via mtime polling (`policyengine.go:3562-3630`). | ~100K RL keys | Yes |
 | **caddy-ddos-mitigator** | 6 in-memory structures (64-shard jail, 4×8192 CMS, Welford stats, 64-shard IP profiles, CIDR aggregator, whitelist) + bidirectional `jail.json` file sync with flock (`mitigator.go:580-672`). | ~100K IPs, 256KB CMS | Yes |
-| **caddy-compose/wafctl** | 18 stores: 8 JSON config + 3 JSONL event + jail file + 6 in-memory/specialized. Zero external dependencies. 70 handler functions across 14 files, 81 mux routes. | ~250K events, ~50-200 rules | No |
+| **caddy-compose/wafctl** | 18 stores: 8 JSON config + 3 JSONL event + jail file + 6 in-memory/specialized. Zero external dependencies. 70 handler functions across 16 files, 82 mux routes. | ~250K events, ~50-200 rules | No |
 
 ### wafctl Store Inventory (18 stores)
 
@@ -379,7 +379,7 @@ changes the constructor calls but route registrations stay identical.
 |---|---|
 | `interfaces.go` (new) | ~180 lines of interface definitions |
 | `main.go:260-397` | Handler registrations: types in closure args change |
-| 14 handler files | 70 handler function signatures |
+| 16 handler files | 70 handler function signatures |
 | `deploy.go` | `generatePolicyData`, `deployAll` params |
 | `policy_generator.go` | Functions that accept store pointers |
 | 29 test files | Store construction patterns unchanged (concrete types satisfy interfaces) |
@@ -446,7 +446,7 @@ Concrete examples with line numbers:
 - `ExclusionStore.Create` (`exclusions.go:178-193`): append, save, on error truncate
 - `ExclusionStore.Delete` (`exclusions.go:221-238`): full slice copy, splice, save, on error restore
 - `ExclusionStore.Reorder` (`exclusions.go:242-277`): save old, rebuild, save, on error restore
-- `ConfigStore.Update` (`config.go:202-217`): `old := s.config`, save, on error restore
+- `ConfigStore.Update` (`config.go:205-220`): `old := s.config`, save, on error restore
 
 Every mutation follows this pattern. With PG transactions, the ~200 lines of rollback
 logic across all stores disappears. The `atomicWriteFile` function (`util.go`) is no
@@ -1103,8 +1103,8 @@ Replace `JailStore` file I/O (`dos_mitigation.go:47-190`) with Valkey client:
 
 | File | Current | New |
 |---|---|---|
-| `ddos-mitigator/util.go:76-92` | `withFileLock()` (flock) | Remove entirely |
-| `ddos-mitigator/util.go:167-202` | `atomicWriteFile()` for jail | Remove (keep for non-jail uses) |
+| `ddos-mitigator/util.go:80-92` | `withFileLock()` (flock) | Remove entirely |
+| `ddos-mitigator/util.go:172-202` | `atomicWriteFile()` for jail | Remove (keep for non-jail uses) |
 | `ddos-mitigator/util.go:207-338` | `jailFileFormat`, `writeJailFile`, `readJailFileIPs` | Replace with `valkey_sync.go` |
 | `ddos-mitigator/mitigator.go:580-672` | `runFileSync()` | Replace with `runValkeySync()` |
 | `ddos-mitigator/mitigator.go:254-263` | Jail file load at startup | Valkey `SMEMBERS` + `HGETALL` |

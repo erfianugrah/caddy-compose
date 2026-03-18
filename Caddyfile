@@ -59,6 +59,7 @@
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
 			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin cdn atuin
+			erfianugrah.com @
 		}
 		versions ipv4
 		check_interval 5m
@@ -565,6 +566,24 @@ cdn.erfi.io {
 	}
 	import error_pages
 	import site_log cdn
+}
+
+
+erfianugrah.com {
+	import waf_off
+
+	import tls_config
+	encode zstd gzip
+	# Astro hashed assets are immutable — cache for 1 year
+	@hashed path /_astro/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	# HTML pages — revalidate on every request
+	header ?Cache-Control "public, max-age=0, must-revalidate"
+	reverse_proxy 172.19.23.2:80 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log erfianugrah
 }
 
 # Internal admin API proxy — allows wafctl to trigger Caddy reloads.
