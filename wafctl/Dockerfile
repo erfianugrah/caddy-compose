@@ -8,7 +8,7 @@ RUN npm ci
 COPY waf-dashboard/ ./
 RUN npm run build
 
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26-alpine AS builder
 ARG VERSION=dev
 WORKDIR /build
 COPY wafctl/go.mod ./
@@ -17,7 +17,7 @@ COPY wafctl/*.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o wafctl .
 
 # Convert CRS rules to policy-engine format at build time.
-FROM golang:1.24-alpine AS crs-rules
+FROM golang:1.26-alpine AS crs-rules
 ARG CRS_VERSION
 RUN apk add --no-cache git
 WORKDIR /build
