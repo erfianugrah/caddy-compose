@@ -154,7 +154,7 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.52.0-2.11.1`), wafctl is plain semver (e.g. `2.56.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.53.0-2.11.1`), wafctl is plain semver (e.g. `2.57.0`).
 
 ## WAF configuration
 
