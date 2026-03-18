@@ -24,7 +24,8 @@ RUN crs-converter \
       -crs-dir /crs/rules \
       -crs-version "${CRS_VERSION#v}" \
       -custom-rules /build/custom-rules.json \
-      -output /build/default-rules.json
+      -output /build/default-rules.json \
+      -metadata-output /build/crs-metadata.json
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
@@ -44,6 +45,7 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY errors/ /etc/caddy/errors/
 COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/default-rules.json
+COPY --from=crs-rules /build/crs-metadata.json /etc/caddy/waf/crs-metadata.json
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

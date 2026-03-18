@@ -92,6 +92,34 @@ type PolicyCondition struct {
 	GroupOp string            `json:"group_op,omitempty"`
 }
 
+// ─── CRS Metadata Output Types ─────────────────────────────────────
+// These are written to crs-metadata.json for use by wafctl at runtime.
+// This is the single source of truth for CRS category taxonomy, replacing
+// all hardcoded Go maps in wafctl (crs_rules.go, config.go, access_log_store.go).
+
+// CRSMetadata is the top-level crs-metadata.json structure.
+type CRSMetadata struct {
+	CRSVersion      string                `json:"crs_version"`
+	GeneratedAt     string                `json:"generated_at"`
+	Categories      []CRSMetadataCategory `json:"categories"`
+	CategoryMap     map[string]string     `json:"category_map"`      // full category → short ID
+	ValidPrefixes   []string              `json:"valid_prefixes"`    // known rule ID prefixes for validation
+	SeverityLevels  map[string]int        `json:"severity_levels"`   // severity name → numeric (CRS convention)
+	CustomRuleRange string                `json:"custom_rule_range"` // e.g., "9100"
+}
+
+// CRSMetadataCategory describes a single CRS rule category.
+type CRSMetadataCategory struct {
+	ID          string `json:"id"`          // short: "protocol-enforcement"
+	Name        string `json:"name"`        // display: "Protocol Enforcement"
+	Description string `json:"description"` // long description
+	Prefix      string `json:"prefix"`      // rule ID prefix: "920"
+	RuleRange   string `json:"rule_range"`  // "920000-920999"
+	Tag         string `json:"tag"`         // CRS tag: "attack-protocol"
+	Phase       string `json:"phase"`       // "inbound" or "outbound"
+	RuleCount   int    `json:"rule_count"`  // number of converted rules
+}
+
 // ─── Conversion Report Types ───────────────────────────────────────
 
 // Report tracks conversion statistics and gaps.

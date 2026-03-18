@@ -30,13 +30,15 @@ RUN crs-converter \
       -crs-dir /crs/rules \
       -crs-version "${CRS_VERSION#v}" \
       -custom-rules /build/custom-rules.json \
-      -output /build/default-rules.json
+      -output /build/default-rules.json \
+      -metadata-output /build/crs-metadata.json
 
 FROM alpine:3.21
 RUN apk add --no-cache wget
 COPY --from=builder /build/wafctl /usr/local/bin/wafctl
 COPY --from=frontend /build/dist/ /app/waf-ui/
 COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/default-rules.json
+COPY --from=crs-rules /build/crs-metadata.json /etc/caddy/waf/crs-metadata.json
 USER 65534:65534
 ENTRYPOINT ["/usr/local/bin/wafctl"]
 CMD ["serve"]

@@ -284,7 +284,7 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 				return fmt.Errorf("%s: disabled_categories entry %q must be numeric", name, cat)
 			}
 		}
-		if !validCRSCategoryPrefixes[cat] {
+		if !GetCRSMetadata().IsValidPrefix(cat) {
 			return fmt.Errorf("%s: disabled_categories entry %q is not a known CRS category prefix", name, cat)
 		}
 	}
@@ -333,29 +333,4 @@ func validateServiceSettings(name string, ss WAFServiceSettings) error {
 	}
 
 	return nil
-}
-
-// validCRSCategoryPrefixes are the known CRS rule ID prefixes that can be
-// used in disabled_categories. Derived from the OWASP CRS 4.x rule numbering.
-var validCRSCategoryPrefixes = map[string]bool{
-	"913":  true, // Scanner Detection
-	"920":  true, // Protocol Enforcement
-	"921":  true, // Protocol Attack
-	"922":  true, // Multipart Attack
-	"930":  true, // Local File Inclusion
-	"931":  true, // Remote File Inclusion
-	"932":  true, // Remote Code Execution
-	"933":  true, // PHP Injection
-	"934":  true, // Generic Attack (formerly Node.js)
-	"941":  true, // Cross-Site Scripting
-	"942":  true, // SQL Injection
-	"943":  true, // Session Fixation
-	"944":  true, // Java Injection
-	"950":  true, // Data Leakages
-	"951":  true, // Data Leakages - SQL
-	"952":  true, // Data Leakages - Java
-	"953":  true, // Data Leakages - PHP
-	"954":  true, // Data Leakages - IIS
-	"955":  true, // Web Shells
-	"9100": true, // Custom policy engine rules
 }

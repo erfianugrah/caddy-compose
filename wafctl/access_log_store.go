@@ -1215,18 +1215,8 @@ func parseDetectRulesDetail(detail string) []MatchedRule {
 		cleanID := strings.TrimPrefix(ruleID, "PE-")
 		// Try to parse as numeric rule ID for the int field.
 		numID, _ := strconv.Atoi(cleanID)
-		// Map severity string to numeric (CRS convention).
-		sevNum := 0
-		switch severity {
-		case "CRITICAL":
-			sevNum = 2
-		case "ERROR":
-			sevNum = 3
-		case "WARNING":
-			sevNum = 4
-		case "NOTICE":
-			sevNum = 5
-		}
+		// Map severity string to numeric using loaded CRS metadata.
+		sevNum := GetCRSMetadata().SeverityToNumeric(severity)
 		tags := []string{"detect", "score:" + strconv.Itoa(score)}
 		msg := cleanID + " (" + severity + ", score " + strconv.Itoa(score) + ")"
 		if isLogOnly {
