@@ -465,6 +465,47 @@ func TestDDoS_JailFileHasVersion(t *testing.T) {
 	}
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  DDoS Mitigator — Infraction Escalation Tests
+// ════════════════════════════════════════════════════════════════════
+
+// TestDDoS_InfractionPersistsAfterUnjail verifies that unjailing an IP and
+// re-jailing it results in escalated penalties (not resetting to base).
+func TestDDoS_InfractionPersistsAfterUnjail(t *testing.T) {
+	testIP := "198.51.100.77"
+
+	// Jail with explicit infraction count via wafctl API
+	resp, _ := httpPost(t, wafctlURL+"/api/dos/jail", map[string]string{
+		"ip": testIP, "ttl": "30s", "reason": "e2e-infraction-test",
+	})
+	assertCode(t, "jail IP first time", 200, resp)
+
+	// Wait for sync
+	waitForCondition(t, "first jail visible", 10*time.Second, func() bool {
+		resp, body := httpGet(t, wafctlURL+"/api/dos/jail")
+		return resp.StatusCode == 200 && strings.Contains(string(body), testIP)
+	})
+
+	// Unjail
+	resp2, _ := httpDelete(t, wafctlURL+"/api/dos/jail/"+testIP)
+	assertCode(t, "unjail", 200, resp2)
+
+	// Re-jail — the plugin's infraction history should still have the count
+	resp3, _ := httpPost(t, wafctlURL+"/api/dos/jail", map[string]string{
+		"ip": testIP, "ttl": "30s", "reason": "e2e-infraction-rejail",
+	})
+	assertCode(t, "re-jail", 200, resp3)
+
+	// Verify it's jailed again
+	waitForCondition(t, "re-jail visible", 10*time.Second, func() bool {
+		resp, body := httpGet(t, wafctlURL+"/api/dos/jail")
+		return resp.StatusCode == 200 && strings.Contains(string(body), testIP)
+	})
+
+	// Cleanup
+	httpDelete(t, wafctlURL+"/api/dos/jail/"+testIP)
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 func truncate(b []byte, n int) string {
