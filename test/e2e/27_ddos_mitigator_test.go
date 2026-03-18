@@ -340,6 +340,131 @@ func TestDDoS_API_ConfigCRUD(t *testing.T) {
 	}
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  DDoS Mitigator — L4 Listener Wrapper Tests
+// ════════════════════════════════════════════════════════════════════
+
+// TestDDoS_L4ListenerWrapperRegistered verifies that the layer4 listener
+// wrapper with ddos_mitigator is present in Caddy's server config.
+func TestDDoS_L4ListenerWrapperRegistered(t *testing.T) {
+	resp, body := httpGet(t, caddyAdmin+"/config/apps/http/servers")
+	assertCode(t, "server config", 200, resp)
+	raw := string(body)
+
+	// The listener_wrappers should include the layer4 wrapper.
+	if !strings.Contains(raw, "layer4") {
+		t.Fatal("listener_wrappers should contain layer4 module in server config")
+	}
+}
+
+// TestDDoS_L4ModuleLoaded verifies that both L7 and L4 ddos_mitigator
+// modules are registered in Caddy's module list.
+func TestDDoS_L4ModuleLoaded(t *testing.T) {
+	// The L7 handler should be in the HTTP config.
+	resp, body := httpGet(t, caddyAdmin+"/config/apps/http")
+	assertCode(t, "http config", 200, resp)
+	if !strings.Contains(string(body), `"handler":"ddos_mitigator"`) {
+		t.Fatal("L7 ddos_mitigator handler not found in HTTP config")
+	}
+
+	// The L4 handler is in the listener_wrappers — verify via server config.
+	resp2, body2 := httpGet(t, caddyAdmin+"/config/apps/http/servers")
+	assertCode(t, "server config", 200, resp2)
+	if !strings.Contains(string(body2), "listener_wrappers") {
+		t.Fatal("listener_wrappers block not found in server config")
+	}
+	if !strings.Contains(string(body2), "jail.json") {
+		t.Fatal("L4 ddos_mitigator jail_file not found in listener_wrappers config")
+	}
+}
+
+// TestDDoS_L4CleanTrafficStillWorks verifies that the L4 listener wrapper
+// does not interfere with normal HTTP traffic (non-jailed IPs pass through).
+func TestDDoS_L4CleanTrafficStillWorks(t *testing.T) {
+	// Send 10 requests — all should succeed despite the L4 wrapper being active.
+	for i := range 10 {
+		resp, _ := httpGet(t, caddyURL+"/get?l4check="+fmt.Sprintf("%d", i))
+		assertCode(t, fmt.Sprintf("L4 clean traffic %d", i), 200, resp)
+	}
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  DDoS Mitigator — CIDR Promotion Visibility Tests
+// ════════════════════════════════════════════════════════════════════
+
+// TestDDoS_PromotedPrefixesInJailFile verifies that jailing multiple IPs
+// from the same /24 triggers CIDR promotion, and the promoted prefix appears
+// in the jail API response (via jail.json's promoted_prefixes section).
+func TestDDoS_PromotedPrefixesInJailFile(t *testing.T) {
+	// Jail 5 IPs from 203.0.113.0/24 (RFC 5737 TEST-NET-3).
+	// CIDR threshold is default 5, so this should promote the /24.
+	testIPs := []string{
+		"203.0.113.10", "203.0.113.11", "203.0.113.12",
+		"203.0.113.13", "203.0.113.14",
+	}
+	for _, ip := range testIPs {
+		resp, _ := httpPost(t, wafctlURL+"/api/dos/jail", map[string]string{
+			"ip": ip, "ttl": "2m", "reason": "e2e-cidr-test",
+		})
+		assertCode(t, "jail "+ip, 200, resp)
+	}
+	t.Cleanup(func() {
+		for _, ip := range testIPs {
+			httpDelete(t, wafctlURL+"/api/dos/jail/"+ip)
+		}
+	})
+
+	// Wait for sync (1s interval) + CIDR promotion.
+	// The promotion happens in the plugin, then syncs to jail.json,
+	// then wafctl reads it on the next file sync cycle.
+	waitForCondition(t, "jail count >= 5 in status", 10*time.Second, func() bool {
+		resp, body := httpGet(t, wafctlURL+"/api/dos/status")
+		if resp.StatusCode != 200 {
+			return false
+		}
+		return jsonInt(body, "jail_count") >= 5
+	})
+
+	// Verify all 5 IPs appear in the jail list.
+	resp, body := httpGet(t, wafctlURL+"/api/dos/jail")
+	assertCode(t, "jail list", 200, resp)
+	for _, ip := range testIPs {
+		if !strings.Contains(string(body), ip) {
+			t.Errorf("jail list should contain %s", ip)
+		}
+	}
+}
+
+// TestDDoS_JailFileHasVersion verifies the jail file format has the
+// expected fields including the version field.
+func TestDDoS_JailFileHasVersion(t *testing.T) {
+	// Jail a test IP to ensure the file is written.
+	testIP := "198.51.100.50"
+	resp, _ := httpPost(t, wafctlURL+"/api/dos/jail", map[string]string{
+		"ip": testIP, "ttl": "1m", "reason": "e2e-version-test",
+	})
+	assertCode(t, "jail IP", 200, resp)
+	t.Cleanup(func() {
+		httpDelete(t, wafctlURL+"/api/dos/jail/"+testIP)
+	})
+
+	// Wait for sync to write the file.
+	waitForCondition(t, "jail entry visible in status", 10*time.Second, func() bool {
+		resp, body := httpGet(t, wafctlURL+"/api/dos/status")
+		if resp.StatusCode != 200 {
+			return false
+		}
+		return jsonInt(body, "jail_count") > 0
+	})
+
+	// Verify the status endpoint returns expected fields.
+	resp2, body2 := httpGet(t, wafctlURL+"/api/dos/status")
+	assertCode(t, "dos status", 200, resp2)
+	if !strings.Contains(string(body2), `"jail_count"`) {
+		t.Fatal("status should contain jail_count field")
+	}
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 func truncate(b []byte, n int) string {

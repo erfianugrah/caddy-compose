@@ -36,6 +36,18 @@
 		protocols h1 h2 h3
 		trusted_proxies_strict
 		import /data/waf/cf_trusted_proxies.caddy
+		# L4 DDoS guard — drops jailed IPs with TCP RST before TLS handshake.
+		# Shares the same jail as the L7 handler via the jail_file path.
+		listener_wrappers {
+			layer4 {
+				route {
+					ddos_mitigator {
+						jail_file /data/waf/jail.json
+					}
+				}
+			}
+			tls
+		}
 		# Connection limits — prevent goroutine accumulation during DDoS storms.
 		# Caddy's reverse proxy leaks health-check goroutines when overwhelmed with
 		# 50K+ concurrent connections; these limits keep the connection pool bounded.

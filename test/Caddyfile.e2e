@@ -15,6 +15,18 @@
 	}
 	servers {
 		strict_sni_host insecure_off
+		# L4 DDoS guard — drops jailed IPs with TCP RST before TLS.
+		# In e2e: wraps the plain HTTP listener (:8080) so we can verify
+		# the L4 handler is loaded and registered in Caddy's config.
+		listener_wrappers {
+			layer4 {
+				route {
+					ddos_mitigator {
+						jail_file /data/waf/jail.json
+					}
+				}
+			}
+		}
 	}
 }
 

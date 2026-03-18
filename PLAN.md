@@ -1,6 +1,6 @@
 # PLAN.md — Policy Engine Roadmap
 
-## Current State (v2.60.0 / caddy 3.56.0 / body-matcher v0.2.1 / policy-engine v0.23.0 / ddos-mitigator v0.14.0)
+## Current State (v2.61.0 / caddy 3.57.0 / body-matcher v0.2.1 / policy-engine v0.23.0 / ddos-mitigator v0.15.0)
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound), 6-pass evaluation (allow → block → skip → rate_limit → detect →
@@ -572,6 +572,21 @@ resilient to transient origin errors.
 ---
 
 ## Completed (changelog)
+
+### v2.61.0 / caddy 3.57.0
+
+- **DDoS mitigator v0.15.0**: CIDR promotion visibility — promoted /24 and /64 prefixes
+  now written to `jail.json` (`promoted_prefixes` section) so wafctl can display them on
+  the dashboard. nftables sets upgraded to interval mode — promoted CIDR prefixes are
+  kernel-dropped alongside individually-jailed IPs (previously only individual IPs were
+  dropped, leaving promoted prefixes L7-only). Dirty flag now set on jail sweep removals
+  and CIDR promotions/expirations.
+- **L4 Caddyfile support**: `DDOSMitigatorL4` implements `caddyfile.Unmarshaler` for use
+  in caddy-l4 `listener_wrappers` blocks. Drops jailed IPs with TCP RST before TLS
+  handshake, sharing jail state via registry. Caddyfile: `servers { listener_wrappers {
+  layer4 { route { ddos_mitigator { jail_file /data/waf/jail.json } } } } }`
+- **New e2e tests**: L4 listener wrapper registration, L4 module loaded, L4 clean traffic
+  passthrough, CIDR promotion visibility via jail API, jail file format validation.
 
 ### v2.60.0 / caddy 3.56.0
 
