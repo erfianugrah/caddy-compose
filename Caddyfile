@@ -79,15 +79,15 @@
 # The jail file is shared bidirectionally with wafctl for manual jail/unjail.
 (ddos) {
 	ddos_mitigator {
-		jail_file       /data/waf/jail.json
-		threshold       0.65
-		base_penalty    60s
-		max_penalty     24h
-		sweep_interval  10s
-		decay_interval  30s
-		sync_interval   1s
-		kernel_drop     true
-		whitelist       192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128
+		jail_file /data/waf/jail.json
+		threshold 0.65
+		base_penalty 60s
+		max_penalty 24h
+		sweep_interval 10s
+		decay_interval 30s
+		sync_interval 1s
+		kernel_drop true
+		whitelist 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128
 	}
 }
 
@@ -213,7 +213,6 @@
 # Use `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` to reload.
 # Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
 caddy.erfi.io {
-
 	import tls_config
 	encode zstd gzip
 	respond "Caddy is running. Admin API available via localhost:2019 only." 200
@@ -241,7 +240,6 @@ waf.erfi.io {
 }
 
 authelia.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -253,7 +251,6 @@ authelia.erfi.io {
 }
 
 servarr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -279,7 +276,6 @@ servarr.erfi.io {
 }
 
 sonarr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -291,7 +287,6 @@ sonarr.erfi.io {
 }
 
 radarr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -303,7 +298,6 @@ radarr.erfi.io {
 }
 
 bazarr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -315,7 +309,6 @@ bazarr.erfi.io {
 }
 
 tracearr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -327,7 +320,6 @@ tracearr.erfi.io {
 }
 
 vault.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -340,7 +332,6 @@ vault.erfi.io {
 }
 
 prowlarr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -352,7 +343,6 @@ prowlarr.erfi.io {
 }
 
 jellyfin.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -369,7 +359,6 @@ jellyfin.erfi.io {
 }
 
 qbit.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -381,7 +370,6 @@ qbit.erfi.io {
 }
 
 change.erfi.io {
-
 	import waf
 	import forward_auth
 	import tls_config
@@ -394,7 +382,6 @@ change.erfi.io {
 }
 
 seerr.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -406,7 +393,6 @@ seerr.erfi.io {
 }
 
 keycloak.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -418,7 +404,6 @@ keycloak.erfi.io {
 }
 
 joplin.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -430,7 +415,6 @@ joplin.erfi.io {
 }
 
 navidrome.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -442,7 +426,6 @@ navidrome.erfi.io {
 }
 
 sabnzbd.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -454,7 +437,6 @@ sabnzbd.erfi.io {
 }
 
 immich.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -480,7 +462,6 @@ caddy-prometheus.erfi.io {
 }
 
 copyparty.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -492,7 +473,6 @@ copyparty.erfi.io {
 }
 
 dockge.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -505,7 +485,6 @@ dockge.erfi.io {
 }
 
 httpbun.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -517,7 +496,6 @@ httpbun.erfi.io {
 }
 
 httpbin.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -529,7 +507,6 @@ httpbin.erfi.io {
 }
 
 atuin.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -541,7 +518,6 @@ atuin.erfi.io {
 }
 
 cdn.erfi.io {
-
 	import waf
 	import tls_config
 	encode zstd gzip
@@ -567,7 +543,6 @@ cdn.erfi.io {
 	import error_pages
 	import site_log cdn
 }
-
 
 erfianugrah.com {
 	import waf_off
