@@ -1,0 +1,250 @@
+{
+  "crs_version": "4.24.1",
+  "generated_at": "2026-03-18T09:00:00Z",
+  "categories": [
+    {
+      "id": "scanner-detection",
+      "name": "Scanner Detection",
+      "description": "Known security scanner detection",
+      "prefix": "913",
+      "rule_range": "913000-913999",
+      "tag": "attack-reputation-scanner",
+      "phase": "inbound",
+      "rule_count": 8
+    },
+    {
+      "id": "protocol-enforcement",
+      "name": "Protocol Enforcement",
+      "description": "HTTP protocol violations and anomalies",
+      "prefix": "920",
+      "rule_range": "920000-920999",
+      "tag": "attack-protocol",
+      "phase": "inbound",
+      "rule_count": 42
+    },
+    {
+      "id": "protocol-attack",
+      "name": "Protocol Attack",
+      "description": "HTTP request smuggling, response splitting",
+      "prefix": "921",
+      "rule_range": "921000-921999",
+      "tag": "attack-protocol",
+      "phase": "inbound",
+      "rule_count": 8
+    },
+    {
+      "id": "multipart-attack",
+      "name": "Multipart Attack",
+      "description": "Multipart request attack patterns",
+      "prefix": "922",
+      "rule_range": "922000-922999",
+      "tag": "attack-protocol",
+      "phase": "inbound",
+      "rule_count": 2
+    },
+    {
+      "id": "lfi",
+      "name": "Local File Inclusion",
+      "description": "Path traversal and LFI attacks",
+      "prefix": "930",
+      "rule_range": "930000-930999",
+      "tag": "attack-lfi",
+      "phase": "inbound",
+      "rule_count": 12
+    },
+    {
+      "id": "rfi",
+      "name": "Remote File Inclusion",
+      "description": "Remote file inclusion attempts",
+      "prefix": "931",
+      "rule_range": "931000-931999",
+      "tag": "attack-rfi",
+      "phase": "inbound",
+      "rule_count": 4
+    },
+    {
+      "id": "rce",
+      "name": "Remote Code Execution",
+      "description": "Command injection and RCE",
+      "prefix": "932",
+      "rule_range": "932000-932999",
+      "tag": "attack-rce",
+      "phase": "inbound",
+      "rule_count": 26
+    },
+    {
+      "id": "php",
+      "name": "PHP Injection",
+      "description": "PHP code injection attacks",
+      "prefix": "933",
+      "rule_range": "933000-933999",
+      "tag": "attack-injection-php",
+      "phase": "inbound",
+      "rule_count": 18
+    },
+    {
+      "id": "generic-attack",
+      "name": "Generic Attack",
+      "description": "Generic application attack patterns",
+      "prefix": "934",
+      "rule_range": "934000-934999",
+      "tag": "attack-generic",
+      "phase": "inbound",
+      "rule_count": 6
+    },
+    {
+      "id": "xss",
+      "name": "Cross-Site Scripting",
+      "description": "XSS attack detection",
+      "prefix": "941",
+      "rule_range": "941000-941999",
+      "tag": "attack-xss",
+      "phase": "inbound",
+      "rule_count": 28
+    },
+    {
+      "id": "sqli",
+      "name": "SQL Injection",
+      "description": "SQL injection detection",
+      "prefix": "942",
+      "rule_range": "942000-942999",
+      "tag": "attack-sqli",
+      "phase": "inbound",
+      "rule_count": 50
+    },
+    {
+      "id": "session-fixation",
+      "name": "Session Fixation",
+      "description": "Session fixation attacks",
+      "prefix": "943",
+      "rule_range": "943000-943999",
+      "tag": "attack-fixation",
+      "phase": "inbound",
+      "rule_count": 4
+    },
+    {
+      "id": "java",
+      "name": "Java Injection",
+      "description": "Java/Spring code injection",
+      "prefix": "944",
+      "rule_range": "944000-944999",
+      "tag": "attack-injection-java",
+      "phase": "inbound",
+      "rule_count": 18
+    },
+    {
+      "id": "bot-detection",
+      "name": "Bot Detection",
+      "description": "Bot signal and heuristic rules",
+      "prefix": "9100",
+      "rule_range": "9100030-9100036",
+      "tag": "bot-signal",
+      "phase": "inbound",
+      "rule_count": 7
+    },
+    {
+      "id": "data-leakage",
+      "name": "Data Leakages",
+      "description": "Generic data leakage patterns",
+      "prefix": "950",
+      "rule_range": "950000-950999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 8
+    },
+    {
+      "id": "data-leakage-sql",
+      "name": "SQL Data Leakages",
+      "description": "SQL error and data leakage patterns",
+      "prefix": "951",
+      "rule_range": "951000-951999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 10
+    },
+    {
+      "id": "data-leakage-java",
+      "name": "Java Data Leakages",
+      "description": "Java stack trace and error disclosure",
+      "prefix": "952",
+      "rule_range": "952000-952999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 4
+    },
+    {
+      "id": "data-leakage-php",
+      "name": "PHP Data Leakages",
+      "description": "PHP error and configuration disclosure",
+      "prefix": "953",
+      "rule_range": "953000-953999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 6
+    },
+    {
+      "id": "data-leakage-iis",
+      "name": "IIS Data Leakages",
+      "description": "IIS error and configuration disclosure",
+      "prefix": "954",
+      "rule_range": "954000-954999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 4
+    },
+    {
+      "id": "web-shells",
+      "name": "Web Shell Detection",
+      "description": "Web shell backdoor detection",
+      "prefix": "955",
+      "rule_range": "955000-955999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 18
+    },
+    {
+      "id": "data-leakages-ruby",
+      "name": "Ruby Data Leakages",
+      "description": "Ruby error and data disclosure",
+      "prefix": "956",
+      "rule_range": "956000-956999",
+      "tag": "attack-disclosure",
+      "phase": "outbound",
+      "rule_count": 2
+    }
+  ],
+  "category_map": {
+    "REQUEST-913-SCANNER-DETECTION": "scanner-detection",
+    "REQUEST-920-PROTOCOL-ENFORCEMENT": "protocol-enforcement",
+    "REQUEST-921-PROTOCOL-ATTACK": "protocol-attack",
+    "REQUEST-922-MULTIPART-ATTACK": "multipart-attack",
+    "REQUEST-930-APPLICATION-ATTACK-LFI": "lfi",
+    "REQUEST-931-APPLICATION-ATTACK-RFI": "rfi",
+    "REQUEST-932-APPLICATION-ATTACK-RCE": "rce",
+    "REQUEST-933-APPLICATION-ATTACK-PHP": "php",
+    "REQUEST-934-APPLICATION-ATTACK-GENERIC": "generic-attack",
+    "REQUEST-941-APPLICATION-ATTACK-XSS": "xss",
+    "REQUEST-942-APPLICATION-ATTACK-SQLI": "sqli",
+    "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION": "session-fixation",
+    "REQUEST-944-APPLICATION-ATTACK-JAVA": "java",
+    "RESPONSE-950-DATA-LEAKAGES": "data-leakage",
+    "RESPONSE-951-DATA-LEAKAGES-SQL": "data-leakage-sql",
+    "RESPONSE-952-DATA-LEAKAGES-JAVA": "data-leakage-java",
+    "RESPONSE-953-DATA-LEAKAGES-PHP": "data-leakage-php",
+    "RESPONSE-954-DATA-LEAKAGES-IIS": "data-leakage-iis",
+    "RESPONSE-955-WEB-SHELLS": "web-shells",
+    "RESPONSE-956-DATA-LEAKAGES-RUBY": "data-leakages-ruby"
+  },
+  "valid_prefixes": [
+    "913", "920", "921", "922", "930", "931", "932", "933", "934",
+    "941", "942", "943", "944", "950", "951", "952", "953", "954",
+    "955", "956", "9100"
+  ],
+  "severity_levels": {
+    "CRITICAL": 2,
+    "ERROR": 3,
+    "WARNING": 4,
+    "NOTICE": 5
+  },
+  "custom_rule_range": "9100"
+}

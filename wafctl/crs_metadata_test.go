@@ -61,25 +61,30 @@ func TestLoadCRSMetadata_Missing(t *testing.T) {
 	}
 }
 
-func TestFallbackMetadata(t *testing.T) {
-	meta := fallbackMetadata()
+func TestGetCRSMetadata_LoadedFromFixture(t *testing.T) {
+	meta := GetCRSMetadata()
+
+	// TestMain loads testdata/crs-metadata.json — verify it took effect
+	if meta.CRSVersion != "4.24.1" {
+		t.Errorf("CRSVersion = %q, want 4.24.1 (loaded from fixture)", meta.CRSVersion)
+	}
 
 	// Should have categories
 	if len(meta.Categories) == 0 {
-		t.Fatal("fallback should have categories")
+		t.Fatal("fixture should have categories")
 	}
 
 	// Should normalize known categories
 	if meta.NormalizeCategory("REQUEST-942-APPLICATION-ATTACK-SQLI") != "sqli" {
-		t.Error("fallback should normalize sqli")
+		t.Error("NormalizeCategory failed for sqli")
 	}
 
 	// Should validate known prefixes
 	if !meta.IsValidPrefix("920") {
-		t.Error("fallback should accept prefix 920")
+		t.Error("IsValidPrefix(920) should be true")
 	}
 	if meta.IsValidPrefix("999") {
-		t.Error("fallback should reject prefix 999")
+		t.Error("IsValidPrefix(999) should be false")
 	}
 
 	// Should have severity levels
@@ -92,7 +97,7 @@ func TestFallbackMetadata(t *testing.T) {
 }
 
 func TestNormalizeCRSCategory_Dynamic(t *testing.T) {
-	// Uses whatever metadata is currently loaded (fallback in test env).
+	// Uses metadata loaded from testdata/crs-metadata.json by TestMain.
 	tests := []struct {
 		input string
 		want  string
@@ -113,10 +118,10 @@ func TestNormalizeCRSCategory_Dynamic(t *testing.T) {
 	}
 }
 
-func TestCRSMetadataCategories_FromFallback(t *testing.T) {
+func TestCRSMetadataCategories_FromFixture(t *testing.T) {
 	cats := crsMetadataCategories()
 	if len(cats) == 0 {
-		t.Fatal("expected non-empty categories from fallback")
+		t.Fatal("expected non-empty categories from fixture")
 	}
 	// Verify a known category is present
 	found := false

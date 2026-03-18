@@ -2,12 +2,25 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+// TestMain loads the CRS metadata test fixture before any tests run.
+// This replaces the compiled-in fallback with realistic data from
+// testdata/crs-metadata.json, matching what the converter generates.
+func TestMain(m *testing.M) {
+	meta, err := LoadCRSMetadata("testdata/crs-metadata.json")
+	if err != nil {
+		log.Fatalf("TestMain: loading test fixture: %v", err)
+	}
+	SetCRSMetadata(meta)
+	os.Exit(m.Run())
+}
 
 // sampleEvents provides 3 events for summary tests:
 // 2 detect_block + 1 logged, across 2 hour buckets.

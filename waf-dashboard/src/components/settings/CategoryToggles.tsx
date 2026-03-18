@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { ShieldOff } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { CRS_CATEGORIES, type RuleCategory } from "@/lib/api";
+import type { RuleCategory } from "@/lib/api";
+import { useCRSCategories } from "@/hooks/useCRSCategories";
 
 // ─── Category Toggles ───────────────────────────────────────────────
 // Allows disabling entire CRS rule categories (by prefix).
@@ -12,15 +13,7 @@ import { CRS_CATEGORIES, type RuleCategory } from "@/lib/api";
 // Per-service overrides replace the global list (not merge).
 
 /** Group categories into inbound vs outbound for visual separation.
- *  Custom rules (9100) are inbound request-phase rules, not outbound.
- *  Outbound categories are response-phase CRS rules (950-956). */
-const OUTBOUND_PREFIXES = new Set(["950", "951", "952", "953", "954", "955", "956"]);
-const INBOUND_CATEGORIES = CRS_CATEGORIES.filter(
-  (c) => !OUTBOUND_PREFIXES.has(c.prefix),
-);
-const OUTBOUND_CATEGORIES = CRS_CATEGORIES.filter(
-  (c) => OUTBOUND_PREFIXES.has(c.prefix),
-);
+ *  Phase is derived from CRS metadata (converter-driven). */
 
 interface CategoryTogglesProps {
   disabled: string[];
@@ -29,7 +22,16 @@ interface CategoryTogglesProps {
 }
 
 export function CategoryToggles({ disabled, onChange, compact }: CategoryTogglesProps) {
+  const categories = useCRSCategories();
   const disabledSet = useMemo(() => new Set(disabled), [disabled]);
+  const inbound = useMemo(
+    () => categories.filter((c) => c.phase !== "outbound"),
+    [categories],
+  );
+  const outbound = useMemo(
+    () => categories.filter((c) => c.phase === "outbound"),
+    [categories],
+  );
 
   const toggle = (prefix: string) => {
     if (disabledSet.has(prefix)) {
@@ -41,7 +43,7 @@ export function CategoryToggles({ disabled, onChange, compact }: CategoryToggles
 
   const enableAll = () => onChange([]);
   const disableAllInbound = () => {
-    const inboundPrefixes = INBOUND_CATEGORIES.map((c) => c.prefix);
+    const inboundPrefixes = inbound.map((c) => c.prefix);
     const outboundDisabled = disabled.filter(
       (p) => !inboundPrefixes.includes(p),
     );
@@ -76,7 +78,7 @@ export function CategoryToggles({ disabled, onChange, compact }: CategoryToggles
           Inbound (Request)
         </span>
         <CategoryGrid
-          categories={INBOUND_CATEGORIES}
+          categories={inbound}
           disabledSet={disabledSet}
           onToggle={toggle}
           compact={compact}
@@ -89,7 +91,7 @@ export function CategoryToggles({ disabled, onChange, compact }: CategoryToggles
           Outbound (Response)
         </span>
         <CategoryGrid
-          categories={OUTBOUND_CATEGORIES}
+          categories={outbound}
           disabledSet={disabledSet}
           onToggle={toggle}
           compact={compact}

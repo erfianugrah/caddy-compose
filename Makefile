@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.55.0-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.59.0
+CADDY_IMAGE   ?= erfianugrah/caddy:3.56.0-2.11.1
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.60.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.

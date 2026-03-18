@@ -6,7 +6,6 @@ import {
   type RuleSeverity,
   type DetectAction,
   type WAFConfig,
-  CRS_CATEGORIES,
   getCategoryForRule,
   listDefaultRules,
   overrideDefaultRule,
@@ -15,6 +14,7 @@ import {
   bulkResetDefaultRules,
   getConfig,
 } from "@/lib/api";
+import { useCRSCategories } from "@/hooks/useCRSCategories";
 import { deployConfig } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,7 @@ const RULE_COMPARATORS: Record<RuleSortKey, (a: DefaultRule, b: DefaultRule) => 
 // ─── Component ──────────────────────────────────────────────────────
 
 export default function RulesPanel() {
+  const crsCategories = useCRSCategories();
   const [rules, setRules] = useState<DefaultRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -515,7 +516,7 @@ export default function RulesPanel() {
           >
             All ({rules.length})
           </button>
-          {CRS_CATEGORIES.map((cat) => {
+          {crsCategories.map((cat) => {
             const s = categoryStats.get(cat.prefix);
             if (!s) return null;
             return (

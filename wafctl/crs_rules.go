@@ -35,7 +35,8 @@ type CRSCategory struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	RuleRange   string `json:"rule_range"`
-	Tag         string `json:"tag"` // CRS tag used for ctl:ruleRemoveByTag
+	Tag         string `json:"tag"`   // CRS tag used for ctl:ruleRemoveByTag
+	Phase       string `json:"phase"` // "inbound" or "outbound"
 }
 
 // CRSCatalogResponse is the API response for /api/crs/rules.
@@ -50,8 +51,8 @@ type CRSCatalogResponse struct {
 // All category data is now loaded from crs-metadata.json at startup
 // via the CRSMetadata system (crs_metadata.go). The converter generates
 // this file at Docker build time from actual CRS .conf filenames.
-// No hardcoded category maps here — see fallbackMetadata() for the
-// compile-time fallback used when the metadata file is not available.
+// No hardcoded category maps here — all data comes from the loaded metadata.
+// Tests load from testdata/crs-metadata.json; production from /etc/caddy/waf/.
 
 // crsMetadataCategories returns the current CRS categories from loaded metadata.
 // Used by GetCatalog() and the /api/crs/rules endpoint.
@@ -65,6 +66,7 @@ func crsMetadataCategories() []CRSCategory {
 			Description: mc.Description,
 			RuleRange:   mc.RuleRange,
 			Tag:         mc.Tag,
+			Phase:       mc.Phase,
 		}
 	}
 	return cats

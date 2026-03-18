@@ -56,6 +56,7 @@ export interface RuleCategory {
   prefix: string;
   name: string;
   shortName: string;
+  phase: "inbound" | "outbound";
 }
 
 // shortNameMap derives concise display names from category IDs.
@@ -84,44 +85,51 @@ const shortNameMap: Record<string, string> = {
   "data-leakages-ruby": "Ruby Leak",
 };
 
+/** Returns the current CRS categories (API data if loaded, fallback otherwise). */
+export function getCRSCategories(): RuleCategory[] {
+  return _crsCategories;
+}
+
 // Compile-time fallback — replaced by API data via refreshCRSCategories().
-export let CRS_CATEGORIES: RuleCategory[] = [
-  { prefix: "913", name: "Scanner Detection", shortName: "Scanner" },
-  { prefix: "920", name: "Protocol Enforcement", shortName: "Protocol" },
-  { prefix: "921", name: "Protocol Attack", shortName: "HTTP Attack" },
-  { prefix: "922", name: "Multipart Attack", shortName: "Multipart" },
-  { prefix: "930", name: "Local File Inclusion", shortName: "LFI" },
-  { prefix: "931", name: "Remote File Inclusion", shortName: "RFI" },
-  { prefix: "932", name: "Remote Code Execution", shortName: "RCE" },
-  { prefix: "933", name: "PHP Injection", shortName: "PHP" },
-  { prefix: "934", name: "Generic Attack", shortName: "Generic" },
-  { prefix: "941", name: "Cross-Site Scripting", shortName: "XSS" },
-  { prefix: "942", name: "SQL Injection", shortName: "SQLi" },
-  { prefix: "943", name: "Session Fixation", shortName: "Session" },
-  { prefix: "944", name: "Java Injection", shortName: "Java" },
-  { prefix: "9100", name: "Custom Rules", shortName: "Custom" },
-  { prefix: "950", name: "Data Leakages", shortName: "Leakage" },
-  { prefix: "951", name: "SQL Data Leakages", shortName: "SQL Leak" },
-  { prefix: "952", name: "Java Data Leakages", shortName: "Java Leak" },
-  { prefix: "953", name: "PHP Data Leakages", shortName: "PHP Leak" },
-  { prefix: "954", name: "IIS Data Leakages", shortName: "IIS Leak" },
-  { prefix: "955", name: "Web Shell Detection", shortName: "Web Shell" },
-  { prefix: "956", name: "Ruby Data Leakages", shortName: "Ruby Leak" },
+// Not exported directly; use getCRSCategories() to read current state.
+let _crsCategories: RuleCategory[] = [
+  { prefix: "913", name: "Scanner Detection", shortName: "Scanner", phase: "inbound" },
+  { prefix: "920", name: "Protocol Enforcement", shortName: "Protocol", phase: "inbound" },
+  { prefix: "921", name: "Protocol Attack", shortName: "HTTP Attack", phase: "inbound" },
+  { prefix: "922", name: "Multipart Attack", shortName: "Multipart", phase: "inbound" },
+  { prefix: "930", name: "Local File Inclusion", shortName: "LFI", phase: "inbound" },
+  { prefix: "931", name: "Remote File Inclusion", shortName: "RFI", phase: "inbound" },
+  { prefix: "932", name: "Remote Code Execution", shortName: "RCE", phase: "inbound" },
+  { prefix: "933", name: "PHP Injection", shortName: "PHP", phase: "inbound" },
+  { prefix: "934", name: "Generic Attack", shortName: "Generic", phase: "inbound" },
+  { prefix: "941", name: "Cross-Site Scripting", shortName: "XSS", phase: "inbound" },
+  { prefix: "942", name: "SQL Injection", shortName: "SQLi", phase: "inbound" },
+  { prefix: "943", name: "Session Fixation", shortName: "Session", phase: "inbound" },
+  { prefix: "944", name: "Java Injection", shortName: "Java", phase: "inbound" },
+  { prefix: "9100", name: "Custom Rules", shortName: "Custom", phase: "inbound" },
+  { prefix: "950", name: "Data Leakages", shortName: "Leakage", phase: "outbound" },
+  { prefix: "951", name: "SQL Data Leakages", shortName: "SQL Leak", phase: "outbound" },
+  { prefix: "952", name: "Java Data Leakages", shortName: "Java Leak", phase: "outbound" },
+  { prefix: "953", name: "PHP Data Leakages", shortName: "PHP Leak", phase: "outbound" },
+  { prefix: "954", name: "IIS Data Leakages", shortName: "IIS Leak", phase: "outbound" },
+  { prefix: "955", name: "Web Shell Detection", shortName: "Web Shell", phase: "outbound" },
+  { prefix: "956", name: "Ruby Data Leakages", shortName: "Ruby Leak", phase: "outbound" },
 ];
 
-/** Fetch categories from /api/crs/rules and update CRS_CATEGORIES.
- *  Call once on app init. Existing fallback is used until this completes. */
+/** Fetch categories from /api/crs/rules and update the internal cache.
+ *  Called by useCRSCategories() hook on first mount. */
 export async function refreshCRSCategories(): Promise<void> {
   try {
     const resp = await fetchJSON<{
-      categories: Array<{ id: string; name: string; rule_range: string; }>;
+      categories: Array<{ id: string; name: string; rule_range: string; phase: string; }>;
     }>(`${API_BASE}/crs/rules`);
     if (resp.categories && resp.categories.length > 0) {
-      CRS_CATEGORIES = resp.categories.map((c) => {
+      _crsCategories = resp.categories.map((c) => {
         // Extract prefix from rule_range (e.g., "920000-920999" → "920")
         const prefix = c.rule_range?.replace(/000-.*$/, "") ?? "";
         const shortName = shortNameMap[c.id] ?? c.name.split(" ")[0];
-        return { prefix, name: c.name, shortName };
+        const phase: "inbound" | "outbound" = c.phase === "outbound" ? "outbound" : "inbound";
+        return { prefix, name: c.name, shortName, phase };
       });
     }
   } catch {
@@ -132,9 +140,9 @@ export async function refreshCRSCategories(): Promise<void> {
 export function getCategoryForRule(ruleId: string): RuleCategory | undefined {
   // Custom rules (9100xxx) must match before 91x CRS ranges.
   if (ruleId.startsWith("9100")) {
-    return CRS_CATEGORIES.find((c) => c.prefix === "9100");
+    return _crsCategories.find((c) => c.prefix === "9100");
   }
-  return CRS_CATEGORIES.find((c) => ruleId.startsWith(c.prefix));
+  return _crsCategories.find((c) => ruleId.startsWith(c.prefix));
 }
 
 export function getCategoryName(ruleId: string): string {
