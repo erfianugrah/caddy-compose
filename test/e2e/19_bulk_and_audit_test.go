@@ -180,16 +180,34 @@ func TestExclusionBulk(t *testing.T) {
 // ─── Item 6: RequestID Propagation ─────────────────────────────────
 
 func TestEventRequestID(t *testing.T) {
-	// Trigger a WAF event that will have a request_id (from Caddy's UUID).
+	// Create a block rule to guarantee a policy_block event with request_id.
+	// With threshold=0 (default), CRS detections only log — they don't produce
+	// events in /api/events. An explicit block rule generates a policy_block event.
 	sentinel := fmt.Sprintf("e2e-reqid-%d", time.Now().UnixNano())
-	req := mustNewRequest(t, "GET", caddyURL+"/get?id=<script>alert(1)</script>")
+
+	resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+		"name": "e2e-reqid-block", "type": "block", "enabled": true,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "eq", "value": "/e2e-reqid-trap"},
+		},
+	})
+	assertCode(t, "create block rule", 201, resp)
+	blockID := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/rules/"+blockID)
+		deployWAF(t)
+	})
+	deployAndWaitForStatus(t, caddyURL+"/e2e-reqid-trap", 403)
+
+	// Send a request with a sentinel UA to the blocked path.
+	req := mustNewRequest(t, "GET", caddyURL+"/e2e-reqid-trap")
 	setBrowserHeaders(req)
 	req.Header.Set("User-Agent", sentinel)
-	resp, err := client.Do(req)
+	r, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	resp.Body.Close()
+	r.Body.Close()
 
 	// Wait for the event to appear.
 	evt := waitForEvent(t, sentinel, 15*time.Second)

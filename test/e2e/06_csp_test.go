@@ -163,14 +163,27 @@ func TestPolicyEngineResponseHeaders(t *testing.T) {
 	t.Run("blocked requests do not get response headers", func(t *testing.T) {
 		// A WAF-blocked request (403) should NOT have CSP or security headers
 		// injected by the plugin since block action returns early.
-		// Wait for WAF to be active — may need time after deploy.
-		waitForStatus(t, caddyURL+"/get?id=1%20OR%201=1%20--", 403, 30*time.Second)
-		resp, _ := httpGet(t, caddyURL+"/get?id=1%20OR%201=1%20--")
-		assertCode(t, "blocked", 403, resp)
-		// Policy engine block rules return before applyResponseHeaders() runs.
-		// For WAF blocks (Coraza), the plugin's ResponseWriter wrapper wrote
-		// headers before the upstream response, but the error handler replaces them.
-		// Either way, CSP should not be on error responses.
+		//
+		// With threshold=0 (default), CRS detections never block, so we create
+		// an explicit block rule for a test path instead of relying on CRS.
+		resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
+			"name": "e2e-block-for-header-test", "type": "block", "enabled": true,
+			"conditions": []map[string]string{
+				{"field": "path", "operator": "eq", "value": "/e2e-block-header-test"},
+			},
+		})
+		assertCode(t, "create block rule", 201, resp)
+		blockID := mustGetID(t, body)
+		t.Cleanup(func() {
+			cleanup(t, wafctlURL+"/api/rules/"+blockID)
+			deployWAF(t)
+		})
+		deployAndWaitForStatus(t, caddyURL+"/e2e-block-header-test", 403)
+
+		resp2, _ := httpGet(t, caddyURL+"/e2e-block-header-test")
+		assertCode(t, "blocked", 403, resp2)
+		// Policy engine block rules return before applyResponseHeaders() runs,
+		// so CSP and security headers should not be on error responses.
 	})
 }
 

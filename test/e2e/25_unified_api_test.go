@@ -2,8 +2,10 @@ package e2e_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ════════════════════════════════════════════════════════════════════
@@ -13,9 +15,17 @@ import (
 // --- Unified /api/rules CRUD with mixed types ---
 
 func TestUnifiedRulesCRUD(t *testing.T) {
+	// Ensure clean state — previous backup/restore tests may have
+	// replaced the exclusion store contents.
+	ensureDefaultConfig(t)
+
+	// Use unique names to avoid collision with leftover rules from backup/restore.
+	allowName := fmt.Sprintf("e2e-unified-allow-%d", time.Now().UnixNano())
+	rlName := fmt.Sprintf("e2e-unified-rl-%d", time.Now().UnixNano())
+
 	// Create an allow rule via /api/rules
 	resp, body := httpPost(t, wafctlURL+"/api/rules", map[string]any{
-		"name":    "e2e-unified-allow",
+		"name":    allowName,
 		"type":    "allow",
 		"enabled": true,
 		"conditions": []map[string]string{
@@ -27,7 +37,7 @@ func TestUnifiedRulesCRUD(t *testing.T) {
 
 	// Create a rate_limit rule via /api/rules
 	resp, body = httpPost(t, wafctlURL+"/api/rules", map[string]any{
-		"name":              "e2e-unified-rl",
+		"name":              rlName,
 		"type":              "rate_limit",
 		"service":           "*",
 		"rate_limit_key":    "client_ip",
@@ -44,15 +54,26 @@ func TestUnifiedRulesCRUD(t *testing.T) {
 		cleanup(t, wafctlURL+"/api/rules/"+rlID)
 	})
 
+	// Verify creates succeeded by fetching each by ID before listing.
+	resp, _ = httpGet(t, wafctlURL+"/api/rules/"+allowID)
+	if resp.StatusCode != 200 {
+		t.Fatalf("allow rule %s not found by ID (status %d) — store may be corrupted by prior restore", allowID, resp.StatusCode)
+	}
+	resp, _ = httpGet(t, wafctlURL+"/api/rules/"+rlID)
+	if resp.StatusCode != 200 {
+		t.Fatalf("rl rule %s not found by ID (status %d) — store may be corrupted by prior restore", rlID, resp.StatusCode)
+	}
+
 	t.Run("list contains both types", func(t *testing.T) {
-		resp, body := httpGet(t, wafctlURL+"/api/rules")
+		// Add cache-bust query param to avoid stale responseCache hits.
+		resp, body := httpGet(t, wafctlURL+"/api/rules?_cb="+fmt.Sprint(time.Now().UnixNano()))
 		assertCode(t, "list", 200, resp)
 		s := string(body)
-		if !strings.Contains(s, "e2e-unified-allow") {
-			t.Error("list missing allow rule")
+		if !strings.Contains(s, allowName) {
+			t.Errorf("list missing allow rule %q (id=%s)", allowName, allowID)
 		}
-		if !strings.Contains(s, "e2e-unified-rl") {
-			t.Error("list missing rate_limit rule")
+		if !strings.Contains(s, rlName) {
+			t.Errorf("list missing rate_limit rule %q (id=%s)", rlName, rlID)
 		}
 	})
 
