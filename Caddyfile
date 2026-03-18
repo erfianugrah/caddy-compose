@@ -36,6 +36,12 @@
 		protocols h1 h2 h3
 		trusted_proxies_strict
 		import /data/waf/cf_trusted_proxies.caddy
+		# Connection limits — prevent goroutine accumulation during DDoS storms.
+		# Caddy's reverse proxy leaks health-check goroutines when overwhelmed with
+		# 50K+ concurrent connections; these limits keep the connection pool bounded.
+		timeouts {
+			idle 30s
+		}
 	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
@@ -66,7 +72,7 @@
 		max_penalty     24h
 		sweep_interval  10s
 		decay_interval  30s
-		sync_interval   5s
+		sync_interval   1s
 		kernel_drop     true
 		whitelist       192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128
 	}
