@@ -550,24 +550,39 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 		hours := parseHours(r)
 
 		// Use FastSummary from both stores (O(buckets)) to build per-service counts.
-		// This avoids the slow O(events) snapshot+enrich path.
+		// This avoids the slow O(events) snapshot+enrich path for aggregate counters.
 		wafSummary := store.FastSummary(hours)
 		alsSummary := als.FastSummary(hours)
 		merged := mergeSummaryResponses(wafSummary, alsSummary)
 
-		// Build ServicesResponse from merged summary TopServices.
+		// Compute per-service TopURIs/TopRules from WAF events (requires event-level data).
+		wafServices := store.Services(hours)
+		wafDetailMap := make(map[string]*ServiceDetail, len(wafServices.Services))
+		for i := range wafServices.Services {
+			wafDetailMap[wafServices.Services[i].Service] = &wafServices.Services[i]
+		}
+
+		// Build ServicesResponse from merged summary TopServices,
+		// enriching with TopURIs/TopRules from WAF event data.
 		var resp ServicesResponse
 		for _, sd := range merged.TopServices {
-			resp.Services = append(resp.Services, ServiceDetail{
+			detail := ServiceDetail{
 				Service:      sd.Service,
 				Total:        sd.Count,
 				TotalBlocked: sd.TotalBlocked,
+				Logged:       sd.Logged,
 				RateLimited:  sd.RateLimited,
 				PolicyBlock:  sd.PolicyBlock,
 				DetectBlock:  sd.DetectBlock,
+				DDoSBlocked:  sd.DDoSBlocked,
 				PolicyAllow:  sd.PolicyAllow,
 				PolicySkip:   sd.PolicySkip,
-			})
+			}
+			if wd, ok := wafDetailMap[sd.Service]; ok {
+				detail.TopURIs = wd.TopURIs
+				detail.TopRules = wd.TopRules
+			}
+			resp.Services = append(resp.Services, detail)
 		}
 
 		cache.set(cacheKey, resp, gen, 30*time.Second)
