@@ -78,17 +78,256 @@ causing 4 rules (932236, 932260, 941130, 942200) to over-match on `request_combi
 
 ### WebSocket + Stream Deep Inspection
 
-MITM proxy for WebSocket frame inspection and SSE event inspection. Design complete
-(RFC 6455 frame parsing, hijack-and-wrap pattern, blocking/tap modes).
+MITM proxy for WebSocket frame inspection and SSE event inspection. The policy engine
+currently evaluates the HTTP upgrade request but hands off the raw TCP connection after
+101 Switching Protocols — zero visibility into frame-level traffic. The
+`responseHeaderWriter` in the plugin already implements `http.Hijacker`, which is the
+extension point for intercepting the connection handoff.
 
-**Implementation phases (~11 days estimated):**
-1. WebSocket frame parser (RFC 6455): read/write, masking, fragmentation
-2. MITM proxy: intercept upgrade, dial upstream, bidirectional pump
-3. Frame inspection: extract payload, run against compiled conditions
-4. SSE wrapper: intercept Writer, parse events, inspect
-5. Connection-level rate limiting: frames/sec per connection
-6. wafctl: `ws_message`, `sse_event` fields, `phase: "stream"` UI
-7. E2E tests
+#### Architecture
+
+```
+Client ←TCP→ [Caddy] ←hijack→ [Policy Engine MITM Proxy] ←TCP→ Upstream
+                                    ↓
+                              Frame Parser (RFC 6455)
+                                    ↓
+                              Condition Evaluator
+                              (ws_payload, ws_opcode, sse_data, sse_event_type)
+                                    ↓
+                         ┌──────────┴──────────┐
+                         │                     │
+                    Action: tap            Action: block
+                    (log + forward)        (close + emit event)
+                         │                     │
+                         ↓                     ↓
+                    wafctl API             Close frame 1008
+                    (POST /api/stream/events)  (Policy Violation)
+```
+
+**Two modes per rule:**
+- **tap** (default) — log the frame/event, forward to upstream. Visibility without risk.
+- **block** — close the connection with status 1008 (Policy Violation), emit event.
+
+**SSE path** — different mechanism: wrap the `http.ResponseWriter` before calling
+`next.ServeHTTP()`. Detect `Content-Type: text/event-stream`, intercept `Write()` calls,
+parse SSE field boundaries (`data:`, `event:`, `id:`, `retry:`), run conditions against
+parsed fields.
+
+#### Data Model Changes
+
+**New phase: `"stream"`** — added to `validPhases`. Stream-phase rules only evaluate
+during WebSocket frame or SSE event processing, never during HTTP request/response.
+
+**New condition fields:**
+
+| Field | Type | Description | Available in |
+|-------|------|-------------|-------------|
+| `ws_payload` | string | Text frame payload (UTF-8) | WebSocket |
+| `ws_opcode` | string | Frame opcode: `"text"`, `"binary"`, `"ping"`, `"pong"` | WebSocket |
+| `ws_direction` | string | `"client_to_server"` or `"server_to_client"` | WebSocket |
+| `ws_size` | numeric | Payload byte length | WebSocket |
+| `sse_data` | string | SSE `data:` field content | SSE |
+| `sse_event_type` | string | SSE `event:` field value | SSE |
+| `sse_id` | string | SSE `id:` field value | SSE |
+| `connection_id` | string | Unique per-WS/SSE connection (UUID) | Both |
+
+All existing inbound fields (`ip`, `path`, `host`, `user_agent`, etc.) remain available
+in stream-phase rules — they're captured from the original upgrade request and attached
+to the connection context.
+
+**New event types:**
+
+| Event Type | Emitted When |
+|-----------|-------------|
+| `ws_blocked` | WS frame matches a block-mode stream rule |
+| `ws_tapped` | WS frame matches a tap-mode stream rule |
+| `sse_blocked` | SSE event matches a block-mode stream rule |
+| `sse_tapped` | SSE event matches a tap-mode stream rule |
+
+**New `Event` fields:**
+
+```go
+// Added to models.go Event struct:
+ConnectionID   string `json:"connection_id,omitempty"`
+StreamType     string `json:"stream_type,omitempty"`      // "websocket" or "sse"
+FrameDirection string `json:"frame_direction,omitempty"`  // "client_to_server" or "server_to_client"
+FrameOpcode    string `json:"frame_opcode,omitempty"`     // "text", "binary", "ping", "pong"
+FramePayload   string `json:"frame_payload,omitempty"`    // truncated to 4KB
+FrameSize      int    `json:"frame_size,omitempty"`       // original byte length
+SSEEventType   string `json:"sse_event_type,omitempty"`
+SSEData        string `json:"sse_data,omitempty"`         // truncated to 4KB
+```
+
+#### Connection-Level Rate Limiting
+
+New rate limit rule subtype for `phase: "stream"`:
+
+```json
+{
+  "type": "rate_limit",
+  "phase": "stream",
+  "service": "dockge.erfi.io",
+  "stream_rate": {
+    "frames_per_second": 100,
+    "bytes_per_second": 1048576,
+    "window": "1s",
+    "action": "block"
+  },
+  "conditions": [
+    { "field": "ws_direction", "operator": "eq", "value": "client_to_server" }
+  ]
+}
+```
+
+Rate counters are per-connection (keyed by `connection_id`), not per-IP. This prevents
+a single chatty WS connection from consuming disproportionate resources while allowing
+many connections from the same IP.
+
+#### Plugin Changes (ergo/caddy-policy-engine)
+
+All frame parsing and MITM logic lives in the plugin. wafctl is not in the hot path.
+
+**New files in the plugin:**
+
+| File | Purpose |
+|------|---------|
+| `ws_frame.go` | RFC 6455 frame reader/writer: masking, fragmentation reassembly, control frame handling, max frame size (configurable, default 1MB) |
+| `ws_proxy.go` | MITM proxy: after hijack, dial upstream, bidirectional pump goroutines with inspection hooks. Uses `io.Copy`-style pump with frame-boundary awareness. |
+| `ws_inspect.go` | Extract fields from parsed frame, run compiled conditions, emit action (tap/block). Reuses existing `compiledRule.evaluate()` with new field extractors. |
+| `sse_wrapper.go` | `ResponseWriter` wrapper: detects `text/event-stream`, buffers until SSE field boundaries, parses fields, runs conditions. Non-SSE responses pass through unwrapped. |
+| `stream_rate.go` | Per-connection token bucket: frames/sec and bytes/sec counters. Connection map with cleanup on close. |
+
+**Caddyfile directive:**
+
+```caddyfile
+policy_engine {
+    rules_file /data/waf/policy-rules.json
+    stream_inspection {
+        enabled true
+        max_frame_size 1MB
+        max_payload_log 4KB
+        connection_timeout 24h
+    }
+}
+```
+
+**Event emission:** The plugin POSTs frame events to wafctl via
+`POST /api/stream/events` (batched, max 100 events/sec). This is the same pattern as
+the DDoS mitigator's jail sync — fire-and-forget HTTP to the sidecar.
+
+#### wafctl Changes
+
+**New API endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/stream/events` | Receive batched stream events from plugin |
+| `GET` | `/api/stream/connections` | List active WS/SSE connections (from event store) |
+| `GET` | `/api/stream/connections/{id}` | Connection detail + recent frames |
+| `GET` | `/api/stream/stats` | Aggregate: connections/sec, frames/sec, top talkers |
+
+**Validation changes:**
+- `validPhases`: add `"stream"`
+- `validConditionFields`: add `ws_payload`, `ws_opcode`, `ws_direction`, `ws_size`,
+  `sse_data`, `sse_event_type`, `sse_id`, `connection_id`
+- `validStreamFields` (new): fields only valid when `phase: "stream"`
+- `wafEventTypes`: add `ws_blocked`, `ws_tapped`, `sse_blocked`, `sse_tapped`
+- `RuleExclusion`: accept `stream_rate` object when `type: "rate_limit"` and
+  `phase: "stream"`
+
+**Stream event store:** Separate from the main event store (different retention — stream
+events are high-volume, short-lived). Ring buffer, 100K events max, 1-hour TTL.
+
+#### Frontend Changes (waf-dashboard)
+
+**New page: `/streams`** (`StreamsPanel.tsx`)
+
+- **Connection list**: table of active/recent WS+SSE connections with columns:
+  connection_id (truncated), service, path, client IP, type (WS/SSE), duration, frames,
+  status (active/closed/blocked)
+- **Connection detail**: click to expand, shows frame timeline (last 50 frames per
+  connection), each frame shows direction arrow, opcode, truncated payload, matched rules
+- **Stream stats cards**: active connections, frames/sec, tapped/sec, blocked/sec
+- **Stream rules**: filtered view of policy engine rules where `phase: "stream"` — reuses
+  existing rule CRUD components with stream-specific field pickers
+
+**Existing page updates:**
+- Overview dashboard: add stream event counts to timeline
+- Event log: stream events appear with `ws_blocked`/`sse_tapped` badges, filterable
+- Policy engine: stream-phase rules in the rule list, condition builder adds stream fields
+
+#### Implementation Phases
+
+**Phase 1 — WebSocket frame parser (plugin, ~2 days)**
+- [ ] `ws_frame.go`: RFC 6455 read/write with masking, fragmentation, control frames
+- [ ] Max frame size enforcement (close with 1009 if exceeded)
+- [ ] Unit tests: text, binary, fragmented, masked, oversized, control frames
+
+**Phase 2 — MITM proxy (plugin, ~2 days)**
+- [ ] `ws_proxy.go`: intercept hijack, dial upstream, bidirectional pump
+- [ ] Connection lifecycle: upgrade → pump → close (normal or error)
+- [ ] Graceful shutdown: drain in-flight frames on Caddy reload
+- [ ] `connection_id` generation and context propagation
+- [ ] Unit tests: echo proxy, upstream disconnect, client disconnect
+
+**Phase 3 — Frame inspection + tap mode (plugin + wafctl, ~2 days)**
+- [ ] `ws_inspect.go`: field extractors, condition evaluation on each frame
+- [ ] Tap mode: log frame event, forward to upstream
+- [ ] Block mode: send close frame 1008, emit `ws_blocked` event
+- [ ] wafctl: `POST /api/stream/events` endpoint, stream event store
+- [ ] wafctl: `phase: "stream"` validation, new condition fields
+- [ ] E2E: create stream rule, send matching WS message, verify event emitted
+
+**Phase 4 — SSE inspection (plugin + wafctl, ~1.5 days)**
+- [ ] `sse_wrapper.go`: ResponseWriter wrapper, field boundary parser
+- [ ] Detect `Content-Type: text/event-stream` in response headers
+- [ ] Condition evaluation on parsed SSE fields
+- [ ] E2E: SSE endpoint, stream rule on `sse_data`, verify tap/block
+
+**Phase 5 — Connection-level rate limiting (plugin, ~1.5 days)**
+- [ ] `stream_rate.go`: per-connection token bucket (frames/sec, bytes/sec)
+- [ ] Connection map with TTL cleanup
+- [ ] Rate limit exceeded → close with 1008 + emit `ws_blocked` event
+- [ ] wafctl: `stream_rate` validation on rate_limit rules with `phase: "stream"`
+- [ ] E2E: burst WS frames, verify rate limit triggers
+
+**Phase 6 — Dashboard (waf-dashboard, ~2 days)**
+- [ ] `/streams` page: connection list, detail panel, frame timeline
+- [ ] Stream stats cards (active connections, frames/sec, blocked/sec)
+- [ ] Stream-phase rule CRUD in policy engine page
+- [ ] Event log: stream event badges and filters
+- [ ] Overview: stream metrics in timeline chart
+
+**Phase 7 — Integration + hardening (~1 day)**
+- [ ] Caddyfile `stream_inspection` directive wiring
+- [ ] Hot-reload: stream rules update without dropping active connections
+- [ ] Memory bounds: max concurrent inspected connections (configurable)
+- [ ] Metrics: connection count, frame throughput, inspection latency
+- [ ] Full E2E suite: tap, block, rate limit, SSE, reconnection, mixed traffic
+
+**Total: ~12 days** (revised from 11 — SSE is slightly more complex than estimated)
+
+#### Dependencies
+
+```
+Phase 1 ──→ Phase 2 ──→ Phase 3 ──┬──→ Phase 5 ──→ Phase 7
+                                   │
+                        Phase 4 ───┘
+                                   │
+                        Phase 6 ───┘ (can start after Phase 3 API exists)
+```
+
+Phases 4, 5, and 6 are parallelizable after Phase 3 delivers the event pipeline.
+
+#### Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| MITM adds latency to every WS frame | Inspect only when stream rules exist; bypass pump when no rules match the connection's service/path |
+| High-volume connections overwhelm event store | Ring buffer with 100K cap + 1-hour TTL; batch event emission (100/sec max) |
+| Binary WS frames (protobuf, msgpack) | `ws_payload` only populated for text frames (opcode 0x1); binary frames inspectable via `ws_size` and `ws_opcode` only |
+| SSE wrapper breaks streaming | Write-through: every `Write()` call is forwarded immediately after inspection; no buffering beyond SSE field boundaries |
+| Plugin upgrade requires Caddy restart | Stream rules hot-reload via `policy-rules.json` (existing mechanism); plugin code changes need xcaddy rebuild |
 
 ### Edge Caching & Request Coalescing (Caddy as Edge)
 
