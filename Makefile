@@ -53,6 +53,7 @@ endif
 
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
         deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
+        restart-caddy restart-wafctl restart-authelia \
         test test-go test-frontend test-e2e check status logs logs-caddy logs-wafctl \
          health version waf-deploy waf-config waf-events caddy-reload caddy-quick-reload config clean \
         scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
@@ -195,6 +196,15 @@ pull: ## Pull images on remote
 
 restart: ## Recreate containers on remote (force-recreate to pick up same-tag rebuilds)
 	$(COMPOSE_CMD) up -d --force-recreate
+
+restart-caddy: ## Recreate only Caddy (preserves Authelia sessions)
+	$(COMPOSE_CMD) up -d --force-recreate caddy
+
+restart-wafctl: ## Recreate only wafctl (preserves Authelia sessions)
+	$(COMPOSE_CMD) up -d --force-recreate wafctl
+
+restart-authelia: ## Recreate only Authelia (will invalidate sessions)
+	$(COMPOSE_CMD) up -d --force-recreate authelia
 
 restart-force: ## Force restart all containers (re-reads bind-mounted configs)
 	$(COMPOSE_CMD) restart
