@@ -24,28 +24,36 @@ export const ACTION_COLORS = {
 // Human-readable labels for chart legends, filters, and badges.
 // Single source of truth — every UI surface should derive from this map.
 export const ACTION_LABELS: Record<string, string> = {
-  detect_block:  "Detect Block",
-  logged:        "Logged",
-  rate_limited:  "Rate Limited",
-  policy_block:  "Policy Block",
-  policy_allow:  "Policy Allow",
-  policy_skip:   "Policy Skip",
-  ddos_blocked:  "DDoS Blocked",
-  ddos_jailed:   "DDoS Jailed",
-  total_blocked: "Total Blocked",
+  detect_block:        "Detect Block",
+  logged:              "Logged",
+  rate_limited:        "Rate Limited",
+  policy_block:        "Policy Block",
+  policy_allow:        "Policy Allow",
+  policy_skip:         "Policy Skip",
+  challenge_issued:    "Challenge",
+  challenge_passed:    "Challenge OK",
+  challenge_failed:    "Challenge Fail",
+  challenge_bypassed:  "Challenge Skip",
+  ddos_blocked:        "DDoS Blocked",
+  ddos_jailed:         "DDoS Jailed",
+  total_blocked:       "Total Blocked",
 };
 
 // Tailwind badge classes per event type — frosted-glass pattern
 // bg-color/20 + text-color + border-color/30 for consistency
 export const ACTION_BADGE_CLASSES: Record<string, string> = {
-  detect_block:  "bg-lv-red/20 border-lv-red/30 text-lv-red",
-  rate_limited:  "bg-lv-peach/20 border-lv-peach/30 text-lv-peach",
-  policy_block:  "bg-lv-red-bright/20 border-lv-red-bright/30 text-lv-red-bright",
-  policy_allow:  "bg-lv-green/20 border-lv-green/30 text-lv-green",
-  policy_skip:   "bg-lv-blue/20 border-lv-blue/30 text-lv-blue",
-  ddos_blocked:  "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
-  ddos_jailed:   "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
-  logged:        "bg-lv-cyan/20 border-lv-cyan/30 text-lv-cyan",
+  detect_block:        "bg-lv-red/20 border-lv-red/30 text-lv-red",
+  rate_limited:        "bg-lv-peach/20 border-lv-peach/30 text-lv-peach",
+  policy_block:        "bg-lv-red-bright/20 border-lv-red-bright/30 text-lv-red-bright",
+  policy_allow:        "bg-lv-green/20 border-lv-green/30 text-lv-green",
+  policy_skip:         "bg-lv-blue/20 border-lv-blue/30 text-lv-blue",
+  challenge_issued:    "bg-lv-yellow/20 border-lv-yellow/30 text-lv-yellow",
+  challenge_passed:    "bg-lv-green/20 border-lv-green/30 text-lv-green",
+  challenge_failed:    "bg-lv-red/20 border-lv-red/30 text-lv-red",
+  challenge_bypassed:  "bg-lv-cyan/20 border-lv-cyan/30 text-lv-cyan",
+  ddos_blocked:        "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
+  ddos_jailed:         "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
+  logged:              "bg-lv-cyan/20 border-lv-cyan/30 text-lv-cyan",
 };
 
 // Shared chart tooltip styling (Lovelace theme)

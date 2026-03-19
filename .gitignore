@@ -37,6 +37,11 @@ ipsum_block.caddy
 # CRS source (downloaded by converter, not committed)
 tools/coreruleset/
 
+# Playwright
+test/playwright/node_modules/
+test/playwright/test-results/
+test/playwright/playwright-report/
+
 # OS
 .DS_Store
 tools/crs-converter/crs-converter

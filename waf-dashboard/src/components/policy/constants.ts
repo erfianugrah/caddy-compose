@@ -16,6 +16,7 @@ export const QUICK_ACTIONS: { value: QuickActionType; label: string; description
 export const ALL_EXCLUSION_TYPES: { value: ExclusionType; label: string; description: string; group: "quick" | "advanced" }[] = [
   { value: "allow", label: "Allow", description: "Full bypass — terminates evaluation", group: "quick" },
   { value: "block", label: "Block", description: "Deny matching requests", group: "quick" },
+  { value: "challenge", label: "Challenge", description: "Proof-of-work verification for browser clients", group: "advanced" },
   { value: "skip", label: "Skip", description: "Selective bypass — skip rules or phases", group: "quick" },
   { value: "detect", label: "Detect", description: "Trigger detection with severity level", group: "quick" },
   { value: "response_header", label: "Response Header", description: "Set, add, or remove response headers", group: "advanced" },
@@ -669,6 +670,12 @@ export interface AdvancedFormState {
   group_operator: import("@/lib/api").GroupOperator;
   tags: string[];
   enabled: boolean;
+  // challenge fields
+  challenge_difficulty: number;
+  challenge_algorithm: string;
+  challenge_ttl: string;
+  challenge_bind_ip: boolean;
+  // response header fields
   header_set: Record<string, string>;
   header_add: Record<string, string>;
   header_remove: string[];
@@ -687,6 +694,12 @@ export const emptyAdvancedForm: AdvancedFormState = {
   group_operator: "and",
   tags: [],
   enabled: true,
+  // challenge defaults
+  challenge_difficulty: 4,
+  challenge_algorithm: "fast",
+  challenge_ttl: "7d",
+  challenge_bind_ip: true,
+  // response header defaults
   header_set: {},
   header_add: {},
   header_remove: [],

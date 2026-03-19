@@ -24,13 +24,13 @@ type SkipTargets struct {
 }
 
 // RuleExclusion is a single WAF policy engine rule.
-// Types: allow, block, skip, detect, rate_limit, response_header.
+// Types: allow, block, challenge, skip, detect, rate_limit, response_header.
 type RuleExclusion struct {
 	// ─── Common fields (all types) ──────────────────────────────────
 	ID          string      `json:"id"`
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
-	Type        string      `json:"type"`                     // allow|block|skip|detect|rate_limit|response_header
+	Type        string      `json:"type"`                     // allow|block|challenge|skip|detect|rate_limit|response_header
 	Phase       string      `json:"phase,omitempty"`          // "inbound" (default) or "outbound" for response-phase rules
 	Conditions  []Condition `json:"conditions,omitempty"`     // Dynamic conditions (field/operator/value)
 	GroupOp     string      `json:"group_operator,omitempty"` // "and" (default) or "or"
@@ -54,6 +54,14 @@ type RuleExclusion struct {
 	RateLimitEvents int    `json:"rate_limit_events,omitempty"` // Max events in window
 	RateLimitWindow string `json:"rate_limit_window,omitempty"` // Duration: "1m", "30s", "1h"
 	RateLimitAction string `json:"rate_limit_action,omitempty"` // "deny" (default 429) or "log_only"
+
+	// ─── challenge-only ─────────────────────────────────────────────
+	// Proof-of-work challenge settings. Plugin serves an interstitial page
+	// requiring SHA-256 hashcash before proxying to upstream.
+	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // Leading hex zeros in SHA-256 (1-16, default 4)
+	ChallengeAlgorithm  string `json:"challenge_algorithm,omitempty"`  // "fast" (default) or "slow"
+	ChallengeTTL        string `json:"challenge_ttl,omitempty"`        // Cookie lifetime: "7d" (default), "24h", "1h"
+	ChallengeBindIP     *bool  `json:"challenge_bind_ip,omitempty"`    // Bind cookie to client IP (default true)
 
 	// ─── response_header-only ───────────────────────────────────────
 	// Actions on response headers. Multiple can be combined in one rule.
@@ -157,6 +165,7 @@ var validCRSExclusions = map[string]bool{
 var validExclusionTypes = map[string]bool{
 	"allow":           true, // Full bypass — terminates evaluation immediately
 	"block":           true, // Deny requests (403)
+	"challenge":       true, // Proof-of-work interstitial (SHA-256 hashcash)
 	"skip":            true, // Selective bypass — carries skip_targets (non-terminating)
 	"detect":          true, // Anomaly scoring via policy engine (CRITICAL/ERROR/WARNING/NOTICE)
 	"rate_limit":      true, // Sliding window rate limiting (429 or log_only)

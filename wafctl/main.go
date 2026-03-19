@@ -43,11 +43,18 @@ func runServe() int {
 	defaultRulesFile := envOr("WAF_DEFAULT_RULES_FILE", "/etc/caddy/waf/default-rules.json")
 	defaultRulesOverridesFile := envOr("WAF_DEFAULT_RULES_OVERRIDES_FILE", "/data/default-rule-overrides.json")
 
+	// Challenge HMAC key: read from env or auto-generate and persist.
+	challengeHMACKey := envOr("CHALLENGE_HMAC_KEY", "")
+	if challengeHMACKey == "" {
+		challengeHMACKey = loadOrGenerateChallengeKey(envOr("WAF_DATA_DIR", "/data"))
+	}
+
 	deployCfg := DeployConfig{
-		WafDir:          envOr("WAF_DIR", "/data/waf"),
-		CaddyfilePath:   envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
-		CaddyAdminURL:   envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2020"),
-		PolicyRulesFile: policyRulesFile,
+		WafDir:           envOr("WAF_DIR", "/data/waf"),
+		CaddyfilePath:    envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
+		CaddyAdminURL:    envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2020"),
+		PolicyRulesFile:  policyRulesFile,
+		ChallengeHMACKey: challengeHMACKey,
 	}
 
 	// Ensure WAF config directory and placeholder files exist.

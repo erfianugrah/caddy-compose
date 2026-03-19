@@ -17,9 +17,21 @@
    - [Operational Concerns](#operational-concerns)
 4. [WebSocket + Stream Deep Inspection](#websocket--stream-deep-inspection)
 5. [Edge Caching & Request Coalescing](#edge-caching--request-coalescing)
-6. [CRS Converter Fidelity](#crs-converter-fidelity)
-7. [Cross-Cutting: Sequencing, Effort & Risk](#cross-cutting-sequencing-effort--risk)
-8. [Completed (changelog)](#completed-changelog)
+6. [Proof-of-Work Challenge Action](#proof-of-work-challenge-action)
+   - [Motivation](#motivation)
+   - [Evaluation Order: 7-Pass Pipeline](#evaluation-order-7-pass-pipeline)
+   - [Data Model Changes](#data-model-changes)
+   - [Plugin Implementation](#plugin-implementation-caddy-policy-engine)
+   - [wafctl Implementation](#wafctl-implementation)
+   - [Dashboard Implementation](#dashboard-implementation-waf-dashboard)
+   - [Example Rules](#example-rules)
+   - [Interaction with Existing Rule Types](#interaction-with-existing-rule-types)
+   - [Interaction with Existing Roadmap](#interaction-with-existing-roadmap)
+   - [Security Considerations](#security-considerations)
+   - [Implementation Phases](#implementation-phases-1)
+7. [CRS Converter Fidelity](#crs-converter-fidelity)
+8. [Cross-Cutting: Sequencing, Effort & Risk](#cross-cutting-sequencing-effort--risk)
+9. [Completed (changelog)](#completed-changelog)
 
 ---
 
@@ -1811,6 +1823,562 @@ middleware instead (the coalescing + SWR + hit-for-pass core is ~1500 LoC withou
 
 ---
 
+## Proof-of-Work Challenge Action
+
+Add a new `challenge` rule type to the policy engine, inspired by
+[Anubis](https://github.com/TecharoHQ/anubis). When a `challenge` rule matches an
+incoming request, the plugin serves an interstitial HTML page that requires the client
+to complete a proof-of-work (PoW) computation before proceeding to the upstream service.
+Legitimate browsers solve the challenge in seconds; headless scrapers and AI crawlers
+that lack JavaScript execution are permanently blocked.
+
+This is a native integration — not an external reverse proxy. The challenge lives inside
+the caddy-policy-engine plugin, shares the same condition evaluator as all other rule
+types, and flows through the same `policy-rules.json` config file.
+
+### Motivation
+
+AI crawler traffic is a growing problem. Current defenses in this stack:
+
+- **Block rules** deny known-bad user agents (403), but sophisticated crawlers rotate UAs.
+- **Rate limit rules** throttle volume, but crawlers can slow-drip below thresholds.
+- **DDoS mitigator** catches behavioral anomalies, but low-and-slow crawlers avoid it.
+- **Detect rules** (CRS) catch attack payloads, not benign-looking scrape requests.
+
+A challenge rule fills the gap: it forces clients to prove they are a real browser
+with JavaScript execution and CPU resources, without denying them outright. This is the
+same approach Anubis uses to protect ~17K+ sites from AI scraping.
+
+### How It Works
+
+```
+Client → Caddy → policy_engine
+                     ↓
+              ┌── challenge rule matches? ──┐
+              │                             │
+              │ YES                         │ NO
+              ↓                             ↓
+        Valid cookie?                  Continue to
+              │                        next pass
+        ┌─────┴─────┐
+        │           │
+        YES         NO
+        ↓           ↓
+   Continue      Serve interstitial
+   (pass 4+)    ┌────────────────────────────┐
+                │ "Verifying your connection" │
+                │ [SHA-256 PoW computation]   │
+                │ [Progress spinner]          │
+                └──────────┬─────────────────┘
+                           ↓
+                POST /.well-known/policy-challenge/verify
+                           ↓
+                   PoW valid? ─── NO → 403 + log challenge_failed
+                           │
+                          YES
+                           ↓
+                   Set signed cookie
+                   302 → original URL
+                           ↓
+                   Cookie present on retry
+                   → continue to pass 4+
+```
+
+### Evaluation Order: 7-Pass Pipeline
+
+The `challenge` type slots between `block` and `skip` at priority band 150-199:
+
+```
+Pass 1 — Allow           (50-99):   full bypass, terminates immediately
+Pass 2 — Block           (100-149): deny list, terminates on match (403)
+Pass 3 — Challenge       (150-199): proof-of-work interstitial          ← NEW
+Pass 4 — Skip            (200-299): selective bypass, non-terminating
+Pass 5 — Rate Limit      (300-399): sliding window counters
+Pass 6 — Detect          (400-499): CRS anomaly scoring
+Pass 7 — Response Header (500-599): set/add/remove/default response headers
+```
+
+**Why this position:**
+
+- After `allow`: allowed traffic should never be challenged.
+- After `block`: known-bad traffic should be denied (403), not given a chance to solve.
+- Before `skip`: skip rules can exempt specific paths from challenges (e.g., API
+  endpoints, webhooks).
+- Before `rate_limit`/`detect`: challenged requests that pass should still be evaluated
+  by CRS and rate limiting — the challenge proves browser capability, not benign intent.
+
+### Data Model Changes
+
+#### New Fields on `RuleExclusion`
+
+```go
+// ─── challenge-only ─────────────────────────────────────────
+ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // PoW leading zero bits (1-32, default 4)
+ChallengeAlgorithm  string `json:"challenge_algorithm,omitempty"` // "fast" (default) or "slow"
+ChallengeTTL        string `json:"challenge_ttl,omitempty"`       // cookie lifetime: "7d" (default), "24h", "1h"
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `challenge_difficulty` | int | 4 | Number of leading zero bits in SHA-256 hash. 4 = ~0.5s on modern hardware. 8 = ~5-10s. 16 = effectively impossible (anti-bot punishment). |
+| `challenge_algorithm` | string | `"fast"` | `"fast"`: WebCrypto API SHA-256, optimized. `"slow"`: deliberate delay loop per iteration, intentionally wastes CPU time. |
+| `challenge_ttl` | string | `"7d"` | Duration before the challenge cookie expires and the client must re-solve. Parsed as Go duration with day/hour shorthand. |
+
+#### New `PolicyRule` Fields
+
+```go
+type PolicyChallengeConfig struct {
+    Difficulty int    `json:"difficulty"`          // PoW leading zeros (1-32)
+    Algorithm  string `json:"algorithm"`           // "fast" or "slow"
+    TTLSeconds int    `json:"ttl_seconds"`         // cookie lifetime in seconds
+    CookieName string `json:"cookie_name"`         // per-service cookie name
+    HMACKey    string `json:"hmac_key"`            // injected at deploy time
+}
+```
+
+Added to `PolicyRule`:
+
+```go
+ChallengeConfig *PolicyChallengeConfig `json:"challenge,omitempty"`
+```
+
+#### New Event Types
+
+| Event Type | Description |
+|---|---|
+| `challenge_issued` | Challenge interstitial served to client |
+| `challenge_passed` | Client solved PoW, cookie issued |
+| `challenge_failed` | Client submitted invalid PoW solution |
+| `challenge_bypassed` | Valid cookie present, challenge skipped |
+
+#### New Log Fields (via `log_append`)
+
+| Field | Description |
+|---|---|
+| `policy_challenge_difficulty` | PoW difficulty for this request |
+| `policy_challenge_algorithm` | Algorithm used |
+| `policy_challenge_duration_ms` | Time client spent solving (from timestamp in payload) |
+
+### Plugin Implementation (caddy-policy-engine)
+
+All challenge logic lives in the plugin. The hot path (cookie validation) is sub-microsecond.
+The slow path (interstitial serving + PoW verification) only fires on first visit or
+cookie expiry.
+
+#### New Files
+
+| File | Purpose | Est. Lines |
+|---|---|---|
+| `challenge.go` | Cookie validation, PoW verification, HMAC signing, interstitial handler | ~400 |
+| `challenge_page.go` | `//go:embed` HTML template with inline CSS/JS | ~50 |
+| `challenge.js` | Client-side SHA-256 PoW worker (WebCrypto API) | ~150 |
+| `challenge.html` | Interstitial page template | ~80 |
+| `challenge_test.go` | Unit tests for HMAC, cookie, PoW verification | ~300 |
+
+**Total plugin addition: ~980 lines.**
+
+#### Cookie Design
+
+```
+Cookie name:  __policy_challenge_{sha256(service_hostname)[:8]}
+Domain:       {service_hostname}
+Path:         /
+HttpOnly:     true
+Secure:       true
+SameSite:     Lax
+Max-Age:      {ttl_seconds}
+Value:        base64url(header.payload.signature)
+```
+
+The cookie value is a compact signed token (not full JWT to avoid the dependency):
+
+```
+payload = {
+    "iss": "policy-engine",
+    "sub": client_ip,
+    "aud": service_hostname,
+    "exp": unix_timestamp,
+    "iat": unix_timestamp,
+    "dif": difficulty,           // difficulty solved at
+    "alg": "fast"                // algorithm used
+}
+
+signature = HMAC-SHA256(hmac_key, base64url(payload))
+token     = base64url(payload) + "." + base64url(signature)
+```
+
+The `sub` field binds the cookie to the client IP. If the client's IP changes, they
+must re-solve. This prevents cookie sharing/replay across different origins.
+
+IP binding is optional (configurable via `challenge_bind_ip` field, default `true`).
+Disable for mobile clients that frequently change IPs.
+
+#### Proof-of-Work Protocol
+
+**Challenge issuance (GET, challenge rule matches, no valid cookie):**
+
+```
+1. Generate random 32-byte nonce
+2. payload = JSON({ nonce, timestamp, difficulty, service, algorithm })
+3. hmac = HMAC-SHA256(hmac_key, payload)
+4. Serve interstitial HTML with embedded payload + hmac
+```
+
+**Client-side computation (`challenge.js`):**
+
+```javascript
+// "fast" algorithm — WebCrypto API, single-threaded
+async function solve(payload, difficulty) {
+    const target = BigInt(1) << BigInt(256 - difficulty);
+    for (let counter = 0; ; counter++) {
+        const data = new TextEncoder().encode(payload + counter);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        const value = BigInt('0x' + hex(hash));
+        if (value < target) {
+            return { counter, hash: hex(hash) };
+        }
+    }
+}
+
+// "slow" algorithm — deliberate delay per iteration
+async function solveSlow(payload, difficulty) {
+    // Same as fast, but with:
+    await new Promise(r => setTimeout(r, 10)); // 10ms delay per iteration
+}
+```
+
+**Verification (POST `/.well-known/policy-challenge/verify`):**
+
+```
+1. Parse { payload, hmac, counter, hash } from POST body
+2. Verify HMAC (prevents payload tampering)
+3. Verify timestamp (reject if > 5 minutes old)
+4. Recompute SHA-256(payload + counter)
+5. Verify leading zeros >= difficulty
+6. Issue signed cookie
+7. 302 redirect to original URL (from Referer or payload)
+```
+
+#### Interstitial Page
+
+Minimal, accessible, no external dependencies:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Verifying your connection</title>
+    <style>/* inline: centered spinner, progress bar, dark/light theme */</style>
+</head>
+<body>
+    <div id="challenge">
+        <h1>Verifying your connection</h1>
+        <p>Please wait while we verify your browser.</p>
+        <div class="spinner"></div>
+        <noscript>
+            <p>JavaScript is required to access this site. This is necessary
+            because automated scrapers have changed the economics of web hosting.</p>
+        </noscript>
+    </div>
+    <script>/* inline: challenge.js PoW solver */</script>
+</body>
+</html>
+```
+
+The page is embedded in the plugin binary via `//go:embed`. No external CSS/JS/font
+requests. Total size: ~5KB gzipped.
+
+#### Reserved Path
+
+`/.well-known/policy-challenge/*` is reserved for the verification endpoint. The plugin
+registers an implicit allow rule for this path prefix at priority 0 (before all user
+rules) so the verification POST is never itself challenged, blocked, or rate-limited.
+
+This path follows the [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615) well-known URI
+convention and will not conflict with upstream application routes.
+
+#### Caddyfile Configuration
+
+```caddyfile
+policy_engine {
+    rules_file /data/waf/policy-rules.json
+    challenge {
+        hmac_key {env.CHALLENGE_HMAC_KEY}    # or auto-generated on first run
+        cookie_prefix __policy_challenge_
+        bind_ip true                          # bind cookies to client IP
+    }
+}
+```
+
+The `hmac_key` can be provided via environment variable or auto-generated. Auto-generated
+keys are persisted to `{data_dir}/challenge-hmac.key` so they survive Caddy restarts
+without invalidating outstanding cookies. If no key is provided and no persisted key
+exists, a random 32-byte key is generated and saved.
+
+### wafctl Implementation
+
+#### Validation (`exclusions_validate.go`)
+
+```go
+case "challenge":
+    if len(e.Conditions) == 0 {
+        errs = append(errs, "challenge rules require at least one condition")
+    }
+    if e.ChallengeDifficulty < 0 || e.ChallengeDifficulty > 32 {
+        errs = append(errs, "challenge_difficulty must be 0-32 (0 = use default)")
+    }
+    if e.ChallengeAlgorithm != "" && e.ChallengeAlgorithm != "fast" && e.ChallengeAlgorithm != "slow" {
+        errs = append(errs, "challenge_algorithm must be 'fast' or 'slow'")
+    }
+    if e.ChallengeTTL != "" {
+        if _, err := parseDurationExtended(e.ChallengeTTL); err != nil {
+            errs = append(errs, "invalid challenge_ttl: "+err.Error())
+        }
+    }
+```
+
+#### Policy Generator (`policy_generator.go`)
+
+```go
+var policyTypePriority = map[string]int{
+    "allow":           50,
+    "block":           100,
+    "challenge":       150,   // ← NEW
+    "skip":            200,
+    "rate_limit":      300,
+    "detect":          400,
+    "response_header": 500,
+}
+```
+
+Challenge rules are converted to `PolicyRule` with a populated `ChallengeConfig`:
+
+```go
+if e.Type == "challenge" {
+    rule.ChallengeConfig = &PolicyChallengeConfig{
+        Difficulty: defaultIfZero(e.ChallengeDifficulty, 4),
+        Algorithm:  defaultIfEmpty(e.ChallengeAlgorithm, "fast"),
+        TTLSeconds: parseTTLSeconds(e.ChallengeTTL, 7*24*3600),
+        CookieName: challengeCookieName(resolvedService),
+        HMACKey:    deployCfg.ChallengeHMACKey,
+    }
+}
+```
+
+The HMAC key is injected at deploy time from `DeployConfig.ChallengeHMACKey`, which
+reads from `CHALLENGE_HMAC_KEY` environment variable or generates a random key on first
+boot and persists it to `{data_dir}/challenge-hmac.key`.
+
+#### Files Changed in wafctl
+
+| File | Changes |
+|---|---|
+| `models_exclusions.go` | Add `challenge` to `validExclusionTypes`; add 3 fields to `RuleExclusion` |
+| `exclusions_validate.go` | Add `case "challenge"` block (~15 lines) |
+| `policy_generator.go` | Add `"challenge": 150` to priority map; add `PolicyChallengeConfig` struct; add conversion block in `GeneratePolicyRulesWithRL()` (~30 lines) |
+| `deploy.go` | Read/generate HMAC key; add to `DeployConfig` struct (~20 lines) |
+| `main.go` | Read `CHALLENGE_HMAC_KEY` env; pass to `DeployConfig` (~5 lines) |
+
+**Total wafctl addition: ~120 lines** (excluding tests).
+
+#### Test Changes in wafctl
+
+| File | Changes |
+|---|---|
+| `exclusions_test.go` | CRUD tests for challenge rules (~40 lines) |
+| `exclusions_validate_test.go` | Validation edge cases: difficulty bounds, algorithm values, TTL parsing (~60 lines) |
+| `policy_generator_test.go` | Challenge rule → PolicyRule conversion; priority ordering with challenge in band (~50 lines) |
+| `deploy_test.go` | HMAC key injection into generated output (~30 lines) |
+
+**Total wafctl test addition: ~180 lines.**
+
+### Dashboard Implementation (waf-dashboard)
+
+#### TypeScript Interface Update (`src/lib/api/exclusions.ts`)
+
+```typescript
+export interface Exclusion {
+    // ... existing fields ...
+
+    // challenge-only
+    challenge_difficulty?: number;
+    challenge_algorithm?: 'fast' | 'slow';
+    challenge_ttl?: string;
+}
+```
+
+#### Policy Form Update (`src/components/policy/PolicyForms.tsx`)
+
+Add a "Challenge Settings" section when `type === "challenge"`:
+
+- **Difficulty slider** (1-16 range, default 4) with descriptive labels:
+  "Easy (~0.5s)" / "Medium (~5s)" / "Hard (~30s)" / "Extreme (~5min)"
+- **Algorithm dropdown**: "Fast (WebCrypto)" / "Slow (CPU-intensive)"
+- **TTL input**: duration input (reuse existing `duration-input.tsx` component)
+
+#### Event Badge Update (`src/components/events/helpers.tsx`)
+
+```typescript
+case 'challenge_issued':   return { label: 'Challenge', variant: 'warning' };
+case 'challenge_passed':   return { label: 'Challenge OK', variant: 'success' };
+case 'challenge_failed':   return { label: 'Challenge Fail', variant: 'destructive' };
+case 'challenge_bypassed': return { label: 'Challenge Skip', variant: 'secondary' };
+```
+
+#### Constants Update (`src/components/policy/constants.ts`)
+
+```typescript
+export const RULE_TYPES = [
+    'allow', 'block', 'challenge', 'skip', 'detect', 'rate_limit', 'response_header'
+] as const;
+```
+
+#### New Components
+
+None. All challenge UI is handled by extending existing form sections and badge helpers.
+The overview dashboard will automatically pick up challenge events through the existing
+event type aggregation.
+
+### Example Rules
+
+#### Challenge all browser-like traffic
+
+```json
+{
+    "name": "challenge-browsers",
+    "type": "challenge",
+    "conditions": [
+        { "field": "user_agent", "operator": "contains", "value": "Mozilla" }
+    ],
+    "challenge_difficulty": 4,
+    "challenge_algorithm": "fast",
+    "challenge_ttl": "7d",
+    "enabled": true
+}
+```
+
+#### Hard challenge for suspected AI crawlers
+
+```json
+{
+    "name": "punish-ai-crawlers",
+    "type": "challenge",
+    "conditions": [
+        {
+            "field": "user_agent",
+            "operator": "regex",
+            "value": "(?i)(GPTBot|ChatGPT|Claude|Anthropic|CCBot|Bytespider|PetalBot)"
+        }
+    ],
+    "challenge_difficulty": 16,
+    "challenge_algorithm": "slow",
+    "challenge_ttl": "1h",
+    "tags": ["ai-crawler"],
+    "enabled": true
+}
+```
+
+#### Per-service challenge for public-facing sites only
+
+```json
+{
+    "name": "challenge-httpbun",
+    "type": "challenge",
+    "service": "httpbun.erfi.io",
+    "conditions": [
+        { "field": "path", "operator": "regex", "value": "^/(?!api/).*" }
+    ],
+    "challenge_difficulty": 4,
+    "challenge_algorithm": "fast",
+    "challenge_ttl": "24h",
+    "enabled": true
+}
+```
+
+#### Skip challenges for known-good paths
+
+Combine with a `skip` rule (evaluated after challenge, but skip targets can include
+the `challenge` phase):
+
+```json
+{
+    "name": "skip-challenge-for-well-known",
+    "type": "skip",
+    "conditions": [
+        { "field": "path", "operator": "regex", "value": "^/\\.well-known/.*" }
+    ],
+    "skip_targets": { "phases": ["challenge"] },
+    "enabled": true
+}
+```
+
+Note: skip rules evaluate at priority 200-299, after challenge (150-199). For paths
+that must never see a challenge, use an `allow` rule (priority 50-99) instead — allow
+rules terminate evaluation before the challenge pass is reached.
+
+### Interaction with Existing Rule Types
+
+| Existing Type | Interaction |
+|---|---|
+| **allow** | Allow rules (pass 1) terminate before challenge. Allowed requests are never challenged. Use for API endpoints, webhooks, health checks. |
+| **block** | Block rules (pass 2) terminate before challenge. Known-bad traffic is denied, not given a chance to solve. |
+| **skip** | Skip rules can target `"phases": ["challenge"]` to exempt specific conditions from challenge. But skip evaluates *after* challenge (pass 4 vs pass 3), so it only suppresses challenges on future requests if the skip sets a cookie/flag. For pre-challenge exemption, use `allow` instead. |
+| **rate_limit** | Rate limiting (pass 5) applies after challenge. A client that passes the challenge is still rate-limited. Challenge failures can be counted as rate limit events (configurable). |
+| **detect** | CRS detection (pass 6) applies after challenge. Challenge pass proves browser capability, not benign intent. SQLi/XSS payloads from a browser that solved a challenge are still detected. |
+| **response_header** | No interaction. Challenge responses are generated by the plugin, not proxied from upstream. Response header rules only apply to proxied responses. |
+| **DDoS mitigator** | DDoS mitigator evaluates before the policy engine (`order ddos_mitigator after log_append`, `order policy_engine after ddos_mitigator`). Jailed IPs never reach the challenge. Challenge failures can trigger jail additions via a new `challenge_jail_after` config (default: 5 failures → jail for 1h). |
+
+### Interaction with Existing Roadmap
+
+| Roadmap Item | Impact |
+|---|---|
+| **Phase 0 (interfaces)** | Not a prerequisite. `challenge` is stored in `ExclusionStore` like all other types. When interfaces are extracted, it's just another type in the union. |
+| **Storage migration (Phases 1-3)** | No impact. Challenge rules are regular rows in the exclusions table. Challenge cookies are stateless (signed tokens), requiring zero server-side storage. |
+| **WebSocket/SSE inspection** | Independent. Stream-phase rules never have `challenge` type. Challenges are inherently HTTP request/response. |
+| **Edge caching** | Challenge responses must NOT be cached. The interstitial includes a unique nonce per request. The plugin sets `Cache-Control: no-store, no-cache, must-revalidate` and `Pragma: no-cache` on all challenge responses. The cache handler (if integrated) must respect this. |
+
+### Security Considerations
+
+| Concern | Mitigation |
+|---|---|
+| **HMAC key compromise** | Attacker can forge cookies. Mitigation: key stored only in plugin memory + on-disk file (not in policy-rules.json after reconsideration — injected via env). Rotate via `CHALLENGE_HMAC_KEY` env change + Caddy restart. |
+| **Cookie replay** | Cookies bound to client IP (default) + service hostname. Replay from a different IP fails validation. IP binding can be disabled for mobile-heavy services. |
+| **PoW precomputation** | Nonce is random per challenge issuance. Precomputation is impossible without the nonce. Timestamp in payload prevents replay of old solutions (5-minute validity window). |
+| **Challenge page XSS** | No user input reflected in the challenge page. All dynamic values (nonce, difficulty) are injected as `data-*` attributes, never into script context. CSP: `script-src 'self' 'unsafe-inline'` (inline script is the PoW solver). |
+| **Denial of service via challenge flood** | Challenge issuance is cheap (generate nonce + HMAC + serve static page). Verification is cheap (one SHA-256 computation). The client does the expensive work. DDoS mitigator handles volume. |
+| **Accessibility** | `<noscript>` fallback explains why JS is required. Consider adding a CAPTCHA fallback in a future iteration for JS-disabled clients that need access. |
+
+### Implementation Phases
+
+```
+Phase 1 ──→ Phase 2 ──→ Phase 3 ──→ Phase 4 ──→ Phase 5
+```
+
+| Phase | Scope | Est. |
+|---|---|---|
+| 1. wafctl model + validation | `RuleExclusion` fields, validation, generator, deploy HMAC | ~1.5 days |
+| 2. Plugin PoW engine | Cookie validation, HMAC signing, nonce generation, PoW verification | ~3 days |
+| 3. Interstitial + client JS | HTML template, CSS, `challenge.js` PoW solver, `//go:embed` | ~2 days |
+| 4. Dashboard integration | Form fields, event badges, constants update | ~1.5 days |
+| 5. E2E tests + hardening | Challenge issued/passed/failed scenarios, cookie expiry, IP binding, skip interaction | ~2.5 days |
+
+**Total: ~10.5 days.**
+
+### Risk Assessment
+
+| Risk | Impact | Probability | Mitigation |
+|---|---|---|---|
+| Challenge blocks legitimate users without JS | Accessibility regression | Low (JS is ubiquitous) | `<noscript>` message; future CAPTCHA fallback |
+| Challenge latency adds to TTFB | UX degradation on first visit | Medium | Challenge page is <5KB; PoW at difficulty 4 takes <1s |
+| HMAC key management complexity | Operational burden | Low | Auto-generation with on-disk persistence; env override |
+| Challenge pages confuse users | Support burden | Medium | Clear, branded messaging; configurable explanation text |
+| Sophisticated bots solve PoW via headless Chrome | Bypass | Medium | Difficulty escalation; future: behavioral fingerprinting, CAPTCHA |
+| Cookie size adds overhead to every request | Performance | Low | Token is ~120 bytes base64; negligible vs typical headers |
+
+---
+
 ## CRS Converter Fidelity
 
 CRS regression: 90.8% (216/238 rules). 22 failures:
@@ -1883,6 +2451,8 @@ Phase 0 (interfaces) ........................... 1-2 weeks
   |
   +-> WebSocket inspection ..................... ~14 days (independent, can run anytime)
   |
+  +-> PoW challenge action ..................... ~10.5 days (independent, can run anytime)
+  |
   +-> Edge caching evaluation .................. 4-8 weeks (independent)
 ```
 
@@ -1894,6 +2464,8 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 - Phase 2 is the largest and riskiest — do it last when PG is proven
 - Phase 4 only if multi-instance Caddy is needed
 - WebSocket is fully independent of storage migration
+- PoW challenge is fully independent of all other workstreams — no new dependencies,
+  no storage requirements (stateless cookies), slots into existing rule type system
 - Edge caching is exploratory and independent
 
 ### Effort Summary
@@ -1907,11 +2479,12 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 | **4** | RL counters → Valkey (opt.) | **3-4 weeks** | Medium | Yes (policy-engine) |
 | **Infra** | compose + schema + migration tool | **1-2 weeks** | Low | N/A |
 | **WS** | WebSocket + SSE inspection | **~14 days** | Medium | No (plugin only) |
+| **PoW** | Proof-of-work challenge action | **~10.5 days** | Low-Medium | No (plugin + wafctl) |
 | **Cache** | Edge caching evaluation + integration | **4-8 weeks** | Medium | No (plugin only) |
 
 **Storage migration total: 14-21 weeks** for Phases 0-3 + Infra (Phase 4 adds 3-4 weeks).
 
-**All workstreams total: ~6-9 months** (storage + WebSocket + caching, with parallelism).
+**All workstreams total: ~6-9 months** (storage + WebSocket + challenge + caching, with parallelism).
 
 ### Lines of Code Impact
 
@@ -1923,7 +2496,8 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 | Phase 3: Valkey jail sync | ~300 | ~280 | +20 |
 | Infra: compose + schema + migration tool | ~600 | ~0 | +600 |
 | WebSocket: plugin + wafctl + dashboard | ~3000 | ~0 | +3000 |
-| **Total (excl. caching)** | **~7400** | **~2540** | **+4860** |
+| PoW challenge: plugin + wafctl + dashboard | ~1280 | ~0 | +1280 |
+| **Total (excl. caching)** | **~8680** | **~2540** | **+6140** |
 
 ### CI Pipeline Impact
 
@@ -1934,6 +2508,10 @@ Phase 0 (interfaces) ........................... 1-2 weeks
   startup with PG container).
 - WebSocket: new e2e tests using the existing `13_websocket_test.go` pattern (raw TCP,
   no external deps). Minor CI time increase.
+- PoW challenge: new e2e tests for challenge issuance, PoW verification, cookie
+  validation, and skip interaction. Uses `net/http` client with cookie jar — no
+  external deps. Adds ~5-10s to e2e suite. wafctl unit tests for validation and
+  generator are zero-cost (same pattern as existing rule type tests).
 
 ---
 

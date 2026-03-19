@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:3.60.0-2.11.1
+    image: erfianugrah/caddy:3.61.0-2.11.1
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -114,7 +114,7 @@ services:
     build:
       context: .
       dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.64.0
+    image: erfianugrah/wafctl:2.65.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
@@ -181,6 +181,10 @@ services:
       - WAF_DIR=/data/waf
       - WAF_CADDYFILE_PATH=/data/Caddyfile
       - WAF_CADDY_ADMIN_URL=http://caddy:2020
+      - WAF_DATA_DIR=/data
+      # Challenge HMAC key — auto-generated and persisted to /data/challenge-hmac.key
+      # if not set. Override with a 64-char hex string for cross-restart stability.
+      # - CHALLENGE_HMAC_KEY=
       - WAF_GEOIP_DB=/data/geoip/country.mmdb
       - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json
       # Event JSONL files — on array via /data/events mount

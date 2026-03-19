@@ -14,8 +14,8 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.60.0-2.11.1
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.64.0
+CADDY_IMAGE   ?= erfianugrah/caddy:3.61.0-2.11.1
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.65.0
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
@@ -127,6 +127,12 @@ test-e2e: ## Run e2e smoke tests (requires Docker)
 test-e2e-load: ## Run e2e + DDoS load tests with k6 (requires Docker + k6 image)
 	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
 	cd test/e2e && DDOS_LOAD=1 go test -v -count=1 -timeout 600s -run "TestDDoS" ./...; rc=$$?; \
+	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
+	exit $$rc
+
+test-playwright: ## Run Playwright browser tests (requires Docker stack running)
+	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
+	cd test/playwright && npx playwright test; rc=$$?; \
 	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
 	exit $$rc
 
