@@ -31,9 +31,9 @@ describe("QUICK_ACTIONS", () => {
 // ─── ALL_EXCLUSION_TYPES ────────────────────────────────────────────
 
 describe("ALL_EXCLUSION_TYPES", () => {
-  it("has exactly 5 types: allow, block, skip, detect, response_header", () => {
+  it("has exactly 6 types: allow, block, challenge, skip, detect, response_header", () => {
     const values = ALL_EXCLUSION_TYPES.map((t) => t.value);
-    expect(values).toEqual(["allow", "block", "skip", "detect", "response_header"]);
+    expect(values).toEqual(["allow", "block", "challenge", "skip", "detect", "response_header"]);
   });
 
   it("all types are in the quick or advanced group", () => {

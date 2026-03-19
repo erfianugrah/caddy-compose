@@ -775,6 +775,7 @@ export function AdvancedBuilderForm({
 
   const isDetect = form.type === "detect";
   const isSkip = form.type === "skip";
+  const isChallenge = form.type === "challenge";
   const isResponseHeader = form.type === "response_header";
 
   // Condition management — all 3 types need conditions
@@ -804,6 +805,11 @@ export function AdvancedBuilderForm({
       detect_paranoia_level: newType === "detect" ? prev.detect_paranoia_level : 0,
       // Reset skip-specific fields when switching away from skip
       skip_targets: newType === "skip" ? prev.skip_targets : {},
+      // Reset challenge-specific fields when switching away from challenge
+      challenge_difficulty: newType === "challenge" ? prev.challenge_difficulty : 4,
+      challenge_algorithm: newType === "challenge" ? prev.challenge_algorithm : "fast",
+      challenge_ttl: newType === "challenge" ? prev.challenge_ttl : "7d",
+      challenge_bind_ip: newType === "challenge" ? prev.challenge_bind_ip : true,
       // Auto-set phase to outbound for response_header
       phase: newType === "response_header" ? "outbound" : prev.phase,
       // Reset header fields when switching away from response_header
@@ -831,6 +837,12 @@ export function AdvancedBuilderForm({
       const st = form.skip_targets;
       const hasTargets = st.all_remaining || (st.rules?.length ?? 0) > 0 || (st.phases?.length ?? 0) > 0;
       if (hasTargets) data.skip_targets = st;
+    }
+    if (isChallenge) {
+      if (form.challenge_difficulty !== 4) data.challenge_difficulty = form.challenge_difficulty;
+      if (form.challenge_algorithm !== "fast") data.challenge_algorithm = form.challenge_algorithm as "fast" | "slow";
+      if (form.challenge_ttl !== "7d") data.challenge_ttl = form.challenge_ttl;
+      if (!form.challenge_bind_ip) data.challenge_bind_ip = false;
     }
     if (isResponseHeader) {
       if (Object.keys(form.header_set).length > 0) data.header_set = form.header_set;
@@ -969,6 +981,65 @@ export function AdvancedBuilderForm({
           value={form.skip_targets}
           onChange={(targets) => update("skip_targets", targets)}
         />
+      )}
+
+      {/* Challenge: PoW Settings */}
+      {isChallenge && (
+        <div className="space-y-3 rounded-md border border-lv-border/30 bg-lv-surface/30 p-3">
+          <p className="text-xs font-medium text-lv-muted">Challenge Settings</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-lv-muted">Difficulty (leading hex zeros)</label>
+              <input
+                type="number"
+                min={1}
+                max={16}
+                value={form.challenge_difficulty}
+                onChange={(e) => update("challenge_difficulty", parseInt(e.target.value) || 4)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+              />
+              <p className="mt-0.5 text-[10px] text-lv-muted">
+                4 = ~0.5s, 6 = ~5s, 8 = ~30s, 16 = extreme
+              </p>
+            </div>
+            <div>
+              <label className="text-xs text-lv-muted">Algorithm</label>
+              <select
+                value={form.challenge_algorithm}
+                onChange={(e) => update("challenge_algorithm", e.target.value)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+              >
+                <option value="fast">Fast (WebCrypto)</option>
+                <option value="slow">Slow (CPU-intensive)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-lv-muted">Cookie TTL</label>
+              <input
+                type="text"
+                value={form.challenge_ttl}
+                onChange={(e) => update("challenge_ttl", e.target.value)}
+                placeholder="7d"
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+              />
+              <p className="mt-0.5 text-[10px] text-lv-muted">
+                How long before re-challenge (e.g., 7d, 24h, 1h)
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-4">
+              <input
+                type="checkbox"
+                id="challenge-bind-ip"
+                checked={form.challenge_bind_ip}
+                onChange={(e) => update("challenge_bind_ip", e.target.checked)}
+                className="h-4 w-4 rounded border-lv-border/50"
+              />
+              <label htmlFor="challenge-bind-ip" className="text-xs text-lv-muted">
+                Bind cookie to client IP
+              </label>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Response Header: Header Actions */}

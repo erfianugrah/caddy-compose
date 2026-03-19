@@ -27,7 +27,7 @@ export interface CRSCatalogResponse {
 
 // ─── Exclusions / Policy ────────────────────────────────────────────
 
-export type ExclusionType = "allow" | "block" | "skip" | "detect" | "rate_limit" | "response_header";
+export type ExclusionType = "allow" | "block" | "challenge" | "skip" | "detect" | "rate_limit" | "response_header";
 
 // Condition fields and operators for the dynamic rule builder
 export type ConditionField =
@@ -112,6 +112,11 @@ export interface Exclusion {
   rate_limit_events?: number;
   rate_limit_window?: string;
   rate_limit_action?: string;
+  // challenge fields
+  challenge_difficulty?: number;
+  challenge_algorithm?: "fast" | "slow";
+  challenge_ttl?: string;
+  challenge_bind_ip?: boolean;
   // response_header fields
   header_set?: Record<string, string>;
   header_add?: Record<string, string>;
@@ -135,6 +140,11 @@ export interface ExclusionCreateData {
   skip_targets?: SkipTargets;
   severity?: string;
   detect_paranoia_level?: number;
+  // challenge fields
+  challenge_difficulty?: number;
+  challenge_algorithm?: "fast" | "slow";
+  challenge_ttl?: string;
+  challenge_bind_ip?: boolean;
   // rate_limit fields
   rate_limit_key?: string;
   rate_limit_events?: number;
@@ -172,6 +182,7 @@ export interface ExclusionHitsResponse {
 const typeToGo: Record<ExclusionType, string> = {
   allow: "allow",
   block: "block",
+  challenge: "challenge",
   skip: "skip",
   detect: "detect",
   rate_limit: "rate_limit",
