@@ -1,4 +1,4 @@
-ARG VERSION=2.11.1
+ARG VERSION=2.11.2
 ARG CRS_VERSION=v4.24.1
 
 FROM caddy:${VERSION}-builder AS builder
