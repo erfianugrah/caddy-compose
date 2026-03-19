@@ -130,6 +130,12 @@ test-e2e-load: ## Run e2e + DDoS load tests with k6 (requires Docker + k6 image)
 	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
 	exit $$rc
 
+test-playwright: ## Run Playwright browser tests (requires Docker stack running)
+	docker compose -f test/docker-compose.e2e.yml up -d --wait --timeout 120
+	cd test/playwright && npx playwright test; rc=$$?; \
+	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
+	exit $$rc
+
 check: test ## Run tests + type check + build (pre-push validation)
 	cd waf-dashboard && npx tsc --noEmit
 	cd waf-dashboard && npm run build
