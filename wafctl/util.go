@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -120,4 +122,36 @@ func generateUUID() string {
 	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// loadOrGenerateChallengeKey reads or generates a 32-byte HMAC key for
+// challenge cookie signing. The key is persisted to challenge-hmac.key in
+// the data directory so it survives restarts without invalidating cookies.
+// Returns the hex-encoded key string.
+func loadOrGenerateChallengeKey(dataDir string) string {
+	keyFile := filepath.Join(dataDir, "challenge-hmac.key")
+	if data, err := os.ReadFile(keyFile); err == nil {
+		s := strings.TrimSpace(string(data))
+		if len(s) == 64 { // 32 bytes hex-encoded
+			if _, err := hex.DecodeString(s); err == nil {
+				return s
+			}
+		}
+		log.Printf("[challenge] warning: invalid key in %s, regenerating", keyFile)
+	}
+	// Generate a new 32-byte random key.
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		log.Printf("[challenge] warning: failed to generate HMAC key: %v", err)
+		return ""
+	}
+	keyHex := hex.EncodeToString(key)
+	if err := os.MkdirAll(dataDir, 0755); err == nil {
+		if err := atomicWriteFile(keyFile, []byte(keyHex+"\n"), 0600); err != nil {
+			log.Printf("[challenge] warning: failed to persist HMAC key to %s: %v", keyFile, err)
+		} else {
+			log.Printf("[challenge] generated and persisted HMAC key to %s", keyFile)
+		}
+	}
+	return keyHex
 }

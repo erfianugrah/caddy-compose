@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -33,6 +34,10 @@ type DeployConfig struct {
 	// the caddy-policy-engine plugin. The plugin hot-reloads this file via
 	// mtime polling.
 	PolicyRulesFile string
+
+	// ChallengeHMACKey is the hex-encoded 32-byte HMAC key for challenge cookie
+	// signing. Read from CHALLENGE_HMAC_KEY env or auto-generated on first boot.
+	ChallengeHMACKey string
 }
 
 // DeployResponse is returned by the deploy endpoint.
@@ -73,6 +78,24 @@ func generatePolicyData(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStor
 	if err != nil {
 		return nil, 0, fmt.Errorf("applying default rule overrides: %w", err)
 	}
+
+	// Inject challenge HMAC key when challenge rules exist.
+	if deployCfg.ChallengeHMACKey != "" {
+		hasChallengeRules := false
+		for _, e := range allExclusions {
+			if e.Type == "challenge" {
+				hasChallengeRules = true
+				break
+			}
+		}
+		if hasChallengeRules {
+			policyData, err = injectChallengeConfig(policyData, deployCfg.ChallengeHMACKey)
+			if err != nil {
+				return nil, 0, fmt.Errorf("injecting challenge config: %w", err)
+			}
+		}
+	}
+
 	policyCount := 0
 	for _, e := range allExclusions {
 		if IsPolicyEngineType(e.Type) {
@@ -80,6 +103,20 @@ func generatePolicyData(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStor
 		}
 	}
 	return policyData, policyCount, nil
+}
+
+// injectChallengeConfig unmarshals the policy data, sets the challenge global
+// config (HMAC key), and re-marshals. This avoids changing the
+// GeneratePolicyRulesWithRL signature for a field that only the deploy pipeline provides.
+func injectChallengeConfig(data []byte, hmacKeyHex string) ([]byte, error) {
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil, err
+	}
+	file.ChallengeConfig = &PolicyChallengeGlobalConfig{
+		HMACKey: hmacKeyHex,
+	}
+	return json.MarshalIndent(file, "", "  ")
 }
 
 // generateOnBoot regenerates the policy engine rules file from stored state

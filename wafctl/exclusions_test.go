@@ -1557,3 +1557,138 @@ func TestHandleBulkExclusions(t *testing.T) {
 		}
 	})
 }
+
+// ─── Challenge type validation ──────────────────────────────────────
+
+func TestLoadOrGenerateChallengeKey(t *testing.T) {
+	dir := t.TempDir()
+
+	// First call: generate new key.
+	key1 := loadOrGenerateChallengeKey(dir)
+	if len(key1) != 64 {
+		t.Fatalf("key1 length = %d, want 64 hex chars", len(key1))
+	}
+
+	// Second call: load persisted key.
+	key2 := loadOrGenerateChallengeKey(dir)
+	if key2 != key1 {
+		t.Errorf("key2 = %q, want same as key1 %q", key2, key1)
+	}
+}
+
+func TestValidateExclusion_ChallengeType(t *testing.T) {
+	tests := []struct {
+		name    string
+		exc     RuleExclusion
+		wantErr bool
+	}{
+		{
+			name: "valid challenge with defaults",
+			exc: RuleExclusion{
+				Name:       "challenge-browsers",
+				Type:       "challenge",
+				Conditions: []Condition{{Field: "user_agent", Operator: "contains", Value: "Mozilla"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid challenge with all fields",
+			exc: RuleExclusion{
+				Name:                "hard-challenge",
+				Type:                "challenge",
+				ChallengeDifficulty: 8,
+				ChallengeAlgorithm:  "slow",
+				ChallengeTTL:        "24h",
+				Conditions:          []Condition{{Field: "user_agent", Operator: "regex", Value: "(?i)GPTBot"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "challenge missing conditions",
+			exc: RuleExclusion{
+				Name: "no-conditions",
+				Type: "challenge",
+			},
+			wantErr: true,
+		},
+		{
+			name: "challenge difficulty too high",
+			exc: RuleExclusion{
+				Name:                "too-hard",
+				Type:                "challenge",
+				ChallengeDifficulty: 17,
+				Conditions:          []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "challenge difficulty negative",
+			exc: RuleExclusion{
+				Name:                "negative",
+				Type:                "challenge",
+				ChallengeDifficulty: -1,
+				Conditions:          []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "challenge invalid algorithm",
+			exc: RuleExclusion{
+				Name:               "bad-algo",
+				Type:               "challenge",
+				ChallengeAlgorithm: "turbo",
+				Conditions:         []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "challenge invalid TTL",
+			exc: RuleExclusion{
+				Name:         "bad-ttl",
+				Type:         "challenge",
+				ChallengeTTL: "forever",
+				Conditions:   []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "challenge valid TTL with day shorthand",
+			exc: RuleExclusion{
+				Name:         "ttl-days",
+				Type:         "challenge",
+				ChallengeTTL: "7d",
+				Conditions:   []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "challenge difficulty zero (use default)",
+			exc: RuleExclusion{
+				Name:                "default-diff",
+				Type:                "challenge",
+				ChallengeDifficulty: 0,
+				Conditions:          []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "challenge algorithm fast",
+			exc: RuleExclusion{
+				Name:               "fast-algo",
+				Type:               "challenge",
+				ChallengeAlgorithm: "fast",
+				Conditions:         []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateExclusion(tt.exc)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateExclusion() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

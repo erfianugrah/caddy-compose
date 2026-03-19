@@ -25,8 +25,15 @@ type PolicyRulesFile struct {
 	RateLimitConfig      *PolicyRateLimitGlobalConfig `json:"rate_limit_config,omitempty"`
 	ResponseHeaders      *PolicyResponseHeaderConfig  `json:"response_headers,omitempty"`
 	WafConfig            *PolicyWafConfig             `json:"waf_config,omitempty"`
+	ChallengeConfig      *PolicyChallengeGlobalConfig `json:"challenge_config,omitempty"`
 	Generated            string                       `json:"generated"`
 	Version              int                          `json:"version"`
+}
+
+// PolicyChallengeGlobalConfig holds global challenge settings written to policy-rules.json.
+// The plugin reads these at load time to provision HMAC key and default settings.
+type PolicyChallengeGlobalConfig struct {
+	HMACKey string `json:"hmac_key,omitempty"` // Hex-encoded 32-byte HMAC-SHA256 key for cookie signing
 }
 
 // PolicyRule is a single policy rule as consumed by the Caddy plugin.
@@ -40,6 +47,7 @@ type PolicyRule struct {
 	GroupOp       string                 `json:"group_op"`
 	RateLimit     *PolicyRateLimitConfig `json:"rate_limit,omitempty"`
 	SkipTargets   *PolicySkipTargets     `json:"skip_targets,omitempty"`   // For skip: what to bypass
+	Challenge     *PolicyChallengeConfig `json:"challenge,omitempty"`      // For challenge: PoW settings
 	Severity      string                 `json:"severity,omitempty"`       // For detect: CRITICAL, ERROR, WARNING, NOTICE
 	ParanoiaLevel int                    `json:"paranoia_level,omitempty"` // For detect: 1-4 (0 = all levels)
 	Action        string                 `json:"action,omitempty"`         // For detect: "" (default=score) or "log_only" (evaluate but don't score)
@@ -56,6 +64,14 @@ type PolicyRule struct {
 	Description string `json:"description,omitempty"`
 	Category    string `json:"category,omitempty"` // e.g., "REQUEST-932-APPLICATION-ATTACK-RCE"
 	CRSFile     string `json:"crs_file,omitempty"` // source .conf filename
+}
+
+// PolicyChallengeConfig holds per-rule challenge settings for the plugin.
+type PolicyChallengeConfig struct {
+	Difficulty int    `json:"difficulty"`  // Leading hex zeros in SHA-256 (1-16, default 4)
+	Algorithm  string `json:"algorithm"`   // "fast" (default) or "slow"
+	TTLSeconds int    `json:"ttl_seconds"` // Cookie lifetime in seconds (default 604800 = 7d)
+	BindIP     bool   `json:"bind_ip"`     // Bind cookie to client IP (default true)
 }
 
 // PolicySkipTargets mirrors the plugin's SkipTargets type.
@@ -124,6 +140,7 @@ type PolicyCondition struct {
 var policyEngineTypes = map[string]bool{
 	"allow":           true,
 	"block":           true,
+	"challenge":       true,
 	"skip":            true,
 	"detect":          true,
 	"rate_limit":      true,
@@ -131,17 +148,19 @@ var policyEngineTypes = map[string]bool{
 }
 
 // policyTypePriority assigns a base priority per exclusion type.
-// Lower values evaluate first. The 6-pass evaluation order:
+// Lower values evaluate first. The 7-pass evaluation order:
 //
-//	Pass 1 — Allow (50-99): full bypass, terminates immediately
-//	Pass 2 — Block (100-199): deny list, terminates on match
-//	Pass 3 — Skip (200-299): selective bypass, non-terminating
-//	Pass 4 — Rate Limit (300-399): sliding window counters
-//	Pass 5 — Detect (400-499): CRS anomaly scoring
-//	Pass 6 — Response Header (500-599): set/add/remove/default response headers
+//	Pass 1 — Allow (50-99):            full bypass, terminates immediately
+//	Pass 2 — Block (100-149):          deny list, terminates on match
+//	Pass 3 — Challenge (150-199):      proof-of-work interstitial
+//	Pass 4 — Skip (200-299):           selective bypass, non-terminating
+//	Pass 5 — Rate Limit (300-399):     sliding window counters
+//	Pass 6 — Detect (400-499):         CRS anomaly scoring
+//	Pass 7 — Response Header (500-599): set/add/remove/default response headers
 var policyTypePriority = map[string]int{
 	"allow":           50,
 	"block":           100,
+	"challenge":       150,
 	"skip":            200,
 	"rate_limit":      300,
 	"detect":          400,
@@ -251,6 +270,34 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 			}
 		}
 
+		// Challenge rules carry PoW configuration.
+		if e.Type == "challenge" {
+			diff := e.ChallengeDifficulty
+			if diff == 0 {
+				diff = 4
+			}
+			algo := e.ChallengeAlgorithm
+			if algo == "" {
+				algo = "fast"
+			}
+			ttlSec := 7 * 24 * 3600 // default 7 days
+			if e.ChallengeTTL != "" {
+				if d, err := parseExtendedDuration(e.ChallengeTTL); err == nil {
+					ttlSec = int(d.Seconds())
+				}
+			}
+			bindIP := true
+			if e.ChallengeBindIP != nil {
+				bindIP = *e.ChallengeBindIP
+			}
+			pr.Challenge = &PolicyChallengeConfig{
+				Difficulty: diff,
+				Algorithm:  algo,
+				TTLSeconds: ttlSec,
+				BindIP:     bindIP,
+			}
+		}
+
 		// Response header rules carry header actions.
 		if e.Type == "response_header" {
 			pr.HeaderSet = e.HeaderSet
@@ -301,6 +348,10 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 			Jitter:        rlGlobal.Jitter,
 		}
 	}
+
+	// Note: ChallengeConfig (HMAC key) is injected by the deploy pipeline
+	// after this function returns, via SetChallengeConfig on the unmarshalled
+	// PolicyRulesFile. This avoids changing this function's signature.
 
 	// Use indented JSON for readability (hot-reloaded by plugin, not perf-critical).
 	return json.MarshalIndent(file, "", "  ")

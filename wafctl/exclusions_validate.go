@@ -329,6 +329,22 @@ func validateExclusion(e RuleExclusion) error {
 		if e.Phase != "" && e.Phase != "outbound" {
 			return fmt.Errorf("response_header rules must use phase \"outbound\" (or omit for default)")
 		}
+	case "challenge":
+		if len(e.Conditions) == 0 {
+			return fmt.Errorf("challenge requires at least one condition")
+		}
+		if e.ChallengeDifficulty < 0 || e.ChallengeDifficulty > 16 {
+			return fmt.Errorf("challenge_difficulty must be 0-16 (0 = use default of 4), got %d", e.ChallengeDifficulty)
+		}
+		validAlgorithms := map[string]bool{"": true, "fast": true, "slow": true}
+		if !validAlgorithms[e.ChallengeAlgorithm] {
+			return fmt.Errorf("challenge_algorithm must be 'fast' or 'slow', got %q", e.ChallengeAlgorithm)
+		}
+		if e.ChallengeTTL != "" {
+			if _, err := parseExtendedDuration(e.ChallengeTTL); err != nil {
+				return fmt.Errorf("invalid challenge_ttl %q: %v", e.ChallengeTTL, err)
+			}
+		}
 	}
 
 	return nil
@@ -339,6 +355,7 @@ var validSkipPhases = map[string]bool{
 	"detect":     true,
 	"rate_limit": true,
 	"block":      true,
+	"challenge":  true,
 }
 
 // validateSkipTargets validates the skip_targets of a skip rule.

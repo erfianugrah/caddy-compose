@@ -1920,3 +1920,121 @@ func TestValidateExclusion_SkipType(t *testing.T) {
 		}
 	})
 }
+
+// ─── Challenge rule generation ──────────────────────────────────────
+
+func TestGenerateChallengeRules(t *testing.T) {
+	boolPtr := func(b bool) *bool { return &b }
+
+	exclusions := []RuleExclusion{
+		{
+			ID: "a1", Name: "Allow API", Type: "allow", Enabled: true,
+			Conditions: []Condition{{Field: "path", Operator: "begins_with", Value: "/api/"}},
+		},
+		{
+			ID: "b1", Name: "Block Bad", Type: "block", Enabled: true,
+			Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "6.6.6.6"}},
+		},
+		{
+			ID: "c1", Name: "Challenge Browsers", Type: "challenge", Enabled: true,
+			ChallengeDifficulty: 4,
+			ChallengeAlgorithm:  "fast",
+			ChallengeTTL:        "7d",
+			ChallengeBindIP:     boolPtr(true),
+			Conditions:          []Condition{{Field: "user_agent", Operator: "contains", Value: "Mozilla"}},
+		},
+		{
+			ID: "s1", Name: "Skip Health", Type: "skip", Enabled: true,
+			SkipTargets: &SkipTargets{Phases: []string{"challenge"}},
+			Conditions:  []Condition{{Field: "path", Operator: "eq", Value: "/health"}},
+		},
+		{
+			ID: "d1", Name: "Detect SQLi", Type: "detect", Severity: "CRITICAL", Enabled: true,
+			Conditions: []Condition{{Field: "path", Operator: "regex", Value: "(?i)union.*select"}},
+		},
+	}
+
+	data, err := GeneratePolicyRulesWithRL(exclusions, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var file PolicyRulesFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(file.Rules) != 5 {
+		t.Fatalf("expected 5 rules, got %d", len(file.Rules))
+	}
+
+	// Rules must be sorted by priority: allow(50) < block(100) < challenge(150) < skip(200) < detect(400).
+	expectedOrder := []string{"allow", "block", "challenge", "skip", "detect"}
+	for i, want := range expectedOrder {
+		if file.Rules[i].Type != want {
+			t.Errorf("rule[%d].Type = %q, want %q", i, file.Rules[i].Type, want)
+		}
+	}
+
+	// Challenge rule should be in the 150-199 priority band.
+	challengeRule := file.Rules[2]
+	if challengeRule.Priority < 150 || challengeRule.Priority >= 200 {
+		t.Errorf("challenge priority = %d, want 150-199", challengeRule.Priority)
+	}
+
+	// Challenge config should be populated.
+	if challengeRule.Challenge == nil {
+		t.Fatal("challenge config is nil")
+	}
+	if challengeRule.Challenge.Difficulty != 4 {
+		t.Errorf("difficulty = %d, want 4", challengeRule.Challenge.Difficulty)
+	}
+	if challengeRule.Challenge.Algorithm != "fast" {
+		t.Errorf("algorithm = %q, want fast", challengeRule.Challenge.Algorithm)
+	}
+	if challengeRule.Challenge.TTLSeconds != 7*24*3600 {
+		t.Errorf("ttl_seconds = %d, want %d", challengeRule.Challenge.TTLSeconds, 7*24*3600)
+	}
+	if !challengeRule.Challenge.BindIP {
+		t.Error("bind_ip = false, want true")
+	}
+}
+
+func TestGenerateChallengeRules_Defaults(t *testing.T) {
+	// Challenge with zero values should get sensible defaults.
+	exclusions := []RuleExclusion{
+		{
+			ID: "c1", Name: "Challenge Default", Type: "challenge", Enabled: true,
+			Conditions: []Condition{{Field: "user_agent", Operator: "contains", Value: "Mozilla"}},
+		},
+	}
+
+	data, err := GeneratePolicyRulesWithRL(exclusions, RateLimitGlobalConfig{}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var file PolicyRulesFile
+	json.Unmarshal(data, &file)
+
+	if len(file.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(file.Rules))
+	}
+
+	ch := file.Rules[0].Challenge
+	if ch == nil {
+		t.Fatal("challenge config is nil")
+	}
+	if ch.Difficulty != 4 {
+		t.Errorf("default difficulty = %d, want 4", ch.Difficulty)
+	}
+	if ch.Algorithm != "fast" {
+		t.Errorf("default algorithm = %q, want fast", ch.Algorithm)
+	}
+	if ch.TTLSeconds != 7*24*3600 {
+		t.Errorf("default ttl = %d, want %d", ch.TTLSeconds, 7*24*3600)
+	}
+	if !ch.BindIP {
+		t.Error("default bind_ip = false, want true")
+	}
+}
