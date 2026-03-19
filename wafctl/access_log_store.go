@@ -667,10 +667,14 @@ func (s *AccessLogStore) Load() {
 				isRateLimit := entry.Status == 429
 				isPolicy := entry.Status == 403 && isPolicyBlocked(entry) && !isDDoSBlock
 				isSkip := entry.PolicyAction == "skip"
-				isLogged := !isPolicy && !isRateLimit && !isSkip && !isDDoSBlock &&
+				isChallenge := entry.PolicyAction == "challenge_issued" ||
+					entry.PolicyAction == "challenge_passed" ||
+					entry.PolicyAction == "challenge_failed" ||
+					entry.PolicyAction == "challenge_bypassed"
+				isLogged := !isPolicy && !isRateLimit && !isSkip && !isDDoSBlock && !isChallenge &&
 					entry.PolicyScore != "" && entry.PolicyScore != "0" &&
 					(entry.PolicyDetectRules != "" || entry.PolicyDetectMatches != "")
-				if isDDoSBlock || isRateLimit || isPolicy || isSkip || isLogged {
+				if isDDoSBlock || isRateLimit || isPolicy || isSkip || isChallenge || isLogged {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -716,6 +720,13 @@ func (s *AccessLogStore) Load() {
 					} else if isSkip {
 						// Policy engine skip: selective bypass of specific rules/phases.
 						evt.Source = "policy_skip"
+						evt.RuleName = entry.PolicyRule
+						if entry.PolicyTags != "" {
+							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
+						}
+					} else if isChallenge {
+						// Policy engine challenge: PoW interstitial action.
+						evt.Source = entry.PolicyAction // "challenge_issued", "challenge_passed", "challenge_failed", "challenge_bypassed"
 						evt.RuleName = entry.PolicyRule
 						if entry.PolicyTags != "" {
 							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
@@ -1041,6 +1052,22 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// Policy engine skip: selective bypass, request passed through.
 		status = rle.Status
 		eventType = "policy_skip"
+	case "challenge_issued":
+		// Challenge interstitial served (not a block — client may solve it).
+		status = rle.Status
+		eventType = "challenge_issued"
+	case "challenge_passed":
+		// Client solved the PoW challenge successfully.
+		status = rle.Status
+		eventType = "challenge_passed"
+	case "challenge_failed":
+		// Client submitted invalid PoW solution.
+		status = 403
+		eventType = "challenge_failed"
+	case "challenge_bypassed":
+		// Valid challenge cookie present, challenge skipped.
+		status = rle.Status
+		eventType = "challenge_bypassed"
 	case "logged":
 		// Below-threshold detect: CRS rules scored but didn't exceed threshold.
 		status = rle.Status
@@ -1049,7 +1076,12 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	if len(extraTags) > 0 {
 		tags = append(tags, extraTags...)
 	}
-	isBlocked := rle.Source != "logged" && rle.Source != "policy_skip"
+	// Non-blocking event types.
+	nonBlocking := map[string]bool{
+		"logged": true, "policy_skip": true,
+		"challenge_issued": true, "challenge_passed": true, "challenge_bypassed": true,
+	}
+	isBlocked := !nonBlocking[rle.Source]
 	evt := Event{
 		ID:             rle.RequestID,
 		Timestamp:      rle.Timestamp,

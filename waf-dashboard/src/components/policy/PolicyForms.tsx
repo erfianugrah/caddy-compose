@@ -3,6 +3,7 @@ import {
   Shield,
   ShieldCheck,
   ShieldBan,
+  ShieldQuestion,
   ShieldMinus,
   ShieldAlert,
   Plus,
@@ -52,6 +53,7 @@ import { T } from "@/lib/typography";
 const QUICK_ACTION_ICONS: Record<string, typeof Shield> = {
   ShieldCheck,
   ShieldBan,
+  ShieldQuestion,
   ShieldMinus,
   ShieldAlert,
 };

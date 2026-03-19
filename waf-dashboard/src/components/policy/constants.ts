@@ -2,11 +2,12 @@ import type { ExclusionType, ConditionField, ConditionOperator } from "@/lib/api
 
 // ─── Quick Action Types ─────────────────────────────────────────────
 
-export type QuickActionType = "allow" | "block" | "skip" | "detect";
+export type QuickActionType = "allow" | "block" | "challenge" | "skip" | "detect";
 
-export const QUICK_ACTIONS: { value: QuickActionType; label: string; description: string; iconName: "ShieldCheck" | "ShieldBan" | "ShieldMinus" | "ShieldAlert" }[] = [
+export const QUICK_ACTIONS: { value: QuickActionType; label: string; description: string; iconName: "ShieldCheck" | "ShieldBan" | "ShieldQuestion" | "ShieldMinus" | "ShieldAlert" }[] = [
   { value: "allow", label: "Allow", description: "Full bypass — terminates evaluation immediately", iconName: "ShieldCheck" },
   { value: "block", label: "Block", description: "Deny requests by IP, path, or user agent", iconName: "ShieldBan" },
+  { value: "challenge", label: "Challenge", description: "Proof-of-work verification for browser clients", iconName: "ShieldQuestion" },
   { value: "skip", label: "Skip", description: "Selective bypass — skip specific rules or phases", iconName: "ShieldMinus" },
   { value: "detect", label: "Detect", description: "Trigger a detection — runs matching CRS rules at configured severity", iconName: "ShieldAlert" },
 ];

@@ -13,10 +13,10 @@ import {
 // ─── QUICK_ACTIONS ──────────────────────────────────────────────────
 
 describe("QUICK_ACTIONS", () => {
-  it("has exactly 4 actions: allow, block, skip, detect", () => {
-    expect(QUICK_ACTIONS).toHaveLength(4);
+  it("has exactly 5 actions: allow, block, challenge, skip, detect", () => {
+    expect(QUICK_ACTIONS).toHaveLength(5);
     const values = QUICK_ACTIONS.map((a) => a.value);
-    expect(values).toEqual(["allow", "block", "skip", "detect"]);
+    expect(values).toEqual(["allow", "block", "challenge", "skip", "detect"]);
   });
 
   it("each action has label, description, and iconName", () => {
