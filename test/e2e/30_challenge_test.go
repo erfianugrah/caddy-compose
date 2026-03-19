@@ -500,6 +500,31 @@ func TestChallengeVerifyEndpoint(t *testing.T) {
 	}
 }
 
+func TestChallengeWorkerJSServed(t *testing.T) {
+	// The worker.js should be served at /.well-known/policy-challenge/worker.js
+	// with correct Content-Type and caching headers.
+	resp, body := httpGet(t, caddyURL+"/.well-known/policy-challenge/worker.js")
+	assertCode(t, "worker.js", 200, resp)
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "javascript") {
+		t.Errorf("Content-Type = %q, want application/javascript", ct)
+	}
+
+	cc := resp.Header.Get("Cache-Control")
+	if !strings.Contains(cc, "public") {
+		t.Errorf("Cache-Control = %q, want public", cc)
+	}
+
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "addEventListener") {
+		t.Error("worker.js missing addEventListener handler")
+	}
+	if !strings.Contains(bodyStr, "sha256Fallback") {
+		t.Error("worker.js missing pure-JS SHA-256 fallback")
+	}
+}
+
 func TestChallengeNonMatchingPathPassesThrough(t *testing.T) {
 	// After creating a challenge rule for /e2e-challenge-page,
 	// requests to other paths should NOT get the interstitial.
