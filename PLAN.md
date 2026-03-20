@@ -37,7 +37,7 @@
 
 ## Current State
 
-**v2.67.0 / caddy 3.63.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.25.2 / ddos-mitigator v0.16.0**
+**v2.68.0 / caddy 3.64.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.25.4 / ddos-mitigator v0.16.0**
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
 59 outbound), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
