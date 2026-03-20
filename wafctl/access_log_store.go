@@ -750,13 +750,14 @@ func (s *AccessLogStore) Load() {
 							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
 						}
 					}
-					// Capture request context from policy engine (block/detect_block only).
-					if isPolicy {
+					// Capture request context from policy engine (all event types).
+					if entry.PolicyRequestHeaders != "" && entry.PolicyRequestHeaders != "None" {
 						evt.RequestHeaders = parsePolicyRequestHeaders(entry.PolicyRequestHeaders)
-						if entry.PolicyRequestBody != "" {
-							evt.RequestBody = entry.PolicyRequestBody
-						}
-					} else if isRateLimit && isPolicyRateLimit(entry) {
+					}
+					if entry.PolicyRequestBody != "" && entry.PolicyRequestBody != "None" {
+						evt.RequestBody = entry.PolicyRequestBody
+					}
+					if isRateLimit && isPolicyRateLimit(entry) {
 						// Policy engine rate limit — has rule name attribution.
 						evt.Source = "policy_rl"
 						evt.RuleName = policyRateLimitRuleName(entry)

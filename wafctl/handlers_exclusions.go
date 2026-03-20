@@ -90,13 +90,13 @@ func handleExclusionHits(store *Store, als *AccessLogStore, es *ExclusionStore) 
 			}
 		}
 
-		// Scan access log store for policy events using raw RateLimitEvents.
+		// Scan access log store for all policy engine events using raw RateLimitEvents.
 		// This avoids the O(N) enrichment cost — we only need RuleName and Source.
 		rlRaw := als.snapshotSince(hours)
 		for i := range rlRaw {
 			rle := &rlRaw[i]
 			et := rleEventType(rle.Source)
-			if !strings.HasPrefix(et, "policy_") && et != "detect_block" {
+			if !strings.HasPrefix(et, "policy_") && !strings.HasPrefix(et, "challenge_") && et != "detect_block" {
 				continue
 			}
 			// ALS events carry the rule name directly.
