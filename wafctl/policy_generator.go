@@ -70,7 +70,7 @@ type PolicyRule struct {
 type PolicyChallengeConfig struct {
 	Difficulty int    `json:"difficulty"`  // Leading hex zeros in SHA-256 (1-16, default 4)
 	Algorithm  string `json:"algorithm"`   // "fast" (default) or "slow"
-	TTLSeconds int    `json:"ttl_seconds"` // Cookie lifetime in seconds (default 604800 = 7d)
+	TTLSeconds int    `json:"ttl_seconds"` // Cookie lifetime in seconds (default 3600 = 1h)
 	BindIP     bool   `json:"bind_ip"`     // Bind cookie to client IP (default true)
 }
 
@@ -280,7 +280,7 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 			if algo == "" {
 				algo = "fast"
 			}
-			ttlSec := 7 * 24 * 3600 // default 7 days
+			ttlSec := 3600 // default 1 hour
 			if e.ChallengeTTL != "" {
 				if d, err := parseExtendedDuration(e.ChallengeTTL); err == nil {
 					ttlSec = int(d.Seconds())

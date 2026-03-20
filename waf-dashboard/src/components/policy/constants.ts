@@ -698,7 +698,7 @@ export const emptyAdvancedForm: AdvancedFormState = {
   // challenge defaults
   challenge_difficulty: 4,
   challenge_algorithm: "fast",
-  challenge_ttl: "7d",
+  challenge_ttl: "1h",
   challenge_bind_ip: true,
   // response header defaults
   header_set: {},

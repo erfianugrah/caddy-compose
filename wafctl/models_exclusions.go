@@ -60,7 +60,7 @@ type RuleExclusion struct {
 	// requiring SHA-256 hashcash before proxying to upstream.
 	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // Leading hex zeros in SHA-256 (1-16, default 4)
 	ChallengeAlgorithm  string `json:"challenge_algorithm,omitempty"`  // "fast" (default) or "slow"
-	ChallengeTTL        string `json:"challenge_ttl,omitempty"`        // Cookie lifetime: "7d" (default), "24h", "1h"
+	ChallengeTTL        string `json:"challenge_ttl,omitempty"`        // Cookie lifetime: "1h" (default), "24h", "7d"
 	ChallengeBindIP     *bool  `json:"challenge_bind_ip,omitempty"`    // Bind cookie to client IP (default true)
 
 	// ─── response_header-only ───────────────────────────────────────

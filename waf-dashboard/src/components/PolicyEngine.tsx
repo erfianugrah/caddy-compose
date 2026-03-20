@@ -450,7 +450,7 @@ export default function PolicyEngine() {
         enabled: exclusionToEdit.enabled,
         challenge_difficulty: exclusionToEdit.challenge_difficulty ?? 4,
         challenge_algorithm: exclusionToEdit.challenge_algorithm ?? "fast",
-        challenge_ttl: exclusionToEdit.challenge_ttl ?? "7d",
+        challenge_ttl: exclusionToEdit.challenge_ttl ?? "1h",
         challenge_bind_ip: exclusionToEdit.challenge_bind_ip ?? true,
         header_set: exclusionToEdit.header_set ?? {},
         header_add: exclusionToEdit.header_add ?? {},

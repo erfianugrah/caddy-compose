@@ -810,7 +810,7 @@ export function AdvancedBuilderForm({
       // Reset challenge-specific fields when switching away from challenge
       challenge_difficulty: newType === "challenge" ? prev.challenge_difficulty : 4,
       challenge_algorithm: newType === "challenge" ? prev.challenge_algorithm : "fast",
-      challenge_ttl: newType === "challenge" ? prev.challenge_ttl : "7d",
+      challenge_ttl: newType === "challenge" ? prev.challenge_ttl : "1h",
       challenge_bind_ip: newType === "challenge" ? prev.challenge_bind_ip : true,
       // Auto-set phase to outbound for response_header
       phase: newType === "response_header" ? "outbound" : prev.phase,
@@ -843,7 +843,7 @@ export function AdvancedBuilderForm({
     if (isChallenge) {
       if (form.challenge_difficulty !== 4) data.challenge_difficulty = form.challenge_difficulty;
       if (form.challenge_algorithm !== "fast") data.challenge_algorithm = form.challenge_algorithm as "fast" | "slow";
-      if (form.challenge_ttl !== "7d") data.challenge_ttl = form.challenge_ttl;
+      if (form.challenge_ttl !== "1h") data.challenge_ttl = form.challenge_ttl;
       if (!form.challenge_bind_ip) data.challenge_bind_ip = false;
     }
     if (isResponseHeader) {
@@ -1021,11 +1021,11 @@ export function AdvancedBuilderForm({
                 type="text"
                 value={form.challenge_ttl}
                 onChange={(e) => update("challenge_ttl", e.target.value)}
-                placeholder="7d"
+                placeholder="1h"
                 className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
               />
               <p className="mt-0.5 text-[10px] text-lv-muted">
-                How long before re-challenge (e.g., 7d, 24h, 1h)
+                How long before re-challenge (e.g., 1h, 4h, 24h)
               </p>
             </div>
             <div className="flex items-center gap-2 pt-4">

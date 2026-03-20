@@ -2031,8 +2031,8 @@ func TestGenerateChallengeRules_Defaults(t *testing.T) {
 	if ch.Algorithm != "fast" {
 		t.Errorf("default algorithm = %q, want fast", ch.Algorithm)
 	}
-	if ch.TTLSeconds != 7*24*3600 {
-		t.Errorf("default ttl = %d, want %d", ch.TTLSeconds, 7*24*3600)
+	if ch.TTLSeconds != 3600 {
+		t.Errorf("default ttl = %d, want 3600 (1h)", ch.TTLSeconds)
 	}
 	if !ch.BindIP {
 		t.Error("default bind_ip = false, want true")
