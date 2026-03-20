@@ -507,61 +507,38 @@ Certain signals are so strong that they override the score:
 
 ---
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: JS Environment Probes (Tier 1)
+All 4 phases are **COMPLETE** and deployed to production (plugin v0.25.1).
 
-**Effort:** ~2-3 days. No Go changes. JS only + verify endpoint scoring.
+### Phase 1: JS Environment Probes — DONE
 
-1. Add signal collection to `challenge.js` (probes from Layer 3)
-2. Add behavioral listeners to `challenge.js` (Layer 4)
-3. Submit signals as additional form fields in the verify POST
-4. In `challenge.go` `handleChallengeVerify`: parse signals, compute risk score
-5. Accept/escalate/reject based on score thresholds
-6. Log signals in Caddy variables for access log capture
+`challenge.js` collects 17 environment probes + 5 behavioral signals.
+`challenge.go` `scoreBotSignals()` evaluates Layer 3 + Layer 4.
 
-**What this catches immediately:**
-- `navigator.webdriver === true` (Selenium, unpatched Puppeteer)
-- 0 plugins (headless Chrome default)
-- SwiftShader WebGL renderer (headless Chrome)
-- 0 speech voices (headless)
-- Permission timing < 0.5ms (headless)
-- No mouse/keyboard interaction during PoW
+What it catches: navigator.webdriver, ChromeDriver markers, SwiftShader GPU,
+0 plugins, 0 speech voices, fast permissions timing, no interaction during PoW,
+uniform worker timing.
 
-### Phase 2: JA4-Lite via GetConfigForClient
+### Phase 2: JA4 TLS Fingerprinting — DONE
 
-**Effort:** ~3-4 days. New Go code in the plugin.
+`ja4.go` + `ja4_listener.go`: hand-rolled ClientHello binary parser (zero deps),
+Caddy listener wrapper computes full JA4 per FoxIO spec. Stored in registry,
+accessible as condition field (`ja4`) and Caddy variable (`policy_engine.ja4`).
 
-1. Add `ja4.go` to caddy-policy-engine
-2. Implement JA4-lite from `tls.ClientHelloInfo` fields (cipher suites, supported
-   versions, ALPN, SNI)
-3. Store as Caddy variable `policy_engine.ja4`
-4. Add `ja4` as a condition field in rule matching
-5. Add known-browser JA4 list to managed lists
-6. Challenge rules can use `ja4` in conditions for pre-filtering
+`scoreBotSignals()` evaluates Layer 1: no ALPN (+25), TLS 1.2 only (+10).
 
-### Phase 3: Full JA4 + Header Fingerprinting
+### Phase 3: HTTP Header Fingerprinting — DONE
 
-**Effort:** ~3-4 days.
+`scoreBotSignals()` evaluates Layer 2 from `*http.Request` headers:
+missing Sec-Fetch-* (+20), missing Accept-Language (+10), Chrome UA without
+Client Hints (+15).
 
-1. Upgrade to full JA4 via ClientHello interception (extensions, signature
-   algorithms)
-2. Add HTTP header fingerprinting (FNV-1a hash of sorted header stack)
-3. Add header consistency checks (missing Sec-Fetch-*, Client Hints mismatches)
-4. Integrate into the composite risk score
+### Phase 4: Spatial Inconsistency Detection — DONE
 
-### Phase 4: Spatial Inconsistency Detection
-
-**Effort:** ~2-3 days.
-
-Based on the FP-Inconsistent paper (UC Davis, 2024):
-1. Cross-reference UA-claimed device with actual signals:
-   - iPhone UA + 0 touch points = inconsistent
-   - iPhone UA + non-iPhone screen resolution = inconsistent
-   - Mobile UA + hardwareConcurrency > 16 = inconsistent
-   - Windows UA + macOS Canvas hash = inconsistent
-2. Cross-reference JA4 with UA (a Python requests JA4 with a Chrome UA = spoof)
-3. Cross-reference timezone (from JS `Intl.DateTimeFormat`) with IP geolocation
+`scoreBotSignals()` evaluates Layer 5 cross-referencing:
+mobile UA + 0 touch points (+40), mobile UA + desktop resolution (+30),
+Chrome UA + non-browser JA4 (+35).
 
 ---
 
