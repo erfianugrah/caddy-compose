@@ -436,6 +436,12 @@ export function QuickActionsForm({
   // Skip-specific state
   const [skipTargets, setSkipTargets] = useState<SkipTargets>({});
 
+  // Challenge-specific state
+  const [challengeDifficulty, setChallengeDifficulty] = useState(4);
+  const [challengeAlgorithm, setChallengeAlgorithm] = useState("fast");
+  const [challengeTTL, setChallengeTTL] = useState("1h");
+  const [challengeBindIP, setChallengeBindIP] = useState(true);
+
   // Apply prefill when it arrives (async from useEffect in parent)
   useEffect(() => {
     if (!prefill) return;
@@ -460,6 +466,10 @@ export function QuickActionsForm({
     setSeverity("WARNING");
     setDetectPL(0);
     setSkipTargets({});
+    setChallengeDifficulty(4);
+    setChallengeAlgorithm("fast");
+    setChallengeTTL("1h");
+    setChallengeBindIP(true);
     setEnabled(true);
     setTags([]);
     setShowPrefillBanner(false);
@@ -496,6 +506,12 @@ export function QuickActionsForm({
     if (actionType === "skip") {
       const hasTargets = skipTargets.all_remaining || (skipTargets.rules?.length ?? 0) > 0 || (skipTargets.phases?.length ?? 0) > 0;
       if (hasTargets) data.skip_targets = skipTargets;
+    }
+    if (actionType === "challenge") {
+      data.challenge_difficulty = challengeDifficulty;
+      data.challenge_algorithm = challengeAlgorithm as "fast" | "slow";
+      data.challenge_ttl = challengeTTL;
+      data.challenge_bind_ip = challengeBindIP;
     }
     if (tags.length > 0) data.tags = tags;
 
@@ -552,6 +568,7 @@ export function QuickActionsForm({
           const colorMap: Record<string, { active: string; icon: string; text: string }> = {
             allow: { active: "border-lv-green/40 bg-lv-green/5", icon: "text-lv-green", text: "text-lv-green" },
             block: { active: "border-lv-red/40 bg-lv-red/5", icon: "text-lv-red", text: "text-lv-red" },
+            challenge: { active: "border-lv-yellow/40 bg-lv-yellow/5", icon: "text-lv-yellow", text: "text-lv-yellow" },
             skip: { active: "border-lv-cyan/40 bg-lv-cyan/5", icon: "text-lv-cyan", text: "text-lv-cyan" },
             detect: { active: "border-lv-peach/40 bg-lv-peach/5", icon: "text-lv-peach", text: "text-lv-peach" },
           };
@@ -567,9 +584,9 @@ export function QuickActionsForm({
               onClick={() => {
                 setActionType(action.value);
                 // Update auto-generated name to reflect new action type
-                if (prefill && name.startsWith("Allow ") || name.startsWith("Block ") || name.startsWith("Skip ") || name.startsWith("Detect ")) {
-                  const label = action.value === "allow" ? "Allow" : action.value === "block" ? "Block" : action.value === "skip" ? "Skip" : "Detect";
-                  setName(name.replace(/^(Allow|Block|Skip|Detect)\b/, label));
+                if (prefill && name.startsWith("Allow ") || name.startsWith("Block ") || name.startsWith("Challenge ") || name.startsWith("Skip ") || name.startsWith("Detect ")) {
+                  const label = action.value === "allow" ? "Allow" : action.value === "block" ? "Block" : action.value === "challenge" ? "Challenge" : action.value === "skip" ? "Skip" : "Detect";
+                  setName(name.replace(/^(Allow|Block|Challenge|Skip|Detect)\b/, label));
                 }
               }}
             >
@@ -724,6 +741,41 @@ export function QuickActionsForm({
         <SkipTargetsForm value={skipTargets} onChange={setSkipTargets} />
       )}
 
+      {/* Challenge: Settings */}
+      {actionType === "challenge" && (
+        <div className="space-y-3 rounded-md border border-lv-border/30 bg-lv-surface/30 p-3">
+          <p className="text-xs font-medium text-lv-muted">Challenge Settings</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-lv-muted">Difficulty (leading hex zeros)</label>
+              <input type="number" min={1} max={16} value={challengeDifficulty}
+                onChange={(e) => setChallengeDifficulty(parseInt(e.target.value) || 4)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text" />
+              <p className="mt-0.5 text-[10px] text-lv-muted">4 = ~0.5s, 6 = ~5s, 8 = ~30s, 16 = extreme</p>
+            </div>
+            <div>
+              <label className="text-xs text-lv-muted">Algorithm</label>
+              <select value={challengeAlgorithm} onChange={(e) => setChallengeAlgorithm(e.target.value)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text">
+                <option value="fast">Fast (WebCrypto)</option>
+                <option value="slow">Slow (CPU-intensive)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-lv-muted">Cookie TTL</label>
+              <input type="text" value={challengeTTL} onChange={(e) => setChallengeTTL(e.target.value)}
+                placeholder="1h" className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text" />
+              <p className="mt-0.5 text-[10px] text-lv-muted">How long before re-challenge (e.g., 1h, 4h, 24h)</p>
+            </div>
+            <div className="flex items-center gap-2 pt-4">
+              <input type="checkbox" id="quick-challenge-bind-ip" checked={challengeBindIP}
+                onChange={(e) => setChallengeBindIP(e.target.checked)} className="h-4 w-4 rounded border-lv-border/50" />
+              <label htmlFor="quick-challenge-bind-ip" className="text-xs text-lv-muted">Bind cookie to client IP</label>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tags */}
       <div className="space-y-1.5">
         <Label className={T.formLabel}>Tags</Label>
@@ -741,7 +793,7 @@ export function QuickActionsForm({
       <div className="flex items-center gap-4 pt-2">
         <Button onClick={handleSubmit} disabled={!isValid}>
           <SelectedIcon className="h-4 w-4" />
-          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : actionType === "skip" ? "Add Skip Rule" : "Add Detect Rule"}
+          {actionType === "allow" ? "Add Allow Rule" : actionType === "block" ? "Add Block Rule" : actionType === "challenge" ? "Add Challenge Rule" : actionType === "skip" ? "Add Skip Rule" : "Add Detect Rule"}
         </Button>
         <div className="flex items-center gap-2">
           <Switch checked={enabled} onCheckedChange={setEnabled} id="qa-enabled" />

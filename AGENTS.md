@@ -174,6 +174,7 @@ causes the event to be invisible in parts of the UI.
 - [ ] `access_log_store.go` — propagate any new fields to `RateLimitEvent`
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — add `case` for new source → event type + status
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — update `nonBlocking` map if non-blocking
+- [ ] `access_log_store.go` `RateLimitEventToEvent()` — set `evt.RuleMsg` for the new event type (display in event detail)
 - [ ] `query_helpers.go` `rleEventType()` — add `case` returning the event type string
 - [ ] `query_helpers.go` `rleIsBlocked()` — add to non-blocking list if applicable
 - [ ] `summary_counters.go` `hourBucket` — add counter field
@@ -250,7 +251,9 @@ causes the event to be invisible in parts of the UI.
 - [ ] `exclusions.ts` `Exclusion` interface — add type-specific fields
 - [ ] `exclusions.ts` `ExclusionCreateData` — add same fields
 - [ ] `exclusions.ts` `typeToGo` / `typeFromGo` — add mapping
+- [ ] `exclusions.ts` `mapExclusionFromGo()` — add type-specific fields from API response
 - [ ] `exclusions.ts` `mapExclusionToGo()` — add type-specific fields to API payload
+- [ ] `exclusions.ts` `RawExclusion` interface — add type-specific fields
 
 **Dashboard UI:**
 - [ ] `constants.ts` `ALL_EXCLUSION_TYPES` — add entry

@@ -211,6 +211,10 @@ interface RawExclusion {
   rate_limit_events?: number;
   rate_limit_window?: string;
   rate_limit_action?: string;
+  challenge_difficulty?: number;
+  challenge_algorithm?: string;
+  challenge_ttl?: string;
+  challenge_bind_ip?: boolean;
   header_set?: Record<string, string>;
   header_add?: Record<string, string>;
   header_remove?: string[];
@@ -242,6 +246,10 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     header_set: raw.header_set || undefined,
     header_add: raw.header_add || undefined,
     header_remove: raw.header_remove || undefined,
+    challenge_difficulty: raw.challenge_difficulty ?? undefined,
+    challenge_algorithm: raw.challenge_algorithm || undefined,
+    challenge_ttl: raw.challenge_ttl || undefined,
+    challenge_bind_ip: raw.challenge_bind_ip ?? undefined,
     header_default: raw.header_default || undefined,
     tags: raw.tags,
     enabled: raw.enabled,

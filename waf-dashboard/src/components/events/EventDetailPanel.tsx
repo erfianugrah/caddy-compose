@@ -391,6 +391,7 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               ? "DDoS Mitigator"
               : event.event_type === "rate_limited" ? "Rate Limit Details"
               : event.event_type === "detect_block" || event.event_type === "logged" ? "Rule Match"
+              : event.event_type?.startsWith("challenge_") ? "Challenge Details"
               : event.event_type?.startsWith("policy_") ? "Policy Engine Match"
               : event.blocked_by === "anomaly_inbound" || event.blocked_by === "anomaly_outbound"
                 ? "Anomaly Score Block"
@@ -465,6 +466,46 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     <span className="text-muted-foreground shrink-0">User-Agent:</span>
                     <TruncatedCode value={event.user_agent} className="text-foreground" />
                     <CopyBtn text={event.user_agent} />
+                  </div>
+                )}
+              </>
+            ) : event.event_type?.startsWith("challenge_") ? (
+              <>
+                {/* Challenge event — show rule name, difficulty, bot score */}
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Action:</span>
+                  <span className={`font-medium ${event.event_type === "challenge_failed" ? "text-lv-red" : event.event_type === "challenge_passed" ? "text-lv-green" : "text-lv-yellow"}`}>
+                    {event.event_type?.replace("challenge_", "Challenge ").replace(/^\w/, (c) => c.toUpperCase())}
+                  </span>
+                </div>
+                {event.rule_msg && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Rule:</span>
+                    <span className="text-foreground">{event.rule_msg}</span>
+                  </div>
+                )}
+                {event.challenge_bot_score !== undefined && event.challenge_bot_score > 0 && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Bot Score:</span>
+                    <span className={event.challenge_bot_score >= 70 ? "text-lv-red font-semibold" : event.challenge_bot_score >= 40 ? "text-lv-yellow" : "text-lv-green"}>
+                      {event.challenge_bot_score}/100
+                    </span>
+                  </div>
+                )}
+                {event.challenge_jti && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground">Token ID:</span>
+                    <code className="text-muted-foreground/70 font-data">{event.challenge_jti}</code>
+                  </div>
+                )}
+                {event.tags && event.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    <span className="text-muted-foreground">Tags:</span>
+                    {event.tags.map((tag) => (
+                      <span key={tag} className="inline-flex items-center rounded bg-lv-yellow/20 border border-lv-yellow/30 px-1.5 py-0 text-[10px] font-semibold uppercase text-lv-yellow">
+                        {tag}
+                      </span>
+                    ))}
                   </div>
                 )}
               </>

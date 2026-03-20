@@ -1140,6 +1140,20 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	if rle.Source == "policy_skip" && rle.RuleName != "" {
 		evt.RuleMsg = "Policy Skip: " + rle.RuleName
 	}
+	// For challenge events, set the rule message for display in the event detail.
+	if strings.HasPrefix(rle.Source, "challenge_") && rle.RuleName != "" {
+		labels := map[string]string{
+			"challenge_issued":   "Challenge Issued",
+			"challenge_passed":   "Challenge Passed",
+			"challenge_failed":   "Challenge Failed",
+			"challenge_bypassed": "Challenge Bypassed",
+		}
+		label := labels[rle.Source]
+		if label == "" {
+			label = "Challenge"
+		}
+		evt.RuleMsg = label + ": " + rle.RuleName
+	}
 	// For detect_block and logged, include the anomaly score and matched rule details.
 	// Enrich with CRS descriptions and populate top-level fields
 	// (rule_id, severity, rule_msg, blocked_by, matched_data, rule_tags).
