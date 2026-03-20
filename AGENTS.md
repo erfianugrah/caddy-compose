@@ -22,7 +22,7 @@ make build-wafctl       # Build the standalone wafctl image only
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.65.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.66.0" -o wafctl .
 ```
 
 Version injected via `-ldflags "-X main.version=..."`. Fallback: `var version = "dev"` in `main.go`.
