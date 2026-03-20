@@ -155,3 +155,12 @@ func loadOrGenerateChallengeKey(dataDir string) string {
 	}
 	return keyHex
 }
+
+// filterNone returns empty string for Caddy log_append "None" placeholder
+// values (written when a Caddy variable is unset).
+func filterNone(s string) string {
+	if s == "" || s == "None" {
+		return ""
+	}
+	return s
+}

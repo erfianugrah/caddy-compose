@@ -560,6 +560,8 @@ func parseGeneralLogEvent(entry AccessLogEntry, geoIP *GeoIPStore) GeneralLogEve
 		Level:           entry.Level,
 		RequestID:       accessLogRequestID(entry),
 		SecurityHeaders: extractSecurityHeaders(entry.RespHeaders),
+		JA4:             filterNone(entry.PolicyJA4),
+		PolicyAction:    filterNone(entry.PolicyAction),
 		DDoSAction:      entry.DDoSAction,
 		DDoSFingerprint: entry.DDoSFingerprint,
 		DDoSZScore:      entry.DDoSZScore,

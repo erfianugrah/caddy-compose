@@ -26,6 +26,8 @@ type GeneralLogEvent struct {
 	RequestID       string             `json:"request_id,omitempty"` // Caddy UUID for cross-log correlation
 	TLS             *TLSInfo           `json:"tls,omitempty"`        // TLS connection metadata
 	SecurityHeaders SecurityHeaderInfo `json:"security_headers"`
+	JA4             string             `json:"ja4,omitempty"`           // JA4 TLS fingerprint
+	PolicyAction    string             `json:"policy_action,omitempty"` // policy engine action (allow/block/challenge_*/skip/etc.)
 	DDoSAction      string             `json:"ddos_action,omitempty"`
 	DDoSFingerprint string             `json:"ddos_fingerprint,omitempty"`
 	DDoSZScore      string             `json:"ddos_z_score,omitempty"`

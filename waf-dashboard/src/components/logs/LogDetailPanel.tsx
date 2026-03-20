@@ -288,7 +288,31 @@ export function LogDetailPanel({ event: evt }: { event: GeneralLogEvent }) {
                   {evt.tls.resumed ? "Yes (0-RTT)" : "No (full handshake)"}
                 </span>
               </Field>
+              {evt.ja4 && (
+                <Field label="JA4 Fingerprint">
+                  <code className="text-lv-cyan font-data break-all">{evt.ja4}</code>
+                </Field>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Policy Action (if any) */}
+      {evt.policy_action && (
+        <div className="space-y-2">
+          <h4 className={T.sectionLabel}>Policy Engine</h4>
+          <div className="rounded-md bg-lovelace-950 p-3 text-xs">
+            <Field label="Action">
+              <span className={
+                evt.policy_action.includes("block") || evt.policy_action === "challenge_failed" ? "text-lv-red font-semibold" :
+                evt.policy_action.includes("challenge") ? "text-lv-yellow" :
+                evt.policy_action === "allow" ? "text-lv-green" :
+                "text-foreground"
+              }>
+                {evt.policy_action}
+              </span>
+            </Field>
           </div>
         </div>
       )}
