@@ -164,6 +164,7 @@ causes the event to be invisible in parts of the UI.
 
 **Plugin (caddy-policy-engine):**
 - [ ] `caddyhttp.SetVar()` — set `policy_engine.action` to the new type in `ServeHTTP`
+- [ ] `captureRequestContext(r, pb)` — call in the new event's case block so request headers/body are logged
 
 **Caddyfile:**
 - [ ] `log_append` — ensure `policy_action` field captures the new value (already generic)
@@ -175,6 +176,7 @@ causes the event to be invisible in parts of the UI.
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — add `case` for new source → event type + status
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — update `nonBlocking` map if non-blocking
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — set `evt.RuleMsg` for the new event type (display in event detail)
+- [ ] `handlers_exclusions.go` `handleExclusionHits()` — add event type prefix to hits scan filter
 - [ ] `query_helpers.go` `rleEventType()` — add `case` returning the event type string
 - [ ] `query_helpers.go` `rleIsBlocked()` — add to non-blocking list if applicable
 - [ ] `summary_counters.go` `hourBucket` — add counter field
@@ -208,7 +210,9 @@ causes the event to be invisible in parts of the UI.
 - [ ] `OverviewDashboard.tsx` pie chart breakdown — add slice
 - [ ] `OverviewDashboard.tsx` logged computation — subtract new type if non-blocking
 - [ ] `OverviewDashboard.tsx` stacked bar charts — add `<Bar>` if needed
-- [ ] `EventDetailPanel.tsx` — add section/rendering for the event type
+- [ ] `EventDetailPanel.tsx` — add type-specific rendering branch in detail panel
+- [ ] `EventDetailPanel.tsx` — display `user_agent` field (from request context headers)
+- [ ] `EventDetailPanel.tsx` — add request context section (headers, body) if applicable
 - [ ] `LogDetailPanel.tsx` — add fields to general log detail if applicable
 - [ ] `EventTypeBadge.tsx` — already generic (reads from `ACTION_LABELS`), no change needed
 

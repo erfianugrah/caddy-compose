@@ -1,0 +1,5 @@
+# CVE-2026-33186: gRPC-Go auth bypass via missing leading slash in :path
+# Transitive dependency pulled by Caddy (google.golang.org/grpc v1.79.1).
+# Not exploitable: gRPC is only used by Caddy's localhost admin API, which
+# is not exposed externally. Will be removed once Caddy bumps to grpc >= 1.79.3.
+CVE-2026-33186
