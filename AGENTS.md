@@ -155,6 +155,97 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 - `beforeEach`/`afterEach` for setup/teardown.
 - API tests split by domain in `src/lib/api/`, component tests alongside components.
 
+## Checklists
+
+### Adding a New Event Type (e.g., `challenge_issued`)
+
+Every new event type must be wired through the full stack. Missing any layer
+causes the event to be invisible in parts of the UI.
+
+**Plugin (caddy-policy-engine):**
+- [ ] `caddyhttp.SetVar()` — set `policy_engine.action` to the new type in `ServeHTTP`
+
+**Caddyfile:**
+- [ ] `log_append` — ensure `policy_action` field captures the new value (already generic)
+
+**wafctl data pipeline:**
+- [ ] `access_log_store.go` — add classification in `Load()` (`isChallenge`, etc.)
+- [ ] `access_log_store.go` — set `evt.Source` to the new type in event builder
+- [ ] `access_log_store.go` — propagate any new fields to `RateLimitEvent`
+- [ ] `access_log_store.go` `RateLimitEventToEvent()` — add `case` for new source → event type + status
+- [ ] `access_log_store.go` `RateLimitEventToEvent()` — update `nonBlocking` map if non-blocking
+- [ ] `query_helpers.go` `rleEventType()` — add `case` returning the event type string
+- [ ] `query_helpers.go` `rleIsBlocked()` — add to non-blocking list if applicable
+- [ ] `summary_counters.go` `hourBucket` — add counter field
+- [ ] `summary_counters.go` `classifyRLIntoBucket()` — add `case` incrementing the counter
+- [ ] `summary_counters.go` `buildSummary()` — accumulate total + populate in `SummaryResponse`
+- [ ] `summary_counters.go` `mergeSummaryResponses()` — merge the new field
+- [ ] `models.go` `SummaryResponse` — add field
+- [ ] `models.go` `HourCount` — add field
+- [ ] `models.go` `Event` — add any new per-event fields (e.g., `ja4`, `bot_score`)
+- [ ] `models_general_logs.go` `GeneralLogEvent` — add field if visible on all requests
+
+**Frontend API layer:**
+- [ ] `waf-events.ts` `EventType` union — add the new type
+- [ ] `waf-events.ts` `validEventTypes` array in `mapEvent()` — add the new type
+- [ ] `waf-events.ts` `SummaryData` — add counter field
+- [ ] `waf-events.ts` `TimelinePoint` — add counter field
+- [ ] `waf-events.ts` `WAFEvent` — add any new per-event fields
+- [ ] `waf-events.ts` `RawEvent` — add matching fields
+- [ ] `waf-events.ts` `mapEvent()` — propagate new fields
+- [ ] `analytics.ts` — add fields to timeline mapping + raw type
+- [ ] `analytics.test.ts` — update test fixtures
+- [ ] `general-logs.ts` `GeneralLogEvent` — add field if applicable
+
+**Frontend UI:**
+- [ ] `utils.ts` `ACTION_LABELS` — add human-readable label
+- [ ] `utils.ts` `ACTION_BADGE_CLASSES` — add badge styling
+- [ ] `utils.ts` `ACTION_COLORS` — add chart color
+- [ ] `filters/constants.ts` `EVENT_TYPE_OPTIONS` — add filter option
+- [ ] `OverviewDashboard.tsx` `STAT_CARD_DEFS` — add stat card (auto-hidden if zero)
+- [ ] `OverviewDashboard.tsx` timeline chart — add gradient + `<Area>` series
+- [ ] `OverviewDashboard.tsx` pie chart breakdown — add slice
+- [ ] `OverviewDashboard.tsx` logged computation — subtract new type if non-blocking
+- [ ] `OverviewDashboard.tsx` stacked bar charts — add `<Bar>` if needed
+- [ ] `EventDetailPanel.tsx` — add section/rendering for the event type
+- [ ] `LogDetailPanel.tsx` — add fields to general log detail if applicable
+- [ ] `EventTypeBadge.tsx` — already generic (reads from `ACTION_LABELS`), no change needed
+
+**Tests:**
+- [ ] `constants.test.ts` — update type/option counts
+- [ ] `DashboardFilterBar.test.ts` — update event_type option count
+- [ ] `analytics.test.ts` — update timeline fixture fields
+
+### Adding a New Rule Type (e.g., `challenge`)
+
+- [ ] `models_exclusions.go` `validExclusionTypes` — add type
+- [ ] `models_exclusions.go` `RuleExclusion` struct — add type-specific fields
+- [ ] `exclusions_validate.go` `switch e.Type` — add validation case
+- [ ] `exclusions_validate.go` `validSkipPhases` — add if skippable
+- [ ] `policy_generator.go` `policyEngineTypes` — add type
+- [ ] `policy_generator.go` `policyTypePriority` — add priority band
+- [ ] `policy_generator.go` `PolicyRule` struct — add type-specific fields
+- [ ] `policy_generator.go` `GeneratePolicyRulesWithRL()` — add conversion block
+- [ ] Plugin `policyengine.go` `validRuleTypes` — add type
+- [ ] Plugin `policyengine.go` `validSkipPhases` — add if skippable
+- [ ] Plugin `policyengine.go` `compileRule()` — add compilation block
+- [ ] Plugin `policyengine.go` `ServeHTTP` switch — add `case` for the type
+- [ ] Plugin `policyengine.go` skip flag checks — add skip guard
+- [ ] Dashboard `exclusions.ts` `ExclusionType` — add type
+- [ ] Dashboard `exclusions.ts` `typeToGo` / `typeFromGo` — add mapping
+- [ ] Dashboard `constants.ts` `ALL_EXCLUSION_TYPES` — add entry
+- [ ] Dashboard `constants.ts` `QUICK_ACTIONS` — add if quick-access
+- [ ] Dashboard `constants.ts` `AdvancedFormState` + `emptyAdvancedForm` — add fields
+- [ ] Dashboard `PolicyForms.tsx` — add form section + handleTypeChange + handleSubmit
+- [ ] Dashboard `PolicyEngine.tsx` — add fields to edit form state
+
+### Adding a New Condition Field (e.g., `ja4`)
+
+- [ ] Plugin `policyengine.go` `extractFieldValue()` — add `case`
+- [ ] wafctl `models_exclusions.go` `validConditionFields` — add to both maps
+- [ ] Dashboard `exclusions.ts` `ConditionField` type — add value
+- [ ] Dashboard `constants.ts` `CONDITION_FIELDS` — add field definition with operators
+
 ## Key Architecture Notes
 
 - Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload.

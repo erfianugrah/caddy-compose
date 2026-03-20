@@ -623,7 +623,7 @@ export default function OverviewDashboard() {
                         data={(data?.top_clients ?? []).slice(0, 8).map((c) => ({
                           ...c,
                           label: c.client_ip,
-                          logged: Math.max(c.total - c.total_blocked - c.rate_limited - c.policy_block - c.detect_block - c.policy_allow - c.policy_skip, 0),
+                          logged: Math.max(c.total - c.total_blocked - c.rate_limited - c.policy_block - c.detect_block - c.policy_allow - c.policy_skip - (c.challenge_issued || 0) - (c.challenge_passed || 0), 0),
                         }))}
                         layout="vertical"
                         margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
