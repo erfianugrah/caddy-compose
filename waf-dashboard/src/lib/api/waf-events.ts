@@ -207,10 +207,13 @@ interface RawSummary {
   ddos_blocked: number;
   policy_allowed: number;
   policy_skipped: number;
+  challenge_issued: number;
+  challenge_passed: number;
+  challenge_failed: number;
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
   top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
   top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
   top_countries: { country: string; count: number; total_blocked: number }[];
@@ -315,6 +318,9 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
     ddos_blocked: raw.ddos_blocked ?? 0,
     policy_allowed: raw.policy_allowed ?? 0,
     policy_skipped: raw.policy_skipped ?? 0,
+    challenge_issued: raw.challenge_issued ?? 0,
+    challenge_passed: raw.challenge_passed ?? 0,
+    challenge_failed: raw.challenge_failed ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     tag_counts: (raw.tag_counts ?? []).map((tc) => ({ tag: tc.tag, count: tc.count ?? 0 })),
@@ -329,6 +335,9 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       ddos_blocked: h.ddos_blocked ?? 0,
       policy_allow: h.policy_allow ?? 0,
       policy_skip: h.policy_skip ?? 0,
+      challenge_issued: h.challenge_issued ?? 0,
+      challenge_passed: h.challenge_passed ?? 0,
+      challenge_failed: h.challenge_failed ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,

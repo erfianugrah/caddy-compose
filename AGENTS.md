@@ -177,10 +177,12 @@ causes the event to be invisible in parts of the UI.
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — update `nonBlocking` map if non-blocking
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — set `evt.RuleMsg` for the new event type (display in event detail)
 - [ ] `handlers_exclusions.go` `handleExclusionHits()` — add event type prefix to hits scan filter
+- [ ] `query_helpers.go` `rlEventTypes` map — add the new event type(s) so filtering works
 - [ ] `query_helpers.go` `rleEventType()` — add `case` returning the event type string
 - [ ] `query_helpers.go` `rleIsBlocked()` — add to non-blocking list if applicable
 - [ ] `summary_counters.go` `hourBucket` — add counter field
 - [ ] `summary_counters.go` `classifyRLIntoBucket()` — add `case` incrementing the counter
+- [ ] `summary_counters.go` `classifyEventIntoBucket()` — add `case` for fallback Event-based path
 - [ ] `summary_counters.go` `buildSummary()` — accumulate total + populate in `SummaryResponse`
 - [ ] `summary_counters.go` `mergeSummaryResponses()` — merge the new field
 - [ ] `models.go` `SummaryResponse` — add field
@@ -193,6 +195,10 @@ causes the event to be invisible in parts of the UI.
 - [ ] `waf-events.ts` `validEventTypes` array in `mapEvent()` — add the new type
 - [ ] `waf-events.ts` `SummaryData` — add counter field
 - [ ] `waf-events.ts` `TimelinePoint` — add counter field
+- [ ] `waf-events.ts` `RawSummary` — add counter fields (top-level scalars)
+- [ ] `waf-events.ts` `RawSummary.events_by_hour` — add counter fields to inline type
+- [ ] `waf-events.ts` `fetchSummary()` — map scalar counter fields from raw response
+- [ ] `waf-events.ts` `fetchSummary()` timeline mapper — map counter fields from `events_by_hour`
 - [ ] `waf-events.ts` `WAFEvent` — add any new per-event fields
 - [ ] `waf-events.ts` `RawEvent` — add matching fields
 - [ ] `waf-events.ts` `mapEvent()` — propagate new fields

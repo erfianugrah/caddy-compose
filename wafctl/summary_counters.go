@@ -298,6 +298,17 @@ func classifyEventIntoBucket(b *hourBucket, ev *Event, delta int) {
 		b.PolicyAllow += delta
 	case ev.EventType == "policy_skip":
 		b.PolicySkip += delta
+	case ev.EventType == "challenge_issued":
+		b.ChallengeIssued += delta
+	case ev.EventType == "challenge_passed":
+		b.ChallengePassed += delta
+	case ev.EventType == "challenge_failed":
+		b.ChallengeFailed += delta
+		if ev.IsBlocked {
+			b.Blocked += delta
+		}
+	case ev.EventType == "challenge_bypassed":
+		b.ChallengePassed += delta // bypassed counts as passed
 	case ev.IsBlocked:
 		b.Blocked += delta
 	default:

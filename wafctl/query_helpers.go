@@ -407,6 +407,8 @@ var rlEventTypes = map[string]bool{
 	"rate_limited": true, "policy_block": true, "detect_block": true,
 	"ddos_blocked": true, "ddos_jailed": true,
 	"policy_skip": true, "logged": true,
+	"challenge_issued": true, "challenge_passed": true,
+	"challenge_failed": true, "challenge_bypassed": true,
 }
 
 // eventSourcesNeeded determines which event stores to query based on the event_type filter.
