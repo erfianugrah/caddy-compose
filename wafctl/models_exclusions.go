@@ -192,6 +192,7 @@ var validConditionFields = map[string]bool{
 	"response_header":  true,
 	"response_status":  true,
 	"http_version":     true,
+	"ja4":              true,
 	"request_combined": true,
 }
 
@@ -214,6 +215,7 @@ var validPolicyEngineFields = map[string]bool{
 	"uri_path":     true,
 	"referer":      true,
 	"http_version": true,
+	"ja4":          true,
 	// v0.9.0: aggregate fields (multi-variable inspection)
 	"all_args":          true,
 	"all_args_values":   true,

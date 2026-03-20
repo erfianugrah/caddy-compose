@@ -33,7 +33,7 @@ export type ExclusionType = "allow" | "block" | "challenge" | "skip" | "detect" 
 export type ConditionField =
   | "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query"
   | "country" | "cookie" | "body" | "body_json" | "body_form" | "args"
-  | "uri_path" | "referer" | "response_header" | "response_status" | "http_version"
+  | "uri_path" | "referer" | "response_header" | "response_status" | "http_version" | "ja4"
   // Aggregate fields (combine multiple sources for broad matching)
   | "all_args" | "all_args_names" | "all_args_values"
   | "all_headers" | "all_headers_names"

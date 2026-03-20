@@ -402,6 +402,22 @@ export const CONDITION_FIELDS: FieldDef[] = [
     ],
     placeholder: "e.g., HTTP/1.0 or HTTP/2.0",
   },
+  {
+    value: "ja4", label: "JA4 TLS Fingerprint",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "begins_with", label: "begins with" },
+      { value: "regex", label: "matches regex" },
+      { value: "in", label: "is in" },
+      { value: "not_in", label: "is not in" },
+      { value: "in_list", label: "is in list" },
+      { value: "not_in_list", label: "is not in list" },
+    ],
+    placeholder: "e.g., t13d1516h2_8daaf6152771_e5627efa2ab1",
+    hint: "TLS client fingerprint computed from the ClientHello. Identifies browser/client implementation. Empty for non-TLS connections.",
+  },
   // ─── Aggregate Fields ────────────────────────────────────────────
   {
     value: "all_args", label: "All Args (names+values)",

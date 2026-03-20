@@ -46,6 +46,7 @@
 					}
 				}
 			}
+			ja4
 			tls
 		}
 		# Connection limits — prevent goroutine accumulation during DDoS storms.
