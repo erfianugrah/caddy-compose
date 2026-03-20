@@ -27,8 +27,8 @@ describe("lookupIP", () => {
         { service: "api.example.test", total: 20, total_blocked: 5, logged: 15 },
       ],
       events_by_hour: [
-        { hour: "2026-02-22T07:00:00Z", count: 20, total_blocked: 5, logged: 15, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
-        { hour: "2026-02-22T08:00:00Z", count: 30, total_blocked: 5, logged: 25, rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0 },
+        { hour: "2026-02-22T07:00:00Z", count: 20, total_blocked: 5, logged: 15, rate_limited: 0, policy_block: 0, detect_block: 0, ddos_blocked: 0, policy_allow: 0, policy_skip: 0, challenge_issued: 0, challenge_passed: 0, challenge_failed: 0 },
+        { hour: "2026-02-22T08:00:00Z", count: 30, total_blocked: 5, logged: 25, rate_limited: 0, policy_block: 0, detect_block: 0, ddos_blocked: 0, policy_allow: 0, policy_skip: 0, challenge_issued: 0, challenge_passed: 0, challenge_failed: 0 },
       ],
       events: [
         {
@@ -57,7 +57,8 @@ describe("lookupIP", () => {
     expect(result.timeline).toHaveLength(2);
     expect(result.timeline[0]).toEqual({
       hour: "2026-02-22T07:00:00Z", total: 20, total_blocked: 5, logged: 15,
-      rate_limited: 0, policy_block: 0, detect_block: 0, policy_allow: 0, policy_skip: 0,
+      rate_limited: 0, policy_block: 0, detect_block: 0, ddos_blocked: 0, policy_allow: 0, policy_skip: 0,
+      challenge_issued: 0, challenge_passed: 0, challenge_failed: 0,
     });
 
     // Events mapped

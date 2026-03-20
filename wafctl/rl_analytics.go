@@ -444,3 +444,73 @@ func matchRLCondition(evt RateLimitEvent, c Condition) bool {
 	}
 	return false
 }
+
+// ─── Service TopURIs/TopRules from AccessLogStore ───────────────────
+
+// ServiceTopURIs returns the top N URIs for a specific service from access log
+// events within the given time window. Used by handleServices to fill the
+// per-service URI drill-down that the legacy WAF store no longer populates.
+func (s *AccessLogStore) ServiceTopURIs(service string, hours, n int) []ServiceURI {
+	events := s.snapshotSince(hours)
+	type uriStats struct {
+		count, blocked int
+	}
+	m := make(map[string]*uriStats)
+	for i := range events {
+		if events[i].Service != service || events[i].URI == "" {
+			continue
+		}
+		us, ok := m[events[i].URI]
+		if !ok {
+			us = &uriStats{}
+			m[events[i].URI] = us
+		}
+		us.count++
+		blocked := events[i].Source != "logged" && events[i].Source != "policy_skip" &&
+			events[i].Source != "challenge_issued" && events[i].Source != "challenge_passed" &&
+			events[i].Source != "challenge_bypassed"
+		if blocked {
+			us.blocked++
+		}
+	}
+	result := make([]ServiceURI, 0, len(m))
+	for uri, us := range m {
+		result = append(result, ServiceURI{URI: uri, Count: us.count, TotalBlocked: us.blocked})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Count > result[j].Count })
+	if len(result) > n {
+		result = result[:n]
+	}
+	return result
+}
+
+// ServiceTopRules returns the top N triggered rules for a specific service from
+// access log events within the given time window.
+func (s *AccessLogStore) ServiceTopRules(service string, hours, n int) []ServiceRule {
+	events := s.snapshotSince(hours)
+	type ruleStats struct {
+		name  string
+		count int
+	}
+	m := make(map[string]*ruleStats)
+	for i := range events {
+		if events[i].Service != service || events[i].RuleName == "" {
+			continue
+		}
+		rs, ok := m[events[i].RuleName]
+		if !ok {
+			rs = &ruleStats{name: events[i].RuleName}
+			m[events[i].RuleName] = rs
+		}
+		rs.count++
+	}
+	result := make([]ServiceRule, 0, len(m))
+	for _, rs := range m {
+		result = append(result, ServiceRule{RuleMsg: rs.name, Count: rs.count})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Count > result[j].Count })
+	if len(result) > n {
+		result = result[:n]
+	}
+	return result
+}

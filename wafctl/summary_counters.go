@@ -13,15 +13,18 @@ import (
 // so that summary computation is O(buckets) instead of O(events).
 
 type hourBucket struct {
-	Total       int
-	Blocked     int
-	Logged      int
-	RateLimited int
-	PolicyBlock int
-	DetectBlock int
-	DDoSBlocked int
-	PolicyAllow int
-	PolicySkip  int
+	Total           int
+	Blocked         int
+	Logged          int
+	RateLimited     int
+	PolicyBlock     int
+	DetectBlock     int
+	DDoSBlocked     int
+	PolicyAllow     int
+	PolicySkip      int
+	ChallengeIssued int
+	ChallengePassed int
+	ChallengeFailed int
 	// Per-service, per-client, per-country, per-URI, per-tag counts.
 	Services  map[string]int
 	Clients   map[string]int
@@ -327,6 +330,7 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 
 	var totalEvents, totalBlocked, totalLogged, totalRateLimited int
 	var totalPolicyBlock, totalDetectBlock, totalDDoSBlocked, totalPolicyAllow, totalPolicySkip int
+	var totalChallengeIssued, totalChallengePassed, totalChallengeFailed int
 
 	hourCounts := make([]HourCount, 0, len(sc.hours))
 	svcMap := make(map[string]*[8]int)    // [total, blocked, logged, rl, policyBlock, detectBlock, policyAllow, policySkip]
@@ -352,23 +356,30 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 		totalDDoSBlocked += b.DDoSBlocked
 		totalPolicyAllow += b.PolicyAllow
 		totalPolicySkip += b.PolicySkip
+		totalChallengeIssued += b.ChallengeIssued
+		totalChallengePassed += b.ChallengePassed
+		totalChallengeFailed += b.ChallengeFailed
 
 		// Build HourCount.
-		logged := b.Total - b.Blocked - b.RateLimited - b.PolicyAllow - b.PolicySkip
+		logged := b.Total - b.Blocked - b.RateLimited - b.PolicyAllow - b.PolicySkip -
+			b.ChallengeIssued - b.ChallengePassed
 		if logged < 0 {
 			logged = 0
 		}
 		hourCounts = append(hourCounts, HourCount{
-			Hour:         hourKeyToRFC3339(key),
-			Count:        b.Total,
-			TotalBlocked: b.Blocked,
-			Logged:       logged,
-			RateLimited:  b.RateLimited,
-			PolicyBlock:  b.PolicyBlock,
-			DetectBlock:  b.DetectBlock,
-			DDoSBlocked:  b.DDoSBlocked,
-			PolicyAllow:  b.PolicyAllow,
-			PolicySkip:   b.PolicySkip,
+			Hour:            hourKeyToRFC3339(key),
+			Count:           b.Total,
+			TotalBlocked:    b.Blocked,
+			Logged:          logged,
+			RateLimited:     b.RateLimited,
+			PolicyBlock:     b.PolicyBlock,
+			DetectBlock:     b.DetectBlock,
+			DDoSBlocked:     b.DDoSBlocked,
+			PolicyAllow:     b.PolicyAllow,
+			PolicySkip:      b.PolicySkip,
+			ChallengeIssued: b.ChallengeIssued,
+			ChallengePassed: b.ChallengePassed,
+			ChallengeFailed: b.ChallengeFailed,
 		})
 
 		// Aggregate per-service.
@@ -569,6 +580,9 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 		DDoSBlocked:      totalDDoSBlocked,
 		PolicyAllowed:    totalPolicyAllow,
 		PolicySkipped:    totalPolicySkip,
+		ChallengeIssued:  totalChallengeIssued,
+		ChallengePassed:  totalChallengePassed,
+		ChallengeFailed:  totalChallengeFailed,
 		UniqueClients:    len(clientMap),
 		UniqueServices:   len(svcMap),
 		TagCounts:        tagCounts,
@@ -598,6 +612,9 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 	merged.DDoSBlocked += b.DDoSBlocked
 	merged.PolicyAllowed += b.PolicyAllowed
 	merged.PolicySkipped += b.PolicySkipped
+	merged.ChallengeIssued += b.ChallengeIssued
+	merged.ChallengePassed += b.ChallengePassed
+	merged.ChallengeFailed += b.ChallengeFailed
 
 	// Merge EventsByHour.
 	hourIdx := make(map[string]int, len(merged.EventsByHour))
@@ -615,6 +632,9 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.EventsByHour[idx].DDoSBlocked += hc.DDoSBlocked
 			merged.EventsByHour[idx].PolicyAllow += hc.PolicyAllow
 			merged.EventsByHour[idx].PolicySkip += hc.PolicySkip
+			merged.EventsByHour[idx].ChallengeIssued += hc.ChallengeIssued
+			merged.EventsByHour[idx].ChallengePassed += hc.ChallengePassed
+			merged.EventsByHour[idx].ChallengeFailed += hc.ChallengeFailed
 		} else {
 			hourIdx[hc.Hour] = len(merged.EventsByHour)
 			merged.EventsByHour = append(merged.EventsByHour, hc)
@@ -1142,6 +1162,17 @@ func classifyRLIntoBucket(b *hourBucket, eventType string, isBlocked bool, delta
 		b.PolicyAllow += delta
 	case eventType == "policy_skip":
 		b.PolicySkip += delta
+	case eventType == "challenge_issued":
+		b.ChallengeIssued += delta
+	case eventType == "challenge_passed":
+		b.ChallengePassed += delta
+	case eventType == "challenge_failed":
+		b.ChallengeFailed += delta
+		if isBlocked {
+			b.Blocked += delta
+		}
+	case eventType == "challenge_bypassed":
+		// Bypass is not counted as a distinct type — just a non-blocking pass-through.
 	case isBlocked:
 		b.Blocked += delta
 	default:

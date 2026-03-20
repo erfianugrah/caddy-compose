@@ -19,6 +19,9 @@ export interface SummaryData {
   ddos_blocked: number;
   policy_allowed: number;
   policy_skipped: number;
+  challenge_issued: number;
+  challenge_passed: number;
+  challenge_failed: number;
   unique_clients: number;
   unique_services: number;
   tag_counts: TagCount[];
@@ -41,6 +44,9 @@ export interface TimelinePoint {
   ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
+  challenge_issued: number;
+  challenge_passed: number;
+  challenge_failed: number;
 }
 
 export interface ServiceStat {

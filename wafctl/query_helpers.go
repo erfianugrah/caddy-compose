@@ -122,6 +122,14 @@ func rleEventType(source string) string {
 		return "logged"
 	case "policy_skip":
 		return "policy_skip"
+	case "challenge_issued":
+		return "challenge_issued"
+	case "challenge_passed":
+		return "challenge_passed"
+	case "challenge_failed":
+		return "challenge_failed"
+	case "challenge_bypassed":
+		return "challenge_bypassed"
 	default:
 		return "rate_limited"
 	}
@@ -129,7 +137,13 @@ func rleEventType(source string) string {
 
 // rleIsBlocked returns true if the RateLimitEvent source represents a blocked request.
 func rleIsBlocked(source string) bool {
-	return source != "logged" && source != "policy_skip"
+	switch source {
+	case "logged", "policy_skip",
+		"challenge_issued", "challenge_passed", "challenge_bypassed":
+		return false
+	default:
+		return true
+	}
 }
 
 // rleResponseStatus returns the HTTP status code for a RateLimitEvent.

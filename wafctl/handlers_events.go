@@ -564,6 +564,8 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 
 		// Build ServicesResponse from merged summary TopServices,
 		// enriching with TopURIs/TopRules from WAF event data.
+		// Fall back to AccessLogStore when the legacy WAF store has no data.
+		const topN = 10
 		var resp ServicesResponse
 		for _, sd := range merged.TopServices {
 			detail := ServiceDetail{
@@ -578,9 +580,20 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 				PolicyAllow:  sd.PolicyAllow,
 				PolicySkip:   sd.PolicySkip,
 			}
-			if wd, ok := wafDetailMap[sd.Service]; ok {
+			if wd, ok := wafDetailMap[sd.Service]; ok && len(wd.TopURIs) > 0 {
 				detail.TopURIs = wd.TopURIs
+			}
+			if wd, ok := wafDetailMap[sd.Service]; ok && len(wd.TopRules) > 0 {
 				detail.TopRules = wd.TopRules
+			}
+			// Fall back to AccessLogStore for TopURIs/TopRules when
+			// the legacy WAF store has no data (most events now flow
+			// through the access log store).
+			if len(detail.TopURIs) == 0 {
+				detail.TopURIs = als.ServiceTopURIs(sd.Service, hours, topN)
+			}
+			if len(detail.TopRules) == 0 {
+				detail.TopRules = als.ServiceTopRules(sd.Service, hours, topN)
 			}
 			resp.Services = append(resp.Services, detail)
 		}

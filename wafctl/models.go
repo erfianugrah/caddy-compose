@@ -92,6 +92,9 @@ type SummaryResponse struct {
 	DDoSBlocked      int             `json:"ddos_blocked"`
 	PolicyAllowed    int             `json:"policy_allowed"`
 	PolicySkipped    int             `json:"policy_skipped"`
+	ChallengeIssued  int             `json:"challenge_issued"`
+	ChallengePassed  int             `json:"challenge_passed"`
+	ChallengeFailed  int             `json:"challenge_failed"`
 	UniqueClients    int             `json:"unique_clients"`
 	UniqueServices   int             `json:"unique_services"`
 	TagCounts        []TagCount      `json:"tag_counts,omitempty"`
@@ -105,16 +108,19 @@ type SummaryResponse struct {
 }
 
 type HourCount struct {
-	Hour         string `json:"hour"`
-	Count        int    `json:"count"`
-	TotalBlocked int    `json:"total_blocked"`
-	Logged       int    `json:"logged"`
-	RateLimited  int    `json:"rate_limited"`
-	PolicyBlock  int    `json:"policy_block"`
-	DetectBlock  int    `json:"detect_block"`
-	DDoSBlocked  int    `json:"ddos_blocked"`
-	PolicyAllow  int    `json:"policy_allow"`
-	PolicySkip   int    `json:"policy_skip"`
+	Hour            string `json:"hour"`
+	Count           int    `json:"count"`
+	TotalBlocked    int    `json:"total_blocked"`
+	Logged          int    `json:"logged"`
+	RateLimited     int    `json:"rate_limited"`
+	PolicyBlock     int    `json:"policy_block"`
+	DetectBlock     int    `json:"detect_block"`
+	DDoSBlocked     int    `json:"ddos_blocked"`
+	PolicyAllow     int    `json:"policy_allow"`
+	PolicySkip      int    `json:"policy_skip"`
+	ChallengeIssued int    `json:"challenge_issued"`
+	ChallengePassed int    `json:"challenge_passed"`
+	ChallengeFailed int    `json:"challenge_failed"`
 }
 
 type ServiceCount struct {

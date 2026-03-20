@@ -108,7 +108,7 @@ interface RawIPLookup {
   first_seen: string | null;
   last_seen: string | null;
   services: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
-  events_by_hour?: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; policy_allow: number; policy_skip: number }[];
+  events_by_hour?: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
   events: {
     id: string;
     timestamp: string;
@@ -163,7 +163,7 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
     })),
-    timeline: (raw.events_by_hour ?? []).map((h) => ({
+    timeline: (raw.events_by_hour ?? []).map((h: any) => ({
       hour: h.hour,
       total: h.count ?? 0,
       total_blocked: h.total_blocked ?? 0,
@@ -171,8 +171,12 @@ export async function lookupIP(ip: string, limit = 50, offset = 0): Promise<IPLo
       rate_limited: h.rate_limited ?? 0,
       policy_block: h.policy_block ?? 0,
       detect_block: h.detect_block ?? 0,
+      ddos_blocked: h.ddos_blocked ?? 0,
       policy_allow: h.policy_allow ?? 0,
       policy_skip: h.policy_skip ?? 0,
+      challenge_issued: h.challenge_issued ?? 0,
+      challenge_passed: h.challenge_passed ?? 0,
+      challenge_failed: h.challenge_failed ?? 0,
     })),
     recent_events: (raw.events ?? []).map(mapEvent),
   };
