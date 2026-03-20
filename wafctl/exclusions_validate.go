@@ -254,7 +254,7 @@ func validateExclusion(e RuleExclusion) error {
 			return fmt.Errorf("rate_limit requires rate_limit_key")
 		}
 		if !validRLKeyPattern.MatchString(e.RateLimitKey) {
-			return fmt.Errorf("invalid rate_limit_key %q (must be client_ip, path, static, client_ip+path, client_ip+method, header:<name>, or cookie:<name>)", e.RateLimitKey)
+			return fmt.Errorf("invalid rate_limit_key %q (must be client_ip, path, static, client_ip+path, client_ip+method, challenge_cookie, header:<name>, or cookie:<name>)", e.RateLimitKey)
 		}
 		// Events and window.
 		if e.RateLimitEvents < 1 {

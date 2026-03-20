@@ -29,20 +29,22 @@ type AccessLogEntry struct {
 	Status               int                 `json:"status"`
 	Size                 int                 `json:"size"`
 	Duration             float64             `json:"duration"`
-	BytesRead            int                 `json:"bytes_read"`                       // request body bytes consumed
-	RequestID            string              `json:"request_id,omitempty"`             // Caddy UUID via log_append
-	PolicyAction         string              `json:"policy_action,omitempty"`          // log_append: policy engine action (allow/block/honeypot/detect_block)
-	PolicyRule           string              `json:"policy_rule,omitempty"`            // log_append: matched policy engine rule name
-	PolicyTags           string              `json:"policy_tags,omitempty"`            // log_append: comma-separated tags from matched rule(s)
-	PolicyScore          string              `json:"policy_score,omitempty"`           // log_append: anomaly score (detect rules only)
-	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`    // log_append: matched detect rule details "id:severity:score,..."
-	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`  // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
-	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"` // log_append: JSON-serialized request headers (block/detect_block only)
-	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`    // log_append: truncated request body excerpt (block/detect_block only)
-	DDoSAction           string              `json:"ddos_action,omitempty"`            // log_append: ddos mitigator action (pass/blocked/jailed)
-	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`       // log_append: FNV-64a request fingerprint
-	DDoSZScore           string              `json:"ddos_z_score,omitempty"`           // log_append: z-score at time of evaluation
-	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`        // log_append: "true"/"false" — spike detection state
+	BytesRead            int                 `json:"bytes_read"`                           // request body bytes consumed
+	RequestID            string              `json:"request_id,omitempty"`                 // Caddy UUID via log_append
+	PolicyAction         string              `json:"policy_action,omitempty"`              // log_append: policy engine action (allow/block/honeypot/detect_block)
+	PolicyRule           string              `json:"policy_rule,omitempty"`                // log_append: matched policy engine rule name
+	PolicyTags           string              `json:"policy_tags,omitempty"`                // log_append: comma-separated tags from matched rule(s)
+	PolicyScore          string              `json:"policy_score,omitempty"`               // log_append: anomaly score (detect rules only)
+	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`        // log_append: matched detect rule details "id:severity:score,..."
+	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`      // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
+	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"`     // log_append: JSON-serialized request headers (block/detect_block only)
+	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`        // log_append: truncated request body excerpt (block/detect_block only)
+	ChallengeBotScore    string              `json:"policy_challenge_bot_score,omitempty"` // log_append: bot signal score (0-100)
+	ChallengeJTI         string              `json:"policy_challenge_jti,omitempty"`       // log_append: challenge cookie token ID
+	DDoSAction           string              `json:"ddos_action,omitempty"`                // log_append: ddos mitigator action (pass/blocked/jailed)
+	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`           // log_append: FNV-64a request fingerprint
+	DDoSZScore           string              `json:"ddos_z_score,omitempty"`               // log_append: z-score at time of evaluation
+	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`            // log_append: "true"/"false" — spike detection state
 }
 
 type AccessLogReq struct {

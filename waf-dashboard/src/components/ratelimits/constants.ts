@@ -22,6 +22,7 @@ export const RL_KEY_OPTIONS: { value: string; label: string; description: string
   { value: "static", label: "Static (Global)", description: "Single shared counter for all matching requests" },
   { value: "client_ip+path", label: "Client IP + Path", description: "Rate limit per IP and path combination" },
   { value: "client_ip+method", label: "Client IP + Method", description: "Rate limit per IP and HTTP method" },
+  { value: "challenge_cookie", label: "Challenge Cookie", description: "Rate limit per solved challenge token — prevents cookie abuse after PoW" },
   { value: "header:", label: "Header Value", description: "Rate limit per request header value (e.g., header:X-API-Key)" },
   { value: "cookie:", label: "Cookie Value", description: "Rate limit per cookie value (e.g., cookie:session_id)" },
   { value: "body_json:", label: "Body JSON Field", description: "Rate limit per JSON body field value (e.g., body_json:.user.api_key)" },
