@@ -37,11 +37,13 @@
 
 ## Current State
 
-**v2.63.0 / caddy 3.59.0-2.11.1 / body-matcher v0.2.1 / policy-engine v0.23.0 / ddos-mitigator v0.16.0**
+**v2.67.0 / caddy 3.63.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.25.2 / ddos-mitigator v0.16.0**
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
-59 outbound), 6-pass evaluation (allow → block → skip → rate_limit → detect →
-response_header), unified rule store (`/api/rules` + `/api/deploy`), response-phase
+59 outbound), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
+response_header), proof-of-work challenge with 5-layer bot scoring (JA4 TLS, HTTP headers,
+JS probes, behavioral, spatial inconsistency), JA4 TLS fingerprinting via listener wrapper,
+unified rule store (`/api/rules` + `/api/deploy`), response-phase
 support for all rule types, structured CORS (preflight + origin validation), rule
 templates, per-service category masks, outbound anomaly scoring + rate limiting,
 incremental summary (O(hours)), managed lists, IPsum blocklist (571K IPs), CRS
@@ -2516,6 +2518,40 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 ---
 
 ## Completed (changelog)
+
+### v2.66.0 / caddy 3.62.0-2.11.2
+
+- **Proof-of-work challenge action** (policy-engine v0.24.0-v0.25.2): New `challenge`
+  rule type — SHA-256 hashcash PoW interstitial. Multi-threaded Web Worker solver with
+  pure-JS fallback. 7-pass evaluation pipeline (was 6-pass). Per-service HMAC-signed
+  cookies with cryptographic token IDs (jti), 1-hour default TTL, IP binding.
+  `challenge_cookie` rate limit key for post-challenge abuse prevention.
+- **5-layer bot signal scoring**: JS environment probes (17 signals: webdriver, plugins,
+  WebGL SwiftShader, canvas, speech voices, permissions timing, chrome.runtime, languages),
+  behavioral signals (5: mouse, keyboard, scroll, focus, worker timing variance),
+  JA4 TLS fingerprint scoring (ALPN, version), HTTP header analysis (Sec-Fetch-*,
+  Client Hints, Accept-Language), spatial inconsistency detection (mobile UA + desktop
+  signals, Chrome UA + non-browser JA4). Deep WebGL probes (MAX_TEXTURE_SIZE catches
+  stealth scripts that patch renderer string). Audio fingerprinting via OfflineAudioContext.
+  Score >= 70 → reject even with valid PoW.
+- **JA4 TLS fingerprinting** (policy-engine v0.25.0): Hand-rolled ClientHello binary
+  parser (zero deps). `caddy.ListenerWrapper` module between L4 DDoS and TLS. Full
+  FoxIO JA4 spec: 3-section format, GREASE filtered, sorted ciphers/extensions. `ja4`
+  condition field for policy rules. Caddy variable `policy_engine.ja4` in access log.
+- **Full data pipeline**: JA4, bot score, challenge JTI flow through
+  Caddy log_append → AccessLogStore → RateLimitEvent → Event → API → Dashboard.
+  General logs enriched with JA4 and policy action on every request.
+- **Dashboard**: Challenge in Quick Actions (ShieldQuestion), challenge form
+  (difficulty/algorithm/TTL/bind-IP), 4 event badges, JA4 + bot score + JTI in
+  event detail, JA4 in general log TLS section, `challenge_cookie` in RL key picker,
+  challenge counters in summary timeline.
+- **Services TopURIs/TopRules**: Fixed pre-existing issue — now sourced from
+  AccessLogStore when legacy WAF store is empty.
+- **Production deployment**: CORS configured (*.erfi.io), cache-static-assets template
+  applied (fonts/images/CSS/JS/media), Caddy 2.11.2 (CVE-2026-33186 mitigation).
+- **Test coverage**: 81 Go e2e tests, 11 Playwright browser tests (including AI
+  crawler detection: raw headless blocked, spoofed UA blocked, partial stealth blocked,
+  full stealth demonstrates detection limit), 334 frontend tests, ~1479 wafctl tests.
 
 ### v2.62.0 / caddy 3.58.0
 
