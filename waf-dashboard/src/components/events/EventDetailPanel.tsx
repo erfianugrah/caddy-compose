@@ -508,6 +508,13 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     ))}
                   </div>
                 )}
+                {event.user_agent && (
+                  <div className="flex gap-2 items-start">
+                    <span className="text-muted-foreground shrink-0">User-Agent:</span>
+                    <TruncatedCode value={event.user_agent} className="text-foreground" />
+                    <CopyBtn text={event.user_agent} />
+                  </div>
+                )}
               </>
             ) : event.event_type?.startsWith("policy_") ? (
               <>

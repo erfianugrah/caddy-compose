@@ -760,6 +760,9 @@ export function QuickActionsForm({
                 <option value="fast">Fast (WebCrypto)</option>
                 <option value="slow">Slow (CPU-intensive)</option>
               </select>
+              {challengeAlgorithm === "slow" && challengeDifficulty > 2 && (
+                <p className="mt-0.5 text-[10px] text-lv-red font-medium">Warning: slow + difficulty &gt;2 takes minutes to hours. Use difficulty 1-2 with slow, or switch to fast.</p>
+              )}
             </div>
             <div>
               <label className="text-xs text-lv-muted">Cookie TTL</label>
@@ -1066,6 +1069,9 @@ export function AdvancedBuilderForm({
                 <option value="fast">Fast (WebCrypto)</option>
                 <option value="slow">Slow (CPU-intensive)</option>
               </select>
+              {form.challenge_algorithm === "slow" && form.challenge_difficulty > 2 && (
+                <p className="mt-0.5 text-[10px] text-lv-red font-medium">Warning: slow + difficulty &gt;2 takes minutes to hours. Use difficulty 1-2 with slow, or switch to fast.</p>
+              )}
             </div>
             <div>
               <label className="text-xs text-lv-muted">Cookie TTL</label>
