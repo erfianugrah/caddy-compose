@@ -39,6 +39,7 @@ type AccessLogEntry struct {
 	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`      // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
 	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"`     // log_append: JSON-serialized request headers (block/detect_block only)
 	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`        // log_append: truncated request body excerpt (block/detect_block only)
+	PolicyJA4            string              `json:"policy_ja4,omitempty"`                 // log_append: JA4 TLS fingerprint
 	ChallengeBotScore    string              `json:"policy_challenge_bot_score,omitempty"` // log_append: bot signal score (0-100)
 	ChallengeJTI         string              `json:"policy_challenge_jti,omitempty"`       // log_append: challenge cookie token ID
 	DDoSAction           string              `json:"ddos_action,omitempty"`                // log_append: ddos mitigator action (pass/blocked/jailed)

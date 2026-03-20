@@ -161,6 +161,9 @@
 	log_append ddos_spike_mode {http.vars.ddos_mitigator.spike_mode}
 	log_append policy_action {http.vars.policy_engine.action}
 	log_append policy_rule {http.vars.policy_engine.rule_name}
+	log_append policy_ja4 {http.vars.policy_engine.ja4}
+	log_append policy_challenge_bot_score {http.vars.policy_engine.challenge_bot_score}
+	log_append policy_challenge_jti {http.vars.policy_engine.challenge_jti}
 	log_append policy_tags {http.vars.policy_engine.tags}
 	log_append policy_score {http.vars.policy_engine.anomaly_score}
 	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
