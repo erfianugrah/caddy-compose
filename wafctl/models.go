@@ -46,6 +46,10 @@ type Event struct {
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"`
 	RequestBody    string              `json:"request_body,omitempty"`
 	RequestArgs    map[string]string   `json:"request_args,omitempty"`
+	// JA4 TLS fingerprint + challenge fields
+	JA4               string `json:"ja4,omitempty"`                 // JA4 TLS fingerprint from listener wrapper
+	ChallengeBotScore int    `json:"challenge_bot_score,omitempty"` // bot signal score (0-100) at challenge time
+	ChallengeJTI      string `json:"challenge_jti,omitempty"`       // challenge cookie token ID
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`

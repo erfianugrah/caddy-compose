@@ -360,6 +360,28 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               </span>
               <CopyBtn text={String(event.status)} />
             </div>
+            {event.ja4 && (
+              <div className="flex gap-2 items-center">
+                <span className="text-muted-foreground">JA4:</span>
+                <code className="text-xs text-lv-cyan font-data">{event.ja4}</code>
+                <CopyBtn text={event.ja4} />
+              </div>
+            )}
+            {(event.challenge_bot_score !== undefined && event.challenge_bot_score > 0) && (
+              <div className="flex gap-2 items-center">
+                <span className="text-muted-foreground">Bot Score:</span>
+                <span className={event.challenge_bot_score >= 70 ? "text-lv-red font-semibold" : event.challenge_bot_score >= 40 ? "text-lv-yellow" : "text-lv-green"}>
+                  {event.challenge_bot_score}/100
+                </span>
+              </div>
+            )}
+            {event.challenge_jti && (
+              <div className="flex gap-2 items-center">
+                <span className="text-muted-foreground">Challenge Token:</span>
+                <code className="text-xs text-muted-foreground/70 font-data">{event.challenge_jti}</code>
+                <CopyBtn text={event.challenge_jti} />
+              </div>
+            )}
           </div>
         </div>
 

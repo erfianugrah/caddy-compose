@@ -91,6 +91,10 @@ type RateLimitEvent struct {
 	InlineTags     []string            `json:"inline_tags,omitempty"`     // detect_block/logged: tags from policy_tags log_append field
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"` // block/detect_block: captured request headers
 	RequestBody    string              `json:"request_body,omitempty"`    // block/detect_block: truncated body excerpt
+	// Challenge/JA4 fields
+	JA4               string `json:"ja4,omitempty"`                 // JA4 TLS fingerprint
+	ChallengeBotScore int    `json:"challenge_bot_score,omitempty"` // bot signal score (0-100)
+	ChallengeJTI      string `json:"challenge_jti,omitempty"`       // challenge cookie token ID
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`
@@ -762,6 +766,16 @@ func (s *AccessLogStore) Load() {
 						cfCountry := headerValue(entry.Request.Headers, "Cf-Ipcountry")
 						evt.Country = geoIP.Resolve(entry.Request.ClientIP, cfCountry)
 					}
+					// JA4 TLS fingerprint + challenge fields (available on all events).
+					if entry.PolicyJA4 != "" && entry.PolicyJA4 != "None" {
+						evt.JA4 = entry.PolicyJA4
+					}
+					if entry.ChallengeBotScore != "" && entry.ChallengeBotScore != "None" {
+						evt.ChallengeBotScore, _ = strconv.Atoi(entry.ChallengeBotScore)
+					}
+					if entry.ChallengeJTI != "" && entry.ChallengeJTI != "None" {
+						evt.ChallengeJTI = entry.ChallengeJTI
+					}
 					newEvents = append(newEvents, evt)
 				}
 			}
@@ -1100,6 +1114,16 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		EventType:      eventType,
 		Tags:           tags,
 		RequestID:      rle.RequestID,
+	}
+	// JA4 TLS fingerprint + challenge fields (available on all events).
+	if rle.JA4 != "" {
+		evt.JA4 = rle.JA4
+	}
+	if rle.ChallengeBotScore > 0 {
+		evt.ChallengeBotScore = rle.ChallengeBotScore
+	}
+	if rle.ChallengeJTI != "" {
+		evt.ChallengeJTI = rle.ChallengeJTI
 	}
 	// For DDoS mitigator blocks, pass through fingerprint and score.
 	if rle.Source == "ddos_blocked" || rle.Source == "ddos_jailed" {
