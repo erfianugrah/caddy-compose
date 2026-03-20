@@ -118,10 +118,10 @@ meaning any interface extraction affects all files in the same compilation unit.
 
 ### Production Deployment
 
-- [ ] Run `scripts/setup-cors.sh` to configure production CORS origins
-- [ ] Apply cache-static-assets template via `/api/rules/templates/cache-static-assets/apply`
-- [ ] Verify CORS preflight + origin validation in production
-- [ ] Monitor event store disk/memory usage (see README sizing guide)
+- [x] Run `scripts/setup-cors.sh` to configure production CORS origins
+- [x] Apply cache-static-assets template via `/api/rules/templates/cache-static-assets/apply`
+- [x] Verify CORS preflight + origin validation in production
+- [x] Monitor event store disk/memory usage (access: 97K/89MB, general: 49K/89MB — healthy)
 
 ---
 
@@ -2479,7 +2479,7 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 | **4** | RL counters → Valkey (opt.) | **3-4 weeks** | Medium | Yes (policy-engine) |
 | **Infra** | compose + schema + migration tool | **1-2 weeks** | Low | N/A |
 | **WS** | WebSocket + SSE inspection | **~14 days** | Medium | No (plugin only) |
-| **PoW** | Proof-of-work challenge action | **~10.5 days** | Low-Medium | No (plugin + wafctl) |
+| **PoW** | Proof-of-work challenge action | ~~10.5 days~~ **DONE** | Low-Medium | No (plugin + wafctl) |
 | **Cache** | Edge caching evaluation + integration | **4-8 weeks** | Medium | No (plugin only) |
 
 **Storage migration total: 14-21 weeks** for Phases 0-3 + Infra (Phase 4 adds 3-4 weeks).
