@@ -218,26 +218,56 @@ causes the event to be invisible in parts of the UI.
 
 ### Adding a New Rule Type (e.g., `challenge`)
 
+**wafctl model + validation:**
 - [ ] `models_exclusions.go` `validExclusionTypes` — add type
 - [ ] `models_exclusions.go` `RuleExclusion` struct — add type-specific fields
 - [ ] `exclusions_validate.go` `switch e.Type` — add validation case
 - [ ] `exclusions_validate.go` `validSkipPhases` — add if skippable
+- [ ] `models_ratelimit.go` `validRLKeyPattern` — add if new RL key type
+
+**wafctl generator + deploy:**
 - [ ] `policy_generator.go` `policyEngineTypes` — add type
 - [ ] `policy_generator.go` `policyTypePriority` — add priority band
 - [ ] `policy_generator.go` `PolicyRule` struct — add type-specific fields
 - [ ] `policy_generator.go` `GeneratePolicyRulesWithRL()` — add conversion block
-- [ ] Plugin `policyengine.go` `validRuleTypes` — add type
-- [ ] Plugin `policyengine.go` `validSkipPhases` — add if skippable
-- [ ] Plugin `policyengine.go` `compileRule()` — add compilation block
-- [ ] Plugin `policyengine.go` `ServeHTTP` switch — add `case` for the type
-- [ ] Plugin `policyengine.go` skip flag checks — add skip guard
-- [ ] Dashboard `exclusions.ts` `ExclusionType` — add type
-- [ ] Dashboard `exclusions.ts` `typeToGo` / `typeFromGo` — add mapping
-- [ ] Dashboard `constants.ts` `ALL_EXCLUSION_TYPES` — add entry
-- [ ] Dashboard `constants.ts` `QUICK_ACTIONS` — add if quick-access
-- [ ] Dashboard `constants.ts` `AdvancedFormState` + `emptyAdvancedForm` — add fields
-- [ ] Dashboard `PolicyForms.tsx` — add form section + handleTypeChange + handleSubmit
-- [ ] Dashboard `PolicyEngine.tsx` — add fields to edit form state
+- [ ] `deploy.go` `DeployConfig` — add any new config fields (e.g., HMAC key)
+- [ ] `main.go` — read env vars for new config, pass to `DeployConfig`
+
+**Plugin (caddy-policy-engine):**
+- [ ] `policyengine.go` `validRuleTypes` — add type
+- [ ] `policyengine.go` `validSkipPhases` — add if skippable
+- [ ] `policyengine.go` `compileRule()` — add compilation block
+- [ ] `policyengine.go` `ServeHTTP` switch — add `case` for the type
+- [ ] `policyengine.go` skip flag variable + skip check in loop
+- [ ] `policyengine.go` service matching — add type to service-scoped list if applicable
+- [ ] `policyengine.go` `compiledRule` struct — add type-specific compiled config
+- [ ] `policyengine.go` `compiledSkipTargets` — add skip flag field if skippable
+- [ ] `policyengine.go` `compileSkipTargets()` — add `case` for new phase
+- [ ] `PolicyRulesFile` struct — add global config if needed
+
+**Dashboard types:**
+- [ ] `exclusions.ts` `ExclusionType` — add type
+- [ ] `exclusions.ts` `Exclusion` interface — add type-specific fields
+- [ ] `exclusions.ts` `ExclusionCreateData` — add same fields
+- [ ] `exclusions.ts` `typeToGo` / `typeFromGo` — add mapping
+
+**Dashboard UI:**
+- [ ] `constants.ts` `ALL_EXCLUSION_TYPES` — add entry
+- [ ] `constants.ts` `QUICK_ACTIONS` — add if quick-access (with icon)
+- [ ] `constants.ts` `AdvancedFormState` + `emptyAdvancedForm` — add fields
+- [ ] `PolicyForms.tsx` — add form section for type-specific fields
+- [ ] `PolicyForms.tsx` `handleTypeChange` — add field resets
+- [ ] `PolicyForms.tsx` `handleSubmit` — add data serialization
+- [ ] `PolicyForms.tsx` `isValid` — add validation if needed
+- [ ] `PolicyForms.tsx` imports — add icon if new quick action
+- [ ] `PolicyForms.tsx` `QUICK_ACTION_ICONS` — add icon mapping
+- [ ] `PolicyEngine.tsx` `editFormState` — populate type-specific fields
+
+**Tests:**
+- [ ] `constants.test.ts` — update QUICK_ACTIONS count
+- [ ] `constants.test.ts` — update ALL_EXCLUSION_TYPES count
+- [ ] `exclusions_test.go` — add validation tests for new type
+- [ ] `policy_generator_test.go` — add generator tests (priority, conversion, defaults)
 
 ### Adding a New Condition Field (e.g., `ja4`)
 
