@@ -149,9 +149,11 @@ func rleIsBlocked(source string) bool {
 // rleResponseStatus returns the HTTP status code for a RateLimitEvent.
 func rleResponseStatus(rle *RateLimitEvent) int {
 	switch rle.Source {
-	case "policy", "ipsum", "detect_block", "ddos_blocked", "ddos_jailed":
+	case "policy", "ipsum", "detect_block", "ddos_blocked", "ddos_jailed", "challenge_failed":
 		return 403
-	case "policy_skip", "logged":
+	case "challenge_issued":
+		return 200
+	case "challenge_passed", "challenge_bypassed", "policy_skip", "logged":
 		return rle.Status
 	default:
 		return 429
@@ -161,7 +163,7 @@ func rleResponseStatus(rle *RateLimitEvent) int {
 // rleBlockedBy returns the blocked_by string for a RateLimitEvent.
 func rleBlockedBy(rle *RateLimitEvent) string {
 	switch rle.Source {
-	case "policy", "ipsum":
+	case "policy", "ipsum", "challenge_failed":
 		return "policy-engine"
 	case "detect_block":
 		return "anomaly_inbound"
@@ -205,7 +207,7 @@ func enrichSingleRLE(rle *RateLimitEvent, lookup *enrichmentLookup) Event {
 	switch rle.Source {
 	case "detect_block", "logged":
 		tags = rle.InlineTags
-	case "policy", "ipsum":
+	case "policy", "ipsum", "challenge_issued", "challenge_passed", "challenge_failed", "challenge_bypassed":
 		if t, ok := lookup.excTagsByName[rle.RuleName]; ok {
 			tags = t
 		}
@@ -229,7 +231,7 @@ func rleTags(rle *RateLimitEvent, lookup *enrichmentLookup) []string {
 	switch rle.Source {
 	case "detect_block", "logged":
 		return rle.InlineTags
-	case "policy", "ipsum":
+	case "policy", "ipsum", "challenge_issued", "challenge_passed", "challenge_failed", "challenge_bypassed":
 		return lookup.excTagsByName[rle.RuleName]
 	case "policy_rl":
 		return lookup.rlTagsByName[rle.RuleName]

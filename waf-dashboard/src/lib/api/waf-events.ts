@@ -60,6 +60,9 @@ export interface ServiceStat {
   ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
+  challenge_issued: number;
+  challenge_passed: number;
+  challenge_failed: number;
   block_rate: number;
 }
 
@@ -74,6 +77,9 @@ export interface ClientStat {
   ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
+  challenge_issued: number;
+  challenge_passed: number;
+  challenge_failed: number;
 }
 
 export interface ServiceBreakdown {
@@ -87,6 +93,9 @@ export interface ServiceBreakdown {
   ddos_blocked: number;
   policy_allow: number;
   policy_skip: number;
+  challenge_issued: number;
+  challenge_passed: number;
+  challenge_failed: number;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────
@@ -214,11 +223,11 @@ interface RawSummary {
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
   events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
-  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
-  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
+  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
+  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
   top_countries: { country: string; count: number; total_blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number }[];
+  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
   recent_events: RawEvent[];
 }
 
@@ -350,6 +359,9 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       ddos_blocked: s.ddos_blocked ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
+      challenge_issued: s.challenge_issued ?? 0,
+      challenge_passed: s.challenge_passed ?? 0,
+      challenge_failed: s.challenge_failed ?? 0,
       block_rate: s.count > 0 ? ((s.total_blocked ?? 0) / s.count) * 100 : 0,
     })),
     top_clients: (raw.top_clients ?? []).map((c) => ({
@@ -363,6 +375,9 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       ddos_blocked: c.ddos_blocked ?? 0,
       policy_allow: c.policy_allow ?? 0,
       policy_skip: c.policy_skip ?? 0,
+      challenge_issued: c.challenge_issued ?? 0,
+      challenge_passed: c.challenge_passed ?? 0,
+      challenge_failed: c.challenge_failed ?? 0,
     })),
     top_countries: (raw.top_countries ?? []).map((c) => ({
       country: c.country,
@@ -381,6 +396,9 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       ddos_blocked: s.ddos_blocked ?? 0,
       policy_allow: s.policy_allow ?? 0,
       policy_skip: s.policy_skip ?? 0,
+      challenge_issued: s.challenge_issued ?? 0,
+      challenge_passed: s.challenge_passed ?? 0,
+      challenge_failed: s.challenge_failed ?? 0,
     })),
   };
 }

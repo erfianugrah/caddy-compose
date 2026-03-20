@@ -34,20 +34,26 @@ type hourBucket struct {
 	// Per-client country mapping (first seen country per client in this bucket).
 	ClientCountry map[string]string
 	// Per-service action breakdown for ServiceDetail/ServiceCount.
-	ServiceRL          map[string]int
-	ServicePolicyBlock map[string]int
-	ServiceDetectBlock map[string]int
-	ServicePolicyAllow map[string]int
-	ServicePolicySkip  map[string]int
-	ServiceLogged      map[string]int
-	ServiceBlocked     map[string]int
+	ServiceRL              map[string]int
+	ServicePolicyBlock     map[string]int
+	ServiceDetectBlock     map[string]int
+	ServicePolicyAllow     map[string]int
+	ServicePolicySkip      map[string]int
+	ServiceLogged          map[string]int
+	ServiceBlocked         map[string]int
+	ServiceChallengeIssued map[string]int
+	ServiceChallengePassed map[string]int
+	ServiceChallengeFailed map[string]int
 	// Per-client action breakdown for ClientCount.
-	ClientRL          map[string]int
-	ClientPolicyBlock map[string]int
-	ClientDetectBlock map[string]int
-	ClientPolicyAllow map[string]int
-	ClientPolicySkip  map[string]int
-	ClientBlocked     map[string]int
+	ClientRL              map[string]int
+	ClientPolicyBlock     map[string]int
+	ClientDetectBlock     map[string]int
+	ClientPolicyAllow     map[string]int
+	ClientPolicySkip      map[string]int
+	ClientBlocked         map[string]int
+	ClientChallengeIssued map[string]int
+	ClientChallengePassed map[string]int
+	ClientChallengeFailed map[string]int
 	// Per-country blocked count.
 	CountryBlocked map[string]int
 	// Recent events (newest first, up to recentCap).
@@ -58,26 +64,32 @@ const recentCap = 10
 
 func newHourBucket() *hourBucket {
 	return &hourBucket{
-		Services:           make(map[string]int),
-		Clients:            make(map[string]int),
-		Countries:          make(map[string]int),
-		URIs:               make(map[string]int),
-		Tags:               make(map[string]int),
-		ClientCountry:      make(map[string]string),
-		ServiceRL:          make(map[string]int),
-		ServicePolicyBlock: make(map[string]int),
-		ServiceDetectBlock: make(map[string]int),
-		ServicePolicyAllow: make(map[string]int),
-		ServicePolicySkip:  make(map[string]int),
-		ServiceLogged:      make(map[string]int),
-		ServiceBlocked:     make(map[string]int),
-		ClientRL:           make(map[string]int),
-		ClientPolicyBlock:  make(map[string]int),
-		ClientDetectBlock:  make(map[string]int),
-		ClientPolicyAllow:  make(map[string]int),
-		ClientPolicySkip:   make(map[string]int),
-		ClientBlocked:      make(map[string]int),
-		CountryBlocked:     make(map[string]int),
+		Services:               make(map[string]int),
+		Clients:                make(map[string]int),
+		Countries:              make(map[string]int),
+		URIs:                   make(map[string]int),
+		Tags:                   make(map[string]int),
+		ClientCountry:          make(map[string]string),
+		ServiceRL:              make(map[string]int),
+		ServicePolicyBlock:     make(map[string]int),
+		ServiceDetectBlock:     make(map[string]int),
+		ServicePolicyAllow:     make(map[string]int),
+		ServicePolicySkip:      make(map[string]int),
+		ServiceLogged:          make(map[string]int),
+		ServiceBlocked:         make(map[string]int),
+		ServiceChallengeIssued: make(map[string]int),
+		ServiceChallengePassed: make(map[string]int),
+		ServiceChallengeFailed: make(map[string]int),
+		ClientRL:               make(map[string]int),
+		ClientPolicyBlock:      make(map[string]int),
+		ClientDetectBlock:      make(map[string]int),
+		ClientPolicyAllow:      make(map[string]int),
+		ClientPolicySkip:       make(map[string]int),
+		ClientBlocked:          make(map[string]int),
+		ClientChallengeIssued:  make(map[string]int),
+		ClientChallengePassed:  make(map[string]int),
+		ClientChallengeFailed:  make(map[string]int),
+		CountryBlocked:         make(map[string]int),
 	}
 }
 
@@ -160,6 +172,12 @@ func (sc *summaryCounters) incrementEvent(ev *Event) {
 		b.ServicePolicyAllow[ev.Service]++
 	case "policy_skip":
 		b.ServicePolicySkip[ev.Service]++
+	case "challenge_issued":
+		b.ServiceChallengeIssued[ev.Service]++
+	case "challenge_passed", "challenge_bypassed":
+		b.ServiceChallengePassed[ev.Service]++
+	case "challenge_failed":
+		b.ServiceChallengeFailed[ev.Service]++
 	default:
 		b.ServiceLogged[ev.Service]++
 	}
@@ -179,6 +197,12 @@ func (sc *summaryCounters) incrementEvent(ev *Event) {
 		b.ClientPolicyAllow[ev.ClientIP]++
 	case "policy_skip":
 		b.ClientPolicySkip[ev.ClientIP]++
+	case "challenge_issued":
+		b.ClientChallengeIssued[ev.ClientIP]++
+	case "challenge_passed", "challenge_bypassed":
+		b.ClientChallengePassed[ev.ClientIP]++
+	case "challenge_failed":
+		b.ClientChallengeFailed[ev.ClientIP]++
 	}
 	if ev.IsBlocked {
 		b.ClientBlocked[ev.ClientIP]++
@@ -238,6 +262,12 @@ func (sc *summaryCounters) decrementEvent(ev *Event) {
 		decrMap(b.ServicePolicyAllow, ev.Service)
 	case "policy_skip":
 		decrMap(b.ServicePolicySkip, ev.Service)
+	case "challenge_issued":
+		decrMap(b.ServiceChallengeIssued, ev.Service)
+	case "challenge_passed", "challenge_bypassed":
+		decrMap(b.ServiceChallengePassed, ev.Service)
+	case "challenge_failed":
+		decrMap(b.ServiceChallengeFailed, ev.Service)
 	default:
 		decrMap(b.ServiceLogged, ev.Service)
 	}
@@ -257,6 +287,12 @@ func (sc *summaryCounters) decrementEvent(ev *Event) {
 		decrMap(b.ClientPolicyAllow, ev.ClientIP)
 	case "policy_skip":
 		decrMap(b.ClientPolicySkip, ev.ClientIP)
+	case "challenge_issued":
+		decrMap(b.ClientChallengeIssued, ev.ClientIP)
+	case "challenge_passed", "challenge_bypassed":
+		decrMap(b.ClientChallengePassed, ev.ClientIP)
+	case "challenge_failed":
+		decrMap(b.ClientChallengeFailed, ev.ClientIP)
 	}
 	if ev.IsBlocked {
 		decrMap(b.ClientBlocked, ev.ClientIP)
@@ -344,8 +380,8 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 	var totalChallengeIssued, totalChallengePassed, totalChallengeFailed int
 
 	hourCounts := make([]HourCount, 0, len(sc.hours))
-	svcMap := make(map[string]*[8]int)    // [total, blocked, logged, rl, policyBlock, detectBlock, policyAllow, policySkip]
-	clientMap := make(map[string]*[7]int) // [total, rl, policyBlock, detectBlock, policyAllow, policySkip, blocked]
+	svcMap := make(map[string]*[11]int)    // [total, blocked, logged, rl, policyBlock, detectBlock, policyAllow, policySkip, challengeIssued, challengePassed, challengeFailed]
+	clientMap := make(map[string]*[10]int) // [total, rl, policyBlock, detectBlock, policyAllow, policySkip, blocked, challengeIssued, challengePassed, challengeFailed]
 	clientCountry := make(map[string]string)
 	uriMap := make(map[string]int)
 	tagMap := make(map[string]int)
@@ -397,24 +433,27 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 		for svc, count := range b.Services {
 			s, ok := svcMap[svc]
 			if !ok {
-				s = &[8]int{}
+				s = &[11]int{}
 				svcMap[svc] = s
 			}
 			s[0] += count
 			s[1] += b.ServiceBlocked[svc]
-			// logged computed later
+			// logged computed later (s[2])
 			s[3] += b.ServiceRL[svc]
 			s[4] += b.ServicePolicyBlock[svc]
 			s[5] += b.ServiceDetectBlock[svc]
 			s[6] += b.ServicePolicyAllow[svc]
 			s[7] += b.ServicePolicySkip[svc]
+			s[8] += b.ServiceChallengeIssued[svc]
+			s[9] += b.ServiceChallengePassed[svc]
+			s[10] += b.ServiceChallengeFailed[svc]
 		}
 
 		// Aggregate per-client.
 		for client, count := range b.Clients {
 			c, ok := clientMap[client]
 			if !ok {
-				c = &[7]int{}
+				c = &[10]int{}
 				clientMap[client] = c
 			}
 			c[0] += count
@@ -424,6 +463,9 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 			c[4] += b.ClientPolicyAllow[client]
 			c[5] += b.ClientPolicySkip[client]
 			c[6] += b.ClientBlocked[client]
+			c[7] += b.ClientChallengeIssued[client]
+			c[8] += b.ClientChallengePassed[client]
+			c[9] += b.ClientChallengeFailed[client]
 			if clientCountry[client] == "" {
 				clientCountry[client] = b.ClientCountry[client]
 			}
@@ -482,32 +524,38 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 	svcCounts := make([]ServiceCount, 0, len(svcMap))
 	svcBreakdown := make([]ServiceDetail, 0, len(svcMap))
 	for svc, s := range svcMap {
-		svcLogged := s[0] - s[1] - s[3] - s[6] - s[7]
+		svcLogged := s[0] - s[1] - s[3] - s[6] - s[7] - s[8] - s[9]
 		if svcLogged < 0 {
 			svcLogged = 0
 		}
 		sc := ServiceCount{
-			Service:      svc,
-			Count:        s[0],
-			TotalBlocked: s[1],
-			Logged:       svcLogged,
-			RateLimited:  s[3],
-			PolicyBlock:  s[4],
-			DetectBlock:  s[5],
-			PolicyAllow:  s[6],
-			PolicySkip:   s[7],
+			Service:         svc,
+			Count:           s[0],
+			TotalBlocked:    s[1],
+			Logged:          svcLogged,
+			RateLimited:     s[3],
+			PolicyBlock:     s[4],
+			DetectBlock:     s[5],
+			PolicyAllow:     s[6],
+			PolicySkip:      s[7],
+			ChallengeIssued: s[8],
+			ChallengePassed: s[9],
+			ChallengeFailed: s[10],
 		}
 		svcCounts = append(svcCounts, sc)
 		svcBreakdown = append(svcBreakdown, ServiceDetail{
-			Service:      svc,
-			Total:        s[0],
-			TotalBlocked: s[1],
-			Logged:       svcLogged,
-			RateLimited:  s[3],
-			PolicyBlock:  s[4],
-			DetectBlock:  s[5],
-			PolicyAllow:  s[6],
-			PolicySkip:   s[7],
+			Service:         svc,
+			Total:           s[0],
+			TotalBlocked:    s[1],
+			Logged:          svcLogged,
+			RateLimited:     s[3],
+			PolicyBlock:     s[4],
+			DetectBlock:     s[5],
+			PolicyAllow:     s[6],
+			PolicySkip:      s[7],
+			ChallengeIssued: s[8],
+			ChallengePassed: s[9],
+			ChallengeFailed: s[10],
 		})
 	}
 	sort.Slice(svcCounts, func(i, j int) bool {
@@ -524,15 +572,18 @@ func (sc *summaryCounters) buildSummary(hours int) SummaryResponse {
 	clientCounts := make([]ClientCount, 0, len(clientMap))
 	for client, c := range clientMap {
 		clientCounts = append(clientCounts, ClientCount{
-			Client:       client,
-			Country:      clientCountry[client],
-			Count:        c[0],
-			TotalBlocked: c[6],
-			RateLimited:  c[1],
-			PolicyBlock:  c[2],
-			DetectBlock:  c[3],
-			PolicyAllow:  c[4],
-			PolicySkip:   c[5],
+			Client:          client,
+			Country:         clientCountry[client],
+			Count:           c[0],
+			TotalBlocked:    c[6],
+			RateLimited:     c[1],
+			PolicyBlock:     c[2],
+			DetectBlock:     c[3],
+			PolicyAllow:     c[4],
+			PolicySkip:      c[5],
+			ChallengeIssued: c[7],
+			ChallengePassed: c[8],
+			ChallengeFailed: c[9],
 		})
 	}
 	sort.Slice(clientCounts, func(i, j int) bool {
@@ -671,6 +722,9 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.ServiceBreakdown[idx].DDoSBlocked += sd.DDoSBlocked
 			merged.ServiceBreakdown[idx].PolicyAllow += sd.PolicyAllow
 			merged.ServiceBreakdown[idx].PolicySkip += sd.PolicySkip
+			merged.ServiceBreakdown[idx].ChallengeIssued += sd.ChallengeIssued
+			merged.ServiceBreakdown[idx].ChallengePassed += sd.ChallengePassed
+			merged.ServiceBreakdown[idx].ChallengeFailed += sd.ChallengeFailed
 		} else {
 			svcIdx[sd.Service] = len(merged.ServiceBreakdown)
 			merged.ServiceBreakdown = append(merged.ServiceBreakdown, sd)
@@ -696,6 +750,9 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.TopServices[idx].DDoSBlocked += sc.DDoSBlocked
 			merged.TopServices[idx].PolicyAllow += sc.PolicyAllow
 			merged.TopServices[idx].PolicySkip += sc.PolicySkip
+			merged.TopServices[idx].ChallengeIssued += sc.ChallengeIssued
+			merged.TopServices[idx].ChallengePassed += sc.ChallengePassed
+			merged.TopServices[idx].ChallengeFailed += sc.ChallengeFailed
 		} else {
 			topSvcIdx[sc.Service] = len(merged.TopServices)
 			merged.TopServices = append(merged.TopServices, sc)
@@ -723,6 +780,9 @@ func mergeSummaryResponses(a, b SummaryResponse) SummaryResponse {
 			merged.TopClients[idx].DDoSBlocked += cc.DDoSBlocked
 			merged.TopClients[idx].PolicyAllow += cc.PolicyAllow
 			merged.TopClients[idx].PolicySkip += cc.PolicySkip
+			merged.TopClients[idx].ChallengeIssued += cc.ChallengeIssued
+			merged.TopClients[idx].ChallengePassed += cc.ChallengePassed
+			merged.TopClients[idx].ChallengeFailed += cc.ChallengeFailed
 			if merged.TopClients[idx].Country == "" && cc.Country != "" {
 				merged.TopClients[idx].Country = cc.Country
 			}
@@ -952,6 +1012,12 @@ func (sc *summaryCounters) incrementRLEvent(rle *RateLimitEvent) {
 		b.ServicePolicyAllow[rle.Service]++
 	case "policy_skip":
 		b.ServicePolicySkip[rle.Service]++
+	case "challenge_issued":
+		b.ServiceChallengeIssued[rle.Service]++
+	case "challenge_passed", "challenge_bypassed":
+		b.ServiceChallengePassed[rle.Service]++
+	case "challenge_failed":
+		b.ServiceChallengeFailed[rle.Service]++
 	default:
 		b.ServiceLogged[rle.Service]++
 	}
@@ -971,6 +1037,12 @@ func (sc *summaryCounters) incrementRLEvent(rle *RateLimitEvent) {
 		b.ClientPolicyAllow[rle.ClientIP]++
 	case "policy_skip":
 		b.ClientPolicySkip[rle.ClientIP]++
+	case "challenge_issued":
+		b.ClientChallengeIssued[rle.ClientIP]++
+	case "challenge_passed", "challenge_bypassed":
+		b.ClientChallengePassed[rle.ClientIP]++
+	case "challenge_failed":
+		b.ClientChallengeFailed[rle.ClientIP]++
 	}
 	if isBlocked {
 		b.ClientBlocked[rle.ClientIP]++
@@ -1032,6 +1104,12 @@ func (sc *summaryCounters) decrementRLEvent(rle *RateLimitEvent) {
 		decrMap(b.ServicePolicyAllow, rle.Service)
 	case "policy_skip":
 		decrMap(b.ServicePolicySkip, rle.Service)
+	case "challenge_issued":
+		decrMap(b.ServiceChallengeIssued, rle.Service)
+	case "challenge_passed", "challenge_bypassed":
+		decrMap(b.ServiceChallengePassed, rle.Service)
+	case "challenge_failed":
+		decrMap(b.ServiceChallengeFailed, rle.Service)
 	default:
 		decrMap(b.ServiceLogged, rle.Service)
 	}
@@ -1050,6 +1128,12 @@ func (sc *summaryCounters) decrementRLEvent(rle *RateLimitEvent) {
 		decrMap(b.ClientPolicyAllow, rle.ClientIP)
 	case "policy_skip":
 		decrMap(b.ClientPolicySkip, rle.ClientIP)
+	case "challenge_issued":
+		decrMap(b.ClientChallengeIssued, rle.ClientIP)
+	case "challenge_passed", "challenge_bypassed":
+		decrMap(b.ClientChallengePassed, rle.ClientIP)
+	case "challenge_failed":
+		decrMap(b.ClientChallengeFailed, rle.ClientIP)
 	}
 	if isBlocked {
 		decrMap(b.ClientBlocked, rle.ClientIP)

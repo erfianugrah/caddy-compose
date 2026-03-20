@@ -128,29 +128,35 @@ type HourCount struct {
 }
 
 type ServiceCount struct {
-	Service      string `json:"service"`
-	Count        int    `json:"count"`
-	TotalBlocked int    `json:"total_blocked"`
-	Logged       int    `json:"logged"`
-	RateLimited  int    `json:"rate_limited"`
-	PolicyBlock  int    `json:"policy_block"`
-	DetectBlock  int    `json:"detect_block"`
-	DDoSBlocked  int    `json:"ddos_blocked"`
-	PolicyAllow  int    `json:"policy_allow"`
-	PolicySkip   int    `json:"policy_skip"`
+	Service         string `json:"service"`
+	Count           int    `json:"count"`
+	TotalBlocked    int    `json:"total_blocked"`
+	Logged          int    `json:"logged"`
+	RateLimited     int    `json:"rate_limited"`
+	PolicyBlock     int    `json:"policy_block"`
+	DetectBlock     int    `json:"detect_block"`
+	DDoSBlocked     int    `json:"ddos_blocked"`
+	PolicyAllow     int    `json:"policy_allow"`
+	PolicySkip      int    `json:"policy_skip"`
+	ChallengeIssued int    `json:"challenge_issued"`
+	ChallengePassed int    `json:"challenge_passed"`
+	ChallengeFailed int    `json:"challenge_failed"`
 }
 
 type ClientCount struct {
-	Client       string `json:"client"`
-	Country      string `json:"country,omitempty"`
-	Count        int    `json:"count"`
-	TotalBlocked int    `json:"total_blocked"`
-	RateLimited  int    `json:"rate_limited"`
-	PolicyBlock  int    `json:"policy_block"`
-	DetectBlock  int    `json:"detect_block"`
-	DDoSBlocked  int    `json:"ddos_blocked"`
-	PolicyAllow  int    `json:"policy_allow"`
-	PolicySkip   int    `json:"policy_skip"`
+	Client          string `json:"client"`
+	Country         string `json:"country,omitempty"`
+	Count           int    `json:"count"`
+	TotalBlocked    int    `json:"total_blocked"`
+	RateLimited     int    `json:"rate_limited"`
+	PolicyBlock     int    `json:"policy_block"`
+	DetectBlock     int    `json:"detect_block"`
+	DDoSBlocked     int    `json:"ddos_blocked"`
+	PolicyAllow     int    `json:"policy_allow"`
+	PolicySkip      int    `json:"policy_skip"`
+	ChallengeIssued int    `json:"challenge_issued"`
+	ChallengePassed int    `json:"challenge_passed"`
+	ChallengeFailed int    `json:"challenge_failed"`
 }
 
 // Blocklist API response types
@@ -221,18 +227,21 @@ type ServiceRule struct {
 }
 
 type ServiceDetail struct {
-	Service      string        `json:"service"`
-	Total        int           `json:"total"`
-	TotalBlocked int           `json:"total_blocked"`
-	Logged       int           `json:"logged"`
-	RateLimited  int           `json:"rate_limited"`
-	PolicyBlock  int           `json:"policy_block"`
-	DetectBlock  int           `json:"detect_block"`
-	DDoSBlocked  int           `json:"ddos_blocked"`
-	PolicyAllow  int           `json:"policy_allow"`
-	PolicySkip   int           `json:"policy_skip"`
-	TopURIs      []ServiceURI  `json:"top_uris,omitempty"`
-	TopRules     []ServiceRule `json:"top_rules,omitempty"`
+	Service         string        `json:"service"`
+	Total           int           `json:"total"`
+	TotalBlocked    int           `json:"total_blocked"`
+	Logged          int           `json:"logged"`
+	RateLimited     int           `json:"rate_limited"`
+	PolicyBlock     int           `json:"policy_block"`
+	DetectBlock     int           `json:"detect_block"`
+	DDoSBlocked     int           `json:"ddos_blocked"`
+	PolicyAllow     int           `json:"policy_allow"`
+	PolicySkip      int           `json:"policy_skip"`
+	ChallengeIssued int           `json:"challenge_issued"`
+	ChallengePassed int           `json:"challenge_passed"`
+	ChallengeFailed int           `json:"challenge_failed"`
+	TopURIs         []ServiceURI  `json:"top_uris,omitempty"`
+	TopRules        []ServiceRule `json:"top_rules,omitempty"`
 }
 
 type ServicesResponse struct {

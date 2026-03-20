@@ -178,15 +178,28 @@ causes the event to be invisible in parts of the UI.
 - [ ] `access_log_store.go` `RateLimitEventToEvent()` — set `evt.RuleMsg` for the new event type (display in event detail)
 - [ ] `handlers_exclusions.go` `handleExclusionHits()` — add event type prefix to hits scan filter
 - [ ] `query_helpers.go` `rlEventTypes` map — add the new event type(s) so filtering works
+- [ ] `query_helpers.go` `wafEventTypes` map — add if the event type appears in the WAF store
 - [ ] `query_helpers.go` `rleEventType()` — add `case` returning the event type string
 - [ ] `query_helpers.go` `rleIsBlocked()` — add to non-blocking list if applicable
+- [ ] `query_helpers.go` `rleResponseStatus()` — add `case` if HTTP status differs from default 429
+- [ ] `query_helpers.go` `rleBlockedBy()` — add `case` if blocked by a specific component
+- [ ] `query_helpers.go` `enrichSingleRLE()` — add tag enrichment `case` for the new source
+- [ ] `query_helpers.go` `rleTags()` — add tag lookup `case` for the new source
 - [ ] `summary_counters.go` `hourBucket` — add counter field
 - [ ] `summary_counters.go` `classifyRLIntoBucket()` — add `case` incrementing the counter
 - [ ] `summary_counters.go` `classifyEventIntoBucket()` — add `case` for fallback Event-based path
 - [ ] `summary_counters.go` `buildSummary()` — accumulate total + populate in `SummaryResponse`
+- [ ] `summary_counters.go` `buildSummary()` logged derivation — subtract new type if non-blocking
 - [ ] `summary_counters.go` `mergeSummaryResponses()` — merge the new field
+- [ ] `summary_counters.go` `hourBucket` — add per-service/per-client breakdown maps for new type
+- [ ] `summary_counters.go` `incrementEvent()`/`decrementEvent()` — add service + client action breakdown cases
+- [ ] `summary_counters.go` `incrementRLEvent()`/`decrementRLEvent()` — same for RLE-based path
+- [ ] `summary_counters.go` `buildSummary()` `svcMap`/`clientMap` — expand tuple + aggregate new field
 - [ ] `models.go` `SummaryResponse` — add field
 - [ ] `models.go` `HourCount` — add field
+- [ ] `models.go` `ServiceCount` — add counter field
+- [ ] `models.go` `ClientCount` — add counter field
+- [ ] `models.go` `ServiceDetail` — add counter field
 - [ ] `models.go` `Event` — add any new per-event fields (e.g., `ja4`, `bot_score`)
 - [ ] `models_general_logs.go` `GeneralLogEvent` — add field if visible on all requests
 
@@ -197,8 +210,17 @@ causes the event to be invisible in parts of the UI.
 - [ ] `waf-events.ts` `TimelinePoint` — add counter field
 - [ ] `waf-events.ts` `RawSummary` — add counter fields (top-level scalars)
 - [ ] `waf-events.ts` `RawSummary.events_by_hour` — add counter fields to inline type
+- [ ] `waf-events.ts` `RawSummary.top_services` — add counter fields to inline type
+- [ ] `waf-events.ts` `RawSummary.top_clients` — add counter fields to inline type
+- [ ] `waf-events.ts` `RawSummary.service_breakdown` — add counter fields to inline type
 - [ ] `waf-events.ts` `fetchSummary()` — map scalar counter fields from raw response
 - [ ] `waf-events.ts` `fetchSummary()` timeline mapper — map counter fields from `events_by_hour`
+- [ ] `waf-events.ts` `fetchSummary()` top_services mapper — map counter fields
+- [ ] `waf-events.ts` `fetchSummary()` top_clients mapper — map counter fields
+- [ ] `waf-events.ts` `fetchSummary()` service_breakdown mapper — map counter fields
+- [ ] `waf-events.ts` `ServiceStat` interface — add counter field
+- [ ] `waf-events.ts` `ClientStat` interface — add counter field
+- [ ] `waf-events.ts` `ServiceBreakdown` interface — add counter field
 - [ ] `waf-events.ts` `WAFEvent` — add any new per-event fields
 - [ ] `waf-events.ts` `RawEvent` — add matching fields
 - [ ] `waf-events.ts` `mapEvent()` — propagate new fields
@@ -215,6 +237,7 @@ causes the event to be invisible in parts of the UI.
 - [ ] `OverviewDashboard.tsx` timeline chart — add gradient + `<Area>` series
 - [ ] `OverviewDashboard.tsx` pie chart breakdown — add slice
 - [ ] `OverviewDashboard.tsx` logged computation — subtract new type if non-blocking
+- [ ] `OverviewDashboard.tsx` Top Clients bar chart logged computation — subtract new non-blocking type
 - [ ] `OverviewDashboard.tsx` stacked bar charts — add `<Bar>` if needed
 - [ ] `EventDetailPanel.tsx` — add type-specific rendering branch in detail panel
 - [ ] `EventDetailPanel.tsx` — display `user_agent` field (from request context headers)
@@ -225,6 +248,7 @@ causes the event to be invisible in parts of the UI.
 **Tests:**
 - [ ] `constants.test.ts` — update type/option counts
 - [ ] `DashboardFilterBar.test.ts` — update event_type option count
+- [ ] `waf-events.test.ts` — update timeline fixture, service_breakdown fixture, event type coverage
 - [ ] `analytics.test.ts` — update timeline fixture fields
 
 ### Adding a New Rule Type (e.g., `challenge`)

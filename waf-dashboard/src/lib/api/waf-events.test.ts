@@ -112,6 +112,9 @@ describe("fetchSummary", () => {
       ddos_blocked: 0,
       policy_allow: 0,
       policy_skip: 0,
+      challenge_issued: 0,
+      challenge_passed: 0,
+      challenge_failed: 0,
     });
 
     // recent_events mapped from Go events
