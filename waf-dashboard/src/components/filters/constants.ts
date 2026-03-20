@@ -15,12 +15,16 @@ export const OP_META: Record<FilterOp, OpMeta> = {
 // ─── Shared option lists ────────────────────────────────────────────
 
 export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "detect_block", label: ACTION_LABELS.detect_block },
-  { value: "logged",       label: ACTION_LABELS.logged },
-  { value: "rate_limited", label: ACTION_LABELS.rate_limited },
-  { value: "policy_skip",  label: ACTION_LABELS.policy_skip },
-  { value: "policy_allow", label: ACTION_LABELS.policy_allow },
-  { value: "policy_block", label: ACTION_LABELS.policy_block },
+  { value: "detect_block",       label: ACTION_LABELS.detect_block },
+  { value: "logged",             label: ACTION_LABELS.logged },
+  { value: "rate_limited",       label: ACTION_LABELS.rate_limited },
+  { value: "policy_skip",        label: ACTION_LABELS.policy_skip },
+  { value: "policy_allow",       label: ACTION_LABELS.policy_allow },
+  { value: "policy_block",       label: ACTION_LABELS.policy_block },
+  { value: "challenge_issued",   label: ACTION_LABELS.challenge_issued },
+  { value: "challenge_passed",   label: ACTION_LABELS.challenge_passed },
+  { value: "challenge_failed",   label: ACTION_LABELS.challenge_failed },
+  { value: "challenge_bypassed", label: ACTION_LABELS.challenge_bypassed },
 ];
 
 export const METHOD_OPTIONS: { value: string; label: string }[] = [

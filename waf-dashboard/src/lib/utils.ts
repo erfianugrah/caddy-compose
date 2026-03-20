@@ -16,9 +16,13 @@ export const ACTION_COLORS = {
   policy_allow: "#5adecd", // lv-green    — policy engine allows (safe bypass)
   policy_skip:  "#8796f4", // lv-blue     — policy engine rule skips (tuning)
   ddos_blocked: "#c9a0dc", // lv-purple   — DDoS mitigator behavioral block
-  ddos_jailed:  "#c9a0dc", // lv-purple   — DDoS mitigator auto-jail
-  logged:       "#79e6f3", // lv-cyan     — benign baseline (high volume, calm)
-  total_blocked: "#f37e96", // lv-red     — aggregate blocked (detect_block + policy_block + residual)
+  ddos_jailed:         "#c9a0dc", // lv-purple   — DDoS mitigator auto-jail
+  challenge_issued:    "#f0c674", // lv-yellow   — challenge interstitial served
+  challenge_passed:    "#5adecd", // lv-green    — challenge solved successfully
+  challenge_failed:    "#f37e96", // lv-red      — challenge failed (bot score too high)
+  challenge_bypassed:  "#79e6f3", // lv-cyan     — valid cookie, challenge skipped
+  logged:              "#79e6f3", // lv-cyan     — benign baseline (high volume, calm)
+  total_blocked:       "#f37e96", // lv-red     — aggregate blocked (detect_block + policy_block + residual)
 } as const;
 
 // Human-readable labels for chart legends, filters, and badges.

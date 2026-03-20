@@ -344,8 +344,8 @@ describe("FILTER_FIELDS", () => {
     expect(fields).toContain("country");
   });
 
-  it("event_type has 6 options", () => {
-    expect(FILTER_FIELDS.event_type.options).toHaveLength(6);
+  it("event_type has 10 options (6 base + 4 challenge)", () => {
+    expect(FILTER_FIELDS.event_type.options).toHaveLength(10);
   });
 
   it("method has 7 options", () => {

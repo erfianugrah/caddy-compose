@@ -324,6 +324,8 @@ export default function OverviewDashboard() {
           ...(data.ddos_blocked > 0 ? [{ name: ACTION_LABELS.ddos_blocked, value: data.ddos_blocked }] : []),
           ...(data.policy_allowed > 0 ? [{ name: ACTION_LABELS.policy_allow, value: data.policy_allowed }] : []),
           ...(data.policy_skipped > 0 ? [{ name: ACTION_LABELS.policy_skip, value: data.policy_skipped }] : []),
+          ...(data.challenge_issued > 0 ? [{ name: ACTION_LABELS.challenge_issued, value: data.challenge_issued }] : []),
+          ...(data.challenge_failed > 0 ? [{ name: ACTION_LABELS.challenge_failed, value: data.challenge_failed }] : []),
           ...(data.logged > 0 ? [{ name: ACTION_LABELS.logged, value: data.logged }] : []),
         ]
       : [],
@@ -463,6 +465,10 @@ export default function OverviewDashboard() {
                     <stop offset="5%" stopColor={ACTION_COLORS.policy_skip} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={ACTION_COLORS.policy_skip} stopOpacity={0} />
                   </linearGradient>
+                  <linearGradient id="gradChallengeIssued" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={ACTION_COLORS.challenge_issued} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={ACTION_COLORS.challenge_issued} stopOpacity={0} />
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#414457" vertical={false} />
                 <XAxis
@@ -511,6 +517,7 @@ export default function OverviewDashboard() {
                 <Area type="monotone" dataKey="ddos_blocked" stroke={ACTION_COLORS.ddos_blocked} fill="url(#gradDDoSBlocked)" strokeWidth={2} name={ACTION_LABELS.ddos_blocked} hide={hiddenSeries.has("ddos_blocked")} />
                 <Area type="monotone" dataKey="policy_allow" stroke={ACTION_COLORS.policy_allow} fill="url(#gradPolicyAllow)" strokeWidth={2} name={ACTION_LABELS.policy_allow} hide={hiddenSeries.has("policy_allow")} />
                 <Area type="monotone" dataKey="policy_skip" stroke={ACTION_COLORS.policy_skip} fill="url(#gradPolicySkip)" strokeWidth={2} name={ACTION_LABELS.policy_skip} hide={hiddenSeries.has("policy_skip")} />
+                <Area type="monotone" dataKey="challenge_issued" stroke={ACTION_COLORS.challenge_issued} fill="url(#gradChallengeIssued)" strokeWidth={2} name={ACTION_LABELS.challenge_issued} hide={hiddenSeries.has("challenge_issued")} />
                 {/* Selection overlay while dragging */}
                 {refAreaLeft && refAreaRight && (
                   <ReferenceArea
@@ -926,6 +933,8 @@ const STAT_CARD_DEFS: {
   { key: "ddos_blocked",   label: ACTION_LABELS.ddos_blocked,   icon: ShieldAlert, color: "purple", href: "/dos" },
   { key: "policy_allowed",  label: ACTION_LABELS.policy_allow,  icon: ShieldCheck, color: "green",  href: "/events?type=policy_allow" },
   { key: "policy_skipped",  label: ACTION_LABELS.policy_skip,   icon: ShieldCheck, color: "blue",   href: "/events?type=policy_skip" },
+  { key: "challenge_issued", label: ACTION_LABELS.challenge_issued, icon: Shield,  color: "yellow", href: "/events?type=challenge_issued" },
+  { key: "challenge_failed", label: ACTION_LABELS.challenge_failed, icon: ShieldAlert, color: "red", href: "/events?type=challenge_failed" },
   { key: "logged",          label: ACTION_LABELS.logged,        icon: Shield,      color: "cyan",   href: "/events?type=logged" },
 ];
 
