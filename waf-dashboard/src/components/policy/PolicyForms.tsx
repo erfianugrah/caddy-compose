@@ -841,10 +841,10 @@ export function AdvancedBuilderForm({
       if (hasTargets) data.skip_targets = st;
     }
     if (isChallenge) {
-      if (form.challenge_difficulty !== 4) data.challenge_difficulty = form.challenge_difficulty;
-      if (form.challenge_algorithm !== "fast") data.challenge_algorithm = form.challenge_algorithm as "fast" | "slow";
-      if (form.challenge_ttl !== "1h") data.challenge_ttl = form.challenge_ttl;
-      if (!form.challenge_bind_ip) data.challenge_bind_ip = false;
+      data.challenge_difficulty = form.challenge_difficulty;
+      data.challenge_algorithm = form.challenge_algorithm as "fast" | "slow";
+      data.challenge_ttl = form.challenge_ttl;
+      data.challenge_bind_ip = form.challenge_bind_ip;
     }
     if (isResponseHeader) {
       if (Object.keys(form.header_set).length > 0) data.header_set = form.header_set;

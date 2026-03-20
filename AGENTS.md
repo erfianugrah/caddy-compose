@@ -250,6 +250,7 @@ causes the event to be invisible in parts of the UI.
 - [ ] `exclusions.ts` `Exclusion` interface — add type-specific fields
 - [ ] `exclusions.ts` `ExclusionCreateData` — add same fields
 - [ ] `exclusions.ts` `typeToGo` / `typeFromGo` — add mapping
+- [ ] `exclusions.ts` `mapExclusionToGo()` — add type-specific fields to API payload
 
 **Dashboard UI:**
 - [ ] `constants.ts` `ALL_EXCLUSION_TYPES` — add entry

@@ -267,6 +267,10 @@ function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Reco
   if (data.rate_limit_events !== undefined) result.rate_limit_events = data.rate_limit_events;
   if (data.rate_limit_window !== undefined) result.rate_limit_window = data.rate_limit_window;
   if (data.rate_limit_action !== undefined) result.rate_limit_action = data.rate_limit_action;
+  if (data.challenge_difficulty !== undefined) result.challenge_difficulty = data.challenge_difficulty;
+  if (data.challenge_algorithm !== undefined) result.challenge_algorithm = data.challenge_algorithm;
+  if (data.challenge_ttl !== undefined) result.challenge_ttl = data.challenge_ttl;
+  if (data.challenge_bind_ip !== undefined) result.challenge_bind_ip = data.challenge_bind_ip;
   if (data.header_set !== undefined) result.header_set = data.header_set;
   if (data.header_add !== undefined) result.header_add = data.header_add;
   if (data.header_remove !== undefined) result.header_remove = data.header_remove;
