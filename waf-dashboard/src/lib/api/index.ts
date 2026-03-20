@@ -18,4 +18,5 @@ export * from "./default-rules";
 export * from "./backup";
 export * from "./templates";
 export * from "./dos";
+export * from "./health";
 

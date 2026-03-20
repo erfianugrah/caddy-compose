@@ -61,6 +61,27 @@ export function formatDateTime(ts: string | null | undefined): string {
   }
 }
 
+/**
+ * Format a Go time.Duration string ("72h3m10s") into a human-friendly form.
+ * Output examples: "3d 0h", "14h 23m", "45m 12s", "12s"
+ */
+export function formatUptime(dur: string): string {
+  const re = /(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/;
+  const m = dur.match(re);
+  if (!m) return dur;
+  let hours = parseInt(m[1] || "0", 10);
+  const mins = parseInt(m[2] || "0", 10);
+  const secs = parseInt(m[3] || "0", 10);
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    hours = hours % 24;
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) return `${hours}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
+
 /** Validate a duration window string like "3m", "45s", "2h". */
 export function isValidWindow(s: string): boolean {
   return /^\d+[smh]$/.test(s.trim().toLowerCase());
