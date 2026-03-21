@@ -391,6 +391,28 @@ export const CONDITION_FIELDS: FieldDef[] = [
     placeholder: "e.g., 403 or 401 403 500",
   },
   {
+    value: "response_content_type", label: "Response Content-Type",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "not_contains", label: "does not contain" },
+      { value: "begins_with", label: "begins with" },
+      { value: "not_begins_with", label: "does not begin with" },
+      { value: "ends_with", label: "ends with" },
+      { value: "not_ends_with", label: "does not end with" },
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+      { value: "phrase_match", label: "phrase match" },
+      { value: "not_phrase_match", label: "no phrase match" },
+      { value: "in", label: "is in" },
+      { value: "not_in", label: "is not in" },
+      { value: "in_list", label: "is in list" },
+      { value: "not_in_list", label: "is not in list" },
+    ],
+    placeholder: "e.g., text/html or application/json",
+  },
+  {
     value: "http_version", label: "HTTP Version",
     operators: [
       { value: "eq", label: "equals" },

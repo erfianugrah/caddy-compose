@@ -33,7 +33,7 @@ export type ExclusionType = "allow" | "block" | "challenge" | "skip" | "detect" 
 export type ConditionField =
   | "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query"
   | "country" | "cookie" | "body" | "body_json" | "body_form" | "args"
-  | "uri_path" | "referer" | "response_header" | "response_status" | "http_version" | "ja4"
+  | "uri_path" | "referer" | "response_header" | "response_status" | "response_content_type" | "http_version" | "ja4"
   // Aggregate fields (combine multiple sources for broad matching)
   | "all_args" | "all_args_names" | "all_args_values"
   | "all_headers" | "all_headers_names"
@@ -94,6 +94,9 @@ export interface SkipTargets {
 
 export type RulePhase = "inbound" | "outbound";
 
+/** Server-assigned fields present on stored exclusions. */
+type ExclusionServerFields = "id" | "created_at" | "updated_at";
+
 export interface Exclusion {
   id: string;
   name: string;
@@ -104,7 +107,9 @@ export interface Exclusion {
   group_operator: GroupOperator;
   service?: string;
   priority?: number;
+  // skip fields
   skip_targets?: SkipTargets;
+  // detect fields
   severity?: string;
   detect_paranoia_level?: number;
   // rate_limit fields
@@ -128,38 +133,20 @@ export interface Exclusion {
   updated_at: string;
 }
 
-export interface ExclusionCreateData {
+/**
+ * Data for creating a new exclusion — same as Exclusion without server-assigned
+ * fields, with most fields optional for partial payloads.
+ * Derived from Exclusion to stay in sync automatically — adding a field to
+ * Exclusion automatically makes it available here.
+ */
+export interface ExclusionCreateData extends Omit<Partial<Exclusion>, ExclusionServerFields> {
+  /** Required fields for creation. */
   name: string;
-  description?: string;
   type: ExclusionType;
-  phase?: RulePhase;
-  conditions?: Condition[];
-  group_operator?: GroupOperator;
-  service?: string;
-  priority?: number;
-  skip_targets?: SkipTargets;
-  severity?: string;
-  detect_paranoia_level?: number;
-  // challenge fields
-  challenge_difficulty?: number;
-  challenge_algorithm?: "fast" | "slow";
-  challenge_ttl?: string;
-  challenge_bind_ip?: boolean;
-  // rate_limit fields
-  rate_limit_key?: string;
-  rate_limit_events?: number;
-  rate_limit_window?: string;
-  rate_limit_action?: string;
-  // response_header fields
-  header_set?: Record<string, string>;
-  header_add?: Record<string, string>;
-  header_remove?: string[];
-  header_default?: Record<string, string>;
-  tags?: string[];
   enabled: boolean;
 }
 
-export interface ExclusionUpdateData extends Partial<ExclusionCreateData> {}
+export type ExclusionUpdateData = Partial<ExclusionCreateData>;
 
 export interface DeployResult {
   status: "deployed" | "partial";
@@ -225,8 +212,15 @@ interface RawExclusion {
   updated_at: string;
 }
 
+/**
+ * Map a raw Go API response to a typed Exclusion.
+ *
+ * Normalizes `type` via `typeFromGo`, coerces `phase` and `group_operator` to
+ * their union types, and converts falsy optional fields to `undefined`.
+ */
 function mapExclusionFromGo(raw: RawExclusion): Exclusion {
   return {
+    // ─── required / server-assigned ──────────────────────────────
     id: raw.id,
     name: raw.name,
     description: raw.description,
@@ -234,57 +228,50 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     phase: (raw.phase as RulePhase) || undefined,
     conditions: raw.conditions ?? [],
     group_operator: (raw.group_operator as GroupOperator) || "and",
+    enabled: raw.enabled,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    // ─── common optional ─────────────────────────────────────────
     service: raw.service || undefined,
     priority: raw.priority ?? undefined,
+    tags: raw.tags,
+    // ─── skip ────────────────────────────────────────────────────
     skip_targets: raw.skip_targets ?? undefined,
+    // ─── detect ──────────────────────────────────────────────────
     severity: raw.severity || undefined,
     detect_paranoia_level: raw.detect_paranoia_level ?? undefined,
+    // ─── rate_limit ──────────────────────────────────────────────
     rate_limit_key: raw.rate_limit_key || undefined,
     rate_limit_events: raw.rate_limit_events ?? undefined,
     rate_limit_window: raw.rate_limit_window || undefined,
     rate_limit_action: raw.rate_limit_action || undefined,
+    // ─── challenge ───────────────────────────────────────────────
+    challenge_difficulty: raw.challenge_difficulty ?? undefined,
+    challenge_algorithm: (raw.challenge_algorithm as "fast" | "slow") || undefined,
+    challenge_ttl: raw.challenge_ttl || undefined,
+    challenge_bind_ip: raw.challenge_bind_ip ?? undefined,
+    // ─── response_header ─────────────────────────────────────────
     header_set: raw.header_set || undefined,
     header_add: raw.header_add || undefined,
     header_remove: raw.header_remove || undefined,
-    challenge_difficulty: raw.challenge_difficulty ?? undefined,
-    challenge_algorithm: raw.challenge_algorithm || undefined,
-    challenge_ttl: raw.challenge_ttl || undefined,
-    challenge_bind_ip: raw.challenge_bind_ip ?? undefined,
     header_default: raw.header_default || undefined,
-    tags: raw.tags,
-    enabled: raw.enabled,
-    created_at: raw.created_at,
-    updated_at: raw.updated_at,
   };
 }
 
+/**
+ * Convert frontend exclusion data to the Go API shape.
+ *
+ * All field names are 1:1 with the Go JSON tags (no renaming needed) except
+ * `type` which is mapped through `typeToGo`. Only defined (non-undefined)
+ * fields are included so partial updates work correctly.
+ */
 function mapExclusionToGo(data: ExclusionCreateData | ExclusionUpdateData): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  if (data.name !== undefined) result.name = data.name;
-  if (data.description !== undefined) result.description = data.description;
-  if (data.type !== undefined) result.type = typeToGo[data.type] ?? data.type;
-  if (data.phase !== undefined) result.phase = data.phase;
-  if (data.conditions !== undefined) result.conditions = data.conditions;
-  if (data.group_operator !== undefined) result.group_operator = data.group_operator;
-  if (data.skip_targets !== undefined) result.skip_targets = data.skip_targets;
-  if (data.severity !== undefined) result.severity = data.severity;
-  if (data.detect_paranoia_level !== undefined) result.detect_paranoia_level = data.detect_paranoia_level;
-  if (data.service !== undefined) result.service = data.service;
-  if (data.priority !== undefined) result.priority = data.priority;
-  if (data.rate_limit_key !== undefined) result.rate_limit_key = data.rate_limit_key;
-  if (data.rate_limit_events !== undefined) result.rate_limit_events = data.rate_limit_events;
-  if (data.rate_limit_window !== undefined) result.rate_limit_window = data.rate_limit_window;
-  if (data.rate_limit_action !== undefined) result.rate_limit_action = data.rate_limit_action;
-  if (data.challenge_difficulty !== undefined) result.challenge_difficulty = data.challenge_difficulty;
-  if (data.challenge_algorithm !== undefined) result.challenge_algorithm = data.challenge_algorithm;
-  if (data.challenge_ttl !== undefined) result.challenge_ttl = data.challenge_ttl;
-  if (data.challenge_bind_ip !== undefined) result.challenge_bind_ip = data.challenge_bind_ip;
-  if (data.header_set !== undefined) result.header_set = data.header_set;
-  if (data.header_add !== undefined) result.header_add = data.header_add;
-  if (data.header_remove !== undefined) result.header_remove = data.header_remove;
-  if (data.header_default !== undefined) result.header_default = data.header_default;
-  if (data.tags !== undefined) result.tags = data.tags;
-  if (data.enabled !== undefined) result.enabled = data.enabled;
+  const src = data as Record<string, unknown>;
+  for (const key of Object.keys(src)) {
+    if (src[key] === undefined) continue;
+    result[key] = key === "type" ? (typeToGo[src[key] as ExclusionType] ?? src[key]) : src[key];
+  }
   return result;
 }
 
@@ -328,19 +315,11 @@ export async function exportExclusions(): Promise<Exclusion[]> {
 }
 
 export async function importExclusions(data: Exclusion[]): Promise<{ imported: number }> {
-  // Transform exclusions to Go shape for import
-  const goExclusions = data.map((e) => mapExclusionToGo({
-    name: e.name,
-    description: e.description,
-    type: e.type,
-    conditions: e.conditions,
-    group_operator: e.group_operator,
-    skip_targets: e.skip_targets,
-    severity: e.severity,
-    detect_paranoia_level: e.detect_paranoia_level,
-    tags: e.tags,
-    enabled: e.enabled,
-  }));
+  // Transform exclusions to Go shape for import — pass all fields through
+  const goExclusions = data.map((e) => {
+    const { id, created_at, updated_at, ...rest } = e;
+    return mapExclusionToGo(rest);
+  });
   return postJSON<{ imported: number }>(`${API_BASE}/exclusions/import`, {
     version: 1,
     exclusions: goExclusions,

@@ -40,6 +40,9 @@ describe("fetchDosStatus", () => {
       jail_count: 3,
       kernel_drop: false,
       strategy: "full",
+      eps_history: [],
+      ddos_events: 0,
+      updated_at: "2026-03-16T12:00:00Z",
     };
     mockFetch.mockResolvedValueOnce(mockResponse(status));
 

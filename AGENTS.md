@@ -22,7 +22,7 @@ make build-wafctl       # Build the standalone wafctl image only
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.68.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.69.0" -o wafctl .
 ```
 
 Version injected via `-ldflags "-X main.version=..."`. Fallback: `var version = "dev"` in `main.go`.
@@ -129,7 +129,9 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 ### API Layer
 
 - Domain modules under `src/lib/api/` with barrel export via `index.ts`.
-- Go returns `snake_case` JSON; API modules map to `camelCase` TypeScript interfaces.
+- Both Go JSON and TypeScript interfaces use `snake_case` field names (1:1 identity).
+  A few fields are renamed between `Raw*` and public interfaces for clarity
+  (e.g., `is_blocked` → `blocked`, `logged_events` → `logged`).
 - When adding endpoints, update the Go handler AND the matching API module.
 
 ### UI Patterns
@@ -283,10 +285,10 @@ causes the event to be invisible in parts of the UI.
 **Dashboard types:**
 - [ ] `exclusions.ts` `ExclusionType` — add type
 - [ ] `exclusions.ts` `Exclusion` interface — add type-specific fields
-- [ ] `exclusions.ts` `ExclusionCreateData` — add same fields
+- [ ] `exclusions.ts` `ExclusionCreateData` — no change needed (derived from `Exclusion` automatically)
 - [ ] `exclusions.ts` `typeToGo` / `typeFromGo` — add mapping
 - [ ] `exclusions.ts` `mapExclusionFromGo()` — add type-specific fields from API response
-- [ ] `exclusions.ts` `mapExclusionToGo()` — add type-specific fields to API payload
+- [ ] `exclusions.ts` `mapExclusionToGo()` — no change needed (generic key loop)
 - [ ] `exclusions.ts` `RawExclusion` interface — add type-specific fields
 
 **Dashboard UI:**
@@ -310,7 +312,10 @@ causes the event to be invisible in parts of the UI.
 ### Adding a New Condition Field (e.g., `ja4`)
 
 - [ ] Plugin `policyengine.go` `extractFieldValue()` — add `case`
-- [ ] wafctl `models_exclusions.go` `validConditionFields` — add to both maps
+- [ ] wafctl `models_exclusions.go` — add to the appropriate field map(s):
+      `validPolicyEngineFields` (inbound), `validOutboundFields` (outbound),
+      or `validConditionFields` (rate limits). Multiple if shared.
+- [ ] wafctl `models_exclusions.go` `validOperatorsForField` — add operator set for the new field
 - [ ] Dashboard `exclusions.ts` `ConditionField` type — add value
 - [ ] Dashboard `constants.ts` `CONDITION_FIELDS` — add field definition with operators
 

@@ -924,6 +924,12 @@ func (sc *summaryCounters) initFromEvents(events []Event) {
 			b.ServicePolicyAllow[ev.Service]++
 		case "policy_skip":
 			b.ServicePolicySkip[ev.Service]++
+		case "challenge_issued":
+			b.ServiceChallengeIssued[ev.Service]++
+		case "challenge_passed", "challenge_bypassed":
+			b.ServiceChallengePassed[ev.Service]++
+		case "challenge_failed":
+			b.ServiceChallengeFailed[ev.Service]++
 		default:
 			b.ServiceLogged[ev.Service]++
 		}
@@ -942,6 +948,12 @@ func (sc *summaryCounters) initFromEvents(events []Event) {
 			b.ClientPolicyAllow[ev.ClientIP]++
 		case "policy_skip":
 			b.ClientPolicySkip[ev.ClientIP]++
+		case "challenge_issued":
+			b.ClientChallengeIssued[ev.ClientIP]++
+		case "challenge_passed", "challenge_bypassed":
+			b.ClientChallengePassed[ev.ClientIP]++
+		case "challenge_failed":
+			b.ClientChallengeFailed[ev.ClientIP]++
 		}
 		if ev.IsBlocked {
 			b.ClientBlocked[ev.ClientIP]++
@@ -1194,6 +1206,12 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 			b.ServicePolicyAllow[rle.Service]++
 		case "policy_skip":
 			b.ServicePolicySkip[rle.Service]++
+		case "challenge_issued":
+			b.ServiceChallengeIssued[rle.Service]++
+		case "challenge_passed", "challenge_bypassed":
+			b.ServiceChallengePassed[rle.Service]++
+		case "challenge_failed":
+			b.ServiceChallengeFailed[rle.Service]++
 		default:
 			b.ServiceLogged[rle.Service]++
 		}
@@ -1212,6 +1230,12 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 			b.ClientPolicyAllow[rle.ClientIP]++
 		case "policy_skip":
 			b.ClientPolicySkip[rle.ClientIP]++
+		case "challenge_issued":
+			b.ClientChallengeIssued[rle.ClientIP]++
+		case "challenge_passed", "challenge_bypassed":
+			b.ClientChallengePassed[rle.ClientIP]++
+		case "challenge_failed":
+			b.ClientChallengeFailed[rle.ClientIP]++
 		}
 		if isBlocked {
 			b.ClientBlocked[rle.ClientIP]++

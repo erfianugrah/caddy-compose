@@ -337,7 +337,7 @@ function ResponseHeaderForm({
         />
         <HeaderKeyValueSection
           label="Add Headers"
-          description="Append value (allows duplicates)"
+          description="Append header (does not replace existing)"
           entries={headerAdd}
           onChange={onChangeAdd}
         />
@@ -834,6 +834,8 @@ export function AdvancedBuilderForm({
   const isSkip = form.type === "skip";
   const isChallenge = form.type === "challenge";
   const isResponseHeader = form.type === "response_header";
+  // response_header rules are always outbound regardless of toggle state
+  const effectivePhase = isResponseHeader ? "outbound" : (form.phase ?? "inbound");
 
   // Condition management — all 3 types need conditions
   const updateCondition = (index: number, condition: Condition) => {
@@ -974,27 +976,36 @@ export function AdvancedBuilderForm({
       <div className="space-y-1">
         <Label className={T.formLabel}>Phase</Label>
         <div className="flex gap-2">
-          {(["inbound", "outbound"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => update("phase", p === "inbound" ? undefined : p)}
-              className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-                (form.phase ?? "inbound") === p
-                  ? p === "inbound"
-                    ? "border-lv-cyan/40 bg-lv-cyan/10 text-lv-cyan"
-                    : "border-lv-peach/40 bg-lv-peach/10 text-lv-peach"
-                  : "border-border bg-lovelace-950 text-muted-foreground hover:border-border/80"
-              }`}
-            >
-              {p === "inbound" ? "Inbound (Request)" : "Outbound (Response)"}
-            </button>
-          ))}
+          {(["inbound", "outbound"] as const).map((p) => {
+            const isActive = (effectivePhase === "inbound" && p === "inbound") || (effectivePhase === "outbound" && p === "outbound");
+            const isDisabled = isResponseHeader && p === "inbound";
+            return (
+              <button
+                key={p}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => !isDisabled && setForm((prev) => ({ ...prev, phase: p === "inbound" ? undefined : p }))}
+                className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+                  isDisabled
+                    ? "border-border/30 bg-lovelace-950/50 text-muted-foreground/40 cursor-not-allowed"
+                    : isActive
+                      ? p === "inbound"
+                        ? "border-lv-cyan/40 bg-lv-cyan/10 text-lv-cyan"
+                        : "border-lv-peach/40 bg-lv-peach/10 text-lv-peach"
+                      : "border-border bg-lovelace-950 text-muted-foreground hover:border-border/80"
+                }`}
+              >
+                {p === "inbound" ? "Inbound (Request)" : "Outbound (Response)"}
+              </button>
+            );
+          })}
         </div>
         <p className="text-[10px] text-muted-foreground">
-          {(form.phase ?? "inbound") === "outbound"
-            ? "Evaluates on server response — can match response_status, response_header."
-            : "Evaluates on incoming request (default)."}
+          {isResponseHeader
+            ? "Response header rules always evaluate on server response (outbound)."
+            : effectivePhase === "outbound"
+              ? "Evaluates on server response — can match response_status, response_header."
+              : "Evaluates on incoming request (default)."}
         </p>
       </div>
 
@@ -1167,7 +1178,7 @@ export function AdvancedBuilderForm({
                 onChange={updateCondition}
                 onRemove={removeCondition}
                 services={services}
-                fields={form.phase === "outbound" ? OUTBOUND_FIELD_DEFS : INBOUND_FIELD_DEFS}
+                fields={effectivePhase === "outbound" ? OUTBOUND_FIELD_DEFS : INBOUND_FIELD_DEFS}
               />
             </div>
           ))}
