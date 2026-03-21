@@ -71,7 +71,6 @@ import TimeRangePicker, { rangeToParams, type TimeRange } from "@/components/Tim
 import { ACTION_COLORS, ACTION_LABELS } from "@/lib/utils";
 import { T } from "@/lib/typography";
 import { StatCard } from "./StatCard";
-import { UptimeIndicator } from "./UptimeIndicator";
 import { TopBlockedIPsPanel, TopTargetedURIsPanel, TopCountriesPanel } from "./AnalyticsDashboard";
 import {
   formatHourTick,
@@ -155,7 +154,6 @@ export default function OverviewDashboard() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const analyticsHours = rangeToParams(timeRange).hours;
   const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // ── Data loading ──
   // Guard against stale responses when rapid filter/time changes fire concurrent requests.
@@ -171,7 +169,6 @@ export default function OverviewDashboard() {
     const gen = ++requestGenRef.current;
     setLoading(true);
     setError(null);
-    setRefreshKey((k) => k + 1);
     const summaryParams: SummaryParams = {
       ...rangeToParams(timeRange),
       ...filtersToSummaryParams(filters),
@@ -376,10 +373,7 @@ export default function OverviewDashboard() {
             WAF event summary and real-time event feed
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <UptimeIndicator refreshKey={refreshKey} />
-          <TimeRangePicker value={timeRange} onChange={setTimeRange} onRefresh={loadData} />
-        </div>
+        <TimeRangePicker value={timeRange} onChange={setTimeRange} onRefresh={loadData} />
       </div>
 
       {/* ── Dashboard Filter Bar ── */}

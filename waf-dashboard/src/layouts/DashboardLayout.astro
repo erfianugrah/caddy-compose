@@ -354,6 +354,22 @@ for (const link of navLinks) {
         const text = document.getElementById("health-text");
         if (!dot || !ping || !text) return;
 
+        function formatUptime(dur: string): string {
+          const m = dur.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
+          if (!m) return dur;
+          let hours = parseInt(m[1] || "0", 10);
+          const mins = parseInt(m[2] || "0", 10);
+          const secs = parseInt(m[3] || "0", 10);
+          if (hours >= 24) {
+            const days = Math.floor(hours / 24);
+            hours = hours % 24;
+            return `${days}d ${hours}h`;
+          }
+          if (hours > 0) return `${hours}h ${mins}m`;
+          if (mins > 0) return `${mins}m ${secs}s`;
+          return `${secs}s`;
+        }
+
         function setStatus(ok: boolean) {
           const color = ok ? "bg-lv-green" : "bg-lv-red";
           const remove = ok ? "bg-lv-red" : "bg-lv-green";
@@ -373,11 +389,10 @@ for (const link of navLinks) {
             if (!res.ok) { setStatus(false); return; }
             const data = await res.json();
             setStatus(data.version != null);
-            // Also update sidebar version (shared with health check to avoid duplicate fetch).
+            // Update sidebar footer with uptime (replaces version text).
             const versionEl = document.getElementById("sidebar-version");
-            if (versionEl && data.version) {
-              const crs = data.crs_version ? ` · CRS ${data.crs_version}` : "";
-              versionEl.textContent = `wafctl v${data.version}${crs}`;
+            if (versionEl && data.uptime) {
+              versionEl.textContent = `up ${formatUptime(data.uptime)}`;
             }
           } catch {
             setStatus(false);
