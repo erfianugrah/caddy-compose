@@ -252,8 +252,15 @@ for (const link of navLinks) {
           </nav>
 
           <!-- Footer -->
-          <div class="border-t border-border px-4 py-3">
+          <div class="border-t border-border px-4 py-3 space-y-1">
             <div class="text-xs text-muted-foreground" id="sidebar-version">Policy Engine WAF</div>
+            <div class="flex items-center gap-1.5">
+              <span class="relative flex h-1.5 w-1.5">
+                <span id="uptime-ping" class="absolute inline-flex h-full w-full animate-ping rounded-full bg-muted-foreground opacity-75"></span>
+                <span id="uptime-dot" class="relative inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground"></span>
+              </span>
+              <span id="sidebar-uptime" class="text-xs font-data tabular-nums text-muted-foreground">--</span>
+            </div>
           </div>
           <script>
             // Version display is updated by the shared health check below.
@@ -346,7 +353,7 @@ for (const link of navLinks) {
       }
     </script>
 
-    <!-- Health check -->
+    <!-- Health check + uptime ticker -->
     <script>
       (function () {
         const dot = document.getElementById("health-dot");
@@ -354,22 +361,56 @@ for (const link of navLinks) {
         const text = document.getElementById("health-text");
         if (!dot || !ping || !text) return;
 
-        function formatUptime(dur: string): string {
-          const m = dur.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
-          if (!m) return dur;
-          let hours = parseInt(m[1] || "0", 10);
-          const mins = parseInt(m[2] || "0", 10);
-          const secs = parseInt(m[3] || "0", 10);
-          if (hours >= 24) {
-            const days = Math.floor(hours / 24);
-            hours = hours % 24;
-            return `${days}d ${hours}h`;
-          }
-          if (hours > 0) return `${hours}h ${mins}m`;
+        // ── Uptime state ──
+        // We store the server uptime in seconds at the moment we fetched it,
+        // plus the local timestamp of that fetch. Every second we compute
+        // current uptime = serverSeconds + (now - fetchedAt) and render it.
+        let uptimeSeconds = 0;
+        let uptimeFetchedAt = 0;
+        const uptimeEl = document.getElementById("sidebar-uptime");
+        const uptimeDot = document.getElementById("uptime-dot");
+        const uptimePing = document.getElementById("uptime-ping");
+
+        function parseGoUptime(dur: string): number {
+          const m = dur.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?/);
+          if (!m) return 0;
+          return (parseInt(m[1] || "0", 10) * 3600) +
+                 (parseInt(m[2] || "0", 10) * 60) +
+                 Math.floor(parseFloat(m[3] || "0"));
+        }
+
+        function formatUptime(totalSec: number): string {
+          const days = Math.floor(totalSec / 86400);
+          const hours = Math.floor((totalSec % 86400) / 3600);
+          const mins = Math.floor((totalSec % 3600) / 60);
+          const secs = totalSec % 60;
+          if (days > 0) return `${days}d ${hours}h ${mins}m`;
+          if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
           if (mins > 0) return `${mins}m ${secs}s`;
           return `${secs}s`;
         }
 
+        function tickUptime() {
+          if (!uptimeFetchedAt || !uptimeEl) return;
+          const elapsed = Math.floor((Date.now() - uptimeFetchedAt) / 1000);
+          const current = uptimeSeconds + elapsed;
+          uptimeEl.textContent = `up ${formatUptime(current)}`;
+        }
+
+        // Tick every second for live counter.
+        setInterval(tickUptime, 1000);
+
+        function setUptimeStatus(ok: boolean) {
+          if (!uptimeDot || !uptimePing) return;
+          const color = ok ? "bg-lv-green" : "bg-lv-red";
+          const remove = ok ? "bg-lv-red" : "bg-lv-green";
+          uptimeDot.classList.remove("bg-muted-foreground", remove);
+          uptimeDot.classList.add(color);
+          uptimePing.classList.remove("bg-muted-foreground", remove);
+          uptimePing.classList.add(color);
+        }
+
+        // ── Health status (header) ──
         function setStatus(ok: boolean) {
           const color = ok ? "bg-lv-green" : "bg-lv-red";
           const remove = ok ? "bg-lv-red" : "bg-lv-green";
@@ -378,21 +419,27 @@ for (const link of navLinks) {
           ping.classList.remove("bg-muted-foreground", remove);
           ping.classList.add(color);
           text.textContent = ok ? "MONITORING" : "UNHEALTHY";
+          setUptimeStatus(ok);
         }
 
         async function checkHealth() {
-          // Skip health checks when the tab is hidden to avoid wasting
-          // bandwidth and triggering 403s from auth proxies.
           if (document.hidden) return;
           try {
             const res = await fetch("/api/health", { cache: "no-store" });
             if (!res.ok) { setStatus(false); return; }
             const data = await res.json();
             setStatus(data.version != null);
-            // Update sidebar footer with uptime (replaces version text).
+            // Update sidebar version.
             const versionEl = document.getElementById("sidebar-version");
-            if (versionEl && data.uptime) {
-              versionEl.textContent = `up ${formatUptime(data.uptime)}`;
+            if (versionEl && data.version) {
+              const crs = data.crs_version ? ` · CRS ${data.crs_version}` : "";
+              versionEl.textContent = `wafctl v${data.version}${crs}`;
+            }
+            // Sync uptime from server.
+            if (data.uptime) {
+              uptimeSeconds = parseGoUptime(data.uptime);
+              uptimeFetchedAt = Date.now();
+              tickUptime();
             }
           } catch {
             setStatus(false);
