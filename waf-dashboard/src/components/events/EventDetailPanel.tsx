@@ -471,11 +471,15 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               </>
             ) : event.event_type?.startsWith("challenge_") ? (
               <>
-                {/* Challenge event — show rule name, difficulty, bot score */}
+                {/* Challenge event — show action, rule, bot score with meaning, UA */}
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
-                  <span className={`font-medium ${event.event_type === "challenge_failed" ? "text-lv-red" : event.event_type === "challenge_passed" ? "text-lv-green" : "text-lv-yellow"}`}>
-                    {event.event_type?.replace("challenge_", "Challenge ").replace(/^\w/, (c) => c.toUpperCase())}
+                  <span className={`font-medium ${event.event_type === "challenge_failed" ? "text-lv-red" : event.event_type === "challenge_passed" ? "text-lv-green" : event.event_type === "challenge_bypassed" ? "text-lv-cyan" : "text-lv-yellow"}`}>
+                    {event.event_type === "challenge_issued" ? "Interstitial served — awaiting PoW" :
+                     event.event_type === "challenge_passed" ? "PoW solved — cookie issued" :
+                     event.event_type === "challenge_failed" ? "Rejected — bot score too high or invalid PoW" :
+                     event.event_type === "challenge_bypassed" ? "Valid cookie — bypassed challenge" :
+                     event.event_type?.replace("challenge_", "Challenge ")}
                   </span>
                 </div>
                 {event.rule_msg && (
@@ -485,17 +489,29 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                   </div>
                 )}
                 {event.challenge_bot_score !== undefined && event.challenge_bot_score > 0 && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground">Bot Score:</span>
-                    <span className={event.challenge_bot_score >= 70 ? "text-lv-red font-semibold" : event.challenge_bot_score >= 40 ? "text-lv-yellow" : "text-lv-green"}>
-                      {event.challenge_bot_score}/100
-                    </span>
+                  <div className="flex gap-2 items-start">
+                    <span className="text-muted-foreground shrink-0">Bot Score:</span>
+                    <div>
+                      <span className={event.challenge_bot_score >= 70 ? "text-lv-red font-semibold" : event.challenge_bot_score >= 40 ? "text-lv-yellow" : "text-lv-green"}>
+                        {event.challenge_bot_score}/100
+                      </span>
+                      <span className="text-muted-foreground/60 ml-2 text-[10px]">
+                        {event.challenge_bot_score >= 70 ? "(rejected — automated client detected)" :
+                         event.challenge_bot_score >= 40 ? "(suspicious — borderline signals)" :
+                         event.challenge_bot_score >= 20 ? "(moderate — some anomalies)" :
+                         "(clean — looks like a real browser)"}
+                      </span>
+                    </div>
                   </div>
                 )}
                 {event.challenge_jti && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     <span className="text-muted-foreground">Token ID:</span>
-                    <code className="text-muted-foreground/70 font-data">{event.challenge_jti}</code>
+                    <code className="text-xs text-muted-foreground/70 font-data">{event.challenge_jti}</code>
+                    <CopyBtn text={event.challenge_jti} />
+                    <span className="text-muted-foreground/50 text-[10px]">
+                      (cookie session — correlates with subsequent bypass events)
+                    </span>
                   </div>
                 )}
                 {event.tags && event.tags.length > 0 && (
