@@ -64,6 +64,56 @@ export interface ChallengeJA4 {
   clients: number;
 }
 
+// ─── Challenge Reputation ────────────────────────────────────────────
+
+export interface ChallengeReputationResponse {
+  ja4s: JA4Reputation[];
+  clients: IPChallengeHistory[];
+  alerts: ReputationAlert[];
+  total_ja4s: number;
+  total_clients: number;
+  total_alerts: number;
+}
+
+export interface JA4Reputation {
+  ja4: string;
+  total_events: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  fail_rate: number;
+  avg_bot_score: number;
+  unique_ips: number;
+  first_seen: string;
+  last_seen: string;
+  verdict: "trusted" | "suspicious" | "hostile";
+}
+
+export interface IPChallengeHistory {
+  ip: string;
+  country?: string;
+  issued: number;
+  passed: number;
+  failed: number;
+  bypassed: number;
+  unique_tokens: number;
+  unique_ja4s: number;
+  avg_bot_score: number;
+  max_bot_score: number;
+  avg_solve_ms: number;
+  first_seen: string;
+  last_seen: string;
+  flags?: string[];
+}
+
+export interface ReputationAlert {
+  type: string;
+  target: string;
+  detail: string;
+  count: number;
+  severity: "high" | "medium" | "low";
+}
+
 // ─── Endpoint Discovery ─────────────────────────────────────────────
 
 export interface DiscoveredEndpoint {
@@ -99,6 +149,15 @@ export async function fetchChallengeStats(
   if (service) params.set("service", service);
   if (client) params.set("client", client);
   return fetchJSON<ChallengeStats>(`${API_BASE}/challenge/stats?${params}`);
+}
+
+export async function fetchChallengeReputation(
+  hours = 24,
+  service?: string,
+): Promise<ChallengeReputationResponse> {
+  const params = new URLSearchParams({ hours: String(hours) });
+  if (service) params.set("service", service);
+  return fetchJSON<ChallengeReputationResponse>(`${API_BASE}/challenge/reputation?${params}`);
 }
 
 export async function fetchEndpointDiscovery(

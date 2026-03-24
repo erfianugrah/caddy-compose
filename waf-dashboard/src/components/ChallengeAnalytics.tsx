@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, RefreshCw, Radar, Plus } from "lucide-react";
+import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, ShieldBan, RefreshCw, Radar, Plus, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,9 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { T } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { fetchChallengeStats, fetchEndpointDiscovery } from "@/lib/api/challenge";
+import { fetchChallengeStats, fetchEndpointDiscovery, fetchChallengeReputation } from "@/lib/api/challenge";
 import { Input } from "@/components/ui/input";
-import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService, ChallengeJA4, EndpointDiscoveryResponse, DiscoveredEndpoint } from "@/lib/api/challenge";
+import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService, ChallengeJA4, EndpointDiscoveryResponse, DiscoveredEndpoint, ChallengeReputationResponse, JA4Reputation, IPChallengeHistory, ReputationAlert } from "@/lib/api/challenge";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -318,6 +318,192 @@ function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: st
   );
 }
 
+// ─── Reputation Panel ───────────────────────────────────────────────
+
+function ReputationPanel({ hours, service }: { hours: string; service: string }) {
+  const [data, setData] = useState<ChallengeReputationResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await fetchChallengeReputation(parseInt(hours), service || undefined));
+    } catch (e) {
+      console.error("Failed to fetch reputation:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [hours, service]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <Skeleton className="h-64 w-full" />;
+  if (!data) return null;
+
+  const verdictColor = (v: string) =>
+    v === "hostile" ? "text-lv-red bg-lv-red/15" : v === "suspicious" ? "text-lv-yellow bg-lv-yellow/15" : "text-lv-green bg-lv-green/15";
+
+  const flagColor = (f: string) =>
+    f === "repeat_failure" ? "text-lv-red bg-lv-red/10 border-lv-red/30" :
+    f === "cookie_harvesting" ? "text-lv-peach bg-lv-peach/10 border-lv-peach/30" :
+    "text-lv-yellow bg-lv-yellow/10 border-lv-yellow/30";
+
+  const flagLabel = (f: string) =>
+    f === "repeat_failure" ? "Repeat Failure" :
+    f === "cookie_harvesting" ? "Cookie Harvesting" :
+    f === "ja4_rotation" ? "JA4 Rotation" : f;
+
+  return (
+    <div className="space-y-4">
+      {/* Alerts */}
+      {data.alerts && data.alerts.length > 0 && (
+        <Card className="border-lv-red/30 bg-lv-red/5">
+          <CardHeader>
+            <CardDescription className={cn(T.sectionLabel, "text-lv-red")}>
+              <AlertTriangle className="h-4 w-4 inline mr-1.5" />{data.alerts.length} Alert{data.alerts.length > 1 ? "s" : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {data.alerts.map((a: ReputationAlert, i: number) => (
+                <div key={i} className="flex items-center gap-3 text-xs p-2 rounded bg-lovelace-950">
+                  <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase", a.severity === "high" ? "bg-lv-red/20 text-lv-red" : "bg-lv-yellow/20 text-lv-yellow")}>
+                    {a.severity}
+                  </span>
+                  <span className="text-foreground flex-1">{a.detail}</span>
+                  <a href={a.type === "hostile_ja4" ? `/events?ja4=${encodeURIComponent(a.target)}` : `/analytics?ip=${encodeURIComponent(a.target)}`}
+                     className="text-lv-purple hover:underline shrink-0">View</a>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* JA4 Reputation Table */}
+      {data.ja4s.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardDescription className={T.sectionLabel}>JA4 TLS Fingerprint Reputation ({data.total_ja4s} total)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-lovelace-800 text-muted-foreground">
+                    <th className="text-left py-2 pr-3">JA4 Fingerprint</th>
+                    <th className="text-right py-2 px-2">Events</th>
+                    <th className="text-right py-2 px-2">Passed</th>
+                    <th className="text-right py-2 px-2">Failed</th>
+                    <th className="text-right py-2 px-2">Fail Rate</th>
+                    <th className="text-right py-2 px-2">Avg Score</th>
+                    <th className="text-right py-2 px-2">IPs</th>
+                    <th className="text-center py-2 pl-2">Verdict</th>
+                    <th className="text-right py-2 pl-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.ja4s.map((j: JA4Reputation) => (
+                    <tr key={j.ja4} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
+                      <td className="py-2 pr-3">
+                        <a href={`/events?ja4=${encodeURIComponent(j.ja4)}`} className="font-data text-lv-cyan hover:underline text-[11px]">{j.ja4}</a>
+                      </td>
+                      <td className="text-right py-2 px-2 tabular-nums">{j.total_events}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-lv-green">{j.passed}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-lv-red">{j.failed}</td>
+                      <td className="text-right py-2 px-2">
+                        <span className={cn("tabular-nums", j.fail_rate >= 0.5 ? "text-lv-red font-semibold" : j.fail_rate >= 0.2 ? "text-lv-yellow" : "text-muted-foreground")}>{pct(j.fail_rate)}</span>
+                      </td>
+                      <td className="text-right py-2 px-2 tabular-nums">{j.avg_bot_score > 0 ? j.avg_bot_score.toFixed(0) : "-"}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{j.unique_ips}</td>
+                      <td className="text-center py-2 pl-2">
+                        <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase", verdictColor(j.verdict))}>{j.verdict}</span>
+                      </td>
+                      <td className="text-right py-2 pl-2">
+                        {j.verdict === "hostile" && (
+                          <a href={`/policy?action=block&prefill_ja4=${encodeURIComponent(j.ja4)}`} className="text-[10px] text-lv-red hover:underline">Block</a>
+                        )}
+                        {j.verdict === "suspicious" && (
+                          <a href={`/policy?action=challenge&prefill_ja4=${encodeURIComponent(j.ja4)}`} className="text-[10px] text-lv-yellow hover:underline">Challenge</a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Flagged Clients */}
+      {data.clients.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardDescription className={T.sectionLabel}>Client Challenge History ({data.total_clients} total)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-lovelace-800 text-muted-foreground">
+                    <th className="text-left py-2 pr-3">Client</th>
+                    <th className="text-right py-2 px-2">Issued</th>
+                    <th className="text-right py-2 px-2">Passed</th>
+                    <th className="text-right py-2 px-2">Failed</th>
+                    <th className="text-right py-2 px-2">Tokens</th>
+                    <th className="text-right py-2 px-2">JA4s</th>
+                    <th className="text-right py-2 px-2">Avg Score</th>
+                    <th className="text-right py-2 px-2">Solve Time</th>
+                    <th className="text-left py-2 pl-2">Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.clients.map((c: IPChallengeHistory) => (
+                    <tr key={c.ip} className={cn("border-b border-lovelace-900/50 hover:bg-lovelace-900/30", c.flags && c.flags.length > 0 && "bg-lv-red/5")}>
+                      <td className="py-2 pr-3">
+                        <a href={`/analytics?ip=${encodeURIComponent(c.ip)}`} className="text-lv-green hover:underline font-data">{c.ip}</a>
+                        {c.country && <span className="ml-1 text-muted-foreground/50">{c.country}</span>}
+                      </td>
+                      <td className="text-right py-2 px-2 tabular-nums text-lv-yellow">{c.issued}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-lv-green">{c.passed}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-lv-red">{c.failed}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-muted-foreground" title="Unique cookie tokens">{c.unique_tokens}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-muted-foreground" title="Unique JA4 fingerprints">{c.unique_ja4s}</td>
+                      <td className="text-right py-2 px-2 tabular-nums">{c.avg_bot_score > 0 ? c.avg_bot_score.toFixed(0) : "-"}</td>
+                      <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">
+                        {c.avg_solve_ms > 0 ? c.avg_solve_ms >= 1000 ? `${(c.avg_solve_ms / 1000).toFixed(1)}s` : `${Math.round(c.avg_solve_ms)}ms` : "-"}
+                      </td>
+                      <td className="py-2 pl-2">
+                        <div className="flex gap-1 flex-wrap">
+                          {c.flags?.map((f) => (
+                            <span key={f} className={cn("inline-flex items-center rounded border px-1.5 py-0 text-[10px] font-semibold uppercase", flagColor(f))}>
+                              {flagLabel(f)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.ja4s.length === 0 && data.clients.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <ShieldBan className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+            <p className={T.muted}>No challenge reputation data in the selected period.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────
 
 export default function ChallengeAnalytics() {
@@ -326,7 +512,7 @@ export default function ChallengeAnalytics() {
   const [hours, setHours] = useState("24");
   const [filterService, setFilterService] = useState("");
   const [filterClient, setFilterClient] = useState("");
-  const [activeTab, setActiveTab] = useState<"analytics" | "discovery">("analytics");
+  const [activeTab, setActiveTab] = useState<"analytics" | "discovery" | "reputation">("analytics");
 
   // Read initial filters from URL params (client-side only).
   useEffect(() => {
@@ -367,6 +553,12 @@ export default function ChallengeAnalytics() {
               onClick={() => setActiveTab("analytics")}
               className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", activeTab === "analytics" ? "bg-lv-purple/20 text-lv-purple border border-lv-purple/30" : "text-muted-foreground hover:text-foreground")}
             >Challenge Stats</button>
+            <button
+              onClick={() => setActiveTab("reputation")}
+              className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", activeTab === "reputation" ? "bg-lv-red/20 text-lv-red border border-lv-red/30" : "text-muted-foreground hover:text-foreground")}
+            >
+              <ShieldBan className="h-3 w-3 inline mr-1" />Reputation
+            </button>
             <button
               onClick={() => setActiveTab("discovery")}
               className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", activeTab === "discovery" ? "bg-lv-cyan/20 text-lv-cyan border border-lv-cyan/30" : "text-muted-foreground hover:text-foreground")}
@@ -426,6 +618,11 @@ export default function ChallengeAnalytics() {
             </span>
           )}
         </div>
+      )}
+
+      {/* Reputation Tab */}
+      {activeTab === "reputation" && (
+        <ReputationPanel hours={hours} service={filterService} />
       )}
 
       {/* Discovery Tab */}

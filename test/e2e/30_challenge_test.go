@@ -1049,3 +1049,33 @@ func TestEndpointDiscoveryCoverage(t *testing.T) {
 		t.Logf("endpoint %s: challenge=%v rate_limit=%v", ep.Path, ep.HasChallenge, ep.HasRateLimit)
 	}
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  30g. Challenge Reputation API
+// ════════════════════════════════════════════════════════════════════
+
+func TestChallengeReputationEndpoint(t *testing.T) {
+	resp, body := httpGet(t, wafctlURL+"/api/challenge/reputation?hours=24")
+	assertCode(t, "reputation endpoint", 200, resp)
+
+	var rep struct {
+		JA4s         []json.RawMessage `json:"ja4s"`
+		Clients      []json.RawMessage `json:"clients"`
+		Alerts       []json.RawMessage `json:"alerts"`
+		TotalJA4s    int               `json:"total_ja4s"`
+		TotalClients int               `json:"total_clients"`
+		TotalAlerts  int               `json:"total_alerts"`
+	}
+	if err := json.Unmarshal(body, &rep); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// Structure should be valid (may be empty in clean test run).
+	if rep.TotalJA4s < 0 || rep.TotalClients < 0 {
+		t.Error("negative counts in reputation response")
+	}
+}
+
+func TestChallengeReputationWithFilter(t *testing.T) {
+	resp, _ := httpGet(t, wafctlURL+"/api/challenge/reputation?hours=1&service=httpbun.erfi.io")
+	assertCode(t, "with service filter", 200, resp)
+}

@@ -437,3 +437,52 @@ test.describe("Endpoint Discovery", () => {
     await expect(page.getByText(/Endpoints Discovered|No traffic observed/).first()).toBeVisible();
   });
 });
+
+// ════════════════════════════════════════════════════════════════════
+//  Challenge Reputation
+// ════════════════════════════════════════════════════════════════════
+
+test.describe("Challenge Reputation", () => {
+  test("reputation API returns valid structure", async () => {
+    const resp = await fetch(`${WAFCTL_DASH}/api/challenge/reputation?hours=24`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+
+    expect(data.total_ja4s).toBeGreaterThanOrEqual(0);
+    expect(data.total_clients).toBeGreaterThanOrEqual(0);
+    expect(data.total_alerts).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(data.ja4s)).toBe(true);
+    expect(Array.isArray(data.clients)).toBe(true);
+    expect(Array.isArray(data.alerts)).toBe(true);
+
+    // If there are JA4 entries, verify structure.
+    if (data.ja4s.length > 0) {
+      const ja4 = data.ja4s[0];
+      expect(ja4.ja4).toBeDefined();
+      expect(["trusted", "suspicious", "hostile"]).toContain(ja4.verdict);
+      expect(typeof ja4.fail_rate).toBe("number");
+    }
+
+    // If there are client entries, verify structure.
+    if (data.clients.length > 0) {
+      const client = data.clients[0];
+      expect(client.ip).toBeDefined();
+      expect(typeof client.unique_tokens).toBe("number");
+      expect(typeof client.unique_ja4s).toBe("number");
+    }
+  });
+
+  test("reputation API accepts service filter", async () => {
+    const resp = await fetch(`${WAFCTL_DASH}/api/challenge/reputation?hours=24&service=httpbun.erfi.io`);
+    expect(resp.status).toBe(200);
+  });
+
+  test("dashboard has reputation tab", async ({ page }) => {
+    await page.goto(`${WAFCTL_DASH}/challenge`);
+    const tab = page.getByText("Reputation");
+    await expect(tab).toBeVisible();
+    await tab.click();
+    // Should show reputation content or empty state.
+    await expect(page.getByText(/Fingerprint Reputation|Challenge History|No challenge reputation/).first()).toBeVisible();
+  });
+});

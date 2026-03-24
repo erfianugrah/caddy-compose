@@ -380,8 +380,9 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
-	// Challenge Analytics
+	// Challenge Analytics + Reputation
 	mux.HandleFunc("GET /api/challenge/stats", handleChallengeStats(accessLogStore))
+	mux.HandleFunc("GET /api/challenge/reputation", handleChallengeReputation(accessLogStore))
 
 	// Endpoint Discovery
 	mux.HandleFunc("GET /api/discovery/endpoints", handleEndpointDiscovery(accessLogStore, exclusionStore))
