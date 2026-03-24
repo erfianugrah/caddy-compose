@@ -380,6 +380,9 @@ func runServe() int {
 	mux.HandleFunc("GET /api/logs", handleGeneralLogs(generalLogStore))
 	mux.HandleFunc("GET /api/logs/summary", handleGeneralLogsSummary(generalLogStore))
 
+	// Challenge Analytics
+	mux.HandleFunc("GET /api/challenge/stats", handleChallengeStats(accessLogStore))
+
 	// DDoS Mitigation
 	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore, spikeDetector, accessLogStore))
 	mux.HandleFunc("GET /api/dos/jail", handleListJail(jailStore))
