@@ -1071,7 +1071,7 @@ export function AdvancedBuilderForm({
           <p className="text-xs font-medium text-lv-muted">Challenge Settings</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-lv-muted">Difficulty (leading hex zeros)</label>
+              <label className="text-xs text-lv-muted">Base Difficulty (1-16)</label>
               <input
                 type="number"
                 min={1}
@@ -1081,8 +1081,22 @@ export function AdvancedBuilderForm({
                 className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
               />
               <p className="mt-0.5 text-[10px] text-lv-muted">
-                4 = ~0.5s, 6 = ~5s, 8 = ~30s, 16 = extreme
+                SHA-256 leading hex zeros. 4 &#8776; 0.5s, 6 &#8776; 5s, 8 &#8776; 30s. Used when adaptive range is not set.
               </p>
+            </div>
+            <div>
+              <label className="text-xs text-lv-muted">Algorithm</label>
+              <select
+                value={form.challenge_algorithm}
+                onChange={(e) => update("challenge_algorithm", e.target.value)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+              >
+                <option value="fast">Fast (WebCrypto)</option>
+                <option value="slow">Slow (deliberate delay per iteration)</option>
+              </select>
+              {form.challenge_algorithm === "slow" && form.challenge_difficulty > 2 && (
+                <p className="mt-0.5 text-[10px] text-lv-red font-medium">Warning: slow + difficulty &gt;2 takes minutes to hours. Use 1-2 with slow.</p>
+              )}
             </div>
             <div>
               <label className="text-xs text-lv-muted">Adaptive Min Difficulty</label>
@@ -1095,7 +1109,7 @@ export function AdvancedBuilderForm({
                 className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
               />
               <p className="mt-0.5 text-[10px] text-lv-muted">
-                0 = use static difficulty. Set both min/max for adaptive.
+                Easiest difficulty for clean browsers (good JA4, proper headers). 0 = disabled, uses base difficulty.
               </p>
             </div>
             <div>
@@ -1109,22 +1123,8 @@ export function AdvancedBuilderForm({
                 className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
               />
               <p className="mt-0.5 text-[10px] text-lv-muted">
-                Higher difficulty for suspicious requests (based on TLS + headers).
+                Hardest difficulty for suspicious clients (bad JA4, missing Sec-Fetch, no ALPN). 0 = disabled.
               </p>
-            </div>
-            <div>
-              <label className="text-xs text-lv-muted">Algorithm</label>
-              <select
-                value={form.challenge_algorithm}
-                onChange={(e) => update("challenge_algorithm", e.target.value)}
-                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
-              >
-                <option value="fast">Fast (WebCrypto)</option>
-                <option value="slow">Slow (CPU-intensive)</option>
-              </select>
-              {form.challenge_algorithm === "slow" && form.challenge_difficulty > 2 && (
-                <p className="mt-0.5 text-[10px] text-lv-red font-medium">Warning: slow + difficulty &gt;2 takes minutes to hours. Use difficulty 1-2 with slow, or switch to fast.</p>
-              )}
             </div>
             <div>
               <label className="text-xs text-lv-muted">Cookie TTL</label>
@@ -1136,32 +1136,40 @@ export function AdvancedBuilderForm({
                 className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
               />
               <p className="mt-0.5 text-[10px] text-lv-muted">
-                How long before re-challenge (e.g., 1h, 4h, 24h)
+                How long the bypass cookie lasts before the client must re-solve (e.g., 1h, 4h, 24h, 7d)
               </p>
             </div>
-            <div className="flex items-center gap-2 pt-4">
-              <input
-                type="checkbox"
-                id="challenge-bind-ip"
-                checked={form.challenge_bind_ip}
-                onChange={(e) => update("challenge_bind_ip", e.target.checked)}
-                className="h-4 w-4 rounded border-lv-border/50"
-              />
-              <label htmlFor="challenge-bind-ip" className="text-xs text-lv-muted">
-                Bind cookie to client IP
-              </label>
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="challenge-bind-ja4"
-                checked={form.challenge_bind_ja4}
-                onChange={(e) => update("challenge_bind_ja4", e.target.checked)}
-                className="h-4 w-4 rounded border-lv-border/50"
-              />
-              <label htmlFor="challenge-bind-ja4" className="text-xs text-lv-muted">
-                Bind cookie to JA4 TLS fingerprint
-              </label>
+            <div className="space-y-2 pt-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="challenge-bind-ip"
+                  checked={form.challenge_bind_ip}
+                  onChange={(e) => update("challenge_bind_ip", e.target.checked)}
+                  className="h-4 w-4 rounded border-lv-border/50"
+                />
+                <div>
+                  <label htmlFor="challenge-bind-ip" className="text-xs text-lv-muted">
+                    Bind cookie to client IP
+                  </label>
+                  <p className="text-[10px] text-lv-muted/60">Invalidates cookie if IP changes. Disable for mobile users on cellular.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="challenge-bind-ja4"
+                  checked={form.challenge_bind_ja4}
+                  onChange={(e) => update("challenge_bind_ja4", e.target.checked)}
+                  className="h-4 w-4 rounded border-lv-border/50"
+                />
+                <div>
+                  <label htmlFor="challenge-bind-ja4" className="text-xs text-lv-muted">
+                    Bind cookie to JA4 TLS fingerprint
+                  </label>
+                  <p className="text-[10px] text-lv-muted/60">Prevents cookie replay from a different TLS stack (e.g., solve in browser, replay from curl).</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
