@@ -22,7 +22,7 @@ make build-wafctl       # Build the standalone wafctl image only
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.70.4" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.70.5" -o wafctl .
 ```
 
 Version injected via `-ldflags "-X main.version=..."`. Fallback: `var version = "dev"` in `main.go`.
@@ -353,6 +353,25 @@ causes the event to be invisible in parts of the UI.
     previously ignored) and `cores` from JS signals. `minSolveMs(difficulty, cores)` =
     `2^(difficulty*4) / (cores * 50) * 0.3`. Hard reject if elapsed < floor/3 (impossible
     timing). Soft penalty (+40 bot score) if elapsed < floor.
+  Challenge field relationships:
+  - **`challenge_difficulty`** (1-16, default 4): Static difficulty — used when adaptive
+    min/max are both 0. Ignored when adaptive range is active.
+  - **`challenge_min_difficulty`** / **`challenge_max_difficulty`** (1-16, 0=disabled):
+    Adaptive range. When both > 0, the server picks difficulty per-request based on
+    `preSignalScore()`. Clean browsers get min, suspicious TLS/headers get max.
+    Overrides `challenge_difficulty` entirely when active.
+  - **`challenge_algorithm`** ("fast"/"slow"): Orthogonal to difficulty. "slow" adds 10ms
+    delay per hash iteration — applies to ALL clients regardless of their adaptive
+    difficulty. Useful as a blanket punishment but be cautious: slow + difficulty > 2
+    causes multi-minute solve times for real users.
+  - **`challenge_bind_ip`** (default true): Invalidates cookie if client IP changes.
+  - **`challenge_bind_ja4`** (default true): Invalidates cookie if JA4 TLS fingerprint
+    changes. Prevents cookie replay from a different TLS stack.
+  - **`challenge_ttl`** ("1h"/"24h"/"7d"): Cookie lifetime before re-challenge.
+  Challenge analytics: `/api/challenge/stats?hours=24&service=x&client=y` returns funnel
+  (issued/passed/failed/bypassed), bot score histogram, hourly timeline, top clients
+  (with unique token counts and avg/max bot scores), top services (with fail rates),
+  and top JA4 fingerprints. Dashboard at `/challenge`.
 - **JA4 TLS fingerprinting**: `caddy.ListenerWrapper` module (`caddy.listeners.ja4`)
   between L4 DDoS and TLS in the listener chain. Hand-rolled ClientHello binary parser
   (zero deps). Full FoxIO JA4 spec. Available as `ja4` condition field and

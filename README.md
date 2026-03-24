@@ -87,8 +87,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.66.4-2.11.2
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.70.4
+CADDY_IMAGE   ?= <your-registry>/caddy:3.66.5-2.11.2
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.70.5
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -154,7 +154,7 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.66.4-2.11.2`), wafctl is plain semver (e.g. `2.70.4`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.66.5-2.11.2`), wafctl is plain semver (e.g. `2.70.5`).
 
 ## WAF configuration
 
@@ -186,17 +186,28 @@ When only included `.conf` files change (not the Caddyfile itself), Caddy's `/lo
 
 Challenge rules serve a proof-of-work interstitial (SHA-256 hashcash) that clients must solve before reaching the upstream. The interstitial runs in Web Workers for parallelism, with a pure-JS SHA-256 fallback for non-secure contexts. On success, an HMAC-signed cookie bypasses the challenge on subsequent requests.
 
-**Bot scoring** runs during the PoW computation window — 5 layers: JA4 TLS fingerprint, HTTP headers, 17 JS environment probes, behavioral signals (mouse/keyboard/scroll/focus/worker-timing-variance), and spatial inconsistency. Score >= 70 rejects even with a valid PoW.
+**Bot scoring** runs during the PoW computation window — 6 layers: JA4 TLS fingerprint, HTTP headers, 17 JS environment probes, behavioral signals (mouse/keyboard/scroll/focus/worker-timing-variance), spatial inconsistency, and timing validation. Score >= 70 rejects even with a valid PoW.
 
-**Hardening features** (v3.66.0):
+**Challenge rule fields:**
 
-| Feature | Field(s) | Description |
-|---------|----------|-------------|
-| Adaptive difficulty | `challenge_min_difficulty`, `challenge_max_difficulty` | Server selects difficulty within [min, max] based on pre-signal scoring (JA4 + HTTP headers) at serve time. Clean browsers get min, suspicious clients get max. |
-| JA4 token binding | `challenge_bind_ja4` (default true) | JA4 fingerprint HMAC'd into challenge payload and stored in cookie. Cookie validation rejects if TLS fingerprint changed. Prevents cookie replay from different TLS stacks. |
-| Timing validation | Automatic | Server computes minimum expected solve time from difficulty and reported core count. Hard rejects impossibly fast solutions (< floor/3). Adds bot score penalty for suspicious timing (< floor). |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `challenge_difficulty` | 4 | Static difficulty (1-16). SHA-256 leading hex zeros. 4 ≈ 0.5s, 6 ≈ 5s, 8 ≈ 30s. **Ignored when adaptive range is active.** |
+| `challenge_min_difficulty` | 0 (disabled) | Adaptive minimum (1-16). Easiest puzzle for clean browsers (good JA4, proper headers). Set both min and max to enable adaptive mode. |
+| `challenge_max_difficulty` | 0 (disabled) | Adaptive maximum (1-16). Hardest puzzle for suspicious clients (no ALPN, missing Sec-Fetch). Server picks per-request via `preSignalScore()`. |
+| `challenge_algorithm` | "fast" | "fast" = native WebCrypto speed. "slow" = 10ms delay per hash iteration, penalizes all clients equally. **Orthogonal to difficulty** — does not interact with adaptive range. Caution: slow + difficulty > 2 causes multi-minute solves for real users. |
+| `challenge_ttl` | "1h" | Cookie lifetime before re-challenge. Accepts extended durations: "1h", "4h", "24h", "7d". |
+| `challenge_bind_ip` | true | Invalidates cookie if client IP changes. Disable for mobile users on cellular networks. |
+| `challenge_bind_ja4` | true | Invalidates cookie if JA4 TLS fingerprint changes. Prevents cookie replay from a different TLS stack (e.g., solve in browser, replay from curl). |
 
-Rule fields: `challenge_difficulty` (1-16, default 4), `challenge_algorithm` ("fast"/"slow"), `challenge_ttl` ("1h", "24h", "7d"), `challenge_bind_ip` (default true), `challenge_bind_ja4` (default true), `challenge_min_difficulty`, `challenge_max_difficulty`.
+**How difficulty selection works:**
+- If `challenge_min_difficulty` and `challenge_max_difficulty` are both 0 → static mode: all clients get `challenge_difficulty`.
+- If both are > 0 → adaptive mode: the server runs `preSignalScore(request)` using JA4/TLS (L1), HTTP headers (L2), and UA spatial checks (partial L5). Score 0 → min difficulty, score >= 70 → max difficulty, proportional in between. `challenge_difficulty` is ignored.
+- If only one is set, the other defaults to `challenge_difficulty`.
+
+**Timing validation** (automatic, no configuration needed): the server computes a minimum expected solve time from the difficulty and the client's reported `navigator.hardwareConcurrency`. Solutions faster than floor/3 are hard-rejected (physically impossible). Solutions faster than floor get a +40 bot score penalty.
+
+**Challenge analytics** dashboard at `/challenge`: funnel (issued/passed/failed/bypassed with rates), bot score distribution histogram, hourly timeline, top challenged clients (with unique token counts and avg/max bot scores), top challenged services (with fail rates), top JA4 fingerprints. Supports `service` and `client` filters. API: `GET /api/challenge/stats?hours=24&service=x&client=y`.
 
 ## WAF dashboard
 
@@ -212,6 +223,7 @@ The dashboard is an Astro 6 + React 19 static site bundled in the wafctl image a
 - **CSP** — per-service Content Security Policy management with directive editor, source input, live preview, set/default/none modes, report-only, global enable/disable.
 - **Logs** — general Caddy log viewer with stream tab, summary aggregation, and header compliance analysis.
 - **Services** — per-service stats, top URIs, top triggered rules.
+- **Challenge Analytics** — PoW challenge funnel (issued/passed/failed/bypassed), bot score distribution histogram, hourly timeline, top challenged clients with unique token counts and bot score averages, top challenged services with fail rates, top JA4 TLS fingerprints. Service and client filters with click-to-filter tables.
 - **Investigate** — top blocked IPs, top URIs, top countries, IP lookup with GeoIP resolution.
 - **Settings** — global and per-service WAF settings including full CRS v4 coverage (paranoia levels, anomaly thresholds, mode, allowed methods, content types, argument limits, file limits, blocked extensions, HTTP versions, restricted headers, CRS exclusion profiles). All fields have tooltips explaining their purpose. Deploy button with step-by-step progress.
 

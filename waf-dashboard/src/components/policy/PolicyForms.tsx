@@ -1066,80 +1066,110 @@ export function AdvancedBuilderForm({
       )}
 
       {/* Challenge: PoW Settings */}
-      {isChallenge && (
-        <div className="space-y-3 rounded-md border border-lv-border/30 bg-lv-surface/30 p-3">
+      {isChallenge && (() => {
+        const adaptiveActive = form.challenge_min_difficulty > 0 && form.challenge_max_difficulty > 0;
+        const effectiveMax = adaptiveActive ? form.challenge_max_difficulty : form.challenge_difficulty;
+        const slowWarning = form.challenge_algorithm === "slow" && effectiveMax > 2;
+        return (
+        <div className="space-y-4 rounded-md border border-lv-border/30 bg-lv-surface/30 p-3">
           <p className="text-xs font-medium text-lv-muted">Challenge Settings</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-lv-muted">Base Difficulty (1-16)</label>
-              <input
-                type="number"
-                min={1}
-                max={16}
-                value={form.challenge_difficulty}
-                onChange={(e) => update("challenge_difficulty", parseInt(e.target.value) || 4)}
-                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
-              />
-              <p className="mt-0.5 text-[10px] text-lv-muted">
-                SHA-256 leading hex zeros. 4 &#8776; 0.5s, 6 &#8776; 5s, 8 &#8776; 30s. Used when adaptive range is not set.
+
+          {/* Difficulty section */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-medium text-lv-muted/80 uppercase tracking-wide">Difficulty</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className={adaptiveActive ? "opacity-40" : ""}>
+                <label className="text-xs text-lv-muted">Static Difficulty (1-16)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={16}
+                  value={form.challenge_difficulty}
+                  onChange={(e) => update("challenge_difficulty", parseInt(e.target.value) || 4)}
+                  className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+                  disabled={adaptiveActive}
+                />
+                <p className="mt-0.5 text-[10px] text-lv-muted">
+                  {adaptiveActive ? "Overridden by adaptive range below." : "Leading hex zeros. 4 \u2248 0.5s, 6 \u2248 5s, 8 \u2248 30s. Same for all clients."}
+                </p>
+              </div>
+              <div>
+                <label className="text-xs text-lv-muted">Adaptive Min</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={16}
+                  value={form.challenge_min_difficulty}
+                  onChange={(e) => update("challenge_min_difficulty", parseInt(e.target.value) || 0)}
+                  className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+                />
+                <p className="mt-0.5 text-[10px] text-lv-muted">
+                  For clean browsers (good JA4 + headers). 0 = use static.
+                </p>
+              </div>
+              <div>
+                <label className="text-xs text-lv-muted">Adaptive Max</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={16}
+                  value={form.challenge_max_difficulty}
+                  onChange={(e) => update("challenge_max_difficulty", parseInt(e.target.value) || 0)}
+                  className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+                />
+                <p className="mt-0.5 text-[10px] text-lv-muted">
+                  For suspicious clients (no ALPN, missing headers). 0 = use static.
+                </p>
+              </div>
+            </div>
+            {adaptiveActive && (
+              <p className="text-[10px] text-lv-cyan">
+                Adaptive mode active: server picks difficulty {form.challenge_min_difficulty}-{form.challenge_max_difficulty} per request based on TLS/header signals. Static difficulty is ignored.
               </p>
+            )}
+          </div>
+
+          {/* Algorithm + TTL */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-medium text-lv-muted/80 uppercase tracking-wide">Solver &amp; Cookie</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-lv-muted">Algorithm</label>
+                <select
+                  value={form.challenge_algorithm}
+                  onChange={(e) => update("challenge_algorithm", e.target.value)}
+                  className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+                >
+                  <option value="fast">Fast (WebCrypto, native speed)</option>
+                  <option value="slow">Slow (10ms delay per hash, punishes bots)</option>
+                </select>
+                <p className="mt-0.5 text-[10px] text-lv-muted">
+                  Applies to all clients regardless of difficulty. Slow penalizes CPU time without increasing hash count.
+                </p>
+                {slowWarning && (
+                  <p className="mt-0.5 text-[10px] text-lv-red font-medium">Warning: slow + difficulty &gt;2 takes minutes to hours for real users.</p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs text-lv-muted">Cookie TTL</label>
+                <input
+                  type="text"
+                  value={form.challenge_ttl}
+                  onChange={(e) => update("challenge_ttl", e.target.value)}
+                  placeholder="1h"
+                  className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+                />
+                <p className="mt-0.5 text-[10px] text-lv-muted">
+                  How long the bypass cookie lasts before re-challenge (e.g., 1h, 4h, 24h, 7d)
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-lv-muted">Algorithm</label>
-              <select
-                value={form.challenge_algorithm}
-                onChange={(e) => update("challenge_algorithm", e.target.value)}
-                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
-              >
-                <option value="fast">Fast (WebCrypto)</option>
-                <option value="slow">Slow (deliberate delay per iteration)</option>
-              </select>
-              {form.challenge_algorithm === "slow" && form.challenge_difficulty > 2 && (
-                <p className="mt-0.5 text-[10px] text-lv-red font-medium">Warning: slow + difficulty &gt;2 takes minutes to hours. Use 1-2 with slow.</p>
-              )}
-            </div>
-            <div>
-              <label className="text-xs text-lv-muted">Adaptive Min Difficulty</label>
-              <input
-                type="number"
-                min={0}
-                max={16}
-                value={form.challenge_min_difficulty}
-                onChange={(e) => update("challenge_min_difficulty", parseInt(e.target.value) || 0)}
-                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
-              />
-              <p className="mt-0.5 text-[10px] text-lv-muted">
-                Easiest difficulty for clean browsers (good JA4, proper headers). 0 = disabled, uses base difficulty.
-              </p>
-            </div>
-            <div>
-              <label className="text-xs text-lv-muted">Adaptive Max Difficulty</label>
-              <input
-                type="number"
-                min={0}
-                max={16}
-                value={form.challenge_max_difficulty}
-                onChange={(e) => update("challenge_max_difficulty", parseInt(e.target.value) || 0)}
-                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
-              />
-              <p className="mt-0.5 text-[10px] text-lv-muted">
-                Hardest difficulty for suspicious clients (bad JA4, missing Sec-Fetch, no ALPN). 0 = disabled.
-              </p>
-            </div>
-            <div>
-              <label className="text-xs text-lv-muted">Cookie TTL</label>
-              <input
-                type="text"
-                value={form.challenge_ttl}
-                onChange={(e) => update("challenge_ttl", e.target.value)}
-                placeholder="1h"
-                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
-              />
-              <p className="mt-0.5 text-[10px] text-lv-muted">
-                How long the bypass cookie lasts before the client must re-solve (e.g., 1h, 4h, 24h, 7d)
-              </p>
-            </div>
-            <div className="space-y-2 pt-4">
+          </div>
+
+          {/* Cookie binding */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-medium text-lv-muted/80 uppercase tracking-wide">Cookie Binding</p>
+            <div className="grid grid-cols-2 gap-3">
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -1150,9 +1180,9 @@ export function AdvancedBuilderForm({
                 />
                 <div>
                   <label htmlFor="challenge-bind-ip" className="text-xs text-lv-muted">
-                    Bind cookie to client IP
+                    Bind to client IP
                   </label>
-                  <p className="text-[10px] text-lv-muted/60">Invalidates cookie if IP changes. Disable for mobile users on cellular.</p>
+                  <p className="text-[10px] text-lv-muted/60">Cookie invalid if IP changes. Disable for mobile/cellular users.</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1165,15 +1195,16 @@ export function AdvancedBuilderForm({
                 />
                 <div>
                   <label htmlFor="challenge-bind-ja4" className="text-xs text-lv-muted">
-                    Bind cookie to JA4 TLS fingerprint
+                    Bind to JA4 TLS fingerprint
                   </label>
-                  <p className="text-[10px] text-lv-muted/60">Prevents cookie replay from a different TLS stack (e.g., solve in browser, replay from curl).</p>
+                  <p className="text-[10px] text-lv-muted/60">Blocks cookie replay from different TLS stacks (e.g., solve in browser, replay from curl).</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Response Header: Header Actions */}
       {isResponseHeader && (
