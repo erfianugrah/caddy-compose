@@ -47,9 +47,12 @@ type Event struct {
 	RequestBody    string              `json:"request_body,omitempty"`
 	RequestArgs    map[string]string   `json:"request_args,omitempty"`
 	// JA4 TLS fingerprint + challenge fields
-	JA4               string `json:"ja4,omitempty"`                 // JA4 TLS fingerprint from listener wrapper
-	ChallengeBotScore int    `json:"challenge_bot_score,omitempty"` // bot signal score (0-100) at challenge time
-	ChallengeJTI      string `json:"challenge_jti,omitempty"`       // challenge cookie token ID
+	JA4                 string `json:"ja4,omitempty"`                  // JA4 TLS fingerprint from listener wrapper
+	ChallengeBotScore   int    `json:"challenge_bot_score,omitempty"`  // bot signal score (0-100) at challenge time
+	ChallengeJTI        string `json:"challenge_jti,omitempty"`        // challenge cookie token ID
+	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // selected difficulty (after adaptive)
+	ChallengeElapsedMs  int    `json:"challenge_elapsed_ms,omitempty"` // client-reported solve time in ms
+	ChallengePreScore   int    `json:"challenge_pre_score,omitempty"`  // pre-signal score (L1/L2/L5) that drove difficulty
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`

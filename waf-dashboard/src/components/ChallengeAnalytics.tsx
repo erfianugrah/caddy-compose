@@ -452,18 +452,30 @@ export default function ChallengeAnalytics() {
           </CardHeader>
           <CardContent className="space-y-4">
             <FunnelBar stats={stats} />
-            <div className="grid grid-cols-3 gap-4 pt-2">
+            <div className="grid grid-cols-5 gap-4 pt-2">
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-green">{pct(stats.pass_rate)}</p>
                 <p className="text-xs text-muted-foreground">Pass Rate</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-red">{pct(stats.fail_rate)}</p>
-                <p className="text-xs text-muted-foreground">Fail Rate (bot pressure)</p>
+                <p className="text-xs text-muted-foreground">Fail Rate</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-cyan">{pct(stats.bypass_rate)}</p>
-                <p className="text-xs text-muted-foreground">Bypass Rate (cookie reuse)</p>
+                <p className="text-xs text-muted-foreground">Bypass Rate</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground">
+                  {stats.avg_solve_ms > 0 ? stats.avg_solve_ms >= 1000 ? `${(stats.avg_solve_ms / 1000).toFixed(1)}s` : `${Math.round(stats.avg_solve_ms)}ms` : "-"}
+                </p>
+                <p className="text-xs text-muted-foreground">Avg Solve Time</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground">
+                  {stats.avg_difficulty > 0 ? stats.avg_difficulty.toFixed(1) : "-"}
+                </p>
+                <p className="text-xs text-muted-foreground">Avg Difficulty</p>
               </div>
             </div>
           </CardContent>

@@ -135,6 +135,9 @@ export interface WAFEvent {
   ja4?: string;
   challenge_bot_score?: number;
   challenge_jti?: string;
+  challenge_difficulty?: number;
+  challenge_elapsed_ms?: number;
+  challenge_pre_score?: number;
   // DDoS mitigator fields (ddos_blocked/ddos_jailed events)
   ddos_action?: string;
   ddos_fingerprint?: string;
@@ -261,6 +264,9 @@ interface RawEvent {
   ja4?: string;
   challenge_bot_score?: number;
   challenge_jti?: string;
+  challenge_difficulty?: number;
+  challenge_elapsed_ms?: number;
+  challenge_pre_score?: number;
   ddos_action?: string;
   ddos_fingerprint?: string;
   ddos_score?: string;
@@ -303,6 +309,9 @@ export function mapEvent(raw: RawEvent): WAFEvent {
     ja4: raw.ja4,
     challenge_bot_score: raw.challenge_bot_score,
     challenge_jti: raw.challenge_jti,
+    challenge_difficulty: raw.challenge_difficulty,
+    challenge_elapsed_ms: raw.challenge_elapsed_ms,
+    challenge_pre_score: raw.challenge_pre_score,
     ddos_action: raw.ddos_action,
     ddos_fingerprint: raw.ddos_fingerprint,
     ddos_score: raw.ddos_score,

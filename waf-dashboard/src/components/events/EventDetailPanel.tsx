@@ -514,6 +514,33 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     </span>
                   </div>
                 )}
+                {(event.challenge_difficulty || event.challenge_elapsed_ms || event.challenge_pre_score) ? (
+                  <div className="flex gap-4 flex-wrap text-xs">
+                    {event.challenge_difficulty != null && event.challenge_difficulty > 0 && (
+                      <div className="flex gap-1.5">
+                        <span className="text-muted-foreground">Difficulty:</span>
+                        <span className="text-foreground font-medium">{event.challenge_difficulty}</span>
+                      </div>
+                    )}
+                    {event.challenge_elapsed_ms != null && event.challenge_elapsed_ms > 0 && (
+                      <div className="flex gap-1.5">
+                        <span className="text-muted-foreground">Solve Time:</span>
+                        <span className="text-foreground font-medium">
+                          {event.challenge_elapsed_ms >= 1000 ? `${(event.challenge_elapsed_ms / 1000).toFixed(1)}s` : `${event.challenge_elapsed_ms}ms`}
+                        </span>
+                      </div>
+                    )}
+                    {event.challenge_pre_score != null && event.challenge_pre_score > 0 && (
+                      <div className="flex gap-1.5">
+                        <span className="text-muted-foreground">Pre-Signal Score:</span>
+                        <span className={event.challenge_pre_score >= 50 ? "text-lv-red" : event.challenge_pre_score >= 25 ? "text-lv-yellow" : "text-lv-green"}>
+                          {event.challenge_pre_score}
+                        </span>
+                        <span className="text-muted-foreground/50 text-[10px]">(TLS + headers, drove difficulty selection)</span>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 {event.tags && event.tags.length > 0 && (
                   <div className="flex gap-2 flex-wrap">
                     <span className="text-muted-foreground">Tags:</span>

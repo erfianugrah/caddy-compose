@@ -26,6 +26,10 @@ type ChallengeStatsResponse struct {
 	FailRate   float64 `json:"fail_rate"`   // failed / issued
 	BypassRate float64 `json:"bypass_rate"` // bypassed / (passed + bypassed)
 
+	// Solve metrics (from challenge_passed/failed events with data).
+	AvgSolveMs    float64 `json:"avg_solve_ms"`   // average elapsed_ms across solves
+	AvgDifficulty float64 `json:"avg_difficulty"` // average difficulty served
+
 	// Bot score distribution — counts per bucket.
 	ScoreBuckets []ScoreBucket `json:"score_buckets"`
 
@@ -69,6 +73,7 @@ type ChallengeClient struct {
 	Bypassed     int     `json:"bypassed"`
 	AvgBotScore  float64 `json:"avg_bot_score"`
 	MaxBotScore  int     `json:"max_bot_score"`
+	AvgSolveMs   float64 `json:"avg_solve_ms"`
 	UniqueTokens int     `json:"unique_tokens"` // distinct JTI count — high value = repeated solves
 }
 
@@ -110,16 +115,22 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 
 	hourMap := make(map[string]*ChallengeHour)
 
+	// Global solve time + difficulty accumulators.
+	var solveTimeSum, difficultySum int
+	var solveTimeCount, difficultyCount int
+
 	type clientAgg struct {
-		country    string
-		issued     int
-		passed     int
-		failed     int
-		bypassed   int
-		scoreSum   int
-		scoreCount int
-		maxScore   int
-		tokens     map[string]struct{} // unique JTIs
+		country        string
+		issued         int
+		passed         int
+		failed         int
+		bypassed       int
+		scoreSum       int
+		scoreCount     int
+		maxScore       int
+		solveTimeSum   int
+		solveTimeCount int
+		tokens         map[string]struct{} // unique JTIs
 	}
 	clientMap := make(map[string]*clientAgg)
 
@@ -218,6 +229,16 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 				ca.maxScore = e.ChallengeBotScore
 			}
 		}
+		if e.ChallengeElapsedMs > 0 {
+			ca.solveTimeSum += e.ChallengeElapsedMs
+			ca.solveTimeCount++
+			solveTimeSum += e.ChallengeElapsedMs
+			solveTimeCount++
+		}
+		if e.ChallengeDifficulty > 0 {
+			difficultySum += e.ChallengeDifficulty
+			difficultyCount++
+		}
 		if e.ChallengeJTI != "" {
 			ca.tokens[e.ChallengeJTI] = struct{}{}
 		}
@@ -256,10 +277,16 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 		}
 	}
 
-	// Compute rates.
+	// Compute rates and averages.
 	if resp.Issued > 0 {
 		resp.PassRate = float64(resp.Passed) / float64(resp.Issued)
 		resp.FailRate = float64(resp.Failed) / float64(resp.Issued)
+	}
+	if solveTimeCount > 0 {
+		resp.AvgSolveMs = float64(solveTimeSum) / float64(solveTimeCount)
+	}
+	if difficultyCount > 0 {
+		resp.AvgDifficulty = float64(difficultySum) / float64(difficultyCount)
 	}
 	totalSolved := resp.Passed + resp.Bypassed
 	if totalSolved > 0 {
@@ -291,6 +318,9 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 		}
 		if ca.scoreCount > 0 {
 			cc.AvgBotScore = float64(ca.scoreSum) / float64(ca.scoreCount)
+		}
+		if ca.solveTimeCount > 0 {
+			cc.AvgSolveMs = float64(ca.solveTimeSum) / float64(ca.solveTimeCount)
 		}
 		clients = append(clients, cc)
 	}

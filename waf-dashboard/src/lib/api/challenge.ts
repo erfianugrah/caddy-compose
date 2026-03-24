@@ -10,6 +10,8 @@ export interface ChallengeStats {
   pass_rate: number;
   fail_rate: number;
   bypass_rate: number;
+  avg_solve_ms: number;
+  avg_difficulty: number;
   score_buckets: ScoreBucket[];
   timeline: ChallengeHour[];
   top_clients: ChallengeClient[];
@@ -41,6 +43,7 @@ export interface ChallengeClient {
   bypassed: number;
   avg_bot_score: number;
   max_bot_score: number;
+  avg_solve_ms: number;
   unique_tokens: number;
 }
 

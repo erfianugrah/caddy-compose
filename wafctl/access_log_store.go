@@ -29,23 +29,26 @@ type AccessLogEntry struct {
 	Status               int                 `json:"status"`
 	Size                 int                 `json:"size"`
 	Duration             float64             `json:"duration"`
-	BytesRead            int                 `json:"bytes_read"`                           // request body bytes consumed
-	RequestID            string              `json:"request_id,omitempty"`                 // Caddy UUID via log_append
-	PolicyAction         string              `json:"policy_action,omitempty"`              // log_append: policy engine action (allow/block/honeypot/detect_block)
-	PolicyRule           string              `json:"policy_rule,omitempty"`                // log_append: matched policy engine rule name
-	PolicyTags           string              `json:"policy_tags,omitempty"`                // log_append: comma-separated tags from matched rule(s)
-	PolicyScore          string              `json:"policy_score,omitempty"`               // log_append: anomaly score (detect rules only)
-	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`        // log_append: matched detect rule details "id:severity:score,..."
-	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`      // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
-	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"`     // log_append: JSON-serialized request headers (block/detect_block only)
-	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`        // log_append: truncated request body excerpt (block/detect_block only)
-	PolicyJA4            string              `json:"policy_ja4,omitempty"`                 // log_append: JA4 TLS fingerprint
-	ChallengeBotScore    string              `json:"policy_challenge_bot_score,omitempty"` // log_append: bot signal score (0-100)
-	ChallengeJTI         string              `json:"policy_challenge_jti,omitempty"`       // log_append: challenge cookie token ID
-	DDoSAction           string              `json:"ddos_action,omitempty"`                // log_append: ddos mitigator action (pass/blocked/jailed)
-	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`           // log_append: FNV-64a request fingerprint
-	DDoSZScore           string              `json:"ddos_z_score,omitempty"`               // log_append: z-score at time of evaluation
-	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`            // log_append: "true"/"false" — spike detection state
+	BytesRead            int                 `json:"bytes_read"`                            // request body bytes consumed
+	RequestID            string              `json:"request_id,omitempty"`                  // Caddy UUID via log_append
+	PolicyAction         string              `json:"policy_action,omitempty"`               // log_append: policy engine action (allow/block/honeypot/detect_block)
+	PolicyRule           string              `json:"policy_rule,omitempty"`                 // log_append: matched policy engine rule name
+	PolicyTags           string              `json:"policy_tags,omitempty"`                 // log_append: comma-separated tags from matched rule(s)
+	PolicyScore          string              `json:"policy_score,omitempty"`                // log_append: anomaly score (detect rules only)
+	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`         // log_append: matched detect rule details "id:severity:score,..."
+	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`       // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
+	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"`      // log_append: JSON-serialized request headers (block/detect_block only)
+	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`         // log_append: truncated request body excerpt (block/detect_block only)
+	PolicyJA4            string              `json:"policy_ja4,omitempty"`                  // log_append: JA4 TLS fingerprint
+	ChallengeBotScore    string              `json:"policy_challenge_bot_score,omitempty"`  // log_append: bot signal score (0-100)
+	ChallengeJTI         string              `json:"policy_challenge_jti,omitempty"`        // log_append: challenge cookie token ID
+	ChallengeDifficulty  string              `json:"policy_challenge_difficulty,omitempty"` // log_append: selected difficulty (after adaptive)
+	ChallengeElapsedMs   string              `json:"policy_challenge_elapsed_ms,omitempty"` // log_append: client-reported solve time in ms
+	ChallengePreScore    string              `json:"policy_challenge_pre_score,omitempty"`  // log_append: pre-signal score (L1/L2/L5)
+	DDoSAction           string              `json:"ddos_action,omitempty"`                 // log_append: ddos mitigator action (pass/blocked/jailed)
+	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`            // log_append: FNV-64a request fingerprint
+	DDoSZScore           string              `json:"ddos_z_score,omitempty"`                // log_append: z-score at time of evaluation
+	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`             // log_append: "true"/"false" — spike detection state
 }
 
 type AccessLogReq struct {
@@ -92,9 +95,12 @@ type RateLimitEvent struct {
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"` // block/detect_block: captured request headers
 	RequestBody    string              `json:"request_body,omitempty"`    // block/detect_block: truncated body excerpt
 	// Challenge/JA4 fields
-	JA4               string `json:"ja4,omitempty"`                 // JA4 TLS fingerprint
-	ChallengeBotScore int    `json:"challenge_bot_score,omitempty"` // bot signal score (0-100)
-	ChallengeJTI      string `json:"challenge_jti,omitempty"`       // challenge cookie token ID
+	JA4                 string `json:"ja4,omitempty"`                  // JA4 TLS fingerprint
+	ChallengeBotScore   int    `json:"challenge_bot_score,omitempty"`  // bot signal score (0-100)
+	ChallengeJTI        string `json:"challenge_jti,omitempty"`        // challenge cookie token ID
+	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // selected difficulty (after adaptive)
+	ChallengeElapsedMs  int    `json:"challenge_elapsed_ms,omitempty"` // client-reported solve time ms
+	ChallengePreScore   int    `json:"challenge_pre_score,omitempty"`  // pre-signal score (L1/L2/L5)
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`
@@ -777,6 +783,15 @@ func (s *AccessLogStore) Load() {
 					if entry.ChallengeJTI != "" && entry.ChallengeJTI != "None" {
 						evt.ChallengeJTI = entry.ChallengeJTI
 					}
+					if entry.ChallengeDifficulty != "" && entry.ChallengeDifficulty != "None" {
+						evt.ChallengeDifficulty, _ = strconv.Atoi(entry.ChallengeDifficulty)
+					}
+					if entry.ChallengeElapsedMs != "" && entry.ChallengeElapsedMs != "None" {
+						evt.ChallengeElapsedMs, _ = strconv.Atoi(entry.ChallengeElapsedMs)
+					}
+					if entry.ChallengePreScore != "" && entry.ChallengePreScore != "None" {
+						evt.ChallengePreScore, _ = strconv.Atoi(entry.ChallengePreScore)
+					}
 					newEvents = append(newEvents, evt)
 				}
 			}
@@ -1125,6 +1140,15 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	}
 	if rle.ChallengeJTI != "" {
 		evt.ChallengeJTI = rle.ChallengeJTI
+	}
+	if rle.ChallengeDifficulty > 0 {
+		evt.ChallengeDifficulty = rle.ChallengeDifficulty
+	}
+	if rle.ChallengeElapsedMs > 0 {
+		evt.ChallengeElapsedMs = rle.ChallengeElapsedMs
+	}
+	if rle.ChallengePreScore > 0 {
+		evt.ChallengePreScore = rle.ChallengePreScore
 	}
 	// For DDoS mitigator blocks, pass through fingerprint and score.
 	if rle.Source == "ddos_blocked" || rle.Source == "ddos_jailed" {
