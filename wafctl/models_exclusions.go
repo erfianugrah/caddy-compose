@@ -202,23 +202,24 @@ var validConditionFields = map[string]bool{
 // validPolicyEngineFields are the inbound (request-phase) condition fields
 // supported by the Caddy policy engine plugin.
 var validPolicyEngineFields = map[string]bool{
-	"ip":           true,
-	"path":         true,
-	"host":         true,
-	"method":       true,
-	"user_agent":   true,
-	"header":       true,
-	"query":        true,
-	"country":      true,
-	"cookie":       true,
-	"body":         true,
-	"body_json":    true,
-	"body_form":    true,
-	"args":         true,
-	"uri_path":     true,
-	"referer":      true,
-	"http_version": true,
-	"ja4":          true,
+	"ip":                true,
+	"path":              true,
+	"host":              true,
+	"method":            true,
+	"user_agent":        true,
+	"header":            true,
+	"query":             true,
+	"country":           true,
+	"cookie":            true,
+	"body":              true,
+	"body_json":         true,
+	"body_form":         true,
+	"args":              true,
+	"uri_path":          true,
+	"referer":           true,
+	"http_version":      true,
+	"ja4":               true,
+	"challenge_history": true, // v0.28.0: "passed", "expired", or "none"
 	// v0.9.0: aggregate fields (multi-variable inspection)
 	"all_args":          true,
 	"all_args_values":   true,
@@ -402,6 +403,11 @@ var validOperatorsForField = map[string]map[string]bool{
 		"regex": true, "not_regex": true,
 		"in": true, "not_in": true,
 		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	// challenge_history: enum field — values are "passed", "expired", "none"
+	"challenge_history": {
+		"eq": true, "neq": true, "in": true, "not_in": true,
 		"in_list": true, "not_in_list": true,
 	},
 	"response_header": {

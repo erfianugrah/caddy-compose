@@ -440,6 +440,17 @@ export const CONDITION_FIELDS: FieldDef[] = [
     placeholder: "e.g., t13d1516h2_8daaf6152771_e5627efa2ab1",
     hint: "TLS client fingerprint computed from the ClientHello. Identifies browser/client implementation. Empty for non-TLS connections.",
   },
+  {
+    value: "challenge_history", label: "Challenge History",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "in", label: "is in" },
+      { value: "not_in", label: "is not in" },
+    ],
+    placeholder: "passed, expired, or none",
+    hint: "Client's challenge cookie state: 'passed' = valid cookie, 'expired' = invalid/expired cookie, 'none' = no cookie. Use to enforce challenge requirements on specific paths.",
+  },
   // ─── Aggregate Fields ────────────────────────────────────────────
   {
     value: "all_args", label: "All Args (names+values)",

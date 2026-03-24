@@ -1079,3 +1079,50 @@ func TestChallengeReputationWithFilter(t *testing.T) {
 	resp, _ := httpGet(t, wafctlURL+"/api/challenge/reputation?hours=1&service=httpbun.erfi.io")
 	assertCode(t, "with service filter", 200, resp)
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  30h. Challenge History Condition Field + Escalation Template
+// ════════════════════════════════════════════════════════════════════
+
+func TestChallengeHistoryConditionField(t *testing.T) {
+	// Create a rule using the challenge_history condition field.
+	t.Run("create-with-challenge-history", func(t *testing.T) {
+		payload := map[string]any{
+			"name":    "e2e-challenge-history",
+			"type":    "block",
+			"enabled": true,
+			"conditions": []map[string]string{
+				{"field": "challenge_history", "operator": "eq", "value": "none"},
+			},
+			"tags": []string{"challenge-escalation"},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		assertField(t, "type", body, "type", "block")
+	})
+
+	t.Run("invalid-operator-rejected", func(t *testing.T) {
+		payload := map[string]any{
+			"name":    "e2e-bad-history-op",
+			"type":    "block",
+			"enabled": true,
+			"conditions": []map[string]string{
+				{"field": "challenge_history", "operator": "regex", "value": ".*"},
+			},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "invalid operator", 400, resp)
+	})
+}
+
+func TestChallengeEscalationTemplate(t *testing.T) {
+	// The challenge-escalation template should be available.
+	resp, body := httpGet(t, wafctlURL+"/api/rules/templates")
+	assertCode(t, "list templates", 200, resp)
+	if !strings.Contains(string(body), "challenge-escalation") {
+		t.Error("challenge-escalation template not found in templates list")
+	}
+}

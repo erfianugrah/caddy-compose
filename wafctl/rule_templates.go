@@ -27,6 +27,40 @@ func builtinTemplates() []RuleTemplate {
 		cacheImmutableAssetsTemplate(),
 		securityHeadersBaselineTemplate(),
 		removeServerHeadersTemplate(),
+		challengeEscalationTemplate(),
+	}
+}
+
+// ─── Challenge Templates ────────────────────────────────────────────
+
+func challengeEscalationTemplate() RuleTemplate {
+	return RuleTemplate{
+		ID:          "challenge-escalation",
+		Name:        "Challenge Escalation",
+		Description: "Block clients without a valid challenge cookie and rate-limit those that have solved. Useful for protecting API endpoints after enabling challenge rules.",
+		Category:    "security",
+		Rules: []RuleExclusion{
+			{
+				Name:        "Block unchallenged clients",
+				Description: "Blocks requests from clients that have never solved a challenge for this service.",
+				Type:        "block",
+				Enabled:     true,
+				Conditions: []Condition{
+					{Field: "challenge_history", Operator: "eq", Value: "none"},
+				},
+				Tags: []string{"bot-mitigation", "challenge-escalation"},
+			},
+			{
+				Name:        "Block expired challenge cookies",
+				Description: "Blocks requests from clients whose challenge cookie has expired or been tampered with.",
+				Type:        "block",
+				Enabled:     true,
+				Conditions: []Condition{
+					{Field: "challenge_history", Operator: "eq", Value: "expired"},
+				},
+				Tags: []string{"bot-mitigation", "challenge-escalation"},
+			},
+		},
 	}
 }
 
