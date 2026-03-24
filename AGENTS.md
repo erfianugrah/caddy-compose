@@ -372,6 +372,23 @@ causes the event to be invisible in parts of the UI.
   (issued/passed/failed/bypassed), bot score histogram, hourly timeline, top clients
   (with unique token counts and avg/max bot scores), top services (with fail rates),
   and top JA4 fingerprints. Dashboard at `/challenge`.
+  Challenge data pipeline: plugin sets `policy_engine.challenge_difficulty`,
+  `policy_engine.challenge_elapsed_ms`, `policy_engine.challenge_pre_score` as Caddy
+  variables. These flow to access log via `log_append` and are parsed by wafctl into
+  `RateLimitEvent` and `Event` structs. Analytics show avg solve time and avg difficulty.
+  Challenge reputation: `/api/challenge/reputation?hours=24&service=x` returns JA4
+  verdicts (trusted/suspicious/hostile from fail rates + avg bot scores), per-IP
+  challenge history with flags (repeat_failure, cookie_harvesting, ja4_rotation),
+  and severity-ranked alerts. Dashboard Reputation tab with quick-action Block/Challenge.
+  Endpoint discovery: `/api/discovery/endpoints?hours=24&service=x` aggregates traffic
+  by (service, method, path) with path normalization (UUIDs/numeric IDs collapsed).
+  Per-endpoint: request count, unique IPs/JA4s/UAs, non-browser %, challenge/rate-limit
+  coverage check. Dashboard Endpoint Discovery tab with coverage shields and
+  quick-action "Create Challenge Rule" links.
+  Challenge condition field: `challenge_history` — returns "passed" (valid cookie),
+  "expired" (invalid cookie), or "none" (no cookie). Enables rules that enforce
+  challenge requirements on specific paths. Escalation template available at
+  `/api/rules/templates` (challenge-escalation: block unchallenged + block expired).
 - **JA4 TLS fingerprinting**: `caddy.ListenerWrapper` module (`caddy.listeners.ja4`)
   between L4 DDoS and TLS in the listener chain. Hand-rolled ClientHello binary parser
   (zero deps). Full FoxIO JA4 spec. Available as `ja4` condition field and
