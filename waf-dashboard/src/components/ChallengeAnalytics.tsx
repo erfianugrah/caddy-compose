@@ -8,7 +8,8 @@ import { StatCard } from "@/components/StatCard";
 import { T } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { fetchChallengeStats } from "@/lib/api/challenge";
-import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService } from "@/lib/api/challenge";
+import { Input } from "@/components/ui/input";
+import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService, ChallengeJA4 } from "@/lib/api/challenge";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -136,18 +137,32 @@ export default function ChallengeAnalytics() {
   const [stats, setStats] = useState<ChallengeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [hours, setHours] = useState("24");
+  const [filterService, setFilterService] = useState("");
+  const [filterClient, setFilterClient] = useState("");
+
+  // Read initial filters from URL params (client-side only).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("service")) setFilterService(params.get("service")!);
+    if (params.get("client")) setFilterClient(params.get("client")!);
+    if (params.get("hours")) setHours(params.get("hours")!);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchChallengeStats(parseInt(hours));
+      const data = await fetchChallengeStats(
+        parseInt(hours),
+        filterService || undefined,
+        filterClient || undefined,
+      );
       setStats(data);
     } catch (e) {
       console.error("Failed to fetch challenge stats:", e);
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [hours, filterService, filterClient]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -156,14 +171,26 @@ export default function ChallengeAnalytics() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className={T.pageTitle}>Challenge Analytics</h1>
-          <p className={T.muted}>PoW challenge funnel, bot score distribution, and top challenged clients.</p>
+          <p className={T.muted}>PoW challenge funnel, bot score distribution, JA4 fingerprints, and top challenged clients.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            placeholder="Filter by service..."
+            value={filterService}
+            onChange={(e) => setFilterService(e.target.value)}
+            className="w-40 h-8 text-xs"
+          />
+          <Input
+            placeholder="Filter by client IP..."
+            value={filterClient}
+            onChange={(e) => setFilterClient(e.target.value)}
+            className="w-40 h-8 text-xs"
+          />
           <Select value={hours} onValueChange={setHours}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger className="w-28 h-8">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -174,11 +201,33 @@ export default function ChallengeAnalytics() {
               <SelectItem value="168">7 days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading} className="h-8">
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
+          {(filterService || filterClient) && (
+            <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={() => { setFilterService(""); setFilterClient(""); }}>
+              Clear filters
+            </Button>
+          )}
         </div>
       </div>
+      {/* Active filter indicator */}
+      {(filterService || filterClient) && (
+        <div className="flex gap-2 text-xs">
+          {filterService && (
+            <span className="inline-flex items-center rounded bg-lv-purple/10 border border-lv-purple/30 px-2 py-0.5 text-lv-purple">
+              Service: {filterService}
+              <button className="ml-1.5 hover:text-lv-red" onClick={() => setFilterService("")}>&times;</button>
+            </span>
+          )}
+          {filterClient && (
+            <span className="inline-flex items-center rounded bg-lv-cyan/10 border border-lv-cyan/30 px-2 py-0.5 text-lv-cyan">
+              Client: {filterClient}
+              <button className="ml-1.5 hover:text-lv-red" onClick={() => setFilterClient("")}>&times;</button>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -251,6 +300,7 @@ export default function ChallengeAnalytics() {
                     <th className="text-right py-2 px-2">Passed</th>
                     <th className="text-right py-2 px-2">Failed</th>
                     <th className="text-right py-2 px-2">Bypassed</th>
+                    <th className="text-right py-2 px-2">Tokens</th>
                     <th className="text-right py-2 px-2">Avg Score</th>
                     <th className="text-right py-2 pl-2">Max Score</th>
                   </tr>
@@ -261,15 +311,17 @@ export default function ChallengeAnalytics() {
                     return (
                       <tr key={c.client} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
                         <td className="py-2 pr-4">
-                          <a href={`/analytics?ip=${encodeURIComponent(c.client)}`} className="text-lv-green hover:underline font-data">
+                          <button onClick={() => setFilterClient(c.client)} className="text-lv-green hover:underline font-data text-left" title="Filter by this client">
                             {c.client}
-                          </a>
+                          </button>
                           {c.country && <span className="ml-1.5 text-muted-foreground/50">{c.country}</span>}
+                          <a href={`/analytics?ip=${encodeURIComponent(c.client)}`} className="ml-1.5 text-muted-foreground/40 hover:text-lv-purple text-[10px]" title="IP Lookup">lookup</a>
                         </td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-yellow">{c.issued}</td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-green">{c.passed}</td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-red">{c.failed}</td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-cyan">{c.bypassed}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-muted-foreground" title="Unique cookie tokens — high count = repeated solves">{c.unique_tokens || "-"}</td>
                         <td className="text-right py-2 px-2 tabular-nums">{c.avg_bot_score > 0 ? c.avg_bot_score.toFixed(0) : "-"}</td>
                         <td className="text-right py-2 pl-2">
                           <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium", badge.cls)}>
@@ -307,10 +359,14 @@ export default function ChallengeAnalytics() {
                 </thead>
                 <tbody>
                   {stats.top_services.map((s: ChallengeService) => {
-                    const failRate = s.issued > 0 ? (s.failed / s.issued) : 0;
+                    const failRate = s.fail_rate ?? (s.issued > 0 ? (s.failed / s.issued) : 0);
                     return (
                       <tr key={s.service} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
-                        <td className="py-2 pr-4 font-data text-foreground">{s.service}</td>
+                        <td className="py-2 pr-4">
+                          <button onClick={() => setFilterService(s.service)} className="font-data text-foreground hover:underline text-left" title="Filter by this service">
+                            {s.service}
+                          </button>
+                        </td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-yellow">{s.issued}</td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-green">{s.passed}</td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-red">{s.failed}</td>
@@ -326,6 +382,58 @@ export default function ChallengeAnalytics() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* JA4 Fingerprints */}
+      {stats && stats.top_ja4s && stats.top_ja4s.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardDescription className={T.sectionLabel}>Top JA4 TLS Fingerprints</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-lovelace-800 text-muted-foreground">
+                    <th className="text-left py-2 pr-4">JA4 Fingerprint</th>
+                    <th className="text-right py-2 px-2">Total</th>
+                    <th className="text-right py-2 px-2">Passed</th>
+                    <th className="text-right py-2 px-2">Failed</th>
+                    <th className="text-right py-2 px-2">Unique IPs</th>
+                    <th className="text-right py-2 pl-2">Fail Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.top_ja4s.map((j: ChallengeJA4) => {
+                    const scored = j.passed + j.failed;
+                    const jr = scored > 0 ? j.failed / scored : 0;
+                    return (
+                      <tr key={j.ja4} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
+                        <td className="py-2 pr-4">
+                          <a href={`/events?ja4=${encodeURIComponent(j.ja4)}`} className="font-data text-lv-cyan hover:underline" title="View events with this JA4">
+                            {j.ja4}
+                          </a>
+                        </td>
+                        <td className="text-right py-2 px-2 tabular-nums text-foreground">{j.total}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-lv-green">{j.passed}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-lv-red">{j.failed}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{j.clients}</td>
+                        <td className="text-right py-2 pl-2">
+                          <span className={cn("tabular-nums", jr >= 0.5 ? "text-lv-red font-semibold" : jr >= 0.2 ? "text-lv-yellow" : "text-muted-foreground")}>
+                            {pct(jr)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 mt-2">
+              JA4 identifies the TLS client implementation. Non-browser JA4s (no ALPN, TLS 1.2) with high fail rates indicate bot traffic.
+            </p>
           </CardContent>
         </Card>
       )}

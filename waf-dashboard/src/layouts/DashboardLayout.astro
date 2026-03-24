@@ -17,7 +17,7 @@ const navLinks = [
   // DDoS Protection: adaptive mitigation + IP jail
   { id: "dos", label: "DDoS Protection", href: "/dos", icon: "shield-alert", section: "Security" },
   // Challenge: PoW analytics — funnel, bot scores, top clients
-  { id: "challenge", label: "Challenge Analytics", href: "/challenge", icon: "fingerprint", section: "Security" },
+  { id: "challenge", label: "Challenge Analytics", href: "/challenge", icon: "shield-check", section: "Security" },
   // Policy: rules + rate limits + response headers + templates
   { id: "policy", label: "Policy Engine", href: "/policy", icon: "shield", section: "Security" },
   // CRS default rules + WAF engine settings
@@ -194,6 +194,13 @@ for (const link of navLinks) {
                          {link.icon === "shield" && (
                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                           </svg>
+                         )}
+                         {/* Shield-check / Challenge Analytics */}
+                         {link.icon === "shield-check" && (
+                           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                             <path d="m9 12 2 2 4-4" />
                            </svg>
                          )}
                         {/* List Tree / Managed Lists */}

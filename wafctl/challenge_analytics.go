@@ -9,8 +9,9 @@ import (
 // ─── Challenge Analytics ────────────────────────────────────────────
 //
 // Aggregates challenge events (issued/passed/failed/bypassed) into a
-// stats response with funnel metrics, bot score distribution, top
-// challenged clients, and top challenged services.
+// stats response with funnel metrics, bot score distribution, JA4
+// fingerprint breakdown, top challenged clients, and top services.
+// Supports service= and client= query filters.
 
 // ChallengeStatsResponse is the response for GET /api/challenge/stats.
 type ChallengeStatsResponse struct {
@@ -36,11 +37,14 @@ type ChallengeStatsResponse struct {
 
 	// Top challenged services (by total challenge events, max 20).
 	TopServices []ChallengeService `json:"top_services"`
+
+	// Top JA4 fingerprints seen in challenge events (max 15).
+	TopJA4s []ChallengeJA4 `json:"top_ja4s"`
 }
 
 // ScoreBucket is a bot score histogram bucket.
 type ScoreBucket struct {
-	Label string `json:"label"` // e.g. "0-19", "20-39", "70+"
+	Label string `json:"label"` // e.g. "0-19 (clean)"
 	Min   int    `json:"min"`
 	Max   int    `json:"max"`
 	Count int    `json:"count"`
@@ -57,27 +61,39 @@ type ChallengeHour struct {
 
 // ChallengeClient is a per-client breakdown.
 type ChallengeClient struct {
-	Client      string  `json:"client"`
-	Country     string  `json:"country,omitempty"`
-	Issued      int     `json:"issued"`
-	Passed      int     `json:"passed"`
-	Failed      int     `json:"failed"`
-	Bypassed    int     `json:"bypassed"`
-	AvgBotScore float64 `json:"avg_bot_score"`
-	MaxBotScore int     `json:"max_bot_score"`
+	Client       string  `json:"client"`
+	Country      string  `json:"country,omitempty"`
+	Issued       int     `json:"issued"`
+	Passed       int     `json:"passed"`
+	Failed       int     `json:"failed"`
+	Bypassed     int     `json:"bypassed"`
+	AvgBotScore  float64 `json:"avg_bot_score"`
+	MaxBotScore  int     `json:"max_bot_score"`
+	UniqueTokens int     `json:"unique_tokens"` // distinct JTI count — high value = repeated solves
 }
 
 // ChallengeService is a per-service breakdown.
 type ChallengeService struct {
-	Service  string `json:"service"`
-	Issued   int    `json:"issued"`
-	Passed   int    `json:"passed"`
-	Failed   int    `json:"failed"`
-	Bypassed int    `json:"bypassed"`
+	Service  string  `json:"service"`
+	Issued   int     `json:"issued"`
+	Passed   int     `json:"passed"`
+	Failed   int     `json:"failed"`
+	Bypassed int     `json:"bypassed"`
+	FailRate float64 `json:"fail_rate"`
+}
+
+// ChallengeJA4 is a per-JA4-fingerprint breakdown.
+type ChallengeJA4 struct {
+	JA4     string `json:"ja4"`
+	Total   int    `json:"total"`
+	Passed  int    `json:"passed"`
+	Failed  int    `json:"failed"`
+	Clients int    `json:"clients"` // unique IPs using this fingerprint
 }
 
 // ChallengeStats aggregates challenge analytics from the event store.
-func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
+// filterService and filterClient are optional — empty means no filter.
+func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient string) ChallengeStatsResponse {
 	events := s.snapshotSince(hours)
 
 	var resp ChallengeStatsResponse
@@ -103,6 +119,7 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 		scoreSum   int
 		scoreCount int
 		maxScore   int
+		tokens     map[string]struct{} // unique JTIs
 	}
 	clientMap := make(map[string]*clientAgg)
 
@@ -114,11 +131,27 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 	}
 	serviceMap := make(map[string]*serviceAgg)
 
+	type ja4Agg struct {
+		total   int
+		passed  int
+		failed  int
+		clients map[string]struct{}
+	}
+	ja4Map := make(map[string]*ja4Agg)
+
 	for _, e := range events {
 		src := e.Source
 		isChallengeEvent := src == "challenge_issued" || src == "challenge_passed" ||
 			src == "challenge_failed" || src == "challenge_bypassed"
 		if !isChallengeEvent {
+			continue
+		}
+
+		// Apply filters.
+		if filterService != "" && e.Service != filterService {
+			continue
+		}
+		if filterClient != "" && e.ClientIP != filterClient {
 			continue
 		}
 
@@ -165,7 +198,7 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 		// Per-client
 		ca, ok := clientMap[e.ClientIP]
 		if !ok {
-			ca = &clientAgg{country: e.Country}
+			ca = &clientAgg{country: e.Country, tokens: make(map[string]struct{})}
 			clientMap[e.ClientIP] = ca
 		}
 		switch src {
@@ -185,6 +218,9 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 				ca.maxScore = e.ChallengeBotScore
 			}
 		}
+		if e.ChallengeJTI != "" {
+			ca.tokens[e.ChallengeJTI] = struct{}{}
+		}
 
 		// Per-service
 		sa, ok := serviceMap[e.Service]
@@ -201,6 +237,22 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 			sa.failed++
 		case "challenge_bypassed":
 			sa.bypassed++
+		}
+
+		// Per-JA4
+		if e.JA4 != "" {
+			ja, ok := ja4Map[e.JA4]
+			if !ok {
+				ja = &ja4Agg{clients: make(map[string]struct{})}
+				ja4Map[e.JA4] = ja
+			}
+			ja.total++
+			if src == "challenge_passed" {
+				ja.passed++
+			} else if src == "challenge_failed" {
+				ja.failed++
+			}
+			ja.clients[e.ClientIP] = struct{}{}
 		}
 	}
 
@@ -228,13 +280,14 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 	clients := make([]ChallengeClient, 0, len(clientMap))
 	for ip, ca := range clientMap {
 		cc := ChallengeClient{
-			Client:      ip,
-			Country:     ca.country,
-			Issued:      ca.issued,
-			Passed:      ca.passed,
-			Failed:      ca.failed,
-			Bypassed:    ca.bypassed,
-			MaxBotScore: ca.maxScore,
+			Client:       ip,
+			Country:      ca.country,
+			Issued:       ca.issued,
+			Passed:       ca.passed,
+			Failed:       ca.failed,
+			Bypassed:     ca.bypassed,
+			MaxBotScore:  ca.maxScore,
+			UniqueTokens: len(ca.tokens),
 		}
 		if ca.scoreCount > 0 {
 			cc.AvgBotScore = float64(ca.scoreSum) / float64(ca.scoreCount)
@@ -254,13 +307,17 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 	// Top services — sort by total events descending, limit 20.
 	services := make([]ChallengeService, 0, len(serviceMap))
 	for svc, sa := range serviceMap {
-		services = append(services, ChallengeService{
+		cs := ChallengeService{
 			Service:  svc,
 			Issued:   sa.issued,
 			Passed:   sa.passed,
 			Failed:   sa.failed,
 			Bypassed: sa.bypassed,
-		})
+		}
+		if sa.issued > 0 {
+			cs.FailRate = float64(sa.failed) / float64(sa.issued)
+		}
+		services = append(services, cs)
 	}
 	sort.Slice(services, func(i, j int) bool {
 		ti := services[i].Issued + services[i].Passed + services[i].Failed + services[i].Bypassed
@@ -272,10 +329,27 @@ func (s *AccessLogStore) ChallengeStats(hours int) ChallengeStatsResponse {
 	}
 	resp.TopServices = services
 
+	// Top JA4 fingerprints — sort by total descending, limit 15.
+	ja4s := make([]ChallengeJA4, 0, len(ja4Map))
+	for fp, ja := range ja4Map {
+		ja4s = append(ja4s, ChallengeJA4{
+			JA4:     fp,
+			Total:   ja.total,
+			Passed:  ja.passed,
+			Failed:  ja.failed,
+			Clients: len(ja.clients),
+		})
+	}
+	sort.Slice(ja4s, func(i, j int) bool { return ja4s[i].Total > ja4s[j].Total })
+	if len(ja4s) > 15 {
+		ja4s = ja4s[:15]
+	}
+	resp.TopJA4s = ja4s
+
 	return resp
 }
 
-// handleChallengeStats serves GET /api/challenge/stats?hours=24.
+// handleChallengeStats serves GET /api/challenge/stats?hours=24&service=x&client=y.
 func handleChallengeStats(als *AccessLogStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		hours := 24
@@ -284,7 +358,9 @@ func handleChallengeStats(als *AccessLogStore) http.HandlerFunc {
 				hours = v
 			}
 		}
-		stats := als.ChallengeStats(hours)
+		service := r.URL.Query().Get("service")
+		client := r.URL.Query().Get("client")
+		stats := als.ChallengeStats(hours, service, client)
 		writeJSON(w, http.StatusOK, stats)
 	}
 }

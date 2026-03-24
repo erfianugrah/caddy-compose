@@ -339,3 +339,59 @@ test.describe("Challenge Noscript", () => {
     await context.close();
   });
 });
+
+// ════════════════════════════════════════════════════════════════════
+//  Challenge Analytics Dashboard
+// ════════════════════════════════════════════════════════════════════
+
+const WAFCTL_DASH = process.env.WAFCTL_URL || "http://localhost:18082";
+
+test.describe("Challenge Analytics Dashboard", () => {
+  test("analytics page loads and renders key sections", async ({ page }) => {
+    await page.goto(`${WAFCTL_DASH}/challenge`);
+    await expect(page.getByRole("heading", { name: "Challenge Analytics", exact: true })).toBeVisible();
+
+    // Stat cards should be present.
+    await expect(page.getByText("CHALLENGES ISSUED")).toBeVisible();
+    await expect(page.getByText("CHALLENGES PASSED")).toBeVisible();
+    await expect(page.getByText("CHALLENGES FAILED")).toBeVisible();
+    await expect(page.getByText("COOKIE BYPASSES")).toBeVisible();
+  });
+
+  test("analytics page has time range selector", async ({ page }) => {
+    await page.goto(`${WAFCTL_DASH}/challenge`);
+    // The time selector should exist with options.
+    const selector = page.locator("button").filter({ hasText: /hours|days/i }).first();
+    await expect(selector).toBeVisible();
+  });
+
+  test("analytics page has filter inputs", async ({ page }) => {
+    await page.goto(`${WAFCTL_DASH}/challenge`);
+    await expect(page.getByPlaceholder("Filter by service...")).toBeVisible();
+    await expect(page.getByPlaceholder("Filter by client IP...")).toBeVisible();
+  });
+
+  test("challenge stats API returns valid data", async () => {
+    const resp = await fetch(`${WAFCTL_DASH}/api/challenge/stats?hours=24`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+
+    expect(data.issued).toBeGreaterThanOrEqual(0);
+    expect(data.passed).toBeGreaterThanOrEqual(0);
+    expect(data.failed).toBeGreaterThanOrEqual(0);
+    expect(data.bypassed).toBeGreaterThanOrEqual(0);
+    expect(data.score_buckets).toHaveLength(6);
+    expect(Array.isArray(data.timeline)).toBe(true);
+    expect(Array.isArray(data.top_clients)).toBe(true);
+    expect(Array.isArray(data.top_services)).toBe(true);
+    expect(Array.isArray(data.top_ja4s)).toBe(true);
+  });
+
+  test("challenge stats API accepts filters", async () => {
+    const resp = await fetch(`${WAFCTL_DASH}/api/challenge/stats?hours=1&service=httpbun.erfi.io&client=1.2.3.4`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    // With a specific client/service filter, results should be 0 or match.
+    expect(data.issued).toBeGreaterThanOrEqual(0);
+  });
+});

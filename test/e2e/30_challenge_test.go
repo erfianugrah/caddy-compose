@@ -891,6 +891,78 @@ func TestChallengeAdaptiveDifficultyInGeneratedConfig(t *testing.T) {
 	t.Error("adaptive challenge rule not found in generated config")
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  30e. Challenge Analytics API
+// ════════════════════════════════════════════════════════════════════
+
+func TestChallengeStatsEndpoint(t *testing.T) {
+	// The /api/challenge/stats endpoint should return valid JSON with
+	// the expected structure even when there are no challenge events.
+	resp, body := httpGet(t, wafctlURL+"/api/challenge/stats?hours=1")
+	assertCode(t, "stats endpoint", 200, resp)
+
+	// Should have the funnel fields (values >= 0, may be non-zero from earlier tests).
+	issuedVal := jsonInt(body, "issued")
+	if issuedVal < 0 {
+		t.Errorf("issued = %d, want >= 0", issuedVal)
+	}
+	passedVal := jsonInt(body, "passed")
+	if passedVal < 0 {
+		t.Errorf("passed = %d, want >= 0", passedVal)
+	}
+
+	// Should have score_buckets array (always 6 buckets).
+	var statsResp struct {
+		ScoreBuckets []json.RawMessage `json:"score_buckets"`
+		TopJA4s      []json.RawMessage `json:"top_ja4s"`
+		TopClients   []json.RawMessage `json:"top_clients"`
+		TopServices  []json.RawMessage `json:"top_services"`
+	}
+	if err := json.Unmarshal(body, &statsResp); err != nil {
+		t.Fatalf("unmarshal challenge stats: %v", err)
+	}
+	if len(statsResp.ScoreBuckets) != 6 {
+		t.Errorf("score_buckets length = %d, want 6", len(statsResp.ScoreBuckets))
+	}
+
+	// Should have top_ja4s array.
+	if !strings.Contains(string(body), "top_ja4s") {
+		t.Error("response missing top_ja4s field")
+	}
+}
+
+func TestChallengeStatsWithFilters(t *testing.T) {
+	t.Run("service-filter", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/challenge/stats?hours=1&service=httpbun.erfi.io")
+		assertCode(t, "with service filter", 200, resp)
+	})
+	t.Run("client-filter", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/challenge/stats?hours=1&client=1.2.3.4")
+		assertCode(t, "with client filter", 200, resp)
+	})
+	t.Run("both-filters", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/challenge/stats?hours=1&service=httpbun.erfi.io&client=1.2.3.4")
+		assertCode(t, "with both filters", 200, resp)
+	})
+}
+
+func TestChallengeAnalyticsDashboardPage(t *testing.T) {
+	// The /challenge dashboard page should be served by wafctl.
+	resp, body := httpGet(t, wafctlURL+"/challenge")
+	assertCode(t, "challenge page via wafctl", 200, resp)
+	if !strings.Contains(string(body), "Challenge Analytics") {
+		t.Error("challenge page missing 'Challenge Analytics' heading")
+	}
+
+	// Also accessible via Caddy dashboard proxy.
+	resp, body = httpGet(t, dashURL+"/challenge")
+	if resp.StatusCode == 200 {
+		if !strings.Contains(string(body), "Challenge Analytics") {
+			t.Error("challenge page via proxy missing heading")
+		}
+	}
+}
+
 func TestChallengeInterstitialContainsElapsedMs(t *testing.T) {
 	ensureDefaultConfig(t)
 
