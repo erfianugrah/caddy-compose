@@ -21,11 +21,11 @@ on:
 
 env:
   CADDY_IMAGE: erfianugrah/caddy
-  CADDY_TAG: "3.66.5-2.11.2"
+  CADDY_TAG: "3.67.0-2.11.2"
   CADDY_VERSION: "2.11.2"
   CRS_VERSION: "v4.24.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "2.70.5"
+  WAFCTL_VERSION: "2.71.0"
 
 permissions:
   contents: read

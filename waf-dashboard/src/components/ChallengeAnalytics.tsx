@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield, ShieldCheck, ShieldAlert, ShieldX, RefreshCw } from "lucide-react";
+import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, RefreshCw, Radar, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,9 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { T } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { fetchChallengeStats } from "@/lib/api/challenge";
+import { fetchChallengeStats, fetchEndpointDiscovery } from "@/lib/api/challenge";
 import { Input } from "@/components/ui/input";
-import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService, ChallengeJA4 } from "@/lib/api/challenge";
+import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService, ChallengeJA4, EndpointDiscoveryResponse, DiscoveredEndpoint } from "@/lib/api/challenge";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -131,6 +131,193 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
   );
 }
 
+// ─── Endpoint Discovery Panel ───────────────────────────────────────
+
+function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: string }) {
+  const [data, setData] = useState<EndpointDiscoveryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uncoveredOnly, setUncoveredOnly] = useState(false);
+  const [suspiciousOnly, setSuspiciousOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<"requests" | "non_browser_pct" | "unique_ips">("requests");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await fetchEndpointDiscovery(parseInt(hours), service || undefined));
+    } catch (e) {
+      console.error("Failed to fetch endpoint discovery:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [hours, service]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <Skeleton className="h-64 w-full" />;
+  if (!data || data.endpoints.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <Radar className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+          <p className={T.muted}>No traffic observed in the selected period.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  let filtered = data.endpoints;
+  if (uncoveredOnly) filtered = filtered.filter((e) => !e.has_challenge);
+  if (suspiciousOnly) filtered = filtered.filter((e) => e.non_browser_pct > 0.2);
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "non_browser_pct") return b.non_browser_pct - a.non_browser_pct;
+    if (sortBy === "unique_ips") return b.unique_ips - a.unique_ips;
+    return b.requests - a.requests;
+  });
+
+  const uncoveredCount = data.endpoints.filter((e) => !e.has_challenge).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-5 pb-4 text-center">
+            <p className="text-2xl font-bold text-foreground">{data.total_paths}</p>
+            <p className="text-xs text-muted-foreground">Endpoints Discovered</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5 pb-4 text-center">
+            <p className={cn("text-2xl font-bold", uncoveredCount > 0 ? "text-lv-red" : "text-lv-green")}>{uncoveredCount}</p>
+            <p className="text-xs text-muted-foreground">Without Challenge Protection</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5 pb-4 text-center">
+            <p className={cn("text-2xl font-bold", data.uncovered_pct > 0.3 ? "text-lv-red" : data.uncovered_pct > 0 ? "text-lv-yellow" : "text-lv-green")}>
+              {(data.uncovered_pct * 100).toFixed(1)}%
+            </p>
+            <p className="text-xs text-muted-foreground">Traffic Unprotected</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input type="checkbox" checked={uncoveredOnly} onChange={(e) => setUncoveredOnly(e.target.checked)} className="h-3.5 w-3.5 rounded" />
+          Uncovered only
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input type="checkbox" checked={suspiciousOnly} onChange={(e) => setSuspiciousOnly(e.target.checked)} className="h-3.5 w-3.5 rounded" />
+          High non-browser traffic (&gt;20%)
+        </label>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+          <SelectTrigger className="w-36 h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="requests">Sort by requests</SelectItem>
+            <SelectItem value="non_browser_pct">Sort by non-browser %</SelectItem>
+            <SelectItem value="unique_ips">Sort by unique IPs</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={load} className="h-7 text-xs">
+          <RefreshCw className={cn("h-3 w-3 mr-1", loading && "animate-spin")} /> Refresh
+        </Button>
+      </div>
+
+      {/* Endpoint table */}
+      <Card>
+        <CardContent className="pt-4">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-lovelace-800 text-muted-foreground">
+                  <th className="text-left py-2 pr-3">Endpoint</th>
+                  <th className="text-right py-2 px-2">Requests</th>
+                  <th className="text-right py-2 px-2">IPs</th>
+                  <th className="text-right py-2 px-2">JA4s</th>
+                  <th className="text-right py-2 px-2">UAs</th>
+                  <th className="text-right py-2 px-2">Non-Browser</th>
+                  <th className="text-center py-2 px-2">Coverage</th>
+                  <th className="text-right py-2 pl-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((ep: DiscoveredEndpoint) => (
+                  <tr key={`${ep.service}:${ep.method}:${ep.path}`} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
+                    <td className="py-2 pr-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={cn(
+                          "rounded px-1 py-0.5 text-[10px] font-bold uppercase",
+                          ep.method === "GET" ? "bg-lv-green/15 text-lv-green" :
+                          ep.method === "POST" ? "bg-lv-yellow/15 text-lv-yellow" :
+                          ep.method === "PUT" ? "bg-lv-cyan/15 text-lv-cyan" :
+                          ep.method === "DELETE" ? "bg-lv-red/15 text-lv-red" :
+                          "bg-muted/50 text-muted-foreground"
+                        )}>{ep.method}</span>
+                        <code className="font-data text-foreground">{ep.path}</code>
+                      </span>
+                      {ep.service && <span className="ml-1.5 text-muted-foreground/40 text-[10px]">{ep.service}</span>}
+                    </td>
+                    <td className="text-right py-2 px-2 tabular-nums text-foreground">{ep.requests.toLocaleString()}</td>
+                    <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{ep.unique_ips}</td>
+                    <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{ep.unique_ja4s}</td>
+                    <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{ep.unique_uas}</td>
+                    <td className="text-right py-2 px-2">
+                      <span className={cn(
+                        "tabular-nums",
+                        ep.non_browser_pct >= 0.5 ? "text-lv-red font-semibold" :
+                        ep.non_browser_pct >= 0.2 ? "text-lv-yellow" :
+                        "text-muted-foreground"
+                      )}>{(ep.non_browser_pct * 100).toFixed(0)}%</span>
+                    </td>
+                    <td className="text-center py-2 px-2">
+                      <div className="flex justify-center gap-1">
+                        {ep.has_challenge && (
+                          <span className="inline-flex items-center rounded bg-lv-green/15 px-1.5 py-0.5 text-[10px] text-lv-green" title="Challenge rule covers this path">
+                            <ShieldCheck className="h-3 w-3 mr-0.5" />PoW
+                          </span>
+                        )}
+                        {ep.has_rate_limit && (
+                          <span className="inline-flex items-center rounded bg-lv-cyan/15 px-1.5 py-0.5 text-[10px] text-lv-cyan" title="Rate limit rule covers this path">
+                            <Shield className="h-3 w-3 mr-0.5" />RL
+                          </span>
+                        )}
+                        {!ep.has_challenge && !ep.has_rate_limit && (
+                          <span className="inline-flex items-center rounded bg-lv-red/15 px-1.5 py-0.5 text-[10px] text-lv-red" title="No protection">
+                            <ShieldOff className="h-3 w-3 mr-0.5" />None
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-right py-2 pl-2">
+                      {!ep.has_challenge && (
+                        <a
+                          href={`/policy?action=challenge&prefill_path=${encodeURIComponent(ep.path)}&prefill_service=${encodeURIComponent(ep.service)}`}
+                          className="inline-flex items-center gap-0.5 text-[10px] text-lv-purple hover:text-lv-purple-bright hover:underline"
+                          title="Create a challenge rule for this endpoint"
+                        >
+                          <Plus className="h-3 w-3" />Challenge
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {sorted.length === 0 && (
+            <p className="text-center py-8 text-xs text-muted-foreground">No endpoints match the current filters.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────
 
 export default function ChallengeAnalytics() {
@@ -139,6 +326,7 @@ export default function ChallengeAnalytics() {
   const [hours, setHours] = useState("24");
   const [filterService, setFilterService] = useState("");
   const [filterClient, setFilterClient] = useState("");
+  const [activeTab, setActiveTab] = useState<"analytics" | "discovery">("analytics");
 
   // Read initial filters from URL params (client-side only).
   useEffect(() => {
@@ -174,7 +362,18 @@ export default function ChallengeAnalytics() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className={T.pageTitle}>Challenge Analytics</h1>
-          <p className={T.muted}>PoW challenge funnel, bot score distribution, JA4 fingerprints, and top challenged clients.</p>
+          <div className="flex gap-1 mt-2">
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", activeTab === "analytics" ? "bg-lv-purple/20 text-lv-purple border border-lv-purple/30" : "text-muted-foreground hover:text-foreground")}
+            >Challenge Stats</button>
+            <button
+              onClick={() => setActiveTab("discovery")}
+              className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", activeTab === "discovery" ? "bg-lv-cyan/20 text-lv-cyan border border-lv-cyan/30" : "text-muted-foreground hover:text-foreground")}
+            >
+              <Radar className="h-3 w-3 inline mr-1" />Endpoint Discovery
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Input
@@ -228,6 +427,14 @@ export default function ChallengeAnalytics() {
           )}
         </div>
       )}
+
+      {/* Discovery Tab */}
+      {activeTab === "discovery" && (
+        <EndpointDiscoveryPanel hours={hours} service={filterService} />
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === "analytics" && <>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -448,6 +655,8 @@ export default function ChallengeAnalytics() {
           </CardContent>
         </Card>
       )}
+
+      </>}
     </div>
   );
 }

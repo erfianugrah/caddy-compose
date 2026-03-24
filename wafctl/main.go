@@ -383,6 +383,9 @@ func runServe() int {
 	// Challenge Analytics
 	mux.HandleFunc("GET /api/challenge/stats", handleChallengeStats(accessLogStore))
 
+	// Endpoint Discovery
+	mux.HandleFunc("GET /api/discovery/endpoints", handleEndpointDiscovery(accessLogStore, exclusionStore))
+
 	// DDoS Mitigation
 	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore, spikeDetector, accessLogStore))
 	mux.HandleFunc("GET /api/dos/jail", handleListJail(jailStore))

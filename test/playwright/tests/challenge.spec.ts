@@ -395,3 +395,45 @@ test.describe("Challenge Analytics Dashboard", () => {
     expect(data.issued).toBeGreaterThanOrEqual(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════
+//  Endpoint Discovery
+// ════════════════════════════════════════════════════════════════════
+
+test.describe("Endpoint Discovery", () => {
+  test("discovery API returns valid structure", async () => {
+    const resp = await fetch(`${WAFCTL_DASH}/api/discovery/endpoints?hours=24`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+
+    expect(data.total_requests).toBeGreaterThanOrEqual(0);
+    expect(data.total_paths).toBeGreaterThanOrEqual(0);
+    expect(data.uncovered_pct).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(data.endpoints)).toBe(true);
+
+    if (data.endpoints.length > 0) {
+      const ep = data.endpoints[0];
+      expect(ep.service).toBeDefined();
+      expect(ep.method).toBeDefined();
+      expect(ep.path).toBeDefined();
+      expect(ep.requests).toBeGreaterThan(0);
+      expect(typeof ep.has_challenge).toBe("boolean");
+      expect(typeof ep.has_rate_limit).toBe("boolean");
+      expect(typeof ep.non_browser_pct).toBe("number");
+    }
+  });
+
+  test("discovery API accepts service filter", async () => {
+    const resp = await fetch(`${WAFCTL_DASH}/api/discovery/endpoints?hours=24&service=httpbun.erfi.io`);
+    expect(resp.status).toBe(200);
+  });
+
+  test("dashboard has endpoint discovery tab", async ({ page }) => {
+    await page.goto(`${WAFCTL_DASH}/challenge`);
+    const tab = page.getByText("Endpoint Discovery");
+    await expect(tab).toBeVisible();
+    await tab.click();
+    // Should show the discovery content — either endpoints or empty state.
+    await expect(page.getByText(/Endpoints Discovered|No traffic observed/).first()).toBeVisible();
+  });
+});

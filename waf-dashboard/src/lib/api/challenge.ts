@@ -61,6 +61,30 @@ export interface ChallengeJA4 {
   clients: number;
 }
 
+// ─── Endpoint Discovery ─────────────────────────────────────────────
+
+export interface DiscoveredEndpoint {
+  service: string;
+  method: string;
+  path: string;
+  requests: number;
+  unique_ips: number;
+  unique_ja4s: number;
+  unique_uas: number;
+  non_browser_pct: number;
+  has_challenge: boolean;
+  has_rate_limit: boolean;
+  top_ja4?: string;
+  status_codes?: Record<number, number>;
+}
+
+export interface EndpointDiscoveryResponse {
+  endpoints: DiscoveredEndpoint[];
+  total_requests: number;
+  total_paths: number;
+  uncovered_pct: number;
+}
+
 // ─── API Functions ──────────────────────────────────────────────────
 
 export async function fetchChallengeStats(
@@ -72,4 +96,13 @@ export async function fetchChallengeStats(
   if (service) params.set("service", service);
   if (client) params.set("client", client);
   return fetchJSON<ChallengeStats>(`${API_BASE}/challenge/stats?${params}`);
+}
+
+export async function fetchEndpointDiscovery(
+  hours = 24,
+  service?: string,
+): Promise<EndpointDiscoveryResponse> {
+  const params = new URLSearchParams({ hours: String(hours) });
+  if (service) params.set("service", service);
+  return fetchJSON<EndpointDiscoveryResponse>(`${API_BASE}/discovery/endpoints?${params}`);
 }

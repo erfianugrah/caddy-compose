@@ -994,3 +994,58 @@ func TestChallengeInterstitialContainsElapsedMs(t *testing.T) {
 		t.Error("interstitial JS missing elapsed_ms submission field")
 	}
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  30f. Endpoint Discovery API
+// ════════════════════════════════════════════════════════════════════
+
+func TestEndpointDiscoveryBasic(t *testing.T) {
+	resp, body := httpGet(t, wafctlURL+"/api/discovery/endpoints?hours=1")
+	assertCode(t, "discovery endpoint", 200, resp)
+
+	// Should have the response structure.
+	var disc struct {
+		Endpoints     []json.RawMessage `json:"endpoints"`
+		TotalRequests int               `json:"total_requests"`
+		TotalPaths    int               `json:"total_paths"`
+		UncoveredPct  float64           `json:"uncovered_pct"`
+	}
+	if err := json.Unmarshal(body, &disc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// There should be traffic from previous tests.
+	if disc.TotalRequests <= 0 {
+		t.Log("no traffic in discovery — might be expected in isolated run")
+	}
+}
+
+func TestEndpointDiscoveryWithServiceFilter(t *testing.T) {
+	resp, _ := httpGet(t, wafctlURL+"/api/discovery/endpoints?hours=1&service=httpbun.erfi.io")
+	assertCode(t, "with service filter", 200, resp)
+}
+
+func TestEndpointDiscoveryCoverage(t *testing.T) {
+	// Verify the discovery response includes coverage fields
+	// and that the structure is well-formed.
+	resp, body := httpGet(t, wafctlURL+"/api/discovery/endpoints?hours=24")
+	assertCode(t, "discovery", 200, resp)
+
+	var disc struct {
+		Endpoints []struct {
+			Path         string `json:"path"`
+			HasChallenge bool   `json:"has_challenge"`
+			HasRateLimit bool   `json:"has_rate_limit"`
+		} `json:"endpoints"`
+	}
+	if err := json.Unmarshal(body, &disc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// If there are endpoints, they should have the coverage fields.
+	for _, ep := range disc.Endpoints {
+		if ep.Path == "" {
+			t.Error("endpoint with empty path")
+		}
+		// has_challenge and has_rate_limit are booleans — just verify they parsed.
+		t.Logf("endpoint %s: challenge=%v rate_limit=%v", ep.Path, ep.HasChallenge, ep.HasRateLimit)
+	}
+}
