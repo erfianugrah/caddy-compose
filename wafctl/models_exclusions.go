@@ -58,10 +58,13 @@ type RuleExclusion struct {
 	// ─── challenge-only ─────────────────────────────────────────────
 	// Proof-of-work challenge settings. Plugin serves an interstitial page
 	// requiring SHA-256 hashcash before proxying to upstream.
-	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // Leading hex zeros in SHA-256 (1-16, default 4)
-	ChallengeAlgorithm  string `json:"challenge_algorithm,omitempty"`  // "fast" (default) or "slow"
-	ChallengeTTL        string `json:"challenge_ttl,omitempty"`        // Cookie lifetime: "1h" (default), "24h", "7d"
-	ChallengeBindIP     *bool  `json:"challenge_bind_ip,omitempty"`    // Bind cookie to client IP (default true)
+	ChallengeDifficulty    int    `json:"challenge_difficulty,omitempty"`     // Leading hex zeros in SHA-256 (1-16, default 4)
+	ChallengeMinDifficulty int    `json:"challenge_min_difficulty,omitempty"` // Adaptive: minimum difficulty (1-16)
+	ChallengeMaxDifficulty int    `json:"challenge_max_difficulty,omitempty"` // Adaptive: maximum difficulty (1-16)
+	ChallengeAlgorithm     string `json:"challenge_algorithm,omitempty"`      // "fast" (default) or "slow"
+	ChallengeTTL           string `json:"challenge_ttl,omitempty"`            // Cookie lifetime: "1h" (default), "24h", "7d"
+	ChallengeBindIP        *bool  `json:"challenge_bind_ip,omitempty"`        // Bind cookie to client IP (default true)
+	ChallengeBindJA4       *bool  `json:"challenge_bind_ja4,omitempty"`       // Bind cookie to JA4 TLS fingerprint (default true)
 
 	// ─── response_header-only ───────────────────────────────────────
 	// Actions on response headers. Multiple can be combined in one rule.

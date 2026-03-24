@@ -711,9 +711,12 @@ export interface AdvancedFormState {
   enabled: boolean;
   // challenge fields
   challenge_difficulty: number;
+  challenge_min_difficulty: number;
+  challenge_max_difficulty: number;
   challenge_algorithm: string;
   challenge_ttl: string;
   challenge_bind_ip: boolean;
+  challenge_bind_ja4: boolean;
   // response header fields
   header_set: Record<string, string>;
   header_add: Record<string, string>;
@@ -735,9 +738,12 @@ export const emptyAdvancedForm: AdvancedFormState = {
   enabled: true,
   // challenge defaults
   challenge_difficulty: 4,
+  challenge_min_difficulty: 0,
+  challenge_max_difficulty: 0,
   challenge_algorithm: "fast",
   challenge_ttl: "1h",
   challenge_bind_ip: true,
+  challenge_bind_ja4: true,
   // response header defaults
   header_set: {},
   header_add: {},

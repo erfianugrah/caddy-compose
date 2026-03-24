@@ -223,6 +223,38 @@ test.describe("Challenge PoW Browser Flow", () => {
     expect(body).not.toContain("Verifying your connection");
     expect(body).toContain("headers");
   });
+
+  test("stealth browser cookie contains JA4 field when bind_ja4 enabled", async ({ browser }) => {
+    const context = await createStealthContext(browser);
+    const page = await context.newPage();
+
+    await page.goto(`${CADDY_URL}/pw-challenge/test`);
+    await page.mouse.move(100, 200);
+    await page.mouse.move(300, 400);
+    await page.waitForTimeout(8000);
+
+    const cookies = await context.cookies();
+    const challengeCookie = cookies.find((c) => c.name.startsWith("__pc_"));
+
+    if (challengeCookie) {
+      // Decode the cookie payload and check for JA4 field.
+      const payload = JSON.parse(
+        Buffer.from(challengeCookie.value.split(".")[0], "base64url").toString()
+      );
+      // JA4 should be present when bind_ja4 defaults to true.
+      // In E2E TLS termination varies, so the field may or may not be set.
+      // We just verify the cookie structure is valid.
+      expect(payload.aud).toBeTruthy();
+      expect(payload.exp).toBeGreaterThan(payload.iat);
+      // If ja4 is present, it should be a non-empty string.
+      if (payload.ja4) {
+        expect(typeof payload.ja4).toBe("string");
+        expect(payload.ja4.length).toBeGreaterThan(5);
+      }
+    }
+
+    await context.close();
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════

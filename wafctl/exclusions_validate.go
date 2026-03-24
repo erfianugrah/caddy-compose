@@ -336,6 +336,16 @@ func validateExclusion(e RuleExclusion) error {
 		if e.ChallengeDifficulty < 0 || e.ChallengeDifficulty > 16 {
 			return fmt.Errorf("challenge_difficulty must be 0-16 (0 = use default of 4), got %d", e.ChallengeDifficulty)
 		}
+		// Adaptive difficulty range validation.
+		if e.ChallengeMinDifficulty != 0 && (e.ChallengeMinDifficulty < 1 || e.ChallengeMinDifficulty > 16) {
+			return fmt.Errorf("challenge_min_difficulty must be 1-16, got %d", e.ChallengeMinDifficulty)
+		}
+		if e.ChallengeMaxDifficulty != 0 && (e.ChallengeMaxDifficulty < 1 || e.ChallengeMaxDifficulty > 16) {
+			return fmt.Errorf("challenge_max_difficulty must be 1-16, got %d", e.ChallengeMaxDifficulty)
+		}
+		if e.ChallengeMinDifficulty != 0 && e.ChallengeMaxDifficulty != 0 && e.ChallengeMinDifficulty > e.ChallengeMaxDifficulty {
+			return fmt.Errorf("challenge_min_difficulty (%d) must be <= challenge_max_difficulty (%d)", e.ChallengeMinDifficulty, e.ChallengeMaxDifficulty)
+		}
 		validAlgorithms := map[string]bool{"": true, "fast": true, "slow": true}
 		if !validAlgorithms[e.ChallengeAlgorithm] {
 			return fmt.Errorf("challenge_algorithm must be 'fast' or 'slow', got %q", e.ChallengeAlgorithm)

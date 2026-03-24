@@ -119,9 +119,12 @@ export interface Exclusion {
   rate_limit_action?: string;
   // challenge fields
   challenge_difficulty?: number;
+  challenge_min_difficulty?: number;
+  challenge_max_difficulty?: number;
   challenge_algorithm?: "fast" | "slow";
   challenge_ttl?: string;
   challenge_bind_ip?: boolean;
+  challenge_bind_ja4?: boolean;
   // response_header fields
   header_set?: Record<string, string>;
   header_add?: Record<string, string>;
@@ -199,9 +202,12 @@ interface RawExclusion {
   rate_limit_window?: string;
   rate_limit_action?: string;
   challenge_difficulty?: number;
+  challenge_min_difficulty?: number;
+  challenge_max_difficulty?: number;
   challenge_algorithm?: string;
   challenge_ttl?: string;
   challenge_bind_ip?: boolean;
+  challenge_bind_ja4?: boolean;
   header_set?: Record<string, string>;
   header_add?: Record<string, string>;
   header_remove?: string[];
@@ -247,9 +253,12 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     rate_limit_action: raw.rate_limit_action || undefined,
     // ─── challenge ───────────────────────────────────────────────
     challenge_difficulty: raw.challenge_difficulty ?? undefined,
+    challenge_min_difficulty: raw.challenge_min_difficulty ?? undefined,
+    challenge_max_difficulty: raw.challenge_max_difficulty ?? undefined,
     challenge_algorithm: (raw.challenge_algorithm as "fast" | "slow") || undefined,
     challenge_ttl: raw.challenge_ttl || undefined,
     challenge_bind_ip: raw.challenge_bind_ip ?? undefined,
+    challenge_bind_ja4: raw.challenge_bind_ja4 ?? undefined,
     // ─── response_header ─────────────────────────────────────────
     header_set: raw.header_set || undefined,
     header_add: raw.header_add || undefined,

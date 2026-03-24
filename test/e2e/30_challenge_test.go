@@ -15,10 +15,13 @@ type generateConfigWrapper struct {
 			Type      string `json:"type"`
 			Priority  int    `json:"priority"`
 			Challenge *struct {
-				Difficulty int    `json:"difficulty"`
-				Algorithm  string `json:"algorithm"`
-				TTLSeconds int    `json:"ttl_seconds"`
-				BindIP     bool   `json:"bind_ip"`
+				Difficulty    int    `json:"difficulty"`
+				MinDifficulty int    `json:"min_difficulty,omitempty"`
+				MaxDifficulty int    `json:"max_difficulty,omitempty"`
+				Algorithm     string `json:"algorithm"`
+				TTLSeconds    int    `json:"ttl_seconds"`
+				BindIP        bool   `json:"bind_ip"`
+				BindJA4       bool   `json:"bind_ja4,omitempty"`
 			} `json:"challenge,omitempty"`
 			SkipTargets *struct {
 				Phases []string `json:"phases,omitempty"`
@@ -679,5 +682,243 @@ func TestChallengeInterstitialContainsBotProbes(t *testing.T) {
 		if !strings.Contains(bodyStr, probe) {
 			t.Errorf("interstitial missing bot probe: %s", probe)
 		}
+	}
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  30d. Challenge Hardening: JA4 Binding, Adaptive Difficulty, Timing
+// ════════════════════════════════════════════════════════════════════
+
+func TestChallengeBindJA4CRUD(t *testing.T) {
+	// Create a challenge rule with bind_ja4 explicitly set.
+	t.Run("create-with-bind-ja4-true", func(t *testing.T) {
+		payload := map[string]any{
+			"name":               "e2e-challenge-ja4-true",
+			"type":               "challenge",
+			"enabled":            true,
+			"challenge_bind_ja4": true,
+			"conditions":         []map[string]string{{"field": "path", "operator": "eq", "value": "/ja4-test"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create bind_ja4=true", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		// Verify it's persisted.
+		resp, body = httpGet(t, wafctlURL+"/api/rules/"+ruleID)
+		assertCode(t, "get", 200, resp)
+		assertField(t, "bind_ja4", body, "challenge_bind_ja4", "true")
+	})
+
+	t.Run("create-with-bind-ja4-false", func(t *testing.T) {
+		f := false
+		payload := map[string]any{
+			"name":               "e2e-challenge-ja4-false",
+			"type":               "challenge",
+			"enabled":            true,
+			"challenge_bind_ja4": f,
+			"conditions":         []map[string]string{{"field": "path", "operator": "eq", "value": "/ja4-test-off"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create bind_ja4=false", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		resp, body = httpGet(t, wafctlURL+"/api/rules/"+ruleID)
+		assertCode(t, "get", 200, resp)
+		assertField(t, "bind_ja4", body, "challenge_bind_ja4", "false")
+	})
+}
+
+func TestChallengeBindJA4InGeneratedConfig(t *testing.T) {
+	ensureDefaultConfig(t)
+
+	payload := map[string]any{
+		"name":               "e2e-challenge-ja4-config",
+		"type":               "challenge",
+		"enabled":            true,
+		"challenge_bind_ja4": true,
+		"conditions":         []map[string]string{{"field": "path", "operator": "eq", "value": "/ja4-config-test"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+	assertCode(t, "create", 201, resp)
+	ruleID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+	resp, body = httpPost(t, wafctlURL+"/api/config/generate", nil)
+	assertCode(t, "generate", 200, resp)
+
+	var wrapper generateConfigWrapper
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, r := range wrapper.PolicyRules.Rules {
+		if r.ID == ruleID && r.Challenge != nil {
+			if !r.Challenge.BindJA4 {
+				t.Error("bind_ja4 should be true in generated config")
+			}
+			return
+		}
+	}
+	t.Error("challenge rule not found in generated config")
+}
+
+func TestChallengeAdaptiveDifficultyCRUD(t *testing.T) {
+	t.Run("create-with-min-max", func(t *testing.T) {
+		payload := map[string]any{
+			"name":                     "e2e-challenge-adaptive",
+			"type":                     "challenge",
+			"enabled":                  true,
+			"challenge_difficulty":     4,
+			"challenge_min_difficulty": 2,
+			"challenge_max_difficulty": 8,
+			"conditions":               []map[string]string{{"field": "path", "operator": "eq", "value": "/adaptive-test"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create adaptive", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		assertField(t, "min_diff", body, "challenge_min_difficulty", "2")
+		assertField(t, "max_diff", body, "challenge_max_difficulty", "8")
+		assertField(t, "base_diff", body, "challenge_difficulty", "4")
+	})
+
+	t.Run("update-min-max", func(t *testing.T) {
+		payload := map[string]any{
+			"name":                     "e2e-challenge-adaptive-update",
+			"type":                     "challenge",
+			"enabled":                  true,
+			"challenge_difficulty":     4,
+			"challenge_min_difficulty": 3,
+			"challenge_max_difficulty": 6,
+			"conditions":               []map[string]string{{"field": "path", "operator": "eq", "value": "/adaptive-update"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		resp, body = httpPut(t, wafctlURL+"/api/rules/"+ruleID, map[string]any{
+			"challenge_min_difficulty": 1,
+			"challenge_max_difficulty": 10,
+		})
+		assertCode(t, "update", 200, resp)
+		assertField(t, "updated min", body, "challenge_min_difficulty", "1")
+		assertField(t, "updated max", body, "challenge_max_difficulty", "10")
+	})
+}
+
+func TestChallengeAdaptiveDifficultyValidation(t *testing.T) {
+	t.Run("min-exceeds-max", func(t *testing.T) {
+		payload := map[string]any{
+			"name":                     "e2e-challenge-bad-range",
+			"type":                     "challenge",
+			"enabled":                  true,
+			"challenge_min_difficulty": 10,
+			"challenge_max_difficulty": 3,
+			"conditions":               []map[string]string{{"field": "path", "operator": "eq", "value": "/bad-range"}},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "min > max should reject", 400, resp)
+	})
+
+	t.Run("min-out-of-range", func(t *testing.T) {
+		payload := map[string]any{
+			"name":                     "e2e-challenge-bad-min",
+			"type":                     "challenge",
+			"enabled":                  true,
+			"challenge_min_difficulty": 20,
+			"conditions":               []map[string]string{{"field": "path", "operator": "eq", "value": "/bad-min"}},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "min > 16 should reject", 400, resp)
+	})
+
+	t.Run("max-out-of-range", func(t *testing.T) {
+		payload := map[string]any{
+			"name":                     "e2e-challenge-bad-max",
+			"type":                     "challenge",
+			"enabled":                  true,
+			"challenge_max_difficulty": 20,
+			"conditions":               []map[string]string{{"field": "path", "operator": "eq", "value": "/bad-max"}},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "max > 16 should reject", 400, resp)
+	})
+}
+
+func TestChallengeAdaptiveDifficultyInGeneratedConfig(t *testing.T) {
+	ensureDefaultConfig(t)
+
+	payload := map[string]any{
+		"name":                     "e2e-challenge-adaptive-gen",
+		"type":                     "challenge",
+		"enabled":                  true,
+		"challenge_difficulty":     4,
+		"challenge_min_difficulty": 2,
+		"challenge_max_difficulty": 8,
+		"conditions":               []map[string]string{{"field": "path", "operator": "eq", "value": "/adaptive-gen"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+	assertCode(t, "create", 201, resp)
+	ruleID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+	resp, body = httpPost(t, wafctlURL+"/api/config/generate", nil)
+	assertCode(t, "generate", 200, resp)
+
+	var wrapper generateConfigWrapper
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, r := range wrapper.PolicyRules.Rules {
+		if r.ID == ruleID && r.Challenge != nil {
+			if r.Challenge.MinDifficulty != 2 {
+				t.Errorf("min_difficulty = %d, want 2", r.Challenge.MinDifficulty)
+			}
+			if r.Challenge.MaxDifficulty != 8 {
+				t.Errorf("max_difficulty = %d, want 8", r.Challenge.MaxDifficulty)
+			}
+			if r.Challenge.Difficulty != 4 {
+				t.Errorf("difficulty = %d, want 4", r.Challenge.Difficulty)
+			}
+			return
+		}
+	}
+	t.Error("adaptive challenge rule not found in generated config")
+}
+
+func TestChallengeInterstitialContainsElapsedMs(t *testing.T) {
+	ensureDefaultConfig(t)
+
+	payload := map[string]any{
+		"name":                 "e2e-challenge-elapsed",
+		"type":                 "challenge",
+		"enabled":              true,
+		"challenge_difficulty": 1,
+		"conditions": []map[string]string{
+			{"field": "path", "operator": "begins_with", "value": "/e2e-elapsed-test"},
+		},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+	assertCode(t, "create", 201, resp)
+	ruleID := mustGetID(t, body)
+	t.Cleanup(func() {
+		cleanup(t, wafctlURL+"/api/rules/"+ruleID)
+		deployWAF(t)
+	})
+
+	deployAndWaitForStatus(t, caddyURL+"/e2e-elapsed-test", 200)
+
+	// The interstitial JS should submit elapsed_ms to the verify endpoint.
+	resp, body = httpGet(t, caddyURL+"/e2e-elapsed-test")
+	assertCode(t, "interstitial", 200, resp)
+
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "elapsed_ms") {
+		t.Error("interstitial JS missing elapsed_ms submission field")
 	}
 }

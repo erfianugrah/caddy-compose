@@ -87,8 +87,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.65.0-2.11.2
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.69.0
+CADDY_IMAGE   ?= <your-registry>/caddy:3.66.0-2.11.2
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.70.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -154,7 +154,7 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.65.0-2.11.2`), wafctl is plain semver (e.g. `2.69.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.66.0-2.11.2`), wafctl is plain semver (e.g. `2.70.0`).
 
 ## WAF configuration
 
@@ -181,6 +181,22 @@ Dynamic config survives container restarts. wafctl stores state in JSON files on
 ### Reload fingerprint
 
 When only included `.conf` files change (not the Caddyfile itself), Caddy's `/load` endpoint may skip reprovisioning. wafctl works around this by injecting a SHA-256 fingerprint comment into the Caddyfile before POSTing to `/load`. The on-disk Caddyfile is never modified.
+
+### Challenge (PoW) protection
+
+Challenge rules serve a proof-of-work interstitial (SHA-256 hashcash) that clients must solve before reaching the upstream. The interstitial runs in Web Workers for parallelism, with a pure-JS SHA-256 fallback for non-secure contexts. On success, an HMAC-signed cookie bypasses the challenge on subsequent requests.
+
+**Bot scoring** runs during the PoW computation window — 5 layers: JA4 TLS fingerprint, HTTP headers, 17 JS environment probes, behavioral signals (mouse/keyboard/scroll/focus/worker-timing-variance), and spatial inconsistency. Score >= 70 rejects even with a valid PoW.
+
+**Hardening features** (v3.66.0):
+
+| Feature | Field(s) | Description |
+|---------|----------|-------------|
+| Adaptive difficulty | `challenge_min_difficulty`, `challenge_max_difficulty` | Server selects difficulty within [min, max] based on pre-signal scoring (JA4 + HTTP headers) at serve time. Clean browsers get min, suspicious clients get max. |
+| JA4 token binding | `challenge_bind_ja4` (default true) | JA4 fingerprint HMAC'd into challenge payload and stored in cookie. Cookie validation rejects if TLS fingerprint changed. Prevents cookie replay from different TLS stacks. |
+| Timing validation | Automatic | Server computes minimum expected solve time from difficulty and reported core count. Hard rejects impossibly fast solutions (< floor/3). Adds bot score penalty for suspicious timing (< floor). |
+
+Rule fields: `challenge_difficulty` (1-16, default 4), `challenge_algorithm` ("fast"/"slow"), `challenge_ttl` ("1h", "24h", "7d"), `challenge_bind_ip` (default true), `challenge_bind_ja4` (default true), `challenge_min_difficulty`, `challenge_max_difficulty`.
 
 ## WAF dashboard
 

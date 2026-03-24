@@ -22,7 +22,7 @@ make build-wafctl       # Build the standalone wafctl image only
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.69.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.70.0" -o wafctl .
 ```
 
 Version injected via `-ldflags "-X main.version=..."`. Fallback: `var version = "dev"` in `main.go`.
@@ -340,6 +340,19 @@ causes the event to be invisible in parts of the UI.
   5-layer bot scoring: JA4 TLS, HTTP headers, JS probes (17 signals), behavioral
   (5 signals), spatial inconsistency. Score >= 70 rejects even with valid PoW.
   Cryptographic cookie IDs (jti), 1-hour default TTL, `challenge_cookie` RL key.
+  Challenge hardening (v3.66.0): three enhancements to the PoW system:
+  - **Adaptive difficulty**: `challenge_min_difficulty`/`challenge_max_difficulty` fields
+    on rules. Server runs `preSignalScore()` (L1/L2/partial-L5 — JA4, HTTP headers, UA
+    spatial checks) at interstitial-serve time and maps linearly to [min, max] range.
+    Score 0 → min, score >= 70 → max. When unset, both default to `challenge_difficulty`.
+  - **JA4 token binding**: `challenge_bind_ja4` field (default true). JA4 fingerprint is
+    HMAC'd into the challenge payload and stored in the cookie's `ja4` field. Cookie
+    validation rejects if the current connection's JA4 doesn't match. Prevents cookie
+    replay from a different TLS stack (e.g., solve in browser, replay from curl).
+  - **Timing validation**: Server parses `elapsed_ms` (already submitted by client,
+    previously ignored) and `cores` from JS signals. `minSolveMs(difficulty, cores)` =
+    `2^(difficulty*4) / (cores * 50) * 0.3`. Hard reject if elapsed < floor/3 (impossible
+    timing). Soft penalty (+40 bot score) if elapsed < floor.
 - **JA4 TLS fingerprinting**: `caddy.ListenerWrapper` module (`caddy.listeners.ja4`)
   between L4 DDoS and TLS in the listener chain. Hand-rolled ClientHello binary parser
   (zero deps). Full FoxIO JA4 spec. Available as `ja4` condition field and

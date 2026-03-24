@@ -441,6 +441,7 @@ export function QuickActionsForm({
   const [challengeAlgorithm, setChallengeAlgorithm] = useState("fast");
   const [challengeTTL, setChallengeTTL] = useState("1h");
   const [challengeBindIP, setChallengeBindIP] = useState(true);
+  const [challengeBindJA4, setChallengeBindJA4] = useState(true);
 
   // Apply prefill when it arrives (async from useEffect in parent)
   useEffect(() => {
@@ -470,6 +471,7 @@ export function QuickActionsForm({
     setChallengeAlgorithm("fast");
     setChallengeTTL("1h");
     setChallengeBindIP(true);
+    setChallengeBindJA4(true);
     setEnabled(true);
     setTags([]);
     setShowPrefillBanner(false);
@@ -512,6 +514,7 @@ export function QuickActionsForm({
       data.challenge_algorithm = challengeAlgorithm as "fast" | "slow";
       data.challenge_ttl = challengeTTL;
       data.challenge_bind_ip = challengeBindIP;
+      data.challenge_bind_ja4 = challengeBindJA4;
     }
     if (tags.length > 0) data.tags = tags;
 
@@ -775,6 +778,11 @@ export function QuickActionsForm({
                 onChange={(e) => setChallengeBindIP(e.target.checked)} className="h-4 w-4 rounded border-lv-border/50" />
               <label htmlFor="quick-challenge-bind-ip" className="text-xs text-lv-muted">Bind cookie to client IP</label>
             </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input type="checkbox" id="quick-challenge-bind-ja4" checked={challengeBindJA4}
+                onChange={(e) => setChallengeBindJA4(e.target.checked)} className="h-4 w-4 rounded border-lv-border/50" />
+              <label htmlFor="quick-challenge-bind-ja4" className="text-xs text-lv-muted">Bind cookie to JA4 TLS fingerprint</label>
+            </div>
           </div>
         </div>
       )}
@@ -866,9 +874,12 @@ export function AdvancedBuilderForm({
       skip_targets: newType === "skip" ? prev.skip_targets : {},
       // Reset challenge-specific fields when switching away from challenge
       challenge_difficulty: newType === "challenge" ? prev.challenge_difficulty : 4,
+      challenge_min_difficulty: newType === "challenge" ? prev.challenge_min_difficulty : 0,
+      challenge_max_difficulty: newType === "challenge" ? prev.challenge_max_difficulty : 0,
       challenge_algorithm: newType === "challenge" ? prev.challenge_algorithm : "fast",
       challenge_ttl: newType === "challenge" ? prev.challenge_ttl : "1h",
       challenge_bind_ip: newType === "challenge" ? prev.challenge_bind_ip : true,
+      challenge_bind_ja4: newType === "challenge" ? prev.challenge_bind_ja4 : true,
       // Auto-set phase to outbound for response_header
       phase: newType === "response_header" ? "outbound" : prev.phase,
       // Reset header fields when switching away from response_header
@@ -899,9 +910,12 @@ export function AdvancedBuilderForm({
     }
     if (isChallenge) {
       data.challenge_difficulty = form.challenge_difficulty;
+      if (form.challenge_min_difficulty > 0) data.challenge_min_difficulty = form.challenge_min_difficulty;
+      if (form.challenge_max_difficulty > 0) data.challenge_max_difficulty = form.challenge_max_difficulty;
       data.challenge_algorithm = form.challenge_algorithm as "fast" | "slow";
       data.challenge_ttl = form.challenge_ttl;
       data.challenge_bind_ip = form.challenge_bind_ip;
+      data.challenge_bind_ja4 = form.challenge_bind_ja4;
     }
     if (isResponseHeader) {
       if (Object.keys(form.header_set).length > 0) data.header_set = form.header_set;
@@ -1071,6 +1085,34 @@ export function AdvancedBuilderForm({
               </p>
             </div>
             <div>
+              <label className="text-xs text-lv-muted">Adaptive Min Difficulty</label>
+              <input
+                type="number"
+                min={0}
+                max={16}
+                value={form.challenge_min_difficulty}
+                onChange={(e) => update("challenge_min_difficulty", parseInt(e.target.value) || 0)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+              />
+              <p className="mt-0.5 text-[10px] text-lv-muted">
+                0 = use static difficulty. Set both min/max for adaptive.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs text-lv-muted">Adaptive Max Difficulty</label>
+              <input
+                type="number"
+                min={0}
+                max={16}
+                value={form.challenge_max_difficulty}
+                onChange={(e) => update("challenge_max_difficulty", parseInt(e.target.value) || 0)}
+                className="mt-1 w-full rounded border border-lv-border/50 bg-lv-surface px-2 py-1 text-sm text-lv-text"
+              />
+              <p className="mt-0.5 text-[10px] text-lv-muted">
+                Higher difficulty for suspicious requests (based on TLS + headers).
+              </p>
+            </div>
+            <div>
               <label className="text-xs text-lv-muted">Algorithm</label>
               <select
                 value={form.challenge_algorithm}
@@ -1107,6 +1149,18 @@ export function AdvancedBuilderForm({
               />
               <label htmlFor="challenge-bind-ip" className="text-xs text-lv-muted">
                 Bind cookie to client IP
+              </label>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="challenge-bind-ja4"
+                checked={form.challenge_bind_ja4}
+                onChange={(e) => update("challenge_bind_ja4", e.target.checked)}
+                className="h-4 w-4 rounded border-lv-border/50"
+              />
+              <label htmlFor="challenge-bind-ja4" className="text-xs text-lv-muted">
+                Bind cookie to JA4 TLS fingerprint
               </label>
             </div>
           </div>
