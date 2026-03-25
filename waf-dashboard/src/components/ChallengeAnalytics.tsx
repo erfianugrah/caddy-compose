@@ -130,12 +130,12 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
               {/* Pass/issue portion (green) */}
               {passH > 0 && (
                 <rect x={x} y={y} width={barW} height={passH} rx={1}
-                  fill="var(--lv-green)" opacity={0.7} />
+                  fill="#5adecd" opacity={0.7} />
               )}
-              {/* Failed portion (red, stacked on top) */}
+              {/* Failed portion (red, stacked below green) */}
               {failH > 0 && (
                 <rect x={x} y={y + passH} width={barW} height={failH} rx={1}
-                  fill="var(--lv-red)" opacity={0.9} />
+                  fill="#f37e96" opacity={0.9} />
               )}
             </g>
           );
