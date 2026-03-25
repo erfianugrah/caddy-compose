@@ -19,5 +19,6 @@ export * from "./backup";
 export * from "./templates";
 export * from "./dos";
 export * from "./challenge";
+export * from "./sessions";
 export * from "./health";
 

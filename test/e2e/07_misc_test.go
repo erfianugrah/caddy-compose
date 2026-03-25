@@ -54,6 +54,7 @@ func TestWAFDashboardUI(t *testing.T) {
 	pages := []string{
 		"analytics", "csp", "events", "headers", "lists",
 		"logs", "policy", "rate-limits", "rules", "rules/crs", "services",
+		"sessions",
 	}
 	for _, page := range pages {
 		t.Run(page, func(t *testing.T) {

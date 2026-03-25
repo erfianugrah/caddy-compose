@@ -35,6 +35,7 @@ func runServe() int {
 	cspFile := envOr("WAF_CSP_FILE", "/data/csp-config.json")
 	secHeadersFile := envOr("WAF_SECURITY_HEADERS_FILE", "/data/security-headers.json")
 	corsFile := envOr("WAF_CORS_FILE", "/data/cors.json")
+	sessionFile := envOr("WAF_SESSION_FILE", "/data/session.json")
 	managedListsFile := envOr("WAF_MANAGED_LISTS_FILE", "/data/lists.json")
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
 
@@ -144,6 +145,8 @@ func runServe() int {
 	// Config stores load instantly (small JSON files).
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	accessLogStore.SetExclusionStore(exclusionStore)
+	sessionStore := NewSessionStore(sessionFile)
+	accessLogStore.SetSessionStore(sessionStore)
 	configStore := NewConfigStore(configFile)
 	cspStore := NewCSPStore(cspFile)
 	secHeaderStore := NewSecurityHeaderStore(secHeadersFile)
@@ -251,6 +254,23 @@ func runServe() int {
 				return
 			case <-ticker.C:
 				jailStore.Reload()
+			}
+		}
+	}()
+
+	// Periodic JTI denylist writer — writes suspicious JTIs for the plugin.
+	denylistFile := filepath.Join(deployCfg.WafDir, "jti-denylist.json")
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := sessionStore.WriteDenylist(denylistFile, 0.6); err != nil {
+					log.Printf("[session] denylist write error: %v", err)
+				}
 			}
 		}
 	}()
@@ -383,6 +403,9 @@ func runServe() int {
 	// Challenge Analytics + Reputation
 	mux.HandleFunc("GET /api/challenge/stats", handleChallengeStats(accessLogStore))
 	mux.HandleFunc("GET /api/challenge/reputation", handleChallengeReputation(accessLogStore))
+
+	// Session Tracking
+	mux.HandleFunc("GET /api/sessions/stats", handleSessionStats(sessionStore))
 
 	// Endpoint Discovery
 	mux.HandleFunc("GET /api/discovery/endpoints", handleEndpointDiscovery(generalLogStore, exclusionStore))
