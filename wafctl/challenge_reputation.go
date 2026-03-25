@@ -301,10 +301,12 @@ func (s *AccessLogStore) ChallengeReputation(hours int, filterService string) Ch
 		}
 	}
 
-	// Sort alerts by severity (high first).
+	// Sort alerts by severity (high > medium > low), then by count descending.
+	severityRank := map[string]int{"high": 3, "medium": 2, "low": 1}
 	sort.Slice(alerts, func(i, j int) bool {
-		if alerts[i].Severity != alerts[j].Severity {
-			return alerts[i].Severity == "high"
+		ri, rj := severityRank[alerts[i].Severity], severityRank[alerts[j].Severity]
+		if ri != rj {
+			return ri > rj
 		}
 		return alerts[i].Count > alerts[j].Count
 	})

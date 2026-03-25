@@ -124,9 +124,9 @@ func inferChallengeFailReason(rle RateLimitEvent) string {
 	// Timing violation detection — replicate the plugin's minSolveMs formula.
 	// minSolveMs(difficulty, cores) = 2^(difficulty*4) / (cores * 50) * 0.3
 	// We don't have cores in the log, so estimate conservatively with cores=16.
-	if rle.ChallengeElapsedMs > 0 && rle.ChallengeDifficulty > 0 {
+	if rle.ChallengeElapsedMs > 0 && rle.ChallengeDifficulty > 0 && rle.ChallengeDifficulty <= 15 {
 		estimatedCores := 16
-		hashSpace := 1 << (rle.ChallengeDifficulty * 4) // 2^(difficulty*4)
+		hashSpace := uint64(1) << (rle.ChallengeDifficulty * 4) // 2^(difficulty*4), safe for difficulty 1-15
 		minMs := float64(hashSpace) / float64(estimatedCores*50) * 0.3
 		if float64(rle.ChallengeElapsedMs) < minMs/3 {
 			return "timing_hard"

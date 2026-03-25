@@ -21,7 +21,7 @@ type generateConfigWrapper struct {
 				Algorithm     string `json:"algorithm"`
 				TTLSeconds    int    `json:"ttl_seconds"`
 				BindIP        bool   `json:"bind_ip"`
-				BindJA4       bool   `json:"bind_ja4,omitempty"`
+				BindJA4       bool   `json:"bind_ja4"`
 			} `json:"challenge,omitempty"`
 			SkipTargets *struct {
 				Phases []string `json:"phases,omitempty"`
@@ -515,15 +515,22 @@ func TestChallengeNonMatchingPathPassesThrough(t *testing.T) {
 	// After creating a challenge rule for /e2e-challenge-page,
 	// requests to other paths should NOT get the interstitial.
 	// (Using the httpbun upstream that the e2e Caddy proxies to.)
-	resp, _ := httpGet(t, caddyURL+"/get")
-	if resp.StatusCode == 200 {
-		// If it's 200, check it's NOT the interstitial.
-		// The httpbun /get endpoint returns JSON, not HTML.
-		ct := resp.Header.Get("Content-Type")
-		if strings.Contains(ct, "text/html") && !strings.Contains(ct, "application/json") {
-			// Could be the interstitial — check body.
-			t.Log("got HTML response on /get, might be interstitial leaking")
-		}
+	resp, body := httpGet(t, caddyURL+"/get")
+	if resp.StatusCode != 200 {
+		t.Fatalf("/get status = %d, want 200", resp.StatusCode)
+	}
+	// The httpbun /get endpoint returns JSON, not HTML.
+	ct := resp.Header.Get("Content-Type")
+	if strings.Contains(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want application/json (interstitial leaked to /get)", ct)
+	}
+	// The response body should NOT contain the challenge interstitial marker.
+	if strings.Contains(string(body), "challenge-data") {
+		t.Error("response body contains challenge-data — interstitial leaked to non-matching path")
+	}
+	// Should contain JSON from httpbun.
+	if !strings.Contains(string(body), "{") {
+		t.Error("response body doesn't look like JSON from httpbun")
 	}
 }
 
@@ -764,6 +771,48 @@ func TestChallengeBindJA4InGeneratedConfig(t *testing.T) {
 	t.Error("challenge rule not found in generated config")
 }
 
+func TestChallengeBindJA4FalseInGeneratedConfig(t *testing.T) {
+	// Regression test for bug #1: BindJA4=false was silently omitted from
+	// generated config due to omitempty on the JSON tag. The plugin would
+	// then default to true, overriding the user's explicit false.
+	ensureDefaultConfig(t)
+
+	payload := map[string]any{
+		"name":               "e2e-challenge-ja4-false-config",
+		"type":               "challenge",
+		"enabled":            true,
+		"challenge_bind_ja4": false,
+		"conditions":         []map[string]string{{"field": "path", "operator": "eq", "value": "/ja4-false-config-test"}},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+	assertCode(t, "create", 201, resp)
+	ruleID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+	resp, body = httpPost(t, wafctlURL+"/api/config/generate", nil)
+	assertCode(t, "generate", 200, resp)
+
+	// Parse the raw JSON to verify bind_ja4 is explicitly false.
+	var wrapper generateConfigWrapper
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, r := range wrapper.PolicyRules.Rules {
+		if r.ID == ruleID && r.Challenge != nil {
+			if r.Challenge.BindJA4 {
+				t.Error("bind_ja4 should be false in generated config (explicit false must survive serialization)")
+			}
+			// Also verify bind_ja4 is present in raw JSON (not omitted).
+			if !strings.Contains(string(body), `"bind_ja4"`) {
+				t.Error("bind_ja4 field missing from raw JSON — omitempty may be stripping it")
+			}
+			return
+		}
+	}
+	t.Error("challenge rule not found in generated config")
+}
+
 func TestChallengeAdaptiveDifficultyCRUD(t *testing.T) {
 	t.Run("create-with-min-max", func(t *testing.T) {
 		payload := map[string]any{
@@ -928,6 +977,98 @@ func TestChallengeStatsEndpoint(t *testing.T) {
 	// Should have top_ja4s array.
 	if !strings.Contains(string(body), "top_ja4s") {
 		t.Error("response missing top_ja4s field")
+	}
+}
+
+func TestChallengeStatsFullStructure(t *testing.T) {
+	// Validate that the challenge stats response has all expected fields
+	// with correct types and that rates are within [0, 1].
+	resp, body := httpGet(t, wafctlURL+"/api/challenge/stats?hours=24")
+	assertCode(t, "stats", 200, resp)
+
+	var stats struct {
+		Issued        int               `json:"issued"`
+		Passed        int               `json:"passed"`
+		Failed        int               `json:"failed"`
+		Bypassed      int               `json:"bypassed"`
+		PassRate      float64           `json:"pass_rate"`
+		FailRate      float64           `json:"fail_rate"`
+		BypassRate    float64           `json:"bypass_rate"`
+		AvgSolveMs    float64           `json:"avg_solve_ms"`
+		AvgDifficulty float64           `json:"avg_difficulty"`
+		ScoreBuckets  []json.RawMessage `json:"score_buckets"`
+		Timeline      []json.RawMessage `json:"timeline"`
+		TopClients    []json.RawMessage `json:"top_clients"`
+		TopServices   []json.RawMessage `json:"top_services"`
+		TopJA4s       []json.RawMessage `json:"top_ja4s"`
+		FailReasons   map[string]int    `json:"fail_reasons"`
+	}
+	if err := json.Unmarshal(body, &stats); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Rates must be in [0.0, 1.0].
+	if stats.PassRate < 0 || stats.PassRate > 1 {
+		t.Errorf("pass_rate = %f, want [0, 1]", stats.PassRate)
+	}
+	if stats.FailRate < 0 || stats.FailRate > 1 {
+		t.Errorf("fail_rate = %f, want [0, 1]", stats.FailRate)
+	}
+	if stats.BypassRate < 0 || stats.BypassRate > 1 {
+		t.Errorf("bypass_rate = %f, want [0, 1]", stats.BypassRate)
+	}
+
+	// Funnel counts must be non-negative.
+	if stats.Issued < 0 || stats.Passed < 0 || stats.Failed < 0 || stats.Bypassed < 0 {
+		t.Error("funnel counts must be non-negative")
+	}
+
+	// Buckets always present (6 fixed).
+	if len(stats.ScoreBuckets) != 6 {
+		t.Errorf("score_buckets = %d, want 6", len(stats.ScoreBuckets))
+	}
+
+	// Timeline, top lists, and JA4s should be arrays (may be empty).
+	if stats.Timeline == nil {
+		t.Error("timeline should not be nil (should be empty array)")
+	}
+	if stats.TopClients == nil {
+		t.Error("top_clients should not be nil")
+	}
+	if stats.TopServices == nil {
+		t.Error("top_services should not be nil")
+	}
+	if stats.TopJA4s == nil {
+		t.Error("top_ja4s should not be nil")
+	}
+}
+
+func TestChallengeReputationFullStructure(t *testing.T) {
+	// Validate that the reputation response has all expected fields.
+	resp, body := httpGet(t, wafctlURL+"/api/challenge/reputation?hours=24")
+	assertCode(t, "reputation", 200, resp)
+
+	var rep struct {
+		JA4s         []json.RawMessage `json:"ja4s"`
+		Clients      []json.RawMessage `json:"clients"`
+		Alerts       []json.RawMessage `json:"alerts"`
+		TotalJA4s    int               `json:"total_ja4s"`
+		TotalClients int               `json:"total_clients"`
+		TotalAlerts  int               `json:"total_alerts"`
+	}
+	if err := json.Unmarshal(body, &rep); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if rep.TotalJA4s < 0 || rep.TotalClients < 0 || rep.TotalAlerts < 0 {
+		t.Error("totals must be non-negative")
+	}
+	if rep.JA4s == nil || rep.Clients == nil {
+		t.Error("ja4s and clients arrays should not be nil")
+	}
+	// TotalAlerts should match alerts array length.
+	if rep.TotalAlerts != len(rep.Alerts) {
+		t.Errorf("total_alerts = %d, len(alerts) = %d — mismatch", rep.TotalAlerts, len(rep.Alerts))
 	}
 }
 

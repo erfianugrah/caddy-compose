@@ -152,7 +152,7 @@ func rleResponseStatus(rle *RateLimitEvent) int {
 	case "policy", "ipsum", "detect_block", "ddos_blocked", "ddos_jailed", "challenge_failed":
 		return 403
 	case "challenge_issued":
-		return 200
+		return rle.Status
 	case "challenge_passed", "challenge_bypassed", "policy_skip", "logged":
 		return rle.Status
 	default:

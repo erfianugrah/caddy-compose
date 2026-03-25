@@ -325,7 +325,7 @@ function EndpointDiscoveryPanel({ hours, service, services }: { hours: string; s
 
   // Load OpenAPI schemas
   const loadSchemas = useCallback(async () => {
-    try { setSchemas(await fetchOpenAPISchemas()); } catch { /* ignore */ }
+    try { setSchemas(await fetchOpenAPISchemas()); } catch (err) { console.warn("[challenge] failed to load schemas:", err); }
   }, []);
   useEffect(() => { loadSchemas(); }, [loadSchemas]);
 
@@ -356,7 +356,7 @@ function EndpointDiscoveryPanel({ hours, service, services }: { hours: string; s
       await deleteOpenAPISchema(svc);
       await loadSchemas();
       load();
-    } catch { /* ignore */ }
+    } catch (err) { console.warn("[challenge] failed to delete schema:", err); }
   }, [loadSchemas, load]);
 
   // Group endpoints by service

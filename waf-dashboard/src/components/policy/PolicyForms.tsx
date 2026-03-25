@@ -589,7 +589,7 @@ export function QuickActionsForm({
               onClick={() => {
                 setActionType(action.value);
                 // Update auto-generated name to reflect new action type
-                if (prefill && name.startsWith("Allow ") || name.startsWith("Block ") || name.startsWith("Challenge ") || name.startsWith("Skip ") || name.startsWith("Detect ")) {
+                if (prefill && (name.startsWith("Allow ") || name.startsWith("Block ") || name.startsWith("Challenge ") || name.startsWith("Skip ") || name.startsWith("Detect "))) {
                   const label = action.value === "allow" ? "Allow" : action.value === "block" ? "Block" : action.value === "challenge" ? "Challenge" : action.value === "skip" ? "Skip" : "Detect";
                   setName(name.replace(/^(Allow|Block|Challenge|Skip|Detect)\b/, label));
                 }

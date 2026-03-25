@@ -142,8 +142,7 @@ func loadOrGenerateChallengeKey(dataDir string) string {
 	// Generate a new 32-byte random key.
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
-		log.Printf("[challenge] warning: failed to generate HMAC key: %v", err)
-		return ""
+		log.Fatalf("[challenge] fatal: failed to generate HMAC key: %v", err)
 	}
 	keyHex := hex.EncodeToString(key)
 	if err := os.MkdirAll(dataDir, 0755); err == nil {

@@ -80,6 +80,7 @@ func generatePolicyData(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStor
 	}
 
 	// Inject challenge HMAC key when challenge rules exist.
+	// Uses a single unmarshal/marshal pass rather than a second round-trip.
 	if deployCfg.ChallengeHMACKey != "" {
 		hasChallengeRules := false
 		for _, e := range allExclusions {
@@ -89,9 +90,16 @@ func generatePolicyData(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStor
 			}
 		}
 		if hasChallengeRules {
-			policyData, err = injectChallengeConfig(policyData, deployCfg.ChallengeHMACKey)
+			var file PolicyRulesFile
+			if err := json.Unmarshal(policyData, &file); err != nil {
+				return nil, 0, fmt.Errorf("injecting challenge config: unmarshal: %w", err)
+			}
+			file.ChallengeConfig = &PolicyChallengeGlobalConfig{
+				HMACKey: deployCfg.ChallengeHMACKey,
+			}
+			policyData, err = json.MarshalIndent(file, "", "  ")
 			if err != nil {
-				return nil, 0, fmt.Errorf("injecting challenge config: %w", err)
+				return nil, 0, fmt.Errorf("injecting challenge config: marshal: %w", err)
 			}
 		}
 	}

@@ -74,7 +74,7 @@ type PolicyChallengeConfig struct {
 	Algorithm     string `json:"algorithm"`                // "fast" (default) or "slow"
 	TTLSeconds    int    `json:"ttl_seconds"`              // Cookie lifetime in seconds (default 3600 = 1h)
 	BindIP        bool   `json:"bind_ip"`                  // Bind cookie to client IP (default true)
-	BindJA4       bool   `json:"bind_ja4,omitempty"`       // Bind cookie to JA4 TLS fingerprint (default true)
+	BindJA4       bool   `json:"bind_ja4"`                 // Bind cookie to JA4 TLS fingerprint (default true)
 }
 
 // PolicySkipTargets mirrors the plugin's SkipTargets type.

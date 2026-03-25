@@ -509,6 +509,10 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                            event.challenge_fail_reason === "timing_soft" ? "solve time < theoretical minimum — penalty pushed score over threshold" :
                            event.challenge_fail_reason === "ja4_mismatch" ? "cookie solved by different TLS stack than current connection" :
                            event.challenge_fail_reason === "ip_mismatch" ? "bind_ip enabled — cookie bound to original solver IP" :
+                           event.challenge_fail_reason === "hmac_invalid" ? "cookie HMAC signature failed — possible tampering or key rotation" :
+                           event.challenge_fail_reason === "payload_expired" ? "challenge payload older than 5 minutes — timed out before submission" :
+                           event.challenge_fail_reason === "cookie_expired" ? "cookie TTL exceeded — client must re-solve the challenge" :
+                           event.challenge_fail_reason === "pre_signal" ? "pre-signal score (TLS/headers) too high — rejected before JS scoring" :
                            ""}
                         </span>
                       )}

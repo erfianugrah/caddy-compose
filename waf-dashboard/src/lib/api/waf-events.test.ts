@@ -148,6 +148,133 @@ describe("fetchSummary", () => {
     expect(result.service_breakdown).toEqual([]);
   });
 
+  it("maps non-zero challenge counters in summary, timeline, and breakdowns", async () => {
+    const goResponse = {
+      total_events: 200,
+      total_blocked: 50,
+      logged_events: 100,
+      unique_clients: 10,
+      unique_services: 3,
+      challenge_issued: 30,
+      challenge_passed: 20,
+      challenge_failed: 10,
+      events_by_hour: [
+        {
+          hour: "2026-03-20T10:00:00Z",
+          count: 100,
+          total_blocked: 25,
+          logged: 50,
+          challenge_issued: 15,
+          challenge_passed: 10,
+          challenge_failed: 5,
+        },
+      ],
+      top_services: [
+        {
+          service: "app.example.test",
+          count: 120,
+          total_blocked: 30,
+          logged: 60,
+          challenge_issued: 20,
+          challenge_passed: 12,
+          challenge_failed: 8,
+        },
+      ],
+      top_clients: [
+        {
+          client: "10.0.0.1",
+          count: 80,
+          total_blocked: 15,
+          challenge_issued: 10,
+          challenge_passed: 7,
+          challenge_failed: 3,
+        },
+      ],
+      top_uris: [],
+      service_breakdown: [
+        {
+          service: "app.example.test",
+          total: 120,
+          total_blocked: 30,
+          logged: 60,
+          challenge_issued: 20,
+          challenge_passed: 12,
+          challenge_failed: 8,
+        },
+      ],
+      recent_events: [],
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const result: SummaryData = await fetchSummary({ hours: 24 });
+
+    // Top-level challenge counters
+    expect(result.challenge_issued).toBe(30);
+    expect(result.challenge_passed).toBe(20);
+    expect(result.challenge_failed).toBe(10);
+
+    // Timeline challenge counters
+    expect(result.timeline[0].challenge_issued).toBe(15);
+    expect(result.timeline[0].challenge_passed).toBe(10);
+    expect(result.timeline[0].challenge_failed).toBe(5);
+
+    // Top services challenge counters
+    expect(result.top_services[0].challenge_issued).toBe(20);
+    expect(result.top_services[0].challenge_passed).toBe(12);
+    expect(result.top_services[0].challenge_failed).toBe(8);
+
+    // Top clients challenge counters
+    expect(result.top_clients[0].challenge_issued).toBe(10);
+    expect(result.top_clients[0].challenge_passed).toBe(7);
+    expect(result.top_clients[0].challenge_failed).toBe(3);
+
+    // Service breakdown challenge counters
+    expect(result.service_breakdown[0].challenge_issued).toBe(20);
+    expect(result.service_breakdown[0].challenge_passed).toBe(12);
+    expect(result.service_breakdown[0].challenge_failed).toBe(8);
+  });
+
+  it("maps challenge event fields on individual events", async () => {
+    const goResponse = {
+      total: 1,
+      events: [
+        {
+          id: "ch-001",
+          timestamp: "2026-03-20T10:00:00Z",
+          service: "app.example.test",
+          method: "GET",
+          uri: "/protected",
+          client_ip: "10.0.0.1",
+          is_blocked: false,
+          response_status: 200,
+          event_type: "challenge_passed",
+          challenge_bot_score: 25,
+          challenge_jti: "jti-abc123",
+          challenge_difficulty: 4,
+          challenge_elapsed_ms: 2500,
+          challenge_pre_score: 15,
+          challenge_fail_reason: "",
+          challenge_signals: '{"ja4":5,"headers":3,"js":8,"behavior":4,"spatial":5}',
+        },
+      ],
+    };
+
+    vi.stubGlobal("fetch", mockFetchResponse(goResponse));
+
+    const { fetchEvents } = await import("@/lib/api");
+    const result = await fetchEvents({ page: 1, per_page: 25 });
+    const evt = result.events[0];
+
+    expect(evt.event_type).toBe("challenge_passed");
+    expect(evt.challenge_bot_score).toBe(25);
+    expect(evt.challenge_jti).toBe("jti-abc123");
+    expect(evt.challenge_difficulty).toBe(4);
+    expect(evt.challenge_elapsed_ms).toBe(2500);
+    expect(evt.challenge_pre_score).toBe(15);
+    expect(evt.challenge_signals).toBe('{"ja4":5,"headers":3,"js":8,"behavior":4,"spatial":5}');
+  });
+
   it("passes hours query parameter", async () => {
     const mockFetch = mockFetchResponse({
       total_events: 0,
