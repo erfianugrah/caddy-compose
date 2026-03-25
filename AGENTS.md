@@ -39,7 +39,7 @@ cd waf-dashboard && npm ci && npm run build
 make test               # Run ALL tests (Go + frontend)
 make test-go            # Go tests only (31 test files, ~626 tests)
 make test-frontend      # Frontend Vitest only (19 test files, ~355 tests)
-make test-e2e           # E2E smoke tests (requires Docker, ~116 tests)
+make test-e2e           # E2E smoke tests (requires Docker, ~119 tests)
 ```
 
 ### Running a single test
@@ -436,4 +436,4 @@ causes the event to be invisible in parts of the UI.
     `/api/sessions/alerts`, `/api/sessions/config`
   - Dashboard: `/sessions` page (`sessions.astro` + `SessionsPanel.tsx`);
     frontend API in `src/lib/api/sessions.ts`
-  - 17 dashboard pages total, 90 mux routes, 19 frontend API modules.
+  - 17 dashboard pages total, 93 mux routes, 19 frontend API modules.

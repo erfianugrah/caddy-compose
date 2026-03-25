@@ -533,7 +533,7 @@ caddy 3.49.1 / wafctl 2.53.1 includes a comprehensive security audit (March 2026
 make test              # all tests (Go + frontend)
 make test-go           # Go tests only (~626 tests across 31 files)
 make test-frontend     # Vitest frontend tests (~355 tests across 19 files)
-make test-e2e          # Docker-based e2e smoke tests (~116 tests across 20 files)
+make test-e2e          # Docker-based e2e smoke tests (~119 tests across 20 files)
 ```
 
 Run a single test:
@@ -655,7 +655,7 @@ caddy-compose/
     Caddyfile.e2e           # Test Caddyfile for e2e tests
     ipsum_block.caddy       # Stub blocklist for tests
     e2e/                    # Go e2e smoke tests
-      01_infra_test.go .. 27_ddos_mitigator_test.go  # ~116 tests across 20 files
+      01_infra_test.go .. 33_session_tracking_test.go  # ~119 tests across 20 files
       helpers_test.go       # HTTP/JSON/assertion helpers
       go.mod
   .github/
