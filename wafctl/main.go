@@ -258,6 +258,23 @@ func runServe() int {
 		}
 	}()
 
+	// Periodic JTI denylist writer — writes suspicious JTIs for the plugin.
+	denylistFile := filepath.Join(deployCfg.WafDir, "jti-denylist.json")
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := sessionStore.WriteDenylist(denylistFile, 0.6); err != nil {
+					log.Printf("[session] denylist write error: %v", err)
+				}
+			}
+		}
+	}()
+
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
 

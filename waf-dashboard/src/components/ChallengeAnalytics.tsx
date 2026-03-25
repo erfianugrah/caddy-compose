@@ -101,17 +101,21 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
     return <p className={T.muted}>No timeline data.</p>;
   }
 
-  const maxVal = Math.max(...stats.timeline.map((h) => h.issued + h.passed + h.failed + h.bypassed), 1);
+  // Use an effective max that ensures meaningful height variation even when
+  // all hours have similar small counts. Without this, bars cluster at the
+  // minimum floor and look like a flat line.
+  const rawMax = Math.max(...stats.timeline.map((h) => h.issued + h.passed + h.failed + h.bypassed), 1);
+  const effectiveMax = Math.max(rawMax, 5);
 
   return (
     <div className="space-y-1">
       <div className="flex items-end gap-px h-24">
         {stats.timeline.map((h) => {
           const total = h.issued + h.passed + h.failed + h.bypassed;
-          // Ensure minimum 15% height for non-zero bars so they're visible
-          // even when all hours have similar small values.
-          const rawHeight = (total / maxVal) * 100;
-          const height = total > 0 ? Math.max(rawHeight, 15) : 0;
+          // Height as percentage of effective max, with 20% minimum floor
+          // for non-zero bars. The effective max (min 5) ensures that low
+          // counts like 1-3 produce visibly different bar heights.
+          const height = total > 0 ? Math.max((total / effectiveMax) * 100, 20) : 0;
           const failPct = total > 0 ? (h.failed / total) * 100 : 0;
           return (
             <div

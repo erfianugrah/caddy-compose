@@ -897,13 +897,18 @@ func TestChallengeStats_Timeline(t *testing.T) {
 	if len(stats.Timeline) == 0 {
 		t.Fatal("timeline should have at least one entry")
 	}
-	// All events are in the same hour, so exactly one timeline entry.
-	if len(stats.Timeline) != 1 {
-		t.Errorf("timeline length = %d, want 1 (all events in same hour)", len(stats.Timeline))
+	// Events span ~11 minutes from base. If base happens to cross an hour
+	// boundary (e.g., test runs at XX:25, base = XX-1:55), we may get 2
+	// timeline entries instead of 1. Accept 1 or 2.
+	if len(stats.Timeline) > 2 {
+		t.Errorf("timeline length = %d, want 1 or 2", len(stats.Timeline))
 	}
-	h := stats.Timeline[0]
-	if h.Issued+h.Passed+h.Failed+h.Bypassed == 0 {
-		t.Error("timeline hour has zero events")
+	totalEvents := 0
+	for _, h := range stats.Timeline {
+		totalEvents += h.Issued + h.Passed + h.Failed + h.Bypassed
+	}
+	if totalEvents == 0 {
+		t.Error("timeline has zero total events")
 	}
 }
 

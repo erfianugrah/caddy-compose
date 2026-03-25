@@ -287,7 +287,11 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 			if e.ChallengeFailReason != "" {
 				failReasons[e.ChallengeFailReason]++
 			} else {
-				failReasons["unknown"]++
+				// Infer fail reason from available signal data when the plugin
+				// didn't emit one (pre-v0.30.0 events). This eliminates the
+				// "Unknown" category from the dashboard fail reason breakdown.
+				inferred := inferChallengeFailReason(e)
+				failReasons[inferred]++
 			}
 		case "challenge_bypassed":
 			resp.Bypassed++

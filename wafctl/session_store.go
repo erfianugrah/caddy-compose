@@ -292,6 +292,34 @@ func (s *SessionStore) GetSuspiciousJTIs(threshold float64) []string {
 	return jtis
 }
 
+// ─── JTI Denylist Writer ─────────────────────────────────────────────
+
+// jtiDenylistFile is the JSON structure read by the plugin.
+type jtiDenylistFile struct {
+	JTIs      []string `json:"jtis"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
+// WriteDenylist writes suspicious JTIs to the denylist file for the plugin
+// to read. Only JTIs scoring at or above the threshold are included.
+func (s *SessionStore) WriteDenylist(path string, threshold float64) error {
+	jtis := s.GetSuspiciousJTIs(threshold)
+
+	dl := jtiDenylistFile{
+		JTIs:      jtis,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if dl.JTIs == nil {
+		dl.JTIs = []string{} // ensure JSON array, not null
+	}
+
+	data, err := json.MarshalIndent(dl, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(path, data, 0644)
+}
+
 // ─── HTTP Handlers ──────────────────────────────────────────────────
 
 // handleSessionStats returns aggregate session stats.
