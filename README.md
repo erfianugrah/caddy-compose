@@ -186,7 +186,7 @@ When only included `.conf` files change (not the Caddyfile itself), Caddy's `/lo
 
 Challenge rules serve a proof-of-work interstitial (SHA-256 hashcash) that clients must solve before reaching the upstream. The interstitial runs in Web Workers for parallelism, with a pure-JS SHA-256 fallback for non-secure contexts. On success, an HMAC-signed cookie bypasses the challenge on subsequent requests.
 
-**Bot scoring** runs during the PoW computation window — 6 layers: JA4 TLS fingerprint, HTTP headers, 17 JS environment probes, behavioral signals (mouse/keyboard/scroll/focus/worker-timing-variance), spatial inconsistency, and timing validation. Score >= 70 rejects even with a valid PoW.
+**Bot scoring** runs during the PoW computation window — 6 layers: JA4 TLS fingerprint, HTTP headers, 13 JS environment probes, behavioral signals (mouse/keyboard/scroll/focus/worker-timing-variance), spatial inconsistency, and timing validation. Score >= 70 rejects even with a valid PoW.
 
 **Challenge rule fields:**
 
@@ -241,6 +241,7 @@ The dashboard is an Astro 6 + React 19 static site bundled in the wafctl image a
 - **Logs** — general Caddy log viewer with stream tab, summary aggregation, and header compliance analysis.
 - **Services** — per-service stats, top URIs, top triggered rules.
 - **Challenge Analytics** — PoW challenge funnel (issued/passed/failed/bypassed), bot score distribution histogram, hourly timeline, top challenged clients with unique token counts and bot score averages, top challenged services with fail rates, top JA4 TLS fingerprints. Service and client filters with click-to-filter tables.
+- **Sessions** — session behavioral tracking dashboard. Per-session signal analysis (mouse, scroll, keystroke, focus, navigation timing), bot score breakdown, session alerts, JTI denylist management. Configurable scoring weights and auto-escalation thresholds.
 - **Investigate** — top blocked IPs, top URIs, top countries, IP lookup with GeoIP resolution.
 - **Settings** — global and per-service WAF settings including full CRS v4 coverage (paranoia levels, anomaly thresholds, mode, allowed methods, content types, argument limits, file limits, blocked extensions, HTTP versions, restricted headers, CRS exclusion profiles). All fields have tooltips explaining their purpose. Deploy button with step-by-step progress.
 
@@ -314,6 +315,7 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
 | CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
+| Sessions | `GET /api/sessions/stats`, `GET /api/sessions/list`, `GET /api/sessions/{jti}`, `GET /api/sessions/alerts`, `GET\|PUT /api/sessions/config` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 
 ### Environment variables
@@ -347,6 +349,8 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_BLOCKLIST_REFRESH_HOUR` | `6` | UTC hour (0–23) for daily IPsum blocklist refresh |
 | `WAF_MANAGED_LISTS_FILE` | `/data/lists.json` | Managed lists store path |
 | `WAF_MANAGED_LISTS_DIR` | `/data/lists` | Output dir for managed list files |
+| `WAF_SESSION_FILE` | `/data/sessions.json` | Session behavioral tracking data store path |
+| `WAF_SESSION_CONFIG_FILE` | `/data/session-config.json` | Session scoring configuration store path |
 | `WAF_POLICY_RULES_FILE` | `/data/waf/policy-rules.json` | Policy engine rules JSON output path |
 
 ## Event store sizing
@@ -527,9 +531,9 @@ caddy 3.49.1 / wafctl 2.53.1 includes a comprehensive security audit (March 2026
 
 ```bash
 make test              # all tests (Go + frontend)
-make test-go           # Go tests only (~530 tests across 29 files)
-make test-frontend     # Vitest frontend tests (334 tests across 18 files)
-make test-e2e          # Docker-based e2e smoke tests (118 tests)
+make test-go           # Go tests only (~626 tests across 31 files)
+make test-frontend     # Vitest frontend tests (~355 tests across 19 files)
+make test-e2e          # Docker-based e2e smoke tests (~116 tests across 20 files)
 ```
 
 Run a single test:
@@ -607,6 +611,7 @@ caddy-compose/
     managed_lists.go     # Managed lists store
     handlers_lists.go    # Managed lists handlers
     security_headers.go  # Security headers management
+    session_store.go     # Session behavioral tracking store + API handlers
     rule_templates.go    # Rule template definitions
     cfproxy.go           # Cloudflare proxy stats/refresh
     cache.go             # In-memory cache (24h/100k entries)
@@ -625,7 +630,7 @@ caddy-compose/
         policy/          # Policy engine sub-modules
         ui/              # shadcn/ui primitives
       lib/
-        api/             # API client modules (split by domain)
+        api/             # API client modules (19 modules, split by domain)
           shared.ts      # HTTP helpers (fetchJSON, postJSON, etc.), FilterOp, SummaryParams
           waf-events.ts  # Summary, WAFEvent, fetchSummary, fetchEvents
           analytics.ts   # IP lookup, top IPs/URIs/countries
@@ -639,8 +644,9 @@ caddy-compose/
           backup.ts      # Backup/restore types and functions
           default-rules.ts # Default CRS rules types and functions
           security-headers.ts # Security headers types and functions
+          sessions.ts    # Session behavioral tracking types and functions
           index.ts       # Barrel re-export
-      pages/             # Astro file-based routing (13 pages)
+      pages/             # Astro file-based routing (17 pages)
     package.json
     astro.config.mjs
     vitest.config.ts
@@ -649,7 +655,7 @@ caddy-compose/
     Caddyfile.e2e           # Test Caddyfile for e2e tests
     ipsum_block.caddy       # Stub blocklist for tests
     e2e/                    # Go e2e smoke tests
-      01_infra_test.go .. 27_ddos_mitigator_test.go  # 118 tests across 16 files
+      01_infra_test.go .. 27_ddos_mitigator_test.go  # ~116 tests across 20 files
       helpers_test.go       # HTTP/JSON/assertion helpers
       go.mod
   .github/
