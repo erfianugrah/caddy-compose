@@ -236,6 +236,7 @@ func TestWafctlServesUI(t *testing.T) {
 		{"events page", "/events", 200},
 		{"policy page", "/policy", 200},
 		{"rate-limits page", "/rate-limits", 200},
+		{"sessions page", "/sessions", 200},
 		{"api still works", "/api/health", 200},
 		{"404 for unknown", "/nonexistent-page", 404},
 	}
