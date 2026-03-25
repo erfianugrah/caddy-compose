@@ -101,41 +101,49 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
     return <p className={T.muted}>No timeline data.</p>;
   }
 
-  // Use an effective max that ensures meaningful height variation even when
-  // all hours have similar small counts. Without this, bars cluster at the
-  // minimum floor and look like a flat line.
-  const rawMax = Math.max(...stats.timeline.map((h) => h.issued + h.passed + h.failed + h.bypassed), 1);
-  const effectiveMax = Math.max(rawMax, 5);
+  const bars = stats.timeline;
+  const chartH = 80; // px
+  const maxVal = Math.max(...bars.map((h) => h.issued + h.passed + h.failed + h.bypassed), 1);
+  const barW = Math.max(Math.floor(800 / bars.length) - 1, 4); // responsive bar width
+  const gap = 1;
+  const svgW = bars.length * (barW + gap);
 
   return (
     <div className="space-y-1">
-      <div className="flex items-end gap-px h-24">
-        {stats.timeline.map((h) => {
+      <svg
+        viewBox={`0 0 ${svgW} ${chartH}`}
+        className="w-full"
+        style={{ height: `${chartH}px` }}
+        preserveAspectRatio="none"
+      >
+        {bars.map((h, i) => {
           const total = h.issued + h.passed + h.failed + h.bypassed;
-          // Height as percentage of effective max, with 20% minimum floor
-          // for non-zero bars. The effective max (min 5) ensures that low
-          // counts like 1-3 produce visibly different bar heights.
-          const height = total > 0 ? Math.max((total / effectiveMax) * 100, 20) : 0;
-          const failPct = total > 0 ? (h.failed / total) * 100 : 0;
+          // Bar height in pixels. Minimum 3px for non-zero so every hour is visible.
+          const barH = total > 0 ? Math.max((total / maxVal) * chartH, 3) : 0;
+          const failH = total > 0 ? (h.failed / total) * barH : 0;
+          const passH = barH - failH;
+          const x = i * (barW + gap);
+          const y = chartH - barH;
           return (
-            <div
-              key={h.hour}
-              className="flex-1 flex flex-col justify-end group relative"
-              title={`${new Date(h.hour).toLocaleString()}\nIssued: ${h.issued}\nPassed: ${h.passed}\nFailed: ${h.failed}\nBypassed: ${h.bypassed}`}
-            >
-              <div className="flex flex-col justify-end" style={{ height: `${height}%` }}>
-                {h.failed > 0 && (
-                  <div className="bg-lv-red rounded-t-sm" style={{ height: `${failPct}%`, minHeight: "2px" }} />
-                )}
-                <div className="bg-lv-green/70 rounded-t-sm flex-1" style={{ minHeight: total > 0 ? "4px" : 0 }} />
-              </div>
-            </div>
+            <g key={h.hour}>
+              <title>{`${new Date(h.hour).toLocaleString()}\nIssued: ${h.issued}  Passed: ${h.passed}  Failed: ${h.failed}  Bypassed: ${h.bypassed}`}</title>
+              {/* Pass/issue portion (green) */}
+              {passH > 0 && (
+                <rect x={x} y={y} width={barW} height={passH} rx={1}
+                  fill="var(--lv-green)" opacity={0.7} />
+              )}
+              {/* Failed portion (red, stacked on top) */}
+              {failH > 0 && (
+                <rect x={x} y={y + passH} width={barW} height={failH} rx={1}
+                  fill="var(--lv-red)" opacity={0.9} />
+              )}
+            </g>
           );
         })}
-      </div>
+      </svg>
       <div className="flex justify-between text-[10px] text-muted-foreground/50">
-        <span>{stats.timeline.length > 0 ? new Date(stats.timeline[0].hour).toLocaleDateString() : ""}</span>
-        <span>{stats.timeline.length > 0 ? new Date(stats.timeline[stats.timeline.length - 1].hour).toLocaleDateString() : ""}</span>
+        <span>{bars.length > 0 ? new Date(bars[0].hour).toLocaleDateString() : ""}</span>
+        <span>{bars.length > 0 ? new Date(bars[bars.length - 1].hour).toLocaleDateString() : ""}</span>
       </div>
     </div>
   );
