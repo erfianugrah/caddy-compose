@@ -22,7 +22,7 @@ make build-wafctl       # Build the standalone wafctl image only
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.77.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.78.0" -o wafctl .
 ```
 
 Version injected via `-ldflags "-X main.version=..."`. Fallback: `var version = "dev"` in `main.go`.
@@ -363,13 +363,18 @@ causes the event to be invisible in parts of the UI.
   - **`challenge_algorithm`** ("fast"/"slow"): Orthogonal to difficulty. "slow" adds 10ms
     delay per hash iteration — applies to ALL clients regardless of their adaptive
     difficulty. Useful as a blanket punishment but be cautious: slow + difficulty > 2
-    causes multi-minute solve times for real users.
+    causes multi-minute solve times for real users. Expected solve times (8 cores):
+    fast d4=~0.04ms, slow d4=~41s, slow d5=~11min, slow d6=~3h. Algorithm is enriched
+    onto security events via rule lookup (not in access log) and shown in event detail
+    with expected-vs-actual solve time comparison.
   - **`challenge_bind_ip`** (default true): Invalidates cookie if client IP changes.
   - **`challenge_bind_ja4`** (default true): Invalidates cookie if JA4 TLS fingerprint
     changes. Prevents cookie replay from a different TLS stack.
   - **`challenge_ttl`** ("1h"/"24h"/"7d"): Cookie lifetime before re-challenge.
   Challenge analytics: `/api/challenge/stats?hours=24&service=x&client=y` returns funnel
-  (issued/passed/failed/bypassed), bot score histogram, hourly timeline, top clients
+  (issued/passed/failed/bypassed), bot score histogram, hourly timeline, per-algorithm
+  breakdown (fast/slow with avg solve time and avg difficulty), expected solve time
+  reference table (all difficulty × algorithm × core permutations), top clients
   (with unique token counts and avg/max bot scores), top services (with fail rates),
   and top JA4 fingerprints. Dashboard at `/challenge`.
   Challenge data pipeline: plugin sets `policy_engine.challenge_difficulty`,

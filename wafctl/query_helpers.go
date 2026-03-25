@@ -176,9 +176,10 @@ func rleBlockedBy(rle *RateLimitEvent) string {
 
 // enrichmentLookup holds pre-computed tag lookup tables for deferred enrichment.
 type enrichmentLookup struct {
-	excTagsByName map[string][]string
-	rlTagsByName  map[string][]string
-	sortedRules   []RateLimitRule
+	excTagsByName    map[string][]string
+	rlTagsByName     map[string][]string
+	sortedRules      []RateLimitRule
+	challengeAlgoMap map[string]string // rule name → "fast"/"slow"
 }
 
 // buildEnrichmentLookup prepares tag lookup tables from the AccessLogStore's
@@ -190,12 +191,15 @@ func buildEnrichmentLookup(als *AccessLogStore) enrichmentLookup {
 	als.mu.RUnlock()
 
 	var excTags map[string][]string
+	var challengeAlgo map[string]string
 	if es != nil {
 		excTags = es.TagsByName()
+		challengeAlgo = es.ChallengeAlgorithmByName()
 	}
 
 	return enrichmentLookup{
-		excTagsByName: excTags,
+		excTagsByName:    excTags,
+		challengeAlgoMap: challengeAlgo,
 	}
 }
 
@@ -222,7 +226,14 @@ func enrichSingleRLE(rle *RateLimitEvent, lookup *enrichmentLookup) Event {
 			tags = matchEventToRuleTags(*rle, lookup.sortedRules)
 		}
 	}
-	return RateLimitEventToEvent(*rle, tags)
+	// Enrich challenge events with the algorithm from the matched rule config.
+	enrichedRLE := *rle
+	if lookup.challengeAlgoMap != nil && rle.RuleName != "" {
+		if algo, ok := lookup.challengeAlgoMap[rle.RuleName]; ok {
+			enrichedRLE.ChallengeAlgorithm = algo
+		}
+	}
+	return RateLimitEventToEvent(enrichedRLE, tags)
 }
 
 // rleTags returns the tags for a RateLimitEvent using the pre-computed lookup.

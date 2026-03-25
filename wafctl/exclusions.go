@@ -125,6 +125,26 @@ func (s *ExclusionStore) TagsByName() map[string][]string {
 	return m
 }
 
+// ChallengeAlgorithmByName returns a map of rule name → challenge algorithm
+// ("fast" or "slow") for all challenge-type exclusions. Used for deferred
+// enrichment of challenge events with the algorithm that was active when the
+// event occurred. Non-challenge rules are excluded.
+func (s *ExclusionStore) ChallengeAlgorithmByName() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m := make(map[string]string)
+	for _, e := range s.exclusions {
+		if e.Type == "challenge" {
+			algo := e.ChallengeAlgorithm
+			if algo == "" {
+				algo = "fast"
+			}
+			m[e.Name] = algo
+		}
+	}
+	return m
+}
+
 // List returns all exclusions (deep copies — safe to modify).
 func (s *ExclusionStore) List() []RuleExclusion {
 	s.mu.RLock()

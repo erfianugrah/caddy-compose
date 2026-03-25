@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -47,6 +48,96 @@ type ChallengeStatsResponse struct {
 
 	// Fail reason breakdown — count of each fail reason for challenge_failed events.
 	FailReasons map[string]int `json:"fail_reasons,omitempty"`
+
+	// Algorithm breakdown — counts and avg solve time per algorithm ("fast" / "slow").
+	AlgorithmBreakdown []AlgorithmStats `json:"algorithm_breakdown,omitempty"`
+
+	// Solve time reference — expected solve times for each difficulty + algorithm + core count.
+	SolveTimeEstimates []SolveTimeEstimate `json:"solve_time_estimates"`
+}
+
+// AlgorithmStats is a per-algorithm breakdown of challenge events.
+type AlgorithmStats struct {
+	Algorithm     string  `json:"algorithm"` // "fast" or "slow"
+	Count         int     `json:"count"`     // total challenge events with this algorithm
+	Passed        int     `json:"passed"`
+	Failed        int     `json:"failed"`
+	AvgSolveMs    float64 `json:"avg_solve_ms"`
+	AvgDifficulty float64 `json:"avg_difficulty"`
+}
+
+// SolveTimeEstimate is a row in the expected solve time reference table.
+type SolveTimeEstimate struct {
+	Difficulty int     `json:"difficulty"`
+	Algorithm  string  `json:"algorithm"` // "fast" or "slow"
+	Cores      int     `json:"cores"`
+	ExpectedMs float64 `json:"expected_ms"` // expected median solve time in milliseconds
+	Label      string  `json:"label"`       // human-readable (e.g., "~2.5s", "~22 min", "~5.8 hours")
+}
+
+// expectedSolveMs computes the expected median solve time for a given difficulty,
+// algorithm, and core count. Returns milliseconds.
+//
+// Fast mode: SHA-256 hashing at ~2μs/hash (WebCrypto on modern HW).
+// Slow mode: 10ms artificial delay per hash iteration.
+// Expected iterations (median): 2^(difficulty*4) / 2.
+// Parallelism: iterations / cores.
+func expectedSolveMs(difficulty int, algorithm string, cores int) float64 {
+	if difficulty <= 0 || cores <= 0 {
+		return 0
+	}
+	// Expected iterations to find a valid nonce (median = half the hash space).
+	iterations := math.Pow(2, float64(difficulty*4)) / 2.0
+	iterationsPerCore := iterations / float64(cores)
+
+	if algorithm == "slow" {
+		// 10ms delay per iteration dominates; hashing time is negligible.
+		return iterationsPerCore * 10.0
+	}
+	// Fast mode: ~2μs per SHA-256 hash via WebCrypto.
+	return iterationsPerCore * 0.002
+}
+
+// formatDuration returns a human-readable label for a duration in milliseconds.
+func formatSolveDuration(ms float64) string {
+	switch {
+	case ms < 1:
+		return "instant"
+	case ms < 1000:
+		return strconv.Itoa(int(ms)) + "ms"
+	case ms < 60_000:
+		return strconv.FormatFloat(ms/1000, 'f', 1, 64) + "s"
+	case ms < 3_600_000:
+		return strconv.FormatFloat(ms/60_000, 'f', 1, 64) + " min"
+	case ms < 86_400_000:
+		return strconv.FormatFloat(ms/3_600_000, 'f', 1, 64) + " hours"
+	default:
+		return strconv.FormatFloat(ms/86_400_000, 'f', 1, 64) + " days"
+	}
+}
+
+// buildSolveTimeEstimates generates the reference table for all useful permutations.
+func buildSolveTimeEstimates() []SolveTimeEstimate {
+	difficulties := []int{1, 2, 3, 4, 5, 6, 7, 8}
+	algorithms := []string{"fast", "slow"}
+	coreCounts := []int{1, 4, 8, 16}
+
+	estimates := make([]SolveTimeEstimate, 0, len(difficulties)*len(algorithms)*len(coreCounts))
+	for _, d := range difficulties {
+		for _, a := range algorithms {
+			for _, c := range coreCounts {
+				ms := expectedSolveMs(d, a, c)
+				estimates = append(estimates, SolveTimeEstimate{
+					Difficulty: d,
+					Algorithm:  a,
+					Cores:      c,
+					ExpectedMs: ms,
+					Label:      "~" + formatSolveDuration(ms),
+				})
+			}
+		}
+	}
+	return estimates
 }
 
 // ScoreBucket is a bot score histogram bucket.
@@ -153,6 +244,17 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 		clients map[string]struct{}
 	}
 	ja4Map := make(map[string]*ja4Agg)
+
+	type algoAgg struct {
+		count        int
+		passed       int
+		failed       int
+		solveTimeSum int
+		solveTimeN   int
+		diffSum      int
+		diffN        int
+	}
+	algoMap := make(map[string]*algoAgg)
 
 	for _, e := range events {
 		src := e.Source
@@ -284,6 +386,31 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 			}
 			ja.clients[e.ClientIP] = struct{}{}
 		}
+
+		// Per-algorithm aggregation (enriched from rule config, may be empty).
+		algo := e.ChallengeAlgorithm
+		if algo == "" {
+			algo = "fast" // default when not enriched
+		}
+		aa, ok := algoMap[algo]
+		if !ok {
+			aa = &algoAgg{}
+			algoMap[algo] = aa
+		}
+		aa.count++
+		if src == "challenge_passed" {
+			aa.passed++
+		} else if src == "challenge_failed" {
+			aa.failed++
+		}
+		if e.ChallengeElapsedMs > 0 {
+			aa.solveTimeSum += e.ChallengeElapsedMs
+			aa.solveTimeN++
+		}
+		if e.ChallengeDifficulty > 0 {
+			aa.diffSum += e.ChallengeDifficulty
+			aa.diffN++
+		}
 	}
 
 	// Compute rates and averages.
@@ -306,6 +433,31 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 	if len(failReasons) > 0 {
 		resp.FailReasons = failReasons
 	}
+
+	// Algorithm breakdown.
+	if len(algoMap) > 0 {
+		algos := make([]AlgorithmStats, 0, len(algoMap))
+		for name, aa := range algoMap {
+			as := AlgorithmStats{
+				Algorithm: name,
+				Count:     aa.count,
+				Passed:    aa.passed,
+				Failed:    aa.failed,
+			}
+			if aa.solveTimeN > 0 {
+				as.AvgSolveMs = float64(aa.solveTimeSum) / float64(aa.solveTimeN)
+			}
+			if aa.diffN > 0 {
+				as.AvgDifficulty = float64(aa.diffSum) / float64(aa.diffN)
+			}
+			algos = append(algos, as)
+		}
+		sort.Slice(algos, func(i, j int) bool { return algos[i].Count > algos[j].Count })
+		resp.AlgorithmBreakdown = algos
+	}
+
+	// Solve time reference table (static — always included).
+	resp.SolveTimeEstimates = buildSolveTimeEstimates()
 
 	// Sort timeline by hour.
 	timeline := make([]ChallengeHour, 0, len(hourMap))

@@ -105,6 +105,7 @@ type RateLimitEvent struct {
 	ChallengePreScore   int    `json:"challenge_pre_score,omitempty"`   // pre-signal score (L1/L2/L5)
 	ChallengeFailReason string `json:"challenge_fail_reason,omitempty"` // why challenge failed: bot_score, timing_hard, timing_soft, ja4_mismatch, bad_pow, hmac_invalid, payload_expired, ip_mismatch, cookie_expired
 	ChallengeSignals    string `json:"challenge_signals,omitempty"`     // JSON signal breakdown from 5-layer bot scoring (ja4, headers, js, behavior, spatial)
+	ChallengeAlgorithm  string `json:"challenge_algorithm,omitempty"`   // "fast" or "slow" — enriched from matched rule config (not in access log)
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`
@@ -1209,6 +1210,9 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	}
 	if rle.ChallengeSignals != "" {
 		evt.ChallengeSignals = rle.ChallengeSignals
+	}
+	if rle.ChallengeAlgorithm != "" {
+		evt.ChallengeAlgorithm = rle.ChallengeAlgorithm
 	}
 	// For DDoS mitigator blocks, pass through fingerprint and score.
 	if rle.Source == "ddos_blocked" || rle.Source == "ddos_jailed" {

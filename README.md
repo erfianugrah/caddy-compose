@@ -87,8 +87,8 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 
 ```bash
 # In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.73.0-2.11.2
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.77.0
+CADDY_IMAGE   ?= <your-registry>/caddy:3.74.0-2.11.2
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.78.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
@@ -154,7 +154,7 @@ Image tags must stay in sync across four files:
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
-Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.73.0-2.11.2`), wafctl is plain semver (e.g. `2.77.0`).
+Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.74.0-2.11.2`), wafctl is plain semver (e.g. `2.78.0`).
 
 ## WAF configuration
 
@@ -207,7 +207,24 @@ Challenge rules serve a proof-of-work interstitial (SHA-256 hashcash) that clien
 
 **Timing validation** (automatic, no configuration needed): the server computes a minimum expected solve time from the difficulty and the client's reported `navigator.hardwareConcurrency`. Solutions faster than floor/3 are hard-rejected (physically impossible). Solutions faster than floor get a +40 bot score penalty.
 
-**Challenge analytics** dashboard at `/challenge`: funnel (issued/passed/failed/bypassed with rates), bot score distribution histogram, hourly timeline, top challenged clients (with unique token counts and avg/max bot scores), top challenged services (with fail rates), top JA4 fingerprints. Supports `service` and `client` filters. API: `GET /api/challenge/stats?hours=24&service=x&client=y`.
+**Expected solve times** (median, assuming parallel Web Workers):
+
+| Difficulty | Fast (8 cores) | Slow (8 cores) | Slow (1 core) |
+|:---:|---:|---:|---:|
+| 1 | instant | ~10ms | ~80ms |
+| 2 | instant | ~160ms | ~1.3s |
+| 3 | instant | ~2.6s | ~20s |
+| 4 | ~0.04ms | ~41s | ~5.5 min |
+| 5 | ~0.7ms | ~10.9 min | ~1.5 hours |
+| 6 | ~10ms | ~2.9 hours | ~23.3 hours |
+| 7 | ~168ms | ~1.9 days | ~15.5 days |
+| 8 | ~2.7s | ~31 days | ~248 days |
+
+Fast mode uses native WebCrypto (~2μs/hash). Slow mode adds a 10ms `setTimeout` per iteration, making it orthogonal to difficulty — the hash space is the same, each iteration just takes longer. **Slow + difficulty > 2 is effectively unsolvable** for most clients.
+
+**Challenge analytics** dashboard at `/challenge`: funnel (issued/passed/failed/bypassed with rates), bot score distribution histogram, hourly timeline, per-algorithm breakdown (fast vs slow with avg solve time and avg difficulty), expected solve time reference table, top challenged clients (with unique token counts and avg/max bot scores), top challenged services (with fail rates), top JA4 fingerprints. Supports `service` and `client` filters. API: `GET /api/challenge/stats?hours=24&service=x&client=y`.
+
+**Per-event enrichment**: security events show the algorithm, difficulty, actual solve time, and expected solve time (with 8-core estimate) for comparison. Events that solved faster than expected are flagged.
 
 ## WAF dashboard
 

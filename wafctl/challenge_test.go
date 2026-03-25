@@ -800,6 +800,190 @@ func TestChallengeStats_Timeline(t *testing.T) {
 	}
 }
 
+// ─── Expected solve time tests ──────────────────────────────────────
+
+func TestExpectedSolveMs_Fast(t *testing.T) {
+	// Difficulty 4, fast, 8 cores:
+	// iterations = 2^16 / 2 = 32768, perCore = 4096, ms = 4096 * 0.002 = ~8.19μs
+	ms := expectedSolveMs(4, "fast", 8)
+	if ms < 0.001 || ms > 100 {
+		t.Errorf("fast d4 8c = %.4fms, want sub-100ms", ms)
+	}
+}
+
+func TestExpectedSolveMs_Slow(t *testing.T) {
+	// Difficulty 4, slow, 8 cores:
+	// iterations = 2^16 / 2 = 32768, perCore = 4096, ms = 4096 * 10 = 40960ms (~41s)
+	ms := expectedSolveMs(4, "slow", 8)
+	if ms < 30_000 || ms > 50_000 {
+		t.Errorf("slow d4 8c = %.0fms, want ~40960", ms)
+	}
+}
+
+func TestExpectedSolveMs_SlowDifficulty5(t *testing.T) {
+	// Difficulty 5, slow, 8 cores:
+	// iterations = 2^20 / 2 = 524288, perCore = 65536, ms = 65536 * 10 = 655360ms (~10.9 min)
+	ms := expectedSolveMs(5, "slow", 8)
+	if ms < 600_000 || ms > 700_000 {
+		t.Errorf("slow d5 8c = %.0fms, want ~655360", ms)
+	}
+}
+
+func TestExpectedSolveMs_ZeroDifficulty(t *testing.T) {
+	ms := expectedSolveMs(0, "fast", 8)
+	if ms != 0 {
+		t.Errorf("zero difficulty = %.4f, want 0", ms)
+	}
+}
+
+func TestFormatSolveDuration(t *testing.T) {
+	tests := []struct {
+		ms   float64
+		want string
+	}{
+		{0.5, "instant"},
+		{50, "50ms"},
+		{1500, "1.5s"},
+		{90_000, "1.5 min"},
+		{7_200_000, "2.0 hours"},
+		{172_800_000, "2.0 days"},
+	}
+	for _, tt := range tests {
+		got := formatSolveDuration(tt.ms)
+		if got != tt.want {
+			t.Errorf("formatSolveDuration(%.0f) = %q, want %q", tt.ms, got, tt.want)
+		}
+	}
+}
+
+func TestBuildSolveTimeEstimates(t *testing.T) {
+	estimates := buildSolveTimeEstimates()
+	// 8 difficulties × 2 algorithms × 4 core counts = 64 entries
+	if len(estimates) != 64 {
+		t.Errorf("estimates length = %d, want 64", len(estimates))
+	}
+	// Verify all entries have labels and positive expected_ms (except maybe instant).
+	for _, e := range estimates {
+		if e.Label == "" {
+			t.Errorf("estimate d=%d a=%s c=%d has empty label", e.Difficulty, e.Algorithm, e.Cores)
+		}
+		if e.ExpectedMs < 0 {
+			t.Errorf("estimate d=%d a=%s c=%d has negative expected_ms", e.Difficulty, e.Algorithm, e.Cores)
+		}
+	}
+}
+
+func TestChallengeStats_AlgorithmBreakdown(t *testing.T) {
+	als := accessLogStoreWithRLEvents(t, challengeEvents())
+	stats := als.ChallengeStats(24, "", "")
+
+	// All test events have ChallengeAlgorithm="" → defaults to "fast" in aggregation.
+	if len(stats.AlgorithmBreakdown) == 0 {
+		t.Fatal("AlgorithmBreakdown should have at least one entry")
+	}
+	if stats.AlgorithmBreakdown[0].Algorithm != "fast" {
+		t.Errorf("Algorithm = %q, want fast", stats.AlgorithmBreakdown[0].Algorithm)
+	}
+	if stats.AlgorithmBreakdown[0].Count == 0 {
+		t.Error("fast algorithm count = 0")
+	}
+}
+
+func TestChallengeStats_SolveTimeEstimates(t *testing.T) {
+	als := accessLogStoreWithRLEvents(t, challengeEvents())
+	stats := als.ChallengeStats(24, "", "")
+
+	if len(stats.SolveTimeEstimates) != 64 {
+		t.Errorf("SolveTimeEstimates length = %d, want 64", len(stats.SolveTimeEstimates))
+	}
+}
+
+func TestChallengeStats_AlgorithmBreakdownWithSlow(t *testing.T) {
+	// Create events with mixed algorithms.
+	now := time.Now().UTC()
+	events := []RateLimitEvent{
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_issued", Service: "a", ChallengeAlgorithm: "fast", ChallengeDifficulty: 4},
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_passed", Service: "a", ChallengeAlgorithm: "fast", ChallengeDifficulty: 4, ChallengeElapsedMs: 500},
+		{Timestamp: now, ClientIP: "2.2.2.2", Source: "challenge_issued", Service: "b", ChallengeAlgorithm: "slow", ChallengeDifficulty: 2},
+		{Timestamp: now, ClientIP: "2.2.2.2", Source: "challenge_failed", Service: "b", ChallengeAlgorithm: "slow", ChallengeDifficulty: 2, ChallengeElapsedMs: 1500, ChallengeFailReason: "bot_score", ChallengeBotScore: 80},
+	}
+	als := accessLogStoreWithRLEvents(t, events)
+	stats := als.ChallengeStats(24, "", "")
+
+	if len(stats.AlgorithmBreakdown) != 2 {
+		t.Fatalf("AlgorithmBreakdown length = %d, want 2", len(stats.AlgorithmBreakdown))
+	}
+	// Check both algorithms are present.
+	algos := make(map[string]*AlgorithmStats)
+	for i := range stats.AlgorithmBreakdown {
+		algos[stats.AlgorithmBreakdown[i].Algorithm] = &stats.AlgorithmBreakdown[i]
+	}
+	fast := algos["fast"]
+	slow := algos["slow"]
+	if fast == nil || slow == nil {
+		t.Fatal("missing fast or slow in breakdown")
+	}
+	if fast.Count != 2 {
+		t.Errorf("fast count = %d, want 2", fast.Count)
+	}
+	if slow.Count != 2 {
+		t.Errorf("slow count = %d, want 2", slow.Count)
+	}
+	if fast.Passed != 1 {
+		t.Errorf("fast passed = %d, want 1", fast.Passed)
+	}
+	if slow.Failed != 1 {
+		t.Errorf("slow failed = %d, want 1", slow.Failed)
+	}
+	if slow.AvgDifficulty != 2 {
+		t.Errorf("slow avg_difficulty = %.1f, want 2.0", slow.AvgDifficulty)
+	}
+}
+
+// ─── ChallengeAlgorithmByName test ──────────────────────────────────
+
+func TestChallengeAlgorithmByName(t *testing.T) {
+	es := newTestExclusionStore(t)
+	// Create a challenge rule with slow algorithm.
+	exc := RuleExclusion{
+		Name:               "slow-challenge",
+		Type:               "challenge",
+		ChallengeAlgorithm: "slow",
+		Conditions:         []Condition{{Field: "path", Operator: "eq", Value: "/test"}},
+	}
+	es.Create(exc)
+	// Create a non-challenge rule.
+	exc2 := RuleExclusion{
+		Name:       "block-rule",
+		Type:       "block",
+		Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/bad"}},
+	}
+	es.Create(exc2)
+
+	algos := es.ChallengeAlgorithmByName()
+	if algos["slow-challenge"] != "slow" {
+		t.Errorf("slow-challenge algo = %q, want slow", algos["slow-challenge"])
+	}
+	if _, exists := algos["block-rule"]; exists {
+		t.Error("non-challenge rule should not be in algorithm map")
+	}
+}
+
+func TestChallengeAlgorithmByName_DefaultFast(t *testing.T) {
+	es := newTestExclusionStore(t)
+	exc := RuleExclusion{
+		Name:       "default-challenge",
+		Type:       "challenge",
+		Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/test"}},
+	}
+	es.Create(exc)
+
+	algos := es.ChallengeAlgorithmByName()
+	if algos["default-challenge"] != "fast" {
+		t.Errorf("default algo = %q, want fast", algos["default-challenge"])
+	}
+}
+
 // ─── helper ─────────────────────────────────────────────────────────
 
 func contains(s, substr string) bool {

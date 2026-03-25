@@ -972,6 +972,93 @@ export default function ChallengeAnalytics() {
         </Card>
       )}
 
+      {/* Algorithm Breakdown + Solve Time Reference */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Algorithm Breakdown */}
+        {stats && stats.algorithm_breakdown && stats.algorithm_breakdown.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardDescription className={T.sectionLabel}>Algorithm Breakdown</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {stats.algorithm_breakdown.map((a) => (
+                  <div key={a.algorithm} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className={`font-medium ${a.algorithm === "slow" ? "text-lv-yellow" : "text-lv-green"}`}>
+                        {a.algorithm === "slow" ? "Slow (+10ms/hash)" : "Fast (WebCrypto)"}
+                      </span>
+                      <span className="text-muted-foreground tabular-nums">{a.count} events</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-[11px] text-muted-foreground">
+                      <div>Passed: <span className="text-lv-green">{a.passed}</span></div>
+                      <div>Failed: <span className="text-lv-red">{a.failed}</span></div>
+                      <div>Avg Solve: <span className="text-foreground">{a.avg_solve_ms > 0 ? a.avg_solve_ms >= 1000 ? `${(a.avg_solve_ms / 1000).toFixed(1)}s` : `${Math.round(a.avg_solve_ms)}ms` : "-"}</span></div>
+                      <div>Avg Diff: <span className="text-foreground">{a.avg_difficulty > 0 ? a.avg_difficulty.toFixed(1) : "-"}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Solve Time Reference Table */}
+        {stats && stats.solve_time_estimates && (
+          <Card>
+            <CardHeader>
+              <CardDescription className={T.sectionLabel}>Expected Solve Times</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const estimates = stats.solve_time_estimates;
+                const difficulties = [...new Set(estimates.map((e) => e.difficulty))].sort((a, b) => a - b);
+                // Show a compact table: rows = difficulty, columns = algo x cores
+                const coreCounts = [1, 8];
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[11px]">
+                      <thead>
+                        <tr className="text-muted-foreground border-b border-border/50">
+                          <th className="text-left py-1 pr-2">Diff</th>
+                          <th className="text-right py-1 px-1">Fast 1c</th>
+                          <th className="text-right py-1 px-1">Fast 8c</th>
+                          <th className="text-right py-1 px-1 text-lv-yellow">Slow 1c</th>
+                          <th className="text-right py-1 px-1 text-lv-yellow">Slow 8c</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {difficulties.map((d) => {
+                          const get = (algo: string, cores: number) =>
+                            estimates.find((e) => e.difficulty === d && e.algorithm === algo && e.cores === cores);
+                          const fast1 = get("fast", 1);
+                          const fast8 = get("fast", 8);
+                          const slow1 = get("slow", 1);
+                          const slow8 = get("slow", 8);
+                          const isExtreme = (e?: { expected_ms: number }) => e && e.expected_ms > 3_600_000;
+                          return (
+                            <tr key={d} className="border-b border-border/20 hover:bg-lovelace-900/50">
+                              <td className="py-1 pr-2 font-medium text-foreground">{d}</td>
+                              <td className="py-1 px-1 text-right tabular-nums text-muted-foreground">{fast1?.label ?? "-"}</td>
+                              <td className="py-1 px-1 text-right tabular-nums text-muted-foreground">{fast8?.label ?? "-"}</td>
+                              <td className={`py-1 px-1 text-right tabular-nums ${isExtreme(slow1) ? "text-lv-red" : "text-lv-yellow"}`}>{slow1?.label ?? "-"}</td>
+                              <td className={`py-1 px-1 text-right tabular-nums ${isExtreme(slow8) ? "text-lv-red" : "text-lv-yellow"}`}>{slow8?.label ?? "-"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <p className="text-[10px] text-muted-foreground/50 mt-2">
+                      Median expected solve time. Fast ≈ 2μs/hash (WebCrypto). Slow adds 10ms/hash. Red = {">"}1 hour.
+                    </p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
       {/* Top Clients */}
       {stats && stats.top_clients && stats.top_clients.length > 0 && (
         <Card>

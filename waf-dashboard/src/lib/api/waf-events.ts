@@ -140,6 +140,7 @@ export interface WAFEvent {
   challenge_pre_score?: number;
   challenge_fail_reason?: string;
   challenge_signals?: string;
+  challenge_algorithm?: string;
   // DDoS mitigator fields (ddos_blocked/ddos_jailed events)
   ddos_action?: string;
   ddos_fingerprint?: string;
@@ -271,6 +272,7 @@ interface RawEvent {
   challenge_pre_score?: number;
   challenge_fail_reason?: string;
   challenge_signals?: string;
+  challenge_algorithm?: string;
   ddos_action?: string;
   ddos_fingerprint?: string;
   ddos_score?: string;
@@ -318,6 +320,7 @@ export function mapEvent(raw: RawEvent): WAFEvent {
     challenge_pre_score: raw.challenge_pre_score,
     challenge_fail_reason: raw.challenge_fail_reason,
     challenge_signals: raw.challenge_signals,
+    challenge_algorithm: raw.challenge_algorithm,
     ddos_action: raw.ddos_action,
     ddos_fingerprint: raw.ddos_fingerprint,
     ddos_score: raw.ddos_score,

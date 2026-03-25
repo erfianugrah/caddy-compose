@@ -55,6 +55,7 @@ type Event struct {
 	ChallengePreScore   int    `json:"challenge_pre_score,omitempty"`   // pre-signal score (L1/L2/L5) that drove difficulty
 	ChallengeFailReason string `json:"challenge_fail_reason,omitempty"` // why challenge failed (plugin or heuristic-inferred)
 	ChallengeSignals    string `json:"challenge_signals,omitempty"`     // JSON signal breakdown from 5-layer bot scoring
+	ChallengeAlgorithm  string `json:"challenge_algorithm,omitempty"`   // "fast" or "slow" — enriched from matched rule config
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`

@@ -587,8 +587,19 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     </span>
                   </div>
                 )}
-                {(event.challenge_difficulty || event.challenge_elapsed_ms || event.challenge_pre_score) ? (
+                {(event.challenge_difficulty || event.challenge_elapsed_ms || event.challenge_pre_score || event.challenge_algorithm) ? (
                   <div className="flex gap-4 flex-wrap text-xs">
+                    {event.challenge_algorithm && (
+                      <div className="flex gap-1.5">
+                        <span className="text-muted-foreground">Algorithm:</span>
+                        <span className={`font-medium ${event.challenge_algorithm === "slow" ? "text-lv-yellow" : "text-lv-green"}`}>
+                          {event.challenge_algorithm}
+                        </span>
+                        {event.challenge_algorithm === "slow" && (
+                          <span className="text-muted-foreground/50 text-[10px]">(+10ms/hash)</span>
+                        )}
+                      </div>
+                    )}
                     {event.challenge_difficulty != null && event.challenge_difficulty > 0 && (
                       <div className="flex gap-1.5">
                         <span className="text-muted-foreground">Difficulty:</span>
@@ -601,6 +612,21 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                         <span className="text-foreground font-medium">
                           {event.challenge_elapsed_ms >= 1000 ? `${(event.challenge_elapsed_ms / 1000).toFixed(1)}s` : `${event.challenge_elapsed_ms}ms`}
                         </span>
+                        {/* Expected vs actual comparison */}
+                        {event.challenge_difficulty != null && event.challenge_difficulty > 0 && (() => {
+                          const algo = event.challenge_algorithm || "fast";
+                          const cores = 8; // assume 8-core client
+                          const iterations = Math.pow(2, event.challenge_difficulty * 4) / 2;
+                          const perCore = iterations / cores;
+                          const expectedMs = algo === "slow" ? perCore * 10 : perCore * 0.002;
+                          const ratio = event.challenge_elapsed_ms! / Math.max(expectedMs, 1);
+                          const fmtExpected = expectedMs < 1000 ? `${Math.round(expectedMs)}ms` : expectedMs < 60000 ? `${(expectedMs / 1000).toFixed(1)}s` : `${(expectedMs / 60000).toFixed(1)}m`;
+                          return (
+                            <span className={`text-[10px] ${ratio < 0.3 ? "text-lv-red" : ratio < 1 ? "text-lv-yellow" : "text-muted-foreground/50"}`}>
+                              (expected ~{fmtExpected} @8 cores{ratio < 0.3 ? " — suspiciously fast" : ratio < 0.5 ? " — faster than expected" : ""})
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
                     {event.challenge_pre_score != null && event.challenge_pre_score > 0 && (

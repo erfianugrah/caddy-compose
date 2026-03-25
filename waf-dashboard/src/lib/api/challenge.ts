@@ -18,6 +18,25 @@ export interface ChallengeStats {
   top_services: ChallengeService[];
   top_ja4s: ChallengeJA4[];
   fail_reasons?: Record<string, number>;
+  algorithm_breakdown?: AlgorithmStats[];
+  solve_time_estimates: SolveTimeEstimate[];
+}
+
+export interface AlgorithmStats {
+  algorithm: string;
+  count: number;
+  passed: number;
+  failed: number;
+  avg_solve_ms: number;
+  avg_difficulty: number;
+}
+
+export interface SolveTimeEstimate {
+  difficulty: number;
+  algorithm: string;
+  cores: number;
+  expected_ms: number;
+  label: string;
 }
 
 export interface ScoreBucket {
