@@ -108,7 +108,10 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
       <div className="flex items-end gap-px h-24">
         {stats.timeline.map((h) => {
           const total = h.issued + h.passed + h.failed + h.bypassed;
-          const height = (total / maxVal) * 100;
+          // Ensure minimum 15% height for non-zero bars so they're visible
+          // even when all hours have similar small values.
+          const rawHeight = (total / maxVal) * 100;
+          const height = total > 0 ? Math.max(rawHeight, 15) : 0;
           const failPct = total > 0 ? (h.failed / total) * 100 : 0;
           return (
             <div
@@ -118,9 +121,9 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
             >
               <div className="flex flex-col justify-end" style={{ height: `${height}%` }}>
                 {h.failed > 0 && (
-                  <div className="bg-lv-red rounded-t-sm" style={{ height: `${failPct}%`, minHeight: "1px" }} />
+                  <div className="bg-lv-red rounded-t-sm" style={{ height: `${failPct}%`, minHeight: "2px" }} />
                 )}
-                <div className="bg-lv-green/70 rounded-t-sm flex-1" style={{ minHeight: total > 0 ? "1px" : 0 }} />
+                <div className="bg-lv-green/70 rounded-t-sm flex-1" style={{ minHeight: total > 0 ? "4px" : 0 }} />
               </div>
             </div>
           );
