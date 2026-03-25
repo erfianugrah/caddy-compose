@@ -532,7 +532,7 @@ caddy 3.49.1 / wafctl 2.53.1 includes a comprehensive security audit (March 2026
 ```bash
 make test              # all tests (Go + frontend)
 make test-go           # Go tests only (~626 tests across 31 files)
-make test-frontend     # Vitest frontend tests (~355 tests across 19 files)
+make test-frontend     # Vitest frontend tests (~384 tests across 19 files)
 make test-e2e          # Docker-based e2e smoke tests (~119 tests across 20 files)
 ```
 
