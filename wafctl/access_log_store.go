@@ -29,26 +29,28 @@ type AccessLogEntry struct {
 	Status               int                 `json:"status"`
 	Size                 int                 `json:"size"`
 	Duration             float64             `json:"duration"`
-	BytesRead            int                 `json:"bytes_read"`                            // request body bytes consumed
-	RequestID            string              `json:"request_id,omitempty"`                  // Caddy UUID via log_append
-	PolicyAction         string              `json:"policy_action,omitempty"`               // log_append: policy engine action (allow/block/honeypot/detect_block)
-	PolicyRule           string              `json:"policy_rule,omitempty"`                 // log_append: matched policy engine rule name
-	PolicyTags           string              `json:"policy_tags,omitempty"`                 // log_append: comma-separated tags from matched rule(s)
-	PolicyScore          string              `json:"policy_score,omitempty"`                // log_append: anomaly score (detect rules only)
-	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`         // log_append: matched detect rule details "id:severity:score,..."
-	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`       // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
-	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"`      // log_append: JSON-serialized request headers (block/detect_block only)
-	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`         // log_append: truncated request body excerpt (block/detect_block only)
-	PolicyJA4            string              `json:"policy_ja4,omitempty"`                  // log_append: JA4 TLS fingerprint
-	ChallengeBotScore    string              `json:"policy_challenge_bot_score,omitempty"`  // log_append: bot signal score (0-100)
-	ChallengeJTI         string              `json:"policy_challenge_jti,omitempty"`        // log_append: challenge cookie token ID
-	ChallengeDifficulty  string              `json:"policy_challenge_difficulty,omitempty"` // log_append: selected difficulty (after adaptive)
-	ChallengeElapsedMs   string              `json:"policy_challenge_elapsed_ms,omitempty"` // log_append: client-reported solve time in ms
-	ChallengePreScore    string              `json:"policy_challenge_pre_score,omitempty"`  // log_append: pre-signal score (L1/L2/L5)
-	DDoSAction           string              `json:"ddos_action,omitempty"`                 // log_append: ddos mitigator action (pass/blocked/jailed)
-	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`            // log_append: FNV-64a request fingerprint
-	DDoSZScore           string              `json:"ddos_z_score,omitempty"`                // log_append: z-score at time of evaluation
-	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`             // log_append: "true"/"false" — spike detection state
+	BytesRead            int                 `json:"bytes_read"`                             // request body bytes consumed
+	RequestID            string              `json:"request_id,omitempty"`                   // Caddy UUID via log_append
+	PolicyAction         string              `json:"policy_action,omitempty"`                // log_append: policy engine action (allow/block/honeypot/detect_block)
+	PolicyRule           string              `json:"policy_rule,omitempty"`                  // log_append: matched policy engine rule name
+	PolicyTags           string              `json:"policy_tags,omitempty"`                  // log_append: comma-separated tags from matched rule(s)
+	PolicyScore          string              `json:"policy_score,omitempty"`                 // log_append: anomaly score (detect rules only)
+	PolicyDetectRules    string              `json:"policy_detect_rules,omitempty"`          // log_append: matched detect rule details "id:severity:score,..."
+	PolicyDetectMatches  string              `json:"policy_detect_matches,omitempty"`        // log_append: JSON array of per-rule match details (field/var_name/value/matched_data)
+	PolicyRequestHeaders string              `json:"policy_request_headers,omitempty"`       // log_append: JSON-serialized request headers (block/detect_block only)
+	PolicyRequestBody    string              `json:"policy_request_body,omitempty"`          // log_append: truncated request body excerpt (block/detect_block only)
+	PolicyJA4            string              `json:"policy_ja4,omitempty"`                   // log_append: JA4 TLS fingerprint
+	ChallengeBotScore    string              `json:"policy_challenge_bot_score,omitempty"`   // log_append: bot signal score (0-100)
+	ChallengeJTI         string              `json:"policy_challenge_jti,omitempty"`         // log_append: challenge cookie token ID
+	ChallengeDifficulty  string              `json:"policy_challenge_difficulty,omitempty"`  // log_append: selected difficulty (after adaptive)
+	ChallengeElapsedMs   string              `json:"policy_challenge_elapsed_ms,omitempty"`  // log_append: client-reported solve time in ms
+	ChallengePreScore    string              `json:"policy_challenge_pre_score,omitempty"`   // log_append: pre-signal score (L1/L2/L5)
+	ChallengeFailReason  string              `json:"policy_challenge_fail_reason,omitempty"` // log_append: why challenge failed (bot_score, timing_hard, ja4_mismatch, etc.)
+	ChallengeSignals     string              `json:"policy_challenge_signals,omitempty"`     // log_append: JSON signal breakdown from 5-layer bot scoring
+	DDoSAction           string              `json:"ddos_action,omitempty"`                  // log_append: ddos mitigator action (pass/blocked/jailed)
+	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`             // log_append: FNV-64a request fingerprint
+	DDoSZScore           string              `json:"ddos_z_score,omitempty"`                 // log_append: z-score at time of evaluation
+	DDoSSpikeMode        string              `json:"ddos_spike_mode,omitempty"`              // log_append: "true"/"false" — spike detection state
 }
 
 type AccessLogReq struct {
@@ -95,16 +97,58 @@ type RateLimitEvent struct {
 	RequestHeaders map[string][]string `json:"request_headers,omitempty"` // block/detect_block: captured request headers
 	RequestBody    string              `json:"request_body,omitempty"`    // block/detect_block: truncated body excerpt
 	// Challenge/JA4 fields
-	JA4                 string `json:"ja4,omitempty"`                  // JA4 TLS fingerprint
-	ChallengeBotScore   int    `json:"challenge_bot_score,omitempty"`  // bot signal score (0-100)
-	ChallengeJTI        string `json:"challenge_jti,omitempty"`        // challenge cookie token ID
-	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"` // selected difficulty (after adaptive)
-	ChallengeElapsedMs  int    `json:"challenge_elapsed_ms,omitempty"` // client-reported solve time ms
-	ChallengePreScore   int    `json:"challenge_pre_score,omitempty"`  // pre-signal score (L1/L2/L5)
+	JA4                 string `json:"ja4,omitempty"`                   // JA4 TLS fingerprint
+	ChallengeBotScore   int    `json:"challenge_bot_score,omitempty"`   // bot signal score (0-100)
+	ChallengeJTI        string `json:"challenge_jti,omitempty"`         // challenge cookie token ID
+	ChallengeDifficulty int    `json:"challenge_difficulty,omitempty"`  // selected difficulty (after adaptive)
+	ChallengeElapsedMs  int    `json:"challenge_elapsed_ms,omitempty"`  // client-reported solve time ms
+	ChallengePreScore   int    `json:"challenge_pre_score,omitempty"`   // pre-signal score (L1/L2/L5)
+	ChallengeFailReason string `json:"challenge_fail_reason,omitempty"` // why challenge failed: bot_score, timing_hard, timing_soft, ja4_mismatch, bad_pow, hmac_invalid, payload_expired, ip_mismatch, cookie_expired
+	ChallengeSignals    string `json:"challenge_signals,omitempty"`     // JSON signal breakdown from 5-layer bot scoring (ja4, headers, js, behavior, spatial)
 	// DDoS mitigator fields (populated for ddos_blocked/ddos_jailed events)
 	DDoSAction      string `json:"ddos_action,omitempty"`
 	DDoSFingerprint string `json:"ddos_fingerprint,omitempty"`
 	DDoSScore       string `json:"ddos_score,omitempty"`
+}
+
+// inferChallengeFailReason derives a likely fail reason from existing signal data
+// when the plugin doesn't emit an explicit fail_reason field. This provides useful
+// context while the plugin is being updated to emit fail reasons natively.
+//
+// Fail reason hierarchy (checked in order of specificity):
+//   - timing_hard:     solve time impossibly fast (elapsed < minSolveMs/3)
+//   - timing_soft:     solve time suspiciously fast (elapsed < minSolveMs) — +40 penalty
+//   - bot_score:       total bot score >= 70 (most common rejection reason)
+//   - bad_pow:         fallback — PoW didn't verify (no specific signal matched)
+func inferChallengeFailReason(rle RateLimitEvent) string {
+	// Timing violation detection — replicate the plugin's minSolveMs formula.
+	// minSolveMs(difficulty, cores) = 2^(difficulty*4) / (cores * 50) * 0.3
+	// We don't have cores in the log, so estimate conservatively with cores=16.
+	if rle.ChallengeElapsedMs > 0 && rle.ChallengeDifficulty > 0 {
+		estimatedCores := 16
+		hashSpace := 1 << (rle.ChallengeDifficulty * 4) // 2^(difficulty*4)
+		minMs := float64(hashSpace) / float64(estimatedCores*50) * 0.3
+		if float64(rle.ChallengeElapsedMs) < minMs/3 {
+			return "timing_hard"
+		}
+		if float64(rle.ChallengeElapsedMs) < minMs {
+			return "timing_soft"
+		}
+	}
+
+	// Bot score threshold — the most common rejection reason.
+	if rle.ChallengeBotScore >= 70 {
+		return "bot_score"
+	}
+
+	// If we have a pre-signal score that's very high but the bot score wasn't
+	// captured (e.g., failed before JS scoring), flag as pre-signal rejection.
+	if rle.ChallengePreScore >= 70 && rle.ChallengeBotScore == 0 {
+		return "pre_signal"
+	}
+
+	// Fallback — we know it failed but can't determine exactly why from available data.
+	return "bad_pow"
 }
 
 // headerValuesCI does a case-insensitive header lookup on a map[string][]string
@@ -792,6 +836,16 @@ func (s *AccessLogStore) Load() {
 					if entry.ChallengePreScore != "" && entry.ChallengePreScore != "None" {
 						evt.ChallengePreScore, _ = strconv.Atoi(entry.ChallengePreScore)
 					}
+					if entry.ChallengeFailReason != "" && entry.ChallengeFailReason != "None" {
+						evt.ChallengeFailReason = entry.ChallengeFailReason
+					}
+					if entry.ChallengeSignals != "" && entry.ChallengeSignals != "None" {
+						evt.ChallengeSignals = entry.ChallengeSignals
+					}
+					// Heuristic fail reason inference when plugin doesn't emit one.
+					if evt.Source == "challenge_failed" && evt.ChallengeFailReason == "" {
+						evt.ChallengeFailReason = inferChallengeFailReason(evt)
+					}
 					newEvents = append(newEvents, evt)
 				}
 			}
@@ -1149,6 +1203,12 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	}
 	if rle.ChallengePreScore > 0 {
 		evt.ChallengePreScore = rle.ChallengePreScore
+	}
+	if rle.ChallengeFailReason != "" {
+		evt.ChallengeFailReason = rle.ChallengeFailReason
+	}
+	if rle.ChallengeSignals != "" {
+		evt.ChallengeSignals = rle.ChallengeSignals
 	}
 	// For DDoS mitigator blocks, pass through fingerprint and score.
 	if rle.Source == "ddos_blocked" || rle.Source == "ddos_jailed" {

@@ -164,6 +164,11 @@
 	log_append policy_ja4 {http.vars.policy_engine.ja4}
 	log_append policy_challenge_bot_score {http.vars.policy_engine.challenge_bot_score}
 	log_append policy_challenge_jti {http.vars.policy_engine.challenge_jti}
+	log_append policy_challenge_difficulty {http.vars.policy_engine.challenge_difficulty}
+	log_append policy_challenge_elapsed_ms {http.vars.policy_engine.challenge_elapsed_ms}
+	log_append policy_challenge_pre_score {http.vars.policy_engine.challenge_pre_score}
+	log_append policy_challenge_fail_reason {http.vars.policy_engine.challenge_fail_reason}
+	log_append policy_challenge_signals {http.vars.policy_engine.challenge_signals}
 	log_append policy_tags {http.vars.policy_engine.tags}
 	log_append policy_score {http.vars.policy_engine.anomaly_score}
 	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}

@@ -26,6 +26,7 @@ export function parseFiltersFromURL(search: string): DashboardFilter[] {
     { key: "request_id", field: "request_id" },
     { key: "tag", field: "tag" },
     { key: "blocked_by", field: "blocked_by" },
+    { key: "ja4", field: "ja4" },
   ];
 
   for (const { key, alias, field } of fieldMap) {
@@ -60,6 +61,7 @@ export function filtersToSummaryParams(filters: DashboardFilter[]): Partial<Summ
       case "request_id":  params.request_id = f.value;  params.request_id_op = f.operator;  break;
       case "tag":         params.tag = f.value;         params.tag_op = f.operator;         break;
       case "blocked_by":  params.blocked_by = f.value;  params.blocked_by_op = f.operator;  break;
+      case "ja4":         params.ja4 = f.value;         params.ja4_op = f.operator;         break;
     }
   }
   return params;
@@ -82,6 +84,7 @@ export function filtersToEventsParams(filters: DashboardFilter[]): Partial<Event
       case "request_id":  params.request_id = f.value;                                                            break;
       case "tag":         params.tag = f.value;                             params.tag_op = f.operator;         break;
       case "blocked_by":  params.blocked_by = f.value;                      params.blocked_by_op = f.operator;  break;
+      case "ja4":         params.ja4 = f.value;                             params.ja4_op = f.operator;         break;
     }
   }
   return params;

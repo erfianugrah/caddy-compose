@@ -367,7 +367,8 @@ test.describe("Challenge Analytics Dashboard", () => {
 
   test("analytics page has filter inputs", async ({ page }) => {
     await page.goto(`${WAFCTL_DASH}/challenge`);
-    await expect(page.getByPlaceholder("Filter by service...")).toBeVisible();
+    // Service filter is now a dropdown (Select), not a text input.
+    await expect(page.locator("button").filter({ hasText: /All services/ })).toBeVisible();
     await expect(page.getByPlaceholder("Filter by client IP...")).toBeVisible();
   });
 

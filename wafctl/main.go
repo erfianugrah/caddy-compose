@@ -385,7 +385,10 @@ func runServe() int {
 	mux.HandleFunc("GET /api/challenge/reputation", handleChallengeReputation(accessLogStore))
 
 	// Endpoint Discovery
-	mux.HandleFunc("GET /api/discovery/endpoints", handleEndpointDiscovery(accessLogStore, exclusionStore))
+	mux.HandleFunc("GET /api/discovery/endpoints", handleEndpointDiscovery(generalLogStore, exclusionStore))
+	mux.HandleFunc("GET /api/discovery/schemas", handleListOpenAPISchemas())
+	mux.HandleFunc("PUT /api/discovery/schemas/{service}", handleUploadOpenAPISchema())
+	mux.HandleFunc("DELETE /api/discovery/schemas/{service}", handleDeleteOpenAPISchema())
 
 	// DDoS Mitigation
 	mux.HandleFunc("GET /api/dos/status", handleDosStatus(jailStore, dosConfigStore, spikeDetector, accessLogStore))

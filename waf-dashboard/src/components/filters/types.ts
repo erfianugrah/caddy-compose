@@ -3,7 +3,7 @@ import type { FilterOp } from "@/lib/api";
 // ─── Types ──────────────────────────────────────────────────────────
 
 /** WAF-specific filter fields (preserved for backward compatibility). */
-export type FilterField = "service" | "client" | "event_type" | "blocked_by" | "method" | "rule_name" | "uri" | "status_code" | "country" | "event_id" | "request_id" | "tag";
+export type FilterField = "service" | "client" | "event_type" | "blocked_by" | "method" | "rule_name" | "uri" | "status_code" | "country" | "event_id" | "request_id" | "tag" | "ja4";
 
 /** General logs filter fields. */
 export type LogFilterField = "service" | "method" | "status" | "client" | "uri" | "level" | "country" | "user_agent" | "missing_header";

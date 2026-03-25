@@ -74,6 +74,7 @@ export const FIELD_OPERATORS: Record<FilterField, FilterOp[]> = {
   event_id:    ["eq"],
   request_id:  ["eq"],
   tag:         ["eq", "neq", "contains", "in", "regex"],
+  ja4:         ["eq", "neq", "contains", "in", "regex"],
 };
 
 export const BLOCKED_BY_OPTIONS: { value: string; label: string }[] = [
@@ -95,9 +96,10 @@ export const FILTER_FIELDS: Record<FilterField, FieldMeta> = {
   event_id: { label: "Event ID", placeholder: "e.g. abc123..." },
   request_id: { label: "Request ID", placeholder: "Caddy request UUID" },
   tag: { label: "Tag", placeholder: "e.g. scanner, blocklist" },
+  ja4: { label: "JA4 Fingerprint", placeholder: "e.g. t13d1516h2_..." },
 };
 
-export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "blocked_by", "tag", "method", "rule_name", "uri", "status_code", "country"];
+export const FIELD_ORDER: FilterField[] = ["service", "client", "event_type", "blocked_by", "tag", "ja4", "method", "rule_name", "uri", "status_code", "country"];
 
 export const WAF_FILTER_CONFIG: FilterConfig<FilterField> = {
   fields: FILTER_FIELDS,

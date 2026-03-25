@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, ShieldBan, RefreshCw, Radar, Plus, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, ShieldBan, RefreshCw, Radar, Plus, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,7 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { T } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { fetchChallengeStats, fetchEndpointDiscovery, fetchChallengeReputation } from "@/lib/api/challenge";
+import { fetchChallengeStats, fetchEndpointDiscovery, fetchChallengeReputation, fetchOpenAPISchemas, uploadOpenAPISchema, deleteOpenAPISchema } from "@/lib/api/challenge";
+import type { OpenAPISchemaInfo } from "@/lib/api/challenge";
+import { fetchServices } from "@/lib/api";
+import type { ServiceDetail } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import type { ChallengeStats, ScoreBucket, ChallengeClient, ChallengeService, ChallengeJA4, EndpointDiscoveryResponse, DiscoveredEndpoint, ChallengeReputationResponse, JA4Reputation, IPChallengeHistory, ReputationAlert } from "@/lib/api/challenge";
 
@@ -133,12 +136,176 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
 
 // ─── Endpoint Discovery Panel ───────────────────────────────────────
 
-function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: string }) {
+interface ServiceGroup {
+  service: string;
+  endpoints: DiscoveredEndpoint[];
+  totalRequests: number;
+  uncoveredCount: number;
+  avgNonBrowser: number;
+}
+
+function MethodBadge({ method }: { method: string }) {
+  return (
+    <span className={cn(
+      "rounded px-1 py-0.5 text-[10px] font-bold uppercase",
+      method === "GET" ? "bg-lv-green/15 text-lv-green" :
+      method === "POST" ? "bg-lv-yellow/15 text-lv-yellow" :
+      method === "PUT" ? "bg-lv-cyan/15 text-lv-cyan" :
+      method === "DELETE" ? "bg-lv-red/15 text-lv-red" :
+      "bg-muted/50 text-muted-foreground"
+    )}>{method}</span>
+  );
+}
+
+function CoverageBadges({ ep }: { ep: DiscoveredEndpoint }) {
+  return (
+    <div className="flex justify-center gap-1">
+      {ep.has_challenge && (
+        <span className="inline-flex items-center rounded bg-lv-green/15 px-1.5 py-0.5 text-[10px] text-lv-green" title="Challenge rule covers this path">
+          <ShieldCheck className="h-3 w-3 mr-0.5" />PoW
+        </span>
+      )}
+      {ep.has_rate_limit && (
+        <span className="inline-flex items-center rounded bg-lv-cyan/15 px-1.5 py-0.5 text-[10px] text-lv-cyan" title="Rate limit rule covers this path">
+          <Shield className="h-3 w-3 mr-0.5" />RL
+        </span>
+      )}
+      {!ep.has_challenge && !ep.has_rate_limit && (
+        <span className="inline-flex items-center rounded bg-lv-red/15 px-1.5 py-0.5 text-[10px] text-lv-red" title="No protection">
+          <ShieldOff className="h-3 w-3 mr-0.5" />None
+        </span>
+      )}
+    </div>
+  );
+}
+
+function EndpointActions({ ep }: { ep: DiscoveredEndpoint }) {
+  if (ep.has_challenge) return null;
+  if (ep.non_browser_pct < 0.5) {
+    return (
+      <a
+        href={`/policy?action=challenge&prefill_path=${encodeURIComponent(ep.path)}&prefill_service=${encodeURIComponent(ep.service)}`}
+        className="inline-flex items-center gap-0.5 text-[10px] text-lv-purple hover:text-lv-purple-bright hover:underline"
+        title="Create a challenge rule for this endpoint"
+      >
+        <Plus className="h-3 w-3" />Challenge
+      </a>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 justify-end">
+      <a
+        href={`/policy?action=block&prefill_path=${encodeURIComponent(ep.path)}&prefill_service=${encodeURIComponent(ep.service)}`}
+        className="inline-flex items-center gap-0.5 text-[10px] text-lv-red hover:underline"
+        title="Block non-browser traffic on this endpoint"
+      >
+        <Plus className="h-3 w-3" />Block
+      </a>
+      <a
+        href={`/policy?tab=rate-limits&prefill_path=${encodeURIComponent(ep.path)}&prefill_service=${encodeURIComponent(ep.service)}`}
+        className="inline-flex items-center gap-0.5 text-[10px] text-lv-cyan hover:underline"
+        title="Rate limit this endpoint"
+      >
+        <Plus className="h-3 w-3" />RL
+      </a>
+    </div>
+  );
+}
+
+function ServiceGroupCard({ group, sortBy, defaultOpen }: {
+  group: ServiceGroup;
+  sortBy: "requests" | "non_browser_pct" | "unique_ips";
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const sorted = useMemo(() => [...group.endpoints].sort((a, b) => {
+    if (sortBy === "non_browser_pct") return b.non_browser_pct - a.non_browser_pct;
+    if (sortBy === "unique_ips") return b.unique_ips - a.unique_ips;
+    return b.requests - a.requests;
+  }), [group.endpoints, sortBy]);
+
+  return (
+    <Card>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-lovelace-900/30 transition-colors rounded-t-lg"
+      >
+        {open ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+        <span className="font-data text-sm text-foreground font-medium truncate">{group.service}</span>
+        <span className="text-xs text-muted-foreground shrink-0">{group.endpoints.length} endpoint{group.endpoints.length !== 1 ? "s" : ""}</span>
+        <span className="text-xs tabular-nums text-muted-foreground shrink-0">{group.totalRequests.toLocaleString()} req</span>
+        {group.uncoveredCount > 0 && (
+          <span className="inline-flex items-center rounded bg-lv-red/15 px-1.5 py-0.5 text-[10px] text-lv-red shrink-0">
+            <ShieldOff className="h-3 w-3 mr-0.5" />{group.uncoveredCount} uncovered
+          </span>
+        )}
+        {group.avgNonBrowser >= 0.5 && (
+          <span className="inline-flex items-center rounded bg-lv-yellow/15 px-1.5 py-0.5 text-[10px] text-lv-yellow shrink-0">
+            {(group.avgNonBrowser * 100).toFixed(0)}% non-browser
+          </span>
+        )}
+      </button>
+      {open && (
+        <CardContent className="pt-0 pb-3 px-4">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-lovelace-800 text-muted-foreground">
+                  <th className="text-left py-1.5 pr-3">Endpoint</th>
+                  <th className="text-right py-1.5 px-2">Requests</th>
+                  <th className="text-right py-1.5 px-2">IPs</th>
+                  <th className="text-right py-1.5 px-2">JA4s</th>
+                  <th className="text-right py-1.5 px-2">UAs</th>
+                  <th className="text-right py-1.5 px-2">Non-Browser</th>
+                  <th className="text-center py-1.5 px-2">Coverage</th>
+                  <th className="text-right py-1.5 pl-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((ep) => (
+                  <tr key={`${ep.method}:${ep.path}`} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
+                    <td className="py-1.5 pr-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        <MethodBadge method={ep.method} />
+                        <code className="font-data text-foreground">{ep.path}</code>
+                      </span>
+                    </td>
+                    <td className="text-right py-1.5 px-2 tabular-nums text-foreground">{ep.requests.toLocaleString()}</td>
+                    <td className="text-right py-1.5 px-2 tabular-nums text-muted-foreground">{ep.unique_ips}</td>
+                    <td className="text-right py-1.5 px-2 tabular-nums text-muted-foreground">{ep.unique_ja4s}</td>
+                    <td className="text-right py-1.5 px-2 tabular-nums text-muted-foreground">{ep.unique_uas}</td>
+                    <td className="text-right py-1.5 px-2">
+                      <span className={cn(
+                        "tabular-nums",
+                        ep.non_browser_pct >= 0.5 ? "text-lv-red font-semibold" :
+                        ep.non_browser_pct >= 0.2 ? "text-lv-yellow" :
+                        "text-muted-foreground"
+                      )}>{(ep.non_browser_pct * 100).toFixed(0)}%</span>
+                    </td>
+                    <td className="text-center py-1.5 px-2"><CoverageBadges ep={ep} /></td>
+                    <td className="text-right py-1.5 pl-2"><EndpointActions ep={ep} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+function EndpointDiscoveryPanel({ hours, service, services }: { hours: string; service: string; services: ServiceDetail[] }) {
   const [data, setData] = useState<EndpointDiscoveryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [uncoveredOnly, setUncoveredOnly] = useState(false);
   const [suspiciousOnly, setSuspiciousOnly] = useState(false);
   const [sortBy, setSortBy] = useState<"requests" | "non_browser_pct" | "unique_ips">("requests");
+  const [schemas, setSchemas] = useState<OpenAPISchemaInfo[]>([]);
+  const [showSchemaManager, setShowSchemaManager] = useState(false);
+  const [uploadService, setUploadService] = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,6 +320,74 @@ function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: st
 
   useEffect(() => { load(); }, [load]);
 
+  // Load OpenAPI schemas
+  const loadSchemas = useCallback(async () => {
+    try { setSchemas(await fetchOpenAPISchemas()); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { loadSchemas(); }, [loadSchemas]);
+
+  const handleSchemaUpload = useCallback(async () => {
+    if (!uploadService) return;
+    setUploadError(null);
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,.yaml,.yml";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        await uploadOpenAPISchema(uploadService, text);
+        setUploadService("");
+        await loadSchemas();
+        load(); // re-discover with new schema
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Upload failed");
+      }
+    };
+    input.click();
+  }, [uploadService, loadSchemas, load]);
+
+  const handleSchemaDelete = useCallback(async (svc: string) => {
+    try {
+      await deleteOpenAPISchema(svc);
+      await loadSchemas();
+      load();
+    } catch { /* ignore */ }
+  }, [loadSchemas, load]);
+
+  // Group endpoints by service
+  const serviceGroups = useMemo(() => {
+    if (!data) return [];
+    let filtered = data.endpoints;
+    if (uncoveredOnly) filtered = filtered.filter((e) => !e.has_challenge);
+    if (suspiciousOnly) filtered = filtered.filter((e) => e.non_browser_pct > 0.2);
+
+    const byService = new Map<string, DiscoveredEndpoint[]>();
+    for (const ep of filtered) {
+      const svc = ep.service || "(unknown)";
+      if (!byService.has(svc)) byService.set(svc, []);
+      byService.get(svc)!.push(ep);
+    }
+
+    const groups: ServiceGroup[] = [];
+    for (const [svc, eps] of byService) {
+      const totalReq = eps.reduce((s, e) => s + e.requests, 0);
+      const totalNonBrowser = eps.reduce((s, e) => s + e.non_browser_pct * e.requests, 0);
+      groups.push({
+        service: svc,
+        endpoints: eps,
+        totalRequests: totalReq,
+        uncoveredCount: eps.filter((e) => !e.has_challenge).length,
+        avgNonBrowser: totalReq > 0 ? totalNonBrowser / totalReq : 0,
+      });
+    }
+
+    // Sort groups by total requests descending
+    groups.sort((a, b) => b.totalRequests - a.totalRequests);
+    return groups;
+  }, [data, uncoveredOnly, suspiciousOnly]);
+
   if (loading) return <Skeleton className="h-64 w-full" />;
   if (!data || data.endpoints.length === 0) {
     return (
@@ -164,16 +399,6 @@ function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: st
       </Card>
     );
   }
-
-  let filtered = data.endpoints;
-  if (uncoveredOnly) filtered = filtered.filter((e) => !e.has_challenge);
-  if (suspiciousOnly) filtered = filtered.filter((e) => e.non_browser_pct > 0.2);
-
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === "non_browser_pct") return b.non_browser_pct - a.non_browser_pct;
-    if (sortBy === "unique_ips") return b.unique_ips - a.unique_ips;
-    return b.requests - a.requests;
-  });
 
   const uncoveredCount = data.endpoints.filter((e) => !e.has_challenge).length;
 
@@ -190,7 +415,7 @@ function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: st
         <Card>
           <CardContent className="pt-5 pb-4 text-center">
             <p className={cn("text-2xl font-bold", uncoveredCount > 0 ? "text-lv-red" : "text-lv-green")}>{uncoveredCount}</p>
-            <p className="text-xs text-muted-foreground">Without Challenge Protection</p>
+            <p className="text-xs text-muted-foreground">Without Protection</p>
           </CardContent>
         </Card>
         <Card>
@@ -228,91 +453,74 @@ function EndpointDiscoveryPanel({ hours, service }: { hours: string; service: st
         </Button>
       </div>
 
-      {/* Endpoint table */}
+      {/* Service-grouped endpoint tables */}
+      <div className="space-y-3">
+        {serviceGroups.map((group, i) => (
+          <ServiceGroupCard key={group.service} group={group} sortBy={sortBy} defaultOpen={i === 0 || serviceGroups.length <= 3} />
+        ))}
+      </div>
+
+      {serviceGroups.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-xs text-muted-foreground">No endpoints match the current filters.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* OpenAPI Schema Management */}
       <Card>
-        <CardContent className="pt-4">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-lovelace-800 text-muted-foreground">
-                  <th className="text-left py-2 pr-3">Endpoint</th>
-                  <th className="text-right py-2 px-2">Requests</th>
-                  <th className="text-right py-2 px-2">IPs</th>
-                  <th className="text-right py-2 px-2">JA4s</th>
-                  <th className="text-right py-2 px-2">UAs</th>
-                  <th className="text-right py-2 px-2">Non-Browser</th>
-                  <th className="text-center py-2 px-2">Coverage</th>
-                  <th className="text-right py-2 pl-2">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((ep: DiscoveredEndpoint) => (
-                  <tr key={`${ep.service}:${ep.method}:${ep.path}`} className="border-b border-lovelace-900/50 hover:bg-lovelace-900/30">
-                    <td className="py-2 pr-3">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={cn(
-                          "rounded px-1 py-0.5 text-[10px] font-bold uppercase",
-                          ep.method === "GET" ? "bg-lv-green/15 text-lv-green" :
-                          ep.method === "POST" ? "bg-lv-yellow/15 text-lv-yellow" :
-                          ep.method === "PUT" ? "bg-lv-cyan/15 text-lv-cyan" :
-                          ep.method === "DELETE" ? "bg-lv-red/15 text-lv-red" :
-                          "bg-muted/50 text-muted-foreground"
-                        )}>{ep.method}</span>
-                        <code className="font-data text-foreground">{ep.path}</code>
-                      </span>
-                      {ep.service && <span className="ml-1.5 text-muted-foreground/40 text-[10px]">{ep.service}</span>}
-                    </td>
-                    <td className="text-right py-2 px-2 tabular-nums text-foreground">{ep.requests.toLocaleString()}</td>
-                    <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{ep.unique_ips}</td>
-                    <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{ep.unique_ja4s}</td>
-                    <td className="text-right py-2 px-2 tabular-nums text-muted-foreground">{ep.unique_uas}</td>
-                    <td className="text-right py-2 px-2">
-                      <span className={cn(
-                        "tabular-nums",
-                        ep.non_browser_pct >= 0.5 ? "text-lv-red font-semibold" :
-                        ep.non_browser_pct >= 0.2 ? "text-lv-yellow" :
-                        "text-muted-foreground"
-                      )}>{(ep.non_browser_pct * 100).toFixed(0)}%</span>
-                    </td>
-                    <td className="text-center py-2 px-2">
-                      <div className="flex justify-center gap-1">
-                        {ep.has_challenge && (
-                          <span className="inline-flex items-center rounded bg-lv-green/15 px-1.5 py-0.5 text-[10px] text-lv-green" title="Challenge rule covers this path">
-                            <ShieldCheck className="h-3 w-3 mr-0.5" />PoW
-                          </span>
-                        )}
-                        {ep.has_rate_limit && (
-                          <span className="inline-flex items-center rounded bg-lv-cyan/15 px-1.5 py-0.5 text-[10px] text-lv-cyan" title="Rate limit rule covers this path">
-                            <Shield className="h-3 w-3 mr-0.5" />RL
-                          </span>
-                        )}
-                        {!ep.has_challenge && !ep.has_rate_limit && (
-                          <span className="inline-flex items-center rounded bg-lv-red/15 px-1.5 py-0.5 text-[10px] text-lv-red" title="No protection">
-                            <ShieldOff className="h-3 w-3 mr-0.5" />None
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="text-right py-2 pl-2">
-                      {!ep.has_challenge && (
-                        <a
-                          href={`/policy?action=challenge&prefill_path=${encodeURIComponent(ep.path)}&prefill_service=${encodeURIComponent(ep.service)}`}
-                          className="inline-flex items-center gap-0.5 text-[10px] text-lv-purple hover:text-lv-purple-bright hover:underline"
-                          title="Create a challenge rule for this endpoint"
-                        >
-                          <Plus className="h-3 w-3" />Challenge
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {sorted.length === 0 && (
-            <p className="text-center py-8 text-xs text-muted-foreground">No endpoints match the current filters.</p>
+        <button
+          onClick={() => setShowSchemaManager(!showSchemaManager)}
+          className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-lovelace-900/30 transition-colors rounded-lg"
+        >
+          {showSchemaManager ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+          <span className="text-xs font-medium text-muted-foreground">OpenAPI Schemas</span>
+          {schemas.length > 0 && (
+            <span className="text-[10px] text-lv-green bg-lv-green/15 rounded px-1.5 py-0.5">{schemas.length} loaded</span>
           )}
-        </CardContent>
+        </button>
+        {showSchemaManager && (
+          <CardContent className="pt-0 pb-4 px-4 space-y-3">
+            <p className="text-[10px] text-muted-foreground/70">
+              Upload OpenAPI specs to improve endpoint grouping. Paths are matched against the schema's route templates instead of heuristic normalization.
+            </p>
+
+            {/* Loaded schemas */}
+            {schemas.length > 0 && (
+              <div className="space-y-1">
+                {schemas.map((s) => (
+                  <div key={s.service} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-lovelace-900/30">
+                    <span>
+                      <span className="font-data text-foreground">{s.service}</span>
+                      <span className="text-muted-foreground ml-2">{s.routes} routes</span>
+                    </span>
+                    <button onClick={() => handleSchemaDelete(s.service)} className="text-[10px] text-lv-red hover:underline">Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload */}
+            <div className="flex items-center gap-2">
+              <Select value={uploadService || "__none__"} onValueChange={(v) => setUploadService(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="w-44 h-7 text-xs">
+                  <SelectValue placeholder="Select service..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" disabled>Select service...</SelectItem>
+                  {services.map((s) => (
+                    <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm" onClick={handleSchemaUpload} disabled={!uploadService} className="h-7 text-xs">
+                Upload Spec
+              </Button>
+            </div>
+            {uploadError && <p className="text-[10px] text-lv-red">{uploadError}</p>}
+          </CardContent>
+        )}
       </Card>
     </div>
   );
@@ -371,7 +579,7 @@ function ReputationPanel({ hours, service }: { hours: string; service: string })
                     {a.severity}
                   </span>
                   <span className="text-foreground flex-1">{a.detail}</span>
-                  <a href={a.type === "hostile_ja4" ? `/events?ja4=${encodeURIComponent(a.target)}` : `/analytics?ip=${encodeURIComponent(a.target)}`}
+                  <a href={a.type === "hostile_ja4" ? `/events?ja4=${encodeURIComponent(a.target)}` : `/analytics?tab=ip&q=${encodeURIComponent(a.target)}`}
                      className="text-lv-purple hover:underline shrink-0">View</a>
                 </div>
               ))}
@@ -462,7 +670,7 @@ function ReputationPanel({ hours, service }: { hours: string; service: string })
                   {data.clients.map((c: IPChallengeHistory) => (
                     <tr key={c.ip} className={cn("border-b border-lovelace-900/50 hover:bg-lovelace-900/30", c.flags && c.flags.length > 0 && "bg-lv-red/5")}>
                       <td className="py-2 pr-3">
-                        <a href={`/analytics?ip=${encodeURIComponent(c.ip)}`} className="text-lv-green hover:underline font-data">{c.ip}</a>
+                        <a href={`/analytics?tab=ip&q=${encodeURIComponent(c.ip)}`} className="text-lv-green hover:underline font-data">{c.ip}</a>
                         {c.country && <span className="ml-1 text-muted-foreground/50">{c.country}</span>}
                       </td>
                       <td className="text-right py-2 px-2 tabular-nums text-lv-yellow">{c.issued}</td>
@@ -513,6 +721,12 @@ export default function ChallengeAnalytics() {
   const [filterService, setFilterService] = useState("");
   const [filterClient, setFilterClient] = useState("");
   const [activeTab, setActiveTab] = useState<"analytics" | "discovery" | "reputation">("analytics");
+  const [services, setServices] = useState<ServiceDetail[]>([]);
+
+  // Load available services from Caddy config on mount.
+  useEffect(() => {
+    fetchServices().then(setServices).catch(() => {});
+  }, []);
 
   // Read initial filters from URL params (client-side only).
   useEffect(() => {
@@ -568,12 +782,17 @@ export default function ChallengeAnalytics() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Input
-            placeholder="Filter by service..."
-            value={filterService}
-            onChange={(e) => setFilterService(e.target.value)}
-            className="w-40 h-8 text-xs"
-          />
+          <Select value={filterService || "__all__"} onValueChange={(v) => setFilterService(v === "__all__" ? "" : v)}>
+            <SelectTrigger className="w-44 h-8 text-xs">
+              <SelectValue placeholder="All services" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All services</SelectItem>
+              {services.map((s) => (
+                <SelectItem key={s.service} value={s.service}>{s.service}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             placeholder="Filter by client IP..."
             value={filterClient}
@@ -627,7 +846,7 @@ export default function ChallengeAnalytics() {
 
       {/* Discovery Tab */}
       {activeTab === "discovery" && (
-        <EndpointDiscoveryPanel hours={hours} service={filterService} />
+        <EndpointDiscoveryPanel hours={hours} service={filterService} services={services} />
       )}
 
       {/* Analytics Tab */}
@@ -700,6 +919,56 @@ export default function ChallengeAnalytics() {
         </Card>
       </div>
 
+      {/* Fail Reason Breakdown */}
+      {stats && stats.fail_reasons && Object.keys(stats.fail_reasons).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardDescription className={T.sectionLabel}>Fail Reason Breakdown</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const reasons = stats.fail_reasons!;
+              const total = Object.values(reasons).reduce((s, c) => s + c, 0);
+              const maxCount = Math.max(...Object.values(reasons), 1);
+              const labels: Record<string, { label: string; color: string }> = {
+                bot_score: { label: "Bot Score >= 70", color: "bg-lv-red" },
+                timing_hard: { label: "Impossible Timing", color: "bg-lv-red" },
+                timing_soft: { label: "Suspicious Timing", color: "bg-lv-peach" },
+                ja4_mismatch: { label: "JA4 Mismatch (Replay)", color: "bg-lv-yellow" },
+                ip_mismatch: { label: "IP Changed", color: "bg-lv-yellow" },
+                hmac_invalid: { label: "HMAC Tampering", color: "bg-lv-red" },
+                payload_expired: { label: "Payload Expired", color: "bg-lv-peach" },
+                cookie_expired: { label: "Cookie Expired", color: "bg-lv-cyan" },
+                bad_pow: { label: "Invalid PoW Hash", color: "bg-lv-red" },
+                pre_signal: { label: "Pre-Signal Rejection", color: "bg-lv-yellow" },
+                unknown: { label: "Unknown", color: "bg-muted" },
+              };
+              const sorted = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
+              return (
+                <div className="space-y-2">
+                  {sorted.map(([reason, count]) => {
+                    const info = labels[reason] || { label: reason, color: "bg-muted" };
+                    return (
+                      <div key={reason} className="flex items-center gap-3 text-xs">
+                        <span className="w-36 shrink-0 text-muted-foreground">{info.label}</span>
+                        <div className="flex-1 h-5 bg-lovelace-900 rounded overflow-hidden">
+                          <div
+                            className={cn("h-full rounded transition-all", info.color)}
+                            style={{ width: `${(count / maxCount) * 100}%` }}
+                          />
+                        </div>
+                        <span className="w-16 text-right tabular-nums text-foreground">{count}</span>
+                        <span className="w-12 text-right tabular-nums text-muted-foreground">{total > 0 ? `${((count / total) * 100).toFixed(0)}%` : ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Top Clients */}
       {stats && stats.top_clients && stats.top_clients.length > 0 && (
         <Card>
@@ -731,7 +1000,7 @@ export default function ChallengeAnalytics() {
                             {c.client}
                           </button>
                           {c.country && <span className="ml-1.5 text-muted-foreground/50">{c.country}</span>}
-                          <a href={`/analytics?ip=${encodeURIComponent(c.client)}`} className="ml-1.5 text-muted-foreground/40 hover:text-lv-purple text-[10px]" title="IP Lookup">lookup</a>
+                          <a href={`/analytics?tab=ip&q=${encodeURIComponent(c.client)}`} className="ml-1.5 text-muted-foreground/40 hover:text-lv-purple text-[10px]" title="IP Lookup">lookup</a>
                         </td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-yellow">{c.issued}</td>
                         <td className="text-right py-2 px-2 tabular-nums text-lv-green">{c.passed}</td>

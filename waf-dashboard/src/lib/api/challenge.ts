@@ -17,6 +17,7 @@ export interface ChallengeStats {
   top_clients: ChallengeClient[];
   top_services: ChallengeService[];
   top_ja4s: ChallengeJA4[];
+  fail_reasons?: Record<string, number>;
 }
 
 export interface ScoreBucket {
@@ -167,4 +168,36 @@ export async function fetchEndpointDiscovery(
   const params = new URLSearchParams({ hours: String(hours) });
   if (service) params.set("service", service);
   return fetchJSON<EndpointDiscoveryResponse>(`${API_BASE}/discovery/endpoints?${params}`);
+}
+
+// ─── OpenAPI Schema Management ──────────────────────────────────────
+
+export interface OpenAPISchemaInfo {
+  service: string;
+  routes: number;
+}
+
+export async function fetchOpenAPISchemas(): Promise<OpenAPISchemaInfo[]> {
+  const resp = await fetchJSON<{ schemas: OpenAPISchemaInfo[] }>(`${API_BASE}/discovery/schemas`);
+  return resp.schemas || [];
+}
+
+export async function uploadOpenAPISchema(service: string, spec: string): Promise<{ service: string; routes: number; message: string }> {
+  const res = await fetch(`${API_BASE}/discovery/schemas/${encodeURIComponent(service)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: spec,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || err.details || res.statusText);
+  }
+  return res.json();
+}
+
+export async function deleteOpenAPISchema(service: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/discovery/schemas/${encodeURIComponent(service)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(res.statusText);
 }

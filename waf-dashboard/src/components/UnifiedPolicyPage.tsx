@@ -23,6 +23,10 @@ export default function UnifiedPolicyPage() {
     if (params.get("from_event")) {
       setActiveTab("rules");
     }
+    // Handle URL-based prefill from Challenge Analytics quick-actions.
+    if (params.get("action")) {
+      setActiveTab("rules");
+    }
   }, []);
 
   // Update URL when tab changes (without full navigation).

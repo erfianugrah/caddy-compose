@@ -471,17 +471,50 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
               </>
             ) : event.event_type?.startsWith("challenge_") ? (
               <>
-                {/* Challenge event — show action, rule, bot score with meaning, UA */}
+                {/* Challenge event — action, fail reason, rule, bot score, signals, UA */}
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Action:</span>
                   <span className={`font-medium ${event.event_type === "challenge_failed" ? "text-lv-red" : event.event_type === "challenge_passed" ? "text-lv-green" : event.event_type === "challenge_bypassed" ? "text-lv-cyan" : "text-lv-yellow"}`}>
                     {event.event_type === "challenge_issued" ? "Interstitial served — awaiting PoW" :
                      event.event_type === "challenge_passed" ? "PoW solved — cookie issued" :
-                     event.event_type === "challenge_failed" ? "Rejected — bot score too high or invalid PoW" :
+                     event.event_type === "challenge_failed" ? "Rejected" :
                      event.event_type === "challenge_bypassed" ? "Valid cookie — bypassed challenge" :
                      event.event_type?.replace("challenge_", "Challenge ")}
                   </span>
                 </div>
+                {/* Fail reason — explicit from plugin or heuristic-inferred */}
+                {event.event_type === "challenge_failed" && (
+                  <div className="flex gap-2 items-start">
+                    <span className="text-muted-foreground shrink-0">Fail Reason:</span>
+                    <div>
+                      <span className="text-lv-red font-medium">
+                        {(() => {
+                          const r = event.challenge_fail_reason;
+                          if (r === "bot_score") return "Bot score too high";
+                          if (r === "timing_hard") return "Impossible timing (hard reject)";
+                          if (r === "timing_soft") return "Suspicious timing (+40 penalty)";
+                          if (r === "ja4_mismatch") return "JA4 TLS fingerprint mismatch (cookie replay)";
+                          if (r === "ip_mismatch") return "Client IP changed since solve";
+                          if (r === "hmac_invalid") return "HMAC verification failed (tampering)";
+                          if (r === "payload_expired") return "Challenge payload expired (>5min)";
+                          if (r === "cookie_expired") return "Cookie TTL exceeded";
+                          if (r === "bad_pow") return "Invalid proof-of-work hash";
+                          if (r === "pre_signal") return "Pre-signal score too high (TLS/headers)";
+                          return r || "Unknown";
+                        })()}
+                      </span>
+                      {event.challenge_fail_reason && !["bot_score", "bad_pow"].includes(event.challenge_fail_reason) && (
+                        <span className="text-muted-foreground/50 ml-2 text-[10px]">
+                          {event.challenge_fail_reason === "timing_hard" ? "solve time < theoretical minimum / 3" :
+                           event.challenge_fail_reason === "timing_soft" ? "solve time < theoretical minimum — penalty pushed score over threshold" :
+                           event.challenge_fail_reason === "ja4_mismatch" ? "cookie solved by different TLS stack than current connection" :
+                           event.challenge_fail_reason === "ip_mismatch" ? "bind_ip enabled — cookie bound to original solver IP" :
+                           ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {event.rule_msg && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground">Rule:</span>
@@ -504,6 +537,42 @@ export function EventDetailPanel({ event, hideActions = false, viewInEventsHref 
                     </div>
                   </div>
                 )}
+                {/* Signal breakdown from 5-layer bot scoring */}
+                {event.challenge_signals && (() => {
+                  try {
+                    const signals = JSON.parse(event.challenge_signals) as Record<string, number>;
+                    const layers = [
+                      { key: "ja4", label: "L1 JA4/TLS", desc: "TLS fingerprint analysis" },
+                      { key: "headers", label: "L2 Headers", desc: "HTTP header anomalies" },
+                      { key: "js", label: "L3 JS Probes", desc: "17 JavaScript environment signals" },
+                      { key: "behavior", label: "L4 Behavior", desc: "5 behavioral signals" },
+                      { key: "spatial", label: "L5 Spatial", desc: "UA / TLS / geo inconsistency" },
+                    ];
+                    const maxScore = Math.max(...Object.values(signals), 1);
+                    return (
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Signal Breakdown</span>
+                        {layers.map(({ key, label, desc }) => {
+                          const score = signals[key] ?? 0;
+                          return (
+                            <div key={key} className="flex items-center gap-2 text-xs">
+                              <span className="w-24 shrink-0 text-muted-foreground" title={desc}>{label}</span>
+                              <div className="flex-1 h-3 bg-lovelace-900 rounded overflow-hidden">
+                                <div
+                                  className={`h-full rounded transition-all ${score >= 20 ? "bg-lv-red" : score >= 10 ? "bg-lv-yellow" : score > 0 ? "bg-lv-peach" : "bg-lv-green/30"}`}
+                                  style={{ width: `${(score / maxScore) * 100}%`, minWidth: score > 0 ? "2px" : 0 }}
+                                />
+                              </div>
+                              <span className={`w-6 text-right tabular-nums ${score >= 20 ? "text-lv-red" : score >= 10 ? "text-lv-yellow" : "text-muted-foreground"}`}>
+                                {score}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  } catch { return null; }
+                })()}
                 {event.challenge_jti && (
                   <div className="flex gap-2 items-center">
                     <span className="text-muted-foreground">Token ID:</span>

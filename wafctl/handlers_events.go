@@ -105,9 +105,10 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
 		tagF := parseFieldFilter(q.Get("tag"), q.Get("tag_op"))
 		blockedByF := parseFieldFilter(q.Get("blocked_by"), q.Get("blocked_by_op"))
+		ja4F := parseFieldFilter(q.Get("ja4"), q.Get("ja4_op"))
 
 		hasFilter := serviceF != nil || clientF != nil || methodF != nil || eventTypeF != nil || ruleNameF != nil ||
-			uriF != nil || statusCodeF != nil || countryF != nil || requestIDF != nil || tagF != nil || blockedByF != nil
+			uriF != nil || statusCodeF != nil || countryF != nil || requestIDF != nil || tagF != nil || blockedByF != nil || ja4F != nil
 
 		// When any filter is active, collect matching events from both stores
 		// and summarize. Uses raw RLE for ALS to avoid O(N) enrichment.
@@ -124,7 +125,8 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 						!methodF.matchField(ev.Method) || !eventTypeF.matchField(ev.EventType) ||
 						!uriF.matchField(ev.URI) || !statusCodeF.matchIntField(ev.ResponseStatus) ||
 						!countryF.matchField(ev.Country) || !requestIDF.matchField(ev.RequestID) ||
-						!tagF.matchTags(ev.Tags) || !blockedByF.matchField(ev.BlockedBy) {
+						!tagF.matchTags(ev.Tags) || !blockedByF.matchField(ev.BlockedBy) ||
+						!ja4F.matchField(ev.JA4) {
 						continue
 					}
 					if ruleNameF != nil && !matchesPolicyRuleNameFilter(ev, ruleNameF) {
@@ -145,7 +147,7 @@ func handleSummary(store *Store, als *AccessLogStore) http.HandlerFunc {
 						!methodF.matchField(rle.Method) || !eventTypeF.matchField(rleEventType(rle.Source)) ||
 						!uriF.matchField(rle.URI) || !statusCodeF.matchIntField(rleResponseStatus(rle)) ||
 						!countryF.matchField(rle.Country) || !requestIDF.matchField(rle.RequestID) ||
-						!blockedByF.matchField(rleBlockedBy(rle)) {
+						!blockedByF.matchField(rleBlockedBy(rle)) || !ja4F.matchField(rle.JA4) {
 						continue
 					}
 					if ruleNameF != nil && !ruleNameF.matchField(rle.RuleName) {
@@ -250,6 +252,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 		requestIDF := parseFieldFilter(q.Get("request_id"), q.Get("request_id_op"))
 		tagF := parseFieldFilter(q.Get("tag"), q.Get("tag_op"))
 		blockedByF := parseFieldFilter(q.Get("blocked_by"), q.Get("blocked_by_op"))
+		ja4F := parseFieldFilter(q.Get("ja4"), q.Get("ja4_op"))
 
 		var blocked *bool
 		if b := q.Get("blocked"); b != "" {
@@ -344,6 +347,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 			if !blockedByF.matchField(ev.BlockedBy) {
 				return false
 			}
+			if !ja4F.matchField(ev.JA4) {
+				return false
+			}
 			return true
 		}
 
@@ -387,6 +393,9 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 				return false
 			}
 			if !blockedByF.matchField(rleBlockedBy(rle)) {
+				return false
+			}
+			if !ja4F.matchField(rle.JA4) {
 				return false
 			}
 			return true

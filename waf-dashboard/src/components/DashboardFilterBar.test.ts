@@ -332,7 +332,7 @@ describe("operatorChip", () => {
 // ─── FILTER_FIELDS metadata ─────────────────────────────────────────
 
 describe("FILTER_FIELDS", () => {
-  it("defines all eight filter fields", () => {
+  it("defines all filter fields", () => {
     const fields = Object.keys(FILTER_FIELDS);
     expect(fields).toContain("service");
     expect(fields).toContain("client");
@@ -342,6 +342,7 @@ describe("FILTER_FIELDS", () => {
     expect(fields).toContain("uri");
     expect(fields).toContain("status_code");
     expect(fields).toContain("country");
+    expect(fields).toContain("ja4");
   });
 
   it("event_type has 10 options (6 base + 4 challenge)", () => {

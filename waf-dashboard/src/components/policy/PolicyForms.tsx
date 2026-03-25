@@ -539,16 +539,18 @@ export function QuickActionsForm({
 
   return (
     <div className="space-y-4">
-      {/* Prefill banner when created from an event */}
+      {/* Prefill banner when created from an event or quick-action link */}
       {showPrefillBanner && prefill && (
         <Alert>
           <ShieldCheck className="h-4 w-4" />
-          <AlertTitle>Pre-filled from event</AlertTitle>
+          <AlertTitle>{prefill.sourceEvent.id ? "Pre-filled from event" : "Pre-filled from quick action"}</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span className="text-xs">
               {prefill.sourceEvent.rule_msg
                 ? `${prefill.sourceEvent.method} ${prefill.sourceEvent.uri?.split("?")[0]} — ${prefill.sourceEvent.rule_msg}`
-                : `${prefill.sourceEvent.method} ${prefill.sourceEvent.uri}`}
+                : prefill.sourceEvent.method
+                  ? `${prefill.sourceEvent.method} ${prefill.sourceEvent.uri}`
+                  : prefill.description}
             </span>
             <Button
               variant="ghost"

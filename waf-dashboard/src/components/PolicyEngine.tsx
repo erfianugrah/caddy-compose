@@ -97,7 +97,7 @@ import { T } from "@/lib/typography";
 import { downloadJSON } from "@/lib/download";
 import type { AdvancedFormState } from "./policy/constants";
 import type { EventPrefill } from "./policy/eventPrefill";
-import { consumePrefillEvent } from "./policy/eventPrefill";
+import { consumePrefillEvent, consumeURLPrefill } from "./policy/eventPrefill";
 import { conditionsSummary, exclusionTypeLabel, exclusionTypeBadgeVariant } from "./policy/exclusionHelpers";
 import { QuickActionsForm, AdvancedBuilderForm } from "./policy/PolicyForms";
 import { RuleForm } from "./ratelimits/RuleForm";
@@ -131,12 +131,14 @@ export default function PolicyEngine() {
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Event prefill — consumed once on mount from sessionStorage.
+  // Event prefill — consumed once on mount from sessionStorage or URL params.
   // Must use useEffect (not useState initializer) to avoid SSR hydration mismatch.
   const [eventPrefill, setEventPrefill] = useState<EventPrefill | null>(null);
   const [cameFromEvents, setCameFromEvents] = useState(false);
   useEffect(() => {
-    const prefill = consumePrefillEvent();
+    // Try sessionStorage-based prefill first (from Events page), then URL params
+    // (from Challenge Analytics quick-actions: Endpoint Discovery, Reputation).
+    const prefill = consumePrefillEvent() || consumeURLPrefill();
     if (prefill) {
       setEventPrefill(prefill);
       setCameFromEvents(true);

@@ -3,7 +3,7 @@ import type { WAFEvent, Condition, ConditionOperator, SkipTargets } from "@/lib/
 // ─── Event Prefill ──────────────────────────────────────────────────
 
 export interface EventPrefill {
-  action: "allow" | "block" | "skip" | "detect";
+  action: "allow" | "block" | "challenge" | "skip" | "detect";
   name: string;
   description: string;
   ruleIds: string;        // Space-separated rule IDs
@@ -152,4 +152,74 @@ export function consumePrefillEvent(): EventPrefill | null {
   } catch {
     return null;
   }
+}
+
+const validURLActions = new Set(["allow", "block", "challenge", "skip", "detect"]);
+
+/** Read and consume prefill from URL params (action, prefill_path, prefill_service, prefill_ja4).
+ *  Used by Challenge Analytics quick-action links (Endpoint Discovery, Reputation). */
+export function consumeURLPrefill(): EventPrefill | null {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get("action");
+  if (!action || !validURLActions.has(action)) return null;
+
+  const path = params.get("prefill_path") || "";
+  const service = params.get("prefill_service") || "";
+  const ja4 = params.get("prefill_ja4") || "";
+
+  // Must have at least one condition to be useful
+  if (!path && !service && !ja4) return null;
+
+  // Build conditions from available params
+  const conditions: Condition[] = [];
+  if (path) {
+    // Use begins_with for paths that look like prefixes, eq for exact
+    const op: ConditionOperator = path.endsWith("/") || path.includes("{id}") ? "begins_with" : "eq";
+    conditions.push({ field: "path", operator: op, value: path });
+  }
+  if (service) {
+    conditions.push({ field: "host", operator: "eq", value: service });
+  }
+  if (ja4) {
+    conditions.push({ field: "ja4", operator: "eq", value: ja4 });
+  }
+
+  // Auto-generate name
+  const actionLabel = action === "allow" ? "Allow" : action === "block" ? "Block"
+    : action === "challenge" ? "Challenge" : action === "skip" ? "Skip" : "Detect";
+  const nameParts = [actionLabel];
+  if (path) nameParts.push(path);
+  if (service) nameParts.push(`on ${service}`);
+  if (ja4) nameParts.push(`JA4 ${ja4.substring(0, 20)}`);
+  const name = nameParts.join(" ");
+
+  // Clean up URL params without reload
+  const url = new URL(window.location.href);
+  url.searchParams.delete("action");
+  url.searchParams.delete("prefill_path");
+  url.searchParams.delete("prefill_service");
+  url.searchParams.delete("prefill_ja4");
+  window.history.replaceState({}, "", url.pathname + url.search);
+
+  return {
+    action: action as EventPrefill["action"],
+    name,
+    description: `Created from ${actionLabel === "Challenge" ? "Endpoint Discovery" : "Reputation"} quick action`,
+    ruleIds: "",
+    ruleIdList: [],
+    conditions,
+    sourceEvent: {
+      id: "",
+      timestamp: new Date().toISOString(),
+      event_type: "logged",
+      client_ip: "",
+      method: "",
+      uri: path,
+      service: service,
+      status: 0,
+      blocked: false,
+    } as WAFEvent,
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { extractPrefillFromEvent, consumePrefillEvent, type EventPrefill } from "./eventPrefill";
+import { extractPrefillFromEvent, consumePrefillEvent, consumeURLPrefill, type EventPrefill } from "./eventPrefill";
 import type { WAFEvent } from "@/lib/api";
 
 // ─── extractPrefillFromEvent ────────────────────────────────────────
@@ -374,5 +374,111 @@ describe("consumePrefillEvent", () => {
     mockLocation.href = "http://localhost/policy?from_event=1";
 
     expect(consumePrefillEvent()).toBeNull();
+  });
+});
+
+// ─── consumeURLPrefill ──────────────────────────────────────────────
+
+describe("consumeURLPrefill", () => {
+  let mockLocation: { search: string; href: string; pathname: string };
+  let replaceStateCalls: any[];
+
+  beforeEach(() => {
+    mockLocation = {
+      search: "",
+      href: "http://localhost/policy",
+      pathname: "/policy",
+    };
+    replaceStateCalls = [];
+
+    vi.stubGlobal("window", {
+      location: mockLocation,
+      history: {
+        replaceState: (...args: any[]) => replaceStateCalls.push(args),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns null when no action param", () => {
+    mockLocation.search = "";
+    expect(consumeURLPrefill()).toBeNull();
+  });
+
+  it("returns null for invalid action", () => {
+    mockLocation.search = "?action=invalid&prefill_path=/test";
+    mockLocation.href = "http://localhost/policy?action=invalid&prefill_path=/test";
+    expect(consumeURLPrefill()).toBeNull();
+  });
+
+  it("returns null when action present but no conditions", () => {
+    mockLocation.search = "?action=block";
+    mockLocation.href = "http://localhost/policy?action=block";
+    expect(consumeURLPrefill()).toBeNull();
+  });
+
+  it("returns prefill for challenge action with path and service", () => {
+    mockLocation.search = "?action=challenge&prefill_path=%2Fapi%2Fv3%2Fcommand&prefill_service=sonarr.erfi.io";
+    mockLocation.href = "http://localhost/policy?action=challenge&prefill_path=%2Fapi%2Fv3%2Fcommand&prefill_service=sonarr.erfi.io";
+
+    const result = consumeURLPrefill();
+    expect(result).not.toBeNull();
+    expect(result!.action).toBe("challenge");
+    expect(result!.conditions).toHaveLength(2);
+    expect(result!.conditions[0]).toEqual({ field: "path", operator: "eq", value: "/api/v3/command" });
+    expect(result!.conditions[1]).toEqual({ field: "host", operator: "eq", value: "sonarr.erfi.io" });
+    expect(result!.name).toContain("Challenge");
+    expect(result!.name).toContain("/api/v3/command");
+  });
+
+  it("returns prefill for block action with ja4", () => {
+    mockLocation.search = "?action=block&prefill_ja4=t13d1516h2_8daaf6152771_d8a2da3f94cd";
+    mockLocation.href = "http://localhost/policy?action=block&prefill_ja4=t13d1516h2_8daaf6152771_d8a2da3f94cd";
+
+    const result = consumeURLPrefill();
+    expect(result).not.toBeNull();
+    expect(result!.action).toBe("block");
+    expect(result!.conditions).toHaveLength(1);
+    expect(result!.conditions[0].field).toBe("ja4");
+    expect(result!.conditions[0].operator).toBe("eq");
+    expect(result!.conditions[0].value).toBe("t13d1516h2_8daaf6152771_d8a2da3f94cd");
+  });
+
+  it("uses begins_with for paths ending in /", () => {
+    mockLocation.search = "?action=challenge&prefill_path=%2Fapi%2Fv3%2F";
+    mockLocation.href = "http://localhost/policy?action=challenge&prefill_path=%2Fapi%2Fv3%2F";
+
+    const result = consumeURLPrefill();
+    expect(result).not.toBeNull();
+    expect(result!.conditions[0].operator).toBe("begins_with");
+  });
+
+  it("uses begins_with for paths containing {id}", () => {
+    mockLocation.search = "?action=challenge&prefill_path=%2FMediaCover%2F%7Bid%7D%2Fposter-250.jpg";
+    mockLocation.href = "http://localhost/policy?action=challenge&prefill_path=%2FMediaCover%2F%7Bid%7D%2Fposter-250.jpg";
+
+    const result = consumeURLPrefill();
+    expect(result).not.toBeNull();
+    expect(result!.conditions[0].operator).toBe("begins_with");
+  });
+
+  it("cleans URL params after consumption", () => {
+    mockLocation.search = "?action=block&prefill_path=%2Ftest&prefill_service=test.io";
+    mockLocation.href = "http://localhost/policy?action=block&prefill_path=%2Ftest&prefill_service=test.io";
+
+    consumeURLPrefill();
+    expect(replaceStateCalls.length).toBe(1);
+  });
+
+  it("creates a synthetic sourceEvent with empty id", () => {
+    mockLocation.search = "?action=challenge&prefill_path=%2Ftest";
+    mockLocation.href = "http://localhost/policy?action=challenge&prefill_path=%2Ftest";
+
+    const result = consumeURLPrefill();
+    expect(result).not.toBeNull();
+    expect(result!.sourceEvent.id).toBe("");
   });
 });

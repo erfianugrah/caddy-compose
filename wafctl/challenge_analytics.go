@@ -44,6 +44,9 @@ type ChallengeStatsResponse struct {
 
 	// Top JA4 fingerprints seen in challenge events (max 15).
 	TopJA4s []ChallengeJA4 `json:"top_ja4s"`
+
+	// Fail reason breakdown — count of each fail reason for challenge_failed events.
+	FailReasons map[string]int `json:"fail_reasons,omitempty"`
 }
 
 // ScoreBucket is a bot score histogram bucket.
@@ -114,6 +117,7 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 	}
 
 	hourMap := make(map[string]*ChallengeHour)
+	failReasons := make(map[string]int)
 
 	// Global solve time + difficulty accumulators.
 	var solveTimeSum, difficultySum int
@@ -174,6 +178,11 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 			resp.Passed++
 		case "challenge_failed":
 			resp.Failed++
+			if e.ChallengeFailReason != "" {
+				failReasons[e.ChallengeFailReason]++
+			} else {
+				failReasons["unknown"]++
+			}
 		case "challenge_bypassed":
 			resp.Bypassed++
 		}
@@ -294,6 +303,9 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 	}
 
 	resp.ScoreBuckets = buckets
+	if len(failReasons) > 0 {
+		resp.FailReasons = failReasons
+	}
 
 	// Sort timeline by hour.
 	timeline := make([]ChallengeHour, 0, len(hourMap))
