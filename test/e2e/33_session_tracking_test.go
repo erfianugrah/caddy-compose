@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -98,6 +99,24 @@ func TestChallengeInterstitialContainsSWRegistration(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, "session-sw.js") {
 		t.Error("interstitial missing session-sw.js registration")
+	}
+}
+
+func TestSessionStatsEndpoint(t *testing.T) {
+	// The /api/sessions/stats endpoint should return valid JSON with expected structure.
+	resp, body := httpGet(t, wafctlURL+"/api/sessions/stats")
+	assertCode(t, "session stats", 200, resp)
+
+	var stats struct {
+		ActiveSessions     int `json:"active_sessions"`
+		SuspiciousSessions int `json:"suspicious_sessions"`
+		TotalNavigations   int `json:"total_navigations"`
+	}
+	if err := json.Unmarshal(body, &stats); err != nil {
+		t.Fatalf("unmarshal session stats: %v", err)
+	}
+	if stats.ActiveSessions < 0 {
+		t.Errorf("active_sessions = %d, want >= 0", stats.ActiveSessions)
 	}
 }
 

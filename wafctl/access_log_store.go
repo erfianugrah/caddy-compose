@@ -47,6 +47,8 @@ type AccessLogEntry struct {
 	ChallengePreScore    string              `json:"policy_challenge_pre_score,omitempty"`   // log_append: pre-signal score (L1/L2/L5)
 	ChallengeFailReason  string              `json:"policy_challenge_fail_reason,omitempty"` // log_append: why challenge failed (bot_score, timing_hard, ja4_mismatch, etc.)
 	ChallengeSignals     string              `json:"policy_challenge_signals,omitempty"`     // log_append: JSON signal breakdown from 5-layer bot scoring
+	SessionBeacon        string              `json:"policy_session_beacon,omitempty"`        // log_append: session beacon JSON from service worker/page collector
+	SessionJTI           string              `json:"policy_session_jti,omitempty"`           // log_append: challenge cookie JTI for session correlation
 	DDoSAction           string              `json:"ddos_action,omitempty"`                  // log_append: ddos mitigator action (pass/blocked/jailed)
 	DDoSFingerprint      string              `json:"ddos_fingerprint,omitempty"`             // log_append: FNV-64a request fingerprint
 	DDoSZScore           string              `json:"ddos_z_score,omitempty"`                 // log_append: z-score at time of evaluation
@@ -284,6 +286,9 @@ type AccessLogStore struct {
 	// exclusionStore is an optional reference for enriching policy engine events with tags.
 	exclusionStore *ExclusionStore
 
+	// sessionStore is an optional reference for ingesting session beacon data.
+	sessionStore *SessionStore
+
 	// generation increments on every Load() that adds/evicts events.
 	generation atomic.Int64
 
@@ -351,6 +356,13 @@ func (s *AccessLogStore) SetExclusionStore(es *ExclusionStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.exclusionStore = es
+}
+
+// SetSessionStore configures the session store for ingesting session beacon data.
+func (s *AccessLogStore) SetSessionStore(ss *SessionStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessionStore = ss
 }
 
 // SetEventFile configures a JSONL file for persistent rate limit event storage.
@@ -737,6 +749,19 @@ func (s *AccessLogStore) Load() {
 					entry.PolicyAction == "challenge_passed" ||
 					entry.PolicyAction == "challenge_failed" ||
 					entry.PolicyAction == "challenge_bypassed"
+
+				// Session beacon: forward to session store, don't create a security event.
+				if entry.PolicyAction == "session_beacon" && entry.SessionBeacon != "" && s.sessionStore != nil {
+					var beacons []SessionBeaconEntry
+					if json.Unmarshal([]byte(entry.SessionBeacon), &beacons) == nil {
+						jti := filterNone(entry.SessionJTI)
+						ip := entry.Request.ClientIP
+						ja4 := filterNone(entry.PolicyJA4)
+						service := entry.Request.Host
+						s.sessionStore.IngestBeacon(jti, ip, ja4, service, beacons)
+					}
+					continue // session beacons are not security events
+				}
 				isLogged := !isPolicy && !isRateLimit && !isSkip && !isDDoSBlock && !isChallenge &&
 					entry.PolicyScore != "" && entry.PolicyScore != "0" &&
 					(entry.PolicyDetectRules != "" || entry.PolicyDetectMatches != "")
