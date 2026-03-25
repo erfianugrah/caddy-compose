@@ -169,6 +169,8 @@
 	log_append policy_challenge_pre_score {http.vars.policy_engine.challenge_pre_score}
 	log_append policy_challenge_fail_reason {http.vars.policy_engine.challenge_fail_reason}
 	log_append policy_challenge_signals {http.vars.policy_engine.challenge_signals}
+	log_append policy_session_beacon {http.vars.policy_engine.session_beacon}
+	log_append policy_session_jti {http.vars.policy_engine.session_jti}
 	log_append policy_tags {http.vars.policy_engine.tags}
 	log_append policy_score {http.vars.policy_engine.anomaly_score}
 	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
