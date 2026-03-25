@@ -11,7 +11,7 @@ import (
 
 func TestNewSessionStoreEmpty(t *testing.T) {
 	dir := t.TempDir()
-	s := NewSessionStore(filepath.Join(dir, "sessions.json"))
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), filepath.Join(dir, "session-config.json"))
 	stats := s.GetStats()
 	if stats.ActiveSessions != 0 {
 		t.Errorf("expected 0 active sessions, got %d", stats.ActiveSessions)
@@ -20,7 +20,7 @@ func TestNewSessionStoreEmpty(t *testing.T) {
 
 func TestSessionStoreIngestAndScore(t *testing.T) {
 	dir := t.TempDir()
-	s := NewSessionStore(filepath.Join(dir, "sessions.json"))
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), filepath.Join(dir, "session-config.json"))
 
 	// Simulate a single-page scraper: one beacon, one page, then nothing.
 	beacons := []SessionBeaconEntry{
@@ -47,7 +47,7 @@ func TestSessionScoreSinglePage(t *testing.T) {
 			{Timestamp: time.Now(), Path: "/products/123", Type: "navigate"},
 		},
 	}
-	score, flags := scoreSession(entry)
+	score, flags := scoreSessionWithConfig(entry, defaultSessionScoringConfig())
 	if score < 0.3 {
 		t.Errorf("single-page session score = %.2f, want >= 0.3", score)
 	}
@@ -83,7 +83,7 @@ func TestSessionScoreOrganicBrowsing(t *testing.T) {
 			{Path: "/checkout", Type: "pm", VisibleMs: 28000, ScrollPct: 70, Clicks: 4, Typed: true, DwellMs: 30000},
 		},
 	}
-	score, flags := scoreSession(entry)
+	score, flags := scoreSessionWithConfig(entry, defaultSessionScoringConfig())
 	if score > 0.3 {
 		t.Errorf("organic browsing score = %.2f, want <= 0.3 (flags: %v)", score, flags)
 	}
@@ -113,7 +113,7 @@ func TestSessionScoreUniformDwell(t *testing.T) {
 			{Timestamp: now.Add(-10 * time.Second), Path: "/p/5", DwellMs: 10000, Type: "navigate"},
 		},
 	}
-	score, flags := scoreSession(entry)
+	score, flags := scoreSessionWithConfig(entry, defaultSessionScoringConfig())
 	if score < 0.2 {
 		t.Errorf("uniform dwell score = %.2f, want >= 0.2", score)
 	}
@@ -142,7 +142,7 @@ func TestSessionScoreNoInteraction(t *testing.T) {
 			{Path: "/page2", Type: "pm", VisibleMs: 4800, ScrollPct: 0, Clicks: 0, DwellMs: 5000},
 		},
 	}
-	score, flags := scoreSession(entry)
+	score, flags := scoreSessionWithConfig(entry, defaultSessionScoringConfig())
 	if score < 0.2 {
 		t.Errorf("no-interaction score = %.2f, want >= 0.2 (flags: %v)", score, flags)
 	}
@@ -179,7 +179,7 @@ func TestSessionStorePersistence(t *testing.T) {
 	path := filepath.Join(dir, "sessions.json")
 
 	// Create store, ingest data, force save.
-	s := NewSessionStore(path)
+	s := NewSessionStore(path, filepath.Join(filepath.Dir(path), "session-config.json"))
 	s.IngestBeacon("jti-persist", "5.6.7.8", "", "test.com", []SessionBeaconEntry{
 		{Timestamp: time.Now().UnixMilli(), Path: "/saved", Type: "navigate"},
 	})
@@ -196,7 +196,7 @@ func TestSessionStorePersistence(t *testing.T) {
 	}
 
 	// Create new store from the same file — should load the session.
-	s2 := NewSessionStore(path)
+	s2 := NewSessionStore(path, filepath.Join(filepath.Dir(path), "session-config.json"))
 	stats := s2.GetStats()
 	if stats.ActiveSessions != 1 {
 		t.Errorf("after reload: expected 1 session, got %d", stats.ActiveSessions)
@@ -205,7 +205,7 @@ func TestSessionStorePersistence(t *testing.T) {
 
 func TestSessionStoreEviction(t *testing.T) {
 	dir := t.TempDir()
-	s := NewSessionStore(filepath.Join(dir, "sessions.json"))
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), filepath.Join(dir, "session-config.json"))
 
 	// Ingest more than max sessions — old ones should be evicted.
 	// We use a small count here to keep the test fast.
@@ -224,7 +224,7 @@ func TestSessionStoreEviction(t *testing.T) {
 
 func TestGetSuspiciousJTIs(t *testing.T) {
 	dir := t.TempDir()
-	s := NewSessionStore(filepath.Join(dir, "sessions.json"))
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), filepath.Join(dir, "session-config.json"))
 
 	// Ingest a suspicious single-page session.
 	s.IngestBeacon("jti-sus", "1.2.3.4", "", "test.com", []SessionBeaconEntry{
@@ -234,7 +234,7 @@ func TestGetSuspiciousJTIs(t *testing.T) {
 	s.mu.Lock()
 	if e, ok := s.sessions["jti-sus"]; ok {
 		e.FirstSeen = time.Now().Add(-20 * time.Second)
-		e.Score, e.Flags = scoreSession(e)
+		e.Score, e.Flags = scoreSessionWithConfig(e, defaultSessionScoringConfig())
 	}
 	s.mu.Unlock()
 
@@ -276,5 +276,107 @@ func TestGetSuspiciousJTIs(t *testing.T) {
 	}
 	if foundNormal {
 		t.Error("jti-normal should NOT be in suspicious list")
+	}
+}
+
+func TestSessionConfigPersistence(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "session-config.json")
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), cfgPath)
+
+	// Default config should have denylist disabled.
+	cfg := s.GetConfig()
+	if cfg.DenylistEnabled {
+		t.Error("default denylist_enabled should be false")
+	}
+	if cfg.DenylistThreshold != 0.6 {
+		t.Errorf("default threshold = %.2f, want 0.6", cfg.DenylistThreshold)
+	}
+
+	// Update config.
+	cfg.DenylistEnabled = true
+	cfg.DenylistThreshold = 0.8
+	cfg.WeightSinglePage = 0.5
+	updated, err := s.UpdateConfig(cfg)
+	if err != nil {
+		t.Fatalf("UpdateConfig failed: %v", err)
+	}
+	if !updated.DenylistEnabled {
+		t.Error("updated config should have denylist enabled")
+	}
+	if updated.DenylistThreshold != 0.8 {
+		t.Errorf("updated threshold = %.2f, want 0.8", updated.DenylistThreshold)
+	}
+
+	// Reload from disk — should persist.
+	s2 := NewSessionStore(filepath.Join(dir, "sessions2.json"), cfgPath)
+	cfg2 := s2.GetConfig()
+	if !cfg2.DenylistEnabled {
+		t.Error("reloaded config should have denylist enabled")
+	}
+	if cfg2.DenylistThreshold != 0.8 {
+		t.Errorf("reloaded threshold = %.2f, want 0.8", cfg2.DenylistThreshold)
+	}
+	if cfg2.WeightSinglePage != 0.5 {
+		t.Errorf("reloaded weight_single_page = %.2f, want 0.5", cfg2.WeightSinglePage)
+	}
+}
+
+func TestSessionConfigValidation(t *testing.T) {
+	dir := t.TempDir()
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), filepath.Join(dir, "session-config.json"))
+
+	// Threshold out of range should fail.
+	cfg := s.GetConfig()
+	cfg.DenylistThreshold = 1.5
+	_, err := s.UpdateConfig(cfg)
+	if err == nil {
+		t.Error("threshold > 1 should be rejected")
+	}
+
+	cfg.DenylistThreshold = -0.1
+	_, err = s.UpdateConfig(cfg)
+	if err == nil {
+		t.Error("threshold < 0 should be rejected")
+	}
+}
+
+func TestSessionConfigRescoresOnUpdate(t *testing.T) {
+	dir := t.TempDir()
+	s := NewSessionStore(filepath.Join(dir, "sessions.json"), filepath.Join(dir, "session-config.json"))
+
+	// Ingest a single-page session.
+	s.IngestBeacon("jti-rescore", "1.2.3.4", "", "test.com", []SessionBeaconEntry{
+		{Timestamp: time.Now().Add(-20 * time.Second).UnixMilli(), Path: "/scrape", Type: "navigate"},
+	})
+	s.mu.Lock()
+	if e, ok := s.sessions["jti-rescore"]; ok {
+		e.FirstSeen = time.Now().Add(-20 * time.Second)
+		e.Score, e.Flags = s.scoreSessionLocked(e)
+	}
+	s.mu.Unlock()
+
+	// Score with default weights (single_page = 0.4).
+	stats1 := s.GetStats()
+	if stats1.ActiveSessions != 1 {
+		t.Fatalf("expected 1 session, got %d", stats1.ActiveSessions)
+	}
+
+	// Now update config to zero out single_page weight.
+	cfg := s.GetConfig()
+	cfg.WeightSinglePage = 0
+	_, err := s.UpdateConfig(cfg)
+	if err != nil {
+		t.Fatalf("UpdateConfig failed: %v", err)
+	}
+
+	// Session should have been re-scored with new weights.
+	s.mu.RLock()
+	entry := s.sessions["jti-rescore"]
+	newScore := entry.Score
+	s.mu.RUnlock()
+
+	if newScore >= 0.3 {
+		t.Errorf("after zeroing single_page weight, score = %.2f, want < 0.3", newScore)
 	}
 }

@@ -120,6 +120,52 @@ func TestSessionStatsEndpoint(t *testing.T) {
 	}
 }
 
+func TestSessionConfigEndpoint(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
+		resp, body := httpGet(t, wafctlURL+"/api/sessions/config")
+		assertCode(t, "get config", 200, resp)
+
+		var cfg struct {
+			DenylistEnabled   bool    `json:"denylist_enabled"`
+			DenylistThreshold float64 `json:"denylist_threshold"`
+			WeightSinglePage  float64 `json:"weight_single_page"`
+		}
+		if err := json.Unmarshal(body, &cfg); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		// Default: denylist disabled.
+		if cfg.DenylistEnabled {
+			t.Error("default denylist_enabled should be false")
+		}
+		if cfg.DenylistThreshold < 0 || cfg.DenylistThreshold > 1 {
+			t.Errorf("threshold = %.2f, want [0, 1]", cfg.DenylistThreshold)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		// Read current config, modify, PUT back.
+		_, body := httpGet(t, wafctlURL+"/api/sessions/config")
+		var cfg map[string]any
+		json.Unmarshal(body, &cfg)
+		cfg["denylist_threshold"] = 0.75
+		resp, body := httpPut(t, wafctlURL+"/api/sessions/config", cfg)
+		assertCode(t, "update config", 200, resp)
+
+		// Verify the updated value.
+		var updated struct {
+			DenylistThreshold float64 `json:"denylist_threshold"`
+		}
+		json.Unmarshal(body, &updated)
+		if updated.DenylistThreshold != 0.75 {
+			t.Errorf("updated threshold = %.2f, want 0.75", updated.DenylistThreshold)
+		}
+
+		// Restore default.
+		cfg["denylist_threshold"] = 0.6
+		httpPut(t, wafctlURL+"/api/sessions/config", cfg)
+	})
+}
+
 func TestChallengeFailReasonPopulated(t *testing.T) {
 	// Submit an invalid PoW to the verify endpoint — the fail_reason
 	// should be populated (not empty/unknown). We use httpPostRaw

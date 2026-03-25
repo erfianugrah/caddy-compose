@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -76,6 +77,45 @@ type SessionSummary struct {
 	LastSeen   time.Time `json:"last_seen"`
 }
 
+// SessionScoringConfig holds tunable parameters for session behavioral scoring.
+// Persisted to JSON, editable via /api/sessions/config.
+type SessionScoringConfig struct {
+	// DenylistEnabled controls whether suspicious JTIs are written to the
+	// denylist file for the plugin to read. When false, scoring still runs
+	// (visible in the dashboard) but no cookies are invalidated.
+	DenylistEnabled bool `json:"denylist_enabled"`
+
+	// DenylistThreshold is the minimum session score (0-1) to include a JTI
+	// in the denylist. Default 0.6.
+	DenylistThreshold float64 `json:"denylist_threshold"`
+
+	// Weights for each behavioral indicator. Each value is added to the
+	// session score when the indicator triggers.
+	WeightSinglePage   float64 `json:"weight_single_page"`    // default 0.4
+	WeightShortSession float64 `json:"weight_short_session"`  // default 0.2
+	WeightUniformDwell float64 `json:"weight_uniform_dwell"`  // default 0.3
+	WeightNoScroll     float64 `json:"weight_no_scroll"`      // default 0.15
+	WeightNoInteract   float64 `json:"weight_no_interaction"` // default 0.15
+	WeightLowVisible   float64 `json:"weight_low_visible"`    // default 0.2
+
+	// OrganicBonus is subtracted when organic browsing is detected (negative weight).
+	OrganicBonus float64 `json:"organic_bonus"` // default -0.3
+}
+
+func defaultSessionScoringConfig() SessionScoringConfig {
+	return SessionScoringConfig{
+		DenylistEnabled:    false, // observe-only by default — enable after calibration
+		DenylistThreshold:  0.6,
+		WeightSinglePage:   0.4,
+		WeightShortSession: 0.2,
+		WeightUniformDwell: 0.3,
+		WeightNoScroll:     0.15,
+		WeightNoInteract:   0.15,
+		WeightLowVisible:   0.2,
+		OrganicBonus:       -0.3,
+	}
+}
+
 const (
 	maxActiveSessions     = 10000
 	sessionDefaultTTL     = time.Hour
@@ -87,18 +127,86 @@ type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*SessionEntry // keyed by JTI
 	filePath string
+	config   SessionScoringConfig
+	cfgPath  string // path to scoring config JSON
 	lastSave time.Time
 }
 
 // NewSessionStore creates a session store, loading any persisted state.
-func NewSessionStore(filePath string) *SessionStore {
+func NewSessionStore(filePath, cfgPath string) *SessionStore {
 	s := &SessionStore{
 		sessions: make(map[string]*SessionEntry),
 		filePath: filePath,
+		config:   defaultSessionScoringConfig(),
+		cfgPath:  cfgPath,
 		lastSave: time.Now(),
 	}
+	s.loadConfig()
 	s.load()
 	return s
+}
+
+func (s *SessionStore) loadConfig() {
+	if s.cfgPath == "" {
+		return
+	}
+	data, err := os.ReadFile(s.cfgPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("[session] error reading config %s: %v", s.cfgPath, err)
+		}
+		return
+	}
+	var cfg SessionScoringConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Printf("[session] error parsing config %s: %v", s.cfgPath, err)
+		return
+	}
+	s.config = cfg
+	log.Printf("[session] loaded scoring config: denylist_enabled=%v threshold=%.2f",
+		cfg.DenylistEnabled, cfg.DenylistThreshold)
+}
+
+func (s *SessionStore) saveConfig() error {
+	if s.cfgPath == "" {
+		return nil
+	}
+	data, err := json.MarshalIndent(s.config, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(s.cfgPath, data, 0644)
+}
+
+// GetConfig returns the current scoring configuration.
+func (s *SessionStore) GetConfig() SessionScoringConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config
+}
+
+// UpdateConfig validates and applies a new scoring configuration.
+func (s *SessionStore) UpdateConfig(cfg SessionScoringConfig) (SessionScoringConfig, error) {
+	// Validate.
+	if cfg.DenylistThreshold < 0 || cfg.DenylistThreshold > 1 {
+		return SessionScoringConfig{}, fmt.Errorf("denylist_threshold must be 0-1")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old := s.config
+	s.config = cfg
+	if err := s.saveConfig(); err != nil {
+		s.config = old // rollback
+		return SessionScoringConfig{}, err
+	}
+
+	// Re-score all active sessions with new weights.
+	for _, entry := range s.sessions {
+		entry.Score, entry.Flags = s.scoreSessionLocked(entry)
+	}
+
+	return cfg, nil
 }
 
 func (s *SessionStore) load() {
@@ -193,8 +301,8 @@ func (s *SessionStore) IngestBeacon(jti, ip, ja4, service string, beacons []Sess
 	}
 	entry.LastSeen = time.Now()
 
-	// Re-score after ingesting new data.
-	entry.Score, entry.Flags = scoreSession(entry)
+	// Re-score after ingesting new data (write lock already held).
+	entry.Score, entry.Flags = s.scoreSessionLocked(entry)
 
 	// Evict expired sessions + enforce max size.
 	s.evictLocked()
@@ -329,11 +437,48 @@ func handleSessionStats(store *SessionStore) http.HandlerFunc {
 	}
 }
 
+// handleGetSessionConfig returns the current scoring configuration.
+func handleGetSessionConfig(store *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, store.GetConfig())
+	}
+}
+
+// handleUpdateSessionConfig validates and applies a new scoring configuration.
+func handleUpdateSessionConfig(store *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var cfg SessionScoringConfig
+		if _, failed := decodeJSON(w, r, &cfg); failed {
+			return
+		}
+		updated, err := store.UpdateConfig(cfg)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
+	}
+}
+
 // ─── Session Scoring ────────────────────────────────────────────────
 
-// scoreSession computes a suspicion score (0-1) from session behavioral features.
-// Rule-based scoring — no ML dependency, matches project's zero-external-deps philosophy.
-func scoreSession(s *SessionEntry) (float64, []string) {
+// scoreSession computes a suspicion score using the store's current config weights.
+// Acquires read lock to access config.
+func (st *SessionStore) scoreSession(s *SessionEntry) (float64, []string) {
+	st.mu.RLock()
+	cfg := st.config
+	st.mu.RUnlock()
+	return scoreSessionWithConfig(s, cfg)
+}
+
+// scoreSessionLocked computes a suspicion score. Caller must hold at least RLock.
+func (st *SessionStore) scoreSessionLocked(s *SessionEntry) (float64, []string) {
+	return scoreSessionWithConfig(s, st.config)
+}
+
+// scoreSessionWithConfig computes a suspicion score (0-1) from session behavioral
+// features using the provided weights. Rule-based scoring — no ML dependency.
+func scoreSessionWithConfig(s *SessionEntry, cfg SessionScoringConfig) (float64, []string) {
 	score := 0.0
 	var flags []string
 
@@ -345,54 +490,50 @@ func scoreSession(s *SessionEntry) (float64, []string) {
 	elapsed := s.LastSeen.Sub(s.FirstSeen)
 
 	// ── Single-page session after challenge ──────────────────────
-	// A real user browses multiple pages. A scraper lands, extracts, leaves.
 	if navCount <= 1 && elapsed > 10*time.Second {
-		score += 0.4
+		score += cfg.WeightSinglePage
 		flags = append(flags, "single_page")
 	}
 
 	// ── Very short session with few pages ────────────────────────
 	if elapsed < 30*time.Second && navCount <= 3 && navCount > 1 {
-		score += 0.2
+		score += cfg.WeightShortSession
 		flags = append(flags, "short_session")
 	}
 
 	// ── Uniform dwell time (CV < 0.2) ───────────────────────────
-	// Real users vary how long they stay on each page. Bots are metronomic.
 	if navCount >= 3 {
 		cv := dwellCV(s)
 		if cv >= 0 && cv < 0.2 {
-			score += 0.3
+			score += cfg.WeightUniformDwell
 			flags = append(flags, "uniform_dwell")
 		}
 	}
 
 	// ── No scroll engagement ────────────────────────────────────
 	if navCount >= 2 && meanScrollPct(s) < 10 {
-		score += 0.15
+		score += cfg.WeightNoScroll
 		flags = append(flags, "no_scroll")
 	}
 
 	// ── No interaction (clicks/typing) ──────────────────────────
 	if navCount >= 2 && interactionRate(s) < 0.05 {
-		score += 0.15
+		score += cfg.WeightNoInteract
 		flags = append(flags, "no_interaction")
 	}
 
 	// ── Low visible ratio ───────────────────────────────────────
-	// Tab hidden most of the time — bot running in background.
 	if navCount >= 2 {
 		vr := meanVisibleRatio(s)
 		if vr >= 0 && vr < 0.3 {
-			score += 0.2
+			score += cfg.WeightLowVisible
 			flags = append(flags, "low_visible")
 		}
 	}
 
 	// ── Positive: real browsing behavior ─────────────────────────
-	// Multi-page, varied dwell, interactive → reduce suspicion.
 	if navCount >= 5 && dwellCV(s) > 0.5 && interactionRate(s) > 0.3 {
-		score -= 0.3
+		score += cfg.OrganicBonus // negative value reduces score
 		flags = append(flags, "organic_browsing")
 	}
 

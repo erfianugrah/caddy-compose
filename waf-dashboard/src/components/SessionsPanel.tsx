@@ -27,7 +27,17 @@ import {
   MousePointerClick,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchSessionStats, type SessionStats, type SessionSummary } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  fetchSessionStats,
+  fetchSessionConfig,
+  updateSessionConfig,
+  type SessionStats,
+  type SessionSummary,
+  type SessionScoringConfig,
+} from "@/lib/api";
 
 // ─── Theme tokens (matches other panels) ────────────────────────────
 const T = {
@@ -94,13 +104,18 @@ const flagLabels: Record<string, string> = {
 
 export default function SessionsPanel() {
   const [stats, setStats] = useState<SessionStats | null>(null);
+  const [config, setConfig] = useState<SessionScoringConfig | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const s = await fetchSessionStats();
+      const [s, c] = await Promise.all([fetchSessionStats(), fetchSessionConfig()]);
       setStats(s);
+      setConfig(c);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -126,9 +141,21 @@ export default function SessionsPanel() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {config?.denylist_enabled && (
+            <Badge className="bg-lv-red/15 text-lv-red border-lv-red/30 text-[10px]">
+              Denylist Active
+            </Badge>
+          )}
           <Badge variant="outline" className={cn(T.badgeMono, "text-muted-foreground")}>
             30s poll
           </Badge>
+          <Button
+            variant={showSettings ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowSettings(!showSettings)}
+          >
+            Settings
+          </Button>
           <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -145,6 +172,124 @@ export default function SessionsPanel() {
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {/* ── Success alert ──────────────────────────────────── */}
+      {success && (
+        <Alert>
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* ── Settings panel ──────────────────────────────────── */}
+      {showSettings && config && (
+        <Card>
+          <CardHeader>
+            <CardTitle className={T.cardTitle}>Scoring Configuration</CardTitle>
+            <CardDescription>
+              Adjust behavioral scoring weights and denylist settings. Changes take effect immediately
+              and re-score all active sessions.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="denylist-toggle" className="text-sm font-medium">
+                  Denylist Enabled
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, suspicious JTIs are written to the denylist file and
+                  the plugin rejects those cookies, forcing re-challenge.
+                </p>
+              </div>
+              <Switch
+                id="denylist-toggle"
+                checked={config.denylist_enabled}
+                onCheckedChange={(checked) => setConfig({ ...config, denylist_enabled: checked })}
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label className="text-xs">Denylist Threshold</Label>
+                <Input
+                  type="number"
+                  min={0} max={1} step={0.05}
+                  value={config.denylist_threshold}
+                  onChange={(e) => setConfig({ ...config, denylist_threshold: parseFloat(e.target.value) || 0 })}
+                  className="mt-1 h-8 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Score at which JTIs get denied (0-1)</p>
+              </div>
+              <div>
+                <Label className="text-xs">Organic Bonus</Label>
+                <Input
+                  type="number"
+                  min={-1} max={0} step={0.05}
+                  value={config.organic_bonus}
+                  onChange={(e) => setConfig({ ...config, organic_bonus: parseFloat(e.target.value) || 0 })}
+                  className="mt-1 h-8 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Subtracted for organic browsing (negative)</p>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium mb-2 block">Indicator Weights</Label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  ["weight_single_page", "Single Page"],
+                  ["weight_short_session", "Short Session"],
+                  ["weight_uniform_dwell", "Uniform Dwell"],
+                  ["weight_no_scroll", "No Scroll"],
+                  ["weight_no_interaction", "No Interaction"],
+                  ["weight_low_visible", "Low Visibility"],
+                ] as [keyof SessionScoringConfig, string][]).map(([key, label]) => (
+                  <div key={key}>
+                    <Label className="text-[10px] text-muted-foreground">{label}</Label>
+                    <Input
+                      type="number"
+                      min={0} max={1} step={0.05}
+                      value={config[key] as number}
+                      onChange={(e) => setConfig({ ...config, [key]: parseFloat(e.target.value) || 0 })}
+                      className="mt-0.5 h-7 text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { refresh(); setShowSettings(false); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  setSuccess(null);
+                  try {
+                    const updated = await updateSessionConfig(config);
+                    setConfig(updated);
+                    setSuccess("Configuration saved. All sessions re-scored.");
+                    setTimeout(() => setSuccess(null), 3000);
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* ── Stat cards ──────────────────────────────────────── */}

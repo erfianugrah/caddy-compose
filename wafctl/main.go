@@ -36,6 +36,7 @@ func runServe() int {
 	secHeadersFile := envOr("WAF_SECURITY_HEADERS_FILE", "/data/security-headers.json")
 	corsFile := envOr("WAF_CORS_FILE", "/data/cors.json")
 	sessionFile := envOr("WAF_SESSION_FILE", "/data/session.json")
+	sessionCfgFile := envOr("WAF_SESSION_CONFIG_FILE", "/data/session-config.json")
 	managedListsFile := envOr("WAF_MANAGED_LISTS_FILE", "/data/lists.json")
 	managedListsDir := envOr("WAF_MANAGED_LISTS_DIR", "/data/lists")
 
@@ -145,7 +146,7 @@ func runServe() int {
 	// Config stores load instantly (small JSON files).
 	exclusionStore := NewExclusionStore(exclusionsFile)
 	accessLogStore.SetExclusionStore(exclusionStore)
-	sessionStore := NewSessionStore(sessionFile)
+	sessionStore := NewSessionStore(sessionFile, sessionCfgFile)
 	accessLogStore.SetSessionStore(sessionStore)
 	configStore := NewConfigStore(configFile)
 	cspStore := NewCSPStore(cspFile)
@@ -268,7 +269,11 @@ func runServe() int {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := sessionStore.WriteDenylist(denylistFile, 0.6); err != nil {
+				cfg := sessionStore.GetConfig()
+				if !cfg.DenylistEnabled {
+					continue
+				}
+				if err := sessionStore.WriteDenylist(denylistFile, cfg.DenylistThreshold); err != nil {
 					log.Printf("[session] denylist write error: %v", err)
 				}
 			}
@@ -406,6 +411,8 @@ func runServe() int {
 
 	// Session Tracking
 	mux.HandleFunc("GET /api/sessions/stats", handleSessionStats(sessionStore))
+	mux.HandleFunc("GET /api/sessions/config", handleGetSessionConfig(sessionStore))
+	mux.HandleFunc("PUT /api/sessions/config", handleUpdateSessionConfig(sessionStore))
 
 	// Endpoint Discovery
 	mux.HandleFunc("GET /api/discovery/endpoints", handleEndpointDiscovery(generalLogStore, exclusionStore))
