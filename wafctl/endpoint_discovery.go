@@ -286,6 +286,97 @@ func isNonBrowser(ja4, ua string) bool {
 	return isNonBrowserUA(ua)
 }
 
+// apiPathPrefixes are URL path prefixes that strongly indicate API endpoints.
+var apiPathPrefixes = []string{
+	"/api/", "/graphql", "/v1/", "/v2/", "/v3/", "/v4/",
+	"/.well-known/", "/oauth/", "/auth/", "/token",
+	"/webhook", "/rpc/", "/jsonrpc",
+}
+
+// apiPathSuffixes are URL suffixes that indicate non-browser resources.
+var apiPathSuffixes = []string{
+	".json", ".xml", ".yaml", ".yml", ".csv", ".rss", ".atom",
+}
+
+// isAPIPath checks if a normalized path looks like an API endpoint.
+func isAPIPath(path string) bool {
+	lower := strings.ToLower(path)
+	for _, prefix := range apiPathPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	for _, suffix := range apiPathSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// classifyEndpointNonBrowser computes a non-browser score for an endpoint
+// using multiple signals. Returns a value in [0.0, 1.0].
+//
+// Signals:
+//   - Per-request JA4/UA classification (existing isNonBrowser)
+//   - Path heuristics (paths that look like API endpoints)
+//   - Behavioral: low UA diversity relative to request count indicates automation
+//   - Method: DELETE/PUT/PATCH are almost never browser-initiated
+func classifyEndpointNonBrowser(path, method string, requests, nonBrowserCount, uniqueUAs int) float64 {
+	if requests == 0 {
+		return 0
+	}
+
+	// Start with the per-request classification ratio.
+	perRequestPct := float64(nonBrowserCount) / float64(requests)
+
+	// Path heuristic: API-looking paths get a boost.
+	pathBoost := 0.0
+	if isAPIPath(path) {
+		pathBoost = 0.6
+	}
+
+	// Method heuristic: non-GET/HEAD/OPTIONS methods from browsers are rare.
+	methodBoost := 0.0
+	switch method {
+	case "DELETE", "PUT", "PATCH":
+		methodBoost = 0.7
+	case "POST":
+		// POST is ambiguous — browsers do POST for forms.
+		// Only boost if path also looks like API.
+		if isAPIPath(path) {
+			methodBoost = 0.4
+		}
+	}
+
+	// Behavioral: low UA diversity relative to request count.
+	// Browsers hitting an endpoint 30+ times would show varied UAs (updates, different sessions).
+	// A single UA making 30 requests is clearly a bot/API client.
+	behaviorBoost := 0.0
+	if requests >= 10 && uniqueUAs <= 1 {
+		behaviorBoost = 0.5
+	} else if requests >= 20 && uniqueUAs <= 2 {
+		behaviorBoost = 0.3
+	}
+
+	// Combine signals — take the maximum of (per-request, heuristic composite).
+	heuristicScore := pathBoost
+	if methodBoost > heuristicScore {
+		heuristicScore = methodBoost
+	}
+	// Behavioral evidence strengthens the heuristic but doesn't override clean per-request data.
+	heuristicScore = heuristicScore + behaviorBoost*0.5
+	if heuristicScore > 1.0 {
+		heuristicScore = 1.0
+	}
+
+	// Use the higher of per-request classification and heuristic score.
+	if perRequestPct > heuristicScore {
+		return perRequestPct
+	}
+	return heuristicScore
+}
+
 // ─── Rule coverage check ────────────────────────────────────────────
 
 type ruleCoverage struct {
@@ -455,10 +546,10 @@ func (s *GeneralLogStore) DiscoverEndpoints(hours int, filterService string, rul
 			}
 		}
 
-		nonBrowserPct := 0.0
-		if agg.requests > 0 {
-			nonBrowserPct = float64(agg.nonBrowser) / float64(agg.requests)
-		}
+		nonBrowserPct := classifyEndpointNonBrowser(
+			key.path, key.method,
+			agg.requests, agg.nonBrowser, len(agg.uas),
+		)
 
 		hasCh := rc.isChallenged(key.path)
 		hasRL := rc.isRateLimited(key.path)
