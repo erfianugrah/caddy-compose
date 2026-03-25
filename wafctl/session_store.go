@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -100,19 +101,38 @@ type SessionScoringConfig struct {
 
 	// OrganicBonus is subtracted when organic browsing is detected (negative weight).
 	OrganicBonus float64 `json:"organic_bonus"` // default -0.3
+
+	// AlertIPThreshold triggers an alert when an IP has this many suspicious sessions.
+	// 0 = alerts disabled.
+	AlertIPThreshold int `json:"alert_ip_threshold"` // default 0 (disabled)
+
+	// AutoEscalateEnabled auto-creates temporary block rules when an IP exceeds
+	// the escalation threshold of suspicious sessions.
+	AutoEscalateEnabled bool `json:"auto_escalate_enabled"` // default false
+
+	// AutoEscalateThreshold is the number of suspicious sessions from one IP
+	// that triggers auto-escalation.
+	AutoEscalateThreshold int `json:"auto_escalate_threshold"` // default 5
+
+	// AutoEscalateTTL is the duration of auto-created block rules (e.g., "1h", "24h").
+	AutoEscalateTTL string `json:"auto_escalate_ttl"` // default "1h"
 }
 
 func defaultSessionScoringConfig() SessionScoringConfig {
 	return SessionScoringConfig{
-		DenylistEnabled:    false, // observe-only by default — enable after calibration
-		DenylistThreshold:  0.6,
-		WeightSinglePage:   0.4,
-		WeightShortSession: 0.2,
-		WeightUniformDwell: 0.3,
-		WeightNoScroll:     0.15,
-		WeightNoInteract:   0.15,
-		WeightLowVisible:   0.2,
-		OrganicBonus:       -0.3,
+		DenylistEnabled:       false, // observe-only by default — enable after calibration
+		DenylistThreshold:     0.6,
+		WeightSinglePage:      0.4,
+		WeightShortSession:    0.2,
+		WeightUniformDwell:    0.3,
+		WeightNoScroll:        0.15,
+		WeightNoInteract:      0.15,
+		WeightLowVisible:      0.2,
+		OrganicBonus:          -0.3,
+		AlertIPThreshold:      0, // disabled by default
+		AutoEscalateEnabled:   false,
+		AutoEscalateThreshold: 5,
+		AutoEscalateTTL:       "1h",
 	}
 }
 
@@ -347,11 +367,12 @@ func (s *SessionStore) GetStats() SessionStats {
 		ActiveSessions: len(s.sessions),
 	}
 
+	threshold := s.config.DenylistThreshold
 	suspicious := make([]SessionSummary, 0)
 	for _, e := range s.sessions {
 		totalNavs := len(e.Navigations)
 		stats.TotalNavigations += totalNavs
-		if e.Score >= 0.6 {
+		if e.Score >= threshold {
 			stats.SuspiciousSessions++
 		}
 		// Collect top suspicious for the API response.
@@ -400,6 +421,215 @@ func (s *SessionStore) GetSuspiciousJTIs(threshold float64) []string {
 	return jtis
 }
 
+// ─── Session List API ───────────────────────────────────────────────
+
+// SessionListResponse is the paginated session list returned by the API.
+type SessionListResponse struct {
+	Sessions []SessionDetail `json:"sessions"`
+	Total    int             `json:"total"`
+	Offset   int             `json:"offset"`
+	Limit    int             `json:"limit"`
+}
+
+// SessionDetail is a full session view with navigation timeline.
+type SessionDetail struct {
+	JTI         string       `json:"jti"`
+	IP          string       `json:"ip"`
+	JA4         string       `json:"ja4,omitempty"`
+	Service     string       `json:"service"`
+	FirstSeen   time.Time    `json:"first_seen"`
+	LastSeen    time.Time    `json:"last_seen"`
+	Score       float64      `json:"score"`
+	Flags       []string     `json:"flags,omitempty"`
+	PageCount   int          `json:"page_count"`
+	DurationMs  int64        `json:"duration_ms"`
+	Navigations []Navigation `json:"navigations"`
+}
+
+// ListSessions returns a paginated, filterable list of sessions.
+func (s *SessionStore) ListSessions(offset, limit int, filterIP, filterService string, minScore float64) SessionListResponse {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect matching sessions.
+	var all []SessionDetail
+	for _, e := range s.sessions {
+		if filterIP != "" && e.IP != filterIP {
+			continue
+		}
+		if filterService != "" && e.Service != filterService {
+			continue
+		}
+		if e.Score < minScore {
+			continue
+		}
+		all = append(all, SessionDetail{
+			JTI:         e.JTI,
+			IP:          e.IP,
+			JA4:         e.JA4,
+			Service:     e.Service,
+			FirstSeen:   e.FirstSeen,
+			LastSeen:    e.LastSeen,
+			Score:       e.Score,
+			Flags:       e.Flags,
+			PageCount:   len(e.Navigations),
+			DurationMs:  e.LastSeen.Sub(e.FirstSeen).Milliseconds(),
+			Navigations: e.Navigations,
+		})
+	}
+
+	// Sort by score descending.
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Score > all[j].Score
+	})
+
+	total := len(all)
+	if offset >= total {
+		return SessionListResponse{Sessions: []SessionDetail{}, Total: total, Offset: offset, Limit: limit}
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return SessionListResponse{Sessions: all[offset:end], Total: total, Offset: offset, Limit: limit}
+}
+
+// GetSession returns a single session by JTI.
+func (s *SessionStore) GetSession(jti string) *SessionDetail {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	e, ok := s.sessions[jti]
+	if !ok {
+		return nil
+	}
+	return &SessionDetail{
+		JTI:         e.JTI,
+		IP:          e.IP,
+		JA4:         e.JA4,
+		Service:     e.Service,
+		FirstSeen:   e.FirstSeen,
+		LastSeen:    e.LastSeen,
+		Score:       e.Score,
+		Flags:       e.Flags,
+		PageCount:   len(e.Navigations),
+		DurationMs:  e.LastSeen.Sub(e.FirstSeen).Milliseconds(),
+		Navigations: e.Navigations,
+	}
+}
+
+// ─── Reputation Integration ─────────────────────────────────────────
+
+// SuspiciousIPSummary aggregates suspicious session data per IP for
+// reputation system integration.
+type SuspiciousIPSummary struct {
+	IP                 string   `json:"ip"`
+	SuspiciousSessions int      `json:"suspicious_sessions"`
+	UniqueJA4s         int      `json:"unique_ja4s"`
+	UniqueServices     int      `json:"unique_services"`
+	MaxScore           float64  `json:"max_score"`
+	JTIs               []string `json:"jtis"`
+}
+
+// GetSuspiciousIPs returns IPs with N+ suspicious sessions for reputation flagging.
+func (s *SessionStore) GetSuspiciousIPs(minSessions int) []SuspiciousIPSummary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	threshold := s.config.DenylistThreshold
+
+	type ipAgg struct {
+		sessions int
+		ja4s     map[string]bool
+		services map[string]bool
+		maxScore float64
+		jtis     []string
+	}
+	agg := make(map[string]*ipAgg)
+
+	for _, e := range s.sessions {
+		if e.Score < threshold {
+			continue
+		}
+		a, ok := agg[e.IP]
+		if !ok {
+			a = &ipAgg{ja4s: make(map[string]bool), services: make(map[string]bool)}
+			agg[e.IP] = a
+		}
+		a.sessions++
+		if e.JA4 != "" {
+			a.ja4s[e.JA4] = true
+		}
+		a.services[e.Service] = true
+		if e.Score > a.maxScore {
+			a.maxScore = e.Score
+		}
+		a.jtis = append(a.jtis, e.JTI)
+	}
+
+	var result []SuspiciousIPSummary
+	for ip, a := range agg {
+		if a.sessions >= minSessions {
+			result = append(result, SuspiciousIPSummary{
+				IP:                 ip,
+				SuspiciousSessions: a.sessions,
+				UniqueJA4s:         len(a.ja4s),
+				UniqueServices:     len(a.services),
+				MaxScore:           a.maxScore,
+				JTIs:               a.jtis,
+			})
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].SuspiciousSessions > result[j].SuspiciousSessions
+	})
+	return result
+}
+
+// ─── Alert Rules ────────────────────────────────────────────────────
+
+// SessionAlert is generated when alert thresholds are exceeded.
+type SessionAlert struct {
+	Type      string    `json:"type"` // "ip_threshold", "rate_threshold"
+	IP        string    `json:"ip,omitempty"`
+	Service   string    `json:"service,omitempty"`
+	Count     int       `json:"count"`
+	Threshold int       `json:"threshold"`
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// CheckAlerts evaluates alert conditions against current sessions.
+// Returns any triggered alerts. Called periodically by the alert goroutine.
+func (s *SessionStore) CheckAlerts() []SessionAlert {
+	s.mu.RLock()
+	cfg := s.config
+	s.mu.RUnlock()
+
+	if cfg.AlertIPThreshold <= 0 {
+		return nil
+	}
+
+	suspiciousIPs := s.GetSuspiciousIPs(1) // get all with at least 1 suspicious session
+	var alerts []SessionAlert
+
+	for _, ip := range suspiciousIPs {
+		if ip.SuspiciousSessions >= cfg.AlertIPThreshold {
+			alerts = append(alerts, SessionAlert{
+				Type:      "ip_threshold",
+				IP:        ip.IP,
+				Count:     ip.SuspiciousSessions,
+				Threshold: cfg.AlertIPThreshold,
+				Message:   fmt.Sprintf("IP %s has %d suspicious sessions (threshold: %d)", ip.IP, ip.SuspiciousSessions, cfg.AlertIPThreshold),
+				Timestamp: time.Now(),
+			})
+		}
+	}
+
+	return alerts
+}
+
 // ─── JTI Denylist Writer ─────────────────────────────────────────────
 
 // jtiDenylistFile is the JSON structure read by the plugin.
@@ -437,6 +667,63 @@ func handleSessionStats(store *SessionStore) http.HandlerFunc {
 	}
 }
 
+// handleSessionList returns a paginated, filterable list of sessions.
+func handleSessionList(store *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		offset := 0
+		limit := 50
+		if v := q.Get("offset"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+		if v := q.Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+				limit = n
+			}
+		}
+		minScore := 0.0
+		if v := q.Get("min_score"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				minScore = f
+			}
+		}
+		filterIP := q.Get("ip")
+		filterService := q.Get("service")
+
+		writeJSON(w, http.StatusOK, store.ListSessions(offset, limit, filterIP, filterService, minScore))
+	}
+}
+
+// handleSessionDetail returns a single session by JTI.
+func handleSessionDetail(store *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jti := r.PathValue("jti")
+		if jti == "" {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "missing jti"})
+			return
+		}
+		detail := store.GetSession(jti)
+		if detail == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "session not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+	}
+}
+
+// handleSessionAlerts returns current triggered alerts.
+func handleSessionAlerts(store *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		alerts := store.CheckAlerts()
+		if alerts == nil {
+			alerts = []SessionAlert{}
+		}
+		writeJSON(w, http.StatusOK, alerts)
+	}
+}
+
 // handleGetSessionConfig returns the current scoring configuration.
 func handleGetSessionConfig(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
@@ -458,6 +745,30 @@ func handleUpdateSessionConfig(store *SessionStore) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, updated)
 	}
+}
+
+// ─── Auto-Escalation ────────────────────────────────────────────────
+
+// AutoEscalateResult records an auto-escalation action.
+type AutoEscalateResult struct {
+	IP      string `json:"ip"`
+	RuleID  string `json:"rule_id,omitempty"`
+	Message string `json:"message"`
+}
+
+// CheckAutoEscalation evaluates whether any IPs should be auto-blocked.
+// Returns IPs that exceed the threshold. The caller (main.go goroutine)
+// is responsible for creating the actual block rules via the ExclusionStore.
+func (s *SessionStore) CheckAutoEscalation() []SuspiciousIPSummary {
+	s.mu.RLock()
+	cfg := s.config
+	s.mu.RUnlock()
+
+	if !cfg.AutoEscalateEnabled || cfg.AutoEscalateThreshold <= 0 {
+		return nil
+	}
+
+	return s.GetSuspiciousIPs(cfg.AutoEscalateThreshold)
 }
 
 // ─── Session Scoring ────────────────────────────────────────────────

@@ -34,9 +34,11 @@ import {
   fetchSessionStats,
   fetchSessionConfig,
   updateSessionConfig,
+  fetchSessionDetail,
   type SessionStats,
   type SessionSummary,
   type SessionScoringConfig,
+  type SessionDetail,
 } from "@/lib/api";
 
 // ─── Theme tokens (matches other panels) ────────────────────────────
@@ -100,11 +102,138 @@ const flagLabels: Record<string, string> = {
   organic_browsing: "Organic",
 };
 
+// ─── Session Detail Row ─────────────────────────────────────────────
+
+function SessionRow({
+  session: s,
+  expanded,
+  onToggle,
+}: {
+  session: SessionSummary;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    if (expanded && !detail) {
+      setLoadingDetail(true);
+      fetchSessionDetail(s.jti)
+        .then(setDetail)
+        .catch(() => {})
+        .finally(() => setLoadingDetail(false));
+    }
+  }, [expanded, detail, s.jti]);
+
+  return (
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={onToggle}
+      >
+        <TableCell className={T.tableCellMono}>
+          {s.jti.substring(0, 12)}...
+        </TableCell>
+        <TableCell className={T.tableCellMono}>{s.ip}</TableCell>
+        <TableCell className="text-xs">{s.service}</TableCell>
+        <TableCell className={cn(T.tableCellNumeric, scoreColor(s.score))}>
+          {(s.score * 100).toFixed(0)}%
+        </TableCell>
+        <TableCell className={T.tableCellNumeric}>{s.page_count}</TableCell>
+        <TableCell className={T.tableCellNumeric}>
+          {formatDuration(s.duration_ms)}
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-wrap gap-1">
+            {s.flags?.map((flag) => (
+              <Badge
+                key={flag}
+                variant={scoreBadgeVariant(s.score)}
+                className={cn("text-[9px] px-1.5 py-0", flagColors[flag] || "")}
+              >
+                {flagLabels[flag] || flag}
+              </Badge>
+            ))}
+          </div>
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {formatTime(s.last_seen)}
+        </TableCell>
+      </TableRow>
+      {expanded && (
+        <TableRow>
+          <TableCell colSpan={8} className="bg-muted/30 p-4">
+            {loadingDetail ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Loading session timeline...
+              </div>
+            ) : detail ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>JTI: <code className="text-foreground">{detail.jti}</code></span>
+                  {detail.ja4 && <span>JA4: <code className="text-foreground">{detail.ja4}</code></span>}
+                  <span>Duration: {formatDuration(detail.duration_ms)}</span>
+                </div>
+                <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Navigation Timeline ({detail.navigations.length} events)
+                </div>
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {detail.navigations.map((nav, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 text-xs py-1 border-l-2 pl-3"
+                      style={{
+                        borderColor: nav.type === "pm"
+                          ? "var(--lv-purple)"
+                          : "var(--lv-cyan)",
+                      }}
+                    >
+                      <span className="w-16 shrink-0 text-muted-foreground tabular-nums">
+                        {formatTime(nav.ts)}
+                      </span>
+                      <span className="font-mono text-foreground flex-1 truncate">
+                        {nav.path}
+                      </span>
+                      {nav.type === "pm" && (
+                        <div className="flex items-center gap-2 shrink-0 text-muted-foreground">
+                          {nav.scr != null && nav.scr > 0 && (
+                            <span title="Scroll depth">↕{nav.scr}%</span>
+                          )}
+                          {nav.clk != null && nav.clk > 0 && (
+                            <span title="Clicks">🖱{nav.clk}</span>
+                          )}
+                          {nav.key && <span title="Typed">⌨</span>}
+                          {nav.vis != null && nav.vis > 0 && (
+                            <span title="Visible time">{formatDuration(nav.vis)}</span>
+                          )}
+                        </div>
+                      )}
+                      {nav.type === "navigate" && nav.dwell_ms != null && nav.dwell_ms > 0 && (
+                        <span className="shrink-0 text-muted-foreground" title="Dwell time">
+                          {formatDuration(nav.dwell_ms)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Session not found</p>
+            )}
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────
 
 export default function SessionsPanel() {
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [config, setConfig] = useState<SessionScoringConfig | null>(null);
+  const [expandedJTI, setExpandedJTI] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -259,6 +388,62 @@ export default function SessionsPanel() {
               </div>
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-2 pt-2 border-t border-border">
+              <div>
+                <Label className="text-xs font-medium">Alert Threshold</Label>
+                <Input
+                  type="number"
+                  min={0} step={1}
+                  value={config.alert_ip_threshold}
+                  onChange={(e) => setConfig({ ...config, alert_ip_threshold: parseInt(e.target.value) || 0 })}
+                  className="mt-1 h-8 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Alert when IP has N+ suspicious sessions (0 = off)</p>
+              </div>
+              <div>
+                <Label className="text-xs font-medium">Auto-Escalation TTL</Label>
+                <Input
+                  type="text"
+                  value={config.auto_escalate_ttl}
+                  onChange={(e) => setConfig({ ...config, auto_escalate_ttl: e.target.value })}
+                  className="mt-1 h-8 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Duration of auto-created block rules (e.g., 1h, 24h)</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="escalate-toggle" className="text-sm font-medium">
+                  Auto-Escalation
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Auto-create temporary block rules when an IP has {config.auto_escalate_threshold}+ suspicious sessions.
+                </p>
+              </div>
+              <Switch
+                id="escalate-toggle"
+                checked={config.auto_escalate_enabled}
+                onCheckedChange={(checked) => setConfig({ ...config, auto_escalate_enabled: checked })}
+              />
+            </div>
+
+            {config.auto_escalate_enabled && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label className="text-xs">Escalation Threshold</Label>
+                  <Input
+                    type="number"
+                    min={1} step={1}
+                    value={config.auto_escalate_threshold}
+                    onChange={(e) => setConfig({ ...config, auto_escalate_threshold: parseInt(e.target.value) || 5 })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Suspicious sessions per IP before auto-block</p>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <Button
                 variant="outline"
@@ -405,39 +590,12 @@ export default function SessionsPanel() {
                   )}
 
                 {stats?.top_suspicious?.map((s: SessionSummary) => (
-                  <TableRow key={s.jti}>
-                    <TableCell className={T.tableCellMono}>
-                      {s.jti.substring(0, 12)}...
-                    </TableCell>
-                    <TableCell className={T.tableCellMono}>{s.ip}</TableCell>
-                    <TableCell className="text-xs">{s.service}</TableCell>
-                    <TableCell className={cn(T.tableCellNumeric, scoreColor(s.score))}>
-                      {(s.score * 100).toFixed(0)}%
-                    </TableCell>
-                    <TableCell className={T.tableCellNumeric}>{s.page_count}</TableCell>
-                    <TableCell className={T.tableCellNumeric}>
-                      {formatDuration(s.duration_ms)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {s.flags?.map((flag) => (
-                          <Badge
-                            key={flag}
-                            variant={scoreBadgeVariant(s.score)}
-                            className={cn(
-                              "text-[9px] px-1.5 py-0",
-                              flagColors[flag] || ""
-                            )}
-                          >
-                            {flagLabels[flag] || flag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatTime(s.last_seen)}
-                    </TableCell>
-                  </TableRow>
+                  <SessionRow
+                    key={s.jti}
+                    session={s}
+                    expanded={expandedJTI === s.jti}
+                    onToggle={() => setExpandedJTI(expandedJTI === s.jti ? null : s.jti)}
+                  />
                 ))}
               </TableBody>
             </Table>

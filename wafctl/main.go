@@ -280,6 +280,46 @@ func runServe() int {
 		}
 	}()
 
+	// Periodic auto-escalation check — creates temporary block rules for repeat offenders.
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		// Track already-escalated IPs to avoid duplicate rules per session.
+		escalated := make(map[string]time.Time)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				ips := sessionStore.CheckAutoEscalation()
+				for _, ip := range ips {
+					// Skip if already escalated within TTL.
+					if t, ok := escalated[ip.IP]; ok && time.Since(t) < time.Hour {
+						continue
+					}
+					cfg := sessionStore.GetConfig()
+					// Create a temporary block rule via the exclusion store.
+					rule := RuleExclusion{
+						Name:        "auto-session-block-" + ip.IP,
+						Type:        "block",
+						Enabled:     true,
+						Description: fmt.Sprintf("Auto-escalated: %d suspicious sessions (threshold: %d)", ip.SuspiciousSessions, cfg.AutoEscalateThreshold),
+						Conditions: []Condition{
+							{Field: "ip", Operator: "eq", Value: ip.IP},
+						},
+						Tags: []string{"auto-escalation", "session-tracking"},
+					}
+					if _, err := exclusionStore.Create(rule); err != nil {
+						log.Printf("[session] auto-escalation failed for %s: %v", ip.IP, err)
+					} else {
+						escalated[ip.IP] = time.Now()
+						log.Printf("[session] auto-escalated: blocked IP %s (%d suspicious sessions)", ip.IP, ip.SuspiciousSessions)
+					}
+				}
+			}
+		}
+	}()
+
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
 
@@ -411,6 +451,9 @@ func runServe() int {
 
 	// Session Tracking
 	mux.HandleFunc("GET /api/sessions/stats", handleSessionStats(sessionStore))
+	mux.HandleFunc("GET /api/sessions/list", handleSessionList(sessionStore))
+	mux.HandleFunc("GET /api/sessions/{jti}", handleSessionDetail(sessionStore))
+	mux.HandleFunc("GET /api/sessions/alerts", handleSessionAlerts(sessionStore))
 	mux.HandleFunc("GET /api/sessions/config", handleGetSessionConfig(sessionStore))
 	mux.HandleFunc("PUT /api/sessions/config", handleUpdateSessionConfig(sessionStore))
 

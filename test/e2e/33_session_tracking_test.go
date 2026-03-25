@@ -120,6 +120,56 @@ func TestSessionStatsEndpoint(t *testing.T) {
 	}
 }
 
+func TestSessionListEndpoint(t *testing.T) {
+	resp, body := httpGet(t, wafctlURL+"/api/sessions/list")
+	assertCode(t, "session list", 200, resp)
+
+	var list struct {
+		Sessions []json.RawMessage `json:"sessions"`
+		Total    int               `json:"total"`
+		Offset   int               `json:"offset"`
+		Limit    int               `json:"limit"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if list.Total < 0 {
+		t.Errorf("total = %d, want >= 0", list.Total)
+	}
+	if list.Limit <= 0 {
+		t.Errorf("limit = %d, want > 0", list.Limit)
+	}
+}
+
+func TestSessionListWithFilters(t *testing.T) {
+	t.Run("min_score", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/sessions/list?min_score=0.5")
+		assertCode(t, "with min_score", 200, resp)
+	})
+	t.Run("ip_filter", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/sessions/list?ip=1.2.3.4")
+		assertCode(t, "with ip filter", 200, resp)
+	})
+	t.Run("pagination", func(t *testing.T) {
+		resp, _ := httpGet(t, wafctlURL+"/api/sessions/list?offset=0&limit=10")
+		assertCode(t, "with pagination", 200, resp)
+	})
+}
+
+func TestSessionAlertsEndpoint(t *testing.T) {
+	resp, body := httpGet(t, wafctlURL+"/api/sessions/alerts")
+	assertCode(t, "session alerts", 200, resp)
+
+	var alerts []json.RawMessage
+	if err := json.Unmarshal(body, &alerts); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// Alerts should be an array (may be empty).
+	if alerts == nil {
+		t.Error("alerts should be an array, not null")
+	}
+}
+
 func TestSessionConfigEndpoint(t *testing.T) {
 	t.Run("get", func(t *testing.T) {
 		resp, body := httpGet(t, wafctlURL+"/api/sessions/config")

@@ -16,9 +16,9 @@ or extracts content, then leaves. From a single-request perspective, it looks hu
 signal is only visible **across the session** — real humans browse multiple pages, vary
 their dwell times, and don't follow a fixed arrival→extract→leave cycle.
 
-This is the gap Scott Pearson identified in the Cloudflare internal thread. Cloudflare's
-"Precursor" (2026Q2 roadmap, behind Access — not publicly documented) likely targets this
-with network-layer session analysis. We need to solve it at the application layer.
+This is a known gap in current WAF/bot-management stacks. Large CDN providers are
+beginning to address it with network-layer session analysis, but those solutions are
+not available at the application layer. We need to solve it ourselves.
 
 ## Prior Art & Research
 
