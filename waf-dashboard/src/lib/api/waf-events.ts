@@ -22,6 +22,7 @@ export interface SummaryData {
   challenge_issued: number;
   challenge_passed: number;
   challenge_failed: number;
+  challenge_bypassed: number;
   unique_clients: number;
   unique_services: number;
   tag_counts: TagCount[];
@@ -47,6 +48,7 @@ export interface TimelinePoint {
   challenge_issued: number;
   challenge_passed: number;
   challenge_failed: number;
+  challenge_bypassed: number;
 }
 
 export interface ServiceStat {
@@ -63,6 +65,7 @@ export interface ServiceStat {
   challenge_issued: number;
   challenge_passed: number;
   challenge_failed: number;
+  challenge_bypassed: number;
   block_rate: number;
 }
 
@@ -80,6 +83,7 @@ export interface ClientStat {
   challenge_issued: number;
   challenge_passed: number;
   challenge_failed: number;
+  challenge_bypassed: number;
 }
 
 export interface ServiceBreakdown {
@@ -96,6 +100,7 @@ export interface ServiceBreakdown {
   challenge_issued: number;
   challenge_passed: number;
   challenge_failed: number;
+  challenge_bypassed: number;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────
@@ -225,15 +230,16 @@ interface RawSummary {
   challenge_issued: number;
   challenge_passed: number;
   challenge_failed: number;
+  challenge_bypassed: number;
   unique_clients: number;
   unique_services: number;
   tag_counts?: { tag: string; count: number }[];
-  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
-  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
-  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
+  events_by_hour: { hour: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number; challenge_bypassed: number }[];
+  top_services: { service: string; count: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number; challenge_bypassed: number }[];
+  top_clients: { client: string; country?: string; count: number; total_blocked: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number; challenge_bypassed: number }[];
   top_countries: { country: string; count: number; total_blocked: number }[];
   top_uris: { uri: string; count: number }[];
-  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number }[];
+  service_breakdown: { service: string; total: number; total_blocked: number; logged: number; rate_limited: number; policy_block: number; detect_block: number; ddos_blocked: number; policy_allow: number; policy_skip: number; challenge_issued: number; challenge_passed: number; challenge_failed: number; challenge_bypassed: number }[];
   recent_events: RawEvent[];
 }
 
@@ -348,6 +354,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
     challenge_issued: raw.challenge_issued ?? 0,
     challenge_passed: raw.challenge_passed ?? 0,
     challenge_failed: raw.challenge_failed ?? 0,
+    challenge_bypassed: raw.challenge_bypassed ?? 0,
     unique_clients: raw.unique_clients ?? 0,
     unique_services: raw.unique_services ?? 0,
     tag_counts: (raw.tag_counts ?? []).map((tc) => ({ tag: tc.tag, count: tc.count ?? 0 })),
@@ -365,6 +372,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       challenge_issued: h.challenge_issued ?? 0,
       challenge_passed: h.challenge_passed ?? 0,
       challenge_failed: h.challenge_failed ?? 0,
+      challenge_bypassed: h.challenge_bypassed ?? 0,
     })),
     top_services: (raw.top_services ?? []).map((s) => ({
       service: s.service,
@@ -380,6 +388,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       challenge_issued: s.challenge_issued ?? 0,
       challenge_passed: s.challenge_passed ?? 0,
       challenge_failed: s.challenge_failed ?? 0,
+      challenge_bypassed: s.challenge_bypassed ?? 0,
       block_rate: s.count > 0 ? ((s.total_blocked ?? 0) / s.count) * 100 : 0,
     })),
     top_clients: (raw.top_clients ?? []).map((c) => ({
@@ -396,6 +405,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       challenge_issued: c.challenge_issued ?? 0,
       challenge_passed: c.challenge_passed ?? 0,
       challenge_failed: c.challenge_failed ?? 0,
+      challenge_bypassed: c.challenge_bypassed ?? 0,
     })),
     top_countries: (raw.top_countries ?? []).map((c) => ({
       country: c.country,
@@ -417,6 +427,7 @@ export async function fetchSummary(params?: FilterableParams, init?: RequestInit
       challenge_issued: s.challenge_issued ?? 0,
       challenge_passed: s.challenge_passed ?? 0,
       challenge_failed: s.challenge_failed ?? 0,
+      challenge_bypassed: s.challenge_bypassed ?? 0,
     })),
   };
 }

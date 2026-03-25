@@ -552,6 +552,113 @@ func TestInferChallengeFailReason_Difficulty15_MaxSafe(t *testing.T) {
 	}
 }
 
+func TestInferChallengeFailReason_SlowMode_NotFalseTiming(t *testing.T) {
+	// Slow mode timing fix: elapsed_ms=5000 at difficulty=2 with slow algorithm
+	// should NOT trigger timing_hard/timing_soft. Slow mode expected solve time
+	// is much longer than fast mode.
+	// Slow: iterations = 2^8/2 = 128, perCore = 128/16 = 8, minMs = 8*10*0.3 = 24ms
+	// 5000ms > 24ms → no timing violation.
+	rle := RateLimitEvent{
+		ChallengeElapsedMs:  5000,
+		ChallengeDifficulty: 2,
+		ChallengeAlgorithm:  "slow",
+		ChallengeBotScore:   0,
+	}
+	reason := inferChallengeFailReason(rle)
+	if reason == "timing_hard" || reason == "timing_soft" {
+		t.Errorf("slow mode reason = %q, should not be timing violation", reason)
+	}
+}
+
+func TestInferChallengeFailReason_SlowMode_TimingHard(t *testing.T) {
+	// Even in slow mode, an impossibly fast solve should still be detected.
+	// Slow d=4: iterations = 2^16/2 = 32768, perCore = 32768/16 = 2048
+	// minMs = 2048*10*0.3 = 6144ms. timing_hard threshold = 6144/3 = 2048ms.
+	rle := RateLimitEvent{
+		ChallengeElapsedMs:  1000, // 1s < 2048ms → timing_hard
+		ChallengeDifficulty: 4,
+		ChallengeAlgorithm:  "slow",
+	}
+	reason := inferChallengeFailReason(rle)
+	if reason != "timing_hard" {
+		t.Errorf("slow mode d=4 elapsed=1000 reason = %q, want timing_hard", reason)
+	}
+}
+
+func TestInferChallengeFailReason_FastMode_Unchanged(t *testing.T) {
+	// Verify fast mode timing is unchanged after the slow mode fix.
+	rle := RateLimitEvent{
+		ChallengeElapsedMs:  5,
+		ChallengeDifficulty: 4,
+		ChallengeAlgorithm:  "fast",
+	}
+	reason := inferChallengeFailReason(rle)
+	if reason != "timing_hard" {
+		t.Errorf("fast mode d=4 elapsed=5 reason = %q, want timing_hard", reason)
+	}
+}
+
+func TestInferChallengeFailReason_EmptyAlgorithm_DefaultsFast(t *testing.T) {
+	// Empty algorithm should use fast mode timing (backward compatible).
+	rle := RateLimitEvent{
+		ChallengeElapsedMs:  5,
+		ChallengeDifficulty: 4,
+		// ChallengeAlgorithm not set → defaults to fast
+	}
+	reason := inferChallengeFailReason(rle)
+	if reason != "timing_hard" {
+		t.Errorf("empty algo d=4 elapsed=5 reason = %q, want timing_hard", reason)
+	}
+}
+
+// ─── challenge_bypassed separate counter test ───────────────────────
+
+func TestChallengeStats_BypassedSeparateFromPassed(t *testing.T) {
+	// Verify challenge_bypassed is NOT folded into challenge_passed.
+	now := time.Now().UTC()
+	events := []RateLimitEvent{
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_passed", Service: "a"},
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_bypassed", Service: "a"},
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_bypassed", Service: "a"},
+	}
+	als := accessLogStoreWithRLEvents(t, events)
+	stats := als.ChallengeStats(24, "", "")
+
+	if stats.Passed != 1 {
+		t.Errorf("Passed = %d, want 1 (should not include bypassed)", stats.Passed)
+	}
+	if stats.Bypassed != 2 {
+		t.Errorf("Bypassed = %d, want 2", stats.Bypassed)
+	}
+}
+
+// ─── Split solve time test ──────────────────────────────────────────
+
+func TestChallengeStats_SplitSolveTimes(t *testing.T) {
+	now := time.Now().UTC()
+	events := []RateLimitEvent{
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_passed", Service: "a", ChallengeElapsedMs: 1000},
+		{Timestamp: now, ClientIP: "1.1.1.1", Source: "challenge_passed", Service: "a", ChallengeElapsedMs: 3000},
+		{Timestamp: now, ClientIP: "2.2.2.2", Source: "challenge_failed", Service: "a", ChallengeElapsedMs: 500, ChallengeFailReason: "bot_score", ChallengeBotScore: 80},
+		{Timestamp: now, ClientIP: "2.2.2.2", Source: "challenge_failed", Service: "a", ChallengeElapsedMs: 700, ChallengeFailReason: "bot_score", ChallengeBotScore: 85},
+	}
+	als := accessLogStoreWithRLEvents(t, events)
+	stats := als.ChallengeStats(24, "", "")
+
+	// AvgSolveMsPassed = (1000 + 3000) / 2 = 2000
+	if stats.AvgSolveMsPassed < 1999 || stats.AvgSolveMsPassed > 2001 {
+		t.Errorf("AvgSolveMsPassed = %.1f, want ~2000", stats.AvgSolveMsPassed)
+	}
+	// AvgSolveMsFailed = (500 + 700) / 2 = 600
+	if stats.AvgSolveMsFailed < 599 || stats.AvgSolveMsFailed > 601 {
+		t.Errorf("AvgSolveMsFailed = %.1f, want ~600", stats.AvgSolveMsFailed)
+	}
+	// AvgSolveMs = (1000 + 3000 + 500 + 700) / 4 = 1300
+	if stats.AvgSolveMs < 1299 || stats.AvgSolveMs > 1301 {
+		t.Errorf("AvgSolveMs = %.1f, want ~1300", stats.AvgSolveMs)
+	}
+}
+
 // ─── BindJA4 false survives JSON serialization ──────────────────────
 
 func TestGenerateChallengeRules_BindJA4False(t *testing.T) {

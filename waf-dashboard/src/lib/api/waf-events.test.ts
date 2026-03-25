@@ -78,6 +78,7 @@ describe("fetchSummary", () => {
       challenge_issued: 0,
       challenge_passed: 0,
       challenge_failed: 0,
+      challenge_bypassed: 0,
     });
 
     // Top services mapped (now includes blocked/logged)
@@ -115,6 +116,7 @@ describe("fetchSummary", () => {
       challenge_issued: 0,
       challenge_passed: 0,
       challenge_failed: 0,
+      challenge_bypassed: 0,
     });
 
     // recent_events mapped from Go events

@@ -11,6 +11,8 @@ export interface ChallengeStats {
   fail_rate: number;
   bypass_rate: number;
   avg_solve_ms: number;
+  avg_solve_ms_passed: number;
+  avg_solve_ms_failed: number;
   avg_difficulty: number;
   score_buckets: ScoreBucket[];
   timeline: ChallengeHour[];

@@ -28,8 +28,10 @@ type ChallengeStatsResponse struct {
 	BypassRate float64 `json:"bypass_rate"` // bypassed / (passed + bypassed)
 
 	// Solve metrics (from challenge_passed/failed events with data).
-	AvgSolveMs    float64 `json:"avg_solve_ms"`   // average elapsed_ms across solves
-	AvgDifficulty float64 `json:"avg_difficulty"` // average difficulty served
+	AvgSolveMs       float64 `json:"avg_solve_ms"`        // average elapsed_ms across all solves (passed + failed)
+	AvgSolveMsPassed float64 `json:"avg_solve_ms_passed"` // average elapsed_ms for passed challenges only
+	AvgSolveMsFailed float64 `json:"avg_solve_ms_failed"` // average elapsed_ms for failed challenges only
+	AvgDifficulty    float64 `json:"avg_difficulty"`      // average difficulty served
 
 	// Bot score distribution — counts per bucket.
 	ScoreBuckets []ScoreBucket `json:"score_buckets"`
@@ -213,6 +215,8 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 	// Global solve time + difficulty accumulators.
 	var solveTimeSum, difficultySum int
 	var solveTimeCount, difficultyCount int
+	var solveTimeSumPassed, solveTimeCountPassed int
+	var solveTimeSumFailed, solveTimeCountFailed int
 
 	type clientAgg struct {
 		country        string
@@ -345,6 +349,13 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 			ca.solveTimeCount++
 			solveTimeSum += e.ChallengeElapsedMs
 			solveTimeCount++
+			if src == "challenge_passed" {
+				solveTimeSumPassed += e.ChallengeElapsedMs
+				solveTimeCountPassed++
+			} else if src == "challenge_failed" {
+				solveTimeSumFailed += e.ChallengeElapsedMs
+				solveTimeCountFailed++
+			}
 		}
 		if e.ChallengeDifficulty > 0 {
 			difficultySum += e.ChallengeDifficulty
@@ -420,6 +431,12 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 	}
 	if solveTimeCount > 0 {
 		resp.AvgSolveMs = float64(solveTimeSum) / float64(solveTimeCount)
+	}
+	if solveTimeCountPassed > 0 {
+		resp.AvgSolveMsPassed = float64(solveTimeSumPassed) / float64(solveTimeCountPassed)
+	}
+	if solveTimeCountFailed > 0 {
+		resp.AvgSolveMsFailed = float64(solveTimeSumFailed) / float64(solveTimeCountFailed)
 	}
 	if difficultyCount > 0 {
 		resp.AvgDifficulty = float64(difficultySum) / float64(difficultyCount)

@@ -127,8 +127,16 @@ func inferChallengeFailReason(rle RateLimitEvent) string {
 	// We don't have cores in the log, so estimate conservatively with cores=16.
 	if rle.ChallengeElapsedMs > 0 && rle.ChallengeDifficulty > 0 && rle.ChallengeDifficulty <= 15 {
 		estimatedCores := 16
-		hashSpace := uint64(1) << (rle.ChallengeDifficulty * 4) // 2^(difficulty*4), safe for difficulty 1-15
-		minMs := float64(hashSpace) / float64(estimatedCores*50) * 0.3
+		var minMs float64
+		if rle.ChallengeAlgorithm == "slow" {
+			// Slow mode: 10ms delay per iteration. Expected iterations / cores.
+			iterations := float64(uint64(1)<<(rle.ChallengeDifficulty*4)) / 2.0
+			minMs = (iterations / float64(estimatedCores)) * 10.0 * 0.3
+		} else {
+			// Fast mode: ~2μs per SHA-256 hash via WebCrypto.
+			hashSpace := uint64(1) << (rle.ChallengeDifficulty * 4) // 2^(difficulty*4), safe for difficulty 1-15
+			minMs = float64(hashSpace) / float64(estimatedCores*50) * 0.3
+		}
 		if float64(rle.ChallengeElapsedMs) < minMs/3 {
 			return "timing_hard"
 		}

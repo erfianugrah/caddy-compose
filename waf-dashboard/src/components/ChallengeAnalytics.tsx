@@ -889,6 +889,12 @@ export default function ChallengeAnalytics() {
                   {stats.avg_solve_ms > 0 ? stats.avg_solve_ms >= 1000 ? `${(stats.avg_solve_ms / 1000).toFixed(1)}s` : `${Math.round(stats.avg_solve_ms)}ms` : "-"}
                 </p>
                 <p className="text-xs text-muted-foreground">Avg Solve Time</p>
+                {(stats.avg_solve_ms_passed > 0 || stats.avg_solve_ms_failed > 0) && (
+                  <div className="flex gap-2 justify-center text-[10px] mt-0.5">
+                    {stats.avg_solve_ms_passed > 0 && <span className="text-lv-green">{stats.avg_solve_ms_passed >= 1000 ? `${(stats.avg_solve_ms_passed / 1000).toFixed(1)}s` : `${Math.round(stats.avg_solve_ms_passed)}ms`} pass</span>}
+                    {stats.avg_solve_ms_failed > 0 && <span className="text-lv-red">{stats.avg_solve_ms_failed >= 1000 ? `${(stats.avg_solve_ms_failed / 1000).toFixed(1)}s` : `${Math.round(stats.avg_solve_ms_failed)}ms`} fail</span>}
+                  </div>
+                )}
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-foreground">
