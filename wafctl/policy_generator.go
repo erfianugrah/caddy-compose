@@ -114,6 +114,16 @@ type PolicyWafConfig struct {
 	OutboundThreshold  int                               `json:"outbound_threshold"`
 	DisabledCategories []string                          `json:"disabled_categories,omitempty"`
 	PerService         map[string]PolicyWafServiceConfig `json:"per_service,omitempty"`
+
+	// CRS extended settings — protocol enforcement limits.
+	AllowedMethods      string `json:"allowed_methods,omitempty"`
+	AllowedHTTPVersions string `json:"allowed_http_versions,omitempty"`
+	MaxNumArgs          int    `json:"max_num_args,omitempty"`
+	ArgNameLength       int    `json:"arg_name_length,omitempty"`
+	ArgLength           int    `json:"arg_length,omitempty"`
+	TotalArgLength      int    `json:"total_arg_length,omitempty"`
+	MaxFileSize         int    `json:"max_file_size,omitempty"`
+	CombinedFileSizes   int    `json:"combined_file_sizes,omitempty"`
 }
 
 // PolicyWafServiceConfig holds per-service WAF overrides.
@@ -122,6 +132,16 @@ type PolicyWafServiceConfig struct {
 	InboundThreshold   int      `json:"inbound_threshold,omitempty"`
 	OutboundThreshold  int      `json:"outbound_threshold,omitempty"`
 	DisabledCategories []string `json:"disabled_categories,omitempty"`
+
+	// Per-service CRS extended settings (override global defaults).
+	AllowedMethods      string `json:"allowed_methods,omitempty"`
+	AllowedHTTPVersions string `json:"allowed_http_versions,omitempty"`
+	MaxNumArgs          int    `json:"max_num_args,omitempty"`
+	ArgNameLength       int    `json:"arg_name_length,omitempty"`
+	ArgLength           int    `json:"arg_length,omitempty"`
+	TotalArgLength      int    `json:"total_arg_length,omitempty"`
+	MaxFileSize         int    `json:"max_file_size,omitempty"`
+	CombinedFileSizes   int    `json:"combined_file_sizes,omitempty"`
 }
 
 // PolicyCondition represents a single match condition for the plugin.
@@ -712,20 +732,36 @@ func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *Policy
 	cfg := cs.Get()
 
 	pwc := &PolicyWafConfig{
-		ParanoiaLevel:      cfg.Defaults.ParanoiaLevel,
-		InboundThreshold:   cfg.Defaults.InboundThreshold,
-		OutboundThreshold:  cfg.Defaults.OutboundThreshold,
-		DisabledCategories: cfg.Defaults.DisabledCategories,
+		ParanoiaLevel:       cfg.Defaults.ParanoiaLevel,
+		InboundThreshold:    cfg.Defaults.InboundThreshold,
+		OutboundThreshold:   cfg.Defaults.OutboundThreshold,
+		DisabledCategories:  cfg.Defaults.DisabledCategories,
+		AllowedMethods:      cfg.Defaults.AllowedMethods,
+		AllowedHTTPVersions: cfg.Defaults.AllowedHTTPVersions,
+		MaxNumArgs:          cfg.Defaults.MaxNumArgs,
+		ArgNameLength:       cfg.Defaults.ArgNameLength,
+		ArgLength:           cfg.Defaults.ArgLength,
+		TotalArgLength:      cfg.Defaults.TotalArgLength,
+		MaxFileSize:         cfg.Defaults.MaxFileSize,
+		CombinedFileSizes:   cfg.Defaults.CombinedFileSizes,
 	}
 
 	if len(cfg.Services) > 0 {
 		pwc.PerService = make(map[string]PolicyWafServiceConfig, len(cfg.Services))
 		for svc, ss := range cfg.Services {
 			psc := PolicyWafServiceConfig{
-				ParanoiaLevel:      ss.ParanoiaLevel,
-				InboundThreshold:   ss.InboundThreshold,
-				OutboundThreshold:  ss.OutboundThreshold,
-				DisabledCategories: ss.DisabledCategories,
+				ParanoiaLevel:       ss.ParanoiaLevel,
+				InboundThreshold:    ss.InboundThreshold,
+				OutboundThreshold:   ss.OutboundThreshold,
+				DisabledCategories:  ss.DisabledCategories,
+				AllowedMethods:      ss.AllowedMethods,
+				AllowedHTTPVersions: ss.AllowedHTTPVersions,
+				MaxNumArgs:          ss.MaxNumArgs,
+				ArgNameLength:       ss.ArgNameLength,
+				ArgLength:           ss.ArgLength,
+				TotalArgLength:      ss.TotalArgLength,
+				MaxFileSize:         ss.MaxFileSize,
+				CombinedFileSizes:   ss.CombinedFileSizes,
 			}
 			mapServiceBoth(pwc.PerService, svc, serviceMap, psc)
 		}
