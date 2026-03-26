@@ -25,6 +25,7 @@ var (
 	yamlDir    = envOr("CRS_YAML_DIR", "../../tools/coreruleset/tests/regression/tests")
 	baselineF  = envOr("CRS_BASELINE", "baseline.json")
 	updateBase = os.Getenv("CRS_UPDATE_BASELINE") == "1"
+	statusOnly = os.Getenv("CRS_STATUS_ONLY") == "1" // skip events API, pure status codes
 )
 
 func envOr(key, fallback string) string {
@@ -126,13 +127,14 @@ func saveBaseline(t *testing.T, path string, b baseline) {
 // ─── Stats ─────────────────────────────────────────────────────────
 
 type stats struct {
-	Total   int
-	Pass    int
-	Fail    int
-	Skip    int
-	NewFail int // failures not in baseline
-	NewPass int // passes that were baselined as fail
-	Skipped int // skipped due to encoded_request, multi-stage, etc.
+	Total     int
+	Pass      int
+	Fail      int
+	Skip      int
+	NewFail   int // failures not in baseline
+	NewPass   int // passes that were baselined as fail
+	Skipped   int // skipped due to encoded_request, multi-stage, etc.
+	CrossRule int // no_expect_ids blocked by OTHER rules (not the tested rule)
 }
 
 func (s *stats) report(t *testing.T) {
@@ -143,6 +145,7 @@ func (s *stats) report(t *testing.T) {
 	t.Logf("  Passing:       %d", s.Pass)
 	t.Logf("  Failing:       %d (baselined)", s.Fail)
 	t.Logf("  Skipped:       %d (unsupported format)", s.Skipped)
+	t.Logf("  Cross-rule:    %d (blocked by other rules, not the tested rule)", s.CrossRule)
 	t.Logf("  New failures:  %d (REGRESSION)", s.NewFail)
 	t.Logf("  New passes:    %d (improvement — update baseline)", s.NewPass)
 	t.Logf("")
@@ -372,11 +375,13 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 
 	// Determine what we expect
 	expectBlock := len(stage.Output.Log.ExpectIDs) > 0
-	// For no_expect_ids, we expect the request to NOT be blocked
 	expectAllow := len(stage.Output.Log.NoExpectIDs) > 0 && !expectBlock
 
+	// Add a test marker to the URI so we can identify this request in the events API
+	marker := fmt.Sprintf("_crs_test_%s_%d", ruleID, tc.TestID)
+
 	// Build and send request
-	status, err := sendTestRequest(stage.Input)
+	status, err := sendTestRequest(stage.Input, marker)
 	if err != nil {
 		st.Skipped++
 		newBL[key] = baselineEntry{Status: "skip", Note: "request error: " + err.Error()}
@@ -389,8 +394,45 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 		// expect_ids: request should be blocked (403)
 		passed = status == 403
 	} else if expectAllow {
-		// no_expect_ids: request should pass (200, 301, 302, etc. — not 403)
-		passed = status != 403
+		if status != 403 {
+			// Not blocked — pass
+			passed = true
+		} else {
+			// Blocked (403) on a no_expect_ids test. This could be:
+			// (a) The specific rule over-matched (true false positive — converter bug)
+			// (b) A DIFFERENT rule matched (cross-rule interference — not our bug)
+			//
+			// Only do the slow events API check for NEW failures (not baselined)
+			// and only when not in status-only mode.
+			entry, inBaseline := bl[key]
+			if inBaseline && entry.Status == "fail" {
+				// Known failure — skip the slow API check
+				passed = false
+			} else if statusOnly {
+				// Status-only mode — no events API check
+				passed = false
+			} else {
+				// New failure — check rule-level to distinguish converter bug from cross-rule
+				matchedIDs := queryMatchedRuleIDs(marker)
+				ruleFired := false
+				for _, noID := range stage.Output.Log.NoExpectIDs {
+					for _, mid := range matchedIDs {
+						if mid == noID {
+							ruleFired = true
+							break
+						}
+					}
+					if ruleFired {
+						break
+					}
+				}
+				if !ruleFired && len(matchedIDs) > 0 {
+					// Cross-rule interference: the specific rule did NOT fire.
+					passed = true
+					st.CrossRule++
+				}
+			}
+		}
 	} else {
 		st.Skipped++
 		newBL[key] = baselineEntry{Status: "skip", Note: "ambiguous expectations"}
@@ -404,7 +446,6 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 		// Check if this was a baselined failure that now passes
 		if entry, ok := bl[key]; ok && entry.Status == "fail" {
 			st.NewPass++
-			t.Logf("IMPROVEMENT: %s (was baselined fail, now passes)", key)
 		}
 	} else {
 		// Check baseline
@@ -421,16 +462,73 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 				t.Errorf("REGRESSION: %s — expected 403 (rule should detect), got status %d (%s)",
 					key, status, tc.Desc)
 			} else {
-				t.Errorf("REGRESSION: %s — expected pass (false positive), got status %d (%s)",
-					key, status, tc.Desc)
+				t.Errorf("REGRESSION: %s — rule %s over-matched (false positive), status %d (%s)",
+					key, ruleID, status, tc.Desc)
 			}
+		}
+	}
+}
+
+// ─── Events API: Rule-Level Match Checking ─────────────────────────
+
+// queryMatchedRuleIDs queries the wafctl events API for the most recent event
+// matching the test marker, and returns the IDs of all matched CRS rules.
+// Used for no_expect_ids tests to distinguish converter false positives from
+// cross-rule interference.
+func queryMatchedRuleIDs(marker string) []int {
+	// Brief delay for log ingestion (wafctl tails the access log every 2s)
+	time.Sleep(eventIngestionDelay)
+
+	reqURL := fmt.Sprintf("%s/api/events?limit=1&hours=1&uri=%s&uri_op=contains",
+		wafctlURL, url.QueryEscape(marker))
+
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil
+	}
+
+	var result struct {
+		Events []struct {
+			MatchedRules []struct {
+				ID int `json:"id"`
+			} `json:"matched_rules"`
+		} `json:"events"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+	if len(result.Events) == 0 {
+		return nil
+	}
+
+	var ids []int
+	for _, mr := range result.Events[0].MatchedRules {
+		ids = append(ids, mr.ID)
+	}
+	return ids
+}
+
+// eventIngestionDelay is the time to wait for wafctl to ingest the access log
+// entry for a request. Only used for NEW no_expect_ids failures (not baselined).
+// Most tests don't need this — they pass on status code alone, or are already
+// baselined and skip the events API check entirely.
+var eventIngestionDelay = 2500 * time.Millisecond
+
+func init() {
+	if d := os.Getenv("CRS_EVENT_DELAY"); d != "" {
+		if parsed, err := time.ParseDuration(d); err == nil {
+			eventIngestionDelay = parsed
 		}
 	}
 }
 
 // ─── HTTP Request Builder ──────────────────────────────────────────
 
-func sendTestRequest(input testInput) (int, error) {
+func sendTestRequest(input testInput, marker string) (int, error) {
 	method := input.Method
 	if method == "" {
 		method = "GET"
@@ -439,6 +537,16 @@ func sendTestRequest(input testInput) (int, error) {
 	uri := input.URI
 	if uri == "" {
 		uri = "/"
+	}
+
+	// Add test marker as a query parameter for event correlation.
+	// Uses a parameter name unlikely to trigger CRS rules.
+	if marker != "" {
+		sep := "?"
+		if strings.Contains(uri, "?") {
+			sep = "&"
+		}
+		uri = uri + sep + marker + "=1"
 	}
 
 	// Build full URL

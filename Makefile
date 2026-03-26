@@ -147,9 +147,9 @@ test-crs-e2e: ## Run standalone CRS regression tests (requires Docker)
 	cd ../.. && docker compose -f test/crs/docker-compose.crs.yml down -v; \
 	exit $$rc
 
-test-crs-e2e-update: ## Run CRS regression tests and update baseline
+test-crs-e2e-update: ## Run CRS regression tests and update baseline (fast, status-code only)
 	docker compose -f test/crs/docker-compose.crs.yml up -d --wait --timeout 120
-	cd test/crs && CRS_UPDATE_BASELINE=1 go test -v -count=1 -timeout 600s ./...; rc=$$?; \
+	cd test/crs && CRS_STATUS_ONLY=1 CRS_UPDATE_BASELINE=1 go test -v -count=1 -timeout 600s ./...; rc=$$?; \
 	cd ../.. && docker compose -f test/crs/docker-compose.crs.yml down -v; \
 	exit $$rc
 
