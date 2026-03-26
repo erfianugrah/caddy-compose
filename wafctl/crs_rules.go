@@ -34,6 +34,7 @@ type CRSCategory struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Prefix      string `json:"prefix"` // 3-4 digit rule ID prefix (e.g., "920", "9100")
 	RuleRange   string `json:"rule_range"`
 	Tag         string `json:"tag"`   // CRS tag used for ctl:ruleRemoveByTag
 	Phase       string `json:"phase"` // "inbound" or "outbound"
@@ -64,6 +65,7 @@ func crsMetadataCategories() []CRSCategory {
 			ID:          mc.ID,
 			Name:        mc.Name,
 			Description: mc.Description,
+			Prefix:      mc.Prefix,
 			RuleRange:   mc.RuleRange,
 			Tag:         mc.Tag,
 			Phase:       mc.Phase,

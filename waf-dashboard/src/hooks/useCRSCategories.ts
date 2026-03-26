@@ -20,9 +20,13 @@ export function useCRSCategories(): RuleCategory[] {
 
   useEffect(() => {
     if (!_refreshPromise) {
-      _refreshPromise = refreshCRSCategories();
+      _refreshPromise = refreshCRSCategories().catch(() => {
+        // Reset so the next mount retries instead of permanently using the
+        // failed promise. The fallback categories remain active until success.
+        _refreshPromise = null;
+      });
     }
-    _refreshPromise.then(() => {
+    _refreshPromise?.then(() => {
       setCategories(getCRSCategories());
     });
   }, []);

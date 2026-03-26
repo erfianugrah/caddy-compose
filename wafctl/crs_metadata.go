@@ -25,8 +25,7 @@ type CRSMetadata struct {
 	CustomRuleRange string                `json:"custom_rule_range"`
 
 	// Derived indexes built on load for O(1) lookup.
-	prefixSet   map[string]bool   // ValidPrefixes as a set
-	categoryMap map[string]string // same as CategoryMap (redundant but explicit)
+	prefixSet map[string]bool // ValidPrefixes as a set
 }
 
 // CRSMetadataCategory describes a single CRS rule category.
@@ -117,9 +116,5 @@ func (m *CRSMetadata) buildIndexes() {
 	m.prefixSet = make(map[string]bool, len(m.ValidPrefixes))
 	for _, p := range m.ValidPrefixes {
 		m.prefixSet[p] = true
-	}
-	// CategoryMap is already populated from JSON; copy to the internal field.
-	if m.categoryMap == nil {
-		m.categoryMap = m.CategoryMap
 	}
 }

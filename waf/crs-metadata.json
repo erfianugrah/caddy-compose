@@ -1,6 +1,6 @@
 {
   "crs_version": "v4.24.1",
-  "generated_at": "2026-03-26T12:03:01Z",
+  "generated_at": "2026-03-26T12:11:00Z",
   "categories": [
     {
       "id": "scanner-detection",
@@ -194,11 +194,11 @@
     },
     {
       "id": "data-leakages-ruby",
-      "name": "Data Leakages Ruby",
-      "description": "RESPONSE-956-DATA-LEAKAGES-RUBY",
+      "name": "Ruby Data Leakages",
+      "description": "Ruby error message leakage",
       "prefix": "956",
       "rule_range": "956000-956999",
-      "tag": "data-leakages-ruby",
+      "tag": "leakage-ruby",
       "phase": "outbound",
       "rule_count": 2
     }

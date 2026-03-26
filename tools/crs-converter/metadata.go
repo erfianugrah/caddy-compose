@@ -47,6 +47,7 @@ var categoryNameMap = map[string]struct {
 	"RESPONSE-953-DATA-LEAKAGES-PHP":  {"data-leakage-php", "PHP Data Leakages", "PHP error message leakage", "leakage-php"},
 	"RESPONSE-954-DATA-LEAKAGES-IIS":  {"data-leakage-iis", "IIS Data Leakages", "IIS error message leakage", "leakage-iis"},
 	"RESPONSE-955-WEB-SHELLS":         {"web-shells", "Web Shells", "Web shell detection in responses", "leakage-webshell"},
+	"RESPONSE-956-DATA-LEAKAGES-RUBY": {"data-leakages-ruby", "Ruby Data Leakages", "Ruby error message leakage", "leakage-ruby"},
 }
 
 // ruleIDPrefixRe extracts the 3-4 digit prefix from a CRS category string.
@@ -168,8 +169,8 @@ func autoCategory(cat string) struct {
 		short = short[idx+1:]
 	}
 
-	id := strings.ToLower(strings.ReplaceAll(short, "-", "-"))
-	name := strings.Title(strings.ToLower(strings.ReplaceAll(short, "-", " ")))
+	id := strings.ToLower(short)
+	name := titleCase(strings.ToLower(strings.ReplaceAll(short, "-", " ")))
 
 	return struct {
 		ID          string
@@ -180,6 +181,18 @@ func autoCategory(cat string) struct {
 		ID:          id,
 		Name:        name,
 		Description: cat,
-		Tag:         strings.ToLower(strings.ReplaceAll(short, "-", "-")),
+		Tag:         strings.ToLower(short),
 	}
+}
+
+// titleCase capitalizes the first letter of each word.
+// Replacement for deprecated strings.Title (Go 1.18+).
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }

@@ -121,12 +121,13 @@ let _crsCategories: RuleCategory[] = [
 export async function refreshCRSCategories(): Promise<void> {
   try {
     const resp = await fetchJSON<{
-      categories: Array<{ id: string; name: string; rule_range: string; phase: string; }>;
+      categories: Array<{ id: string; name: string; prefix: string; rule_range: string; phase: string; }>;
     }>(`${API_BASE}/crs/rules`);
     if (resp.categories && resp.categories.length > 0) {
       _crsCategories = resp.categories.map((c) => {
-        // Extract prefix from rule_range (e.g., "920000-920999" → "920")
-        const prefix = c.rule_range?.replace(/000-.*$/, "") ?? "";
+        // Use prefix directly from API (from crs-metadata.json).
+        // Fallback to deriving from rule_range for older API versions.
+        const prefix = c.prefix || c.rule_range?.replace(/000-.*$/, "") || "";
         const shortName = shortNameMap[c.id] ?? c.name.split(" ")[0];
         const phase: "inbound" | "outbound" = c.phase === "outbound" ? "outbound" : "inbound";
         return { prefix, name: c.name, shortName, phase };

@@ -1692,3 +1692,38 @@ func TestValidateExclusion_ChallengeType(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateExclusion_DetectAction(t *testing.T) {
+	base := RuleExclusion{
+		Name:     "test detect",
+		Type:     "detect",
+		Severity: "WARNING",
+		Enabled:  true,
+		Conditions: []Condition{
+			{Field: "path", Operator: "contains", Value: "/test"},
+		},
+	}
+
+	t.Run("empty action is valid", func(t *testing.T) {
+		e := base
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("log_only is valid", func(t *testing.T) {
+		e := base
+		e.DetectAction = "log_only"
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("invalid action is rejected", func(t *testing.T) {
+		e := base
+		e.DetectAction = "block"
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for invalid detect_action")
+		}
+	})
+}
