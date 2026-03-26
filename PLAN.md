@@ -39,8 +39,8 @@
 
 **v2.68.0 / caddy 3.64.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.25.4 / ddos-mitigator v0.16.0**
 
-Fully operational WAF with custom policy engine, CRS 4.24.1 (313 rules: 254 inbound +
-59 outbound), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
+Fully operational WAF with custom policy engine, CRS 4.24.1 (342 rules: 283 inbound +
+59 outbound, per-field condition groups), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
 response_header), proof-of-work challenge with 5-layer bot scoring (JA4 TLS, HTTP headers,
 JS probes, behavioral, spatial inconsistency), JA4 TLS fingerprinting via listener wrapper,
 unified rule store (`/api/rules` + `/api/deploy`), response-phase
@@ -62,10 +62,11 @@ configurable via Caddyfile `listener_wrappers`. ~90ns/req hot path. Load tested 
 
 | Area | Files | Tests | Notes |
 |---|---|---|---|
-| **wafctl** (Go) | 57 source + 29 test | ~1465 tests (554 functions + table-driven subtests), 17 benchmarks | Zero external deps (stdlib only), `package main`, 40K LoC + 20K test LoC |
-| **waf-dashboard** (Astro/React) | 38 components + 16 API modules | ~334 tests across 18 files | Astro 6, React 19, TypeScript 5.7, shadcn/ui, Tailwind CSS 4 |
+| **wafctl** (Go) | 57 source + 29 test | ~1555 test functions, 17 benchmarks | Zero external deps (stdlib only), `package main`, 40K LoC + 20K test LoC |
+| **waf-dashboard** (Astro/React) | 38 components + 16 API modules | ~355 tests across 19 files | Astro 6, React 19, TypeScript 5.7, shadcn/ui, Tailwind CSS 4 |
 | **e2e** | 16 test files + helpers | ~148 subtests across 67 functions | Go + Docker, stdlib + `gopkg.in/yaml.v3` only |
-| **crs-converter** | 13 files | 3 test files | Standalone Go tool, zero deps |
+| **crs-converter** | 13 files | 3 test files, ~51 test functions | Standalone Go tool, zero deps |
+| **crs-e2e** | 1 test file + baseline | 4526 tests (baseline-driven) | Go + Docker, official CRS YAML test cases |
 
 ### Per-Repo Storage Map
 
@@ -2383,20 +2384,26 @@ Phase 1 ──→ Phase 2 ──→ Phase 3 ──→ Phase 4 ──→ Phase 5
 
 ## CRS Converter Fidelity
 
-CRS regression: 90.8% (216/238 rules). 22 failures:
-- 9 Go http client limitations (can't send malformed HTTP)
-- 9 correct detections with different status (403 vs expected 400)
-- 13 false positives from CRS exclusion chains not translated by converter
-- 1 genuine miss (920521)
+Converter coverage: 332/504 detection rules (65.8%). The 172 missing are almost
+entirely paranoia gating (176 skipAfter rules) and TX variable config checks (10
+rules that need plugin-side enforcement). Attack detection (SQLi, XSS, RCE, etc.)
+is near-complete.
 
-Root cause: CRS uses chained rules with `ctl:ruleRemoveByTag` to suppress false
-positives in specific contexts. The converter doesn't translate these chains, causing
-rules 932236, 932260, 941130, 942200 to over-match on `request_combined`.
+CRS E2E regression suite: 4526 tests, 79.9% at status-code level. 902 baselined
+failures are almost entirely cross-rule interference (benign payloads blocked by
+unrelated rules), not converter bugs. True per-rule fidelity is higher.
 
-**To reach 95%+:**
-- [ ] Fix detect_sqli/detect_xss in nested group evaluation path
-- [ ] SecRuleUpdateTargetById processing in converter parser
-- [ ] CRS `ctl:ruleRemoveByTag` translation (runtime suppression chains)
+**Completed:**
+- [x] Per-field OR condition groups (replaced request_combined — 201 rules)
+- [x] SecRuleUpdateTargetById processing (55 cookie/arg exclusions)
+- [x] Catch-all chain skip (920450/920451)
+- [x] Custom rule deduplication (7 duplicates removed)
+- [x] Standalone CRS E2E test suite with baseline
+
+**Remaining (requires plugin changes):**
+- [ ] TX variable config mapping (allowed_methods, arg limits — 10 rules)
+- [ ] Pass CRS extended settings through PolicyWafConfig to plugin
+- [ ] Plugin-side enforcement of method/version/arg limits
 
 ---
 

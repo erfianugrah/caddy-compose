@@ -36,10 +36,12 @@ cd waf-dashboard && npm ci && npm run build
 ## Test Commands
 
 ```bash
-make test               # Run ALL tests (Go + frontend)
-make test-go            # Go tests only (31 test files, ~626 tests)
-make test-frontend      # Frontend Vitest only (19 test files, ~384 tests)
+make test               # Run ALL tests (Go + converter + frontend)
+make test-go            # wafctl Go tests (~1555 test functions)
+make test-crs-converter # CRS converter tests (~51 test functions)
+make test-frontend      # Frontend Vitest (19 test files, ~355 tests)
 make test-e2e           # E2E smoke tests (requires Docker, ~119 tests)
+make test-crs-e2e       # CRS regression tests (requires Docker, 4526 tests)
 ```
 
 ### Running a single test
@@ -48,11 +50,25 @@ make test-e2e           # E2E smoke tests (requires Docker, ~119 tests)
 # Go — run from wafctl/:
 cd wafctl && go test -run TestFunctionName -count=1 -timeout 60s ./...
 
+# Converter — run from tools/crs-converter/:
+cd tools/crs-converter && go test -run TestName -count=1 -timeout 60s ./...
+
 # Frontend — run from waf-dashboard/:
 cd waf-dashboard && npx vitest run -t "test description substring"
 
 # E2E — run from test/e2e/:
 cd test/e2e && go test -v -count=1 -timeout 60s -run TestName ./...
+
+# CRS E2E — run from test/crs/ (requires Docker stack):
+cd test/crs && go test -v -count=1 -timeout 600s ./...
+```
+
+### CRS Rules
+
+```bash
+make generate-rules            # Regenerate default-rules.json from CRS
+make test-crs-e2e              # Run CRS regression tests (requires Docker)
+make test-crs-e2e-update       # Run + update baseline (fast, status-code only)
 ```
 
 ## Lint / Format
