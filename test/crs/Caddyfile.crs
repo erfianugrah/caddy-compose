@@ -1,0 +1,54 @@
+# CRS regression test Caddyfile — CRS enabled with blocking threshold.
+# Unlike the E2E Caddyfile which disables CRS, this enables full CRS
+# detection at PL1 with threshold=5 (single-rule match blocks).
+{
+	admin :2019
+	order log_append first
+	order policy_engine after log_append
+	log {
+		level INFO
+		output stdout
+		format json
+	}
+}
+
+(waf) {
+	policy_engine {
+		rules_file /data/waf/policy-rules.json
+		default_rules_file /etc/caddy/waf/default-rules.json
+		reload_interval 5s
+	}
+}
+
+(site_log) {
+	log_append request_id {http.request.uuid}
+	log_append policy_action {http.vars.policy_engine.action}
+	log_append policy_rule {http.vars.policy_engine.rule_name}
+	log_append policy_score {http.vars.policy_engine.anomaly_score}
+	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
+	log_append policy_detect_matches {http.vars.policy_engine.detect_matches}
+	log combined {
+		level INFO
+		output file /var/log/combined-access.log {
+			mode 0644
+			roll_size 256mb
+			roll_keep 2
+			roll_keep_for 24h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+:8080 {
+	import waf
+	encode zstd gzip
+	reverse_proxy httpbun:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
+	handle_errors 400 403 429 {
+		respond "{err.status_code}" {err.status_code}
+	}
+	import site_log httpbun
+}

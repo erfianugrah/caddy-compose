@@ -139,6 +139,20 @@ test-playwright: ## Run Playwright browser tests (requires Docker stack running)
 	cd ../.. && docker compose -f test/docker-compose.e2e.yml down -v; \
 	exit $$rc
 
+test-crs-e2e: ## Run standalone CRS regression tests (requires Docker)
+	docker build -t caddy-e2e:local .
+	docker build -t wafctl-e2e:local --build-arg VERSION=e2e -f wafctl/Dockerfile .
+	docker compose -f test/crs/docker-compose.crs.yml up -d --wait --timeout 120
+	cd test/crs && go test -v -count=1 -timeout 600s ./...; rc=$$?; \
+	cd ../.. && docker compose -f test/crs/docker-compose.crs.yml down -v; \
+	exit $$rc
+
+test-crs-e2e-update: ## Run CRS regression tests and update baseline
+	docker compose -f test/crs/docker-compose.crs.yml up -d --wait --timeout 120
+	cd test/crs && CRS_UPDATE_BASELINE=1 go test -v -count=1 -timeout 600s ./...; rc=$$?; \
+	cd ../.. && docker compose -f test/crs/docker-compose.crs.yml down -v; \
+	exit $$rc
+
 check: test ## Run tests + type check + build (pre-push validation)
 	cd waf-dashboard && npx tsc --noEmit
 	cd waf-dashboard && npm run build

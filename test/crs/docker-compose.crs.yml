@@ -1,0 +1,81 @@
+# CRS regression test stack — Caddy + wafctl + httpbun
+# CRS enabled with blocking threshold=5 (single rule match blocks).
+# Usage: make test-crs-e2e
+# Or manually:
+#   docker compose -f test/crs/docker-compose.crs.yml up -d --wait
+#   cd test/crs && go test -v -count=1 -timeout 600s ./...
+#   docker compose -f test/crs/docker-compose.crs.yml down -v
+services:
+  caddy:
+    image: caddy-e2e:local
+    container_name: caddy-crs
+    ports:
+      - "19080:8080"   # HTTP proxy (test site)
+      - "13019:2019"   # Caddy admin API
+    volumes:
+      - ./Caddyfile.crs:/etc/caddy/Caddyfile:ro
+      - waf_data:/data/waf
+      - wafctl_data:/data
+      - caddy_log:/var/log
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      httpbun:
+        condition: service_started
+
+  wafctl:
+    image: wafctl-e2e:local
+    container_name: wafctl-crs
+    user: "0:0"
+    command: ["serve"]
+    ports:
+      - "19082:8080"   # wafctl API
+    environment:
+      WAFCTL_PORT: "8080"
+      WAF_COMBINED_ACCESS_LOG: /data/logs/combined-access.log
+      WAF_EXCLUSIONS_FILE: /data/exclusions.json
+      WAF_CONFIG_FILE: /data/waf-config.json
+      WAF_DIR: /data/waf
+      WAF_CSP_FILE: /data/csp-config.json
+      WAF_CADDY_ADMIN_URL: http://caddy:2019
+      WAF_CADDYFILE_PATH: /data/Caddyfile
+      WAF_DATA_DIR: /data
+      WAF_EVENT_FILE: /data/events.jsonl
+      WAF_ACCESS_EVENT_FILE: /data/access-events.jsonl
+      WAF_AUDIT_OFFSET_FILE: /data/.audit-log-offset
+      WAF_ACCESS_OFFSET_FILE: /data/.access-log-offset
+      WAF_GENERAL_LOG_FILE: /data/general-events.jsonl
+      WAF_GENERAL_LOG_OFFSET_FILE: /data/.general-log-offset
+      WAF_EVENT_MAX_AGE: 24h
+      WAF_TAIL_INTERVAL: 2s
+      WAF_CORS_ORIGINS: "*"
+      WAF_POLICY_RULES_FILE: /data/waf/policy-rules.json
+      WAF_MANAGED_LISTS_FILE: /data/lists.json
+      WAF_MANAGED_LISTS_DIR: /data/lists
+    volumes:
+      - waf_data:/data/waf
+      - wafctl_data:/data
+      - caddy_log:/data/logs:ro
+      - ./Caddyfile.crs:/data/Caddyfile:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      caddy:
+        condition: service_healthy
+
+  httpbun:
+    image: mccutchen/go-httpbin
+    container_name: httpbun-crs
+
+volumes:
+  waf_data:
+  wafctl_data:
+  caddy_log:
