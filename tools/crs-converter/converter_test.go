@@ -37,14 +37,35 @@ func TestConvertSimpleRule(t *testing.T) {
 	}
 
 	cond := pr.Conditions[0]
-	if cond.Operator != "regex" {
-		t.Errorf("Operator: got %q, want regex", cond.Operator)
+
+	// ARGS|REQUEST_COOKIES maps to 2 fields (all_args_values, all_cookies),
+	// so the condition should be an OR group with 2 sub-conditions.
+	if cond.GroupOp != "or" {
+		t.Errorf("GroupOp: got %q, want or", cond.GroupOp)
 	}
-	if cond.Value != "(?i)etc/passwd" {
-		t.Errorf("Value: got %q", cond.Value)
+	if len(cond.Group) != 2 {
+		t.Fatalf("expected 2 sub-conditions in group, got %d", len(cond.Group))
 	}
-	if cond.MultiMatch {
-		t.Error("MultiMatch should be false for rule without multiMatch action")
+
+	// Sub-conditions should be sorted by field name: all_args_values, all_cookies
+	if cond.Group[0].Field != "all_args_values" {
+		t.Errorf("Group[0].Field: got %q, want all_args_values", cond.Group[0].Field)
+	}
+	if cond.Group[1].Field != "all_cookies" {
+		t.Errorf("Group[1].Field: got %q, want all_cookies", cond.Group[1].Field)
+	}
+
+	// Each sub-condition should have the same operator and value
+	for i, sub := range cond.Group {
+		if sub.Operator != "regex" {
+			t.Errorf("Group[%d].Operator: got %q, want regex", i, sub.Operator)
+		}
+		if sub.Value != "(?i)etc/passwd" {
+			t.Errorf("Group[%d].Value: got %q", i, sub.Value)
+		}
+		if sub.MultiMatch {
+			t.Errorf("Group[%d].MultiMatch should be false", i)
+		}
 	}
 
 	// Tags should exclude OWASP_CRS and paranoia-level
@@ -550,5 +571,155 @@ func TestConvertChainWithTXLink_HeadPreserved(t *testing.T) {
 	}
 	if pr.Conditions[0].Field != "content_type" {
 		t.Errorf("Field: expected 'content_type', got %q", pr.Conditions[0].Field)
+	}
+}
+
+func TestBuildFieldCondition_SingleField(t *testing.T) {
+	// Single field should produce a direct condition, not a group.
+	input := `SecRule REQUEST_BODY "@rx test" "id:800001,phase:2,block,msg:'Test',severity:'CRITICAL'"`
+	rules, err := ParseFile(input, "test.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "test.conf")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(result))
+	}
+
+	cond := result[0].Conditions[0]
+	if cond.Field != "body" {
+		t.Errorf("Field: got %q, want body", cond.Field)
+	}
+	if cond.Operator != "regex" {
+		t.Errorf("Operator: got %q, want regex", cond.Operator)
+	}
+	if len(cond.Group) != 0 {
+		t.Errorf("single-field condition should not have a group, got %d", len(cond.Group))
+	}
+}
+
+func TestBuildFieldCondition_MultiFieldGroup(t *testing.T) {
+	// Multiple fields spanning args + cookies + body + specific headers
+	// should produce an OR group, NOT request_combined.
+	input := `SecRule ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES|REQUEST_BODY|REQUEST_HEADERS:User-Agent|REQUEST_HEADERS:Referer "@rx attack" "id:800002,phase:2,block,msg:'Multi-field test',severity:'CRITICAL'"`
+	rules, err := ParseFile(input, "test.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "test.conf")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(result))
+	}
+
+	cond := result[0].Conditions[0]
+
+	// Should be a group condition, NOT a direct field
+	if cond.GroupOp != "or" {
+		t.Fatalf("expected OR group, got GroupOp=%q Field=%q", cond.GroupOp, cond.Field)
+	}
+
+	// Collect fields from group
+	fields := make(map[string]bool)
+	for _, sub := range cond.Group {
+		fields[sub.Field] = true
+		if sub.Operator != "regex" {
+			t.Errorf("sub-condition field=%q has operator %q, want regex", sub.Field, sub.Operator)
+		}
+	}
+
+	// Must NOT contain request_combined or all_headers
+	if fields["request_combined"] {
+		t.Error("group should not contain request_combined")
+	}
+	if fields["all_headers"] {
+		t.Error("group should not contain all_headers — only named headers")
+	}
+
+	// Must contain the specific fields
+	for _, want := range []string{"all_args_values", "all_args_names", "all_cookies", "all_cookies_names", "body", "user_agent", "referer"} {
+		if !fields[want] {
+			t.Errorf("missing expected field %q in group", want)
+		}
+	}
+}
+
+func TestBuildFieldCondition_ExcludesDistributed(t *testing.T) {
+	// Excludes should be distributed to matching fields only.
+	// !REQUEST_COOKIES:/__utm/ should only appear on cookie fields.
+	input := `SecRule ARGS|REQUEST_COOKIES|!REQUEST_COOKIES:/__utm/ "@rx test" "id:800003,phase:2,block,msg:'Exclude test',severity:'CRITICAL'"`
+	rules, err := ParseFile(input, "test.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "test.conf")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(result))
+	}
+
+	cond := result[0].Conditions[0]
+	if cond.GroupOp != "or" {
+		t.Fatalf("expected OR group, got GroupOp=%q", cond.GroupOp)
+	}
+
+	for _, sub := range cond.Group {
+		switch sub.Field {
+		case "all_cookies":
+			// Cookie field should have the cookie exclude
+			if len(sub.Excludes) == 0 {
+				t.Error("all_cookies should have cookie excludes")
+			}
+		case "all_args_values":
+			// Args field should NOT have cookie excludes
+			if len(sub.Excludes) != 0 {
+				t.Errorf("all_args_values should not have excludes, got %v", sub.Excludes)
+			}
+		}
+	}
+}
+
+func TestConvertChainWithTXLink_CatchAllHeadSkipped(t *testing.T) {
+	// Head uses @rx ^.*$ (catch-all) with a chain link that checks TX variables.
+	// The chain link gets dropped (TX variables are unconvertible). With the
+	// catch-all head alone, the rule matches everything — it should be skipped.
+	// This is the pattern used by CRS 920450/920451 (restricted headers).
+	input := `SecRule REQUEST_HEADERS_NAMES "@rx ^.*$" \
+	"id:800010,phase:1,block,capture,msg:'Header restricted',severity:'CRITICAL',tag:'paranoia-level/1',chain"
+	SecRule TX:/^header_920450_/ "@within %{tx.restricted_headers}" "t:lowercase"`
+
+	rules, err := ParseFile(input, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 rules (catch-all head with dropped chain should be skipped), got %d", len(result))
+	}
+}
+
+func TestSortRules_StableOrder(t *testing.T) {
+	rules := []PolicyRule{
+		{ID: "920450", Name: "CRS version"},
+		{ID: "920450", Name: "Custom version"},
+		{ID: "920100", Name: "Rule 100"},
+	}
+
+	SortRules(rules)
+
+	if rules[0].ID != "920100" {
+		t.Errorf("expected 920100 first, got %s", rules[0].ID)
+	}
+	// Stable sort preserves relative order: CRS version before Custom version
+	if rules[1].Name != "CRS version" {
+		t.Errorf("expected stable order preserved: CRS before Custom, got %q then %q",
+			rules[1].Name, rules[2].Name)
 	}
 }

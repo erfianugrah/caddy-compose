@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -289,90 +290,114 @@ func mapVariablesToConditions(vars []Variable, op Operator) (fields []string, ex
 	return fields, excludes, issues
 }
 
-// ─── Common CRS variable combos → single field ────────────────────
-//
-// CRS rules almost always use one of a few standard variable combos.
-// We detect these and map to the appropriate multi-value field.
-
-// consolidateFields merges multiple fields into a single multi-value
-// field when they represent a standard CRS combo.
+// ─── Per-Field Condition Builder ───────────────────────────────────
 //
 // CRS rules typically check multiple variables with OR semantics:
 // ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES|REQUEST_BODY|
-// REQUEST_HEADERS|REQUEST_FILENAME|XML:/*|XML://@*
+// REQUEST_HEADERS:User-Agent|REQUEST_HEADERS:Referer|XML:/*
 //
-// These map to "request_combined" — a plugin aggregate field that
-// extracts values from all these sources and matches with OR semantics.
-func consolidateFields(fields []string) string {
+// Instead of collapsing these to "request_combined" (which is too broad
+// and causes false positives), we emit one condition per field wrapped
+// in an OR group. This preserves the exact variable scope of each CRS
+// rule — if the original rule only checks User-Agent and Referer, the
+// converted rule checks exactly those fields, not all headers.
+
+// buildFieldCondition creates a PolicyCondition from the given fields and
+// shared operator/value/transforms. If there is only one field, it returns
+// a direct condition. If there are multiple fields, it returns a condition
+// group with OR semantics — one sub-condition per field.
+//
+// The excludes parameter contains variable exclusion patterns (e.g.,
+// "cookie:__utm*") which are distributed to the relevant sub-conditions
+// based on prefix matching (cookie: → cookie fields, header: → header
+// fields, args: → args fields).
+func buildFieldCondition(fields []string, opName, operatorValue string, negate, multiMatch bool, transforms, listItems, excludes []string) PolicyCondition {
+	// Sort fields for deterministic output.
+	sort.Strings(fields)
+
 	if len(fields) == 1 {
-		return fields[0]
+		return PolicyCondition{
+			Field:      fields[0],
+			Operator:   opName,
+			Value:      operatorValue,
+			Negate:     negate,
+			MultiMatch: multiMatch,
+			Transforms: transforms,
+			ListItems:  listItems,
+			Excludes:   excludes,
+		}
 	}
 
-	set := make(map[string]bool)
+	// Multiple fields → OR group with one sub-condition per field.
+	group := make([]PolicyCondition, 0, len(fields))
 	for _, f := range fields {
-		set[f] = true
+		sub := PolicyCondition{
+			Field:      f,
+			Operator:   opName,
+			Value:      operatorValue,
+			Negate:     negate,
+			MultiMatch: multiMatch,
+			Transforms: transforms,
+			ListItems:  listItems,
+		}
+		// Distribute excludes to matching fields only.
+		sub.Excludes = matchExcludes(f, excludes)
+		group = append(group, sub)
 	}
 
-	// Only use request_combined for the FULL standard CRS variable combo:
-	// ARGS + ARGS_NAMES + COOKIES + COOKIES_NAMES + BODY + HEADERS + FILENAME
-	// This is the combo used by ~100 core detection rules that truly need
-	// all request sources. Smaller combos get individual fields to reduce
-	// false positives from overly broad matching.
-	hasArgs := set["all_args_values"] || set["all_args_names"]
-	hasCookies := set["all_cookies"] || set["all_cookies_names"]
-	hasHeaders := set["all_headers"] || set["all_headers_names"]
-	hasBody := set["body"] || set["uri_path"] || set["request_basename"]
+	return PolicyCondition{
+		Group:   group,
+		GroupOp: "or",
+	}
+}
 
-	// Full combo (4+ categories) → request_combined
-	cats := 0
-	if hasArgs {
-		cats++
-	}
-	if hasCookies {
-		cats++
-	}
-	if hasHeaders {
-		cats++
-	}
-	if hasBody {
-		cats++
-	}
-	if cats >= 4 {
-		return "request_combined"
+// matchExcludes returns the subset of excludes relevant to the given field.
+// Exclude patterns are prefixed: "cookie:" for cookie fields, "header:" for
+// header fields, "args:" for args fields. An exclude matches a field if:
+//   - cookie:* matches all_cookies, all_cookies_names, cookie:*
+//   - header:* matches all_headers, all_headers_names, header:*, user_agent, referer, content_type, host
+//   - args:*   matches all_args, all_args_values, all_args_names, args:*
+//
+// Excludes with no matching field are attached to request_combined or body
+// fields (conservative — keeps the exclusion active).
+func matchExcludes(field string, excludes []string) []string {
+	if len(excludes) == 0 {
+		return nil
 	}
 
-	// Args + cookies (2 categories, common CRS pattern) → request_combined
-	// Only when BOTH values AND names are present (the full standard combo)
-	if set["all_args_values"] && set["all_args_names"] &&
-		set["all_cookies"] && set["all_cookies_names"] {
-		return "request_combined"
+	var matched []string
+	for _, ex := range excludes {
+		if excludeMatchesField(ex, field) {
+			matched = append(matched, ex)
+		}
 	}
+	if len(matched) == 0 {
+		return nil
+	}
+	return matched
+}
 
-	// REQUEST_HEADERS + REQUEST_LINE
-	if set["all_headers"] && set["request_line"] {
-		return "all_headers"
-	}
+// headerFields are fields that represent request header values.
+var headerFields = map[string]bool{
+	"all_headers": true, "all_headers_names": true,
+	"user_agent": true, "referer": true, "content_type": true,
+	"content_length": true, "host": true,
+}
 
-	// Prefer the most specific multi-value field available:
-	// args > cookies > headers > body
-	if set["all_args_values"] {
-		return "all_args_values"
+func excludeMatchesField(exclude, field string) bool {
+	switch {
+	case strings.HasPrefix(exclude, "cookie:"):
+		return field == "all_cookies" || field == "all_cookies_names" ||
+			strings.HasPrefix(field, "cookie:")
+	case strings.HasPrefix(exclude, "header:"):
+		return headerFields[field] || strings.HasPrefix(field, "header:")
+	case strings.HasPrefix(exclude, "args:"):
+		return field == "all_args" || field == "all_args_values" ||
+			field == "all_args_names" || strings.HasPrefix(field, "args:")
+	default:
+		// Unknown prefix — attach to body/combined as a conservative fallback.
+		return field == "body" || field == "request_combined"
 	}
-	if set["all_args_names"] {
-		return "all_args_names"
-	}
-	if set["all_cookies"] {
-		return "all_cookies"
-	}
-	if set["all_headers"] {
-		return "all_headers"
-	}
-	if set["body"] {
-		return "body"
-	}
-
-	// Default: use the first field
-	return fields[0]
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────

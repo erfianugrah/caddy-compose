@@ -215,9 +215,6 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		return nil, fmt.Errorf("no mappable variables")
 	}
 
-	// Consolidate fields
-	field := consolidateFields(fields)
-
 	// Resolve operator value
 	operatorValue := rule.Operator.Value
 	var listItems []string
@@ -277,19 +274,12 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		}
 	}
 
-	// Build condition. The nested group infrastructure is available in the
-	// plugin for future per-variable evaluation, but for now we keep using
-	// request_combined which already evaluates per-variable via isMulti.
-	cond := PolicyCondition{
-		Field:      field,
-		Operator:   opName,
-		Value:      operatorValue,
-		Negate:     rule.Operator.Negated,
-		MultiMatch: hasAction(rule.Actions, "multiMatch"),
-		Transforms: transforms,
-		ListItems:  listItems,
-		Excludes:   excludes,
-	}
+	// Build condition. For multi-field rules, emit an OR group with one
+	// sub-condition per field — this preserves the exact CRS variable scope
+	// instead of collapsing to request_combined (which is too broad).
+	cond := buildFieldCondition(fields, opName, operatorValue,
+		rule.Operator.Negated, hasAction(rule.Actions, "multiMatch"),
+		transforms, listItems, excludes)
 
 	var conditions []PolicyCondition
 	conditions = append(conditions, cond)
@@ -299,6 +289,14 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 			return nil, fmt.Errorf("chain conversion: %w", err)
 		}
 		conditions = append(conditions, chainConds...)
+
+		// If the chain was supposed to narrow the head's match but ALL chain
+		// conditions were dropped (TX variables, @within %{tx.*}), and the
+		// head uses a catch-all pattern like @rx ^.*$, the rule has lost its
+		// detection value. Skip it — the head alone matches everything.
+		if len(chainConds) == 0 && isCatchAllPattern(rule.Operator) {
+			return nil, fmt.Errorf("chain conditions dropped and head is catch-all (@%s %q)", rule.Operator.Name, rule.Operator.Value)
+		}
 	}
 
 	// Map severity
@@ -348,10 +346,6 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 	// Map variables — chain links with only TX variables are dropped (not an error).
 	fields, _, _ := mapVariablesToConditions(rule.Variables, rule.Operator)
 	skipThisLink := !supported || len(fields) == 0
-	var field string
-	if !skipThisLink {
-		field = consolidateFields(fields)
-	}
 
 	// Resolve operator
 	operatorValue := rule.Operator.Value
@@ -387,15 +381,9 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 	var conditions []PolicyCondition
 
 	if !skipThisLink {
-		cond := PolicyCondition{
-			Field:      field,
-			Operator:   opName,
-			Value:      operatorValue,
-			Negate:     rule.Operator.Negated,
-			MultiMatch: hasAction(rule.Actions, "multiMatch"),
-			Transforms: transforms,
-			ListItems:  listItems,
-		}
+		cond := buildFieldCondition(fields, opName, operatorValue,
+			rule.Operator.Negated, hasAction(rule.Actions, "multiMatch"),
+			transforms, listItems, nil)
 		conditions = append(conditions, cond)
 	}
 
@@ -412,6 +400,18 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
+
+// isCatchAllPattern returns true if the operator matches everything (e.g.,
+// @rx ^.*$ or @rx ^). These are used in CRS as capture-all heads in
+// chained rules — the chain link is supposed to filter the matches.
+// Without the chain link, these rules fire on every request.
+func isCatchAllPattern(op Operator) bool {
+	if op.Name != "rx" {
+		return false
+	}
+	v := strings.TrimSpace(op.Value)
+	return v == "^.*$" || v == "^" || v == ".*" || v == ""
+}
 
 // isNumericOp returns true for numeric comparison operators.
 func isNumericOp(op string) bool {
@@ -453,9 +453,11 @@ func (c *Converter) addCategoryStat(category string, converted bool) {
 
 // ─── Sorting ───────────────────────────────────────────────────────
 
-// SortRules sorts PolicyRules by numeric ID.
+// SortRules sorts PolicyRules by numeric ID. Uses stable sort to preserve
+// relative order of rules with the same ID (e.g., custom rules appended
+// after CRS rules).
 func SortRules(rules []PolicyRule) {
-	sort.Slice(rules, func(i, j int) bool {
+	sort.SliceStable(rules, func(i, j int) bool {
 		ni, _ := strconv.Atoi(rules[i].ID)
 		nj, _ := strconv.Atoi(rules[j].ID)
 		return ni < nj

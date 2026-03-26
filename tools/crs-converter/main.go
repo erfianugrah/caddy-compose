@@ -90,7 +90,9 @@ func main() {
 		allRules = append(allRules, rules...)
 	}
 
-	// Merge custom rules if provided
+	// Merge custom rules if provided. Custom rules take priority over
+	// CRS-converted rules with the same ID — they are curated corrections
+	// for rules the converter handles incorrectly.
 	if *customRules != "" {
 		data, err := os.ReadFile(*customRules)
 		if err != nil {
@@ -100,11 +102,33 @@ func main() {
 		if err := json.Unmarshal(data, &custom); err != nil {
 			log.Fatalf("Parsing custom rules: %v", err)
 		}
-		allRules = append(allRules, custom...)
-		fmt.Printf("Merged %d custom rules from %s\n", len(custom), *customRules)
+
+		// Build set of custom rule IDs for deduplication.
+		customIDs := make(map[string]bool, len(custom))
+		for _, r := range custom {
+			customIDs[r.ID] = true
+		}
+
+		// Remove CRS-converted rules that have a custom replacement.
+		deduped := make([]PolicyRule, 0, len(allRules))
+		dupeCount := 0
+		for _, r := range allRules {
+			if customIDs[r.ID] {
+				dupeCount++
+				continue
+			}
+			deduped = append(deduped, r)
+		}
+		allRules = append(deduped, custom...)
+
+		if dupeCount > 0 {
+			fmt.Printf("Merged %d custom rules from %s (%d CRS duplicates replaced)\n", len(custom), *customRules, dupeCount)
+		} else {
+			fmt.Printf("Merged %d custom rules from %s\n", len(custom), *customRules)
+		}
 	}
 
-	// Sort by rule ID
+	// Sort by rule ID (stable to preserve custom-before-CRS order for same IDs)
 	SortRules(allRules)
 
 	// Print report

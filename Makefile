@@ -108,10 +108,13 @@ push-wafctl: ## Push wafctl image
 
 # ── Test ────────────────────────────────────────────────────────────
 test: ## Run all tests in parallel
-	$(MAKE) -j2 test-go test-frontend
+	$(MAKE) -j3 test-go test-crs-converter test-frontend
 
-test-go: ## Run Go tests
+test-go: ## Run wafctl Go tests
 	cd wafctl && go test -count=1 -timeout 60s ./...
+
+test-crs-converter: ## Run CRS converter tests
+	cd tools/crs-converter && go test -count=1 -timeout 60s ./...
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
@@ -139,6 +142,18 @@ test-playwright: ## Run Playwright browser tests (requires Docker stack running)
 check: test ## Run tests + type check + build (pre-push validation)
 	cd waf-dashboard && npx tsc --noEmit
 	cd waf-dashboard && npm run build
+
+# ── CRS ─────────────────────────────────────────────────────────────
+CRS_DIR ?= tools/coreruleset/rules
+
+generate-rules: ## Regenerate default-rules.json + crs-metadata.json from CRS
+	cd tools/crs-converter && go build -o /tmp/crs-converter .
+	/tmp/crs-converter \
+		-crs-dir $(CRS_DIR) \
+		-crs-version "$$(cd tools/coreruleset && git describe --tags --always 2>/dev/null || echo unknown)" \
+		-custom-rules waf/custom-rules.json \
+		-output waf/default-rules.json \
+		-metadata-output waf/crs-metadata.json
 
 # ── Security: scan, sign, SBOM ──────────────────────────────────────
 TRIVY_SEVERITY ?= CRITICAL,HIGH
