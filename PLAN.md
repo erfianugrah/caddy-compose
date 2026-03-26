@@ -37,7 +37,7 @@
 
 ## Current State
 
-**v2.68.0 / caddy 3.64.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.25.4 / ddos-mitigator v0.16.0**
+**v2.83.0 / caddy 3.79.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.35.0 / ddos-mitigator v0.16.0**
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (342 rules: 283 inbound +
 59 outbound, per-field condition groups), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
@@ -2525,6 +2525,30 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 ---
 
 ## Completed (changelog)
+
+### v2.83.0 / caddy 3.79.0-2.11.2
+
+- **CRS converter overhaul**: Per-field OR condition groups replace `request_combined`
+  (201 rules). Eliminates false positives from over-broad field consolidation
+  (Accept-Encoding, Cf-Visitor, Accept headers no longer checked by RCE/SQLi rules).
+  SecRuleUpdateTargetById processing (55 cookie/arg exclusions). Catch-all chain skip
+  (920450/920451). Custom rule deduplication (7 duplicates removed). SortRules uses
+  stable sort. 342 rules total, 0 `request_combined`, 0 duplicates.
+- **CRS protocol enforcement** (policy-engine v0.35.0): Plugin-native enforcement of
+  allowed_methods (911100), allowed_http_versions (920430), max_num_args (920380),
+  arg_name_length (920360), arg_length (920370), total_arg_length (920390). Configurable
+  via CRS v4 settings panel. Per-service overrides supported. Violations produce
+  synthetic detect matches with CRITICAL severity for anomaly scoring.
+- **CRS E2E test suite**: Standalone test/crs/ module — 4526 tests from official CRS
+  YAML test cases, baseline-driven regression detection, hybrid status-code + events
+  API checking, fast baseline generation (CRS_STATUS_ONLY mode). 79.9% status-code
+  fidelity (3578/4480 testable).
+- **Pipeline improvements**: Converter tests in CI. Makefile targets (generate-rules,
+  test-crs-converter, test-crs-e2e). crs-update.yml regenerates default-rules.json in
+  bump PRs. Custom rules: 920450 updated (10 items), 920451 added (extended list).
+- **Code quality**: 8 fixes (deprecated strings.Title, dead categoryMap field, frontend
+  prefix extraction, singleton retry, misplaced test, no-op ReplaceAll, RESPONSE-956
+  category, non-deterministic field fallback).
 
 ### v2.66.0 / caddy 3.62.0-2.11.2
 
