@@ -59,7 +59,13 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Bump CRS version
+      - uses: actions/setup-go@v6
+        if: steps.compare.outputs.up_to_date == 'false' && steps.existing_pr.outputs.exists == 'false'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: Bump CRS version and regenerate rules
         if: steps.compare.outputs.up_to_date == 'false' && steps.existing_pr.outputs.exists == 'false'
         run: |
           OLD="${{ steps.current.outputs.version }}"
@@ -73,7 +79,20 @@ jobs:
             sed -i "s|CRS_VERSION=$OLD|CRS_VERSION=$NEW|" Dockerfile
           fi
 
+          # Clone new CRS version and regenerate default-rules.json
+          git clone --depth 1 --branch "$NEW" \
+            https://github.com/${{ env.CRS_REPO }}.git /tmp/coreruleset
+          cd tools/crs-converter && go build -o /tmp/crs-converter .
+          cd ../..
+          /tmp/crs-converter \
+            -crs-dir /tmp/coreruleset/rules \
+            -crs-version "${NEW#v}" \
+            -custom-rules waf/custom-rules.json \
+            -output waf/default-rules.json \
+            -metadata-output waf/crs-metadata.json
+
           echo "Bumped CRS_VERSION: $OLD → $NEW"
+          echo "Regenerated default-rules.json and crs-metadata.json"
 
       - name: Create Pull Request
         if: steps.compare.outputs.up_to_date == 'false' && steps.existing_pr.outputs.exists == 'false'
@@ -88,7 +107,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add -A
-          git commit -m "chore: bump CRS ${OLD} → ${NEW}"
+          git commit -m "chore: bump CRS ${OLD} → ${NEW}
+
+          Regenerated default-rules.json and crs-metadata.json from new CRS version."
           git push origin "$BRANCH"
 
           gh pr create \
@@ -102,10 +123,12 @@ jobs:
           - **Latest:** \`${NEW}\`
           - **Release:** https://github.com/${{ env.CRS_REPO }}/releases/tag/${NEW}
 
+          default-rules.json and crs-metadata.json have been regenerated from the new CRS version.
+
           ### Checklist
           - [ ] Review CRS changelog for breaking changes
           - [ ] Build and test locally: \`make build && make test-e2e\`
-          - [ ] Verify default-rules.json regeneration (CRS converter in Dockerfile)
+          - [ ] Run CRS regression tests: \`make test-crs-e2e\`
           EOF
           )" \
             --label "dependencies"

@@ -1302,11 +1302,16 @@
             "lowercase"
           ],
           "list_items": [
+            "content-encoding",
             "proxy",
             "lock-token",
             "content-range",
             "if",
-            "translate"
+            "x-http-method-override",
+            "x-http-method",
+            "x-method-override",
+            "x-middleware-subrequest",
+            "expect"
           ]
         }
       ],
@@ -1320,7 +1325,35 @@
       ],
       "enabled": true,
       "priority": 400,
-      "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded — they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450."
+      "description": "Detects requests containing restricted HTTP headers (CRS basic list). Proxy headers excluded — standard behind reverse proxies. Matches tx.restricted_headers_basic from crs-setup.conf."
+    },
+    {
+      "id": "920451",
+      "name": "HTTP header restricted by policy (extended)",
+      "type": "detect",
+      "conditions": [
+        {
+          "field": "all_headers_names",
+          "operator": "phrase_match",
+          "transforms": [
+            "lowercase"
+          ],
+          "list_items": [
+            "accept-charset"
+          ]
+        }
+      ],
+      "group_op": "and",
+      "severity": "WARNING",
+      "paranoia_level": 2,
+      "tags": [
+        "protocol-enforcement",
+        "920xxx",
+        "policy"
+      ],
+      "enabled": true,
+      "priority": 400,
+      "description": "Detects requests containing restricted HTTP headers (CRS extended list, PL2). Includes deprecated headers still in use. Matches tx.restricted_headers_extended from crs-setup.conf."
     },
     {
       "id": "920460",
@@ -37363,5 +37396,5 @@
   ],
   "version": 7,
   "crs_version": "v4.24.1",
-  "generated": "2026-03-26T12:11:00Z"
+  "generated": "2026-03-26T12:27:12Z"
 }

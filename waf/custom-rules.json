@@ -461,18 +461,23 @@
   {
     "id": "920450",
     "name": "HTTP header restricted by policy",
-    "description": "Blocks requests containing restricted HTTP headers that are not expected in normal traffic. Override list_items to customize. Proxy headers (via, x-forwarded-for, x-forwarded-host) excluded \u2014 they are standard behind reverse proxies (Cloudflare, nginx, etc.). CRS 920450.",
+    "description": "Detects requests containing restricted HTTP headers (CRS basic list). Proxy headers excluded — standard behind reverse proxies. Matches tx.restricted_headers_basic from crs-setup.conf.",
     "type": "detect",
     "conditions": [
       {
         "field": "all_headers_names",
         "operator": "phrase_match",
         "list_items": [
+          "content-encoding",
           "proxy",
           "lock-token",
           "content-range",
           "if",
-          "translate"
+          "x-http-method-override",
+          "x-http-method",
+          "x-method-override",
+          "x-middleware-subrequest",
+          "expect"
         ],
         "transforms": [
           "lowercase"
@@ -482,6 +487,34 @@
     "group_op": "and",
     "severity": "WARNING",
     "paranoia_level": 1,
+    "tags": [
+      "protocol-enforcement",
+      "920xxx",
+      "policy"
+    ],
+    "enabled": true,
+    "priority": 400
+  },
+  {
+    "id": "920451",
+    "name": "HTTP header restricted by policy (extended)",
+    "description": "Detects requests containing restricted HTTP headers (CRS extended list, PL2). Includes deprecated headers still in use. Matches tx.restricted_headers_extended from crs-setup.conf.",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "all_headers_names",
+        "operator": "phrase_match",
+        "list_items": [
+          "accept-charset"
+        ],
+        "transforms": [
+          "lowercase"
+        ]
+      }
+    ],
+    "group_op": "and",
+    "severity": "WARNING",
+    "paranoia_level": 2,
     "tags": [
       "protocol-enforcement",
       "920xxx",
