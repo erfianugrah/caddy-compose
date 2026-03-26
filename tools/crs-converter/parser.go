@@ -17,10 +17,28 @@ import (
 // ParseFile parses a CRS .conf file content into SecRule AST nodes.
 // filename is used for error reporting and source tracking.
 func ParseFile(content, filename string) ([]SecRule, error) {
+	result := ParseFileWithUpdates(content, filename)
+	if result.err != nil {
+		return nil, result.err
+	}
+	return result.Rules, nil
+}
+
+// parseFileResult wraps ParseResult with an error for internal use.
+type parseFileResult struct {
+	ParseResult
+	err error
+}
+
+// ParseFileWithUpdates parses a CRS .conf file into SecRule AST nodes AND
+// SecRuleUpdateTargetById directives. The updates are collected separately
+// so they can be applied to rules from other files after all parsing is complete.
+func ParseFileWithUpdates(content, filename string) parseFileResult {
 	// Phase 1: Join continuation lines (trailing \)
 	lines := joinContinuationLines(content)
 
 	var rules []SecRule
+	var updates []TargetUpdate
 	var chainHead *SecRule // tracks the start of a chain
 
 	for i, line := range lines {
@@ -32,9 +50,16 @@ func ParseFile(content, filename string) ([]SecRule, error) {
 			continue
 		}
 
+		// Parse SecRuleUpdateTargetById → collect as TargetUpdate
+		if strings.HasPrefix(text, "SecRuleUpdateTargetById") {
+			if upd, ok := parseSecRuleUpdateTargetById(text); ok {
+				updates = append(updates, upd)
+			}
+			continue
+		}
+
 		// Skip directives we don't process
 		if strings.HasPrefix(text, "SecMarker") ||
-			strings.HasPrefix(text, "SecRuleUpdateTargetById") ||
 			strings.HasPrefix(text, "SecRuleUpdateTargetByTag") ||
 			strings.HasPrefix(text, "SecRuleRemoveById") ||
 			strings.HasPrefix(text, "SecRuleUpdateActionById") ||
@@ -46,7 +71,7 @@ func ParseFile(content, filename string) ([]SecRule, error) {
 		if strings.HasPrefix(text, "SecAction") {
 			rule, err := parseSecAction(text, filename, lineNum)
 			if err != nil {
-				return nil, fmt.Errorf("%s:%d: %w", filename, lineNum, err)
+				return parseFileResult{err: fmt.Errorf("%s:%d: %w", filename, lineNum, err)}
 			}
 			if chainHead != nil {
 				chainHead.Chain = rule
@@ -64,7 +89,7 @@ func ParseFile(content, filename string) ([]SecRule, error) {
 		if strings.HasPrefix(text, "SecRule") {
 			rule, err := parseSecRule(text, filename, lineNum)
 			if err != nil {
-				return nil, fmt.Errorf("%s:%d: parse error: %w", filename, lineNum, err)
+				return parseFileResult{err: fmt.Errorf("%s:%d: parse error: %w", filename, lineNum, err)}
 			}
 
 			if chainHead != nil {
@@ -97,7 +122,7 @@ func ParseFile(content, filename string) ([]SecRule, error) {
 		rules = append(rules, *chainHead)
 	}
 
-	return rules, nil
+	return parseFileResult{ParseResult: ParseResult{Rules: rules, Updates: updates}}
 }
 
 // ─── Line joining ──────────────────────────────────────────────────
@@ -553,4 +578,44 @@ func ValidateRE2(pattern string) (string, error) {
 	}
 
 	return fixed, nil
+}
+
+// ─── SecRuleUpdateTargetById Parser ────────────────────────────────
+
+// parseSecRuleUpdateTargetById parses a directive like:
+//
+//	SecRuleUpdateTargetById 932240 "!REQUEST_COOKIES:/^_ga(?:_\w+)?$/"
+//	SecRuleUpdateTargetById 930120 !ARGS_NAMES:json.profile
+//
+// Returns a TargetUpdate with the rule ID and variable exclusions.
+func parseSecRuleUpdateTargetById(text string) (TargetUpdate, bool) {
+	// Strip the directive prefix
+	rest := strings.TrimPrefix(text, "SecRuleUpdateTargetById")
+	rest = strings.TrimSpace(rest)
+
+	// Split into rule ID and variable spec
+	parts := strings.SplitN(rest, " ", 2)
+	if len(parts) != 2 {
+		return TargetUpdate{}, false
+	}
+
+	ruleID := strings.TrimSpace(parts[0])
+	varSpec := strings.TrimSpace(parts[1])
+
+	// Strip surrounding quotes if present
+	if len(varSpec) >= 2 && varSpec[0] == '"' && varSpec[len(varSpec)-1] == '"' {
+		varSpec = varSpec[1 : len(varSpec)-1]
+	}
+
+	// Parse the variable spec using the existing variable parser.
+	// These are typically negation variables like !REQUEST_COOKIES:/__utm/
+	vars := parseVariables(varSpec)
+	if len(vars) == 0 {
+		return TargetUpdate{}, false
+	}
+
+	return TargetUpdate{
+		TargetRuleID: ruleID,
+		Variables:    vars,
+	}, true
 }

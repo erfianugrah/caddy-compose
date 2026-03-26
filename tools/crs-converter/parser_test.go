@@ -400,6 +400,62 @@ SecRuleRemoveById 123456`
 	}
 }
 
+func TestParseFileWithUpdates_CollectsTargetUpdates(t *testing.T) {
+	input := `SecRuleUpdateTargetById 932240 "!REQUEST_COOKIES:/^_ga(?:_\w+)?$/"
+SecRuleUpdateTargetById 941100 "!REQUEST_COOKIES:__gads"
+SecRuleUpdateTargetById 930120 !ARGS_NAMES:json.profile
+SecRule ARGS "@rx test" "id:100001,phase:2,block,msg:'Test'"
+SecRuleRemoveById 123456`
+
+	result := ParseFileWithUpdates(input, "test.conf")
+	if result.err != nil {
+		t.Fatalf("parse error: %v", result.err)
+	}
+
+	// Should have 1 rule and 3 target updates
+	if len(result.Rules) != 1 {
+		t.Errorf("expected 1 rule, got %d", len(result.Rules))
+	}
+	if len(result.Updates) != 3 {
+		t.Fatalf("expected 3 target updates, got %d", len(result.Updates))
+	}
+
+	// Check first update: 932240 !REQUEST_COOKIES:/^_ga.../
+	upd := result.Updates[0]
+	if upd.TargetRuleID != "932240" {
+		t.Errorf("update[0] TargetRuleID: got %q", upd.TargetRuleID)
+	}
+	if len(upd.Variables) != 1 {
+		t.Fatalf("update[0] expected 1 variable, got %d", len(upd.Variables))
+	}
+	v := upd.Variables[0]
+	if !v.IsNegation {
+		t.Error("update[0] variable should be negation")
+	}
+	if v.Name != "REQUEST_COOKIES" {
+		t.Errorf("update[0] variable name: got %q", v.Name)
+	}
+	if !v.KeyIsRegex {
+		t.Error("update[0] variable key should be regex")
+	}
+
+	// Check third update: 930120 !ARGS_NAMES:json.profile (unquoted)
+	upd3 := result.Updates[2]
+	if upd3.TargetRuleID != "930120" {
+		t.Errorf("update[2] TargetRuleID: got %q", upd3.TargetRuleID)
+	}
+	v3 := upd3.Variables[0]
+	if v3.Name != "ARGS_NAMES" {
+		t.Errorf("update[2] variable name: got %q", v3.Name)
+	}
+	if v3.Key != "json.profile" {
+		t.Errorf("update[2] variable key: got %q", v3.Key)
+	}
+	if v3.KeyIsRegex {
+		t.Error("update[2] variable key should NOT be regex")
+	}
+}
+
 func TestSplitActions_QuotedComma(t *testing.T) {
 	// Commas inside single quotes should not split
 	input := `msg:'Remote Command Execution: Unix Command Injection',tag:'attack-rce'`

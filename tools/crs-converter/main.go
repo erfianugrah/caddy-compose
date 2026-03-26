@@ -71,8 +71,12 @@ func main() {
 	converter := NewConverter(dataFiles)
 	converter.report.CRSVersion = crsVer
 
-	// Process each .conf file
-	var allRules []PolicyRule
+	// Phase 1: Parse all .conf files — collect SecRules and TargetUpdates.
+	// TargetUpdates (SecRuleUpdateTargetById) can appear in later files
+	// than the rules they modify, so we collect everything first.
+	var parsedFiles []parsedFile
+	var allUpdates []TargetUpdate
+
 	for _, confFile := range confFiles {
 		content, err := os.ReadFile(confFile)
 		if err != nil {
@@ -80,13 +84,27 @@ func main() {
 			continue
 		}
 
-		parsed, err := ParseFile(string(content), confFile)
-		if err != nil {
-			log.Printf("WARNING: parsing %s: %v", confFile, err)
+		result := ParseFileWithUpdates(string(content), confFile)
+		if result.err != nil {
+			log.Printf("WARNING: parsing %s: %v", confFile, result.err)
 			continue
 		}
 
-		rules := converter.Convert(parsed, confFile)
+		parsedFiles = append(parsedFiles, parsedFile{filename: confFile, rules: result.Rules})
+		allUpdates = append(allUpdates, result.Updates...)
+	}
+
+	// Phase 2: Apply SecRuleUpdateTargetById directives to parsed rules.
+	// Each update adds negation variable exclusions to the target rule.
+	if len(allUpdates) > 0 {
+		applyTargetUpdates(parsedFiles, allUpdates)
+		fmt.Printf("Applied %d SecRuleUpdateTargetById directives to parsed rules\n", len(allUpdates))
+	}
+
+	// Phase 3: Convert parsed SecRules to PolicyRules.
+	var allRules []PolicyRule
+	for _, pf := range parsedFiles {
+		rules := converter.Convert(pf.rules, pf.filename)
 		allRules = append(allRules, rules...)
 	}
 
@@ -174,6 +192,43 @@ func main() {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
+
+// parsedFile holds parsed SecRules from a single .conf file.
+type parsedFile struct {
+	filename string
+	rules    []SecRule
+}
+
+// applyTargetUpdates merges SecRuleUpdateTargetById directives into the
+// parsed rules. Each update adds negation variable exclusions (e.g.,
+// !REQUEST_COOKIES:/__utm/) to the target rule's variable list.
+//
+// This is how CRS suppresses false positives for well-known cookies
+// (Google Analytics _ga, ad-tech FCCDCF/FCNEC, analytics _pk_ref, etc.).
+// Without these exclusions, detection rules over-match on cookie values.
+func applyTargetUpdates(files []parsedFile, updates []TargetUpdate) {
+	// Build update index: rule ID → list of variables to add
+	updatesByID := make(map[string][]Variable)
+	for _, upd := range updates {
+		updatesByID[upd.TargetRuleID] = append(updatesByID[upd.TargetRuleID], upd.Variables...)
+	}
+
+	// Walk all parsed rules and apply matching updates
+	for fi := range files {
+		for ri := range files[fi].rules {
+			rule := &files[fi].rules[ri]
+			if vars, ok := updatesByID[rule.ID]; ok {
+				rule.Variables = append(rule.Variables, vars...)
+			}
+			// Also check chain links (rare but possible)
+			for chain := rule.Chain; chain != nil; chain = chain.Chain {
+				if vars, ok := updatesByID[chain.ID]; ok {
+					chain.Variables = append(chain.Variables, vars...)
+				}
+			}
+		}
+	}
+}
 
 // findConfFiles finds all CRS .conf files in the given directory.
 // Looks in the standard CRS layout: rules/*.conf or rules/@owasp_crs/*.conf

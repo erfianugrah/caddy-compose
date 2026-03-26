@@ -23,6 +23,20 @@ type SecRule struct {
 	Line int
 }
 
+// TargetUpdate represents a SecRuleUpdateTargetById directive that
+// retroactively adds variable exclusions to an existing rule.
+// e.g., SecRuleUpdateTargetById 932240 "!REQUEST_COOKIES:/^_ga(?:_\w+)?$/"
+type TargetUpdate struct {
+	TargetRuleID string     // The rule ID to modify
+	Variables    []Variable // The variables to add (typically negation exclusions)
+}
+
+// ParseResult holds the output of parsing a single .conf file.
+type ParseResult struct {
+	Rules   []SecRule
+	Updates []TargetUpdate
+}
+
 // Variable represents a single variable in a SecRule.
 // e.g., ARGS, REQUEST_HEADERS:User-Agent, !REQUEST_COOKIES:/__utm/
 type Variable struct {

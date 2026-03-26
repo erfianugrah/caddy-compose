@@ -3659,6 +3659,9 @@
                 "xampp/sendmail",
                 "xampp/webalizer/webalizer.conf",
                 "yarn.lock"
+              ],
+              "excludes": [
+                "args:json.profile"
               ]
             },
             {
@@ -4647,6 +4650,9 @@
                 "xampp/sendmail",
                 "xampp/webalizer/webalizer.conf",
                 "yarn.lock"
+              ],
+              "excludes": [
+                "args:json.profile"
               ]
             },
             {
@@ -18869,12 +18875,18 @@
             {
               "field": "all_cookies",
               "operator": "regex",
-              "value": "(?i)[\\-0-9_a-z]+(?:[\\s\\x0b]*[\"'][^\\s\\x0b\"',:]+[\"']|(?:[\"'][\"']+|[\\[-\\]]+|\\$+[!#\\*\\-0-9\\?@\\x5c_a-\\{]+|``|[\\$\u003c\u003e]\\(\\))[\\s\\x0b]*)[\\-0-9_a-z]+"
+              "value": "(?i)[\\-0-9_a-z]+(?:[\\s\\x0b]*[\"'][^\\s\\x0b\"',:]+[\"']|(?:[\"'][\"']+|[\\[-\\]]+|\\$+[!#\\*\\-0-9\\?@\\x5c_a-\\{]+|``|[\\$\u003c\u003e]\\(\\))[\\s\\x0b]*)[\\-0-9_a-z]+",
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$"
+              ]
             },
             {
               "field": "all_cookies_names",
               "operator": "regex",
-              "value": "(?i)[\\-0-9_a-z]+(?:[\\s\\x0b]*[\"'][^\\s\\x0b\"',:]+[\"']|(?:[\"'][\"']+|[\\[-\\]]+|\\$+[!#\\*\\-0-9\\?@\\x5c_a-\\{]+|``|[\\$\u003c\u003e]\\(\\))[\\s\\x0b]*)[\\-0-9_a-z]+"
+              "value": "(?i)[\\-0-9_a-z]+(?:[\\s\\x0b]*[\"'][^\\s\\x0b\"',:]+[\"']|(?:[\"'][\"']+|[\\[-\\]]+|\\$+[!#\\*\\-0-9\\?@\\x5c_a-\\{]+|``|[\\$\u003c\u003e]\\(\\))[\\s\\x0b]*)[\\-0-9_a-z]+",
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$"
+              ]
             },
             {
               "field": "xml",
@@ -24449,6 +24461,12 @@
                 "jsDecode",
                 "cssDecode",
                 "removeNulls"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -24461,6 +24479,12 @@
                 "jsDecode",
                 "cssDecode",
                 "removeNulls"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -27116,6 +27140,9 @@
               "transforms": [
                 "jsDecode",
                 "lowercase"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -27125,6 +27152,9 @@
               "transforms": [
                 "jsDecode",
                 "lowercase"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -27197,6 +27227,9 @@
               "transforms": [
                 "htmlEntityDecode",
                 "compressWhitespace"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -27206,6 +27239,9 @@
               "transforms": [
                 "htmlEntityDecode",
                 "compressWhitespace"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -27278,6 +27314,9 @@
               "transforms": [
                 "htmlEntityDecode",
                 "compressWhitespace"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -27287,6 +27326,9 @@
               "transforms": [
                 "htmlEntityDecode",
                 "compressWhitespace"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -28621,6 +28663,10 @@
               "value": "(?i)(?:,[^\\)]*?(?:[0-9a-f]+|\\([0-9a-f]+\\))|\\([^,]+(?:,[\\s\\x0b]*[0-9a-f]+)+\\))(?:$|[\"'`](?:$|[^\"'`]+[\"'`])|(?:\\r?\\n)?\\z)|,[^\\)]*?[\"'`][^\"'`]+[\"'`]|[^0-9A-Z_a-z]select.+[^0-9A-Z_a-z]*?from|(?:alter|(?:(?:cre|trunc|upd)at|renam)e|d(?:e(?:lete|sc)|rop)|(?:inser|selec)t|load)[\\s\\x0b]*?\\([\\s\\x0b]*?space[\\s\\x0b]*?\\(",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -28629,6 +28675,10 @@
               "value": "(?i)(?:,[^\\)]*?(?:[0-9a-f]+|\\([0-9a-f]+\\))|\\([^,]+(?:,[\\s\\x0b]*[0-9a-f]+)+\\))(?:$|[\"'`](?:$|[^\"'`]+[\"'`])|(?:\\r?\\n)?\\z)|,[^\\)]*?[\"'`][^\"'`]+[\"'`]|[^0-9A-Z_a-z]select.+[^0-9A-Z_a-z]*?from|(?:alter|(?:(?:cre|trunc|upd)at|renam)e|d(?:e(?:lete|sc)|rop)|(?:inser|selec)t|load)[\\s\\x0b]*?\\([\\s\\x0b]*?space[\\s\\x0b]*?\\(",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -29313,6 +29363,12 @@
               "value": "(?i)\\[?\\$(?:a(?:bs|c(?:cumulator|osh?)|dd(?:ToSet)?|ll(?:ElementsTrue)?|n(?:d|yElementTrue)|rray(?:ElemA|ToObjec)t|sinh?|tan[2h]?|vg)|b(?:etween|i(?:narySize|t(?:And|Not|(?:O|Xo)r)?)|ottomN?|sonSize|ucket(?:Auto)?)|c(?:eil|mp|o(?:n(?:cat(?:Arrays)?|d|vert)|sh?|unt|variance(?:Po|Sam)p)|urrentDate)|d(?:a(?:te(?:Add|Diff|From(?:Parts|String)|Subtract|T(?:o(?:Parts|String)|runc))|yOf(?:Month|Week|Year))|e(?:greesToRadians|nseRank|rivative)|iv(?:ide)?|ocumentNumber)|e(?:(?:a|lemMat)ch|q|x(?:ists|p(?:MovingAvg|r)?))|f(?:i(?:lter|rstN?)|loor|unction)|g(?:etField|roup|te?)|(?:hou|xo|yea)r|i(?:fNull|n(?:c|dexOf(?:Array|Bytes|CP)|tegral)?|s(?:Array|Number|o(?:DayOfWeek|Week(?:Year)?)))|jsonSchema|l(?:astN?|et|i(?:ke|(?:nearFil|tera)l)|n|o(?:cf|g(?:10)?)|t(?:e|rim)?)|m(?:a(?:p|xN?)|e(?:dian|rgeObjects|ta)|i(?:llisecond|n(?:N|ute)?)|o(?:d|nth)|ul(?:tiply)?)|n(?:atural|e|in|o[rt])|o(?:bjectToArray|r)|p(?:ercentile|o(?:[pw]|sition)|roject|u(?:ll(?:All)?|sh))|r(?:a(?:diansToDegrees|n(?:[dk]|ge))|e(?:(?:duc|nam)e|gex(?:Find(?:All)?|Match)?|place(?:All|One)|verseArray)|ound|trim)|s(?:(?:ampleRat|lic)e|e(?:cond|t(?:Difference|(?:Equal|WindowField)s|Field|I(?:ntersection|sSubset)|OnInsert|Union)?)|(?:hif|pli|qr)t|i(?:nh?|ze)|ort(?:Array)?|t(?:dDev(?:Po|Sam)p|r(?:Len(?:Bytes|CP)|casecmp))|u(?:b(?:str(?:Bytes|CP)?|tract)|m)|witch)|t(?:anh?|ext|o(?:Bool|D(?:(?:at|oubl)e|ecimal)|HashedIndexKey|Int|Lo(?:ng|wer)|ObjectId|String|U(?:UID|pper)|pN?)|r(?:im|unc)|s(?:Increment|Second)|ype)|unset|w(?:eek|here)|zip)\\]?",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -29321,6 +29377,12 @@
               "value": "(?i)\\[?\\$(?:a(?:bs|c(?:cumulator|osh?)|dd(?:ToSet)?|ll(?:ElementsTrue)?|n(?:d|yElementTrue)|rray(?:ElemA|ToObjec)t|sinh?|tan[2h]?|vg)|b(?:etween|i(?:narySize|t(?:And|Not|(?:O|Xo)r)?)|ottomN?|sonSize|ucket(?:Auto)?)|c(?:eil|mp|o(?:n(?:cat(?:Arrays)?|d|vert)|sh?|unt|variance(?:Po|Sam)p)|urrentDate)|d(?:a(?:te(?:Add|Diff|From(?:Parts|String)|Subtract|T(?:o(?:Parts|String)|runc))|yOf(?:Month|Week|Year))|e(?:greesToRadians|nseRank|rivative)|iv(?:ide)?|ocumentNumber)|e(?:(?:a|lemMat)ch|q|x(?:ists|p(?:MovingAvg|r)?))|f(?:i(?:lter|rstN?)|loor|unction)|g(?:etField|roup|te?)|(?:hou|xo|yea)r|i(?:fNull|n(?:c|dexOf(?:Array|Bytes|CP)|tegral)?|s(?:Array|Number|o(?:DayOfWeek|Week(?:Year)?)))|jsonSchema|l(?:astN?|et|i(?:ke|(?:nearFil|tera)l)|n|o(?:cf|g(?:10)?)|t(?:e|rim)?)|m(?:a(?:p|xN?)|e(?:dian|rgeObjects|ta)|i(?:llisecond|n(?:N|ute)?)|o(?:d|nth)|ul(?:tiply)?)|n(?:atural|e|in|o[rt])|o(?:bjectToArray|r)|p(?:ercentile|o(?:[pw]|sition)|roject|u(?:ll(?:All)?|sh))|r(?:a(?:diansToDegrees|n(?:[dk]|ge))|e(?:(?:duc|nam)e|gex(?:Find(?:All)?|Match)?|place(?:All|One)|verseArray)|ound|trim)|s(?:(?:ampleRat|lic)e|e(?:cond|t(?:Difference|(?:Equal|WindowField)s|Field|I(?:ntersection|sSubset)|OnInsert|Union)?)|(?:hif|pli|qr)t|i(?:nh?|ze)|ort(?:Array)?|t(?:dDev(?:Po|Sam)p|r(?:Len(?:Bytes|CP)|casecmp))|u(?:b(?:str(?:Bytes|CP)?|tract)|m)|witch)|t(?:anh?|ext|o(?:Bool|D(?:(?:at|oubl)e|ecimal)|HashedIndexKey|Int|Lo(?:ng|wer)|ObjectId|String|U(?:UID|pper)|pN?)|r(?:im|unc)|s(?:Increment|Second)|ype)|unset|w(?:eek|here)|zip)\\]?",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -29685,6 +29747,11 @@
               "value": "(?i)in[\\s\\x0b]*?\\(+[\\s\\x0b]*?select|(?:(?:and|n(?:and|ot)|(?:xx?)?or|div|like|between)[\\s\\x0b]+|(?:\\|\\||\u0026\u0026)[\\s\\x0b]*?)[\\s\\x0b\\+0-9A-Z_a-z]+(?:regexp[\\s\\x0b]*?\\(|sounds[\\s\\x0b]+like[\\s\\x0b]*?[\"'`]|[0-9=]+x)|[\"'`](?:[\\s\\x0b]*?(?:(?:[0-9]+[\\s\\x0b]*?(?:--|#)|is[\\s\\x0b]*?(?:[0-9][^\"'`]+[\"'`]?[0-9A-Z_a-z]|[\\.0-9]+[\\s\\x0b]*?[^0-9A-Z_a-z][^\"'`]*[\"'`])|(?:and|n(?:and|ot)|(?:xx?)?or|div|like|between)[\\s\\x0b]+|(?:\\|\\||\u0026\u0026)[\\s\\x0b]*?)(?:array[\\s\\x0b]*?\\[|(?:tru|fals)e\\b|[0-9A-Z_a-z]+(?:[\\s\\x0b]*?!?~|[\\s\\x0b]+(?:not[\\s\\x0b]+)?similar[\\s\\x0b]+to[\\s\\x0b]+))|[%\u0026\u003c-\u003e\\^]+[0-9]+[\\s\\x0b]*?(?:and|n(?:and|ot)|(?:xx?)?or|div|like|between)=)|(?:[^0-9A-Z_a-z]+[\\+\\-0-9A-Z_a-z]+[\\s\\x0b]*?=[\\s\\x0b]*?[0-9][^0-9A-Z_a-z]+|\\|?[\\-0-9A-Z_a-z]{3,}[^\\s\\x0b,\\.0-9A-Z_a-z]+)[\"'`])|\\bexcept[\\s\\x0b]+(?:select\\b|values[\\s\\x0b]*?\\()",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:FCNEC",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -29693,6 +29760,11 @@
               "value": "(?i)in[\\s\\x0b]*?\\(+[\\s\\x0b]*?select|(?:(?:and|n(?:and|ot)|(?:xx?)?or|div|like|between)[\\s\\x0b]+|(?:\\|\\||\u0026\u0026)[\\s\\x0b]*?)[\\s\\x0b\\+0-9A-Z_a-z]+(?:regexp[\\s\\x0b]*?\\(|sounds[\\s\\x0b]+like[\\s\\x0b]*?[\"'`]|[0-9=]+x)|[\"'`](?:[\\s\\x0b]*?(?:(?:[0-9]+[\\s\\x0b]*?(?:--|#)|is[\\s\\x0b]*?(?:[0-9][^\"'`]+[\"'`]?[0-9A-Z_a-z]|[\\.0-9]+[\\s\\x0b]*?[^0-9A-Z_a-z][^\"'`]*[\"'`])|(?:and|n(?:and|ot)|(?:xx?)?or|div|like|between)[\\s\\x0b]+|(?:\\|\\||\u0026\u0026)[\\s\\x0b]*?)(?:array[\\s\\x0b]*?\\[|(?:tru|fals)e\\b|[0-9A-Z_a-z]+(?:[\\s\\x0b]*?!?~|[\\s\\x0b]+(?:not[\\s\\x0b]+)?similar[\\s\\x0b]+to[\\s\\x0b]+))|[%\u0026\u003c-\u003e\\^]+[0-9]+[\\s\\x0b]*?(?:and|n(?:and|ot)|(?:xx?)?or|div|like|between)=)|(?:[^0-9A-Z_a-z]+[\\+\\-0-9A-Z_a-z]+[\\s\\x0b]*?=[\\s\\x0b]*?[0-9][^0-9A-Z_a-z]+|\\|?[\\-0-9A-Z_a-z]{3,}[^\\s\\x0b,\\.0-9A-Z_a-z]+)[\"'`])|\\bexcept[\\s\\x0b]+(?:select\\b|values[\\s\\x0b]*?\\()",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:FCNEC",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -30020,6 +30092,12 @@
               "value": "(?i)[\"'`](?:[\\s\\x0b]*?(?:(?:\\*.+(?:x?or|div|like|between|(?:an|i)d)[^0-9A-Z_a-z]*?[\"'`]|(?:x?or|div|like|between|and)[\\s\\x0b][^0-9]+[\\-0-9A-Z_a-z]+[^0-9]*)[0-9]|[^\\s\\x0b0-9\\?A-Z_a-z]+[\\s\\x0b]*?[^\\s\\x0b0-9A-Z_a-z]+[\\s\\x0b]*?[\"'`]|[^\\s\\x0b0-9A-Z_a-z]+[\\s\\x0b]*?[^A-Z_a-z](?:[^#]*#|.*?--))|[^\\*]*\\*[\\s\\x0b]*?[0-9])|\\^[\"'`]|[%\\(-\\+\\-\u003c\u003e][\\-0-9A-Z_a-z]+[^\\s\\x0b0-9A-Z_a-z]+[\"'`][^,]",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:FCNEC",
+                "cookie:^pbjs-\\w+$",
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30028,6 +30106,12 @@
               "value": "(?i)[\"'`](?:[\\s\\x0b]*?(?:(?:\\*.+(?:x?or|div|like|between|(?:an|i)d)[^0-9A-Z_a-z]*?[\"'`]|(?:x?or|div|like|between|and)[\\s\\x0b][^0-9]+[\\-0-9A-Z_a-z]+[^0-9]*)[0-9]|[^\\s\\x0b0-9\\?A-Z_a-z]+[\\s\\x0b]*?[^\\s\\x0b0-9A-Z_a-z]+[\\s\\x0b]*?[\"'`]|[^\\s\\x0b0-9A-Z_a-z]+[\\s\\x0b]*?[^A-Z_a-z](?:[^#]*#|.*?--))|[^\\*]*\\*[\\s\\x0b]*?[0-9])|\\^[\"'`]|[%\\(-\\+\\-\u003c\u003e][\\-0-9A-Z_a-z]+[^\\s\\x0b0-9A-Z_a-z]+[\"'`][^,]",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:FCNEC",
+                "cookie:^pbjs-\\w+$",
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30102,6 +30186,9 @@
               "value": "(?i)\\b(?:having\\b(?:[\\s\\x0b]+(?:[0-9]{1,10}|'[^=]{1,10}')[\\s\\x0b]*?[\u003c-\u003e]| ?(?:[0-9]{1,10} ?[\u003c-\u003e]+|[\"'][^=]{1,10}[ \"'\u003c-\\?\\[]+))|ex(?:ecute(?:\\(|[\\s\\x0b]{1,5}[\\$\\.0-9A-Z_a-z]{1,5}[\\s\\x0b]{0,3})|ists[\\s\\x0b]*?\\([\\s\\x0b]*?select\\b)|(?:create[\\s\\x0b]+?table.{0,20}?|like[^0-9A-Z_a-z]*?char[^0-9A-Z_a-z]*?)\\()|select.*?case|from.*?limit|order[\\s\\x0b]by|exists[\\s\\x0b](?:[\\s\\x0b]select|s(?:elect[^\\s\\x0b](?:if(?:null)?[\\s\\x0b]\\(|top|concat)|ystem[\\s\\x0b]\\()|\\bhaving\\b[\\s\\x0b]+[0-9]{1,10}|'[^=]{1,10}')",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30110,6 +30197,9 @@
               "value": "(?i)\\b(?:having\\b(?:[\\s\\x0b]+(?:[0-9]{1,10}|'[^=]{1,10}')[\\s\\x0b]*?[\u003c-\u003e]| ?(?:[0-9]{1,10} ?[\u003c-\u003e]+|[\"'][^=]{1,10}[ \"'\u003c-\\?\\[]+))|ex(?:ecute(?:\\(|[\\s\\x0b]{1,5}[\\$\\.0-9A-Z_a-z]{1,5}[\\s\\x0b]{0,3})|ists[\\s\\x0b]*?\\([\\s\\x0b]*?select\\b)|(?:create[\\s\\x0b]+?table.{0,20}?|like[^0-9A-Z_a-z]*?char[^0-9A-Z_a-z]*?)\\()|select.*?case|from.*?limit|order[\\s\\x0b]by|exists[\\s\\x0b](?:[\\s\\x0b]select|s(?:elect[^\\s\\x0b](?:if(?:null)?[\\s\\x0b]\\(|top|concat)|ystem[\\s\\x0b]\\()|\\bhaving\\b[\\s\\x0b]+[0-9]{1,10}|'[^=]{1,10}')",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30168,6 +30258,9 @@
               "value": "(?i)\\b(?:or\\b(?:[\\s\\x0b]?(?:[0-9]{1,10}|[\"'][^=]{1,10}[\"'])[\\s\\x0b]?[\u003c-\u003e]+|[\\s\\x0b]+(?:[0-9]{1,10}|'[^=]{1,10}')(?:[\\s\\x0b]*?[\u003c-\u003e])?)|xor\\b[\\s\\x0b]+(?:[0-9]{1,10}|'[^=]{1,10}')(?:[\\s\\x0b]*?[\u003c-\u003e])?)|'[\\s\\x0b]+x?or[\\s\\x0b]+.{1,20}[!\\+\\-\u003c-\u003e]",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30176,6 +30269,9 @@
               "value": "(?i)\\b(?:or\\b(?:[\\s\\x0b]?(?:[0-9]{1,10}|[\"'][^=]{1,10}[\"'])[\\s\\x0b]?[\u003c-\u003e]+|[\\s\\x0b]+(?:[0-9]{1,10}|'[^=]{1,10}')(?:[\\s\\x0b]*?[\u003c-\u003e])?)|xor\\b[\\s\\x0b]+(?:[0-9]{1,10}|'[^=]{1,10}')(?:[\\s\\x0b]*?[\u003c-\u003e])?)|'[\\s\\x0b]+x?or[\\s\\x0b]+.{1,20}[!\\+\\-\u003c-\u003e]",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30234,6 +30330,9 @@
               "value": "(?i)\\band\\b(?:[\\s\\x0b]+(?:[0-9]{1,10}[\\s\\x0b]*?[\u003c-\u003e]|'[^=]{1,10}')| ?(?:[0-9]{1,10}|[\"'][^=]{1,10}[\"']) ?[\u003c-\u003e]+)",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30242,6 +30341,9 @@
               "value": "(?i)\\band\\b(?:[\\s\\x0b]+(?:[0-9]{1,10}[\\s\\x0b]*?[\u003c-\u003e]|'[^=]{1,10}')| ?(?:[0-9]{1,10}|[\"'][^=]{1,10}[\"']) ?[\u003c-\u003e]+)",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30302,7 +30404,8 @@
                 "urlDecodeUni"
               ],
               "excludes": [
-                "cookie:_pk_ref"
+                "cookie:_pk_ref",
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30313,7 +30416,8 @@
                 "urlDecodeUni"
               ],
               "excludes": [
-                "cookie:_pk_ref"
+                "cookie:_pk_ref",
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30356,6 +30460,15 @@
               "value": "((?:(?:[!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]|\\x{c2}\\x{b4}|\\x{e2}\\x80[\\x98\\x99])[^!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]*?){8})",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:__gads",
+                "cookie:__gpi",
+                "cookie:FCCDCF",
+                "cookie:__eoi",
+                "cookie:FCNEC",
+                "cookie:^pbjs-\\w+$",
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30364,6 +30477,15 @@
               "value": "((?:(?:[!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]|\\x{c2}\\x{b4}|\\x{e2}\\x80[\\x98\\x99])[^!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]*?){8})",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:__gads",
+                "cookie:__gpi",
+                "cookie:FCCDCF",
+                "cookie:__eoi",
+                "cookie:FCNEC",
+                "cookie:^pbjs-\\w+$",
+                "cookie:^_pk_ref"
               ]
             }
           ],
@@ -30398,6 +30520,20 @@
               "value": "((?:(?:[!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]|\\x{c2}\\x{b4}|\\x{e2}\\x80[\\x98\\x99])[^!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]*?){3})",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:__gpi",
+                "cookie:FCCDCF",
+                "cookie:__eoi",
+                "cookie:FCNEC",
+                "cookie:sharedid",
+                "cookie:_clsk",
+                "cookie:_clck",
+                "cookie:_awl",
+                "cookie:^pbjs-\\w+$",
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30406,6 +30542,20 @@
               "value": "((?:(?:[!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]|\\x{c2}\\x{b4}|\\x{e2}\\x80[\\x98\\x99])[^!-\\+\\-:-\u003e@\\[\\]\\^`\\{-~]*?){3})",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:__gpi",
+                "cookie:FCCDCF",
+                "cookie:__eoi",
+                "cookie:FCNEC",
+                "cookie:sharedid",
+                "cookie:_clsk",
+                "cookie:_clck",
+                "cookie:_awl",
+                "cookie:^pbjs-\\w+$",
+                "cookie:^_pk_ref"
               ]
             }
           ],
@@ -30614,6 +30764,9 @@
               "value": "/\\*!?|\\*/|[';]--|--(?:[\\s\\x0b]|[^\\-]*?-)|[^\u0026\\-]#.*?[\\s\\x0b]|;?\\x00",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30622,6 +30775,9 @@
               "value": "/\\*!?|\\*/|[';]--|--(?:[\\s\\x0b]|[^\\-]*?-)|[^\u0026\\-]#.*?[\\s\\x0b]|;?\\x00",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30680,6 +30836,9 @@
               "value": "(?i)\\b0x[0-9a-f]{3,}|(?:x'[0-9a-f]{3,}|b'[01]{10,})'",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30688,6 +30847,9 @@
               "value": "(?i)\\b0x[0-9a-f]{3,}|(?:x'[0-9a-f]{3,}|b'[01]{10,})'",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30772,6 +30934,9 @@
               "value": "(?i)autonomous_transaction|(?:current_use|n?varcha|tbcreato)r|db(?:a_users|ms_java)|open(?:owa_util|query|rowset)|s(?:p_(?:(?:addextendedpro|sqlexe)c|execute(?:sql)?|help|is_srvrolemember|makewebtask|oacreate|p(?:assword|repare)|replwritetovarbin)|ql_(?:longvarchar|variant))|utl_(?:file|http)|xp_(?:availablemedia|(?:cmdshel|servicecontro)l|dirtree|e(?:numdsn|xecresultset)|filelist|loginconfig|makecab|ntsec(?:_enumdomains)?|reg(?:addmultistring|delete(?:key|value)|enum(?:key|value)s|re(?:ad|movemultistring)|write)|terminate(?:_process)?)",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30780,6 +30945,9 @@
               "value": "(?i)autonomous_transaction|(?:current_use|n?varcha|tbcreato)r|db(?:a_users|ms_java)|open(?:owa_util|query|rowset)|s(?:p_(?:(?:addextendedpro|sqlexe)c|execute(?:sql)?|help|is_srvrolemember|makewebtask|oacreate|p(?:assword|repare)|replwritetovarbin)|ql_(?:longvarchar|variant))|utl_(?:file|http)|xp_(?:availablemedia|(?:cmdshel|servicecontro)l|dirtree|e(?:numdsn|xecresultset)|filelist|loginconfig|makecab|ntsec(?:_enumdomains)?|reg(?:addmultistring|delete(?:key|value)|enum(?:key|value)s|re(?:ad|movemultistring)|write)|terminate(?:_process)?)",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30838,6 +31006,9 @@
               "value": "(?i)\\b(?:(?:d(?:bms_[0-9A-Z_a-z]+\\.|elete\\b[^0-9A-Z_a-z]*?\\bfrom)|(?:group\\b.*?\\bby\\b.{1,100}?\\bhav|overlay\\b[^0-9A-Z_a-z]*?\\(.*?\\b[^0-9A-Z_a-z]*?plac)ing|in(?:ner\\b[^0-9A-Z_a-z]*?\\bjoin|sert\\b[^0-9A-Z_a-z]*?\\binto|to\\b[^0-9A-Z_a-z]*?\\b(?:dump|out)file)|load\\b[^0-9A-Z_a-z]*?\\bdata\\b.*?\\binfile|s(?:elect\\b.{1,100}?\\b(?:(?:.*?\\bdump\\b.*|(?:count|length)\\b.{1,100}?)\\bfrom|(?:data_typ|from\\b.{1,100}?\\bwher)e|instr|to(?:_(?:cha|numbe)r|p\\b.{1,100}?\\bfrom))|ys_context)|u(?:nion\\b.{1,100}?\\bselect|tl_inaddr))\\b|print\\b[^0-9A-Z_a-z]*?@@)|(?:collation[^0-9A-Z_a-z]*?\\(a|@@version|;[^0-9A-Z_a-z]*?\\b(?:drop|shutdown))\\b|'(?:dbo|msdasql|s(?:a|qloledb))'",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30846,6 +31017,9 @@
               "value": "(?i)\\b(?:(?:d(?:bms_[0-9A-Z_a-z]+\\.|elete\\b[^0-9A-Z_a-z]*?\\bfrom)|(?:group\\b.*?\\bby\\b.{1,100}?\\bhav|overlay\\b[^0-9A-Z_a-z]*?\\(.*?\\b[^0-9A-Z_a-z]*?plac)ing|in(?:ner\\b[^0-9A-Z_a-z]*?\\bjoin|sert\\b[^0-9A-Z_a-z]*?\\binto|to\\b[^0-9A-Z_a-z]*?\\b(?:dump|out)file)|load\\b[^0-9A-Z_a-z]*?\\bdata\\b.*?\\binfile|s(?:elect\\b.{1,100}?\\b(?:(?:.*?\\bdump\\b.*|(?:count|length)\\b.{1,100}?)\\bfrom|(?:data_typ|from\\b.{1,100}?\\bwher)e|instr|to(?:_(?:cha|numbe)r|p\\b.{1,100}?\\bfrom))|ys_context)|u(?:nion\\b.{1,100}?\\bselect|tl_inaddr))\\b|print\\b[^0-9A-Z_a-z]*?@@)|(?:collation[^0-9A-Z_a-z]*?\\(a|@@version|;[^0-9A-Z_a-z]*?\\b(?:drop|shutdown))\\b|'(?:dbo|msdasql|s(?:a|qloledb))'",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:^_pk_ref"
               ]
             },
             {
@@ -30915,6 +31089,10 @@
               "value": "[\"'`][\\s\\d]*?[^\\w\\s]\\W*?\\d\\W*?.*?[\"'`\\d]",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -30923,6 +31101,10 @@
               "value": "[\"'`][\\s\\d]*?[^\\w\\s]\\W*?\\d\\W*?.*?[\"'`\\d]",
               "transforms": [
                 "urlDecodeUni"
+              ],
+              "excludes": [
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -31506,6 +31688,12 @@
               "transforms": [
                 "urlDecodeUni",
                 "removeWhitespace"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -31515,6 +31703,12 @@
               "transforms": [
                 "urlDecodeUni",
                 "removeWhitespace"
+              ],
+              "excludes": [
+                "cookie:^_ga(?:_\\w+)?$",
+                "cookie:__gads",
+                "cookie:FCCDCF",
+                "cookie:^pbjs-\\w+$"
               ]
             },
             {
@@ -37396,5 +37590,5 @@
   ],
   "version": 7,
   "crs_version": "v4.24.1",
-  "generated": "2026-03-26T12:27:12Z"
+  "generated": "2026-03-26T13:05:15Z"
 }
