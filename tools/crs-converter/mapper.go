@@ -27,8 +27,8 @@ var variableMap = map[string]string{
 	"ARGS_GET_NAMES":      "all_args_names",  // overridden to "query_args_names" when separateArgs=true
 	"ARGS_POST":           "all_args_values", // overridden to "post_args_values" when separateArgs=true
 	"ARGS_POST_NAMES":     "all_args_names",  // overridden to "post_args_names" when separateArgs=true
-	"ARGS_COMBINED_SIZE":  "",                // size check — skip
-	"REQUEST_BODY_LENGTH": "",                // size check — skip
+	"ARGS_COMBINED_SIZE":  "",                // size check — handled by plugin enforceProtocolLimits()
+	"REQUEST_BODY_LENGTH": "content_length",  // approximate: use Content-Length header value
 
 	// Request cookies
 	"REQUEST_COOKIES":       "all_cookies",
@@ -58,12 +58,12 @@ var variableMap = map[string]string{
 	// Body
 	"REQUEST_BODY": "body",
 
-	// Files
-	"FILES":       "files",       // NEEDED in plugin
-	"FILES_NAMES": "files_names", // NEEDED in plugin
+	// Files (multipart upload field names and original filenames)
+	"FILES":       "files",
+	"FILES_NAMES": "files_names",
 
-	// XML
-	"XML": "xml", // NEEDED in plugin
+	// XML body content (text nodes + attribute values)
+	"XML": "xml",
 
 	// Response (outbound — phase 3/4)
 	"RESPONSE_STATUS":       "response_status",
@@ -72,8 +72,8 @@ var variableMap = map[string]string{
 	"RESPONSE_CONTENT_TYPE": "response_content_type",
 
 	// Multipart
-	"MULTIPART_PART_HEADERS":       "multipart_part_headers", // NEEDED in plugin
-	"MULTIPART_STRICT_ERROR":       "multipart_strict_error", // NEEDED in plugin
+	"MULTIPART_PART_HEADERS":       "multipart_part_headers",
+	"MULTIPART_STRICT_ERROR":       "multipart_strict_error", // NEEDED in plugin (strict error flag)
 	"MULTIPART_UNMATCHED_BOUNDARY": "",                       // rare — skip
 
 	// Internal (skip)
@@ -88,7 +88,7 @@ var variableMap = map[string]string{
 	"HIGHEST_SEVERITY":   "",
 	"ENV":                "",
 	"REQBODY_ERROR":      "reqbody_error", // NEEDED in plugin
-	"REQBODY_PROCESSOR":  "",              // internal CRS state — skip
+	"REQBODY_PROCESSOR":  "",              // approximated in convertRule via content_type check
 }
 
 // initSeparateArgs updates variableMap to use dedicated GET/POST fields
@@ -129,6 +129,8 @@ var pluginSupportedFields = map[string]bool{
 	"header": true, "cookie": true, "args": true,
 	"request_line": true, "request_basename": true,
 	"content_type": true, "content_length": true,
+	"files": true, "files_names": true,
+	"xml": true, "multipart_part_headers": true,
 	// Aggregate fields
 	"all_args": true, "all_args_values": true, "all_args_names": true,
 	"query_args_values": true, "query_args_names": true,

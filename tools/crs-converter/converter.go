@@ -186,9 +186,221 @@ func allVariablesAreTX(vars []Variable) bool {
 	return true
 }
 
+// ─── Special-Case Rule Conversion ──────────────────────────────────
+//
+// Some CRS rules use patterns too complex for generic conversion (TX regex
+// key iteration, REQBODY_PROCESSOR, dynamic host comparison). These are
+// converted via hardcoded logic that produces equivalent plugin conditions.
+
+func (c *Converter) convertSpecialCase(rule SecRule, category, filename string) *PolicyRule {
+	switch rule.ID {
+	case "920450":
+		// Restricted headers (basic): any request header in the restricted list → block.
+		// CRS iterates all headers via TX regex key; we emit a phrase_match on all_headers_names.
+		items := parseSlashWrapped(crsDefaultRestrictedHeaders)
+		return c.buildSpecialDetect(rule, category, filename, []PolicyCondition{{
+			Field:      "all_headers_names",
+			Operator:   "phrase_match",
+			Transforms: []string{"lowercase"},
+			ListItems:  items,
+		}})
+
+	case "920451":
+		// Restricted headers (extended, PL2): same pattern as 920450.
+		items := parseSlashWrapped(crsDefaultRestrictedHeadersExtended)
+		return c.buildSpecialDetect(rule, category, filename, []PolicyCondition{{
+			Field:      "all_headers_names",
+			Operator:   "phrase_match",
+			Transforms: []string{"lowercase"},
+			ListItems:  items,
+		}})
+
+	case "920540":
+		// Unicode escape bypass for non-JSON requests.
+		// CRS: REQBODY_PROCESSOR !@streq JSON → check for \uXXXX in args/headers/URI.
+		// We approximate: Content-Type not containing "json" AND args/headers match \uXXXX.
+		return c.buildSpecialDetect(rule, category, filename, []PolicyCondition{
+			{
+				Field:    "content_type",
+				Operator: "contains",
+				Value:    "json",
+				Negate:   true, // NOT contains json
+			},
+			{
+				Group: []PolicyCondition{
+					{Field: "all_args_values", Operator: "regex", Value: `(?i)\\x5cu[0-9a-f]{4}`},
+					{Field: "all_args_names", Operator: "regex", Value: `(?i)\\x5cu[0-9a-f]{4}`},
+					{Field: "all_headers", Operator: "regex", Value: `(?i)\\x5cu[0-9a-f]{4}`},
+					{Field: "path", Operator: "regex", Value: `(?i)\\x5cu[0-9a-f]{4}`},
+				},
+				GroupOp: "or",
+			},
+		})
+
+	case "931130":
+		// RFI off-domain reference: URL in args pointing to external host.
+		// CRS captures hostname from URL, compares to Host header.
+		// We approximate: args contain a URL scheme with a hostname that's
+		// different from the request host. Emit as a regex that matches full
+		// URLs — the head regex alone already detects RFI attempt patterns.
+		// The host comparison (chain) is a precision optimization, not the
+		// core detection. Include the head regex as-is.
+		opValue := rule.Operator.Value
+		fixed, err := ValidateRE2(opValue)
+		if err != nil {
+			return nil // fall through to generic (will be skipped)
+		}
+		transforms, _ := mapTransforms(rule.Transforms)
+		return c.buildSpecialDetect(rule, category, filename, []PolicyCondition{{
+			Group: []PolicyCondition{
+				{Field: "all_args_values", Operator: "regex", Value: fixed, Transforms: transforms},
+				{Field: "all_args_names", Operator: "regex", Value: fixed, Transforms: transforms},
+			},
+			GroupOp: "or",
+		}})
+	}
+	return nil
+}
+
+// buildSpecialDetect creates a detect PolicyRule from hand-crafted conditions.
+func (c *Converter) buildSpecialDetect(rule SecRule, category, filename string, conditions []PolicyCondition) *PolicyRule {
+	severity := mapSeverity(rule.Severity)
+	tags := mapCRSTags(rule.Tags)
+	phase := ""
+	if rule.Phase == 3 || rule.Phase == 4 {
+		phase = "outbound"
+	}
+	return &PolicyRule{
+		ID:            rule.ID,
+		Name:          rule.Msg,
+		Type:          "detect",
+		Phase:         phase,
+		Conditions:    conditions,
+		GroupOp:       "and",
+		Severity:      severity,
+		ParanoiaLevel: rule.ParanoiaLevel,
+		Tags:          tags,
+		Enabled:       true,
+		Priority:      400,
+		Description:   rule.Msg,
+		Category:      category,
+		CRSFile:       filepath.Base(filename),
+	}
+}
+
+// parseSlashWrapped parses a slash-wrapped list like "/value1/ /value2/" into individual items.
+func parseSlashWrapped(s string) []string {
+	var items []string
+	for _, item := range strings.Fields(s) {
+		item = strings.Trim(item, "/")
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+// ─── CRS TX Default Values ─────────────────────────────────────────
+//
+// These are the default CRS TX variable values from REQUEST-901-INITIALIZATION.conf.
+// When the converter encounters @within %{tx.allowed_*} or %{tx.restricted_*},
+// it substitutes the CRS defaults. Per-service overrides are handled by the
+// plugin's WafConfig (for 911100/920430) or as customizable rule overrides
+// in the wafctl dashboard.
+
+// crsDefaultContentTypes is the default allowed Content-Type list (pipe-wrapped).
+var crsDefaultContentTypes = "|application/x-www-form-urlencoded| |multipart/form-data| |multipart/related| |text/xml| |application/xml| |application/soap+xml| |application/json| |application/cloudevents+json| |application/cloudevents-batch+json|"
+
+// crsDefaultCharsets is the default allowed charset list (pipe-wrapped).
+var crsDefaultCharsets = "|utf-8| |iso-8859-1| |iso-8859-15| |windows-1252|"
+
+// crsDefaultRestrictedExtensions is the default restricted file extensions (slash-wrapped).
+var crsDefaultRestrictedExtensions = ".asa/ .asax/ .ascx/ .axd/ .backup/ .bak/ .bat/ .cdx/ .cer/ .cfg/ .cmd/ .com/ .config/ .conf/ .cs/ .csproj/ .csr/ .dat/ .db/ .dbf/ .dll/ .dos/ .htr/ .htw/ .ida/ .idc/ .idq/ .inc/ .ini/ .key/ .licx/ .lnk/ .log/ .mdb/ .old/ .pass/ .pdb/ .pol/ .printer/ .pwd/ .rdb/ .resources/ .resx/ .sql/ .swp/ .sys/ .vb/ .vbs/ .vbproj/ .vsdisco/ .webinfo/ .xsd/ .xsx/"
+
+// crsDefaultRestrictedHeaders is the default restricted header names (slash-wrapped).
+var crsDefaultRestrictedHeaders = "/content-encoding/ /proxy/ /lock-token/ /content-range/ /if/ /x-http-method-override/ /x-http-method/ /x-method-override/ /x-middleware-subrequest/ /expect/"
+
+// crsDefaultRestrictedHeadersExtended is the extended restricted header names.
+var crsDefaultRestrictedHeadersExtended = "/accept-charset/"
+
+// flattenTXWithinChain attempts to flatten a chain rule where the chain link
+// uses @within or !@within against a TX variable reference (e.g., %{tx.allowed_*}).
+// Returns the flattened conditions if successful, or nil if the chain pattern
+// is not recognized.
+func (c *Converter) flattenTXWithinChain(rule SecRule, headFields []string, headCond PolicyCondition) []PolicyCondition {
+	if rule.Chain == nil {
+		return nil
+	}
+	chain := rule.Chain
+	if chain.Operator.Name != "within" {
+		return nil
+	}
+	opVal := chain.Operator.Value
+
+	// Determine which TX variable reference is being used.
+	var allowedList string
+	var opName string
+
+	switch {
+	case strings.Contains(opVal, "%{tx.allowed_request_content_type_charset}") || strings.Contains(opVal, "%{TX.allowed_request_content_type_charset}"):
+		allowedList = crsDefaultCharsets
+		opName = "phrase_match" // pipe-delimited → phrase match
+	case strings.Contains(opVal, "%{tx.allowed_request_content_type}") || strings.Contains(opVal, "%{TX.allowed_request_content_type}"):
+		allowedList = crsDefaultContentTypes
+		opName = "phrase_match"
+	case strings.Contains(opVal, "%{tx.restricted_extensions}") || strings.Contains(opVal, "%{TX.restricted_extensions}"):
+		allowedList = crsDefaultRestrictedExtensions
+		opName = "phrase_match"
+	case strings.Contains(opVal, "%{tx.restricted_headers}") || strings.Contains(opVal, "%{TX.restricted_headers}"):
+		allowedList = crsDefaultRestrictedHeaders
+		opName = "phrase_match"
+	case strings.Contains(opVal, "%{tx.restricted_headers_extended}") || strings.Contains(opVal, "%{TX.restricted_headers_extended}"):
+		allowedList = crsDefaultRestrictedHeadersExtended
+		opName = "phrase_match"
+	default:
+		return nil // unknown TX variable reference
+	}
+
+	// Parse the allowed list into individual items.
+	// CRS uses pipe-wrapped or slash-wrapped items:
+	// "|value1| |value2|" or "value1/ value2/"
+	var items []string
+	for _, item := range strings.Fields(allowedList) {
+		item = strings.Trim(item, "|/")
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Map transforms from the chain link.
+	transforms, _ := mapTransforms(chain.Transforms)
+
+	// The head condition captures a value, the chain checks it against the list.
+	// We flatten this to: head condition + "value (not) in list" check.
+	// The tx:0 or tx:content_type variable holds the captured value from the head.
+	// We emit the check on tx:0 with the baked-in list.
+	chainCond := PolicyCondition{
+		Field:      "tx:0",
+		Operator:   opName,
+		Negate:     chain.Operator.Negated,
+		Transforms: transforms,
+		ListItems:  items,
+	}
+
+	return []PolicyCondition{headCond, chainCond}
+}
+
 // ─── Conversion ────────────────────────────────────────────────────
 
 func (c *Converter) convertRule(rule SecRule, category, filename string) (*PolicyRule, error) {
+	// Special-case rules that can't be handled by generic conversion.
+	if pr := c.convertSpecialCase(rule, category, filename); pr != nil {
+		return pr, nil
+	}
+
 	// Map operator
 	opName, supported, note := mapOperator(rule.Operator)
 	if !supported {
@@ -307,19 +519,25 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 	var conditions []PolicyCondition
 	conditions = append(conditions, cond)
 	if rule.Chain != nil {
-		chainConds, err := c.convertChain(rule.Chain, filename)
-		if err != nil {
-			return nil, fmt.Errorf("chain conversion: %w", err)
-		}
+		// First, try to flatten known CRS chain patterns where the chain link
+		// checks a captured value against a baked-in TX allowlist/blocklist.
+		if flattened := c.flattenTXWithinChain(rule, fields, cond); flattened != nil {
+			conditions = flattened
+		} else {
+			// Generic chain conversion.
+			chainConds, err := c.convertChain(rule.Chain, filename)
+			if err != nil {
+				return nil, fmt.Errorf("chain conversion: %w", err)
+			}
 
-		// If ALL chain conditions were dropped (TX variables, unsupported
-		// fields, @within %{tx.*}), the head condition alone is overbroad —
-		// the chain existed to narrow the match. Skip the entire rule.
-		// The head was a pre-filter, not the real detection.
-		if len(chainConds) == 0 {
-			return nil, fmt.Errorf("chain conditions dropped — head alone is overbroad (@%s %q)", rule.Operator.Name, rule.Operator.Value)
+			// If ALL chain conditions were dropped (TX variables, unsupported
+			// fields, @within %{tx.*}), the head condition alone is overbroad —
+			// the chain existed to narrow the match. Skip the entire rule.
+			if len(chainConds) == 0 {
+				return nil, fmt.Errorf("chain conditions dropped — head alone is overbroad (@%s %q)", rule.Operator.Name, rule.Operator.Value)
+			}
+			conditions = append(conditions, chainConds...)
 		}
-		conditions = append(conditions, chainConds...)
 	}
 
 	// Map severity

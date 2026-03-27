@@ -564,11 +564,10 @@ func TestConvertWithinTXVariable_Skipped(t *testing.T) {
 	}
 }
 
-func TestConvertChainWithTXLink_WithinTXRefSkipped(t *testing.T) {
-	// Chain link uses @within with %{tx.*} reference — this is a server-configured
-	// allowlist that we can't evaluate. The chain should be dropped, and since
-	// the head alone is overbroad, the entire rule should be skipped.
-	input := `SecRule REQUEST_HEADERS:Content-Type "@rx ^application/" \
+func TestConvertChainWithTXLink_WithinTXRefFlattened(t *testing.T) {
+	// Chain link uses @within with %{tx.allowed_request_content_type} — the converter
+	// bakes in the CRS default allowlist and flattens to head + tx:0 phrase_match.
+	input := `SecRule REQUEST_HEADERS:Content-Type "@rx ^[^;\\s]+" \
 	"id:920420,phase:1,block,capture,msg:'Content type check',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1',chain"
 	SecRule TX:content_type "!@within %{tx.allowed_request_content_type}" "t:lowercase"`
 
@@ -580,8 +579,23 @@ func TestConvertChainWithTXLink_WithinTXRefSkipped(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
 
-	if len(result) != 0 {
-		t.Errorf("expected 0 rules (@within %%{tx.*} chain unconvertible), got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule (TX allowlist flattened), got %d", len(result))
+	}
+	pr := result[0]
+	if len(pr.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions (head + flattened TX check), got %d", len(pr.Conditions))
+	}
+	// Second condition should be tx:0 phrase_match with baked content types.
+	chain := pr.Conditions[1]
+	if chain.Field != "tx:0" {
+		t.Errorf("chain field: got %q, want tx:0", chain.Field)
+	}
+	if chain.Operator != "phrase_match" {
+		t.Errorf("chain operator: got %q, want phrase_match", chain.Operator)
+	}
+	if len(chain.ListItems) < 5 {
+		t.Errorf("chain list_items: got %d items, want at least 5 (baked content types)", len(chain.ListItems))
 	}
 }
 
@@ -752,11 +766,10 @@ func TestBuildFieldCondition_ExcludesDistributed(t *testing.T) {
 	}
 }
 
-func TestConvertChainWithTXLink_CatchAllHeadSkipped(t *testing.T) {
-	// Head uses @rx ^.*$ (catch-all) with a chain link that checks TX variables.
-	// The chain link gets dropped (TX variables are unconvertible). With the
-	// catch-all head alone, the rule matches everything — it should be skipped.
-	// This is the pattern used by CRS 920450/920451 (restricted headers).
+func TestConvertChainWithTXLink_RestrictedHeadersFlattened(t *testing.T) {
+	// Head uses @rx ^.*$ (catch-all) with a chain link checking restricted headers.
+	// The chain uses TX regex key pattern + %{tx.restricted_headers} — the converter
+	// flattens this to head + tx:0 phrase_match with baked restricted header names.
 	input := `SecRule REQUEST_HEADERS_NAMES "@rx ^.*$" \
 	"id:800010,phase:1,block,capture,msg:'Header restricted',severity:'CRITICAL',tag:'paranoia-level/1',chain"
 	SecRule TX:/^header_920450_/ "@within %{tx.restricted_headers}" "t:lowercase"`
@@ -769,8 +782,16 @@ func TestConvertChainWithTXLink_CatchAllHeadSkipped(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
 
-	if len(result) != 0 {
-		t.Errorf("expected 0 rules (catch-all head with dropped chain should be skipped), got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule (restricted headers chain flattened), got %d", len(result))
+	}
+	pr := result[0]
+	if len(pr.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions, got %d", len(pr.Conditions))
+	}
+	// Second condition should check tx:0 against restricted header list.
+	if pr.Conditions[1].Field != "tx:0" {
+		t.Errorf("chain field: got %q, want tx:0", pr.Conditions[1].Field)
 	}
 }
 
