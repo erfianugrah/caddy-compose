@@ -698,6 +698,112 @@ export const CONDITION_FIELDS: FieldDef[] = [
     placeholder: "e.g., 10",
     hint: "Number of distinct cookie names.",
   },
+  // ─── CRS Body Inspection Fields ────────────────────────────────
+  {
+    value: "xml", label: "XML Body",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "not_contains", label: "does not contain" },
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+      { value: "phrase_match", label: "matches phrase list" },
+    ],
+    placeholder: "e.g., <script or SELECT.*FROM",
+    hint: "Searches all XML text content and attribute values.",
+  },
+  {
+    value: "files", label: "Upload Field Names",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+    ],
+    placeholder: "e.g., avatar",
+    hint: "Form field names that contain file uploads (multipart).",
+  },
+  {
+    value: "files_names", label: "Upload Filenames",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+      { value: "ends_with", label: "ends with" },
+    ],
+    placeholder: "e.g., .php or shell.php",
+    hint: "Original filenames from multipart Content-Disposition.",
+  },
+  {
+    value: "multipart_part_headers", label: "Multipart Part Headers",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "not_contains", label: "does not contain" },
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+    ],
+    placeholder: "e.g., content-transfer-encoding",
+    hint: "Raw header lines from MIME parts in multipart bodies.",
+  },
+  {
+    value: "request_line", label: "Request Line",
+    operators: [
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+      { value: "contains", label: "contains" },
+    ],
+    placeholder: "e.g., ^GET /api",
+    hint: "Full request line: METHOD /path HTTP/version",
+  },
+  {
+    value: "request_basename", label: "Request Basename",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "ends_with", label: "ends with" },
+      { value: "regex", label: "matches regex" },
+      { value: "phrase_match", label: "matches phrase list" },
+    ],
+    placeholder: "e.g., .bak or config.php",
+    hint: "Filename portion of the URI path (after last /).",
+  },
+  {
+    value: "content_type", label: "Content-Type",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "contains", label: "contains" },
+      { value: "not_contains", label: "does not contain" },
+      { value: "regex", label: "matches regex" },
+      { value: "in", label: "is in" },
+    ],
+    placeholder: "e.g., application/json",
+    hint: "Content-Type request header value.",
+  },
+  {
+    value: "content_length", label: "Content-Length",
+    operators: [
+      { value: "eq", label: "equals" },
+      { value: "neq", label: "does not equal" },
+      { value: "regex", label: "matches regex" },
+    ],
+    placeholder: "e.g., ^\\d+$",
+    hint: "Content-Length request header value.",
+  },
+  {
+    value: "response_body", label: "Response Body",
+    operators: [
+      { value: "contains", label: "contains" },
+      { value: "not_contains", label: "does not contain" },
+      { value: "regex", label: "matches regex" },
+      { value: "not_regex", label: "does not match regex" },
+      { value: "phrase_match", label: "matches phrase list" },
+    ],
+    placeholder: "e.g., password or SQL error",
+    hint: "Response body content (outbound/response-phase rules only).",
+  },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────

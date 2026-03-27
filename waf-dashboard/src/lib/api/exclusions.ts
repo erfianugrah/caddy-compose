@@ -35,7 +35,8 @@ export type ExclusionType = "allow" | "block" | "challenge" | "skip" | "detect" 
 export type ConditionField =
   | "ip" | "path" | "host" | "method" | "user_agent" | "header" | "query"
   | "country" | "cookie" | "body" | "body_json" | "body_form" | "args"
-  | "uri_path" | "referer" | "response_header" | "response_status" | "response_content_type" | "http_version" | "ja4" | "challenge_history"
+  | "uri_path" | "referer" | "response_header" | "response_status" | "response_content_type" | "response_body" | "http_version" | "ja4" | "challenge_history"
+  | "request_line" | "request_basename" | "content_type" | "content_length"
   // Aggregate fields (combine multiple sources for broad matching)
   | "all_args" | "all_args_names" | "all_args_values"
   | "query_args_values" | "query_args_names"
@@ -43,6 +44,8 @@ export type ConditionField =
   | "all_headers" | "all_headers_names"
   | "all_cookies" | "all_cookies_names"
   | "request_combined"
+  // CRS body inspection fields
+  | "xml" | "files" | "files_names" | "multipart_part_headers"
   // Count pseudo-fields (numeric comparison on aggregate field element count)
   | "count:all_args" | "count:all_args_names" | "count:all_args_values"
   | "count:all_headers" | "count:all_headers_names"

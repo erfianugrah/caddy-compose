@@ -235,6 +235,15 @@ var validPolicyEngineFields = map[string]bool{
 	"all_cookies":       true,
 	"all_cookies_names": true,
 	"request_combined":  true,
+	// v0.37.0: CRS body inspection fields
+	"xml":                    true, // XML text nodes + attribute values
+	"files":                  true, // multipart upload form field names
+	"files_names":            true, // multipart upload original filenames
+	"multipart_part_headers": true, // multipart MIME part headers
+	"request_line":           true, // "METHOD /path HTTP/version"
+	"request_basename":       true, // filename portion of URI path
+	"content_type":           true, // Content-Type header shortcut
+	"content_length":         true, // Content-Length header shortcut
 }
 
 // validOutboundFields are the response-phase condition fields available when
@@ -243,6 +252,7 @@ var validOutboundFields = map[string]bool{
 	"response_header":       true,
 	"response_status":       true,
 	"response_content_type": true,
+	"response_body":         true,
 }
 
 // validPhases are the valid values for the Phase field on a rule.
@@ -279,18 +289,22 @@ var validTransforms = map[string]bool{
 
 // validAggregateFields are the multi-variable fields that can be used with count:.
 var validAggregateFields = map[string]bool{
-	"all_args":          true,
-	"all_args_values":   true,
-	"all_args_names":    true,
-	"query_args_values": true,
-	"query_args_names":  true,
-	"post_args_values":  true,
-	"post_args_names":   true,
-	"all_headers":       true,
-	"all_headers_names": true,
-	"all_cookies":       true,
-	"all_cookies_names": true,
-	"request_combined":  true,
+	"all_args":               true,
+	"all_args_values":        true,
+	"all_args_names":         true,
+	"query_args_values":      true,
+	"query_args_names":       true,
+	"post_args_values":       true,
+	"post_args_names":        true,
+	"xml":                    true,
+	"files":                  true,
+	"files_names":            true,
+	"multipart_part_headers": true,
+	"all_headers":            true,
+	"all_headers_names":      true,
+	"all_cookies":            true,
+	"all_cookies_names":      true,
+	"request_combined":       true,
 }
 
 // Valid operators per field type.
@@ -546,6 +560,78 @@ var validOperatorsForField = map[string]map[string]bool{
 	},
 	// v0.10.0: request_combined — all request variables concatenated (CRS multi-variable rules)
 	"request_combined": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	// v0.37.0: CRS body inspection fields
+	"xml": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"files": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"files_names": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"multipart_part_headers": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"request_line": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"in": true, "not_in": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"request_basename": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"content_type": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"in": true, "not_in": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"content_length": {
+		"eq": true, "neq": true,
+		"regex": true, "not_regex": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"response_body": {
 		"eq": true, "neq": true, "contains": true, "not_contains": true,
 		"begins_with": true, "not_begins_with": true,
 		"ends_with": true, "not_ends_with": true,

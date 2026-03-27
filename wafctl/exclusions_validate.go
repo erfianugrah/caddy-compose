@@ -48,6 +48,12 @@ func validateConditions(conditions []Condition, allowedFields map[string]bool) e
 		// Handle count: pseudo-field — "count:all_args", etc.
 		// Resolve the underlying field for validation, then check it's an aggregate field.
 		fieldForValidation := c.Field
+		// Handle tx: pseudo-field — TX capture references from CRS chain rules.
+		// tx:0, tx:1, tx:content_type are valid; they read from per-request capture context.
+		if strings.HasPrefix(c.Field, "tx:") {
+			// TX fields accept all string operators — treat like a generic string field.
+			fieldForValidation = "path" // use "path" as proxy for operator validation (all string ops)
+		}
 		if strings.HasPrefix(c.Field, "count:") {
 			underlying := c.Field[len("count:"):]
 			if !validAggregateFields[underlying] {
