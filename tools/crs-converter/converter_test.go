@@ -588,8 +588,8 @@ func TestConvertChainWithTXLink_WithinTXRefFlattened(t *testing.T) {
 	}
 	// Second condition should be tx:0 phrase_match with baked content types.
 	chain := pr.Conditions[1]
-	if chain.Field != "tx:0" {
-		t.Errorf("chain field: got %q, want tx:0", chain.Field)
+	if chain.Field != "tx:1" {
+		t.Errorf("chain field: got %q, want tx:1", chain.Field)
 	}
 	if chain.Operator != "phrase_match" {
 		t.Errorf("chain operator: got %q, want phrase_match", chain.Operator)
@@ -790,8 +790,8 @@ func TestConvertChainWithTXLink_RestrictedHeadersFlattened(t *testing.T) {
 		t.Fatalf("expected 2 conditions, got %d", len(pr.Conditions))
 	}
 	// Second condition should check tx:0 against restricted header list.
-	if pr.Conditions[1].Field != "tx:0" {
-		t.Errorf("chain field: got %q, want tx:0", pr.Conditions[1].Field)
+	if pr.Conditions[1].Field != "tx:1" {
+		t.Errorf("chain field: got %q, want tx:1", pr.Conditions[1].Field)
 	}
 }
 

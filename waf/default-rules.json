@@ -1147,7 +1147,7 @@
           "value": "^[^;\\s]+"
         },
         {
-          "field": "tx:0",
+          "field": "tx:1",
           "operator": "phrase_match",
           "negate": true,
           "transforms": [
@@ -1285,68 +1285,61 @@
     },
     {
       "id": "920450",
-      "name": "HTTP header restricted by policy",
+      "name": "HTTP header is restricted by policy (%{MATCHED_VAR})",
       "type": "detect",
       "conditions": [
         {
           "field": "all_headers_names",
-          "operator": "phrase_match",
+          "operator": "in",
+          "value": "content-encoding|proxy|lock-token|content-range|if|x-http-method-override|x-http-method|x-method-override|x-middleware-subrequest|expect",
           "transforms": [
             "lowercase"
-          ],
-          "list_items": [
-            "content-encoding",
-            "proxy",
-            "lock-token",
-            "content-range",
-            "if",
-            "x-http-method-override",
-            "x-http-method",
-            "x-method-override",
-            "x-middleware-subrequest",
-            "expect"
           ]
         }
       ],
       "group_op": "and",
-      "severity": "WARNING",
+      "severity": "CRITICAL",
       "paranoia_level": 1,
       "tags": [
-        "protocol-enforcement",
-        "920xxx",
-        "policy"
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
       ],
       "enabled": true,
       "priority": 400,
-      "description": "Detects requests containing restricted HTTP headers (CRS basic list). Proxy headers excluded — standard behind reverse proxies. Matches tx.restricted_headers_basic from crs-setup.conf."
+      "description": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920451",
-      "name": "HTTP header restricted by policy (extended)",
+      "name": "HTTP header is restricted by policy (%{MATCHED_VAR})",
       "type": "detect",
       "conditions": [
         {
           "field": "all_headers_names",
-          "operator": "phrase_match",
+          "operator": "in",
+          "value": "accept-charset",
           "transforms": [
             "lowercase"
-          ],
-          "list_items": [
-            "accept-charset"
           ]
         }
       ],
       "group_op": "and",
-      "severity": "WARNING",
+      "severity": "CRITICAL",
       "paranoia_level": 2,
       "tags": [
-        "protocol-enforcement",
-        "920xxx",
-        "policy"
+        "application-multi",
+        "language-multi",
+        "platform-multi",
+        "attack-protocol"
       ],
       "enabled": true,
       "priority": 400,
-      "description": "Detects requests containing restricted HTTP headers (CRS extended list, PL2). Includes deprecated headers still in use. Matches tx.restricted_headers_extended from crs-setup.conf."
+      "description": "HTTP header is restricted by policy (%{MATCHED_VAR})",
+      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
       "id": "920460",
@@ -1451,7 +1444,7 @@
           "value": "charset\\s*=\\s*[\"']?([^;\"'\\s]+)"
         },
         {
-          "field": "tx:0",
+          "field": "tx:1",
           "operator": "phrase_match",
           "negate": true,
           "transforms": [
@@ -2512,7 +2505,7 @@
           "negate": true
         },
         {
-          "field": "tx:0",
+          "field": "tx:1",
           "operator": "phrase_match",
           "negate": true,
           "transforms": [
@@ -37686,5 +37679,5 @@
   ],
   "version": 7,
   "crs_version": "4.24.1",
-  "generated": "2026-03-27T20:40:13Z"
+  "generated": "2026-03-27T22:55:39Z"
 }

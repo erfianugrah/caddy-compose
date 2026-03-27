@@ -880,8 +880,8 @@
     "status": "pass"
   },
   "920450/4": {
-    "status": "fail",
-    "note": "new regression"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920450/5": {
     "status": "pass"

@@ -195,14 +195,15 @@ func allVariablesAreTX(vars []Variable) bool {
 func (c *Converter) convertSpecialCase(rule SecRule, category, filename string) *PolicyRule {
 	switch rule.ID {
 	case "920450":
-		// Restricted headers (basic): any request header in the restricted list → block.
-		// CRS iterates all headers via TX regex key; we emit a phrase_match on all_headers_names.
+		// Restricted headers (basic): any request header name in the restricted list → block.
+		// Use "in" for exact name matching (not phrase_match which does substring matching
+		// and would match "proxy" inside "proxy-connection").
 		items := parseSlashWrapped(crsDefaultRestrictedHeaders)
 		return c.buildSpecialDetect(rule, category, filename, []PolicyCondition{{
 			Field:      "all_headers_names",
-			Operator:   "phrase_match",
+			Operator:   "in",
+			Value:      strings.Join(items, "|"),
 			Transforms: []string{"lowercase"},
-			ListItems:  items,
 		}})
 
 	case "920451":
@@ -210,9 +211,9 @@ func (c *Converter) convertSpecialCase(rule SecRule, category, filename string) 
 		items := parseSlashWrapped(crsDefaultRestrictedHeadersExtended)
 		return c.buildSpecialDetect(rule, category, filename, []PolicyCondition{{
 			Field:      "all_headers_names",
-			Operator:   "phrase_match",
+			Operator:   "in",
+			Value:      strings.Join(items, "|"),
 			Transforms: []string{"lowercase"},
-			ListItems:  items,
 		}})
 
 	case "920540":
@@ -378,12 +379,11 @@ func (c *Converter) flattenTXWithinChain(rule SecRule, headFields []string, head
 	// Map transforms from the chain link.
 	transforms, _ := mapTransforms(chain.Transforms)
 
-	// The head condition captures a value, the chain checks it against the list.
-	// We flatten this to: head condition + "value (not) in list" check.
-	// The tx:0 or tx:content_type variable holds the captured value from the head.
-	// We emit the check on tx:0 with the baked-in list.
+	// The head condition captures a value via regex group, the chain checks it.
+	// CRS uses TX:1 (first capture group). After the plugin's tx fix:
+	// tx:0 = full match, tx:1 = first capture group. Use tx:1.
 	chainCond := PolicyCondition{
-		Field:      "tx:0",
+		Field:      "tx:1",
 		Operator:   opName,
 		Negate:     chain.Operator.Negated,
 		Transforms: transforms,
