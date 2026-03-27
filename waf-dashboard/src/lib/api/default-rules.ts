@@ -11,10 +11,14 @@ export interface PolicyCondition {
   field: string;
   operator: string;
   value?: string;
-  name?: string;
   negate?: boolean;
+  multi_match?: boolean;
   transforms?: string[];
   list_items?: string[];
+  list_kind?: string;
+  excludes?: string[];
+  group?: PolicyCondition[];
+  group_op?: string;
 }
 
 export type DetectAction = "score" | "log_only";
@@ -24,6 +28,7 @@ export interface DefaultRule {
   name: string;
   description?: string;
   type: string;
+  phase?: string;
   service?: string;
   conditions: PolicyCondition[];
   group_op: string;
@@ -33,6 +38,8 @@ export interface DefaultRule {
   tags?: string[];
   enabled: boolean;
   priority: number;
+  category?: string;
+  crs_file?: string;
   is_default: boolean;
   has_override: boolean;
   override_fields?: string[];

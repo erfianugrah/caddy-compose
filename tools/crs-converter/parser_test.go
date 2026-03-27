@@ -43,6 +43,29 @@ func TestParseVariables(t *testing.T) {
 	}
 }
 
+func TestSplitVariables_EscapedSlash(t *testing.T) {
+	// Regex key containing an escaped slash should not prematurely close the regex.
+	tests := []struct {
+		input string
+		want  int
+		desc  string
+	}{
+		{`REQUEST_COOKIES:/^path\/to\/thing$/|ARGS`, 2, "escaped slashes in regex"},
+		{`!REQUEST_COOKIES:/^foo\/bar$/|ARGS|ARGS_NAMES`, 3, "negated escaped slashes"},
+		{`REQUEST_COOKIES:/__utm/|ARGS`, 2, "simple regex (no escaped slashes)"},
+		{`REQUEST_COOKIES:/^a\/b\/c$/`, 1, "single var with escaped slashes"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			parts := splitVariables(tt.input)
+			if len(parts) != tt.want {
+				t.Errorf("splitVariables(%q): got %d parts %v, want %d", tt.input, len(parts), parts, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseVariable_Negation(t *testing.T) {
 	vars := parseVariables("REQUEST_COOKIES|!REQUEST_COOKIES:/__utm/|ARGS")
 	if len(vars) != 3 {

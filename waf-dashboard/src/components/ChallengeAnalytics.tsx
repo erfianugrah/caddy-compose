@@ -120,29 +120,53 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
           const total = h.issued + h.passed + h.failed + h.bypassed;
           // Bar height in pixels. Minimum 3px for non-zero so every hour is visible.
           const barH = total > 0 ? Math.max((total / maxVal) * chartH, 3) : 0;
-          const failH = total > 0 ? (h.failed / total) * barH : 0;
-          const passH = barH - failH;
+          // 4-segment stacked bar: bypassed (bottom) → passed → issued → failed (top).
+          const bypassedH = total > 0 ? (h.bypassed / total) * barH : 0;
+          const passedH = total > 0 ? (h.passed / total) * barH : 0;
+          const issuedH = total > 0 ? (h.issued / total) * barH : 0;
+          const failedH = total > 0 ? (h.failed / total) * barH : 0;
           const x = i * (barW + gap);
           const y = chartH - barH;
+          // Stack from top to bottom: failed → issued → passed → bypassed.
+          let cy = y;
           return (
             <g key={h.hour}>
               <title>{`${new Date(h.hour).toLocaleString()}\nIssued: ${h.issued}  Passed: ${h.passed}  Failed: ${h.failed}  Bypassed: ${h.bypassed}`}</title>
-              {/* Pass/issue portion (green) */}
-              {passH > 0 && (
-                <rect x={x} y={y} width={barW} height={passH} rx={1}
+              {/* Failed (red) — top of stack */}
+              {failedH > 0 && (
+                <rect x={x} y={cy} width={barW} height={failedH} rx={1}
+                  fill="#f37e96" opacity={0.9} />
+              )}
+              {((cy += failedH), null)}
+              {/* Issued (amber) — pending challenges */}
+              {issuedH > 0 && (
+                <rect x={x} y={cy} width={barW} height={issuedH} rx={1}
+                  fill="#f5b942" opacity={0.7} />
+              )}
+              {((cy += issuedH), null)}
+              {/* Passed (green) — successfully solved */}
+              {passedH > 0 && (
+                <rect x={x} y={cy} width={barW} height={passedH} rx={1}
                   fill="#5adecd" opacity={0.7} />
               )}
-              {/* Failed portion (red, stacked below green) */}
-              {failH > 0 && (
-                <rect x={x} y={y + passH} width={barW} height={failH} rx={1}
-                  fill="#f37e96" opacity={0.9} />
+              {((cy += passedH), null)}
+              {/* Bypassed (slate) — cookie bypass */}
+              {bypassedH > 0 && (
+                <rect x={x} y={cy} width={barW} height={bypassedH} rx={1}
+                  fill="#94a3b8" opacity={0.5} />
               )}
             </g>
           );
         })}
       </svg>
-      <div className="flex justify-between text-[10px] text-muted-foreground/50">
+      <div className="flex justify-between items-center text-[10px] text-muted-foreground/50">
         <span>{bars.length > 0 ? new Date(bars[0].hour).toLocaleDateString() : ""}</span>
+        <div className="hidden sm:flex gap-3">
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: "#f37e96" }} />Failed</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: "#f5b942" }} />Issued</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: "#5adecd" }} />Passed</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: "#94a3b8" }} />Bypassed</span>
+        </div>
         <span>{bars.length > 0 ? new Date(bars[bars.length - 1].hour).toLocaleDateString() : ""}</span>
       </div>
     </div>

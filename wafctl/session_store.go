@@ -822,15 +822,21 @@ func scoreSessionWithConfig(s *SessionEntry, cfg SessionScoringConfig) (float64,
 	}
 
 	// ── No scroll engagement ────────────────────────────────────
-	if navCount >= 2 && meanScrollPct(s) < 10 {
-		score += cfg.WeightNoScroll
-		flags = append(flags, "no_scroll")
+	if navCount >= 2 {
+		sp := meanScrollPct(s)
+		if sp >= 0 && sp < 10 {
+			score += cfg.WeightNoScroll
+			flags = append(flags, "no_scroll")
+		}
 	}
 
 	// ── No interaction (clicks/typing) ──────────────────────────
-	if navCount >= 2 && interactionRate(s) < 0.05 {
-		score += cfg.WeightNoInteract
-		flags = append(flags, "no_interaction")
+	if navCount >= 2 {
+		ir := interactionRate(s)
+		if ir >= 0 && ir < 0.05 {
+			score += cfg.WeightNoInteract
+			flags = append(flags, "no_interaction")
+		}
 	}
 
 	// ── Low visible ratio ───────────────────────────────────────

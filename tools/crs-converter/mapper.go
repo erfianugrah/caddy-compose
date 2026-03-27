@@ -11,15 +11,22 @@ import (
 // CRS rules often use pipe-separated variable combos; we map to the
 // most appropriate multi-value field in the policy engine.
 
+// separateArgs controls whether ARGS_GET/ARGS_POST map to dedicated fields
+// (query_args_values/post_args_values) or fall back to all_args_values.
+// Enable with -separate-args when the plugin supports the new fields.
+var separateArgs = false
+
 // variableMap maps individual SecRule variable names to policy engine fields.
+// When separateArgs is true, ARGS_GET/ARGS_POST map to dedicated fields;
+// otherwise they fall back to all_args_values (wider matching, fewer missed detections).
 var variableMap = map[string]string{
 	// Request args
 	"ARGS":                "all_args_values",
 	"ARGS_NAMES":          "all_args_names",
-	"ARGS_GET":            "all_args_values", // TODO: separate GET args field
-	"ARGS_GET_NAMES":      "all_args_names",  // TODO: separate GET arg names
-	"ARGS_POST":           "all_args_values", // TODO: separate POST args field
-	"ARGS_POST_NAMES":     "all_args_names",  // TODO: separate POST arg names
+	"ARGS_GET":            "all_args_values", // overridden to "query_args_values" when separateArgs=true
+	"ARGS_GET_NAMES":      "all_args_names",  // overridden to "query_args_names" when separateArgs=true
+	"ARGS_POST":           "all_args_values", // overridden to "post_args_values" when separateArgs=true
+	"ARGS_POST_NAMES":     "all_args_names",  // overridden to "post_args_names" when separateArgs=true
 	"ARGS_COMBINED_SIZE":  "",                // size check — skip
 	"REQUEST_BODY_LENGTH": "",                // size check — skip
 
@@ -84,6 +91,18 @@ var variableMap = map[string]string{
 	"REQBODY_PROCESSOR":  "",              // internal CRS state — skip
 }
 
+// initSeparateArgs updates variableMap to use dedicated GET/POST fields
+// when the -separate-args flag is enabled. Call after flag.Parse().
+func initSeparateArgs() {
+	if !separateArgs {
+		return
+	}
+	variableMap["ARGS_GET"] = "query_args_values"
+	variableMap["ARGS_GET_NAMES"] = "query_args_names"
+	variableMap["ARGS_POST"] = "post_args_values"
+	variableMap["ARGS_POST_NAMES"] = "post_args_names"
+}
+
 // headerShortcuts maps well-known REQUEST_HEADERS:Name to plugin fields.
 var headerShortcuts = map[string]string{
 	"User-Agent":     "user_agent",
@@ -100,6 +119,10 @@ var multiFields = map[string]bool{
 	"all_args":          true,
 	"all_args_values":   true,
 	"all_args_names":    true,
+	"query_args_values": true,
+	"query_args_names":  true,
+	"post_args_values":  true,
+	"post_args_names":   true,
 	"all_headers":       true,
 	"all_headers_names": true,
 	"all_cookies":       true,
@@ -393,7 +416,10 @@ func excludeMatchesField(exclude, field string) bool {
 		return headerFields[field] || strings.HasPrefix(field, "header:")
 	case strings.HasPrefix(exclude, "args:"):
 		return field == "all_args" || field == "all_args_values" ||
-			field == "all_args_names" || strings.HasPrefix(field, "args:")
+			field == "all_args_names" ||
+			field == "query_args_values" || field == "query_args_names" ||
+			field == "post_args_values" || field == "post_args_names" ||
+			strings.HasPrefix(field, "args:")
 	default:
 		// Unknown prefix — attach to body/combined as a conservative fallback.
 		return field == "body" || field == "request_combined"

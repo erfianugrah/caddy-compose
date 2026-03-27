@@ -40,6 +40,8 @@ type RuleExclusion struct {
 	Enabled     bool        `json:"enabled"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+	ExpiresAt   *time.Time  `json:"expires_at,omitempty"` // Optional expiration — auto-escalation rules use this for TTL
+	ExpiresIn   string      `json:"expires_in,omitempty"` // Optional TTL duration (e.g., "1h", "24h", "7d") — converted to ExpiresAt on create
 
 	// ─── skip-only ──────────────────────────────────────────────────
 	SkipTargets *SkipTargets `json:"skip_targets,omitempty"` // What to bypass
@@ -224,6 +226,10 @@ var validPolicyEngineFields = map[string]bool{
 	"all_args":          true,
 	"all_args_values":   true,
 	"all_args_names":    true,
+	"query_args_values": true, // GET-only query string parameter values
+	"query_args_names":  true, // GET-only query string parameter names
+	"post_args_values":  true, // POST-only body parameter values
+	"post_args_names":   true, // POST-only body parameter names
 	"all_headers":       true,
 	"all_headers_names": true,
 	"all_cookies":       true,
@@ -276,6 +282,10 @@ var validAggregateFields = map[string]bool{
 	"all_args":          true,
 	"all_args_values":   true,
 	"all_args_names":    true,
+	"query_args_values": true,
+	"query_args_names":  true,
+	"post_args_values":  true,
+	"post_args_names":   true,
 	"all_headers":       true,
 	"all_headers_names": true,
 	"all_cookies":       true,
@@ -463,6 +473,38 @@ var validOperatorsForField = map[string]map[string]bool{
 		"in_list": true, "not_in_list": true,
 	},
 	"all_args_names": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"query_args_values": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"query_args_names": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"post_args_values": {
+		"eq": true, "neq": true, "contains": true, "not_contains": true,
+		"begins_with": true, "not_begins_with": true,
+		"ends_with": true, "not_ends_with": true,
+		"regex": true, "not_regex": true,
+		"phrase_match": true, "not_phrase_match": true,
+		"in_list": true, "not_in_list": true,
+	},
+	"post_args_names": {
 		"eq": true, "neq": true, "contains": true, "not_contains": true,
 		"begins_with": true, "not_begins_with": true,
 		"ends_with": true, "not_ends_with": true,

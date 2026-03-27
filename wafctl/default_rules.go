@@ -64,6 +64,12 @@ func NewDefaultRuleStore(defaultsPath, overridesPath string) *DefaultRuleStore {
 			if err := json.Unmarshal(data, &f); err != nil {
 				log.Printf("[default-rules] invalid JSON in %s: %v", defaultsPath, err)
 			} else {
+				// Validate schema version — reject unknown future versions that may
+				// have breaking schema changes.
+				const maxSupportedVersion = 7
+				if f.Version > maxSupportedVersion {
+					log.Printf("[default-rules] WARNING: default-rules.json version %d exceeds max supported %d — schema may be incompatible", f.Version, maxSupportedVersion)
+				}
 				// Support both "rules" (legacy) and "default_rules" (v7+ converter).
 				rules := f.Rules
 				if len(rules) == 0 && len(f.DefaultRules) > 0 {
@@ -484,7 +490,7 @@ func handleBulkDefaultRules(ds *DefaultRuleStore) http.HandlerFunc {
 func handleResetDefaultRule(ds *DefaultRuleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		removed, err := ds.RemoveOverride(id)
+		_, err := ds.RemoveOverride(id)
 		if err != nil {
 			if errors.Is(err, errDefaultRuleNotFound) {
 				writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
@@ -493,10 +499,8 @@ func handleResetDefaultRule(ds *DefaultRuleStore) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to reset override", Details: err.Error()})
 			return
 		}
-		if !removed {
-			writeJSON(w, http.StatusOK, map[string]string{"status": "no override to remove"})
-			return
-		}
+		// Always return the full rule — whether or not an override was removed.
+		// This ensures the frontend always receives a valid DefaultRuleResponse.
 		rule, _ := ds.Get(id)
 		writeJSON(w, http.StatusOK, rule)
 	}

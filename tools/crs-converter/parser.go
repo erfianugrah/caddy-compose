@@ -321,6 +321,8 @@ func parseVariables(s string) []Variable {
 }
 
 // splitVariables splits on | but respects regex key patterns /.../.
+// Handles escaped slashes (\/) inside regex patterns — they don't
+// close the regex delimiter.
 func splitVariables(s string) []string {
 	var parts []string
 	var buf strings.Builder
@@ -335,8 +337,14 @@ func splitVariables(s string) []string {
 			}
 			buf.WriteByte(ch)
 		} else if ch == '/' && inRegex {
-			buf.WriteByte(ch)
-			inRegex = false
+			// Only close regex if this slash is NOT escaped.
+			if i > 0 && s[i-1] == '\\' {
+				// Escaped slash inside regex — keep going.
+				buf.WriteByte(ch)
+			} else {
+				buf.WriteByte(ch)
+				inRegex = false
+			}
 		} else if ch == '|' && !inRegex {
 			if buf.Len() > 0 {
 				parts = append(parts, buf.String())

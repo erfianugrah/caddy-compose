@@ -494,6 +494,67 @@ func TestApplyDefaultRuleOverrides_MixedOverridesAndDisabled(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultRuleOverrides_ExcludesPreserved(t *testing.T) {
+	// Verify that the Excludes field on PolicyCondition survives a round-trip
+	// through ApplyDefaultRuleOverrides (the bug was that Excludes was silently
+	// dropped because PolicyCondition in wafctl was missing the field).
+	rules := []PolicyRule{
+		{
+			ID:   "920273",
+			Name: "Invalid character in request (outside of very strict set)",
+			Type: "detect",
+			Conditions: []PolicyCondition{
+				{
+					Field:    "all_args_values",
+					Operator: "regex",
+					Value:    "^[\\x00-\\x08]",
+					Excludes: []string{"__utm", "authtoken"},
+				},
+			},
+			GroupOp:  "and",
+			Severity: "WARNING",
+			Enabled:  true,
+			Priority: 400,
+		},
+	}
+	defaultsPath := writeTestDefaultRules(t, rules)
+	ds := NewDefaultRuleStore(defaultsPath, filepath.Join(t.TempDir(), "overrides.json"))
+
+	// Override severity to trigger inclusion in output.
+	ds.SetOverride("920273", json.RawMessage(`{"severity":"ERROR"}`))
+
+	input := `{"rules":[],"generated":"2026-01-01T00:00:00Z","version":1}`
+	out, err := ApplyDefaultRuleOverrides([]byte(input), ds)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var file PolicyRulesFile
+	if err := json.Unmarshal(out, &file); err != nil {
+		t.Fatal(err)
+	}
+
+	// Find the overridden rule.
+	var found bool
+	for _, r := range file.Rules {
+		if r.ID == "920273" {
+			found = true
+			if len(r.Conditions) == 0 {
+				t.Fatal("expected conditions on overridden rule")
+			}
+			if len(r.Conditions[0].Excludes) != 2 {
+				t.Errorf("expected 2 excludes, got %d", len(r.Conditions[0].Excludes))
+			}
+			if r.Conditions[0].Excludes[0] != "__utm" || r.Conditions[0].Excludes[1] != "authtoken" {
+				t.Errorf("excludes mismatch: %v", r.Conditions[0].Excludes)
+			}
+		}
+	}
+	if !found {
+		t.Error("overridden rule 920273 not found in output")
+	}
+}
+
 // ─── HTTP Handler Tests ───────────────────────────────────────────
 
 func TestHandleListDefaultRules(t *testing.T) {
@@ -621,12 +682,23 @@ func TestHandleResetDefaultRule(t *testing.T) {
 		t.Error("expected has_override=false after reset")
 	}
 
-	// Reset when no override — should still return 200.
+	// Reset when no override — should still return 200 with a valid DefaultRuleResponse.
 	req = httptest.NewRequest("DELETE", "/api/default-rules/9100030/override", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Errorf("expected 200 for no-op reset, got %d", w.Code)
+	}
+	// Verify the response is a valid DefaultRuleResponse (not a bare status map).
+	var noopResp DefaultRuleResponse
+	if err := json.NewDecoder(w.Body).Decode(&noopResp); err != nil {
+		t.Fatalf("no-op reset: failed to decode response: %v", err)
+	}
+	if noopResp.ID != "9100030" {
+		t.Errorf("no-op reset: expected id=9100030, got %s", noopResp.ID)
+	}
+	if noopResp.HasOverride {
+		t.Error("no-op reset: expected has_override=false")
 	}
 
 	// Reset nonexistent rule.

@@ -154,6 +154,7 @@ type PolicyCondition struct {
 	MultiMatch bool     `json:"multi_match,omitempty"`
 	ListItems  []string `json:"list_items,omitempty"`
 	ListKind   string   `json:"list_kind,omitempty"`
+	Excludes   []string `json:"excludes,omitempty"` // CRS: field values excluded from matching (e.g., specific cookies/headers)
 	// Nested condition group
 	Group   []PolicyCondition `json:"group,omitempty"`
 	GroupOp string            `json:"group_op,omitempty"`

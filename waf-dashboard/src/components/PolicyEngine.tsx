@@ -33,6 +33,7 @@ import {
   ArrowUpToLine,
   ArrowDownToLine,
   LayoutTemplate,
+  Clock,
 } from "lucide-react";
 import {
   Card,
@@ -105,6 +106,18 @@ import { updateRLRule, type RateLimitRule, type RateLimitRuleCreateData, type RL
 
 const RULES_PAGE_SIZE = 25;
 
+/** Format a remaining-time string from an ISO expiry timestamp. */
+function formatTimeRemaining(expiresAt: string): string {
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return "expired";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
 // ─── Main Policy Engine Component ───────────────────────────────────
 
 export default function PolicyEngine() {
@@ -119,6 +132,7 @@ export default function PolicyEngine() {
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ExclusionType | "all">("all");
+  const [hideExpired, setHideExpired] = useState(true);
   const [rulesPage, setRulesPage] = useState(1);
 
   // Bulk selection (shared via useRuleSelection — wired up after filteredExclusions)
@@ -150,7 +164,7 @@ export default function PolicyEngine() {
 
   // Drag-and-drop reorder state
   const deferredSearch = useDeferredValue(searchQuery);
-  const isFilteredBase = deferredSearch.trim() !== "" || typeFilter !== "all";
+  const isFilteredBase = deferredSearch.trim() !== "" || typeFilter !== "all" || !hideExpired;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -206,6 +220,10 @@ export default function PolicyEngine() {
   // Filtered exclusions for search + type filter
   const filteredExclusions = useMemo(() => {
     let result = exclusions;
+    if (hideExpired) {
+      const now = Date.now();
+      result = result.filter((e) => !e.expires_at || new Date(e.expires_at).getTime() > now);
+    }
     if (typeFilter !== "all") {
       result = result.filter((e) => e.type === typeFilter);
     }
@@ -218,7 +236,7 @@ export default function PolicyEngine() {
       );
     }
     return result;
-  }, [exclusions, deferredSearch, typeFilter]);
+  }, [exclusions, deferredSearch, typeFilter, hideExpired]);
 
   // Reset page when filters change
   useEffect(() => { setRulesPage(1); }, [deferredSearch, typeFilter]);
@@ -588,7 +606,11 @@ export default function PolicyEngine() {
                   ))}
                 </SelectContent>
               </Select>
-              {(searchQuery || typeFilter !== "all") && (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                <input type="checkbox" checked={hideExpired} onChange={(e) => setHideExpired(e.target.checked)} className="rounded border-muted" />
+                Hide expired
+              </label>
+              {(searchQuery || typeFilter !== "all" || !hideExpired) && (
                 <span className="text-xs text-muted-foreground">
                   {filteredExclusions.length} of {exclusions.length}
                 </span>
@@ -694,6 +716,14 @@ export default function PolicyEngine() {
                         <p className={T.tableRowName}>{excl.name}</p>
                         {excl.description && (
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">{excl.description}</p>
+                        )}
+                        {excl.expires_at && (
+                          <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                            <Clock className="h-3 w-3" />
+                            {formatTimeRemaining(excl.expires_at) === "expired"
+                              ? "Expired"
+                              : `Expires in ${formatTimeRemaining(excl.expires_at)}`}
+                          </span>
                         )}
                       </div>
                     </TableCell>

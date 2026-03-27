@@ -390,15 +390,51 @@ func (s *ExclusionStore) BulkUpdate(ids []string, action string) (int, error) {
 	return changed, nil
 }
 
-// EnabledExclusions returns only enabled exclusions (deep copies).
+// EnabledExclusions returns only enabled, non-expired exclusions (deep copies).
 func (s *ExclusionStore) EnabledExclusions() []RuleExclusion {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	now := time.Now()
 	var result []RuleExclusion
 	for _, e := range s.exclusions {
-		if e.Enabled {
+		if e.Enabled && !isExpired(e, now) {
 			result = append(result, deepCopyExclusion(e))
 		}
 	}
 	return result
+}
+
+// isExpired returns true if the rule has an ExpiresAt time in the past.
+func isExpired(e RuleExclusion, now time.Time) bool {
+	return e.ExpiresAt != nil && e.ExpiresAt.Before(now)
+}
+
+// DeleteExpired removes all rules whose ExpiresAt is in the past.
+// Returns the number of rules removed.
+func (s *ExclusionStore) DeleteExpired() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	var kept []RuleExclusion
+	removed := 0
+	for _, e := range s.exclusions {
+		if isExpired(e, now) {
+			removed++
+		} else {
+			kept = append(kept, e)
+		}
+	}
+	if removed == 0 {
+		return 0
+	}
+
+	old := s.exclusions
+	s.exclusions = kept
+	if err := s.save(); err != nil {
+		s.exclusions = old // roll back
+		log.Printf("[rules] error saving after expiry cleanup: %v", err)
+		return 0
+	}
+	return removed
 }

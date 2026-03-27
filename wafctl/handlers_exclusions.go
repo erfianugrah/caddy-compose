@@ -157,6 +157,17 @@ func handleCreateExclusion(es *ExclusionStore) http.HandlerFunc {
 		if _, failed := decodeJSON(w, r, &exc); failed {
 			return
 		}
+		// Convert expires_in duration to absolute expires_at timestamp.
+		if exc.ExpiresIn != "" && exc.ExpiresAt == nil {
+			d, err := parseExtendedDuration(exc.ExpiresIn)
+			if err != nil || d <= 0 {
+				writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: "invalid expires_in duration: " + exc.ExpiresIn})
+				return
+			}
+			t := time.Now().UTC().Add(d)
+			exc.ExpiresAt = &t
+			exc.ExpiresIn = "" // clear after conversion — only ExpiresAt is persisted
+		}
 		if err := validateExclusion(exc); err != nil {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "validation failed", Details: err.Error()})
 			return

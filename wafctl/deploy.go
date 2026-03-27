@@ -113,20 +113,6 @@ func generatePolicyData(cs *ConfigStore, es *ExclusionStore, ls *ManagedListStor
 	return policyData, policyCount, nil
 }
 
-// injectChallengeConfig unmarshals the policy data, sets the challenge global
-// config (HMAC key), and re-marshals. This avoids changing the
-// GeneratePolicyRulesWithRL signature for a field that only the deploy pipeline provides.
-func injectChallengeConfig(data []byte, hmacKeyHex string) ([]byte, error) {
-	var file PolicyRulesFile
-	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, err
-	}
-	file.ChallengeConfig = &PolicyChallengeGlobalConfig{
-		HMACKey: hmacKeyHex,
-	}
-	return json.MarshalIndent(file, "", "  ")
-}
-
 // generateOnBoot regenerates the policy engine rules file from stored state
 // at startup. This ensures a stack restart always picks up the latest rules
 // without requiring a manual POST /api/config/deploy.

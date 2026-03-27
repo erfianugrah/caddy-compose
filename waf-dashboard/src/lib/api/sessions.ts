@@ -103,11 +103,11 @@ export async function fetchSessionList(params?: {
   min_score?: number;
 }): Promise<SessionListResponse> {
   const q = new URLSearchParams();
-  if (params?.offset) q.set("offset", String(params.offset));
-  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.offset != null) q.set("offset", String(params.offset));
+  if (params?.limit != null) q.set("limit", String(params.limit));
   if (params?.ip) q.set("ip", params.ip);
   if (params?.service) q.set("service", params.service);
-  if (params?.min_score) q.set("min_score", String(params.min_score));
+  if (params?.min_score != null) q.set("min_score", String(params.min_score));
   const qs = q.toString();
   return fetchJSON<SessionListResponse>(`${API_BASE}/sessions/list${qs ? "?" + qs : ""}`);
 }

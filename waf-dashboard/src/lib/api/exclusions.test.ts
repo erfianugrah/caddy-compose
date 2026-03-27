@@ -322,7 +322,7 @@ describe("fetchCRSRules", () => {
   it("returns CRS catalog with categories and rules", async () => {
     const mockCatalog = {
       categories: [
-        { id: "sqli", name: "SQL Injection", description: "SQL injection detection", rule_range: "942000-942999" },
+        { id: "sqli", name: "SQL Injection", description: "SQL injection detection", rule_range: "942000-942999", tag: "attack-sqli", prefix: "942", phase: "inbound" },
       ],
       rules: [
         { id: "942100", description: "SQL Injection Attack Detected via libinjection", category: "sqli", tags: ["OWASP_CRS"], severity: "CRITICAL", paranoia_level: 1 },
@@ -336,6 +336,8 @@ describe("fetchCRSRules", () => {
     expect(result.total).toBe(2);
     expect(result.categories).toHaveLength(1);
     expect(result.categories[0].id).toBe("sqli");
+    expect(result.categories[0].prefix).toBe("942");
+    expect(result.categories[0].phase).toBe("inbound");
     expect(result.rules).toHaveLength(2);
     expect(result.rules[0].id).toBe("942100");
     expect(result.rules[0].severity).toBe("CRITICAL");

@@ -75,6 +75,16 @@ describe("fetchChallengeStats", () => {
         { ja4: "t13d1517h2_8daaf615_b0da82dd", total: 30, passed: 20, failed: 10, clients: 5 },
       ],
       fail_reasons: { bot_score: 15, timing_hard: 5, ja4_mismatch: 3, bad_pow: 2 },
+      avg_solve_ms_passed: 1200.0,
+      avg_solve_ms_failed: 2500.0,
+      algorithm_breakdown: [
+        { algorithm: "fast", issued: 80, passed: 50, failed: 20, avg_solve_ms: 800.0, avg_difficulty: 4.0 },
+        { algorithm: "slow", issued: 20, passed: 10, failed: 5, avg_solve_ms: 5000.0, avg_difficulty: 3.0 },
+      ],
+      solve_time_estimates: [
+        { difficulty: 4, algorithm: "fast", cores: 8, expected_ms: 0.04 },
+        { difficulty: 4, algorithm: "slow", cores: 8, expected_ms: 41000 },
+      ],
     };
 
     vi.stubGlobal("fetch", mockFetchResponse(goResponse));
@@ -97,6 +107,13 @@ describe("fetchChallengeStats", () => {
     expect(result.top_ja4s).toHaveLength(1);
     expect(result.fail_reasons).toBeDefined();
     expect(result.fail_reasons?.bot_score).toBe(15);
+    // Verify newer fields are present.
+    expect(result.avg_solve_ms_passed).toBe(1200.0);
+    expect(result.avg_solve_ms_failed).toBe(2500.0);
+    expect(result.algorithm_breakdown).toHaveLength(2);
+    expect(result.algorithm_breakdown?.[0].algorithm).toBe("fast");
+    expect(result.solve_time_estimates).toHaveLength(2);
+    expect(result.solve_time_estimates?.[0].expected_ms).toBe(0.04);
   });
 
   it("sends correct query params with hours, service, and client", async () => {

@@ -281,6 +281,7 @@ func runServe() int {
 	}()
 
 	// Periodic auto-escalation check — creates temporary block rules for repeat offenders.
+	// Also cleans up expired rules on each tick.
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
@@ -291,29 +292,51 @@ func runServe() int {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				// Clean up expired rules first.
+				if removed := exclusionStore.DeleteExpired(); removed > 0 {
+					log.Printf("[rules] cleaned up %d expired rule(s)", removed)
+					// Redeploy so expired rules are removed from the active policy.
+					if err := deployAll(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg); err != nil {
+						log.Printf("[rules] deploy after expiry cleanup failed: %v", err)
+					}
+				}
+
 				ips := sessionStore.CheckAutoEscalation()
 				for _, ip := range ips {
+					cfg := sessionStore.GetConfig()
+					// Parse the configured TTL for dedup and rule expiry.
+					ttl := time.Hour // default
+					if cfg.AutoEscalateTTL != "" {
+						if parsed, err := parseExtendedDuration(cfg.AutoEscalateTTL); err == nil && parsed > 0 {
+							ttl = parsed
+						}
+					}
 					// Skip if already escalated within TTL.
-					if t, ok := escalated[ip.IP]; ok && time.Since(t) < time.Hour {
+					if t, ok := escalated[ip.IP]; ok && time.Since(t) < ttl {
 						continue
 					}
-					cfg := sessionStore.GetConfig()
 					// Create a temporary block rule via the exclusion store.
+					expiresAt := time.Now().UTC().Add(ttl)
 					rule := RuleExclusion{
 						Name:        "auto-session-block-" + ip.IP,
 						Type:        "block",
 						Enabled:     true,
-						Description: fmt.Sprintf("Auto-escalated: %d suspicious sessions (threshold: %d)", ip.SuspiciousSessions, cfg.AutoEscalateThreshold),
+						Description: fmt.Sprintf("Auto-escalated: %d suspicious sessions (threshold: %d, expires: %s)", ip.SuspiciousSessions, cfg.AutoEscalateThreshold, cfg.AutoEscalateTTL),
 						Conditions: []Condition{
 							{Field: "ip", Operator: "eq", Value: ip.IP},
 						},
-						Tags: []string{"auto-escalation", "session-tracking"},
+						Tags:      []string{"auto-escalation", "session-tracking"},
+						ExpiresAt: &expiresAt,
 					}
 					if _, err := exclusionStore.Create(rule); err != nil {
 						log.Printf("[session] auto-escalation failed for %s: %v", ip.IP, err)
 					} else {
 						escalated[ip.IP] = time.Now()
-						log.Printf("[session] auto-escalated: blocked IP %s (%d suspicious sessions)", ip.IP, ip.SuspiciousSessions)
+						log.Printf("[session] auto-escalated: blocked IP %s (%d suspicious sessions, TTL: %s)", ip.IP, ip.SuspiciousSessions, cfg.AutoEscalateTTL)
+						// Deploy immediately so the plugin picks up the new block rule.
+						if err := deployAll(configStore, exclusionStore, managedListStore, cspStore, secHeaderStore, corsStore, defaultRuleStore, deployCfg); err != nil {
+							log.Printf("[session] auto-escalation deploy failed: %v", err)
+						}
 					}
 				}
 			}

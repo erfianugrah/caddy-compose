@@ -932,6 +932,10 @@ export function AdvancedBuilderForm({
       data.group_operator = form.group_operator;
     }
     if (form.tags && form.tags.length > 0) data.tags = form.tags;
+    // Rule TTL — convert to expires_in for the backend.
+    if (form.expires_in) {
+      (data as Record<string, unknown>).expires_in = form.expires_in;
+    }
     onSubmit(data);
   };
 
@@ -1295,6 +1299,27 @@ export function AdvancedBuilderForm({
         />
         <p className="text-xs text-muted-foreground">
           Optional labels for organizing rules and classifying events
+        </p>
+      </div>
+
+      {/* Rule TTL */}
+      <div className="space-y-1.5">
+        <Label className={T.formLabel}>Expires after</Label>
+        <Select value={form.expires_in || "never"} onValueChange={(v) => update("expires_in", v === "never" ? "" : v)}>
+          <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="never">Never (permanent)</SelectItem>
+            <SelectItem value="1h">1 hour</SelectItem>
+            <SelectItem value="6h">6 hours</SelectItem>
+            <SelectItem value="24h">24 hours</SelectItem>
+            <SelectItem value="7d">7 days</SelectItem>
+            <SelectItem value="30d">30 days</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Auto-delete this rule after the specified duration
         </p>
       </div>
 

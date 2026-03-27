@@ -214,7 +214,90 @@ func TestExclusionStoreEnabledFilter(t *testing.T) {
 	}
 }
 
-// --- Exclusion validation tests ---
+func TestExclusionStoreEnabledFilterExpiresAt(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	past := time.Now().Add(-1 * time.Hour)
+	future := time.Now().Add(1 * time.Hour)
+
+	es.Create(RuleExclusion{Name: "Active", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/1"}}})
+	es.Create(RuleExclusion{Name: "Expired", Type: "block", Enabled: true, ExpiresAt: &past, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}}})
+	es.Create(RuleExclusion{Name: "FutureExpiry", Type: "block", Enabled: true, ExpiresAt: &future, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "5.6.7.8"}}})
+
+	enabled := es.EnabledExclusions()
+	if len(enabled) != 2 {
+		t.Fatalf("want 2 enabled (non-expired), got %d", len(enabled))
+	}
+	// Expired rule should be excluded.
+	for _, e := range enabled {
+		if e.Name == "Expired" {
+			t.Error("expired rule should not appear in EnabledExclusions")
+		}
+	}
+}
+
+func TestExclusionStoreDeleteExpired(t *testing.T) {
+	es := newTestExclusionStore(t)
+
+	past := time.Now().Add(-1 * time.Hour)
+	future := time.Now().Add(1 * time.Hour)
+
+	es.Create(RuleExclusion{Name: "Active", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/1"}}})
+	es.Create(RuleExclusion{Name: "Expired1", Type: "block", Enabled: true, ExpiresAt: &past, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.1.1.1"}}})
+	es.Create(RuleExclusion{Name: "Expired2", Type: "block", Enabled: true, ExpiresAt: &past, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "2.2.2.2"}}})
+	es.Create(RuleExclusion{Name: "FutureExpiry", Type: "block", Enabled: true, ExpiresAt: &future, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "3.3.3.3"}}})
+
+	// All 4 should be in the full list.
+	if got := len(es.List()); got != 4 {
+		t.Fatalf("want 4 total, got %d", got)
+	}
+
+	// DeleteExpired should remove the 2 expired rules.
+	removed := es.DeleteExpired()
+	if removed != 2 {
+		t.Errorf("want 2 removed, got %d", removed)
+	}
+
+	remaining := es.List()
+	if len(remaining) != 2 {
+		t.Fatalf("want 2 remaining, got %d", len(remaining))
+	}
+	for _, e := range remaining {
+		if e.Name == "Expired1" || e.Name == "Expired2" {
+			t.Errorf("expired rule %s should have been deleted", e.Name)
+		}
+	}
+
+	// Second call should be a no-op.
+	if got := es.DeleteExpired(); got != 0 {
+		t.Errorf("want 0 removed on second call, got %d", got)
+	}
+}
+
+func TestExclusionStoreDeleteExpiredPersistence(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/exclusions.json"
+	es := NewExclusionStore(path)
+
+	past := time.Now().Add(-1 * time.Hour)
+	es.Create(RuleExclusion{Name: "Expired", Type: "block", Enabled: true, ExpiresAt: &past, Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}}})
+	es.Create(RuleExclusion{Name: "Active", Type: "allow", Enabled: true, Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/ok"}}})
+
+	removed := es.DeleteExpired()
+	if removed != 1 {
+		t.Fatalf("want 1 removed, got %d", removed)
+	}
+
+	// Reload from disk and verify.
+	es2 := NewExclusionStore(path)
+	list := es2.List()
+	if len(list) != 1 {
+		t.Fatalf("after reload: want 1, got %d", len(list))
+	}
+	if list[0].Name != "Active" {
+		t.Errorf("after reload: want Active, got %s", list[0].Name)
+	}
+}
 
 // --- Exclusion validation tests ---
 

@@ -29,7 +29,11 @@ func main() {
 	version := flag.String("crs-version", "", "CRS version string (e.g., 4.8.0)")
 	customRules := flag.String("custom-rules", "", "Path to custom rules JSON file to merge into output")
 	reportOnly := flag.Bool("report", false, "Print conversion report without generating output")
+	flag.BoolVar(&separateArgs, "separate-args", false, "Map ARGS_GET/ARGS_POST to dedicated fields (requires plugin support)")
 	flag.Parse()
+
+	// Apply separate-args mapping if enabled.
+	initSeparateArgs()
 
 	if *crsDir == "" {
 		fmt.Fprintln(os.Stderr, "Usage: crs-converter -crs-dir <path-to-crs-rules>")

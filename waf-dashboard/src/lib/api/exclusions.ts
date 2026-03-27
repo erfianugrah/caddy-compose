@@ -17,6 +17,8 @@ export interface CRSCategory {
   description: string;
   rule_range: string;
   tag: string; // CRS tag for ctl:ruleRemoveByTag
+  prefix: string;
+  phase: string;
 }
 
 export interface CRSCatalogResponse {
@@ -36,6 +38,8 @@ export type ConditionField =
   | "uri_path" | "referer" | "response_header" | "response_status" | "response_content_type" | "http_version" | "ja4" | "challenge_history"
   // Aggregate fields (combine multiple sources for broad matching)
   | "all_args" | "all_args_names" | "all_args_values"
+  | "query_args_values" | "query_args_names"
+  | "post_args_values" | "post_args_names"
   | "all_headers" | "all_headers_names"
   | "all_cookies" | "all_cookies_names"
   | "request_combined"
@@ -95,7 +99,7 @@ export interface SkipTargets {
 export type RulePhase = "inbound" | "outbound";
 
 /** Server-assigned fields present on stored exclusions. */
-type ExclusionServerFields = "id" | "created_at" | "updated_at";
+type ExclusionServerFields = "id" | "created_at" | "updated_at" | "expires_at";
 
 export interface Exclusion {
   id: string;
@@ -134,6 +138,7 @@ export interface Exclusion {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  expires_at?: string;
 }
 
 /**
@@ -216,6 +221,7 @@ interface RawExclusion {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  expires_at?: string;
 }
 
 /**
@@ -264,6 +270,8 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     header_add: raw.header_add || undefined,
     header_remove: raw.header_remove || undefined,
     header_default: raw.header_default || undefined,
+    // ─── expiration ──────────────────────────────────────────────
+    expires_at: raw.expires_at || undefined,
   };
 }
 

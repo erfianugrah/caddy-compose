@@ -148,6 +148,30 @@ func TestSessionScoreNoInteraction(t *testing.T) {
 	}
 }
 
+func TestSessionScoreNoPageMetrics(t *testing.T) {
+	// Session with navigate events but NO page metrics (pm) at all.
+	// Should NOT trigger no_scroll or no_interaction — those require pm data.
+	now := time.Now()
+	entry := &SessionEntry{
+		JTI:       "jti-no-pm",
+		FirstSeen: now.Add(-2 * time.Minute),
+		LastSeen:  now,
+		Navigations: []Navigation{
+			{Timestamp: now.Add(-2 * time.Minute), Path: "/page1", DwellMs: 5000, Type: "navigate"},
+			{Timestamp: now.Add(-1 * time.Minute), Path: "/page2", DwellMs: 5000, Type: "navigate"},
+		},
+	}
+	_, flags := scoreSessionWithConfig(entry, defaultSessionScoringConfig())
+	for _, f := range flags {
+		if f == "no_scroll" {
+			t.Error("no_scroll should not trigger without page metric data")
+		}
+		if f == "no_interaction" {
+			t.Error("no_interaction should not trigger without page metric data")
+		}
+	}
+}
+
 func TestDwellCV(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -733,6 +733,8 @@ export interface AdvancedFormState {
   header_add: Record<string, string>;
   header_remove: string[];
   header_default: Record<string, string>;
+  // rule TTL — optional expiration duration (e.g., "1h", "24h", "7d")
+  expires_in: string;
 }
 
 export const emptyAdvancedForm: AdvancedFormState = {
@@ -760,6 +762,8 @@ export const emptyAdvancedForm: AdvancedFormState = {
   header_add: {},
   header_remove: [],
   header_default: {},
+  // rule TTL default (empty = no expiration)
+  expires_in: "",
 };
 
 // ─── Phase-Filtered Field Sets ──────────────────────────────────────
