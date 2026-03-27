@@ -328,10 +328,20 @@ causes the event to be invisible in parts of the UI.
 ### Adding a New Condition Field (e.g., `ja4`)
 
 - [ ] Plugin `policyengine.go` `extractFieldValue()` — add `case`
-- [ ] wafctl `models_exclusions.go` — add to the appropriate field map(s):
-      `validPolicyEngineFields` (inbound), `validOutboundFields` (outbound),
-      or `validConditionFields` (rate limits). Multiple if shared.
-- [ ] wafctl `models_exclusions.go` `validOperatorsForField` — add operator set for the new field
+- [ ] Plugin `policyengine.go` `extractMultiField()` — add `case` if multi-value
+- [ ] Plugin `policyengine.go` `extractMultiFieldKeyed()` — add `case` if multi-value
+- [ ] Plugin `policyengine.go` `bodyFields` — add if field requires body read
+- [ ] Plugin `policyengine.go` `multiFields` — add if field is multi-value
+- [ ] Plugin `policyengine.go` `needsBodyField()` — add if field requires body read
+- [ ] Plugin `policyengine.go` `fieldAbsent()` — add `case` if field can be absent
+- [ ] Plugin `policyengine.go` `singleFieldVarName()` — add CRS variable name mapping
+- [ ] Converter `mapper.go` `variableMap` — add CRS variable → plugin field mapping
+- [ ] Converter `mapper.go` `pluginSupportedFields` — add the new field
+- [ ] Converter `mapper.go` `multiFields` — add if multi-value (for count: support)
+- [ ] wafctl `models_exclusions.go` `validPolicyEngineFields` — add field
+- [ ] wafctl `models_exclusions.go` `validOutboundFields` — add if response-phase
+- [ ] wafctl `models_exclusions.go` `validAggregateFields` — add if multi-value
+- [ ] wafctl `models_exclusions.go` `validOperatorsForField` — add operator set
 - [ ] Dashboard `exclusions.ts` `ConditionField` type — add value
 - [ ] Dashboard `constants.ts` `CONDITION_FIELDS` — add field definition with operators
 
@@ -422,6 +432,16 @@ causes the event to be invisible in parts of the UI.
   Required — `main()` fatals if missing (no fallback). Tests load from `testdata/crs-metadata.json`
   via `TestMain`. `crs_metadata.go` holds the loader, `atomic.Pointer[CRSMetadata]` for
   thread-safe access. `normalizeCRSCategory()` and `IsValidPrefix()` read from loaded metadata.
+- **CRS converter** (`tools/crs-converter/`): Converts CRS 4.x SecRule `.conf` files into
+  `default-rules.json` for the policy engine plugin. 344 rules from CRS 4.24.1.
+  Key features: RE2 regex validation with PCRE→RE2 auto-fix, per-field OR group
+  conditions (preserves exact CRS variable scope), `Excludes` distribution to sub-conditions,
+  TX variable capture chain flattening (bakes in CRS default allowlists for content-type,
+  charset, restricted extensions, restricted headers), MATCHED_VARS→tx:0 conversion,
+  special-case handling for rules 920450/920451/920540/931130, `pluginSupportedFields`
+  filtering to prevent unsupported field conditions. Run with `make generate-rules`.
+  Only 2 CRS detection rules skipped (911100, 920430) — both handled natively by plugin
+  `enforceProtocolLimits()`. 294 flow-control rules correctly excluded (non-detection).
 - **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).
   Enforces via 4 layers: L3 nftables kernel drop (primary), L4 TCP RST, L7 HTTP 403, eBPF/XDP NIC drop.
@@ -448,6 +468,8 @@ causes the event to be invisible in parts of the UI.
   - Config: `WAF_SESSION_FILE` (session data path), `WAF_SESSION_CONFIG_FILE` (scoring config).
   - Auto-escalation: suspicious sessions (high bot scores, anomalous behavior patterns)
     trigger automatic creation of temporary block rules via the exclusion store.
+    Rules have `ExpiresAt` set from `auto_escalate_ttl` config and auto-deploy to plugin.
+    Expired rules are cleaned up every 60s with automatic redeploy.
   - API: `/api/sessions/stats`, `/api/sessions/list`, `/api/sessions/{jti}`,
     `/api/sessions/alerts`, `/api/sessions/config`
   - Dashboard: `/sessions` page (`sessions.astro` + `SessionsPanel.tsx`);
