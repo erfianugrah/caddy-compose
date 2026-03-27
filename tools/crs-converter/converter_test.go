@@ -561,9 +561,11 @@ func TestConvertWithinTXVariable_Skipped(t *testing.T) {
 	}
 }
 
-func TestConvertChainWithTXLink_HeadPreserved(t *testing.T) {
+func TestConvertChainWithTXLink_SkippedWhenChainDropped(t *testing.T) {
 	// Head condition checks real field, chain link checks TX variable.
-	// Chain link should be dropped but head preserved.
+	// Chain link gets dropped (TX variables unconvertible). The head alone
+	// is overbroad (^application/ matches all application/* content types)
+	// so the entire rule should be skipped — the chain was the real detection.
 	input := `SecRule REQUEST_HEADERS:Content-Type "@rx ^application/" \
 	"id:920420,phase:1,block,capture,msg:'Content type check',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1',chain"
 	SecRule TX:content_type "!@within %{tx.allowed_request_content_type}" "t:lowercase"`
@@ -576,20 +578,8 @@ func TestConvertChainWithTXLink_HeadPreserved(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
 
-	if len(result) != 1 {
-		t.Fatalf("expected 1 converted rule (head preserved, TX chain dropped), got %d", len(result))
-	}
-
-	pr := result[0]
-	if pr.ID != "920420" {
-		t.Errorf("ID: got %q", pr.ID)
-	}
-	// Head condition should be present
-	if len(pr.Conditions) != 1 {
-		t.Errorf("expected 1 condition (head only, chain TX link dropped), got %d", len(pr.Conditions))
-	}
-	if pr.Conditions[0].Field != "header:Content-Type" {
-		t.Errorf("Field: expected 'header:Content-Type', got %q", pr.Conditions[0].Field)
+	if len(result) != 0 {
+		t.Errorf("expected 0 rules (head alone is overbroad when chain dropped), got %d", len(result))
 	}
 }
 

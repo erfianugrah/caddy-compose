@@ -311,15 +311,15 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		if err != nil {
 			return nil, fmt.Errorf("chain conversion: %w", err)
 		}
-		conditions = append(conditions, chainConds...)
 
-		// If the chain was supposed to narrow the head's match but ALL chain
-		// conditions were dropped (TX variables, @within %{tx.*}), and the
-		// head uses a catch-all pattern like @rx ^.*$, the rule has lost its
-		// detection value. Skip it — the head alone matches everything.
-		if len(chainConds) == 0 && isCatchAllPattern(rule.Operator) {
-			return nil, fmt.Errorf("chain conditions dropped and head is catch-all (@%s %q)", rule.Operator.Name, rule.Operator.Value)
+		// If ALL chain conditions were dropped (TX variables, unsupported
+		// fields, @within %{tx.*}), the head condition alone is overbroad —
+		// the chain existed to narrow the match. Skip the entire rule.
+		// The head was a pre-filter, not the real detection.
+		if len(chainConds) == 0 {
+			return nil, fmt.Errorf("chain conditions dropped — head alone is overbroad (@%s %q)", rule.Operator.Name, rule.Operator.Value)
 		}
+		conditions = append(conditions, chainConds...)
 	}
 
 	// Map severity
@@ -431,18 +431,6 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
-
-// isCatchAllPattern returns true if the operator matches everything (e.g.,
-// @rx ^.*$ or @rx ^). These are used in CRS as capture-all heads in
-// chained rules — the chain link is supposed to filter the matches.
-// Without the chain link, these rules fire on every request.
-func isCatchAllPattern(op Operator) bool {
-	if op.Name != "rx" {
-		return false
-	}
-	v := strings.TrimSpace(op.Value)
-	return v == "^.*$" || v == "^" || v == ".*" || v == ""
-}
 
 // isNumericOp returns true for numeric comparison operators.
 func isNumericOp(op string) bool {
