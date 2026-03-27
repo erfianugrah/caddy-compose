@@ -433,15 +433,38 @@ causes the event to be invisible in parts of the UI.
   via `TestMain`. `crs_metadata.go` holds the loader, `atomic.Pointer[CRSMetadata]` for
   thread-safe access. `normalizeCRSCategory()` and `IsValidPrefix()` read from loaded metadata.
 - **CRS converter** (`tools/crs-converter/`): Converts CRS 4.x SecRule `.conf` files into
-  `default-rules.json` for the policy engine plugin. 344 rules from CRS 4.24.1.
+  `default-rules.json` for the policy engine plugin. 341 rules from CRS 4.24.1.
   Key features: RE2 regex validation with PCRE→RE2 auto-fix, per-field OR group
   conditions (preserves exact CRS variable scope), `Excludes` distribution to sub-conditions,
   TX variable capture chain flattening (bakes in CRS default allowlists for content-type,
   charset, restricted extensions, restricted headers), MATCHED_VARS→tx:0 conversion,
   special-case handling for rules 920450/920451/920540/931130, `pluginSupportedFields`
   filtering to prevent unsupported field conditions. Run with `make generate-rules`.
-  Only 2 CRS detection rules skipped (911100, 920430) — both handled natively by plugin
-  `enforceProtocolLimits()`. 294 flow-control rules correctly excluded (non-detection).
+  Only 5 CRS detection rules skipped: 911100/920430 (handled natively by plugin
+  `enforceProtocolLimits()`), 920190/942130/942131 (TX-to-TX comparison unsupported).
+  294 flow-control rules correctly excluded (non-detection).
+  CRS regression test fidelity: **98.1%** (4396/4480 testable, official CRS 4.24.1 suite).
+  Tests auto-download from GitHub via sparse checkout (`make test-crs-e2e`).
+- **CRS regression testing** (`test/crs/`): Runs the official OWASP CRS regression test
+  suite (4526 YAML test cases) against the live Docker stack. Two-phase evaluation:
+  (1) status-code fast path for clear pass/fail, (2) batch rule-level resolution via
+  events API for ambiguous results (rules that scored below threshold but still matched,
+  cross-rule interference where OTHER rules caused the block). Baseline tracking catches
+  regressions. Run with `make test-crs-e2e` (check) or `make test-crs-e2e-update` (update baseline).
+- **CRS remaining gaps** (84 tests, 1.9%): Documented root causes for each failure group:
+  - **29 false positives**: MATCHED_VARS chain verifications dropped by converter (14 rules
+    including 932340 short commands, 944100 XML element names, 921200 LDAP filters,
+    943110 session fixation same-domain referer). Fix: implement `not_ends_with_field`
+    operator in plugin for dynamic host comparison (943110), fix XML parser to exclude
+    element/attribute NAMES from `xml` field (944100), combine head+chain regexes with
+    lookaheads for MATCHED_VARS patterns.
+  - **46 false negatives**: Missing operators `validateUrlEncoding` (920230/920240, 4 tests),
+    `validateByteRange` (920271-920275, 14 tests). FILES/FILES_NAMES multipart extraction
+    edge cases (920120/920121, 10 tests). Protocol enforcement field scoping (920180/920300/
+    920340 missing Content-Type, 920350 IP in Host header, 920200-920202 Range+basename).
+  - **10 not converted**: TX-to-TX comparison 920190 (1 test, won't fix), `validateUtf8Encoding`
+    920250 (4 tests, hard), protocol limits 920360-920390 (4 tests, handled by plugin natively),
+    missing Host header 920280 (1 test, easy).
 - **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).
   Enforces via 4 layers: L3 nftables kernel drop (primary), L4 TCP RST, L7 HTTP 403, eBPF/XDP NIC drop.
