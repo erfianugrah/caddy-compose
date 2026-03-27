@@ -663,6 +663,13 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 		}
 	}
 
+	// Skip chain links whose operator value references TX variables (%{tx.*}).
+	// These are dynamic comparisons between captured values that the plugin
+	// cannot evaluate (e.g., TX:2 @lt %{tx.1} — comparing two captures).
+	if !skipThisLink && (strings.Contains(operatorValue, "%{tx.") || strings.Contains(operatorValue, "%{TX") || strings.Contains(operatorValue, "%{request_headers.")) {
+		skipThisLink = true
+	}
+
 	var conditions []PolicyCondition
 
 	if !skipThisLink {

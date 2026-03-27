@@ -349,37 +349,6 @@
       "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
     },
     {
-      "id": "920190",
-      "name": "Range: Invalid Last Byte Value",
-      "type": "detect",
-      "conditions": [
-        {
-          "field": "header:Range",
-          "operator": "regex",
-          "value": "(\\d+)-(\\d+)"
-        },
-        {
-          "field": "tx:2",
-          "operator": "lt",
-          "value": "%{tx.1}"
-        }
-      ],
-      "group_op": "and",
-      "severity": "WARNING",
-      "paranoia_level": 1,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-protocol"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "Range: Invalid Last Byte Value",
-      "category": "REQUEST-920-PROTOCOL-ENFORCEMENT",
-      "crs_file": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf"
-    },
-    {
       "id": "920200",
       "name": "Range: Too many fields (6 or more)",
       "type": "detect",
@@ -28223,126 +28192,6 @@
       "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
     },
     {
-      "id": "942130",
-      "name": "SQL Injection Attack: SQL Boolean-based attack detected",
-      "type": "detect",
-      "conditions": [
-        {
-          "group": [
-            {
-              "field": "all_args_names",
-              "operator": "regex",
-              "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:=|\u003c=\u003e|(?:sounds[\\s\\x0b]+)?like|glob|r(?:like|egexp))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
-              "transforms": [
-                "urlDecodeUni",
-                "removeComments"
-              ]
-            },
-            {
-              "field": "all_args_values",
-              "operator": "regex",
-              "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:=|\u003c=\u003e|(?:sounds[\\s\\x0b]+)?like|glob|r(?:like|egexp))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
-              "transforms": [
-                "urlDecodeUni",
-                "removeComments"
-              ]
-            },
-            {
-              "field": "xml",
-              "operator": "regex",
-              "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:=|\u003c=\u003e|(?:sounds[\\s\\x0b]+)?like|glob|r(?:like|egexp))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
-              "transforms": [
-                "urlDecodeUni",
-                "removeComments"
-              ]
-            }
-          ],
-          "group_op": "or"
-        },
-        {
-          "field": "tx:1",
-          "operator": "eq",
-          "value": "%{TX.2}"
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 2,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-sqli"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "SQL Injection Attack: SQL Boolean-based attack detected",
-      "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-      "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
-    },
-    {
-      "id": "942131",
-      "name": "SQL Injection Attack: SQL Boolean-based attack detected",
-      "type": "detect",
-      "conditions": [
-        {
-          "group": [
-            {
-              "field": "all_args_names",
-              "operator": "regex",
-              "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:![\u003c-\u003e]|\u003c[=\u003e]?|\u003e=?|\\^|is[\\s\\x0b]+not|not[\\s\\x0b]+(?:like|r(?:like|egexp)))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
-              "multi_match": true,
-              "transforms": [
-                "urlDecodeUni",
-                "removeComments"
-              ]
-            },
-            {
-              "field": "all_args_values",
-              "operator": "regex",
-              "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:![\u003c-\u003e]|\u003c[=\u003e]?|\u003e=?|\\^|is[\\s\\x0b]+not|not[\\s\\x0b]+(?:like|r(?:like|egexp)))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
-              "multi_match": true,
-              "transforms": [
-                "urlDecodeUni",
-                "removeComments"
-              ]
-            },
-            {
-              "field": "xml",
-              "operator": "regex",
-              "value": "(?i)[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b[\\s\\x0b\"'-\\)`]*?(?:![\u003c-\u003e]|\u003c[=\u003e]?|\u003e=?|\\^|is[\\s\\x0b]+not|not[\\s\\x0b]+(?:like|r(?:like|egexp)))[\\s\\x0b\"'-\\)`]*?\\b([0-9A-Z_a-z]+)\\b",
-              "multi_match": true,
-              "transforms": [
-                "urlDecodeUni",
-                "removeComments"
-              ]
-            }
-          ],
-          "group_op": "or"
-        },
-        {
-          "field": "tx:1",
-          "operator": "eq",
-          "value": "%{TX.2}",
-          "negate": true
-        }
-      ],
-      "group_op": "and",
-      "severity": "CRITICAL",
-      "paranoia_level": 2,
-      "tags": [
-        "application-multi",
-        "language-multi",
-        "platform-multi",
-        "attack-sqli"
-      ],
-      "enabled": true,
-      "priority": 400,
-      "description": "SQL Injection Attack: SQL Boolean-based attack detected",
-      "category": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-      "crs_file": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf"
-    },
-    {
       "id": "942140",
       "name": "SQL Injection Attack: Common DB Names Detected",
       "type": "detect",
@@ -32144,12 +31993,6 @@
           "field": "referer",
           "operator": "regex",
           "value": "^(?:ht|f)tps?://(.*?)/"
-        },
-        {
-          "field": "tx:1",
-          "operator": "ends_with",
-          "value": "%{request_headers.host}",
-          "negate": true
         }
       ],
       "group_op": "and",
@@ -37843,5 +37686,5 @@
   ],
   "version": 7,
   "crs_version": "4.24.1",
-  "generated": "2026-03-27T19:17:31Z"
+  "generated": "2026-03-27T20:40:13Z"
 }

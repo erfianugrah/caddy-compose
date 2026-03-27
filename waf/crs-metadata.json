@@ -1,6 +1,6 @@
 {
   "crs_version": "4.24.1",
-  "generated_at": "2026-03-27T19:17:31Z",
+  "generated_at": "2026-03-27T20:40:13Z",
   "categories": [
     {
       "id": "scanner-detection",
@@ -20,7 +20,7 @@
       "rule_range": "920000-920999",
       "tag": "attack-protocol",
       "phase": "inbound",
-      "rule_count": 43
+      "rule_count": 42
     },
     {
       "id": "protocol-attack",
@@ -110,7 +110,7 @@
       "rule_range": "942000-942999",
       "tag": "attack-sqli",
       "phase": "inbound",
-      "rule_count": 60
+      "rule_count": 58
     },
     {
       "id": "session-fixation",
