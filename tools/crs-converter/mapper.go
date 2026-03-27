@@ -45,8 +45,8 @@ var variableMap = map[string]string{
 	"REQUEST_URI":      "path",
 	"REQUEST_URI_RAW":  "path", // raw URI — map to path (encoding preserved by plugin)
 	"REQUEST_FILENAME": "uri_path",
-	"REQUEST_BASENAME": "request_basename", // NEEDED in plugin
-	"REQUEST_LINE":     "request_line",     // NEEDED in plugin
+	"REQUEST_BASENAME": "request_basename",
+	"REQUEST_LINE":     "request_line",
 	"QUERY_STRING":     "query",
 	"REQUEST_METHOD":   "method",
 	"REQUEST_PROTOCOL": "http_version",
@@ -107,14 +107,12 @@ func initSeparateArgs() {
 // Only include shortcuts that the plugin natively supports as first-class fields.
 // Others use the generic "header:Name" format.
 var headerShortcuts = map[string]string{
-	"User-Agent":   "user_agent",
-	"Referer":      "referer",
-	"Cf-Ipcountry": "country",
-	"Host":         "host",
-	// Content-Type and Content-Length use generic header: prefix because the
-	// plugin doesn't have dedicated content_type/content_length fields.
-	"Content-Type":   "header:Content-Type",
-	"Content-Length": "header:Content-Length",
+	"User-Agent":     "user_agent",
+	"Referer":        "referer",
+	"Content-Type":   "content_type",
+	"Content-Length": "content_length",
+	"Cf-Ipcountry":   "country",
+	"Host":           "host",
 }
 
 // pluginSupportedFields are the fields the caddy-policy-engine plugin can
@@ -129,6 +127,8 @@ var pluginSupportedFields = map[string]bool{
 	"uri_path": true, "referer": true, "http_version": true,
 	"ja4": true, "challenge_history": true,
 	"header": true, "cookie": true, "args": true,
+	"request_line": true, "request_basename": true,
+	"content_type": true, "content_length": true,
 	// Aggregate fields
 	"all_args": true, "all_args_values": true, "all_args_names": true,
 	"query_args_values": true, "query_args_names": true,
@@ -137,7 +137,8 @@ var pluginSupportedFields = map[string]bool{
 	"all_cookies": true, "all_cookies_names": true,
 	"request_combined": true,
 	// Response fields (outbound phase)
-	"response_header": true, "response_status": true, "response_content_type": true,
+	"response_header": true, "response_status": true,
+	"response_content_type": true, "response_body": true,
 }
 
 // isFieldSupported returns true if the plugin can evaluate this field.
@@ -145,9 +146,9 @@ func isFieldSupported(field string) bool {
 	if pluginSupportedFields[field] {
 		return true
 	}
-	// Named access: header:X, cookie:X, args:X
+	// Named access: header:X, cookie:X, args:X, tx:N
 	if strings.HasPrefix(field, "header:") || strings.HasPrefix(field, "cookie:") ||
-		strings.HasPrefix(field, "args:") {
+		strings.HasPrefix(field, "args:") || strings.HasPrefix(field, "tx:") {
 		return true
 	}
 	// count: on supported fields

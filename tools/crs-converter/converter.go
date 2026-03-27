@@ -356,9 +356,10 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 }
 
 // convertChain recursively converts chained rules into conditions.
-// If a chain link has only unmappable variables (e.g., TX-only), it is
-// skipped and subsequent chain links are still processed. This preserves
-// the head rule's detection value when chain links are CRS internal logic.
+// TX capture references (TX:0, TX:1, TX:content_type) are converted to
+// tx:N fields that the plugin reads from its per-request capture context.
+// Chain links with %{tx.*} variable references in operator values are
+// unconvertible (server-configured allowlists) and cause the link to be skipped.
 func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondition, error) {
 	// Map operator
 	opName, supported, _ := mapOperator(rule.Operator)
@@ -366,9 +367,38 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 	// Map transforms
 	transforms, _ := mapTransforms(rule.Transforms)
 
-	// Map variables — chain links with only TX variables are dropped (not an error).
+	// Check if this chain link uses TX capture variables.
+	// TX:0, TX:1 → tx:0, tx:1 (regex capture references from head rule)
+	// TX:content_type → tx:content_type (CRS setvar-derived captures)
+	// TX:/^pattern/ → skip (regex-keyed TX iteration, not convertible)
+	var txFields []string
+	isTXOnly := true
+	for _, v := range rule.Variables {
+		if v.IsNegation {
+			continue
+		}
+		if v.Name == "TX" {
+			if v.KeyIsRegex {
+				// TX:/^pattern/ — iterating TX variables by regex key, not convertible.
+				isTXOnly = true
+				txFields = nil
+				break
+			}
+			if v.Key != "" {
+				txFields = append(txFields, "tx:"+v.Key)
+			}
+		} else if v.Name == "MATCHED_VARS" || v.Name == "MATCHED_VAR" {
+			// MATCHED_VARS/MATCHED_VAR: CRS uses these to re-examine what the
+			// head matched. The plugin's TX capture context stores the head's
+			// capture in tx:0, which serves the same purpose.
+			txFields = append(txFields, "tx:0")
+		} else {
+			isTXOnly = false
+		}
+	}
+
+	// Map non-TX variables → plugin fields.
 	fields, _, _ := mapVariablesToConditions(rule.Variables, rule.Operator)
-	// Filter unsupported fields in chain conditions too.
 	var chainSupported []string
 	for _, f := range fields {
 		if isFieldSupported(f) {
@@ -376,6 +406,12 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 		}
 	}
 	fields = chainSupported
+
+	// If all variables are TX/MATCHED_VARS, use the tx: fields instead.
+	if isTXOnly && len(txFields) > 0 {
+		fields = txFields
+	}
+
 	skipThisLink := !supported || len(fields) == 0
 
 	// Resolve operator

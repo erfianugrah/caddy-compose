@@ -163,8 +163,8 @@ func TestResponsePhaseConverted(t *testing.T) {
 	}
 }
 
-func TestResponseBodySkippedAsUnsupported(t *testing.T) {
-	// response_body is not supported by the plugin — rules using it should be skipped.
+func TestResponseBodyConverted(t *testing.T) {
+	// response_body is supported by the plugin — outbound rules should be converted.
 	input := `SecRule RESPONSE_BODY "@rx password" "id:950099,phase:4,block,msg:'Data Leakage',severity:'ERROR'"`
 
 	rules, err := ParseFile(input, "test.conf")
@@ -175,8 +175,11 @@ func TestResponseBodySkippedAsUnsupported(t *testing.T) {
 	converter := NewConverter(nil)
 	result := converter.Convert(rules, "test.conf")
 
-	if len(result) != 0 {
-		t.Errorf("expected 0 rules (response_body unsupported), got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 outbound rule, got %d", len(result))
+	}
+	if result[0].Phase != "outbound" {
+		t.Errorf("expected phase=outbound, got %q", result[0].Phase)
 	}
 }
 
@@ -263,9 +266,9 @@ SecRule REQUEST_BODY "@rx evil" "t:none"`
 		t.Fatalf("expected 2 conditions, got %d", len(pr.Conditions))
 	}
 
-	// First condition: Content-Type header check (mapped to header:Content-Type)
-	if pr.Conditions[0].Field != "header:Content-Type" {
-		t.Errorf("condition[0].Field: got %q, want header:Content-Type", pr.Conditions[0].Field)
+	// First condition: Content-Type header check (mapped to content_type shortcut)
+	if pr.Conditions[0].Field != "content_type" {
+		t.Errorf("condition[0].Field: got %q, want content_type", pr.Conditions[0].Field)
 	}
 
 	// Second condition: body check
@@ -357,11 +360,11 @@ SecRule RESPONSE_BODY "@rx leak" "id:950001,phase:4,block,msg:'Leak',severity:'E
 	if r.TotalRules != 3 {
 		t.Errorf("TotalRules: got %d, want 3", r.TotalRules)
 	}
-	if r.ConvertedRules != 1 {
-		t.Errorf("ConvertedRules: got %d, want 1 (ARGS rule only; RESPONSE_BODY unsupported)", r.ConvertedRules)
+	if r.ConvertedRules != 2 {
+		t.Errorf("ConvertedRules: got %d, want 2 (1 inbound ARGS + 1 outbound RESPONSE_BODY)", r.ConvertedRules)
 	}
-	if r.SkippedRules != 2 {
-		t.Errorf("SkippedRules: got %d, want 2 (1 flow control + 1 unsupported field)", r.SkippedRules)
+	if r.SkippedRules != 1 {
+		t.Errorf("SkippedRules: got %d, want 1 (flow control only)", r.SkippedRules)
 	}
 }
 
@@ -561,11 +564,10 @@ func TestConvertWithinTXVariable_Skipped(t *testing.T) {
 	}
 }
 
-func TestConvertChainWithTXLink_SkippedWhenChainDropped(t *testing.T) {
-	// Head condition checks real field, chain link checks TX variable.
-	// Chain link gets dropped (TX variables unconvertible). The head alone
-	// is overbroad (^application/ matches all application/* content types)
-	// so the entire rule should be skipped — the chain was the real detection.
+func TestConvertChainWithTXLink_WithinTXRefSkipped(t *testing.T) {
+	// Chain link uses @within with %{tx.*} reference — this is a server-configured
+	// allowlist that we can't evaluate. The chain should be dropped, and since
+	// the head alone is overbroad, the entire rule should be skipped.
 	input := `SecRule REQUEST_HEADERS:Content-Type "@rx ^application/" \
 	"id:920420,phase:1,block,capture,msg:'Content type check',severity:'CRITICAL',tag:'attack-protocol',tag:'paranoia-level/1',chain"
 	SecRule TX:content_type "!@within %{tx.allowed_request_content_type}" "t:lowercase"`
@@ -579,7 +581,65 @@ func TestConvertChainWithTXLink_SkippedWhenChainDropped(t *testing.T) {
 	result := converter.Convert(rules, "REQUEST-920-PROTOCOL-ENFORCEMENT.conf")
 
 	if len(result) != 0 {
-		t.Errorf("expected 0 rules (head alone is overbroad when chain dropped), got %d", len(result))
+		t.Errorf("expected 0 rules (@within %%{tx.*} chain unconvertible), got %d", len(result))
+	}
+}
+
+func TestConvertChainWithTXCapture_Preserved(t *testing.T) {
+	// Chain link uses TX:1 (regex capture reference) with a concrete operator.
+	// This should be converted to field="tx:1" — the plugin can evaluate it.
+	input := `SecRule ARGS_NAMES|ARGS "@rx (?i)([a-z]+)\s*=\s*([a-z]+)" \
+	"id:942130,phase:2,block,capture,msg:'SQL tautology',severity:'CRITICAL',tag:'attack-sqli',tag:'paranoia-level/1',chain"
+	SecRule TX:1 "@rx ^(?:and|or|xor|not)$" "t:lowercase"`
+
+	rules, err := ParseFile(input, "REQUEST-942-APPLICATION-ATTACK-SQLI.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-942-APPLICATION-ATTACK-SQLI.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule (TX capture chain preserved), got %d", len(result))
+	}
+
+	pr := result[0]
+	if len(pr.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions (head + TX chain), got %d", len(pr.Conditions))
+	}
+
+	// Second condition should use tx:1 field.
+	chain := pr.Conditions[1]
+	if chain.Field != "tx:1" {
+		t.Errorf("chain field: got %q, want tx:1", chain.Field)
+	}
+	if chain.Operator != "regex" {
+		t.Errorf("chain operator: got %q, want regex", chain.Operator)
+	}
+}
+
+func TestConvertChainWithMATCHED_VARS_Preserved(t *testing.T) {
+	// Chain link uses MATCHED_VARS — converted to tx:0 (head's capture).
+	input := `SecRule ARGS|ARGS_NAMES "@rx [\x22\x27]\s*;[^\x22\x27]*\s*\x00" \
+	"id:942440,phase:2,block,capture,msg:'SQL comment',severity:'CRITICAL',tag:'attack-sqli',tag:'paranoia-level/2',chain"
+	SecRule MATCHED_VARS "@rx verification_pattern"`
+
+	rules, err := ParseFile(input, "REQUEST-942-APPLICATION-ATTACK-SQLI.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "REQUEST-942-APPLICATION-ATTACK-SQLI.conf")
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 rule (MATCHED_VARS chain preserved), got %d", len(result))
+	}
+
+	chain := result[0].Conditions[1]
+	if chain.Field != "tx:0" {
+		t.Errorf("MATCHED_VARS chain field: got %q, want tx:0", chain.Field)
 	}
 }
 
