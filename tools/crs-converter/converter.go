@@ -215,6 +215,29 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 		return nil, fmt.Errorf("no mappable variables")
 	}
 
+	// Filter out fields the plugin cannot evaluate. An unsupported field
+	// in a non-negated condition silently never matches (dead branch). In
+	// a negated condition it ALWAYS matches (false positive). Either way,
+	// including it is wrong.
+	var supportedFields []string
+	var droppedFields []string
+	for _, f := range fields {
+		if isFieldSupported(f) {
+			supportedFields = append(supportedFields, f)
+		} else {
+			droppedFields = append(droppedFields, f)
+		}
+	}
+	if len(droppedFields) > 0 {
+		for _, f := range droppedFields {
+			c.report.MissingVariables[f]++
+		}
+	}
+	if len(supportedFields) == 0 {
+		return nil, fmt.Errorf("all fields unsupported by plugin: %s", strings.Join(droppedFields, ", "))
+	}
+	fields = supportedFields
+
 	// Resolve operator value
 	operatorValue := rule.Operator.Value
 	var listItems []string
@@ -345,6 +368,14 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 
 	// Map variables — chain links with only TX variables are dropped (not an error).
 	fields, _, _ := mapVariablesToConditions(rule.Variables, rule.Operator)
+	// Filter unsupported fields in chain conditions too.
+	var chainSupported []string
+	for _, f := range fields {
+		if isFieldSupported(f) {
+			chainSupported = append(chainSupported, f)
+		}
+	}
+	fields = chainSupported
 	skipThisLink := !supported || len(fields) == 0
 
 	// Resolve operator

@@ -140,7 +140,9 @@ func TestSkipFlowControlRanges(t *testing.T) {
 }
 
 func TestResponsePhaseConverted(t *testing.T) {
-	input := `SecRule RESPONSE_BODY "@rx password" "id:950001,phase:4,block,msg:'Data Leakage',severity:'ERROR'"`
+	// response_body is not yet supported by the plugin, so the rule should
+	// be skipped. Use response_status (supported) for the outbound phase test.
+	input := `SecRule RESPONSE_STATUS "@rx ^5\d{2}$" "id:950001,phase:4,block,msg:'Server Error',severity:'ERROR'"`
 
 	rules, err := ParseFile(input, "test.conf")
 	if err != nil {
@@ -156,8 +158,25 @@ func TestResponsePhaseConverted(t *testing.T) {
 	if result[0].Phase != "outbound" {
 		t.Errorf("expected phase=outbound, got %q", result[0].Phase)
 	}
-	if result[0].Conditions[0].Field != "response_body" {
-		t.Errorf("expected field=response_body, got %q", result[0].Conditions[0].Field)
+	if result[0].Conditions[0].Field != "response_status" {
+		t.Errorf("expected field=response_status, got %q", result[0].Conditions[0].Field)
+	}
+}
+
+func TestResponseBodySkippedAsUnsupported(t *testing.T) {
+	// response_body is not supported by the plugin — rules using it should be skipped.
+	input := `SecRule RESPONSE_BODY "@rx password" "id:950099,phase:4,block,msg:'Data Leakage',severity:'ERROR'"`
+
+	rules, err := ParseFile(input, "test.conf")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	converter := NewConverter(nil)
+	result := converter.Convert(rules, "test.conf")
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 rules (response_body unsupported), got %d", len(result))
 	}
 }
 
@@ -244,9 +263,9 @@ SecRule REQUEST_BODY "@rx evil" "t:none"`
 		t.Fatalf("expected 2 conditions, got %d", len(pr.Conditions))
 	}
 
-	// First condition: Content-Type header check
-	if pr.Conditions[0].Field != "content_type" {
-		t.Errorf("condition[0].Field: got %q, want content_type", pr.Conditions[0].Field)
+	// First condition: Content-Type header check (mapped to header:Content-Type)
+	if pr.Conditions[0].Field != "header:Content-Type" {
+		t.Errorf("condition[0].Field: got %q, want header:Content-Type", pr.Conditions[0].Field)
 	}
 
 	// Second condition: body check
@@ -338,11 +357,11 @@ SecRule RESPONSE_BODY "@rx leak" "id:950001,phase:4,block,msg:'Leak',severity:'E
 	if r.TotalRules != 3 {
 		t.Errorf("TotalRules: got %d, want 3", r.TotalRules)
 	}
-	if r.ConvertedRules != 2 {
-		t.Errorf("ConvertedRules: got %d, want 2 (1 inbound + 1 outbound)", r.ConvertedRules)
+	if r.ConvertedRules != 1 {
+		t.Errorf("ConvertedRules: got %d, want 1 (ARGS rule only; RESPONSE_BODY unsupported)", r.ConvertedRules)
 	}
-	if r.SkippedRules != 1 {
-		t.Errorf("SkippedRules: got %d, want 1 (flow control only)", r.SkippedRules)
+	if r.SkippedRules != 2 {
+		t.Errorf("SkippedRules: got %d, want 2 (1 flow control + 1 unsupported field)", r.SkippedRules)
 	}
 }
 
@@ -569,8 +588,8 @@ func TestConvertChainWithTXLink_HeadPreserved(t *testing.T) {
 	if len(pr.Conditions) != 1 {
 		t.Errorf("expected 1 condition (head only, chain TX link dropped), got %d", len(pr.Conditions))
 	}
-	if pr.Conditions[0].Field != "content_type" {
-		t.Errorf("Field: expected 'content_type', got %q", pr.Conditions[0].Field)
+	if pr.Conditions[0].Field != "header:Content-Type" {
+		t.Errorf("Field: expected 'header:Content-Type', got %q", pr.Conditions[0].Field)
 	}
 }
 

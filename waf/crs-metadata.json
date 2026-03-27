@@ -1,6 +1,6 @@
 {
-  "crs_version": "v4.24.1",
-  "generated_at": "2026-03-26T13:05:15Z",
+  "crs_version": "4.24.1",
+  "generated_at": "2026-03-27T15:13:40Z",
   "categories": [
     {
       "id": "scanner-detection",
@@ -20,7 +20,7 @@
       "rule_range": "920000-920999",
       "tag": "attack-protocol",
       "phase": "inbound",
-      "rule_count": 41
+      "rule_count": 36
     },
     {
       "id": "protocol-attack",
@@ -31,16 +31,6 @@
       "tag": "attack-protocol",
       "phase": "inbound",
       "rule_count": 17
-    },
-    {
-      "id": "multipart-attack",
-      "name": "Multipart Attack",
-      "description": "Multipart request attack patterns",
-      "prefix": "922",
-      "rule_range": "922000-922999",
-      "tag": "attack-protocol",
-      "phase": "inbound",
-      "rule_count": 3
     },
     {
       "id": "lfi",
@@ -140,37 +130,7 @@
       "rule_range": "950000-950999",
       "tag": "leakage",
       "phase": "outbound",
-      "rule_count": 4
-    },
-    {
-      "id": "data-leakage-sql",
-      "name": "SQL Data Leakages",
-      "description": "SQL error message leakage",
-      "prefix": "951",
-      "rule_range": "951000-951999",
-      "tag": "leakage-sql",
-      "phase": "outbound",
-      "rule_count": 16
-    },
-    {
-      "id": "data-leakage-java",
-      "name": "Java Data Leakages",
-      "description": "Java exception leakage",
-      "prefix": "952",
-      "rule_range": "952000-952999",
-      "tag": "leakage-java",
-      "phase": "outbound",
       "rule_count": 1
-    },
-    {
-      "id": "data-leakage-php",
-      "name": "PHP Data Leakages",
-      "description": "PHP error message leakage",
-      "prefix": "953",
-      "rule_range": "953000-953999",
-      "tag": "leakage-php",
-      "phase": "outbound",
-      "rule_count": 4
     },
     {
       "id": "data-leakage-iis",
@@ -180,34 +140,13 @@
       "rule_range": "954000-954999",
       "tag": "leakage-iis",
       "phase": "outbound",
-      "rule_count": 5
-    },
-    {
-      "id": "web-shells",
-      "name": "Web Shells",
-      "description": "Web shell detection in responses",
-      "prefix": "955",
-      "rule_range": "955000-955999",
-      "tag": "leakage-webshell",
-      "phase": "outbound",
-      "rule_count": 27
-    },
-    {
-      "id": "data-leakages-ruby",
-      "name": "Ruby Data Leakages",
-      "description": "Ruby error message leakage",
-      "prefix": "956",
-      "rule_range": "956000-956999",
-      "tag": "leakage-ruby",
-      "phase": "outbound",
-      "rule_count": 2
+      "rule_count": 1
     }
   ],
   "category_map": {
     "REQUEST-913-SCANNER-DETECTION": "scanner-detection",
     "REQUEST-920-PROTOCOL-ENFORCEMENT": "protocol-enforcement",
     "REQUEST-921-PROTOCOL-ATTACK": "protocol-attack",
-    "REQUEST-922-MULTIPART-ATTACK": "multipart-attack",
     "REQUEST-930-APPLICATION-ATTACK-LFI": "lfi",
     "REQUEST-931-APPLICATION-ATTACK-RFI": "rfi",
     "REQUEST-932-APPLICATION-ATTACK-RCE": "rce",
@@ -218,19 +157,13 @@
     "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION": "session-fixation",
     "REQUEST-944-APPLICATION-ATTACK-JAVA": "java",
     "RESPONSE-950-DATA-LEAKAGES": "data-leakage",
-    "RESPONSE-951-DATA-LEAKAGES-SQL": "data-leakage-sql",
-    "RESPONSE-952-DATA-LEAKAGES-JAVA": "data-leakage-java",
-    "RESPONSE-953-DATA-LEAKAGES-PHP": "data-leakage-php",
-    "RESPONSE-954-DATA-LEAKAGES-IIS": "data-leakage-iis",
-    "RESPONSE-955-WEB-SHELLS": "web-shells",
-    "RESPONSE-956-DATA-LEAKAGES-RUBY": "data-leakages-ruby"
+    "RESPONSE-954-DATA-LEAKAGES-IIS": "data-leakage-iis"
   },
   "valid_prefixes": [
     "9100",
     "913",
     "920",
     "921",
-    "922",
     "930",
     "931",
     "932",
@@ -241,12 +174,7 @@
     "943",
     "944",
     "950",
-    "951",
-    "952",
-    "953",
-    "954",
-    "955",
-    "956"
+    "954"
   ],
   "severity_levels": {
     "CRITICAL": 2,

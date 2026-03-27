@@ -104,13 +104,61 @@ func initSeparateArgs() {
 }
 
 // headerShortcuts maps well-known REQUEST_HEADERS:Name to plugin fields.
+// Only include shortcuts that the plugin natively supports as first-class fields.
+// Others use the generic "header:Name" format.
 var headerShortcuts = map[string]string{
-	"User-Agent":     "user_agent",
-	"Referer":        "referer",
-	"Content-Type":   "content_type",
-	"Content-Length": "content_length",
-	"Cf-Ipcountry":   "country",
-	"Host":           "host",
+	"User-Agent":   "user_agent",
+	"Referer":      "referer",
+	"Cf-Ipcountry": "country",
+	"Host":         "host",
+	// Content-Type and Content-Length use generic header: prefix because the
+	// plugin doesn't have dedicated content_type/content_length fields.
+	"Content-Type":   "header:Content-Type",
+	"Content-Length": "header:Content-Length",
+}
+
+// pluginSupportedFields are the fields the caddy-policy-engine plugin can
+// actually evaluate. Fields not in this set produce empty values, causing
+// negated conditions to always match (false positives) and non-negated
+// conditions to never match (dead rules).
+var pluginSupportedFields = map[string]bool{
+	// Scalar request fields
+	"ip": true, "path": true, "host": true, "method": true,
+	"user_agent": true, "query": true, "country": true,
+	"body": true, "body_json": true, "body_form": true,
+	"uri_path": true, "referer": true, "http_version": true,
+	"ja4": true, "challenge_history": true,
+	"header": true, "cookie": true, "args": true,
+	// Aggregate fields
+	"all_args": true, "all_args_values": true, "all_args_names": true,
+	"query_args_values": true, "query_args_names": true,
+	"post_args_values": true, "post_args_names": true,
+	"all_headers": true, "all_headers_names": true,
+	"all_cookies": true, "all_cookies_names": true,
+	"request_combined": true,
+	// Response fields (outbound phase)
+	"response_header": true, "response_status": true, "response_content_type": true,
+}
+
+// isFieldSupported returns true if the plugin can evaluate this field.
+func isFieldSupported(field string) bool {
+	if pluginSupportedFields[field] {
+		return true
+	}
+	// Named access: header:X, cookie:X, args:X
+	if strings.HasPrefix(field, "header:") || strings.HasPrefix(field, "cookie:") ||
+		strings.HasPrefix(field, "args:") {
+		return true
+	}
+	// count: on supported fields
+	if strings.HasPrefix(field, "count:") {
+		base := strings.TrimPrefix(field, "count:")
+		return pluginSupportedFields[base] ||
+			strings.HasPrefix(base, "header:") ||
+			strings.HasPrefix(base, "cookie:") ||
+			strings.HasPrefix(base, "args:")
+	}
+	return false
 }
 
 // multiFields are the aggregate (multi-value) fields that support the
