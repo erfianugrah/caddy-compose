@@ -143,6 +143,16 @@ type stats struct {
 	NewPass   int // passes that were baselined as fail
 	Skipped   int // skipped due to encoded_request, multi-stage, etc.
 	CrossRule int // no_expect_ids blocked by OTHER rules (not the tested rule)
+
+	// deferredChecks collects no_expect_ids 403 results for batch resolution.
+	// After all tests run, we wait for log ingestion once and resolve all at once.
+	deferredChecks []deferredCheck
+}
+
+type deferredCheck struct {
+	key      string // "ruleID/testID"
+	marker   string // URI marker for event correlation
+	noExpIDs []int  // rule IDs that should NOT have fired
 }
 
 func (s *stats) report(t *testing.T) {
@@ -336,6 +346,48 @@ func TestCRSRegression(t *testing.T) {
 		})
 	}
 
+	// ── Batch resolve deferred cross-rule checks ────────────────
+	// Wait once for log ingestion, then query all deferred markers.
+	if len(st.deferredChecks) > 0 && !statusOnly {
+		t.Logf("Resolving %d deferred cross-rule checks (waiting for log ingestion)...", len(st.deferredChecks))
+		time.Sleep(eventIngestionDelay)
+
+		resolved := 0
+		for _, dc := range st.deferredChecks {
+			matchedIDs := queryMatchedRuleIDsNoDelay(dc.marker)
+			ruleFired := false
+			for _, noID := range dc.noExpIDs {
+				for _, mid := range matchedIDs {
+					if mid == noID {
+						ruleFired = true
+						break
+					}
+				}
+				if ruleFired {
+					break
+				}
+			}
+			if !ruleFired && len(matchedIDs) > 0 {
+				// Cross-rule interference confirmed: upgrade from fail to pass.
+				st.CrossRule++
+				resolved++
+				// Fix the baseline entry and stats.
+				entry := newBaseline[dc.key]
+				if entry.Status == "fail" {
+					// Was counted as either NewFail or Fail — decrement appropriately.
+					if _, inOldBL := bl[dc.key]; inOldBL {
+						st.Fail--
+					} else {
+						st.NewFail--
+					}
+					st.Pass++
+					newBaseline[dc.key] = baselineEntry{Status: "pass", Note: "cross-rule (resolved)"}
+				}
+			}
+		}
+		t.Logf("Resolved %d/%d as cross-rule interference", resolved, len(st.deferredChecks))
+	}
+
 	st.report(t)
 
 	if updateBase {
@@ -443,40 +495,17 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 			// Not blocked — pass
 			passed = true
 		} else {
-			// Blocked (403) on a no_expect_ids test. This could be:
-			// (a) The specific rule over-matched (true false positive — converter bug)
-			// (b) A DIFFERENT rule matched (cross-rule interference — not our bug)
-			//
-			// Only do the slow events API check for NEW failures (not baselined)
-			// and only when not in status-only mode.
-			entry, inBaseline := bl[key]
-			if inBaseline && entry.Status == "fail" {
-				// Known failure — skip the slow API check
-				passed = false
-			} else if statusOnly {
-				// Status-only mode — no events API check
-				passed = false
-			} else {
-				// New failure — check rule-level to distinguish converter bug from cross-rule
-				matchedIDs := queryMatchedRuleIDs(marker)
-				ruleFired := false
-				for _, noID := range stage.Output.Log.NoExpectIDs {
-					for _, mid := range matchedIDs {
-						if mid == noID {
-							ruleFired = true
-							break
-						}
-					}
-					if ruleFired {
-						break
-					}
-				}
-				if !ruleFired && len(matchedIDs) > 0 {
-					// Cross-rule interference: the specific rule did NOT fire.
-					passed = true
-					st.CrossRule++
-				}
+			// Blocked (403) on a no_expect_ids test. Defer rule-level check
+			// to batch resolution after all tests complete (avoids per-test
+			// ingestion delay). Mark as tentative failure for now.
+			if !statusOnly {
+				st.deferredChecks = append(st.deferredChecks, deferredCheck{
+					key:      key,
+					marker:   marker,
+					noExpIDs: stage.Output.Log.NoExpectIDs,
+				})
 			}
+			passed = false // tentative — may be upgraded by batch resolution
 		}
 	} else {
 		st.Skipped++
@@ -516,14 +545,16 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 
 // ─── Events API: Rule-Level Match Checking ─────────────────────────
 
-// queryMatchedRuleIDs queries the wafctl events API for the most recent event
-// matching the test marker, and returns the IDs of all matched CRS rules.
-// Used for no_expect_ids tests to distinguish converter false positives from
-// cross-rule interference.
+// queryMatchedRuleIDs queries the wafctl events API with an ingestion delay.
 func queryMatchedRuleIDs(marker string) []int {
-	// Brief delay for log ingestion (wafctl tails the access log every 2s)
 	time.Sleep(eventIngestionDelay)
+	return queryMatchedRuleIDsNoDelay(marker)
+}
 
+// queryMatchedRuleIDsNoDelay queries the wafctl events API for the most recent
+// event matching the test marker, returning all matched CRS rule IDs.
+// No ingestion delay — caller must ensure events are already ingested.
+func queryMatchedRuleIDsNoDelay(marker string) []int {
 	reqURL := fmt.Sprintf("%s/api/events?limit=1&hours=1&uri=%s&uri_op=contains",
 		wafctlURL, url.QueryEscape(marker))
 
