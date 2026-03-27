@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,10 +20,17 @@ import (
 
 // ─── Configuration ─────────────────────────────────────────────────
 
+// crsGitRepo is the GitHub repository URL for the OWASP CRS test suite.
+const crsGitRepo = "https://github.com/coreruleset/coreruleset.git"
+
+// crsGitTag is the CRS version to fetch tests from. Must match the version
+// used by the converter (set in Dockerfile CRS_VERSION).
+var crsGitTag = envOr("CRS_VERSION", "v4.24.1")
+
 var (
 	proxyURL   = envOr("CRS_PROXY_URL", "http://localhost:19080")
 	wafctlURL  = envOr("CRS_WAFCTL_URL", "http://localhost:19082")
-	yamlDir    = envOr("CRS_YAML_DIR", "../../tools/coreruleset/tests/regression/tests")
+	yamlDir    = envOr("CRS_YAML_DIR", "") // auto-resolved: local checkout or GitHub clone
 	baselineF  = envOr("CRS_BASELINE", "baseline.json")
 	updateBase = os.Getenv("CRS_UPDATE_BASELINE") == "1"
 	statusOnly = os.Getenv("CRS_STATUS_ONLY") == "1" // skip events API, pure status codes
@@ -161,6 +169,40 @@ func (s *stats) report(t *testing.T) {
 // ─── Setup ─────────────────────────────────────────────────────────
 
 func TestMain(m *testing.M) {
+	// Resolve CRS test YAML directory: check local checkout, then clone from GitHub.
+	if yamlDir == "" {
+		localPath := "../../tools/coreruleset/tests/regression/tests"
+		if info, err := os.Stat(localPath); err == nil && info.IsDir() {
+			yamlDir = localPath
+			fmt.Fprintf(os.Stderr, "Using local CRS tests at %s\n", localPath)
+		} else {
+			// Clone from GitHub into a temp directory.
+			tmpDir, err := os.MkdirTemp("", "crs-tests-*")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "creating temp dir: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "Cloning CRS %s from GitHub...\n", crsGitTag)
+			cmd := exec.Command("git", "clone", "--depth", "1", "--branch", crsGitTag,
+				"--filter=blob:none", "--sparse", crsGitRepo, tmpDir)
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "git clone failed: %v\n", err)
+				os.Exit(1)
+			}
+			// Sparse checkout only the test directory
+			sparse := exec.Command("git", "-C", tmpDir, "sparse-checkout", "set", "tests/regression/tests")
+			sparse.Stderr = os.Stderr
+			if err := sparse.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "sparse checkout failed: %v\n", err)
+				os.Exit(1)
+			}
+			yamlDir = filepath.Join(tmpDir, "tests", "regression", "tests")
+			fmt.Fprintf(os.Stderr, "CRS tests downloaded to %s\n", yamlDir)
+			defer os.RemoveAll(tmpDir) // cleanup on exit
+		}
+	}
+
 	// Quick connectivity check before running tests
 	if err := waitForHealth(wafctlURL+"/api/health", 60*time.Second); err != nil {
 		fmt.Fprintf(os.Stderr, "wafctl not reachable at %s: %v\n", wafctlURL, err)
