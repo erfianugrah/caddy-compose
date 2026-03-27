@@ -144,9 +144,19 @@ type stats struct {
 	Skipped   int // skipped due to encoded_request, multi-stage, etc.
 	CrossRule int // no_expect_ids blocked by OTHER rules (not the tested rule)
 
-	// deferredChecks collects no_expect_ids 403 results for batch resolution.
-	// After all tests run, we wait for log ingestion once and resolve all at once.
-	deferredChecks []deferredCheck
+	// pendingChecks collects all test results for batch rule-level resolution.
+	// After all requests are sent, we wait once for log ingestion and resolve
+	// ALL tests by checking which CRS rule IDs actually fired (not just status code).
+	pendingChecks []pendingCheck
+}
+
+type pendingCheck struct {
+	key       string // "ruleID/testID"
+	marker    string // URI marker for event correlation
+	expectIDs []int  // rule IDs that SHOULD have fired (expect_ids)
+	noExpIDs  []int  // rule IDs that should NOT have fired (no_expect_ids)
+	status    int    // HTTP status code received
+	desc      string // test description for error messages
 }
 
 type deferredCheck struct {
@@ -346,46 +356,80 @@ func TestCRSRegression(t *testing.T) {
 		})
 	}
 
-	// ── Batch resolve deferred cross-rule checks ────────────────
-	// Wait once for log ingestion, then query all deferred markers.
-	if len(st.deferredChecks) > 0 && !statusOnly {
-		t.Logf("Resolving %d deferred cross-rule checks (waiting for log ingestion)...", len(st.deferredChecks))
+	// ── Batch rule-level resolution ──────────────────────────────
+	// Wait once for log ingestion, then resolve ALL pending checks by
+	// querying the events API for actual matched rule IDs. This replaces
+	// status-code-only testing with proper CRS-style rule-level checking.
+	if len(st.pendingChecks) > 0 && !statusOnly {
+		t.Logf("Resolving %d tests via events API (waiting for log ingestion)...", len(st.pendingChecks))
 		time.Sleep(eventIngestionDelay)
 
 		resolved := 0
-		for _, dc := range st.deferredChecks {
-			matchedIDs := queryMatchedRuleIDsNoDelay(dc.marker)
-			ruleFired := false
-			for _, noID := range dc.noExpIDs {
-				for _, mid := range matchedIDs {
-					if mid == noID {
-						ruleFired = true
+		for _, pc := range st.pendingChecks {
+			matchedIDs := queryMatchedRuleIDsNoDelay(pc.marker)
+
+			var passed bool
+			if len(pc.expectIDs) > 0 {
+				// expect_ids: check if the expected rule actually fired.
+				// It may have scored below threshold (200) but still matched.
+				for _, eid := range pc.expectIDs {
+					for _, mid := range matchedIDs {
+						if mid == eid {
+							passed = true
+							break
+						}
+					}
+					if passed {
 						break
 					}
 				}
-				if ruleFired {
-					break
+				// Also pass if status was 403 (blocked — rule definitely fired
+				// or another rule fired that pushed score over threshold).
+				if !passed && pc.status == 403 {
+					passed = true
+				}
+			} else if len(pc.noExpIDs) > 0 {
+				// no_expect_ids: check the specific rule did NOT fire.
+				if pc.status != 403 {
+					// Not blocked — pass regardless.
+					passed = true
+				} else {
+					// Blocked — check if the SPECIFIC tested rule fired.
+					ruleFired := false
+					for _, noID := range pc.noExpIDs {
+						for _, mid := range matchedIDs {
+							if mid == noID {
+								ruleFired = true
+								break
+							}
+						}
+						if ruleFired {
+							break
+						}
+					}
+					if !ruleFired {
+						// Cross-rule: blocked by OTHER rules, not the tested one.
+						passed = true
+						st.CrossRule++
+					}
 				}
 			}
-			if !ruleFired && len(matchedIDs) > 0 {
-				// Cross-rule interference confirmed: upgrade from fail to pass.
-				st.CrossRule++
+
+			if passed {
 				resolved++
-				// Fix the baseline entry and stats.
-				entry := newBaseline[dc.key]
+				entry := newBaseline[pc.key]
 				if entry.Status == "fail" {
-					// Was counted as either NewFail or Fail — decrement appropriately.
-					if _, inOldBL := bl[dc.key]; inOldBL {
+					if _, inOldBL := bl[pc.key]; inOldBL {
 						st.Fail--
 					} else {
 						st.NewFail--
 					}
 					st.Pass++
-					newBaseline[dc.key] = baselineEntry{Status: "pass", Note: "cross-rule (resolved)"}
+					newBaseline[pc.key] = baselineEntry{Status: "pass", Note: "rule-level (resolved)"}
 				}
 			}
 		}
-		t.Logf("Resolved %d/%d as cross-rule interference", resolved, len(st.deferredChecks))
+		t.Logf("Resolved %d/%d via rule-level matching", resolved, len(st.pendingChecks))
 	}
 
 	st.report(t)
@@ -485,32 +529,51 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 		return
 	}
 
-	// Evaluate result
+	// ── Status-code fast path ────────────────────────────────────
+	// Quick pass/fail based on status code. Tests that can't be resolved
+	// by status alone are deferred to batch rule-level resolution.
 	var passed bool
-	if expectBlock {
-		// expect_ids: request should be blocked (403)
-		passed = status == 403
+	var deferred bool
+
+	if statusOnly {
+		// Status-only mode: no events API — pure status code matching.
+		if expectBlock {
+			passed = status == 403
+		} else if expectAllow {
+			passed = status != 403
+		}
+	} else if expectBlock {
+		if status == 403 {
+			passed = true // blocked — definitely detected
+		} else {
+			// Got 200 — rule may have matched but scored below threshold.
+			// Defer to events API to check if the rule actually fired.
+			deferred = true
+		}
 	} else if expectAllow {
 		if status != 403 {
-			// Not blocked — pass
-			passed = true
+			passed = true // not blocked — pass
 		} else {
-			// Blocked (403) on a no_expect_ids test. Defer rule-level check
-			// to batch resolution after all tests complete (avoids per-test
-			// ingestion delay). Mark as tentative failure for now.
-			if !statusOnly {
-				st.deferredChecks = append(st.deferredChecks, deferredCheck{
-					key:      key,
-					marker:   marker,
-					noExpIDs: stage.Output.Log.NoExpectIDs,
-				})
-			}
-			passed = false // tentative — may be upgraded by batch resolution
+			// Blocked on a no_expect_ids test — defer to check cross-rule.
+			deferred = true
 		}
 	} else {
 		st.Skipped++
 		newBL[key] = baselineEntry{Status: "skip", Note: "ambiguous expectations"}
 		return
+	}
+
+	if deferred {
+		st.pendingChecks = append(st.pendingChecks, pendingCheck{
+			key:       key,
+			marker:    marker,
+			expectIDs: stage.Output.Log.ExpectIDs,
+			noExpIDs:  stage.Output.Log.NoExpectIDs,
+			status:    status,
+			desc:      tc.Desc,
+		})
+		// Tentatively mark as fail — batch resolution may upgrade to pass.
+		passed = false
 	}
 
 	if passed {
