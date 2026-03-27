@@ -244,13 +244,16 @@ func waitForHealth(url string, timeout time.Duration) error {
 }
 
 func configureWAF() error {
-	// Set WAF config: PL1, threshold=5, no disabled categories
+	// Set WAF config: PL1, threshold=5, no disabled categories.
+	// Disable custom heuristic rules (91000xx) that accumulate anomaly on
+	// CRS test traffic (missing Referer, generic UA, etc.). These are not
+	// CRS rules and the CRS tests don't account for their scoring.
 	config := map[string]any{
 		"defaults": map[string]any{
 			"paranoia_level":      1,
 			"inbound_threshold":   5,
 			"outbound_threshold":  5,
-			"disabled_categories": []string{},
+			"disabled_categories": []string{"9100"},
 		},
 	}
 	body, _ := json.Marshal(config)
