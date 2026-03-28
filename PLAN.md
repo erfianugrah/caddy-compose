@@ -2388,9 +2388,9 @@ Converter coverage: 341 rules from CRS 4.24.1. 5 detection rules skipped
 (TX-to-TX comparison, protocol limits handled natively by plugin). 294 flow-control
 rules correctly excluded. Test suite runs at PL4 with threshold=5.
 
-CRS E2E fidelity: **80.7%** (3612/4476 testable at PL4). PL1 fidelity: **98.7%**
-(56/84 original PL1 failures resolved). 864 total baselined failures: 28 true
-gaps + 836 PL4 cross-rule interference (higher-PL rules blocking benign test payloads).
+CRS E2E fidelity: **97.9%** (4381/4476 testable at PL4, official CRS 4.24.1 suite).
+95 real failures: 79 FN (rule should detect but didn't) + 16 FP (rule shouldn't fire but did).
+744 cross-rule passes resolved via severity-aware events API batch check.
 
 **Completed:**
 - [x] Per-field OR condition groups (replaced request_combined — 201 rules)
