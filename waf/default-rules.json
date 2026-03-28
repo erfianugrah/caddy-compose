@@ -31975,6 +31975,12 @@
           "field": "referer",
           "operator": "regex",
           "value": "^(?:ht|f)tps?://(.*?)/"
+        },
+        {
+          "field": "tx:1",
+          "operator": "ends_with_field",
+          "value": "host",
+          "negate": true
         }
       ],
       "group_op": "and",
@@ -37541,5 +37547,5 @@
   ],
   "version": 7,
   "crs_version": "v4.24.1",
-  "generated": "2026-03-28T08:43:10Z"
+  "generated": "2026-03-28T08:56:04Z"
 }

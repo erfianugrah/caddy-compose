@@ -702,8 +702,24 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 	// Skip chain links whose operator value references TX variables (%{tx.*}).
 	// These are dynamic comparisons between captured values that the plugin
 	// cannot evaluate (e.g., TX:2 @lt %{tx.1} — comparing two captures).
-	if !skipThisLink && (strings.Contains(operatorValue, "%{tx.") || strings.Contains(operatorValue, "%{TX") || strings.Contains(operatorValue, "%{request_headers.")) {
+	if !skipThisLink && (strings.Contains(operatorValue, "%{tx.") || strings.Contains(operatorValue, "%{TX")) {
 		skipThisLink = true
+	}
+
+	// Dynamic field comparison: convert %{request_headers.FIELD} references
+	// to _field operators. Example: @endsWith %{request_headers.host} becomes
+	// operator=ends_with_field, value=host. This enables CRS chains that
+	// compare captured TX values against live request headers.
+	if !skipThisLink && strings.Contains(operatorValue, "%{request_headers.") {
+		fieldRef := extractFieldRef(operatorValue, "request_headers.")
+		if fieldRef != "" {
+			// Map the header name to a plugin field.
+			pluginField := mapHeaderShortcut(fieldRef)
+			opName = opName + "_field"
+			operatorValue = pluginField
+		} else {
+			skipThisLink = true
+		}
 	}
 
 	var conditions []PolicyCondition

@@ -540,3 +540,40 @@ func mapCRSTags(tags []string) []string {
 	}
 	return result
 }
+
+// extractFieldRef extracts a field name from a %{prefix.FIELD} reference.
+// Example: extractFieldRef("%{request_headers.host}", "request_headers.") → "host"
+// Returns "" if the pattern doesn't match.
+func extractFieldRef(value, prefix string) string {
+	start := strings.Index(value, "%{"+prefix)
+	if start < 0 {
+		return ""
+	}
+	start += len("%{" + prefix)
+	end := strings.Index(value[start:], "}")
+	if end < 0 {
+		return ""
+	}
+	return value[start : start+end]
+}
+
+// mapHeaderShortcut maps a CRS header name to the plugin field name.
+// Uses the same shortcuts as the variable mapper (User-Agent → user_agent, etc.).
+// Falls back to header:NAME for unknown headers.
+func mapHeaderShortcut(headerName string) string {
+	switch strings.ToLower(headerName) {
+	case "user-agent":
+		return "user_agent"
+	case "referer":
+		return "referer"
+	case "content-type":
+		return "content_type"
+	case "content-length":
+		return "content_length"
+	case "host":
+		return "host"
+	case "cf-ipcountry":
+		return "country"
+	}
+	return "header:" + headerName
+}
