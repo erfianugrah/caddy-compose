@@ -443,9 +443,11 @@ causes the event to be invisible in parts of the UI.
   Only 5 CRS detection rules skipped: 911100/920430 (handled natively by plugin
   `enforceProtocolLimits()`), 920190/942130/942131 (TX-to-TX comparison unsupported).
   294 flow-control rules correctly excluded (non-detection).
-  CRS regression test fidelity at PL4: **97.9%** (4381/4476 testable, official CRS 4.24.1 suite).
-  95 real failures: 79 FN (rule should detect but didn't) + 16 FP (rule shouldn't fire but did).
-  744 cross-rule passes resolved via severity-aware events API batch check.
+  CRS regression test fidelity at PL4: **97.9%** (4384/4476 testable, official CRS 4.24.1 suite).
+  92 real failures: 45 FN (rule should detect but didn't) + 47 FP (rule shouldn't fire but did).
+  574 cross-rule passes resolved via severity-aware events API batch check.
+  Backend: albedo (CRS official test backend). Reload interval 2s.
+  Key plugin fixes: multiFieldAbsent (detect path), parseQueryAmpOnly (semicolons).
   Tests auto-download from GitHub via sparse checkout (`make test-crs-e2e`).
 - **CRS regression testing** (`test/crs/`): Runs the official OWASP CRS regression test
   suite (4526 YAML test cases) against the live Docker stack. PL4 with threshold=5
