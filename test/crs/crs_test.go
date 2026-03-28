@@ -345,9 +345,9 @@ func TestCRSRegression(t *testing.T) {
 	}
 
 	// ── Batch rule-level resolution ──────────────────────────────
-	// With PL4 + threshold=10000 (detection-only), nothing blocks.
-	// All tests are resolved via the events API — checking which CRS
-	// rule IDs actually fired, not status codes.
+	// Batch rule-level resolution via events API.
+	// With detection_only mode, nothing blocks — all tests must be resolved
+	// by checking which CRS rule IDs actually fired in the access log events.
 	if len(st.pendingChecks) > 0 && !statusOnly {
 		t.Logf("Resolving %d tests via events API (waiting for log ingestion)...", len(st.pendingChecks))
 		time.Sleep(eventIngestionDelay)
@@ -370,15 +370,14 @@ func TestCRSRegression(t *testing.T) {
 						break
 					}
 				}
-				// Also pass if status was 403 (blocked — rule definitely fired
-				// or another rule fired that pushed score over threshold).
+				// Also pass if status was 403 (blocked — rule definitely fired).
 				if !passed && pc.status == 403 {
 					passed = true
 				}
 			} else if len(pc.noExpIDs) > 0 {
 				// no_expect_ids: check the specific rule did NOT fire.
 				if pc.status != 403 {
-					passed = true // Not blocked — pass regardless.
+					passed = true // Not blocked — pass.
 				} else {
 					// Blocked — check if the SPECIFIC tested rule fired.
 					ruleFired := false
@@ -516,13 +515,13 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 	}
 
 	// ── Status-code fast path ────────────────────────────────────
-	// With PL4 + threshold=10000, blocking should be rare. But status
-	// code still gives quick answers for clear cases.
+	// Quick pass/fail based on status code. Tests that can't be resolved
+	// by status alone are deferred to batch rule-level resolution via
+	// the events API.
 	var passed bool
 	var deferred bool
 
 	if statusOnly {
-		// Status-only mode: no events API — pure status code matching.
 		if expectBlock {
 			passed = status == 403
 		} else if expectAllow {
@@ -532,8 +531,8 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 		if status == 403 {
 			passed = true // blocked — definitely detected
 		} else {
-			// Got 200 — in detection-only mode (threshold=10000), the rule
-			// likely fired but didn't block. Defer to events API.
+			// Got 200 — rule may have matched but scored below threshold.
+			// Defer to events API to check if the rule actually fired.
 			deferred = true
 		}
 	} else if expectAllow {

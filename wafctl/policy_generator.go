@@ -113,6 +113,7 @@ type PolicyWafConfig struct {
 	InboundThreshold   int                               `json:"inbound_threshold"`
 	OutboundThreshold  int                               `json:"outbound_threshold"`
 	DisabledCategories []string                          `json:"disabled_categories,omitempty"`
+	DetectionOnly      bool                              `json:"detection_only,omitempty"`
 	PerService         map[string]PolicyWafServiceConfig `json:"per_service,omitempty"`
 
 	// CRS extended settings — protocol enforcement limits.
@@ -132,6 +133,7 @@ type PolicyWafServiceConfig struct {
 	InboundThreshold   int      `json:"inbound_threshold,omitempty"`
 	OutboundThreshold  int      `json:"outbound_threshold,omitempty"`
 	DisabledCategories []string `json:"disabled_categories,omitempty"`
+	DetectionOnly      bool     `json:"detection_only,omitempty"`
 
 	// Per-service CRS extended settings (override global defaults).
 	AllowedMethods      string `json:"allowed_methods,omitempty"`
@@ -737,6 +739,7 @@ func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *Policy
 		InboundThreshold:    cfg.Defaults.InboundThreshold,
 		OutboundThreshold:   cfg.Defaults.OutboundThreshold,
 		DisabledCategories:  cfg.Defaults.DisabledCategories,
+		DetectionOnly:       cfg.Defaults.DetectionOnly,
 		AllowedMethods:      cfg.Defaults.AllowedMethods,
 		AllowedHTTPVersions: cfg.Defaults.AllowedHTTPVersions,
 		MaxNumArgs:          cfg.Defaults.MaxNumArgs,
@@ -755,6 +758,7 @@ func BuildPolicyWafConfig(cs *ConfigStore, serviceMap map[string]string) *Policy
 				InboundThreshold:    ss.InboundThreshold,
 				OutboundThreshold:   ss.OutboundThreshold,
 				DisabledCategories:  ss.DisabledCategories,
+				DetectionOnly:       ss.DetectionOnly,
 				AllowedMethods:      ss.AllowedMethods,
 				AllowedHTTPVersions: ss.AllowedHTTPVersions,
 				MaxNumArgs:          ss.MaxNumArgs,

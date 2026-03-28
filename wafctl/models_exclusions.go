@@ -99,6 +99,11 @@ type WAFServiceSettings struct {
 	// DisabledCategories: CRS rule ID prefixes to skip (e.g., "942" for SQLi, "941" for XSS).
 	// Per-service overrides replace the global list (not merge).
 	DisabledCategories []string `json:"disabled_categories,omitempty"`
+	// DetectionOnly: when true, detect rules evaluate and score but never block (403).
+	// Events are logged with full anomaly score for tuning visibility. Equivalent to
+	// ModSecurity's ctl:ruleEngine=DetectionOnly. The threshold is still used to
+	// classify events as "would have blocked" vs "below threshold" in logs.
+	DetectionOnly bool `json:"detection_only,omitempty"`
 	// ─── CRS v4 Extended Settings ───────────────────────────────────
 	// All fields use omitempty so existing configs are unaffected.
 	// Zero/empty values mean "use CRS default" (no setvar emitted).

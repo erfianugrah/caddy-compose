@@ -7,6 +7,7 @@ export interface WAFServiceSettings {
   inbound_threshold: number;
   outbound_threshold: number;
   disabled_categories?: string[];
+  detection_only?: boolean;
 
   // CRS v4 extended settings (all optional — zero/absent = CRS default)
   blocking_paranoia_level?: number;

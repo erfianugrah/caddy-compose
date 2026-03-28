@@ -206,6 +206,7 @@ export function ServiceSettingsCard({
           )}
           <Badge variant="outline" className="text-xs">
             PL{settings.paranoia_level}
+            {settings.detection_only && " · DetectOnly"}
           </Badge>
         </div>
       </div>

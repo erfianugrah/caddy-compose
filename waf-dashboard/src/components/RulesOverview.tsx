@@ -489,6 +489,7 @@ export default function RulesOverview() {
             <h3 className="text-sm font-semibold">WAF Engine Settings</h3>
             <Badge variant="outline" className="text-xs">
               PL{defaults.paranoia_level} · In {defaults.inbound_threshold} · Out {defaults.outbound_threshold}
+              {defaults.detection_only && " · DetectionOnly"}
               {(defaults.disabled_categories?.length ?? 0) > 0 && ` · ${defaults.disabled_categories!.length} cat off`}
             </Badge>
           </div>

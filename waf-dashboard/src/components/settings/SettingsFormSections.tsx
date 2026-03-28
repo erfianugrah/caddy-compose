@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import {
   type WAFPreset,
   type WAFServiceSettings,
@@ -130,6 +131,22 @@ export function SensitivitySettings({
         <p className="text-xs text-muted-foreground">
           Cumulative score for response-phase rules (data leakage, error disclosure). Set high to log only.
         </p>
+      </div>
+
+      {/* Detection Only Mode */}
+      <div className="flex items-center justify-between rounded-lg border p-3">
+        <div className="space-y-0.5">
+          <Label className={T.formLabel}>Detection Only</Label>
+          <p className="text-xs text-muted-foreground">
+            Evaluate all rules and score but never block. Events are logged with full anomaly scores for tuning.
+          </p>
+        </div>
+        <Switch
+          checked={settings.detection_only ?? false}
+          onCheckedChange={(checked) =>
+            onChange({ ...settings, detection_only: checked })
+          }
+        />
       </div>
     </div>
   );

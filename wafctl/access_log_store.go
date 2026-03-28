@@ -749,6 +749,11 @@ func (s *AccessLogStore) Load() {
 					entry.PolicyAction == "challenge_passed" ||
 					entry.PolicyAction == "challenge_failed" ||
 					entry.PolicyAction == "challenge_bypassed"
+				// detection_only: plugin logs _logged variants when it would have
+				// blocked but detection_only mode suppressed the block action.
+				isDetectionOnlyBlock := entry.PolicyAction == "block_logged" ||
+					entry.PolicyAction == "honeypot_logged"
+				isDetectionOnlyRL := entry.PolicyAction == "rate_limit_logged"
 
 				// Session beacon: forward to session store, don't create a security event.
 				if entry.PolicyAction == "session_beacon" && entry.SessionBeacon != "" && s.sessionStore != nil {
@@ -763,9 +768,11 @@ func (s *AccessLogStore) Load() {
 					continue // session beacons are not security events
 				}
 				isLogged := !isPolicy && !isRateLimit && !isSkip && !isDDoSBlock && !isChallenge &&
+					!isDetectionOnlyBlock && !isDetectionOnlyRL &&
 					entry.PolicyScore != "" && entry.PolicyScore != "0" &&
 					(entry.PolicyDetectRules != "" || entry.PolicyDetectMatches != "")
-				if isDDoSBlock || isRateLimit || isPolicy || isSkip || isChallenge || isLogged {
+				if isDDoSBlock || isRateLimit || isPolicy || isSkip || isChallenge || isLogged ||
+					isDetectionOnlyBlock || isDetectionOnlyRL {
 					ts := parseTimestamp(entry.Ts)
 					ua := ""
 					if vals, ok := entry.Request.Headers["User-Agent"]; ok && len(vals) > 0 {
@@ -822,6 +829,23 @@ func (s *AccessLogStore) Load() {
 						if entry.PolicyTags != "" {
 							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
 						}
+					} else if isDetectionOnlyBlock {
+						// detection_only: block rule matched but suppressed. Log as
+						// the original action with a "detection_only" tag for visibility.
+						evt.Source = "policy"
+						evt.RuleName = policyBlockedRuleName(entry)
+						if entry.PolicyTags != "" {
+							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
+						}
+						evt.InlineTags = append(evt.InlineTags, "detection_only")
+					} else if isDetectionOnlyRL {
+						// detection_only: rate limit exceeded but suppressed.
+						evt.Source = "policy_rl"
+						evt.RuleName = entry.PolicyRule
+						if entry.PolicyTags != "" {
+							evt.InlineTags = strings.Split(entry.PolicyTags, ",")
+						}
+						evt.InlineTags = append(evt.InlineTags, "detection_only")
 					} else if isLogged {
 						// Below-threshold detect: CRS rules fired but score didn't
 						// exceed the inbound threshold. These appear as "logged" events
