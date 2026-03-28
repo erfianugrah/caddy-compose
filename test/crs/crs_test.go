@@ -238,8 +238,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Wait for policy reload
-	time.Sleep(3 * time.Second)
+	// Wait for policy reload. The plugin's reload_interval is 5s
+	// (Caddyfile.crs), so we need at least that + margin for the
+	// mtime check + compilation to complete.
+	time.Sleep(7 * time.Second)
 
 	os.Exit(m.Run())
 }
