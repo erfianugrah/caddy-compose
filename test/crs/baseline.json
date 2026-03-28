@@ -742,15 +742,14 @@
     "note": "rule-level (resolved)"
   },
   "920420/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920420/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920420/11": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920420/12": {
     "status": "pass"
@@ -771,13 +770,15 @@
     "status": "pass"
   },
   "920420/18": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920420/19": {
     "status": "pass"
   },
   "920420/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920420/20": {
     "status": "pass"
@@ -792,7 +793,8 @@
     "status": "pass"
   },
   "920420/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920420/5": {
     "status": "pass"
@@ -807,31 +809,28 @@
     "status": "pass"
   },
   "920420/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920430/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920430/10": {
     "status": "skip",
     "note": "no expect_ids or no_expect_ids"
   },
   "920430/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920430/3": {
     "status": "skip",
     "note": "no expect_ids or no_expect_ids"
   },
   "920430/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920430/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920430/6": {
     "status": "skip",
@@ -842,7 +841,8 @@
     "note": "no expect_ids or no_expect_ids"
   },
   "920430/8": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920430/9": {
     "status": "skip",
@@ -870,8 +870,7 @@
     "status": "pass"
   },
   "920440/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920450/1": {
     "status": "pass"
@@ -883,8 +882,7 @@
     "status": "pass"
   },
   "920450/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920450/5": {
     "status": "pass"
@@ -935,20 +933,17 @@
     "status": "pass"
   },
   "920470/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/14": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "920470/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/16": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/17": {
     "status": "pass"
@@ -961,50 +956,41 @@
     "note": "rule-level (resolved)"
   },
   "920470/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920470/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/1": {
-    "status": "fail",
-    "note": "new regression"
+    "status": "pass"
   },
   "920480/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/11": {
     "status": "pass"
   },
   "920480/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/14": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920480/15": {
     "status": "pass"
@@ -1022,12 +1008,10 @@
     "status": "pass"
   },
   "920480/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/20": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/21": {
     "status": "pass",
@@ -1037,23 +1021,20 @@
     "status": "pass"
   },
   "920480/23": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920480/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920480/7": {
     "status": "pass"
@@ -1062,8 +1043,7 @@
     "status": "pass"
   },
   "920480/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920490/1": {
     "status": "pass"
@@ -1083,8 +1063,7 @@
     "status": "pass"
   },
   "920500/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920510/1": {
     "status": "pass"
@@ -1099,78 +1078,61 @@
     "status": "pass"
   },
   "920510/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920510/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/7": {
     "status": "pass"
   },
   "920520/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920520/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920521/7": {
     "status": "pass"
   },
   "920530/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920530/2": {
     "status": "pass"
@@ -1195,28 +1157,22 @@
     "status": "pass"
   },
   "920600/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/14": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/2": {
     "status": "pass"
@@ -1225,31 +1181,25 @@
     "status": "pass"
   },
   "920600/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/7": {
     "status": "pass"
   },
   "920600/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920600/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920610/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920610/2": {
     "status": "skip",
@@ -1270,8 +1220,7 @@
     "note": "rule-level (resolved)"
   },
   "920640/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920640/4": {
     "status": "pass",
@@ -1282,7 +1231,8 @@
     "note": "rule-level (resolved)"
   },
   "920640/6": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920640/7": {
     "status": "pass"
@@ -1291,107 +1241,105 @@
     "status": "pass"
   },
   "920640/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/10": {
     "status": "pass"
   },
   "920650/11": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/12": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/13": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/14": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/15": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/16": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/17": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/18": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/19": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
-  },
-  "920650/2": {
     "status": "pass"
   },
+  "920650/2": {
+    "status": "fail",
+    "note": "new regression"
+  },
   "920650/20": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/21": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/22": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/23": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/24": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/25": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/26": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "920650/27": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
-  },
-  "920650/28": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
-  },
-  "920650/29": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
-  },
-  "920650/3": {
     "status": "pass"
   },
+  "920650/28": {
+    "status": "pass"
+  },
+  "920650/29": {
+    "status": "pass"
+  },
+  "920650/3": {
+    "status": "fail",
+    "note": "new regression"
+  },
   "920650/30": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/31": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "920650/32": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/33": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920650/34": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/35": {
     "status": "pass"
@@ -1401,34 +1349,44 @@
     "note": "rule-level (resolved)"
   },
   "920650/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/6": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/7": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/8": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920650/9": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920660/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920660/10": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/11": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/12": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/13": {
     "status": "pass"
@@ -1437,10 +1395,12 @@
     "status": "pass"
   },
   "920660/15": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/16": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920660/17": {
     "status": "pass"
@@ -1454,15 +1414,14 @@
     "note": "rule-level (resolved)"
   },
   "920660/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "920660/20": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920660/21": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920660/22": {
     "status": "pass",
@@ -1473,8 +1432,7 @@
     "note": "rule-level (resolved)"
   },
   "920660/24": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920660/25": {
     "status": "pass",
@@ -1485,38 +1443,41 @@
     "note": "rule-level (resolved)"
   },
   "920660/27": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920660/28": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "920660/29": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "920660/3": {
-    "status": "pass"
-  },
-  "920660/30": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
-  "920660/4": {
+  "920660/30": {
     "status": "pass"
+  },
+  "920660/4": {
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/5": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/6": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/7": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/8": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "920660/9": {
     "status": "pass"
@@ -1630,26 +1591,24 @@
     "status": "pass"
   },
   "921180/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921180/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921180/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921180/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "921180/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921180/6": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "921190/1": {
     "status": "pass"
@@ -1672,12 +1631,10 @@
     "note": "rule-level (resolved)"
   },
   "921200/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921200/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921200/13": {
     "status": "pass"
@@ -1742,8 +1699,7 @@
     "status": "pass"
   },
   "921200/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921200/5": {
     "status": "pass",
@@ -1754,8 +1710,7 @@
     "note": "rule-level (resolved)"
   },
   "921200/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921200/8": {
     "status": "pass",
@@ -1794,23 +1749,19 @@
     "status": "pass"
   },
   "921250/3": {
-    "status": "fail",
-    "note": "new regression"
+    "status": "pass"
   },
   "921421/1": {
     "status": "pass"
   },
   "921421/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921421/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921421/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921421/2": {
     "status": "pass"
@@ -1825,55 +1776,43 @@
     "status": "pass"
   },
   "921421/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921421/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921421/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921421/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/1": {
     "status": "pass"
   },
   "921422/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/14": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/16": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/17": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "921422/2": {
     "status": "pass"
@@ -1897,8 +1836,7 @@
     "status": "pass"
   },
   "921422/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "922100/1": {
     "status": "pass"
@@ -2083,20 +2021,16 @@
     "status": "pass"
   },
   "930110/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930110/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930110/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930110/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930110/8": {
     "status": "pass"
@@ -2156,8 +2090,7 @@
     "status": "pass"
   },
   "930121/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930121/2": {
     "status": "pass"
@@ -2187,12 +2120,10 @@
     "status": "pass"
   },
   "930130/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930130/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930130/2": {
     "status": "pass"
@@ -2246,12 +2177,10 @@
     "status": "pass"
   },
   "930140/18": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930140/19": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "930140/2": {
     "status": "pass"
@@ -3199,10 +3128,12 @@
     "status": "pass"
   },
   "932180/11": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932180/12": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932180/2": {
     "status": "pass"
@@ -3212,25 +3143,25 @@
     "note": "rule-level (resolved)"
   },
   "932180/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932180/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932180/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932180/7": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932180/8": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932180/9": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932190/1": {
     "status": "pass"
@@ -3258,16 +3189,20 @@
     "status": "pass"
   },
   "932200/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/10": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/11": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/12": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/13": {
     "status": "skip",
@@ -3286,25 +3221,32 @@
     "status": "pass"
   },
   "932200/3": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/6": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/7": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/8": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932200/9": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932205/1": {
     "status": "pass"
@@ -3353,8 +3295,7 @@
     "note": "rule-level (resolved)"
   },
   "932207/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932207/5": {
     "status": "pass",
@@ -3369,19 +3310,24 @@
     "note": "no expect_ids or no_expect_ids"
   },
   "932210/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932210/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932210/3": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932210/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932210/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932210/6": {
     "status": "pass"
@@ -3423,8 +3369,7 @@
     "status": "pass"
   },
   "932230/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932230/10": {
     "status": "pass",
@@ -3466,8 +3411,7 @@
     "note": "rule-level (resolved)"
   },
   "932230/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932230/20": {
     "status": "pass",
@@ -3573,12 +3517,10 @@
     "note": "rule-level (resolved)"
   },
   "932230/47": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932230/48": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932230/49": {
     "status": "pass"
@@ -3656,12 +3598,10 @@
     "status": "pass"
   },
   "932235/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932235/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932235/12": {
     "status": "pass"
@@ -3860,22 +3800,22 @@
     "note": "rule-level (resolved)"
   },
   "932236/19": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/2": {
     "status": "fail",
     "note": "new regression"
   },
   "932236/20": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/21": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932236/22": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932236/23": {
     "status": "pass"
@@ -3944,12 +3884,10 @@
     "status": "pass"
   },
   "932236/43": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/44": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/45": {
     "status": "pass",
@@ -3960,12 +3898,10 @@
     "note": "rule-level (resolved)"
   },
   "932236/47": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/48": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/49": {
     "status": "pass"
@@ -4076,12 +4012,10 @@
     "status": "pass"
   },
   "932236/80": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/81": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/82": {
     "status": "pass",
@@ -4104,8 +4038,7 @@
     "note": "rule-level (resolved)"
   },
   "932236/87": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932236/88": {
     "status": "pass"
@@ -4181,8 +4114,7 @@
     "status": "pass"
   },
   "932237/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932237/20": {
     "status": "pass"
@@ -4216,8 +4148,7 @@
     "note": "rule-level (resolved)"
   },
   "932237/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932237/30": {
     "status": "pass",
@@ -4232,19 +4163,16 @@
     "note": "rule-level (resolved)"
   },
   "932237/33": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932237/4": {
     "status": "pass"
   },
   "932237/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932237/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932237/7": {
     "status": "pass",
@@ -4292,36 +4220,29 @@
     "status": "pass"
   },
   "932239/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/14": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "932239/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/16": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/17": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/18": {
     "status": "pass"
@@ -4341,16 +4262,14 @@
     "note": "rule-level (resolved)"
   },
   "932239/22": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/23": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "932239/24": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932239/25": {
     "status": "pass",
@@ -4557,20 +4476,16 @@
     "note": "rule-level (resolved)"
   },
   "932250/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932250/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932250/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932250/14": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932250/15": {
     "status": "pass"
@@ -4630,8 +4545,7 @@
     "status": "pass"
   },
   "932260/17": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/18": {
     "status": "pass",
@@ -4642,46 +4556,40 @@
     "note": "rule-level (resolved)"
   },
   "932260/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "fail",
+    "note": "new regression"
   },
   "932260/20": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "932260/21": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/22": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/23": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/24": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/25": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/26": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/27": {
     "status": "pass"
   },
   "932260/28": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932260/29": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/3": {
     "status": "fail",
@@ -4741,8 +4649,7 @@
     "note": "rule-level (resolved)"
   },
   "932260/46": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932260/47": {
     "status": "pass",
@@ -5152,7 +5059,8 @@
     "note": "rule-level (resolved)"
   },
   "932370/3": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932370/4": {
     "status": "pass",
@@ -5163,7 +5071,8 @@
     "note": "rule-level (resolved)"
   },
   "932371/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "932371/2": {
     "status": "pass"
@@ -5201,8 +5110,7 @@
     "note": "rule-level (resolved)"
   },
   "932380/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "932380/7": {
     "status": "pass"
@@ -5516,15 +5424,13 @@
     "note": "rule-level (resolved)"
   },
   "933110/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933110/10": {
     "status": "pass"
   },
   "933110/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933110/12": {
     "status": "pass"
@@ -5548,8 +5454,7 @@
     "status": "pass"
   },
   "933110/19": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933110/2": {
     "status": "pass"
@@ -5564,8 +5469,7 @@
     "status": "pass"
   },
   "933110/23": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933110/24": {
     "status": "pass"
@@ -5690,36 +5594,35 @@
     "status": "pass"
   },
   "933130/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933130/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "933130/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933130/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "933130/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "933130/6": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933131/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933131/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933131/3": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "933135/1": {
     "status": "pass"
@@ -5823,12 +5726,10 @@
     "note": "rule-level (resolved)"
   },
   "933150/28": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933150/29": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933150/3": {
     "status": "pass"
@@ -5837,16 +5738,14 @@
     "status": "pass"
   },
   "933150/31": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933150/32": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "933150/33": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933150/34": {
     "status": "pass",
@@ -5861,8 +5760,7 @@
     "note": "rule-level (resolved)"
   },
   "933150/37": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933150/38": {
     "status": "pass"
@@ -5902,20 +5800,17 @@
     "status": "pass"
   },
   "933151/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933151/6": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "933151/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933151/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933152/1": {
     "status": "pass"
@@ -5931,20 +5826,17 @@
     "status": "pass"
   },
   "933152/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933152/6": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "933152/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933152/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933153/1": {
     "status": "pass"
@@ -5960,20 +5852,17 @@
     "status": "pass"
   },
   "933153/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933153/6": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "933153/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933153/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933160/1": {
     "status": "pass"
@@ -6052,8 +5941,7 @@
     "note": "rule-level (resolved)"
   },
   "933160/32": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933160/33": {
     "status": "pass",
@@ -6081,8 +5969,7 @@
     "status": "pass"
   },
   "933160/40": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933160/41": {
     "status": "pass",
@@ -6092,8 +5979,7 @@
     "status": "pass"
   },
   "933160/43": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933160/44": {
     "status": "pass"
@@ -6107,8 +5993,7 @@
     "note": "rule-level (resolved)"
   },
   "933160/47": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933160/48": {
     "status": "pass"
@@ -6178,8 +6063,7 @@
     "status": "pass"
   },
   "933180/1": {
-    "status": "fail",
-    "note": "new regression"
+    "status": "pass"
   },
   "933180/10": {
     "status": "pass"
@@ -6428,20 +6312,16 @@
     "status": "pass"
   },
   "933220/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933220/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933220/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933220/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933220/14": {
     "status": "pass"
@@ -6484,12 +6364,10 @@
     "status": "pass"
   },
   "933220/8": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "933220/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934100/1": {
     "status": "pass"
@@ -6513,12 +6391,10 @@
     "status": "pass"
   },
   "934100/16": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934100/17": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934100/18": {
     "status": "pass"
@@ -6669,16 +6545,14 @@
     "note": "rule-level (resolved)"
   },
   "934120/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934120/14": {
     "status": "pass",
     "note": "rule-level (resolved)"
   },
   "934120/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934120/16": {
     "status": "pass",
@@ -6807,8 +6681,7 @@
     "note": "rule-level (resolved)"
   },
   "934120/52": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934120/6": {
     "status": "pass"
@@ -6823,8 +6696,7 @@
     "status": "pass"
   },
   "934130/1": {
-    "status": "fail",
-    "note": "new regression"
+    "status": "pass"
   },
   "934130/10": {
     "status": "pass"
@@ -7030,53 +6902,66 @@
     "note": "rule-level (resolved)"
   },
   "934160/10": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/11": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/12": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/13": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/14": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/15": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/16": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/17": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/18": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/19": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934160/2": {
     "status": "pass"
   },
   "934160/20": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/21": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/22": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/23": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/24": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/25": {
     "status": "pass"
@@ -7091,13 +6976,16 @@
     "status": "pass"
   },
   "934160/29": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/3": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "934160/30": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/31": {
     "status": "pass"
@@ -7109,29 +6997,35 @@
     "status": "pass"
   },
   "934160/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/6": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/7": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/8": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934160/9": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934170/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "934170/2": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934170/3": {
     "status": "pass"
@@ -7177,15 +7071,13 @@
     "note": "rule-level (resolved)"
   },
   "934190/19": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934190/2": {
     "status": "pass"
   },
   "934190/20": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "934190/3": {
     "status": "pass"
@@ -7218,8 +7110,7 @@
     "status": "pass"
   },
   "941100/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "941100/5": {
     "status": "pass",
@@ -7251,7 +7142,8 @@
     "status": "pass"
   },
   "941110/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "941110/3": {
     "status": "pass"
@@ -7295,8 +7187,7 @@
     "note": "rule-level (resolved)"
   },
   "941120/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "941120/16": {
     "status": "pass",
@@ -7307,8 +7198,7 @@
     "note": "rule-level (resolved)"
   },
   "941120/18": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "941120/19": {
     "status": "pass",
@@ -7392,8 +7282,7 @@
     "note": "rule-level (resolved)"
   },
   "941120/38": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "941120/39": {
     "status": "pass",
@@ -7415,8 +7304,7 @@
     "note": "rule-level (resolved)"
   },
   "941120/43": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "941120/44": {
     "status": "pass",
@@ -7487,8 +7375,7 @@
     "status": "pass"
   },
   "941130/17": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "941130/18": {
     "status": "pass"
@@ -7955,12 +7842,10 @@
     "status": "pass"
   },
   "942101/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942101/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942101/2": {
     "status": "pass"
@@ -8089,7 +7974,8 @@
     "status": "pass"
   },
   "942120/4": {
-    "status": "pass"
+    "status": "pass",
+    "note": "rule-level (resolved)"
   },
   "942120/40": {
     "status": "pass"
@@ -8123,18 +8009,18 @@
     "note": "rule-level (resolved)"
   },
   "942130/10": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "942130/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "942130/3": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942130/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942130/5": {
     "status": "pass",
@@ -8531,8 +8417,7 @@
     "status": "pass"
   },
   "942160/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942160/13": {
     "status": "pass"
@@ -9345,13 +9230,16 @@
     "status": "pass"
   },
   "942350/4": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "942350/5": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "942350/6": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "942350/7": {
     "status": "pass"
@@ -10002,8 +9890,7 @@
     "status": "pass"
   },
   "942420/10": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942420/11": {
     "status": "pass"
@@ -10033,8 +9920,7 @@
     "note": "rule-level (resolved)"
   },
   "942420/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942421/1": {
     "status": "pass"
@@ -10058,8 +9944,7 @@
     "note": "rule-level (resolved)"
   },
   "942421/7": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942430/1": {
     "status": "pass"
@@ -10077,12 +9962,10 @@
     "note": "rule-level (resolved)"
   },
   "942430/13": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942430/14": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942430/15": {
     "status": "pass",
@@ -10279,12 +10162,10 @@
     "status": "pass"
   },
   "942450/4": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942450/5": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "942450/6": {
     "status": "pass"
@@ -10293,11 +10174,11 @@
     "status": "pass"
   },
   "942460/1": {
-    "status": "pass"
-  },
-  "942460/2": {
     "status": "pass",
     "note": "rule-level (resolved)"
+  },
+  "942460/2": {
+    "status": "pass"
   },
   "942470/1": {
     "status": "pass"
@@ -10785,7 +10666,8 @@
     "status": "pass"
   },
   "942550/42": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "942550/43": {
     "status": "pass",
@@ -10832,10 +10714,12 @@
     "status": "pass"
   },
   "943100/1": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "943100/2": {
-    "status": "pass"
+    "status": "fail",
+    "note": "new regression"
   },
   "943110/1": {
     "status": "pass"
@@ -10933,8 +10817,7 @@
     "status": "pass"
   },
   "943110/38": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "943110/39": {
     "status": "fail",
@@ -10969,8 +10852,7 @@
     "status": "pass"
   },
   "944000/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "944100/1": {
     "status": "pass"
@@ -11037,12 +10919,12 @@
     "status": "pass"
   },
   "944110/11": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "fail",
+    "note": "new regression"
   },
   "944110/12": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "fail",
+    "note": "new regression"
   },
   "944110/13": {
     "status": "pass"
@@ -11051,12 +10933,12 @@
     "status": "pass"
   },
   "944110/15": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "fail",
+    "note": "new regression"
   },
   "944110/16": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "fail",
+    "note": "new regression"
   },
   "944110/17": {
     "status": "pass"
@@ -12767,8 +12649,7 @@
     "status": "pass"
   },
   "944140/1": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "944140/2": {
     "status": "pass"
@@ -12792,8 +12673,7 @@
     "status": "pass"
   },
   "944140/9": {
-    "status": "pass",
-    "note": "rule-level (resolved)"
+    "status": "pass"
   },
   "944150/1": {
     "status": "pass"
