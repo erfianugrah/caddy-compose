@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -145,8 +146,6 @@ type stats struct {
 	CrossRule int // no_expect_ids blocked by OTHER rules (not the tested rule)
 
 	// pendingChecks collects all test results for batch rule-level resolution.
-	// After all requests are sent, we wait once for log ingestion and resolve
-	// ALL tests by checking which CRS rule IDs actually fired (not just status code).
 	pendingChecks []pendingCheck
 }
 
@@ -157,12 +156,6 @@ type pendingCheck struct {
 	noExpIDs  []int  // rule IDs that should NOT have fired (no_expect_ids)
 	status    int    // HTTP status code received
 	desc      string // test description for error messages
-}
-
-type deferredCheck struct {
-	key      string // "ruleID/testID"
-	marker   string // URI marker for event correlation
-	noExpIDs []int  // rule IDs that should NOT have fired
 }
 
 func (s *stats) report(t *testing.T) {
@@ -210,7 +203,6 @@ func TestMain(m *testing.M) {
 				fmt.Fprintf(os.Stderr, "git clone failed: %v\n", err)
 				os.Exit(1)
 			}
-			// Sparse checkout only the test directory
 			sparse := exec.Command("git", "-C", tmpDir, "sparse-checkout", "set", "tests/regression/tests")
 			sparse.Stderr = os.Stderr
 			if err := sparse.Run(); err != nil {
@@ -219,7 +211,7 @@ func TestMain(m *testing.M) {
 			}
 			yamlDir = filepath.Join(tmpDir, "tests", "regression", "tests")
 			fmt.Fprintf(os.Stderr, "CRS tests downloaded to %s\n", yamlDir)
-			defer os.RemoveAll(tmpDir) // cleanup on exit
+			defer os.RemoveAll(tmpDir)
 		}
 	}
 
@@ -229,13 +221,18 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Configure WAF: enable CRS blocking with threshold=5, PL1, no disabled categories
+	// Configure WAF: PL4, threshold=5.
+	// PL4 enables ALL CRS rules (PL1-4). Threshold=5 means a single
+	// CRITICAL rule blocks. The test runner's cross-rule resolution
+	// handles cases where higher-PL rules block benign test payloads
+	// meant for other rules — those are classified as cross-rule passes.
+	// Disable custom heuristic rules (91000xx) that accumulate anomaly on
+	// CRS test traffic (missing Referer, generic UA, etc.).
 	if err := configureWAF(); err != nil {
 		fmt.Fprintf(os.Stderr, "configuring WAF: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Deploy config
 	if err := deployConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "deploying config: %v\n", err)
 		os.Exit(1)
@@ -264,14 +261,6 @@ func waitForHealth(url string, timeout time.Duration) error {
 }
 
 func configureWAF() error {
-	// Set WAF config: PL4, threshold=5, no disabled categories.
-	// PL4 enables ALL CRS rules (PL1-PL4) so the regression test covers
-	// the full rule set. Individual rules are tagged with their paranoia
-	// level — using PL4 ensures we test PL2/PL3/PL4 rules that would
-	// otherwise be skipped and marked as "fail" in the baseline.
-	// Disable custom heuristic rules (91000xx) that accumulate anomaly on
-	// CRS test traffic (missing Referer, generic UA, etc.). These are not
-	// CRS rules and the CRS tests don't account for their scoring.
 	config := map[string]any{
 		"defaults": map[string]any{
 			"paranoia_level":      4,
@@ -308,11 +297,6 @@ func deployConfig() error {
 
 // ─── Test Categories to Include ────────────────────────────────────
 
-// testableCategories defines which CRS categories to test.
-// Start with inbound detection rules. Response-phase rules are skipped
-// (they inspect response bodies which requires specific backend responses).
-// Flow-control categories (911, 949, 959, 980) are skipped — they're not
-// detection rules and are not converted by the converter.
 var testableCategories = map[string]bool{
 	"REQUEST-913-SCANNER-DETECTION":                   true,
 	"REQUEST-920-PROTOCOL-ENFORCEMENT":                true,
@@ -361,9 +345,9 @@ func TestCRSRegression(t *testing.T) {
 	}
 
 	// ── Batch rule-level resolution ──────────────────────────────
-	// Wait once for log ingestion, then resolve ALL pending checks by
-	// querying the events API for actual matched rule IDs. This replaces
-	// status-code-only testing with proper CRS-style rule-level checking.
+	// With PL4 + threshold=10000 (detection-only), nothing blocks.
+	// All tests are resolved via the events API — checking which CRS
+	// rule IDs actually fired, not status codes.
 	if len(st.pendingChecks) > 0 && !statusOnly {
 		t.Logf("Resolving %d tests via events API (waiting for log ingestion)...", len(st.pendingChecks))
 		time.Sleep(eventIngestionDelay)
@@ -375,7 +359,6 @@ func TestCRSRegression(t *testing.T) {
 			var passed bool
 			if len(pc.expectIDs) > 0 {
 				// expect_ids: check if the expected rule actually fired.
-				// It may have scored below threshold (200) but still matched.
 				for _, eid := range pc.expectIDs {
 					for _, mid := range matchedIDs {
 						if mid == eid {
@@ -395,8 +378,7 @@ func TestCRSRegression(t *testing.T) {
 			} else if len(pc.noExpIDs) > 0 {
 				// no_expect_ids: check the specific rule did NOT fire.
 				if pc.status != 403 {
-					// Not blocked — pass regardless.
-					passed = true
+					passed = true // Not blocked — pass regardless.
 				} else {
 					// Blocked — check if the SPECIFIC tested rule fired.
 					ruleFired := false
@@ -534,8 +516,8 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 	}
 
 	// ── Status-code fast path ────────────────────────────────────
-	// Quick pass/fail based on status code. Tests that can't be resolved
-	// by status alone are deferred to batch rule-level resolution.
+	// With PL4 + threshold=10000, blocking should be rare. But status
+	// code still gives quick answers for clear cases.
 	var passed bool
 	var deferred bool
 
@@ -550,8 +532,8 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 		if status == 403 {
 			passed = true // blocked — definitely detected
 		} else {
-			// Got 200 — rule may have matched but scored below threshold.
-			// Defer to events API to check if the rule actually fired.
+			// Got 200 — in detection-only mode (threshold=10000), the rule
+			// likely fired but didn't block. Defer to events API.
 			deferred = true
 		}
 	} else if expectAllow {
@@ -612,15 +594,8 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 
 // ─── Events API: Rule-Level Match Checking ─────────────────────────
 
-// queryMatchedRuleIDs queries the wafctl events API with an ingestion delay.
-func queryMatchedRuleIDs(marker string) []int {
-	time.Sleep(eventIngestionDelay)
-	return queryMatchedRuleIDsNoDelay(marker)
-}
-
 // queryMatchedRuleIDsNoDelay queries the wafctl events API for the most recent
 // event matching the test marker, returning all matched CRS rule IDs.
-// No ingestion delay — caller must ensure events are already ingested.
 func queryMatchedRuleIDsNoDelay(marker string) []int {
 	reqURL := fmt.Sprintf("%s/api/events?limit=1&hours=1&uri=%s&uri_op=contains",
 		wafctlURL, url.QueryEscape(marker))
@@ -656,9 +631,7 @@ func queryMatchedRuleIDsNoDelay(marker string) []int {
 }
 
 // eventIngestionDelay is the time to wait for wafctl to ingest the access log
-// entry for a request. Only used for NEW no_expect_ids failures (not baselined).
-// Most tests don't need this — they pass on status code alone, or are already
-// baselined and skip the events API check entirely.
+// entry for a request.
 var eventIngestionDelay = 2500 * time.Millisecond
 
 func init() {
@@ -727,6 +700,13 @@ func sendTestRequest(input testInput, marker string) (int, error) {
 	// Set Content-Type for POST with data
 	if input.Data != "" && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	// Set Content-Length if explicitly provided in test headers.
+	if cl := input.Headers["Content-Length"]; cl != "" {
+		if n, err := strconv.Atoi(cl); err == nil {
+			req.ContentLength = int64(n)
+		}
 	}
 
 	client := &http.Client{
