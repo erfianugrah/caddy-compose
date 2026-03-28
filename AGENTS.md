@@ -457,46 +457,18 @@ causes the event to be invisible in parts of the UI.
   where OTHER rules caused the block). Baseline tracking catches regressions.
   Run with `make test-crs-e2e` (check) or `make test-crs-e2e-update` (update baseline).
   Host header set via `req.Host` (Go net/http ignores `req.Header["Host"]`).
-- **CRS remaining gaps** (28 PL1 tests, 864 total with PL4 cross-rule). Root causes:
-  - **4 XML scope FPs** (944100/11,12,15,16): Plugin `xml` field should only return
-    element text values and attribute values (CRS `XML:/*` and `XML://@*`), but the
-    raw body may still match via other OR group fields. The converter now removes
-    `body` from OR groups that also have `xml`, but the tests send XML in POST body
-    where `all_args_values` or `all_headers` may match the element name in the
-    Content-Type header. Need to verify actual match path.
-  - **4 dynamic field comparison FPs** (943110/4,30,32,39): CRS chain uses
-    `TX:1 !@endsWith %{request_headers.host}` to verify Referer domain differs from
-    Host header. Plugin has no `not_ends_with_field` operator for dynamic comparison.
-    Converter drops this chain link, making rule overbroad (fires on same-domain referers).
-    Fix: implement `ends_with_field`/`not_ends_with_field` operators in plugin.
-  - **4 short command FPs** (932340/10-13): Initials `DF`/`SU`/`LS`/`PS` as POST
-    parameter values match the no-arguments command regex. CRS regex requires prefix
-    delimiters (`;`,`&`,`=`, etc.) — the `=` in `param=DF` satisfies this. The value
-    `DF` then matches case-insensitive `df` command. This may be a CRS regex boundary
-    issue rather than a converter bug — needs `cmdLine` transform analysis.
-  - **1 cookie header exclusion FP** (941120/5): CRS uses `REQUEST_HEADERS|!REQUEST_HEADERS:Cookie`
-    to exclude cookies from header scanning. Converter maps to `all_headers` which
-    includes cookies. Base64 cookie value triggers XSS event handler regex.
-    Fix: implement header exclusion support in converter.
-  - **1 multipart name vs filename FP** (933110/29): CRS `FILES` scans only multipart
-    `filename=` values. Test has `.php` in form field `name=` (not `filename=`).
-    Plugin may scan both `name` and `filename` for the `files` field.
-  - **1 cookie name regex FP** (921250/3): CRS targets `REQUEST_COOKIES:/\x24Version/`
-    (cookies named `$Version`). Converter simplified to `all_cookies eq "1"` — matches
-    ANY cookie with value "1". Fix: implement cookie name regex filtering.
-  - **1 TX capture chain FP** (920480/1): CRS chain captures charset from Content-Type
-    into TX:1, then checks against allowlist. Converter emits `tx:1` field reference
-    which the plugin supports, but the phrase_match against the allowlist may not work
-    correctly with the captured value.
-  - **3 LDAP injection FPs** (921200/1-3): Legitimate LDAP filter queries
-    (`objectCategory=computer`, `objectSID=S-1-5-...`) match the injection regex.
-    May be a CRS regex precision issue or htmlEntityDecode transform difference.
-  - **9 regex/transform edge cases**: 932140/158, 932230/4-5, 932250/1, 932260/3,
-    933180/1, 933210/2, 934130/1, 941180/7 — various regex boundary, transform order,
-    and field scoping differences between ModSecurity and the plugin.
-  - **836 PL4 cross-rule FPs** (baselined): Higher-PL rules (PL2-4) fire on benign test
-    payloads designed for other rules. These are inherent to running PL4 with blocking
-    enabled. Not actionable — baselined.
+- **CRS remaining gaps** (92 real failures). Root causes:
+  - **21 not coverable** (TX flow-control rules): 920650 method override parameter (18),
+    921180 HTTP parameter pollution (2), 942130 TX-to-TX capture comparison (1).
+    These require TX variable state that the plugin doesn't support.
+  - **22 FN from converted rules** (rule exists but doesn't match): 932180 RCE (5),
+    920420 content type (4), 920660 Content-Length (3), 920480 charset chain (2),
+    920430 HTTP version (2), 920180 POST Content-Type (2), others (4).
+  - **47 FP** (rule fires incorrectly): 944100/110/210 XML scope (14), 932340 short
+    commands (4), 943110 Referer/Host comparison (4), 931130 RFI (3), 921200 LDAP (3),
+    932xxx RCE edge cases (10), 933xxx PHP (4), 941xxx XSS (2), others (3).
+  - **574 cross-rule passes** resolved via severity-aware events API batch check
+    (blocked by OTHER rules, tested rule's score alone below threshold).
 - **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).
   Enforces via 4 layers: L3 nftables kernel drop (primary), L4 TCP RST, L7 HTTP 403, eBPF/XDP NIC drop.

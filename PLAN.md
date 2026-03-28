@@ -37,7 +37,7 @@
 
 ## Current State
 
-**v2.83.0 / caddy 3.79.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.35.0 / ddos-mitigator v0.16.0**
+**v2.90.0 / caddy 3.86.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.40.3 / ddos-mitigator v0.16.0**
 
 Fully operational WAF with custom policy engine, CRS 4.24.1 (342 rules: 283 inbound +
 59 outbound, per-field condition groups), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
@@ -2388,9 +2388,11 @@ Converter coverage: 341 rules from CRS 4.24.1. 5 detection rules skipped
 (TX-to-TX comparison, protocol limits handled natively by plugin). 294 flow-control
 rules correctly excluded. Test suite runs at PL4 with threshold=5.
 
-CRS E2E fidelity: **97.9%** (4381/4476 testable at PL4, official CRS 4.24.1 suite).
-95 real failures: 79 FN (rule should detect but didn't) + 16 FP (rule shouldn't fire but did).
-744 cross-rule passes resolved via severity-aware events API batch check.
+CRS E2E fidelity: **97.9%** (4384/4476 testable at PL4, official CRS 4.24.1 suite).
+92 real failures: 45 FN (rule should detect but didn't) + 47 FP (rule shouldn't fire but did).
+574 cross-rule passes resolved via severity-aware events API batch check.
+Backend: albedo (CRS official test backend). Reload interval 2s.
+Key plugin fixes: multiFieldAbsent (detect path), parseQueryAmpOnly (semicolons).
 
 **Completed:**
 - [x] Per-field OR condition groups (replaced request_combined — 201 rules)
@@ -2406,16 +2408,33 @@ CRS E2E fidelity: **97.9%** (4381/4476 testable at PL4, official CRS 4.24.1 suit
 - [x] CRS extended settings (allowed_methods, arg limits via PolicyWafConfig)
 - [x] Plugin-side enforcement of method/version/arg limits
 
-**Remaining 28 PL1 test failures (requires plugin or converter changes):**
-- [ ] XML element/attribute name exclusion from `xml` field (944100 — 4 tests)
-- [ ] `not_ends_with_field` operator for dynamic Referer/Host comparison (943110 — 4 tests)
-- [ ] Cookie header exclusion from `all_headers` (941120 — 1 test)
-- [ ] Cookie name regex filtering (921250 — 1 test)
-- [ ] Multipart `name` vs `filename` scoping for FILES field (933110 — 1 test)
-- [ ] TX:1 capture + phrase_match chain evaluation (920480 — 1 test)
-- [ ] Short command regex boundary with cmdLine transform (932340 — 4 tests)
-- [ ] LDAP injection regex precision (921200 — 3 tests, may be CRS issue)
-- [ ] Various regex/transform edge cases (9 tests across 932/933/934/941)
+**Remaining 92 test failures:**
+
+*Not coverable (21 tests) — TX flow-control rules the plugin can't express:*
+- 920650 (18): method override parameter check (TX variable)
+- 921180 (2): HTTP parameter pollution via TX regex counters
+- 942130 (1): SQL injection TX-to-TX capture comparison
+
+*FN from converted rules (22 tests) — rule exists but doesn't match:*
+- [ ] 932180 (5): RCE rules — regex or transform difference
+- [ ] 920420 (4): allowed content type check
+- [ ] 920660 (3): Content-Length mismatch
+- [ ] 920480 (2): charset allowlist chain (TX:1 capture)
+- [ ] 920430 (2): HTTP version check
+- [ ] 920180 (2): POST missing Content-Type
+- [ ] Others (4): various protocol enforcement edge cases
+
+*FP — rule fires incorrectly (47 tests):*
+- [ ] 944100/110/210 (14): XML element/attribute names matching via body or other fields
+- [ ] 932340 (4): short command initials (`DF`/`SU`/`LS`/`PS`) — cmdLine transform
+- [ ] 943110 (4): Referer/Host dynamic comparison (not_ends_with_field implemented but untested)
+- [ ] 931130 (3): RFI off-domain — needs investigation
+- [ ] 921200 (3): LDAP injection regex too broad
+- [ ] 932236/932230/932260/932250/932240/932140 (10): RCE regex/transform edge cases
+- [ ] 933211/933210/933110 (4): PHP injection edge cases
+- [ ] 941120/941180 (2): XSS cookie/path edge cases
+- [ ] 920274 (2): strict header byte range at PL4
+- [ ] 942520 (1): SQL injection edge case
 
 ---
 
@@ -2537,6 +2556,33 @@ Phase 0 (interfaces) ........................... 1-2 weeks
 ---
 
 ## Completed (changelog)
+
+### v2.90.0 / caddy 3.86.0-2.11.2
+
+- **CRS 97.9% fidelity** (policy-engine v0.39.2-v0.40.3): 4384/4476 official CRS 4.24.1
+  tests passing at PL4. Up from 80.3% status-code-only. Key fixes:
+  - `multiFieldAbsent()`: negated FILES/XML conditions skip absent variables on
+    non-multipart/non-XML requests. Fixes 920120 production false positive (was blocking
+    every non-multipart request). Applied to both matchCondition and matchConditionDetailed
+    (detect rule path).
+  - `parseQueryAmpOnly()`: semicolons preserved in query values. Go 1.17+ rejects ';'
+    as separator in url.ParseQuery, but CRS payloads like `while(!0);` rely on literal
+    semicolons. ~56 FN tests fixed.
+  - `all_headers` / `all_headers_names` excludes: CRS `REQUEST_HEADERS|!REQUEST_HEADERS:Cookie`
+    now correctly excludes Cookie header from header scanning.
+  - Field-comparison operators: `ends_with_field`, `not_ends_with_field`, `begins_with_field`,
+    `contains_field`, `eq_field`. Enables CRS chains with `%{request_headers.host}` dynamic
+    comparisons (rule 943110 session fixation).
+  - Converter: mixed MATCHED_VARS + non-TX merge, body/xml dedup (11 Java rules),
+    `%{request_headers.FIELD}` → `_field` operator conversion.
+  - Custom rule: 921250 cookie:$Version (correct cookie name specificity).
+  - Test runner: PL4 with events API severity-aware cross-rule resolution (574 cross-rule
+    passes), Host header fix, albedo backend, 2s reload interval.
+- **detection_only mode** (policy-engine v0.40.0): New WAF config field. When enabled,
+  all rule evaluation and scoring continues but blocking (403/429) is suppressed. Block
+  rules log as `block_logged`, rate limits as `rate_limit_logged`, anomaly threshold
+  as `detect_logged`. Per-service override supported. Full-stack: plugin + wafctl model
+  + policy generator + access_log_store + CLI display + frontend toggle + badges.
 
 ### v2.83.0 / caddy 3.79.0-2.11.2
 
