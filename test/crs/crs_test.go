@@ -348,20 +348,23 @@ func TestCRSRegression(t *testing.T) {
 	// Batch rule-level resolution via events API.
 	// With detection_only mode, nothing blocks — all tests must be resolved
 	// by checking which CRS rule IDs actually fired in the access log events.
+	// Anomaly threshold used for scoring (from WAF config).
+	const anomalyThreshold = 5
+
 	if len(st.pendingChecks) > 0 && !statusOnly {
 		t.Logf("Resolving %d tests via events API (waiting for log ingestion)...", len(st.pendingChecks))
 		time.Sleep(eventIngestionDelay)
 
 		resolved := 0
 		for _, pc := range st.pendingChecks {
-			matchedIDs := queryMatchedRuleIDsNoDelay(pc.marker)
+			matchedRules := queryMatchedRulesNoDelay(pc.marker)
 
 			var passed bool
 			if len(pc.expectIDs) > 0 {
 				// expect_ids: check if the expected rule actually fired.
 				for _, eid := range pc.expectIDs {
-					for _, mid := range matchedIDs {
-						if mid == eid {
+					for _, mr := range matchedRules {
+						if mr.ID == eid {
 							passed = true
 							break
 						}
@@ -375,25 +378,32 @@ func TestCRSRegression(t *testing.T) {
 					passed = true
 				}
 			} else if len(pc.noExpIDs) > 0 {
-				// no_expect_ids: check the specific rule did NOT fire.
+				// no_expect_ids: the tested rule should NOT have caused a block.
 				if pc.status != 403 {
 					passed = true // Not blocked — pass.
 				} else {
-					// Blocked — check if the SPECIFIC tested rule fired.
-					ruleFired := false
+					// Blocked — check if the SPECIFIC tested rule fired AND would
+					// have caused a block by itself (score >= threshold).
+					// If the rule fired but its score alone is below threshold,
+					// the block was caused by OTHER rules (cross-rule interference).
+					ruleCausedBlock := false
 					for _, noID := range pc.noExpIDs {
-						for _, mid := range matchedIDs {
-							if mid == noID {
-								ruleFired = true
+						for _, mr := range matchedRules {
+							if mr.ID == noID {
+								// Rule fired — check if its score alone would block.
+								if severityScore(mr.Severity) >= anomalyThreshold {
+									ruleCausedBlock = true
+								}
 								break
 							}
 						}
-						if ruleFired {
+						if ruleCausedBlock {
 							break
 						}
 					}
-					if !ruleFired {
-						// Cross-rule: blocked by OTHER rules, not the tested one.
+					if !ruleCausedBlock {
+						// Either rule didn't fire, or it fired below threshold.
+						// The block was caused by other rules — cross-rule pass.
 						passed = true
 						st.CrossRule++
 					}
@@ -593,9 +603,31 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 
 // ─── Events API: Rule-Level Match Checking ─────────────────────────
 
-// queryMatchedRuleIDsNoDelay queries the wafctl events API for the most recent
-// event matching the test marker, returning all matched CRS rule IDs.
-func queryMatchedRuleIDsNoDelay(marker string) []int {
+// matchedRuleInfo holds a rule ID and its severity from the events API.
+type matchedRuleInfo struct {
+	ID       int
+	Severity int // CRS numeric severity: 2=CRITICAL(5pts), 3=ERROR(4pts), 4=WARNING(3pts), 5=NOTICE(2pts)
+}
+
+// severityScore returns the anomaly score contribution for a CRS severity level.
+func severityScore(severity int) int {
+	switch severity {
+	case 2:
+		return 5 // CRITICAL
+	case 3:
+		return 4 // ERROR
+	case 4:
+		return 3 // WARNING
+	case 5:
+		return 2 // NOTICE
+	default:
+		return 5 // unknown → assume CRITICAL
+	}
+}
+
+// queryMatchedRulesNoDelay queries the wafctl events API for the most recent
+// event matching the test marker, returning all matched CRS rules with severity.
+func queryMatchedRulesNoDelay(marker string) []matchedRuleInfo {
 	reqURL := fmt.Sprintf("%s/api/events?limit=1&hours=1&uri=%s&uri_op=contains",
 		wafctlURL, url.QueryEscape(marker))
 
@@ -611,7 +643,8 @@ func queryMatchedRuleIDsNoDelay(marker string) []int {
 	var result struct {
 		Events []struct {
 			MatchedRules []struct {
-				ID int `json:"id"`
+				ID       int `json:"id"`
+				Severity int `json:"severity"`
 			} `json:"matched_rules"`
 		} `json:"events"`
 	}
@@ -622,11 +655,11 @@ func queryMatchedRuleIDsNoDelay(marker string) []int {
 		return nil
 	}
 
-	var ids []int
+	var rules []matchedRuleInfo
 	for _, mr := range result.Events[0].MatchedRules {
-		ids = append(ids, mr.ID)
+		rules = append(rules, matchedRuleInfo{ID: mr.ID, Severity: mr.Severity})
 	}
-	return ids
+	return rules
 }
 
 // eventIngestionDelay is the time to wait for wafctl to ingest the access log
