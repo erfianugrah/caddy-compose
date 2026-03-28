@@ -21,11 +21,11 @@ on:
 
 env:
   CADDY_IMAGE: erfianugrah/caddy
-  CADDY_TAG: "3.85.0-2.11.2"
+  CADDY_TAG: "3.86.0-2.11.2"
   CADDY_VERSION: "2.11.2"
   CRS_VERSION: "v4.24.1"
   WAFCTL_IMAGE: erfianugrah/wafctl
-  WAFCTL_VERSION: "2.89.0"
+  WAFCTL_VERSION: "2.90.0"
 
 permissions:
   contents: read
@@ -155,11 +155,7 @@ jobs:
 
       - name: Start CRS test stack
         run: |
-          docker compose -f test/crs/docker-compose.crs.yml up -d
-          for i in $(seq 1 60); do
-            curl -sf http://localhost:19082/api/health > /dev/null 2>&1 && break
-            sleep 2
-          done
+          docker compose -f test/crs/docker-compose.crs.yml up -d --wait --timeout 120
 
       - name: Run CRS regression tests
         run: go test -v -count=1 -timeout 600s ./...
