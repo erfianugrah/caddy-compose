@@ -2384,26 +2384,38 @@ Phase 1 ──→ Phase 2 ──→ Phase 3 ──→ Phase 4 ──→ Phase 5
 
 ## CRS Converter Fidelity
 
-Converter coverage: 332/504 detection rules (65.8%). The 172 missing are almost
-entirely paranoia gating (176 skipAfter rules) and TX variable config checks (10
-rules that need plugin-side enforcement). Attack detection (SQLi, XSS, RCE, etc.)
-is near-complete.
+Converter coverage: 341 rules from CRS 4.24.1. 5 detection rules skipped
+(TX-to-TX comparison, protocol limits handled natively by plugin). 294 flow-control
+rules correctly excluded. Test suite runs at PL4 with threshold=5.
 
-CRS E2E regression suite: 4526 tests, 79.9% at status-code level. 902 baselined
-failures are almost entirely cross-rule interference (benign payloads blocked by
-unrelated rules), not converter bugs. True per-rule fidelity is higher.
+CRS E2E fidelity: **80.7%** (3612/4476 testable at PL4). PL1 fidelity: **98.7%**
+(56/84 original PL1 failures resolved). 864 total baselined failures: 28 true
+gaps + 836 PL4 cross-rule interference (higher-PL rules blocking benign test payloads).
 
 **Completed:**
 - [x] Per-field OR condition groups (replaced request_combined — 201 rules)
 - [x] SecRuleUpdateTargetById processing (55 cookie/arg exclusions)
 - [x] Catch-all chain skip (920450/920451)
 - [x] Custom rule deduplication (7 duplicates removed)
-- [x] Standalone CRS E2E test suite with baseline
+- [x] Standalone CRS E2E test suite with baseline (PL4, auto-download from GitHub)
+- [x] `validate_byte_range` / `validate_url_encoding` / `validate_utf8_encoding` operators
+- [x] Mixed MATCHED_VARS + non-TX chain variable merge (tx:0 + real fields)
+- [x] body/xml deduplication (removes body from OR groups with xml)
+- [x] `multiFieldAbsent()` (negated files/xml conditions on wrong content type)
+- [x] Host header fix in test runner (Go `req.Host` vs `req.Header`)
+- [x] CRS extended settings (allowed_methods, arg limits via PolicyWafConfig)
+- [x] Plugin-side enforcement of method/version/arg limits
 
-**Remaining (requires plugin changes):**
-- [ ] TX variable config mapping (allowed_methods, arg limits — 10 rules)
-- [ ] Pass CRS extended settings through PolicyWafConfig to plugin
-- [ ] Plugin-side enforcement of method/version/arg limits
+**Remaining 28 PL1 test failures (requires plugin or converter changes):**
+- [ ] XML element/attribute name exclusion from `xml` field (944100 — 4 tests)
+- [ ] `not_ends_with_field` operator for dynamic Referer/Host comparison (943110 — 4 tests)
+- [ ] Cookie header exclusion from `all_headers` (941120 — 1 test)
+- [ ] Cookie name regex filtering (921250 — 1 test)
+- [ ] Multipart `name` vs `filename` scoping for FILES field (933110 — 1 test)
+- [ ] TX:1 capture + phrase_match chain evaluation (920480 — 1 test)
+- [ ] Short command regex boundary with cmdLine transform (932340 — 4 tests)
+- [ ] LDAP injection regex precision (921200 — 3 tests, may be CRS issue)
+- [ ] Various regex/transform edge cases (9 tests across 932/933/934/941)
 
 ---
 

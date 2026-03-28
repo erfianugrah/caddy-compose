@@ -443,28 +443,57 @@ causes the event to be invisible in parts of the UI.
   Only 5 CRS detection rules skipped: 911100/920430 (handled natively by plugin
   `enforceProtocolLimits()`), 920190/942130/942131 (TX-to-TX comparison unsupported).
   294 flow-control rules correctly excluded (non-detection).
-  CRS regression test fidelity: **98.1%** (4396/4480 testable, official CRS 4.24.1 suite).
+  CRS regression test fidelity at PL4: **80.7%** (3612/4476 testable, official CRS 4.24.1 suite).
+  PL1 fidelity: **98.7%** (56 of 84 original PL1 failures resolved).
   Tests auto-download from GitHub via sparse checkout (`make test-crs-e2e`).
 - **CRS regression testing** (`test/crs/`): Runs the official OWASP CRS regression test
-  suite (4526 YAML test cases) against the live Docker stack. Two-phase evaluation:
-  (1) status-code fast path for clear pass/fail, (2) batch rule-level resolution via
-  events API for ambiguous results (rules that scored below threshold but still matched,
-  cross-rule interference where OTHER rules caused the block). Baseline tracking catches
-  regressions. Run with `make test-crs-e2e` (check) or `make test-crs-e2e-update` (update baseline).
-- **CRS remaining gaps** (84 tests, 1.9%): Documented root causes for each failure group:
-  - **29 false positives**: MATCHED_VARS chain verifications dropped by converter (14 rules
-    including 932340 short commands, 944100 XML element names, 921200 LDAP filters,
-    943110 session fixation same-domain referer). Fix: implement `not_ends_with_field`
-    operator in plugin for dynamic host comparison (943110), fix XML parser to exclude
-    element/attribute NAMES from `xml` field (944100), combine head+chain regexes with
-    lookaheads for MATCHED_VARS patterns.
-  - **46 false negatives**: Missing operators `validateUrlEncoding` (920230/920240, 4 tests),
-    `validateByteRange` (920271-920275, 14 tests). FILES/FILES_NAMES multipart extraction
-    edge cases (920120/920121, 10 tests). Protocol enforcement field scoping (920180/920300/
-    920340 missing Content-Type, 920350 IP in Host header, 920200-920202 Range+basename).
-  - **10 not converted**: TX-to-TX comparison 920190 (1 test, won't fix), `validateUtf8Encoding`
-    920250 (4 tests, hard), protocol limits 920360-920390 (4 tests, handled by plugin natively),
-    missing Host header 920280 (1 test, easy).
+  suite (4526 YAML test cases) against the live Docker stack. PL4 with threshold=5
+  (all rules enabled). Two-phase evaluation: (1) status-code fast path for clear
+  pass/fail, (2) batch rule-level resolution via events API for ambiguous results
+  (rules that scored below threshold but still matched, cross-rule interference
+  where OTHER rules caused the block). Baseline tracking catches regressions.
+  Run with `make test-crs-e2e` (check) or `make test-crs-e2e-update` (update baseline).
+  Host header set via `req.Host` (Go net/http ignores `req.Header["Host"]`).
+- **CRS remaining gaps** (28 PL1 tests, 864 total with PL4 cross-rule). Root causes:
+  - **4 XML scope FPs** (944100/11,12,15,16): Plugin `xml` field should only return
+    element text values and attribute values (CRS `XML:/*` and `XML://@*`), but the
+    raw body may still match via other OR group fields. The converter now removes
+    `body` from OR groups that also have `xml`, but the tests send XML in POST body
+    where `all_args_values` or `all_headers` may match the element name in the
+    Content-Type header. Need to verify actual match path.
+  - **4 dynamic field comparison FPs** (943110/4,30,32,39): CRS chain uses
+    `TX:1 !@endsWith %{request_headers.host}` to verify Referer domain differs from
+    Host header. Plugin has no `not_ends_with_field` operator for dynamic comparison.
+    Converter drops this chain link, making rule overbroad (fires on same-domain referers).
+    Fix: implement `ends_with_field`/`not_ends_with_field` operators in plugin.
+  - **4 short command FPs** (932340/10-13): Initials `DF`/`SU`/`LS`/`PS` as POST
+    parameter values match the no-arguments command regex. CRS regex requires prefix
+    delimiters (`;`,`&`,`=`, etc.) — the `=` in `param=DF` satisfies this. The value
+    `DF` then matches case-insensitive `df` command. This may be a CRS regex boundary
+    issue rather than a converter bug — needs `cmdLine` transform analysis.
+  - **1 cookie header exclusion FP** (941120/5): CRS uses `REQUEST_HEADERS|!REQUEST_HEADERS:Cookie`
+    to exclude cookies from header scanning. Converter maps to `all_headers` which
+    includes cookies. Base64 cookie value triggers XSS event handler regex.
+    Fix: implement header exclusion support in converter.
+  - **1 multipart name vs filename FP** (933110/29): CRS `FILES` scans only multipart
+    `filename=` values. Test has `.php` in form field `name=` (not `filename=`).
+    Plugin may scan both `name` and `filename` for the `files` field.
+  - **1 cookie name regex FP** (921250/3): CRS targets `REQUEST_COOKIES:/\x24Version/`
+    (cookies named `$Version`). Converter simplified to `all_cookies eq "1"` — matches
+    ANY cookie with value "1". Fix: implement cookie name regex filtering.
+  - **1 TX capture chain FP** (920480/1): CRS chain captures charset from Content-Type
+    into TX:1, then checks against allowlist. Converter emits `tx:1` field reference
+    which the plugin supports, but the phrase_match against the allowlist may not work
+    correctly with the captured value.
+  - **3 LDAP injection FPs** (921200/1-3): Legitimate LDAP filter queries
+    (`objectCategory=computer`, `objectSID=S-1-5-...`) match the injection regex.
+    May be a CRS regex precision issue or htmlEntityDecode transform difference.
+  - **9 regex/transform edge cases**: 932140/158, 932230/4-5, 932250/1, 932260/3,
+    933180/1, 933210/2, 934130/1, 941180/7 — various regex boundary, transform order,
+    and field scoping differences between ModSecurity and the plugin.
+  - **836 PL4 cross-rule FPs** (baselined): Higher-PL rules (PL2-4) fire on benign test
+    payloads designed for other rules. These are inherent to running PL4 with blocking
+    enabled. Not actionable — baselined.
 - **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).
   Enforces via 4 layers: L3 nftables kernel drop (primary), L4 TCP RST, L7 HTTP 403, eBPF/XDP NIC drop.
