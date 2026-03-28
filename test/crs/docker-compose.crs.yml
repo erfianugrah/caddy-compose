@@ -72,8 +72,9 @@ services:
         condition: service_healthy
 
   httpbun:
-    image: mccutchen/go-httpbin
+    image: ghcr.io/coreruleset/albedo:0.0.13
     container_name: httpbun-crs
+    command: ["--port", "8080"]
 
 volumes:
   waf_data:

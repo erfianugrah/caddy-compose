@@ -148,6 +148,8 @@ test-crs-e2e: ## Run standalone CRS regression tests (requires Docker)
 	exit $$rc
 
 test-crs-e2e-update: ## Run CRS regression tests and update baseline (with events API cross-rule resolution)
+	docker build -t caddy-e2e:local .
+	docker build -t wafctl-e2e:local --build-arg VERSION=e2e -f wafctl/Dockerfile .
 	docker compose -f test/crs/docker-compose.crs.yml up -d --wait --timeout 120
 	cd test/crs && CRS_UPDATE_BASELINE=1 go test -v -count=1 -timeout 600s ./...; rc=$$?; \
 	cd ../.. && docker compose -f test/crs/docker-compose.crs.yml down -v; \

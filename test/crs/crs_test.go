@@ -524,6 +524,11 @@ func runTest(t *testing.T, ruleID string, tc testCase, bl, newBL baseline, st *s
 		return
 	}
 
+	// Debug: log status for specific failing rules to trace the issue.
+	if ruleID == "920271" || ruleID == "920240" || ruleID == "920120" {
+		t.Logf("DEBUG %s: status=%d expectBlock=%v expectAllow=%v uri=%q", key, status, expectBlock, expectAllow, stage.Input.URI)
+	}
+
 	// ── Status-code fast path ────────────────────────────────────
 	// Quick pass/fail based on status code. Tests that can't be resolved
 	// by status alone are deferred to batch rule-level resolution via
