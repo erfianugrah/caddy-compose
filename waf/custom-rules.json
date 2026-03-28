@@ -772,5 +772,29 @@
     ],
     "enabled": true,
     "priority": 400
+  },
+  {
+    "id": "921250",
+    "name": "Old Cookies V1 usage attempt detected",
+    "type": "detect",
+    "conditions": [
+      {
+        "field": "cookie:$Version",
+        "operator": "eq",
+        "value": "1",
+        "transforms": ["lowercase"]
+      }
+    ],
+    "group_op": "and",
+    "severity": "CRITICAL",
+    "paranoia_level": 1,
+    "tags": [
+      "application-multi",
+      "language-multi",
+      "attack-protocol",
+      "custom-rules"
+    ],
+    "enabled": true,
+    "priority": 400
   }
 ]

@@ -2404,7 +2404,7 @@
       "type": "detect",
       "conditions": [
         {
-          "field": "all_cookies",
+          "field": "cookie:$Version",
           "operator": "eq",
           "value": "1",
           "transforms": [
@@ -2418,13 +2418,11 @@
       "tags": [
         "application-multi",
         "language-multi",
-        "attack-protocol"
+        "attack-protocol",
+        "custom-rules"
       ],
       "enabled": true,
-      "priority": 400,
-      "description": "Old Cookies V1 usage attempt detected",
-      "category": "REQUEST-921-PROTOCOL-ATTACK",
-      "crs_file": "REQUEST-921-PROTOCOL-ATTACK.conf"
+      "priority": 400
     },
     {
       "id": "921421",
@@ -37543,5 +37541,5 @@
   ],
   "version": 7,
   "crs_version": "v4.24.1",
-  "generated": "2026-03-28T08:14:06Z"
+  "generated": "2026-03-28T08:43:10Z"
 }
