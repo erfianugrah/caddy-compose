@@ -1871,15 +1871,6 @@
               ]
             },
             {
-              "field": "body",
-              "operator": "regex",
-              "value": "(?:get|p(?:(?:os|u)t|atch|rop(?:find|atch))|head|options|co(?:nnect|py)|delete|trac[ek]|m(?:kcol|ove)|(?:un)?lock)[\\s\\x0b]+[^\\s\\x0b]+[\\s\\x0b]+http/[0-9]",
-              "transforms": [
-                "htmlEntityDecode",
-                "lowercase"
-              ]
-            },
-            {
               "field": "xml",
               "operator": "regex",
               "value": "(?:get|p(?:(?:os|u)t|atch|rop(?:find|atch))|head|options|co(?:nnect|py)|delete|trac[ek]|m(?:kcol|ove)|(?:un)?lock)[\\s\\x0b]+[^\\s\\x0b]+[\\s\\x0b]+http/[0-9]",
@@ -32095,14 +32086,6 @@
               ]
             },
             {
-              "field": "body",
-              "operator": "regex",
-              "value": "java\\.lang\\.(?:runtime|processbuilder)",
-              "transforms": [
-                "lowercase"
-              ]
-            },
-            {
               "field": "xml",
               "operator": "regex",
               "value": "java\\.lang\\.(?:runtime|processbuilder)",
@@ -32177,14 +32160,6 @@
               ]
             },
             {
-              "field": "body",
-              "operator": "regex",
-              "value": "(?:runtime|processbuilder)",
-              "transforms": [
-                "lowercase"
-              ]
-            },
-            {
               "field": "xml",
               "operator": "regex",
               "value": "(?:runtime|processbuilder)",
@@ -32196,9 +32171,19 @@
           "group_op": "or"
         },
         {
-          "field": "xml",
-          "operator": "regex",
-          "value": "(?i)(?:unmarshaller|base64data|java\\.)"
+          "group": [
+            {
+              "field": "tx:0",
+              "operator": "regex",
+              "value": "(?i)(?:unmarshaller|base64data|java\\.)"
+            },
+            {
+              "field": "xml",
+              "operator": "regex",
+              "value": "(?i)(?:unmarshaller|base64data|java\\.)"
+            }
+          ],
+          "group_op": "or"
         }
       ],
       "group_op": "and",
@@ -32257,14 +32242,6 @@
             },
             {
               "field": "all_headers",
-              "operator": "regex",
-              "value": "(?:clonetransform|xmldecod)er|f(?:orclosure|ilewriter)|in(?:stantiate(?:factory|transformer)|vokertransformer)|(?:prototype(?:clone|serialization)factor|getpropert)y|whileclosure",
-              "transforms": [
-                "lowercase"
-              ]
-            },
-            {
-              "field": "body",
               "operator": "regex",
               "value": "(?:clonetransform|xmldecod)er|f(?:orclosure|ilewriter)|in(?:stantiate(?:factory|transformer)|vokertransformer)|(?:prototype(?:clone|serialization)factor|getpropert)y|whileclosure",
               "transforms": [
@@ -32608,80 +32585,6 @@
             },
             {
               "field": "all_headers",
-              "operator": "phrase_match",
-              "list_items": [
-                "com.opensymphony.xwork2",
-                "com.sun.org.apache",
-                "classLoader",
-                "declaredClass",
-                "freemarker.core",
-                "freemarker.template",
-                "freemarker.ext.rhino",
-                "java.io.BufferedInputStream",
-                "java.io.BufferedReader",
-                "java.io.ByteArrayInputStream",
-                "java.io.ByteArrayOutputStream",
-                "java.io.CharArrayReader",
-                "java.io.DataInputStream",
-                "java.io.File",
-                "java.io.FileOutputStream",
-                "java.io.FilePermission",
-                "java.io.FileWriter",
-                "java.io.FilterInputStream",
-                "java.io.FilterOutputStream",
-                "java.io.FilterReader",
-                "java.io.InputStream",
-                "java.io.IOException",
-                "java.io.LineNumberReader",
-                "java.io.ObjectInputStream",
-                "java.io.ObjectOutputStream",
-                "java.io.OutputStream",
-                "java.io.PipedOutputStream",
-                "java.io.PipedReader",
-                "java.io.PrintStream",
-                "java.io.PushbackInputStream",
-                "java.io.Reader",
-                "java.io.StringReader",
-                "java.lang.Class",
-                "java.lang.Enum",
-                "java.lang.Integer",
-                "java.lang.Number",
-                "java.lang.Object",
-                "java.lang.Process",
-                "java.lang.ProcessBuilder",
-                "java.lang.reflect",
-                "java.lang.Runtime",
-                "java.lang.String",
-                "java.lang.System",
-                "java.net.HttpURLConnection",
-                "java.net.JarURLConnection",
-                "java.net.DatagramSocket",
-                "java.net.MulticastSocket",
-                "java.net.ServerSocket",
-                "java.net.Socket",
-                "java.net.URL",
-                "javassist",
-                "javax.naming.InitialContext",
-                "javax.script.ScriptEngineManager",
-                "javax.xml.parsers",
-                "javax.xml.stream",
-                "OgnlContext",
-                "OgnlUtil",
-                "org.apache.commons",
-                "org.apache.struts",
-                "org.apache.struts2",
-                "org.dom4j.io.SAXReader",
-                "org.jdom2.input.SAXBuilder",
-                "org.omg.CORBA",
-                "org.xml.sax",
-                "PropertyUtilsBean",
-                "java.beans.XMLDecode",
-                "java.nio.file",
-                "sun.reflect"
-              ]
-            },
-            {
-              "field": "body",
               "operator": "phrase_match",
               "list_items": [
                 "com.opensymphony.xwork2",
@@ -33308,11 +33211,6 @@
               "value": "\\xac\\xed\\x00\\x05"
             },
             {
-              "field": "body",
-              "operator": "regex",
-              "value": "\\xac\\xed\\x00\\x05"
-            },
-            {
               "field": "xml",
               "operator": "regex",
               "value": "\\xac\\xed\\x00\\x05"
@@ -33365,11 +33263,6 @@
             },
             {
               "field": "all_headers",
-              "operator": "regex",
-              "value": "(?:rO0ABQ|KztAAU|Cs7QAF)"
-            },
-            {
-              "field": "body",
               "operator": "regex",
               "value": "(?:rO0ABQ|KztAAU|Cs7QAF)"
             },
@@ -33438,14 +33331,6 @@
             },
             {
               "field": "all_headers",
-              "operator": "regex",
-              "value": "(?:clonetransform|xmldecod)er|f(?:orclosure|ilewriter)|in(?:stantiate(?:factory|transformer)|vokertransformer)|(?:prototype(?:clone|serialization)factor|getpropert)y|whileclosure",
-              "transforms": [
-                "lowercase"
-              ]
-            },
-            {
-              "field": "body",
               "operator": "regex",
               "value": "(?:clonetransform|xmldecod)er|f(?:orclosure|ilewriter)|in(?:stantiate(?:factory|transformer)|vokertransformer)|(?:prototype(?:clone|serialization)factor|getpropert)y|whileclosure",
               "transforms": [
@@ -33527,14 +33412,6 @@
               ]
             },
             {
-              "field": "body",
-              "operator": "regex",
-              "value": "java\\b.+(?:runtime|processbuilder)",
-              "transforms": [
-                "lowercase"
-              ]
-            },
-            {
               "field": "xml",
               "operator": "regex",
               "value": "java\\b.+(?:runtime|processbuilder)",
@@ -33609,14 +33486,6 @@
               ]
             },
             {
-              "field": "body",
-              "operator": "regex",
-              "value": "class\\.module\\.classLoader\\.resources\\.context\\.parent\\.pipeline|springframework\\.context\\.support\\.FileSystemXmlApplicationContext",
-              "transforms": [
-                "urlDecodeUni"
-              ]
-            },
-            {
               "field": "xml",
               "operator": "regex",
               "value": "class\\.module\\.classLoader\\.resources\\.context\\.parent\\.pipeline|springframework\\.context\\.support\\.FileSystemXmlApplicationContext",
@@ -33672,11 +33541,6 @@
             },
             {
               "field": "all_headers",
-              "operator": "regex",
-              "value": "c(?:nVudGltZQ|HJv(?:Y2Vzc2J1aWxkZXI|dG90eXBl(?:Y2xvbmVmYWN0b3J5|c2VyaWFsaXphdGlvbmZhY3Rvcnk)))|H(?:J1bnRpbWU|Byb(?:2Nlc3NidWlsZGVy|3RvdHlwZ(?:WNsb25lZmFjdG9yeQ|XNlcmlhbGl6YXRpb25mYWN0b3J5))|doaWxlY2xvc3VyZQ)|B(?:(?:ydW50aW1|mb3JjbG9zdXJ)l|wcm9(?:jZXNzYnVpbGRlcg|0b3R5cGV(?:jbG9uZWZhY3Rvcnk|zZXJpYWxpemF0aW9uZmFjdG9yeQ))|jbG9uZXRyYW5zZm9ybWVy|pbn(?:N0YW50aWF0Z(?:WZhY3Rvcnk|XRyYW5zZm9ybWVy)|Zva2VydHJhbnNmb3JtZXI)|3aGlsZWNsb3N1cmU)|Y2xvbmV0cmFuc2Zvcm1lcg|G(?:Nsb25ldHJhbnNmb3JtZXI|ZvcmNsb3N1cmU|lu(?:c3RhbnRpYXRl(?:ZmFjdG9yeQ|dHJhbnNmb3JtZXI)|dm9rZXJ0cmFuc2Zvcm1lcg))|Zm9yY2xvc3VyZQ|aW5(?:zdGFudGlhdGV(?:mYWN0b3J5|0cmFuc2Zvcm1lcg)|2b2tlcnRyYW5zZm9ybWVy)|d2hpbGVjbG9zdXJl"
-            },
-            {
-              "field": "body",
               "operator": "regex",
               "value": "c(?:nVudGltZQ|HJv(?:Y2Vzc2J1aWxkZXI|dG90eXBl(?:Y2xvbmVmYWN0b3J5|c2VyaWFsaXphdGlvbmZhY3Rvcnk)))|H(?:J1bnRpbWU|Byb(?:2Nlc3NidWlsZGVy|3RvdHlwZ(?:WNsb25lZmFjdG9yeQ|XNlcmlhbGl6YXRpb25mYWN0b3J5))|doaWxlY2xvc3VyZQ)|B(?:(?:ydW50aW1|mb3JjbG9zdXJ)l|wcm9(?:jZXNzYnVpbGRlcg|0b3R5cGV(?:jbG9uZWZhY3Rvcnk|zZXJpYWxpemF0aW9uZmFjdG9yeQ))|jbG9uZXRyYW5zZm9ybWVy|pbn(?:N0YW50aWF0Z(?:WZhY3Rvcnk|XRyYW5zZm9ybWVy)|Zva2VydHJhbnNmb3JtZXI)|3aGlsZWNsb3N1cmU)|Y2xvbmV0cmFuc2Zvcm1lcg|G(?:Nsb25ldHJhbnNmb3JtZXI|ZvcmNsb3N1cmU|lu(?:c3RhbnRpYXRl(?:ZmFjdG9yeQ|dHJhbnNmb3JtZXI)|dm9rZXJ0cmFuc2Zvcm1lcg))|Zm9yY2xvc3VyZQ|aW5(?:zdGFudGlhdGV(?:mYWN0b3J5|0cmFuc2Zvcm1lcg)|2b2tlcnRyYW5zZm9ybWVy)|d2hpbGVjbG9zdXJl"
             },
@@ -37678,6 +37542,6 @@
     }
   ],
   "version": 7,
-  "crs_version": "4.24.1",
-  "generated": "2026-03-27T22:55:39Z"
+  "crs_version": "v4.24.1",
+  "generated": "2026-03-28T08:14:06Z"
 }

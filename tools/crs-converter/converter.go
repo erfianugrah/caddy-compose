@@ -450,6 +450,35 @@ func (c *Converter) convertRule(rule SecRule, category, filename string) (*Polic
 	}
 	fields = supportedFields
 
+	// When a rule targets both REQUEST_BODY (→ "body") and XML:/* (→ "xml"),
+	// remove the "body" field from the OR group. In ModSecurity, the XML
+	// body processor handles XML content types — REQUEST_BODY is not
+	// available when the XML processor is active. Including "body" causes
+	// the raw XML text (including element/attribute NAMES like
+	// <java.lang.Runtime>) to be matched, producing false positives.
+	// The "xml" field extracts only text nodes and attribute values, which
+	// is the correct CRS behavior for XML content.
+	if len(fields) > 2 {
+		hasBody, hasXML := false, false
+		for _, f := range fields {
+			if f == "body" {
+				hasBody = true
+			}
+			if f == "xml" {
+				hasXML = true
+			}
+		}
+		if hasBody && hasXML {
+			filtered := make([]string, 0, len(fields)-1)
+			for _, f := range fields {
+				if f != "body" {
+					filtered = append(filtered, f)
+				}
+			}
+			fields = filtered
+		}
+	}
+
 	// Resolve operator value
 	operatorValue := rule.Operator.Value
 	var listItems []string
@@ -589,8 +618,14 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 	// TX:0, TX:1 → tx:0, tx:1 (regex capture references from head rule)
 	// TX:content_type → tx:content_type (CRS setvar-derived captures)
 	// TX:/^pattern/ → skip (regex-keyed TX iteration, not convertible)
+	// MATCHED_VARS/MATCHED_VAR → tx:0 (head rule's matched value)
+	//
+	// When a chain link mixes TX/MATCHED_VARS with real variables (e.g.,
+	// MATCHED_VARS|XML:/*), we include BOTH tx:0 AND the real fields.
+	// This preserves CRS semantics where the chain re-examines both the
+	// head's matched value and additional fields.
 	var txFields []string
-	isTXOnly := true
+	hasTXRegexKey := false
 	for _, v := range rule.Variables {
 		if v.IsNegation {
 			continue
@@ -598,8 +633,7 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 		if v.Name == "TX" {
 			if v.KeyIsRegex {
 				// TX:/^pattern/ — iterating TX variables by regex key, not convertible.
-				isTXOnly = true
-				txFields = nil
+				hasTXRegexKey = true
 				break
 			}
 			if v.Key != "" {
@@ -610,8 +644,6 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 			// head matched. The plugin's TX capture context stores the head's
 			// capture in tx:0, which serves the same purpose.
 			txFields = append(txFields, "tx:0")
-		} else {
-			isTXOnly = false
 		}
 	}
 
@@ -625,9 +657,13 @@ func (c *Converter) convertChain(rule *SecRule, filename string) ([]PolicyCondit
 	}
 	fields = chainSupported
 
-	// If all variables are TX/MATCHED_VARS, use the tx: fields instead.
-	if isTXOnly && len(txFields) > 0 {
-		fields = txFields
+	// Merge tx: fields with real fields. If the chain link has both
+	// MATCHED_VARS and real variables (e.g., MATCHED_VARS|XML:/*),
+	// include all of them — the plugin evaluates as an OR group.
+	if !hasTXRegexKey && len(txFields) > 0 {
+		// Deduplicate: tx:0 might already be in fields if MATCHED_VARS
+		// was mapped by variableMap (it maps to "", so it won't be).
+		fields = append(txFields, fields...)
 	}
 
 	skipThisLink := !supported || len(fields) == 0
