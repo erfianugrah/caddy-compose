@@ -664,7 +664,7 @@ func queryMatchedRulesNoDelay(marker string) []matchedRuleInfo {
 
 // eventIngestionDelay is the time to wait for wafctl to ingest the access log
 // entry for a request.
-var eventIngestionDelay = 2500 * time.Millisecond
+var eventIngestionDelay = 5 * time.Second
 
 func init() {
 	if d := os.Getenv("CRS_EVENT_DELAY"); d != "" {
