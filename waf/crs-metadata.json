@@ -1,6 +1,6 @@
 {
   "crs_version": "v4.24.1",
-  "generated_at": "2026-03-28T08:14:06Z",
+  "generated_at": "2026-03-28T08:43:10Z",
   "categories": [
     {
       "id": "scanner-detection",
@@ -30,7 +30,7 @@
       "rule_range": "921000-921999",
       "tag": "attack-protocol",
       "phase": "inbound",
-      "rule_count": 17
+      "rule_count": 16
     },
     {
       "id": "multipart-attack",
