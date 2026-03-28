@@ -16,7 +16,7 @@
 	policy_engine {
 		rules_file /data/waf/policy-rules.json
 		default_rules_file /etc/caddy/waf/default-rules.json
-		reload_interval 5s
+		reload_interval 2s
 	}
 }
 
