@@ -178,7 +178,7 @@ func (sc *summaryCounters) incrementEvent(ev *Event) {
 	case "policy_skip":
 		b.ServicePolicySkip[ev.Service]++
 	case "challenge_issued":
-		b.ServiceChallengeIssued[ev.Service]++
+	case "challenge_abandoned":
 	case "challenge_passed":
 		b.ServiceChallengePassed[ev.Service]++
 	case "challenge_bypassed":
@@ -205,7 +205,7 @@ func (sc *summaryCounters) incrementEvent(ev *Event) {
 	case "policy_skip":
 		b.ClientPolicySkip[ev.ClientIP]++
 	case "challenge_issued":
-		b.ClientChallengeIssued[ev.ClientIP]++
+	case "challenge_abandoned":
 	case "challenge_passed":
 		b.ClientChallengePassed[ev.ClientIP]++
 	case "challenge_bypassed":
@@ -272,7 +272,7 @@ func (sc *summaryCounters) decrementEvent(ev *Event) {
 	case "policy_skip":
 		decrMap(b.ServicePolicySkip, ev.Service)
 	case "challenge_issued":
-		decrMap(b.ServiceChallengeIssued, ev.Service)
+	case "challenge_abandoned":
 	case "challenge_passed":
 		decrMap(b.ServiceChallengePassed, ev.Service)
 	case "challenge_bypassed":
@@ -299,7 +299,7 @@ func (sc *summaryCounters) decrementEvent(ev *Event) {
 	case "policy_skip":
 		decrMap(b.ClientPolicySkip, ev.ClientIP)
 	case "challenge_issued":
-		decrMap(b.ClientChallengeIssued, ev.ClientIP)
+	case "challenge_abandoned":
 	case "challenge_passed":
 		decrMap(b.ClientChallengePassed, ev.ClientIP)
 	case "challenge_bypassed":
@@ -349,6 +349,8 @@ func classifyEventIntoBucket(b *hourBucket, ev *Event, delta int) {
 		b.PolicySkip += delta
 	case ev.EventType == "challenge_issued":
 		b.ChallengeIssued += delta
+	case ev.EventType == "challenge_abandoned":
+		// No-op in overview — only counted in challenge analytics dashboard.
 	case ev.EventType == "challenge_passed":
 		b.ChallengePassed += delta
 	case ev.EventType == "challenge_failed":
@@ -951,7 +953,7 @@ func (sc *summaryCounters) initFromEvents(events []Event) {
 		case "policy_skip":
 			b.ServicePolicySkip[ev.Service]++
 		case "challenge_issued":
-			b.ServiceChallengeIssued[ev.Service]++
+		case "challenge_abandoned":
 		case "challenge_passed":
 			b.ServiceChallengePassed[ev.Service]++
 		case "challenge_bypassed":
@@ -977,7 +979,7 @@ func (sc *summaryCounters) initFromEvents(events []Event) {
 		case "policy_skip":
 			b.ClientPolicySkip[ev.ClientIP]++
 		case "challenge_issued":
-			b.ClientChallengeIssued[ev.ClientIP]++
+		case "challenge_abandoned":
 		case "challenge_passed":
 			b.ClientChallengePassed[ev.ClientIP]++
 		case "challenge_bypassed":
@@ -1055,7 +1057,7 @@ func (sc *summaryCounters) incrementRLEvent(rle *RateLimitEvent) {
 	case "policy_skip":
 		b.ServicePolicySkip[rle.Service]++
 	case "challenge_issued":
-		b.ServiceChallengeIssued[rle.Service]++
+	case "challenge_abandoned":
 	case "challenge_passed":
 		b.ServiceChallengePassed[rle.Service]++
 	case "challenge_bypassed":
@@ -1082,7 +1084,7 @@ func (sc *summaryCounters) incrementRLEvent(rle *RateLimitEvent) {
 	case "policy_skip":
 		b.ClientPolicySkip[rle.ClientIP]++
 	case "challenge_issued":
-		b.ClientChallengeIssued[rle.ClientIP]++
+	case "challenge_abandoned":
 	case "challenge_passed":
 		b.ClientChallengePassed[rle.ClientIP]++
 	case "challenge_bypassed":
@@ -1151,7 +1153,7 @@ func (sc *summaryCounters) decrementRLEvent(rle *RateLimitEvent) {
 	case "policy_skip":
 		decrMap(b.ServicePolicySkip, rle.Service)
 	case "challenge_issued":
-		decrMap(b.ServiceChallengeIssued, rle.Service)
+	case "challenge_abandoned":
 	case "challenge_passed":
 		decrMap(b.ServiceChallengePassed, rle.Service)
 	case "challenge_bypassed":
@@ -1177,7 +1179,7 @@ func (sc *summaryCounters) decrementRLEvent(rle *RateLimitEvent) {
 	case "policy_skip":
 		decrMap(b.ClientPolicySkip, rle.ClientIP)
 	case "challenge_issued":
-		decrMap(b.ClientChallengeIssued, rle.ClientIP)
+	case "challenge_abandoned":
 	case "challenge_passed":
 		decrMap(b.ClientChallengePassed, rle.ClientIP)
 	case "challenge_bypassed":
@@ -1245,7 +1247,7 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 		case "policy_skip":
 			b.ServicePolicySkip[rle.Service]++
 		case "challenge_issued":
-			b.ServiceChallengeIssued[rle.Service]++
+		case "challenge_abandoned":
 		case "challenge_passed":
 			b.ServiceChallengePassed[rle.Service]++
 		case "challenge_bypassed":
@@ -1271,7 +1273,7 @@ func (sc *summaryCounters) initFromRLEvents(events []RateLimitEvent) {
 		case "policy_skip":
 			b.ClientPolicySkip[rle.ClientIP]++
 		case "challenge_issued":
-			b.ClientChallengeIssued[rle.ClientIP]++
+		case "challenge_abandoned":
 		case "challenge_passed":
 			b.ClientChallengePassed[rle.ClientIP]++
 		case "challenge_bypassed":
@@ -1334,6 +1336,8 @@ func classifyRLIntoBucket(b *hourBucket, eventType string, isBlocked bool, delta
 		}
 	case eventType == "challenge_bypassed":
 		b.ChallengeBypassed += delta
+	case eventType == "challenge_abandoned":
+		// No-op in overview — only counted in challenge analytics dashboard.
 	case isBlocked:
 		b.Blocked += delta
 	default:

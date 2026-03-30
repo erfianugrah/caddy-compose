@@ -1040,14 +1040,27 @@ func (s *AccessLogStore) EventCount() int {
 // converts each entry to a RateLimitEvent with source "challenge_abandoned",
 // appends them to the event store, and truncates the file. Called periodically.
 func (s *AccessLogStore) IngestAbandonedFile(path string) int {
-	data, err := os.ReadFile(path)
-	if err != nil {
+	// Atomically rename the file before reading to prevent the plugin from
+	// appending new entries while we're reading. After ingestion, remove
+	// the renamed file. This avoids truncation issues on Docker volumes.
+	tmpPath := path + ".ingesting"
+	if err := os.Rename(path, tmpPath); err != nil {
 		if os.IsNotExist(err) {
 			return 0
 		}
-		log.Printf("[access-log] read abandoned file: %v", err)
+		log.Printf("[access-log] rename abandoned file: %v", err)
 		return 0
 	}
+	data, err := os.ReadFile(tmpPath)
+	if err != nil {
+		log.Printf("[access-log] read abandoned file: %v", err)
+		// Rename back so we don't lose data.
+		os.Rename(tmpPath, path)
+		return 0
+	}
+	// Remove the temp file immediately — data is in memory now.
+	os.Remove(tmpPath)
+
 	if len(data) == 0 {
 		return 0
 	}
@@ -1057,6 +1070,9 @@ func (s *AccessLogStore) IngestAbandonedFile(path string) int {
 		Service    string `json:"service"`
 		JA4        string `json:"ja4,omitempty"`
 		Difficulty int    `json:"difficulty"`
+		Method     string `json:"method,omitempty"`
+		URI        string `json:"uri,omitempty"`
+		UserAgent  string `json:"user_agent,omitempty"`
 		IssuedAt   int64  `json:"issued_at"`
 		ExpiredAt  int64  `json:"expired_at"`
 	}
@@ -1076,6 +1092,9 @@ func (s *AccessLogStore) IngestAbandonedFile(path string) int {
 			ClientIP:            entry.ClientIP,
 			Service:             entry.Service,
 			JA4:                 entry.JA4,
+			Method:              entry.Method,
+			URI:                 entry.URI,
+			UserAgent:           entry.UserAgent,
 			Source:              "challenge_abandoned",
 			ChallengeDifficulty: entry.Difficulty,
 			Status:              200, // interstitial was served as 200
@@ -1098,15 +1117,10 @@ func (s *AccessLogStore) IngestAbandonedFile(path string) int {
 	s.generation.Add(1)
 	s.mu.Unlock()
 
-	// Persist to event JSONL if configured.
-	if s.eventFile != "" {
-		s.appendEventsToJSONL(events)
-	}
-
-	// Truncate the file after successful ingestion.
-	if err := os.Truncate(path, 0); err != nil {
-		log.Printf("[access-log] truncate abandoned file: %v", err)
-	}
+	// NOTE: Do NOT persist abandoned events to access-events.jsonl.
+	// They are ephemeral — the plugin writes them to challenge-abandoned.jsonl
+	// on each sweep, and wafctl ingests+deletes that file. Persisting to the
+	// main event file would cause accumulation across restarts.
 
 	log.Printf("[access-log] ingested %d abandoned challenge events", len(events))
 	return len(events)
