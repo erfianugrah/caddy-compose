@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -1087,6 +1088,10 @@ func (s *AccessLogStore) IngestAbandonedFile(path string) int {
 			log.Printf("[access-log] parse abandoned entry: %v", err)
 			continue
 		}
+		// Generate a unique request ID for abandoned events (they have no real
+		// HTTP request). Without this, all abandoned events share an empty ID
+		// and the UI treats them as the same row for expand/collapse.
+		syntheticID := fmt.Sprintf("abandoned-%d-%d", entry.IssuedAt, len(events))
 		events = append(events, RateLimitEvent{
 			Timestamp:           time.Unix(entry.ExpiredAt, 0).UTC(),
 			ClientIP:            entry.ClientIP,
@@ -1095,6 +1100,7 @@ func (s *AccessLogStore) IngestAbandonedFile(path string) int {
 			Method:              entry.Method,
 			URI:                 entry.URI,
 			UserAgent:           entry.UserAgent,
+			RequestID:           syntheticID,
 			Source:              "challenge_abandoned",
 			ChallengeDifficulty: entry.Difficulty,
 			Status:              200, // interstitial was served as 200
