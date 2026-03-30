@@ -274,6 +274,9 @@ deploy-all: build scan push scp pull restart ## Full deploy: build + scan + push
 
 deploy: deploy-all ## Alias for deploy-all
 
+deploy-noscan: build push scp pull restart ## Deploy without Trivy scan (use when upstream CVEs block scan)
+	@echo "Deploy complete (scan skipped)."
+
 # ── Release (deploy + sign + SBOM) ─────────────────────────────────
 release-caddy: deploy-caddy sign-caddy sbom-caddy ## Deploy Caddy + sign + SBOM
 	@echo "Caddy released (signed + SBOM attached)."
