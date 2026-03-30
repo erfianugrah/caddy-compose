@@ -361,6 +361,27 @@ func validateExclusion(e RuleExclusion) error {
 				return fmt.Errorf("invalid challenge_ttl %q: %v", e.ChallengeTTL, err)
 			}
 		}
+		// Validate app checks (P2).
+		validAppCheckTypes := map[string]bool{"window_prop": true, "dom_selector": true, "meta_content": true}
+		for i, ac := range e.ChallengeAppChecks {
+			if !validAppCheckTypes[ac.Type] {
+				return fmt.Errorf("challenge_app_checks[%d]: invalid type %q (must be window_prop, dom_selector, or meta_content)", i, ac.Type)
+			}
+			switch ac.Type {
+			case "window_prop":
+				if ac.Path == "" {
+					return fmt.Errorf("challenge_app_checks[%d]: window_prop requires path", i)
+				}
+			case "dom_selector":
+				if ac.Selector == "" {
+					return fmt.Errorf("challenge_app_checks[%d]: dom_selector requires selector", i)
+				}
+			case "meta_content":
+				if ac.Name == "" {
+					return fmt.Errorf("challenge_app_checks[%d]: meta_content requires name", i)
+				}
+			}
+		}
 	}
 
 	return nil

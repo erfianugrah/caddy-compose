@@ -351,3 +351,73 @@ describe("fetchCRSRules", () => {
     expect(mockFetch).toHaveBeenCalledWith("/api/crs/rules", undefined);
   });
 });
+
+// ─── Challenge with app checks (P2) ────────────────────────────────
+
+describe("getExclusions (challenge with app_checks)", () => {
+  it("maps challenge_app_checks from Go API response", async () => {
+    const goExclusions = [
+      {
+        id: "exc-challenge-app",
+        name: "Challenge with app state",
+        description: "",
+        type: "challenge",
+        conditions: [{ field: "path", operator: "eq", value: "/" }],
+        group_operator: "and",
+        enabled: true,
+        created_at: "2026-03-30T00:00:00Z",
+        updated_at: "2026-03-30T00:00:00Z",
+        challenge_difficulty: 4,
+        challenge_algorithm: "fast",
+        challenge_ttl: "1h",
+        challenge_bind_ip: true,
+        challenge_bind_ja4: true,
+        challenge_app_checks: [
+          { type: "window_prop", path: "__NEXT_DATA__" },
+          { type: "dom_selector", selector: "[data-reactroot]" },
+          { type: "meta_content", name: "csrf-token" },
+        ],
+      },
+    ];
+
+    vi.stubGlobal("fetch", mockFetchResponse(goExclusions));
+
+    const { getExclusions } = await import("@/lib/api");
+    const result = await getExclusions();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("challenge");
+    expect(result[0].challenge_app_checks).toBeDefined();
+    expect(result[0].challenge_app_checks).toHaveLength(3);
+    expect(result[0].challenge_app_checks![0].type).toBe("window_prop");
+    expect(result[0].challenge_app_checks![0].path).toBe("__NEXT_DATA__");
+    expect(result[0].challenge_app_checks![1].type).toBe("dom_selector");
+    expect(result[0].challenge_app_checks![1].selector).toBe("[data-reactroot]");
+    expect(result[0].challenge_app_checks![2].type).toBe("meta_content");
+    expect(result[0].challenge_app_checks![2].name).toBe("csrf-token");
+  });
+
+  it("maps empty app_checks as undefined", async () => {
+    const goExclusions = [
+      {
+        id: "exc-challenge-no-app",
+        name: "Challenge without app checks",
+        description: "",
+        type: "challenge",
+        conditions: [{ field: "path", operator: "eq", value: "/" }],
+        group_operator: "and",
+        enabled: true,
+        created_at: "2026-03-30T00:00:00Z",
+        updated_at: "2026-03-30T00:00:00Z",
+        challenge_difficulty: 4,
+      },
+    ];
+
+    vi.stubGlobal("fetch", mockFetchResponse(goExclusions));
+
+    const { getExclusions } = await import("@/lib/api");
+    const result = await getExclusions();
+
+    expect(result[0].challenge_app_checks).toBeUndefined();
+  });
+});

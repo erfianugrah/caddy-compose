@@ -16,7 +16,7 @@ import (
 type ChallengeReputationResponse struct {
 	JA4s         []JA4Reputation      `json:"ja4s"`
 	Clients      []IPChallengeHistory `json:"clients"`
-	Alerts       []ReputationAlert    `json:"alerts,omitempty"`
+	Alerts       []ReputationAlert    `json:"alerts"`
 	TotalJA4s    int                  `json:"total_ja4s"`
 	TotalClients int                  `json:"total_clients"`
 	TotalAlerts  int                  `json:"total_alerts"`
@@ -220,7 +220,7 @@ func (s *AccessLogStore) ChallengeReputation(hours int, filterService string) Ch
 	}
 
 	// Build IP history list + detect flags.
-	var alerts []ReputationAlert
+	alerts := make([]ReputationAlert, 0)
 	clients := make([]IPChallengeHistory, 0, len(ipMap))
 	for addr, ip := range ipMap {
 		ch := IPChallengeHistory{

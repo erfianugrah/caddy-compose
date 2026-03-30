@@ -1776,6 +1776,104 @@ func TestValidateExclusion_ChallengeType(t *testing.T) {
 	}
 }
 
+func TestValidateExclusion_ChallengeAppChecks(t *testing.T) {
+	base := RuleExclusion{
+		Name:       "challenge-with-app-checks",
+		Type:       "challenge",
+		Conditions: []Condition{{Field: "path", Operator: "eq", Value: "/"}},
+	}
+
+	t.Run("valid_window_prop", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "window_prop", Path: "__NEXT_DATA__"},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("valid_dom_selector", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "dom_selector", Selector: "[data-reactroot]"},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("valid_meta_content", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "meta_content", Name: "csrf-token"},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("valid_multiple_checks", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "window_prop", Path: "__nuxt"},
+			{Type: "dom_selector", Selector: "#app"},
+			{Type: "meta_content", Name: "csrf-token"},
+		}
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("invalid_type", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "invalid_type", Path: "foo"},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for invalid check type")
+		}
+	})
+
+	t.Run("window_prop_missing_path", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "window_prop"},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for window_prop without path")
+		}
+	})
+
+	t.Run("dom_selector_missing_selector", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "dom_selector"},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for dom_selector without selector")
+		}
+	})
+
+	t.Run("meta_content_missing_name", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = []AppCheckConfig{
+			{Type: "meta_content"},
+		}
+		if err := validateExclusion(e); err == nil {
+			t.Error("expected error for meta_content without name")
+		}
+	})
+
+	t.Run("empty_app_checks_is_valid", func(t *testing.T) {
+		e := base
+		e.ChallengeAppChecks = nil
+		if err := validateExclusion(e); err != nil {
+			t.Errorf("expected no error for nil app checks, got %v", err)
+		}
+	})
+}
+
 func TestValidateExclusion_DetectAction(t *testing.T) {
 	base := RuleExclusion{
 		Name:     "test detect",

@@ -882,6 +882,7 @@ export function AdvancedBuilderForm({
       challenge_ttl: newType === "challenge" ? prev.challenge_ttl : "1h",
       challenge_bind_ip: newType === "challenge" ? prev.challenge_bind_ip : true,
       challenge_bind_ja4: newType === "challenge" ? prev.challenge_bind_ja4 : true,
+      challenge_app_checks: newType === "challenge" ? prev.challenge_app_checks : [],
       // Auto-set phase to outbound for response_header
       phase: newType === "response_header" ? "outbound" : prev.phase,
       // Reset header fields when switching away from response_header
@@ -918,6 +919,7 @@ export function AdvancedBuilderForm({
       data.challenge_ttl = form.challenge_ttl;
       data.challenge_bind_ip = form.challenge_bind_ip;
       data.challenge_bind_ja4 = form.challenge_bind_ja4;
+      if (form.challenge_app_checks.length > 0) data.challenge_app_checks = form.challenge_app_checks;
     }
     if (isResponseHeader) {
       if (Object.keys(form.header_set).length > 0) data.header_set = form.header_set;
@@ -1206,6 +1208,65 @@ export function AdvancedBuilderForm({
                   <p className="text-[10px] text-lv-muted/60">Blocks cookie replay from different TLS stacks (e.g., solve in browser, replay from curl).</p>
                 </div>
               </div>
+            </div>
+
+            {/* App-State Verification (P2) */}
+            <div className="space-y-2 pt-2 border-t border-lv-border/20">
+              <div>
+                <Label className="text-xs font-medium text-lv-muted">Application-State Checks</Label>
+                <p className="text-[10px] text-lv-muted/60">Verify the protected app has rendered after challenge redirect. Bot gets one free page load before detection.</p>
+              </div>
+              {form.challenge_app_checks.map((check, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={check.type}
+                    onChange={(e) => {
+                      const updated = [...form.challenge_app_checks];
+                      updated[i] = { ...updated[i], type: e.target.value as "window_prop" | "dom_selector" | "meta_content", path: undefined, selector: undefined, name: undefined };
+                      setForm((prev) => ({ ...prev, challenge_app_checks: updated }));
+                    }}
+                    className="h-8 rounded border border-lv-border/50 bg-lovelace-950 px-2 text-xs text-lv-text"
+                  >
+                    <option value="window_prop">Window Property</option>
+                    <option value="dom_selector">DOM Selector</option>
+                    <option value="meta_content">Meta Tag</option>
+                  </select>
+                  <Input
+                    value={check.type === "window_prop" ? (check.path ?? "") : check.type === "dom_selector" ? (check.selector ?? "") : (check.name ?? "")}
+                    onChange={(e) => {
+                      const updated = [...form.challenge_app_checks];
+                      if (check.type === "window_prop") updated[i] = { ...updated[i], path: e.target.value };
+                      else if (check.type === "dom_selector") updated[i] = { ...updated[i], selector: e.target.value };
+                      else updated[i] = { ...updated[i], name: e.target.value };
+                      setForm((prev) => ({ ...prev, challenge_app_checks: updated }));
+                    }}
+                    placeholder={check.type === "window_prop" ? "__NEXT_DATA__" : check.type === "dom_selector" ? "[data-reactroot]" : "csrf-token"}
+                    className="h-8 flex-1 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = form.challenge_app_checks.filter((_, j) => j !== i);
+                      setForm((prev) => ({ ...prev, challenge_app_checks: updated }));
+                    }}
+                    className="h-8 w-8 flex items-center justify-center rounded border border-lv-border/30 text-lv-muted hover:text-lv-red hover:border-lv-red/50"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((prev) => ({
+                    ...prev,
+                    challenge_app_checks: [...prev.challenge_app_checks, { type: "window_prop" }],
+                  }));
+                }}
+                className="flex items-center gap-1 text-xs text-lv-cyan hover:text-lv-cyan/80"
+              >
+                <Plus className="h-3 w-3" /> Add check
+              </button>
             </div>
           </div>
         </div>

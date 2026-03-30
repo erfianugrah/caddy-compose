@@ -22,6 +22,12 @@ type generateConfigWrapper struct {
 				TTLSeconds    int    `json:"ttl_seconds"`
 				BindIP        bool   `json:"bind_ip"`
 				BindJA4       bool   `json:"bind_ja4"`
+				AppChecks     []struct {
+					Type     string `json:"type"`
+					Path     string `json:"path,omitempty"`
+					Selector string `json:"selector,omitempty"`
+					Name     string `json:"name,omitempty"`
+				} `json:"app_checks,omitempty"`
 			} `json:"challenge,omitempty"`
 			SkipTargets *struct {
 				Phases []string `json:"phases,omitempty"`
@@ -675,6 +681,11 @@ func TestChallengeInterstitialContainsBotProbes(t *testing.T) {
 
 	bodyStr := string(body)
 	// Check for key bot detection probes in the JS.
+	// Note: with P1 obfuscation (plugin v0.41+), signal field names are
+	// randomized per-request, but the actual browser API calls remain.
+	// With P4 signal encryption, signals are submitted as signals_enc
+	// (not plaintext "signals"). We check for probes that exist in both
+	// old and new plugin versions.
 	probes := []string{
 		"navigator.webdriver",       // automation marker
 		"WEBGL_debug_renderer_info", // SwiftShader detection
@@ -682,14 +693,161 @@ func TestChallengeInterstitialContainsBotProbes(t *testing.T) {
 		"speechSynthesis",           // speech voices
 		"permissions.query",         // timing probe
 		"mousemove",                 // behavioral listener
-		`"signals"`,                 // signals JSON submission
-		`"behavior"`,                // behavior JSON submission
+		"crypto.subtle.digest",      // WebCrypto SHA-256 (PoW solver)
 	}
 	for _, probe := range probes {
 		if !strings.Contains(bodyStr, probe) {
 			t.Errorf("interstitial missing bot probe: %s", probe)
 		}
 	}
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  30c-extra. Challenge App-State Verification (P2)
+// ════════════════════════════════════════════════════════════════════
+
+func TestChallengeAppChecksCRUD(t *testing.T) {
+	t.Run("create-with-app-checks", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-challenge-app-checks",
+			"type":       "challenge",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/app-check-test"}},
+			"challenge_app_checks": []map[string]string{
+				{"type": "window_prop", "path": "__NEXT_DATA__"},
+				{"type": "dom_selector", "selector": "[data-reactroot]"},
+				{"type": "meta_content", "name": "csrf-token"},
+			},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create with app checks", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		// Verify app_checks persisted via GET.
+		resp, body = httpGet(t, wafctlURL+"/api/rules/"+ruleID)
+		assertCode(t, "get", 200, resp)
+		if !strings.Contains(string(body), "window_prop") {
+			t.Error("app_checks missing window_prop type in GET response")
+		}
+		if !strings.Contains(string(body), "__NEXT_DATA__") {
+			t.Error("app_checks missing __NEXT_DATA__ path in GET response")
+		}
+		if !strings.Contains(string(body), "[data-reactroot]") {
+			t.Error("app_checks missing [data-reactroot] selector in GET response")
+		}
+	})
+
+	t.Run("update-app-checks", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-challenge-app-checks-update",
+			"type":       "challenge",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/update-test"}},
+		}
+		resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "create", 201, resp)
+		ruleID := mustGetID(t, body)
+		t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+		// Update to add app checks.
+		resp, body = httpPut(t, wafctlURL+"/api/rules/"+ruleID, map[string]any{
+			"challenge_app_checks": []map[string]string{
+				{"type": "window_prop", "path": "__nuxt"},
+			},
+		})
+		assertCode(t, "update", 200, resp)
+		if !strings.Contains(string(body), "__nuxt") {
+			t.Error("updated app_checks missing __nuxt")
+		}
+	})
+}
+
+func TestChallengeAppChecksValidation(t *testing.T) {
+	t.Run("invalid-type", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-bad-check-type",
+			"type":       "challenge",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/"}},
+			"challenge_app_checks": []map[string]string{
+				{"type": "invalid_type", "path": "foo"},
+			},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "invalid check type", 400, resp)
+	})
+
+	t.Run("window-prop-missing-path", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-bad-check-no-path",
+			"type":       "challenge",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/"}},
+			"challenge_app_checks": []map[string]string{
+				{"type": "window_prop"},
+			},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "missing path", 400, resp)
+	})
+
+	t.Run("dom-selector-missing-selector", func(t *testing.T) {
+		payload := map[string]any{
+			"name":       "e2e-bad-check-no-sel",
+			"type":       "challenge",
+			"enabled":    true,
+			"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/"}},
+			"challenge_app_checks": []map[string]string{
+				{"type": "dom_selector"},
+			},
+		}
+		resp, _ := httpPost(t, wafctlURL+"/api/rules", payload)
+		assertCode(t, "missing selector", 400, resp)
+	})
+}
+
+func TestChallengeAppChecksInGeneratedConfig(t *testing.T) {
+	ensureDefaultConfig(t)
+
+	payload := map[string]any{
+		"name":       "e2e-challenge-app-gen",
+		"type":       "challenge",
+		"enabled":    true,
+		"conditions": []map[string]string{{"field": "path", "operator": "eq", "value": "/app-gen"}},
+		"challenge_app_checks": []map[string]string{
+			{"type": "window_prop", "path": "__NEXT_DATA__"},
+			{"type": "dom_selector", "selector": "#app"},
+		},
+	}
+	resp, body := httpPost(t, wafctlURL+"/api/rules", payload)
+	assertCode(t, "create", 201, resp)
+	ruleID := mustGetID(t, body)
+	t.Cleanup(func() { cleanup(t, wafctlURL+"/api/rules/"+ruleID) })
+
+	resp, body = httpPost(t, wafctlURL+"/api/config/generate", nil)
+	assertCode(t, "generate", 200, resp)
+
+	var wrapper generateConfigWrapper
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, r := range wrapper.PolicyRules.Rules {
+		if r.ID == ruleID && r.Challenge != nil {
+			if len(r.Challenge.AppChecks) != 2 {
+				t.Errorf("app_checks length = %d, want 2", len(r.Challenge.AppChecks))
+			}
+			if r.Challenge.AppChecks[0].Type != "window_prop" {
+				t.Errorf("first check type = %q, want window_prop", r.Challenge.AppChecks[0].Type)
+			}
+			if r.Challenge.AppChecks[0].Path != "__NEXT_DATA__" {
+				t.Errorf("first check path = %q, want __NEXT_DATA__", r.Challenge.AppChecks[0].Path)
+			}
+			return
+		}
+	}
+	t.Error("challenge rule with app_checks not found in generated config")
 }
 
 // ════════════════════════════════════════════════════════════════════

@@ -475,6 +475,7 @@ export default function PolicyEngine() {
         challenge_ttl: exclusionToEdit.challenge_ttl ?? "1h",
         challenge_bind_ip: exclusionToEdit.challenge_bind_ip ?? true,
         challenge_bind_ja4: exclusionToEdit.challenge_bind_ja4 ?? true,
+        challenge_app_checks: exclusionToEdit.challenge_app_checks ?? [],
         header_set: exclusionToEdit.header_set ?? {},
         header_add: exclusionToEdit.header_add ?? {},
         header_remove: exclusionToEdit.header_remove ?? [],

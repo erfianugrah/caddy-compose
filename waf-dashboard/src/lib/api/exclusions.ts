@@ -1,5 +1,15 @@
 import { API_BASE, fetchJSON, postJSON, putJSON, deleteJSON } from "./shared";
 
+// ─── Application-State Check (P2) ──────────────────────────────────
+
+/** Application-state verification check for challenge rules (P2). */
+export interface AppCheckConfig {
+  type: "window_prop" | "dom_selector" | "meta_content";
+  path?: string;
+  selector?: string;
+  name?: string;
+}
+
 // ─── CRS Catalog / Autocomplete ─────────────────────────────────────
 
 export interface CRSRule {
@@ -132,6 +142,7 @@ export interface Exclusion {
   challenge_ttl?: string;
   challenge_bind_ip?: boolean;
   challenge_bind_ja4?: boolean;
+  challenge_app_checks?: AppCheckConfig[];
   // response_header fields
   header_set?: Record<string, string>;
   header_add?: Record<string, string>;
@@ -216,6 +227,7 @@ interface RawExclusion {
   challenge_ttl?: string;
   challenge_bind_ip?: boolean;
   challenge_bind_ja4?: boolean;
+  challenge_app_checks?: AppCheckConfig[];
   header_set?: Record<string, string>;
   header_add?: Record<string, string>;
   header_remove?: string[];
@@ -268,6 +280,7 @@ function mapExclusionFromGo(raw: RawExclusion): Exclusion {
     challenge_ttl: raw.challenge_ttl || undefined,
     challenge_bind_ip: raw.challenge_bind_ip ?? undefined,
     challenge_bind_ja4: raw.challenge_bind_ja4 ?? undefined,
+    challenge_app_checks: raw.challenge_app_checks?.length ? raw.challenge_app_checks : undefined,
     // ─── response_header ─────────────────────────────────────────
     header_set: raw.header_set || undefined,
     header_add: raw.header_add || undefined,

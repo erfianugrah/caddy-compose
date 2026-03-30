@@ -834,6 +834,7 @@ export interface AdvancedFormState {
   challenge_ttl: string;
   challenge_bind_ip: boolean;
   challenge_bind_ja4: boolean;
+  challenge_app_checks: import("@/lib/api/exclusions").AppCheckConfig[];
   // response header fields
   header_set: Record<string, string>;
   header_add: Record<string, string>;
@@ -863,6 +864,7 @@ export const emptyAdvancedForm: AdvancedFormState = {
   challenge_ttl: "1h",
   challenge_bind_ip: true,
   challenge_bind_ja4: true,
+  challenge_app_checks: [],
   // response header defaults
   header_set: {},
   header_add: {},

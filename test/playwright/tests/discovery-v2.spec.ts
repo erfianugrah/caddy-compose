@@ -13,10 +13,12 @@ test.describe("Endpoint Discovery — Service Grouping", () => {
     await expect(tab).toBeVisible();
     await tab.click();
 
-    // Wait for the discovery panel to load.
+    // Wait for the discovery panel to load — the panel fetches data async
+    // and may take time depending on log volume. Use a longer timeout and
+    // also match "Without Protection" which appears in the summary stats.
     await expect(
-      page.getByText(/Endpoints Discovered|No traffic observed/).first()
-    ).toBeVisible({ timeout: 15000 });
+      page.getByText(/Endpoints Discovered|No traffic observed|Without Protection/).first()
+    ).toBeVisible({ timeout: 30000 });
 
     // If there are endpoints, they should be in collapsible service groups.
     // Each service group is a Card with a button header containing the service name.
@@ -57,8 +59,8 @@ test.describe("Endpoint Discovery — Service Grouping", () => {
     const tab = page.getByText("Endpoint Discovery");
     await tab.click();
     await expect(
-      page.getByText(/Endpoints Discovered|No traffic observed/).first()
-    ).toBeVisible({ timeout: 15000 });
+      page.getByText(/Endpoints Discovered|No traffic observed|Without Protection/).first()
+    ).toBeVisible({ timeout: 30000 });
 
     // If endpoints exist, check the summary card wording.
     const protectionCard = page.getByText("Without Protection");
@@ -123,8 +125,8 @@ test.describe("OpenAPI Schema Management", () => {
     const tab = page.getByText("Endpoint Discovery");
     await tab.click();
     await expect(
-      page.getByText(/Endpoints Discovered|No traffic observed/).first()
-    ).toBeVisible({ timeout: 15000 });
+      page.getByText(/Endpoints Discovered|No traffic observed|Without Protection/).first()
+    ).toBeVisible({ timeout: 30000 });
 
     // The OpenAPI Schemas section should exist (collapsed by default).
     // It's rendered at the bottom, so scroll and wait.

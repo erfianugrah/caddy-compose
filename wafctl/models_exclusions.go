@@ -23,6 +23,16 @@ type SkipTargets struct {
 	AllRemaining bool     `json:"all_remaining,omitempty"` // Skip everything below this rule
 }
 
+// AppCheckConfig defines a single application-state verification check.
+// Used by challenge rules (P2) to verify that the protected application
+// has fully rendered after the challenge redirect.
+type AppCheckConfig struct {
+	Type     string `json:"type"`               // "window_prop", "dom_selector", "meta_content"
+	Path     string `json:"path,omitempty"`     // Dot-separated window property path (for window_prop)
+	Selector string `json:"selector,omitempty"` // CSS selector (for dom_selector)
+	Name     string `json:"name,omitempty"`     // Meta tag name attribute (for meta_content)
+}
+
 // RuleExclusion is a single WAF policy engine rule.
 // Types: allow, block, challenge, skip, detect, rate_limit, response_header.
 type RuleExclusion struct {
@@ -60,13 +70,14 @@ type RuleExclusion struct {
 	// ─── challenge-only ─────────────────────────────────────────────
 	// Proof-of-work challenge settings. Plugin serves an interstitial page
 	// requiring SHA-256 hashcash before proxying to upstream.
-	ChallengeDifficulty    int    `json:"challenge_difficulty,omitempty"`     // Leading hex zeros in SHA-256 (1-16, default 4)
-	ChallengeMinDifficulty int    `json:"challenge_min_difficulty,omitempty"` // Adaptive: minimum difficulty (1-16)
-	ChallengeMaxDifficulty int    `json:"challenge_max_difficulty,omitempty"` // Adaptive: maximum difficulty (1-16)
-	ChallengeAlgorithm     string `json:"challenge_algorithm,omitempty"`      // "fast" (default) or "slow"
-	ChallengeTTL           string `json:"challenge_ttl,omitempty"`            // Cookie lifetime: "1h" (default), "24h", "7d"
-	ChallengeBindIP        *bool  `json:"challenge_bind_ip,omitempty"`        // Bind cookie to client IP (default true)
-	ChallengeBindJA4       *bool  `json:"challenge_bind_ja4,omitempty"`       // Bind cookie to JA4 TLS fingerprint (default true)
+	ChallengeDifficulty    int              `json:"challenge_difficulty,omitempty"`     // Leading hex zeros in SHA-256 (1-16, default 4)
+	ChallengeMinDifficulty int              `json:"challenge_min_difficulty,omitempty"` // Adaptive: minimum difficulty (1-16)
+	ChallengeMaxDifficulty int              `json:"challenge_max_difficulty,omitempty"` // Adaptive: maximum difficulty (1-16)
+	ChallengeAlgorithm     string           `json:"challenge_algorithm,omitempty"`      // "fast" (default) or "slow"
+	ChallengeTTL           string           `json:"challenge_ttl,omitempty"`            // Cookie lifetime: "1h" (default), "24h", "7d"
+	ChallengeBindIP        *bool            `json:"challenge_bind_ip,omitempty"`        // Bind cookie to client IP (default true)
+	ChallengeBindJA4       *bool            `json:"challenge_bind_ja4,omitempty"`       // Bind cookie to JA4 TLS fingerprint (default true)
+	ChallengeAppChecks     []AppCheckConfig `json:"challenge_app_checks,omitempty"`     // Application-state verification checks (P2)
 
 	// ─── response_header-only ───────────────────────────────────────
 	// Actions on response headers. Multiple can be combined in one rule.

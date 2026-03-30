@@ -68,13 +68,14 @@ type PolicyRule struct {
 
 // PolicyChallengeConfig holds per-rule challenge settings for the plugin.
 type PolicyChallengeConfig struct {
-	Difficulty    int    `json:"difficulty"`               // Leading hex zeros in SHA-256 (1-16, default 4)
-	MinDifficulty int    `json:"min_difficulty,omitempty"` // Adaptive: minimum difficulty (1-16)
-	MaxDifficulty int    `json:"max_difficulty,omitempty"` // Adaptive: maximum difficulty (1-16)
-	Algorithm     string `json:"algorithm"`                // "fast" (default) or "slow"
-	TTLSeconds    int    `json:"ttl_seconds"`              // Cookie lifetime in seconds (default 3600 = 1h)
-	BindIP        bool   `json:"bind_ip"`                  // Bind cookie to client IP (default true)
-	BindJA4       bool   `json:"bind_ja4"`                 // Bind cookie to JA4 TLS fingerprint (default true)
+	Difficulty    int              `json:"difficulty"`               // Leading hex zeros in SHA-256 (1-16, default 4)
+	MinDifficulty int              `json:"min_difficulty,omitempty"` // Adaptive: minimum difficulty (1-16)
+	MaxDifficulty int              `json:"max_difficulty,omitempty"` // Adaptive: maximum difficulty (1-16)
+	Algorithm     string           `json:"algorithm"`                // "fast" (default) or "slow"
+	TTLSeconds    int              `json:"ttl_seconds"`              // Cookie lifetime in seconds (default 3600 = 1h)
+	BindIP        bool             `json:"bind_ip"`                  // Bind cookie to client IP (default true)
+	BindJA4       bool             `json:"bind_ja4"`                 // Bind cookie to JA4 TLS fingerprint (default true)
+	AppChecks     []AppCheckConfig `json:"app_checks,omitempty"`     // Application-state verification checks (P2)
 }
 
 // PolicySkipTargets mirrors the plugin's SkipTargets type.
@@ -328,6 +329,7 @@ func GeneratePolicyRulesWithRL(exclusions []RuleExclusion, rlGlobal RateLimitGlo
 				TTLSeconds:    ttlSec,
 				BindIP:        bindIP,
 				BindJA4:       bindJA4,
+				AppChecks:     e.ChallengeAppChecks,
 			}
 		}
 

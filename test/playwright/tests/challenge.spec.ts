@@ -96,6 +96,25 @@ const STEALTH_SCRIPT = `
   if (!window.chrome.runtime) {
     window.chrome.runtime = { id: undefined };
   }
+
+  // P3: Patch canvas fingerprint to return non-zero hash
+  const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+  CanvasRenderingContext2D.prototype.getImageData = function(...args) {
+    const data = origGetImageData.apply(this, args);
+    // Slightly modify first pixel to ensure non-zero hash
+    if (data.data.length > 3 && data.data[0] === 0) data.data[0] = 1;
+    return data;
+  };
+
+  // P3: Patch navigator.connection (headless Chrome lacks it)
+  if (!navigator.connection) {
+    Object.defineProperty(navigator, 'connection', {
+      get: () => ({ effectiveType: '4g', downlink: 10, rtt: 50, saveData: false })
+    });
+  }
+
+  // P3: Patch font measurement to return non-zero (ensure getBoundingClientRect returns real values)
+  // (Headless Chrome already has fonts, so this is mainly a safety net)
 `;
 
 // Helper: create a browser context with stealth patches applied.
