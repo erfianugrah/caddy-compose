@@ -7,9 +7,11 @@ export interface ChallengeStats {
   passed: number;
   failed: number;
   bypassed: number;
+  abandoned: number;
   pass_rate: number;
   fail_rate: number;
   bypass_rate: number;
+  abandon_rate: number;
   avg_solve_ms: number;
   avg_solve_ms_passed: number;
   avg_solve_ms_failed: number;

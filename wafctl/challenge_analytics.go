@@ -17,15 +17,17 @@ import (
 // ChallengeStatsResponse is the response for GET /api/challenge/stats.
 type ChallengeStatsResponse struct {
 	// Funnel — total counts for each challenge outcome.
-	Issued   int `json:"issued"`
-	Passed   int `json:"passed"`
-	Failed   int `json:"failed"`
-	Bypassed int `json:"bypassed"`
+	Issued    int `json:"issued"`
+	Passed    int `json:"passed"`
+	Failed    int `json:"failed"`
+	Bypassed  int `json:"bypassed"`
+	Abandoned int `json:"abandoned"` // issued - passed - failed (clients that never submitted)
 
 	// Rates — derived from funnel counts (0.0 - 1.0).
-	PassRate   float64 `json:"pass_rate"`   // passed / issued
-	FailRate   float64 `json:"fail_rate"`   // failed / issued
-	BypassRate float64 `json:"bypass_rate"` // bypassed / (passed + bypassed)
+	PassRate    float64 `json:"pass_rate"`    // passed / issued
+	FailRate    float64 `json:"fail_rate"`    // failed / issued
+	BypassRate  float64 `json:"bypass_rate"`  // bypassed / (passed + bypassed)
+	AbandonRate float64 `json:"abandon_rate"` // abandoned / issued
 
 	// Solve metrics (from challenge_passed/failed events with data).
 	AvgSolveMs       float64 `json:"avg_solve_ms"`        // average elapsed_ms across all solves (passed + failed)
@@ -428,10 +430,19 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 		}
 	}
 
+	// Compute abandoned count — challenges issued with no corresponding
+	// pass or fail. These are clients that received the interstitial but
+	// never submitted a solution (JS disabled, bots, tab closed).
+	resp.Abandoned = resp.Issued - resp.Passed - resp.Failed
+	if resp.Abandoned < 0 {
+		resp.Abandoned = 0 // safety clamp
+	}
+
 	// Compute rates and averages.
 	if resp.Issued > 0 {
 		resp.PassRate = float64(resp.Passed) / float64(resp.Issued)
 		resp.FailRate = float64(resp.Failed) / float64(resp.Issued)
+		resp.AbandonRate = float64(resp.Abandoned) / float64(resp.Issued)
 	}
 	if solveTimeCount > 0 {
 		resp.AvgSolveMs = float64(solveTimeSum) / float64(solveTimeCount)

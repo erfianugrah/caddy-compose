@@ -77,6 +77,10 @@ func TestChallengeStats_FunnelCounts(t *testing.T) {
 	if stats.Bypassed != 1 {
 		t.Errorf("Bypassed = %d, want 1", stats.Bypassed)
 	}
+	// Abandoned = issued - passed - failed = 6 - 1 - 4 = 1
+	if stats.Abandoned != 1 {
+		t.Errorf("Abandoned = %d, want 1 (issued - passed - failed)", stats.Abandoned)
+	}
 }
 
 func TestChallengeStats_Rates(t *testing.T) {
@@ -96,6 +100,11 @@ func TestChallengeStats_Rates(t *testing.T) {
 	// BypassRate = bypassed / (passed + bypassed) = 1/2
 	if diff := stats.BypassRate - 0.5; diff > 0.01 || diff < -0.01 {
 		t.Errorf("BypassRate = %.4f, want ~0.5", stats.BypassRate)
+	}
+	// AbandonRate = abandoned / issued = 1/6
+	wantAbandonRate := 1.0 / 6.0
+	if diff := stats.AbandonRate - wantAbandonRate; diff > 0.01 || diff < -0.01 {
+		t.Errorf("AbandonRate = %.4f, want ~%.4f", stats.AbandonRate, wantAbandonRate)
 	}
 }
 

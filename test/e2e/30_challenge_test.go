@@ -1149,9 +1149,11 @@ func TestChallengeStatsFullStructure(t *testing.T) {
 		Passed        int               `json:"passed"`
 		Failed        int               `json:"failed"`
 		Bypassed      int               `json:"bypassed"`
+		Abandoned     int               `json:"abandoned"`
 		PassRate      float64           `json:"pass_rate"`
 		FailRate      float64           `json:"fail_rate"`
 		BypassRate    float64           `json:"bypass_rate"`
+		AbandonRate   float64           `json:"abandon_rate"`
 		AvgSolveMs    float64           `json:"avg_solve_ms"`
 		AvgDifficulty float64           `json:"avg_difficulty"`
 		ScoreBuckets  []json.RawMessage `json:"score_buckets"`
@@ -1175,10 +1177,22 @@ func TestChallengeStatsFullStructure(t *testing.T) {
 	if stats.BypassRate < 0 || stats.BypassRate > 1 {
 		t.Errorf("bypass_rate = %f, want [0, 1]", stats.BypassRate)
 	}
+	if stats.AbandonRate < 0 || stats.AbandonRate > 1 {
+		t.Errorf("abandon_rate = %f, want [0, 1]", stats.AbandonRate)
+	}
 
 	// Funnel counts must be non-negative.
-	if stats.Issued < 0 || stats.Passed < 0 || stats.Failed < 0 || stats.Bypassed < 0 {
+	if stats.Issued < 0 || stats.Passed < 0 || stats.Failed < 0 || stats.Bypassed < 0 || stats.Abandoned < 0 {
 		t.Error("funnel counts must be non-negative")
+	}
+
+	// Abandoned must equal issued - passed - failed.
+	expectedAbandoned := stats.Issued - stats.Passed - stats.Failed
+	if expectedAbandoned < 0 {
+		expectedAbandoned = 0
+	}
+	if stats.Abandoned != expectedAbandoned {
+		t.Errorf("abandoned = %d, want %d (issued - passed - failed)", stats.Abandoned, expectedAbandoned)
 	}
 
 	// Buckets always present (6 fixed).

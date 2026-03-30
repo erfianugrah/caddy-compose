@@ -374,6 +374,7 @@ test.describe("Challenge Analytics Dashboard", () => {
     await expect(page.getByText("CHALLENGES ISSUED")).toBeVisible();
     await expect(page.getByText("CHALLENGES PASSED")).toBeVisible();
     await expect(page.getByText("CHALLENGES FAILED")).toBeVisible();
+    await expect(page.getByText("ABANDONED")).toBeVisible();
     await expect(page.getByText("COOKIE BYPASSES")).toBeVisible();
   });
 
@@ -400,6 +401,8 @@ test.describe("Challenge Analytics Dashboard", () => {
     expect(data.passed).toBeGreaterThanOrEqual(0);
     expect(data.failed).toBeGreaterThanOrEqual(0);
     expect(data.bypassed).toBeGreaterThanOrEqual(0);
+    expect(data.abandoned).toBeGreaterThanOrEqual(0);
+    expect(data.abandon_rate).toBeGreaterThanOrEqual(0);
     expect(data.score_buckets).toHaveLength(6);
     expect(Array.isArray(data.timeline)).toBe(true);
     expect(Array.isArray(data.top_clients)).toBe(true);

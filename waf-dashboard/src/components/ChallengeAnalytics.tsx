@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, ShieldBan, RefreshCw, Radar, Plus, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { Shield, ShieldCheck, ShieldAlert, ShieldX, ShieldOff, ShieldBan, ShieldMinus, RefreshCw, Radar, Plus, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +37,7 @@ function FunnelBar({ stats }: { stats: ChallengeStats }) {
     { label: "Issued", value: stats.issued, color: "bg-lv-yellow" },
     { label: "Passed", value: stats.passed, color: "bg-lv-green" },
     { label: "Failed", value: stats.failed, color: "bg-lv-red" },
+    { label: "Abandoned", value: stats.abandoned, color: "bg-lv-muted/40" },
     { label: "Bypassed", value: stats.bypassed, color: "bg-lv-cyan" },
   ];
 
@@ -892,10 +893,11 @@ export default function ChallengeAnalytics() {
       {activeTab === "analytics" && <>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard title="Challenges Issued" value={stats?.issued ?? 0} icon={Shield} color="yellow" loading={loading} href="/events?type=challenge_issued" />
         <StatCard title="Challenges Passed" value={stats?.passed ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=challenge_passed" />
         <StatCard title="Challenges Failed" value={stats?.failed ?? 0} icon={ShieldX} color="red" loading={loading} href="/events?type=challenge_failed" />
+        <StatCard title="Abandoned" value={stats?.abandoned ?? 0} icon={ShieldMinus} color="muted" loading={loading} />
         <StatCard title="Cookie Bypasses" value={stats?.bypassed ?? 0} icon={ShieldAlert} color="cyan" loading={loading} />
       </div>
 
@@ -907,7 +909,7 @@ export default function ChallengeAnalytics() {
           </CardHeader>
           <CardContent className="space-y-4">
             <FunnelBar stats={stats} />
-            <div className="grid grid-cols-5 gap-4 pt-2">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-4 pt-2">
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-green">{pct(stats.pass_rate)}</p>
                 <p className="text-xs text-muted-foreground">Pass Rate</p>
@@ -915,6 +917,10 @@ export default function ChallengeAnalytics() {
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-red">{pct(stats.fail_rate)}</p>
                 <p className="text-xs text-muted-foreground">Fail Rate</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-muted-foreground">{pct(stats.abandon_rate)}</p>
+                <p className="text-xs text-muted-foreground">Abandon Rate</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-cyan">{pct(stats.bypass_rate)}</p>

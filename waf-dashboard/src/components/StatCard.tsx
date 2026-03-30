@@ -32,6 +32,7 @@ export function StatCard({
     orange: "text-lv-peach-bright bg-lv-peach-bright/15",
     red: "text-lv-red-bright bg-lv-red-bright/15",
     blue: "text-lv-blue bg-lv-blue/15",
+    muted: "text-muted-foreground bg-muted-foreground/10",
   };
   const textColorMap: Record<string, string> = {
     green: "text-lv-green",
@@ -42,6 +43,7 @@ export function StatCard({
     orange: "text-lv-peach-bright",
     red: "text-lv-red-bright",
     blue: "text-lv-blue",
+    muted: "text-muted-foreground",
   };
 
   const card = (
