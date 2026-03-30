@@ -280,6 +280,22 @@ func runServe() int {
 		}
 	}()
 
+	// Periodic abandoned challenge ingestion — reads events written by the plugin
+	// when issued challenges expire without a verify attempt.
+	abandonedFile := filepath.Join(deployCfg.WafDir, "challenge-abandoned.jsonl")
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				accessLogStore.IngestAbandonedFile(abandonedFile)
+			}
+		}
+	}()
+
 	// Periodic auto-escalation check — creates temporary block rules for repeat offenders.
 	// Also cleans up expired rules on each tick.
 	go func() {

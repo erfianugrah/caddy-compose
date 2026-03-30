@@ -1036,6 +1036,82 @@ func (s *AccessLogStore) EventCount() int {
 	return len(s.events)
 }
 
+// IngestAbandonedFile reads challenge-abandoned.jsonl written by the plugin,
+// converts each entry to a RateLimitEvent with source "challenge_abandoned",
+// appends them to the event store, and truncates the file. Called periodically.
+func (s *AccessLogStore) IngestAbandonedFile(path string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0
+		}
+		log.Printf("[access-log] read abandoned file: %v", err)
+		return 0
+	}
+	if len(data) == 0 {
+		return 0
+	}
+
+	type abandonedEntry struct {
+		ClientIP   string `json:"client_ip"`
+		Service    string `json:"service"`
+		JA4        string `json:"ja4,omitempty"`
+		Difficulty int    `json:"difficulty"`
+		IssuedAt   int64  `json:"issued_at"`
+		ExpiredAt  int64  `json:"expired_at"`
+	}
+
+	var events []RateLimitEvent
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry abandonedEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			log.Printf("[access-log] parse abandoned entry: %v", err)
+			continue
+		}
+		events = append(events, RateLimitEvent{
+			Timestamp:           time.Unix(entry.ExpiredAt, 0).UTC(),
+			ClientIP:            entry.ClientIP,
+			Service:             entry.Service,
+			JA4:                 entry.JA4,
+			Source:              "challenge_abandoned",
+			ChallengeDifficulty: entry.Difficulty,
+			Status:              200, // interstitial was served as 200
+		})
+	}
+
+	if len(events) == 0 {
+		return 0
+	}
+
+	// Append to the store.
+	s.mu.Lock()
+	for i := range events {
+		s.events = append(s.events, events[i])
+		s.indexEvent(len(s.events) - 1)
+		if s.counters != nil {
+			s.counters.incrementRLEvent(&events[i])
+		}
+	}
+	s.generation.Add(1)
+	s.mu.Unlock()
+
+	// Persist to event JSONL if configured.
+	if s.eventFile != "" {
+		s.appendEventsToJSONL(events)
+	}
+
+	// Truncate the file after successful ingestion.
+	if err := os.Truncate(path, 0); err != nil {
+		log.Printf("[access-log] truncate abandoned file: %v", err)
+	}
+
+	log.Printf("[access-log] ingested %d abandoned challenge events", len(events))
+	return len(events)
+}
+
 // FastSummary returns a SummaryResponse computed from incremental per-hour
 // counters. This is O(buckets) instead of O(events) — typically ~100x faster
 // for large event stores. If hours <= 0, all buckets are included.
@@ -1213,6 +1289,10 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// Valid challenge cookie present, challenge skipped.
 		status = rle.Status
 		eventType = "challenge_bypassed"
+	case "challenge_abandoned":
+		// Client received interstitial but never submitted to verify endpoint.
+		status = 200
+		eventType = "challenge_abandoned"
 	case "logged":
 		// Below-threshold detect: CRS rules scored but didn't exceed threshold.
 		status = rle.Status
@@ -1224,7 +1304,7 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	// Non-blocking event types.
 	nonBlocking := map[string]bool{
 		"logged": true, "policy_skip": true,
-		"challenge_issued": true, "challenge_passed": true, "challenge_bypassed": true,
+		"challenge_issued": true, "challenge_passed": true, "challenge_bypassed": true, "challenge_abandoned": true,
 	}
 	isBlocked := !nonBlocking[rle.Source]
 	evt := Event{
@@ -1289,10 +1369,11 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	// For challenge events, set the rule message for display in the event detail.
 	if strings.HasPrefix(rle.Source, "challenge_") && rle.RuleName != "" {
 		labels := map[string]string{
-			"challenge_issued":   "Challenge Issued",
-			"challenge_passed":   "Challenge Passed",
-			"challenge_failed":   "Challenge Failed",
-			"challenge_bypassed": "Challenge Bypassed",
+			"challenge_issued":    "Challenge Issued",
+			"challenge_passed":    "Challenge Passed",
+			"challenge_failed":    "Challenge Failed",
+			"challenge_bypassed":  "Challenge Bypassed",
+			"challenge_abandoned": "Challenge Abandoned (no verify attempt)",
 		}
 		label := labels[rle.Source]
 		if label == "" {

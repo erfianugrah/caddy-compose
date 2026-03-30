@@ -54,8 +54,11 @@ func challengeEvents() []RateLimitEvent {
 		{Timestamp: base.Add(10 * time.Minute), ClientIP: "10.0.0.3", Service: "app.example.com", Source: "challenge_issued", Status: 200, JA4: "t13d0707h1_eeee5555_ffff6666", Country: "JP"},
 		{Timestamp: base.Add(11 * time.Minute), ClientIP: "10.0.0.3", Service: "app.example.com", Source: "challenge_issued", Status: 200, JA4: "t13d0606h1_11112222_33334444", Country: "JP"},
 
+		// challenge_abandoned — IP3 (plugin detected these as expired after 5min timeout)
+		{Timestamp: base.Add(13 * time.Minute), ClientIP: "10.0.0.3", Service: "app.example.com", Source: "challenge_abandoned", Status: 200, JA4: "t13d0909h1_aaaa1111_bbbb2222", ChallengeDifficulty: 4, Country: "JP"},
+
 		// Non-challenge event (should be ignored by analytics)
-		{Timestamp: base.Add(12 * time.Minute), ClientIP: "10.0.0.99", Service: "app.example.com", Source: "logged", Status: 200},
+		{Timestamp: base.Add(14 * time.Minute), ClientIP: "10.0.0.99", Service: "app.example.com", Source: "logged", Status: 200},
 	}
 }
 

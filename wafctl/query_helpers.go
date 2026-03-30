@@ -130,6 +130,8 @@ func rleEventType(source string) string {
 		return "challenge_failed"
 	case "challenge_bypassed":
 		return "challenge_bypassed"
+	case "challenge_abandoned":
+		return "challenge_abandoned"
 	default:
 		return "rate_limited"
 	}
@@ -139,7 +141,7 @@ func rleEventType(source string) string {
 func rleIsBlocked(source string) bool {
 	switch source {
 	case "logged", "policy_skip",
-		"challenge_issued", "challenge_passed", "challenge_bypassed":
+		"challenge_issued", "challenge_passed", "challenge_bypassed", "challenge_abandoned":
 		return false
 	default:
 		return true
@@ -153,7 +155,7 @@ func rleResponseStatus(rle *RateLimitEvent) int {
 		return 403
 	case "challenge_issued":
 		return rle.Status
-	case "challenge_passed", "challenge_bypassed", "policy_skip", "logged":
+	case "challenge_passed", "challenge_bypassed", "challenge_abandoned", "policy_skip", "logged":
 		return rle.Status
 	default:
 		return 429
@@ -422,6 +424,7 @@ var rlEventTypes = map[string]bool{
 	"policy_skip": true, "logged": true,
 	"challenge_issued": true, "challenge_passed": true,
 	"challenge_failed": true, "challenge_bypassed": true,
+	"challenge_abandoned": true,
 }
 
 // eventSourcesNeeded determines which event stores to query based on the event_type filter.
