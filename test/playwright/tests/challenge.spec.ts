@@ -374,7 +374,7 @@ test.describe("Challenge Analytics Dashboard", () => {
     await expect(page.getByText("CHALLENGES ISSUED")).toBeVisible();
     await expect(page.getByText("CHALLENGES PASSED")).toBeVisible();
     await expect(page.getByText("CHALLENGES FAILED")).toBeVisible();
-    await expect(page.getByText("ABANDONED")).toBeVisible();
+    await expect(page.getByText("UNRESOLVED")).toBeVisible();
     await expect(page.getByText("COOKIE BYPASSES")).toBeVisible();
   });
 

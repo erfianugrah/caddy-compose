@@ -37,7 +37,7 @@ function FunnelBar({ stats }: { stats: ChallengeStats }) {
     { label: "Issued", value: stats.issued, color: "bg-lv-yellow" },
     { label: "Passed", value: stats.passed, color: "bg-lv-green" },
     { label: "Failed", value: stats.failed, color: "bg-lv-red" },
-    { label: "Abandoned", value: stats.abandoned, color: "bg-lv-muted/40" },
+    { label: "Unresolved", value: stats.abandoned, color: "bg-lv-muted/40" },
     { label: "Bypassed", value: stats.bypassed, color: "bg-lv-cyan" },
   ];
 
@@ -897,7 +897,7 @@ export default function ChallengeAnalytics() {
         <StatCard title="Challenges Issued" value={stats?.issued ?? 0} icon={Shield} color="yellow" loading={loading} href="/events?type=challenge_issued" />
         <StatCard title="Challenges Passed" value={stats?.passed ?? 0} icon={ShieldCheck} color="green" loading={loading} href="/events?type=challenge_passed" />
         <StatCard title="Challenges Failed" value={stats?.failed ?? 0} icon={ShieldX} color="red" loading={loading} href="/events?type=challenge_failed" />
-        <StatCard title="Abandoned" value={stats?.abandoned ?? 0} icon={ShieldMinus} color="muted" loading={loading} />
+        <StatCard title="Unresolved" value={stats?.abandoned ?? 0} icon={ShieldMinus} color="muted" loading={loading} />
         <StatCard title="Cookie Bypasses" value={stats?.bypassed ?? 0} icon={ShieldAlert} color="cyan" loading={loading} />
       </div>
 
@@ -920,7 +920,7 @@ export default function ChallengeAnalytics() {
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-muted-foreground">{pct(stats.abandon_rate)}</p>
-                <p className="text-xs text-muted-foreground">Abandon Rate</p>
+                <p className="text-xs text-muted-foreground">Unresolved Rate</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-lv-cyan">{pct(stats.bypass_rate)}</p>

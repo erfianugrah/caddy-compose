@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -1037,101 +1036,6 @@ func (s *AccessLogStore) EventCount() int {
 	return len(s.events)
 }
 
-// IngestAbandonedFile reads challenge-abandoned.jsonl written by the plugin,
-// converts each entry to a RateLimitEvent with source "challenge_abandoned",
-// appends them to the event store, and truncates the file. Called periodically.
-func (s *AccessLogStore) IngestAbandonedFile(path string) int {
-	// Atomically rename the file before reading to prevent the plugin from
-	// appending new entries while we're reading. After ingestion, remove
-	// the renamed file. This avoids truncation issues on Docker volumes.
-	tmpPath := path + ".ingesting"
-	if err := os.Rename(path, tmpPath); err != nil {
-		if os.IsNotExist(err) {
-			return 0
-		}
-		log.Printf("[access-log] rename abandoned file: %v", err)
-		return 0
-	}
-	data, err := os.ReadFile(tmpPath)
-	if err != nil {
-		log.Printf("[access-log] read abandoned file: %v", err)
-		// Rename back so we don't lose data.
-		os.Rename(tmpPath, path)
-		return 0
-	}
-	// Remove the temp file immediately — data is in memory now.
-	os.Remove(tmpPath)
-
-	if len(data) == 0 {
-		return 0
-	}
-
-	type abandonedEntry struct {
-		ClientIP   string `json:"client_ip"`
-		Service    string `json:"service"`
-		JA4        string `json:"ja4,omitempty"`
-		Difficulty int    `json:"difficulty"`
-		Method     string `json:"method,omitempty"`
-		URI        string `json:"uri,omitempty"`
-		UserAgent  string `json:"user_agent,omitempty"`
-		IssuedAt   int64  `json:"issued_at"`
-		ExpiredAt  int64  `json:"expired_at"`
-	}
-
-	var events []RateLimitEvent
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-		if line == "" {
-			continue
-		}
-		var entry abandonedEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			log.Printf("[access-log] parse abandoned entry: %v", err)
-			continue
-		}
-		// Generate a unique request ID for abandoned events (they have no real
-		// HTTP request). Without this, all abandoned events share an empty ID
-		// and the UI treats them as the same row for expand/collapse.
-		syntheticID := fmt.Sprintf("abandoned-%d-%d", entry.IssuedAt, len(events))
-		events = append(events, RateLimitEvent{
-			Timestamp:           time.Unix(entry.ExpiredAt, 0).UTC(),
-			ClientIP:            entry.ClientIP,
-			Service:             entry.Service,
-			JA4:                 entry.JA4,
-			Method:              entry.Method,
-			URI:                 entry.URI,
-			UserAgent:           entry.UserAgent,
-			RequestID:           syntheticID,
-			Source:              "challenge_abandoned",
-			ChallengeDifficulty: entry.Difficulty,
-			Status:              200, // interstitial was served as 200
-		})
-	}
-
-	if len(events) == 0 {
-		return 0
-	}
-
-	// Append to the store.
-	s.mu.Lock()
-	for i := range events {
-		s.events = append(s.events, events[i])
-		s.indexEvent(len(s.events) - 1)
-		if s.counters != nil {
-			s.counters.incrementRLEvent(&events[i])
-		}
-	}
-	s.generation.Add(1)
-	s.mu.Unlock()
-
-	// NOTE: Do NOT persist abandoned events to access-events.jsonl.
-	// They are ephemeral — the plugin writes them to challenge-abandoned.jsonl
-	// on each sweep, and wafctl ingests+deletes that file. Persisting to the
-	// main event file would cause accumulation across restarts.
-
-	log.Printf("[access-log] ingested %d abandoned challenge events", len(events))
-	return len(events)
-}
-
 // FastSummary returns a SummaryResponse computed from incremental per-hour
 // counters. This is O(buckets) instead of O(events) — typically ~100x faster
 // for large event stores. If hours <= 0, all buckets are included.
@@ -1309,10 +1213,6 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 		// Valid challenge cookie present, challenge skipped.
 		status = rle.Status
 		eventType = "challenge_bypassed"
-	case "challenge_abandoned":
-		// Client received interstitial but never submitted to verify endpoint.
-		status = 200
-		eventType = "challenge_abandoned"
 	case "logged":
 		// Below-threshold detect: CRS rules scored but didn't exceed threshold.
 		status = rle.Status
@@ -1324,7 +1224,7 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	// Non-blocking event types.
 	nonBlocking := map[string]bool{
 		"logged": true, "policy_skip": true,
-		"challenge_issued": true, "challenge_passed": true, "challenge_bypassed": true, "challenge_abandoned": true,
+		"challenge_issued": true, "challenge_passed": true, "challenge_bypassed": true,
 	}
 	isBlocked := !nonBlocking[rle.Source]
 	evt := Event{
@@ -1389,11 +1289,10 @@ func RateLimitEventToEvent(rle RateLimitEvent, extraTags []string) Event {
 	// For challenge events, set the rule message for display in the event detail.
 	if strings.HasPrefix(rle.Source, "challenge_") && rle.RuleName != "" {
 		labels := map[string]string{
-			"challenge_issued":    "Challenge Issued",
-			"challenge_passed":    "Challenge Passed",
-			"challenge_failed":    "Challenge Failed",
-			"challenge_bypassed":  "Challenge Bypassed",
-			"challenge_abandoned": "Challenge Abandoned (no verify attempt)",
+			"challenge_issued":   "Challenge Issued",
+			"challenge_passed":   "Challenge Passed",
+			"challenge_failed":   "Challenge Failed",
+			"challenge_bypassed": "Challenge Bypassed",
 		}
 		label := labels[rle.Source]
 		if label == "" {

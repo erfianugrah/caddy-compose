@@ -345,8 +345,8 @@ describe("FILTER_FIELDS", () => {
     expect(fields).toContain("ja4");
   });
 
-  it("event_type has 11 options (6 base + 5 challenge)", () => {
-    expect(FILTER_FIELDS.event_type.options).toHaveLength(11);
+  it("event_type has 10 options (6 base + 4 challenge)", () => {
+    expect(FILTER_FIELDS.event_type.options).toHaveLength(10);
   });
 
   it("method has 7 options", () => {

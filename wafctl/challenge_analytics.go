@@ -265,7 +265,7 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 	for _, e := range events {
 		src := e.Source
 		isChallengeEvent := src == "challenge_issued" || src == "challenge_passed" ||
-			src == "challenge_failed" || src == "challenge_bypassed" || src == "challenge_abandoned"
+			src == "challenge_failed" || src == "challenge_bypassed"
 		if !isChallengeEvent {
 			continue
 		}
@@ -297,8 +297,6 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 			}
 		case "challenge_bypassed":
 			resp.Bypassed++
-		case "challenge_abandoned":
-			resp.Abandoned++
 		}
 
 		// Bot score distribution (only on passed/failed — these have scores).
@@ -432,13 +430,19 @@ func (s *AccessLogStore) ChallengeStats(hours int, filterService, filterClient s
 		}
 	}
 
+	// Derive unresolved count — challenges issued with no corresponding
+	// pass or fail in this time window. May be slightly inaccurate at
+	// window boundaries (client issued at 23:59, solved at 00:01).
+	resp.Abandoned = resp.Issued - resp.Passed - resp.Failed
+	if resp.Abandoned < 0 {
+		resp.Abandoned = 0
+	}
+
 	// Compute rates and averages.
 	if resp.Issued > 0 {
 		resp.PassRate = float64(resp.Passed) / float64(resp.Issued)
 		resp.FailRate = float64(resp.Failed) / float64(resp.Issued)
-		if resp.Abandoned > 0 {
-			resp.AbandonRate = float64(resp.Abandoned) / float64(resp.Issued)
-		}
+		resp.AbandonRate = float64(resp.Abandoned) / float64(resp.Issued)
 	}
 	if solveTimeCount > 0 {
 		resp.AvgSolveMs = float64(solveTimeSum) / float64(solveTimeCount)

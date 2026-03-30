@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:3.89.0-2.11.2
+    image: erfianugrah/caddy:3.90.0-2.11.2
     hostname: caddy
     container_name: caddy
     restart: unless-stopped
@@ -114,7 +114,7 @@ services:
     build:
       context: .
       dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.93.0
+    image: erfianugrah/wafctl:2.94.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped

@@ -105,7 +105,7 @@ export interface ServiceBreakdown {
 
 // ─── Events ─────────────────────────────────────────────────────────
 
-export type EventType = "detect_block" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block" | "ddos_blocked" | "ddos_jailed" | "challenge_issued" | "challenge_passed" | "challenge_failed" | "challenge_bypassed" | "challenge_abandoned";
+export type EventType = "detect_block" | "logged" | "rate_limited" | "policy_skip" | "policy_allow" | "policy_block" | "ddos_blocked" | "ddos_jailed" | "challenge_issued" | "challenge_passed" | "challenge_failed" | "challenge_bypassed";
 
 export interface WAFEvent {
   id: string;
@@ -287,7 +287,7 @@ interface RawEvent {
 export function mapEvent(raw: RawEvent): WAFEvent {
   // Derive event_type from the API field, falling back to is_blocked.
   let eventType: EventType = raw.is_blocked ? "detect_block" : "logged";
-  const validEventTypes: string[] = ["detect_block", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block", "ddos_blocked", "ddos_jailed", "challenge_issued", "challenge_passed", "challenge_failed", "challenge_bypassed", "challenge_abandoned"];
+  const validEventTypes: string[] = ["detect_block", "logged", "rate_limited", "policy_skip", "policy_allow", "policy_block", "ddos_blocked", "ddos_jailed", "challenge_issued", "challenge_passed", "challenge_failed", "challenge_bypassed"];
   if (raw.event_type && validEventTypes.includes(raw.event_type)) {
     eventType = raw.event_type as EventType;
   }

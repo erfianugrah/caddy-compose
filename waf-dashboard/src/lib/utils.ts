@@ -21,7 +21,6 @@ export const ACTION_COLORS = {
   challenge_passed:    "#5adecd", // lv-green    — challenge solved successfully
   challenge_failed:    "#f37e96", // lv-red      — challenge failed (bot score too high)
   challenge_bypassed:  "#79e6f3", // lv-cyan     — valid cookie, challenge skipped
-  challenge_abandoned: "#8b8fa3", // muted       — interstitial served, no verify attempt
   logged:              "#79e6f3", // lv-cyan     — benign baseline (high volume, calm)
   total_blocked:       "#f37e96", // lv-red     — aggregate blocked (detect_block + policy_block + residual)
 } as const;
@@ -39,7 +38,6 @@ export const ACTION_LABELS: Record<string, string> = {
   challenge_passed:    "Challenge OK",
   challenge_failed:    "Challenge Fail",
   challenge_bypassed:  "Challenge Skip",
-  challenge_abandoned: "Abandoned",
   ddos_blocked:        "DDoS Blocked",
   ddos_jailed:         "DDoS Jailed",
   total_blocked:       "Total Blocked",
@@ -57,7 +55,6 @@ export const ACTION_BADGE_CLASSES: Record<string, string> = {
   challenge_passed:    "bg-lv-green/20 border-lv-green/30 text-lv-green",
   challenge_failed:    "bg-lv-red/20 border-lv-red/30 text-lv-red",
   challenge_bypassed:  "bg-lv-cyan/20 border-lv-cyan/30 text-lv-cyan",
-  challenge_abandoned: "bg-muted-foreground/10 border-muted-foreground/20 text-muted-foreground",
   ddos_blocked:        "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
   ddos_jailed:         "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
   logged:              "bg-lv-cyan/20 border-lv-cyan/30 text-lv-cyan",

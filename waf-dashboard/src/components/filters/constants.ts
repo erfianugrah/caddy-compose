@@ -25,7 +25,6 @@ export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "challenge_passed",   label: ACTION_LABELS.challenge_passed },
   { value: "challenge_failed",   label: ACTION_LABELS.challenge_failed },
   { value: "challenge_bypassed", label: ACTION_LABELS.challenge_bypassed },
-  { value: "challenge_abandoned", label: ACTION_LABELS.challenge_abandoned },
 ];
 
 export const METHOD_OPTIONS: { value: string; label: string }[] = [
