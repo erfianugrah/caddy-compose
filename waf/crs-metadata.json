@@ -1,6 +1,6 @@
 {
-  "crs_version": "v4.24.1",
-  "generated_at": "2026-03-28T08:56:04Z",
+  "crs_version": "v4.25.0",
+  "generated_at": "2026-04-06T09:52:06Z",
   "categories": [
     {
       "id": "scanner-detection",
@@ -70,7 +70,7 @@
       "rule_range": "932000-932999",
       "tag": "attack-rce",
       "phase": "inbound",
-      "rule_count": 45
+      "rule_count": 46
     },
     {
       "id": "php",

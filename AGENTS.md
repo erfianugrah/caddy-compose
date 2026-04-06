@@ -41,7 +41,7 @@ make test-go            # wafctl Go tests (~1555 test functions)
 make test-crs-converter # CRS converter tests (~51 test functions)
 make test-frontend      # Frontend Vitest (19 test files, ~355 tests)
 make test-e2e           # E2E smoke tests (requires Docker, ~119 tests)
-make test-crs-e2e       # CRS regression tests (requires Docker, 4526 tests)
+make test-crs-e2e       # CRS regression tests (requires Docker, 4566 tests)
 ```
 
 ### Running a single test
@@ -433,7 +433,7 @@ causes the event to be invisible in parts of the UI.
   via `TestMain`. `crs_metadata.go` holds the loader, `atomic.Pointer[CRSMetadata]` for
   thread-safe access. `normalizeCRSCategory()` and `IsValidPrefix()` read from loaded metadata.
 - **CRS converter** (`tools/crs-converter/`): Converts CRS 4.x SecRule `.conf` files into
-  `default-rules.json` for the policy engine plugin. 341 rules from CRS 4.24.1.
+  `default-rules.json` for the policy engine plugin. 342 rules from CRS 4.25.0.
   Key features: RE2 regex validation with PCRE→RE2 auto-fix, per-field OR group
   conditions (preserves exact CRS variable scope), `Excludes` distribution to sub-conditions,
   TX variable capture chain flattening (bakes in CRS default allowlists for content-type,
@@ -443,31 +443,21 @@ causes the event to be invisible in parts of the UI.
   Only 5 CRS detection rules skipped: 911100/920430 (handled natively by plugin
   `enforceProtocolLimits()`), 920190/942130/942131 (TX-to-TX comparison unsupported).
   294 flow-control rules correctly excluded (non-detection).
-  CRS regression test fidelity at PL4: **97.9%** (4384/4476 testable, official CRS 4.24.1 suite).
-  92 real failures: 45 FN (rule should detect but didn't) + 47 FP (rule shouldn't fire but did).
-  574 cross-rule passes resolved via severity-aware events API batch check.
+  CRS regression test fidelity at PL4: **97.9%** (4421/4514 testable, official CRS 4.25.0 suite).
+  93 real failures. 603 cross-rule passes resolved via severity-aware events API batch check.
   Backend: albedo (CRS official test backend). Reload interval 2s.
   Key plugin fixes: multiFieldAbsent (detect path), parseQueryAmpOnly (semicolons).
   Tests auto-download from GitHub via sparse checkout (`make test-crs-e2e`).
 - **CRS regression testing** (`test/crs/`): Runs the official OWASP CRS regression test
-  suite (4526 YAML test cases) against the live Docker stack. PL4 with threshold=5
+  suite (4566 YAML test cases) against the live Docker stack. PL4 with threshold=5
   (all rules enabled). Two-phase evaluation: (1) status-code fast path for clear
   pass/fail, (2) batch rule-level resolution via events API for ambiguous results
   (rules that scored below threshold but still matched, cross-rule interference
   where OTHER rules caused the block). Baseline tracking catches regressions.
   Run with `make test-crs-e2e` (check) or `make test-crs-e2e-update` (update baseline).
   Host header set via `req.Host` (Go net/http ignores `req.Header["Host"]`).
-- **CRS remaining gaps** (92 real failures). Root causes:
-  - **21 not coverable** (TX flow-control rules): 920650 method override parameter (18),
-    921180 HTTP parameter pollution (2), 942130 TX-to-TX capture comparison (1).
-    These require TX variable state that the plugin doesn't support.
-  - **22 FN from converted rules** (rule exists but doesn't match): 932180 RCE (5),
-    920420 content type (4), 920660 Content-Length (3), 920480 charset chain (2),
-    920430 HTTP version (2), 920180 POST Content-Type (2), others (4).
-  - **47 FP** (rule fires incorrectly): 944100/110/210 XML scope (14), 932340 short
-    commands (4), 943110 Referer/Host comparison (4), 931130 RFI (3), 921200 LDAP (3),
-    932xxx RCE edge cases (10), 933xxx PHP (4), 941xxx XSS (2), others (3).
-  - **574 cross-rule passes** resolved via severity-aware events API batch check
+- **CRS remaining gaps** (93 real failures).
+  - **603 cross-rule passes** resolved via severity-aware events API batch check
     (blocked by OTHER rules, tested rule's score alone below threshold).
 - **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
   Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).

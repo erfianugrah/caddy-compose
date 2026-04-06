@@ -37,9 +37,9 @@
 
 ## Current State
 
-**v2.90.0 / caddy 3.86.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.40.3 / ddos-mitigator v0.16.0**
+**v2.95.0 / caddy 3.91.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.42.1 / ddos-mitigator v0.16.0**
 
-Fully operational WAF with custom policy engine, CRS 4.24.1 (342 rules: 283 inbound +
+Fully operational WAF with custom policy engine, CRS 4.25.0 (342 rules: 283 inbound +
 59 outbound, per-field condition groups), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →
 response_header), proof-of-work challenge with 5-layer bot scoring (JA4 TLS, HTTP headers,
 JS probes, behavioral, spatial inconsistency), JA4 TLS fingerprinting via listener wrapper,
@@ -66,7 +66,7 @@ configurable via Caddyfile `listener_wrappers`. ~90ns/req hot path. Load tested 
 | **waf-dashboard** (Astro/React) | 38 components + 16 API modules | ~355 tests across 19 files | Astro 6, React 19, TypeScript 5.7, shadcn/ui, Tailwind CSS 4 |
 | **e2e** | 16 test files + helpers | ~148 subtests across 67 functions | Go + Docker, stdlib + `gopkg.in/yaml.v3` only |
 | **crs-converter** | 13 files | 3 test files, ~51 test functions | Standalone Go tool, zero deps |
-| **crs-e2e** | 1 test file + baseline | 4526 tests (baseline-driven) | Go + Docker, official CRS YAML test cases |
+| **crs-e2e** | 1 test file + baseline | 4566 tests (baseline-driven) | Go + Docker, official CRS YAML test cases |
 
 ### Per-Repo Storage Map
 
@@ -2384,13 +2384,12 @@ Phase 1 ──→ Phase 2 ──→ Phase 3 ──→ Phase 4 ──→ Phase 5
 
 ## CRS Converter Fidelity
 
-Converter coverage: 341 rules from CRS 4.24.1. 5 detection rules skipped
-(TX-to-TX comparison, protocol limits handled natively by plugin). 294 flow-control
+Converter coverage: 342 rules from CRS 4.25.0. 5 detection rules skipped
+(TX-to-TX comparison, protocol limits handled natively by plugin). 295 flow-control
 rules correctly excluded. Test suite runs at PL4 with threshold=5.
 
-CRS E2E fidelity: **97.9%** (4384/4476 testable at PL4, official CRS 4.24.1 suite).
-92 real failures: 45 FN (rule should detect but didn't) + 47 FP (rule shouldn't fire but did).
-574 cross-rule passes resolved via severity-aware events API batch check.
+CRS E2E fidelity: **97.9%** (4421/4514 testable at PL4, official CRS 4.25.0 suite).
+93 real failures. 603 cross-rule passes resolved via severity-aware events API batch check.
 Backend: albedo (CRS official test backend). Reload interval 2s.
 Key plugin fixes: multiFieldAbsent (detect path), parseQueryAmpOnly (semicolons).
 

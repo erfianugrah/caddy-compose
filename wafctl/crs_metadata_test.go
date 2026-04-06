@@ -65,8 +65,8 @@ func TestGetCRSMetadata_LoadedFromFixture(t *testing.T) {
 	meta := GetCRSMetadata()
 
 	// TestMain loads testdata/crs-metadata.json — verify it took effect
-	if meta.CRSVersion != "4.24.1" {
-		t.Errorf("CRSVersion = %q, want 4.24.1 (loaded from fixture)", meta.CRSVersion)
+	if meta.CRSVersion != "v4.25.0" {
+		t.Errorf("CRSVersion = %q, want v4.25.0 (loaded from fixture)", meta.CRSVersion)
 	}
 
 	// Should have categories

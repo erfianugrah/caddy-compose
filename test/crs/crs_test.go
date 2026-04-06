@@ -26,7 +26,7 @@ const crsGitRepo = "https://github.com/coreruleset/coreruleset.git"
 
 // crsGitTag is the CRS version to fetch tests from. Must match the version
 // used by the converter (set in Dockerfile CRS_VERSION).
-var crsGitTag = envOr("CRS_VERSION", "v4.24.1")
+var crsGitTag = envOr("CRS_VERSION", "v4.25.0")
 
 var (
 	proxyURL   = envOr("CRS_PROXY_URL", "http://localhost:19080")

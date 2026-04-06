@@ -1127,6 +1127,14 @@
     "status": "pass",
     "note": "rule-level (resolved)"
   },
+  "920540/4": {
+    "status": "skip",
+    "note": "no expect_ids or no_expect_ids"
+  },
+  "920540/5": {
+    "status": "pass",
+    "note": "rule-level (resolved)"
+  },
   "920600/1": {
     "status": "pass"
   },
@@ -2099,6 +2107,12 @@
   "930130/11": {
     "status": "pass"
   },
+  "930130/12": {
+    "status": "pass"
+  },
+  "930130/13": {
+    "status": "pass"
+  },
   "930130/2": {
     "status": "pass"
   },
@@ -2162,6 +2176,9 @@
   "930140/20": {
     "status": "pass",
     "note": "rule-level (resolved)"
+  },
+  "930140/21": {
+    "status": "pass"
   },
   "930140/3": {
     "status": "pass"
@@ -2280,6 +2297,10 @@
   },
   "931130/23": {
     "status": "pass"
+  },
+  "931130/24": {
+    "status": "skip",
+    "note": "no expect_ids or no_expect_ids"
   },
   "931130/3": {
     "status": "pass"
@@ -3109,6 +3130,16 @@
     "status": "fail",
     "note": "new regression"
   },
+  "932180/13": {
+    "status": "pass"
+  },
+  "932180/14": {
+    "status": "fail",
+    "note": "new regression"
+  },
+  "932180/15": {
+    "status": "pass"
+  },
   "932180/2": {
     "status": "pass"
   },
@@ -3737,6 +3768,9 @@
   "932236/10": {
     "status": "pass"
   },
+  "932236/100": {
+    "status": "pass"
+  },
   "932236/11": {
     "status": "pass"
   },
@@ -4038,6 +4072,9 @@
     "status": "pass"
   },
   "932236/98": {
+    "status": "pass"
+  },
+  "932236/99": {
     "status": "pass"
   },
   "932237/1": {
@@ -5082,6 +5119,57 @@
     "status": "pass",
     "note": "rule-level (resolved)"
   },
+  "932390/1": {
+    "status": "pass"
+  },
+  "932390/10": {
+    "status": "pass"
+  },
+  "932390/11": {
+    "status": "pass"
+  },
+  "932390/12": {
+    "status": "pass"
+  },
+  "932390/13": {
+    "status": "pass"
+  },
+  "932390/14": {
+    "status": "pass",
+    "note": "rule-level (resolved)"
+  },
+  "932390/15": {
+    "status": "pass",
+    "note": "rule-level (resolved)"
+  },
+  "932390/16": {
+    "status": "pass",
+    "note": "rule-level (resolved)"
+  },
+  "932390/2": {
+    "status": "pass"
+  },
+  "932390/3": {
+    "status": "pass"
+  },
+  "932390/4": {
+    "status": "pass"
+  },
+  "932390/5": {
+    "status": "pass"
+  },
+  "932390/6": {
+    "status": "pass"
+  },
+  "932390/7": {
+    "status": "pass"
+  },
+  "932390/8": {
+    "status": "pass"
+  },
+  "932390/9": {
+    "status": "pass"
+  },
   "933100/1": {
     "status": "pass"
   },
@@ -5456,6 +5544,24 @@
     "status": "pass",
     "note": "rule-level (resolved)"
   },
+  "933110/31": {
+    "status": "pass"
+  },
+  "933110/32": {
+    "status": "pass"
+  },
+  "933110/33": {
+    "status": "pass"
+  },
+  "933110/34": {
+    "status": "pass"
+  },
+  "933110/35": {
+    "status": "pass"
+  },
+  "933110/36": {
+    "status": "pass"
+  },
   "933110/4": {
     "status": "pass"
   },
@@ -5481,6 +5587,15 @@
     "status": "pass"
   },
   "933111/3": {
+    "status": "pass"
+  },
+  "933111/4": {
+    "status": "pass"
+  },
+  "933111/5": {
+    "status": "pass"
+  },
+  "933111/6": {
     "status": "pass"
   },
   "933120/1": {
@@ -12578,6 +12693,18 @@
     "status": "pass"
   },
   "944140/1": {
+    "status": "pass"
+  },
+  "944140/10": {
+    "status": "pass"
+  },
+  "944140/11": {
+    "status": "pass"
+  },
+  "944140/12": {
+    "status": "pass"
+  },
+  "944140/13": {
     "status": "pass"
   },
   "944140/2": {

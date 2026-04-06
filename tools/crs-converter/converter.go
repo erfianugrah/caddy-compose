@@ -310,13 +310,15 @@ func parseSlashWrapped(s string) []string {
 // in the wafctl dashboard.
 
 // crsDefaultContentTypes is the default allowed Content-Type list (pipe-wrapped).
-var crsDefaultContentTypes = "|application/x-www-form-urlencoded| |multipart/form-data| |multipart/related| |text/xml| |application/xml| |application/soap+xml| |application/json| |application/cloudevents+json| |application/cloudevents-batch+json|"
+// Synced with REQUEST-901-INITIALIZATION.conf rule 901162 (CRS v4.25.0).
+var crsDefaultContentTypes = "|application/x-www-form-urlencoded| |multipart/form-data| |text/xml| |application/xml| |application/soap+xml| |application/json|"
 
 // crsDefaultCharsets is the default allowed charset list (pipe-wrapped).
 var crsDefaultCharsets = "|utf-8| |iso-8859-1| |iso-8859-15| |windows-1252|"
 
 // crsDefaultRestrictedExtensions is the default restricted file extensions (slash-wrapped).
-var crsDefaultRestrictedExtensions = ".asa/ .asax/ .ascx/ .axd/ .backup/ .bak/ .bat/ .cdx/ .cer/ .cfg/ .cmd/ .com/ .config/ .conf/ .cs/ .csproj/ .csr/ .dat/ .db/ .dbf/ .dll/ .dos/ .htr/ .htw/ .ida/ .idc/ .idq/ .inc/ .ini/ .key/ .licx/ .lnk/ .log/ .mdb/ .old/ .pass/ .pdb/ .pol/ .printer/ .pwd/ .rdb/ .resources/ .resx/ .sql/ .swp/ .sys/ .vb/ .vbs/ .vbproj/ .vsdisco/ .webinfo/ .xsd/ .xsx/"
+// Synced with REQUEST-901-INITIALIZATION.conf rule 901164 (CRS v4.25.0).
+var crsDefaultRestrictedExtensions = ".ani/ .asa/ .asax/ .ascx/ .back/ .backup/ .bak/ .bck/ .bk/ .bkp/ .bat/ .cdx/ .cer/ .cfg/ .cmd/ .cnf/ .com/ .compositefont/ .config/ .conf/ .copy/ .crt/ .cs/ .csproj/ .csr/ .dat/ .db/ .dbf/ .dist/ .dll/ .dos/ .dpkg-dist/ .drv/ .gadget/ .hta/ .htr/ .htw/ .ida/ .idc/ .idq/ .inc/ .inf/ .ini/ .jks/ .jse/ .key/ .licx/ .lnk/ .log/ .mdb/ .msc/ .ocx/ .old/ .pass/ .pdb/ .pfx/ .pif/ .pem/ .pol/ .prf/ .printer/ .pwd/ .rdb/ .rdp/ .reg/ .resources/ .resx/ .sav/ .save/ .scr/ .sct/ .sh/ .shs/ .sql/ .sqlite/ .sqlite3/ .swap/ .swo/ .swp/ .sys/ .temp/ .tfstate/ .tlb/ .tmp/ .vb/ .vbe/ .vbs/ .vbproj/ .vsdisco/ .vxd/ .webinfo/ .ws/ .wsc/ .wsf/ .wsh/ .xsd/ .xsx/"
 
 // crsDefaultRestrictedHeaders is the default restricted header names (slash-wrapped).
 var crsDefaultRestrictedHeaders = "/content-encoding/ /proxy/ /lock-token/ /content-range/ /if/ /x-http-method-override/ /x-http-method/ /x-method-override/ /x-middleware-subrequest/ /expect/"

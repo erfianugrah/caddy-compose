@@ -74,10 +74,15 @@ jobs:
           # Update build.yml
           sed -i "s|CRS_VERSION: \"$OLD\"|CRS_VERSION: \"$NEW\"|" .github/workflows/build.yml
 
-          # Update Dockerfile (CRS_VERSION build arg default if present)
-          if grep -q "CRS_VERSION=$OLD" Dockerfile; then
-            sed -i "s|CRS_VERSION=$OLD|CRS_VERSION=$NEW|" Dockerfile
-          fi
+          # Update Dockerfiles (CRS_VERSION build arg defaults)
+          for f in Dockerfile wafctl/Dockerfile; do
+            if grep -q "CRS_VERSION=$OLD" "$f"; then
+              sed -i "s|CRS_VERSION=$OLD|CRS_VERSION=$NEW|" "$f"
+            fi
+          done
+
+          # Update CRS test fallback version
+          sed -i "s|envOr(\"CRS_VERSION\", \"$OLD\")|envOr(\"CRS_VERSION\", \"$NEW\")|" test/crs/crs_test.go
 
           # Clone new CRS version and regenerate default-rules.json
           git clone --depth 1 --branch "$NEW" \
@@ -127,8 +132,11 @@ jobs:
 
           ### Checklist
           - [ ] Review CRS changelog for breaking changes
+          - [ ] Update test fixture: copy \`waf/crs-metadata.json\` to \`wafctl/testdata/crs-metadata.json\`, add bot-detection category, update \`crs_metadata_test.go\` assertion
+          - [ ] Run unit tests: \`make test\`
           - [ ] Build and test locally: \`make build && make test-e2e\`
-          - [ ] Run CRS regression tests: \`make test-crs-e2e\`
+          - [ ] Update CRS regression baseline: \`make test-crs-e2e-update\`
+          - [ ] Update AGENTS.md and PLAN.md with new rule count and fidelity stats
           EOF
           )" \
             --label "dependencies"
