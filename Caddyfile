@@ -56,10 +56,21 @@
 			idle 30s
 		}
 	}
+	# L4 TCP proxy — SSH docs server on docs.erfi.io:2222
+	# Raw TCP passthrough, no TLS termination (SSH handles its own crypto).
+	# The docs-ssh container runs on 172.19.50.2:2222.
+	layer4 {
+		:2222 {
+			@ssh ssh
+			route @ssh {
+				proxy 172.19.50.2:2222
+			}
+		}
+	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin cdn atuin
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin cdn atuin docs
 			erfianugrah.com @
 		}
 		versions ipv4
