@@ -547,7 +547,7 @@ func handleEvents(store *Store, als *AccessLogStore) http.HandlerFunc {
 	}
 }
 
-func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
+func handleServices(store *Store, als *AccessLogStore, caddyfilePath string) http.HandlerFunc {
 	cache := newResponseCache(20)
 	return func(w http.ResponseWriter, r *http.Request) {
 		gen := combinedGeneration(&store.generation, &als.generation)
@@ -576,8 +576,10 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 		// enriching with TopURIs/TopRules from WAF event data.
 		// Fall back to AccessLogStore when the legacy WAF store has no data.
 		const topN = 10
+		seen := make(map[string]struct{}, len(merged.ServiceBreakdown))
 		var resp ServicesResponse
 		for _, sd := range merged.ServiceBreakdown {
+			seen[sd.Service] = struct{}{}
 			detail := sd
 			if wd, ok := wafDetailMap[sd.Service]; ok && len(wd.TopURIs) > 0 {
 				detail.TopURIs = wd.TopURIs
@@ -595,6 +597,18 @@ func handleServices(store *Store, als *AccessLogStore) http.HandlerFunc {
 				detail.TopRules = als.ServiceTopRules(sd.Service, hours, topN)
 			}
 			resp.Services = append(resp.Services, detail)
+		}
+
+		// Seed services from Caddyfile so that newly added services
+		// appear immediately with zero counts, even before they receive
+		// any security events.
+		if svcMap := BuildServiceFQDNMap(caddyfilePath); svcMap != nil {
+			for _, fqdn := range svcMap {
+				if _, ok := seen[fqdn]; !ok {
+					resp.Services = append(resp.Services, ServiceDetail{Service: fqdn})
+					seen[fqdn] = struct{}{}
+				}
+			}
 		}
 
 		cache.set(cacheKey, resp, gen, 30*time.Second)

@@ -359,7 +359,7 @@ func runServe() int {
 	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore, jailStore, spikeDetector, spikeReporter))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
-	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore))
+	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore, deployCfg.CaddyfilePath))
 
 	// Analytics
 	mux.HandleFunc("GET /api/analytics/top-ips", handleTopBlockedIPs(store, accessLogStore))

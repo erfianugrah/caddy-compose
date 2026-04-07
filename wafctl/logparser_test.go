@@ -305,7 +305,7 @@ func TestServicesMergesRateLimitedCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/services", nil)
 	w := httptest.NewRecorder()
-	handleServices(store, als)(w, req)
+	handleServices(store, als, "")(w, req)
 
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
@@ -1160,7 +1160,7 @@ func TestServicesMergesPolicyBlockCounts(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/services", nil)
 	w := httptest.NewRecorder()
-	handleServices(store, als)(w, req)
+	handleServices(store, als, "")(w, req)
 
 	var resp ServicesResponse
 	json.NewDecoder(w.Body).Decode(&resp)
