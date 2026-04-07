@@ -231,6 +231,16 @@
 	}
 }
 
+# docs.erfi.io — Landing page for the SSH docs server.
+# Static HTML served by busybox httpd inside the docs-ssh container.
+docs.erfi.io {
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.50.2:8080
+	import error_pages
+	import site_log docs-ssh
+}
+
 # caddy.erfi.io — Admin API is localhost-only.
 # Use `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` to reload.
 # Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
