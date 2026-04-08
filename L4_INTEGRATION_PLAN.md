@@ -1,0 +1,2197 @@
+# L4 Integration Plan: Unified Policy Engine Across L4 and L7
+
+## Goal
+
+Make wafctl the single control plane for both L4 and L7 enforcement. Users create
+rules through one interface (dashboard/API). wafctl decides which layer enforces
+each rule. The Caddyfile is one-time plumbing. The policy engine plugin handles
+dual-layer enforcement transparently.
+
+---
+
+## Table of Contents
+
+1. [Architecture Overview](#1-architecture-overview)
+2. [Phase 1: Policy Engine L4 Handler (caddy-policy-engine)](#2-phase-1-policy-engine-l4-handler)
+3. [Phase 2: wafctl L4 Policy Extraction](#3-phase-2-wafctl-l4-policy-extraction)
+4. [Phase 3: L4 Telemetry Pipeline](#4-phase-3-l4-telemetry-pipeline)
+5. [Phase 4: Caddyfile Integration](#5-phase-4-caddyfile-integration)
+6. [Phase 5: Dashboard Integration](#6-phase-5-dashboard-integration)
+7. [Phase 6: L4 Server Blocks (Non-HTTP Services)](#7-phase-6-l4-server-blocks)
+8. [Phase 7: JA4-Aware L4 Enforcement](#8-phase-7-ja4-aware-l4-enforcement)
+9. [Phase 8: L4 Connection Rate Limiting](#9-phase-8-l4-connection-rate-limiting)
+10. [Test Plan](#10-test-plan)
+11. [Rollout Checklist](#11-rollout-checklist)
+
+---
+
+## 1. Architecture Overview
+
+### Current State
+
+```
+TCP connection → listener_wrappers {
+    layer4 { ddos_mitigator }      ← L4: jail check → TCP RST
+    ja4                             ← L4: parse ClientHello → JA4
+    tls                             ← TLS termination
+} → HTTP middleware {
+    log_append                      ← outermost: lazy field capture
+    ddos_mitigator                  ← L7: behavioral profiling + jail
+    policy_engine                   ← L7: 7-pass rule evaluation
+    reverse_proxy                   ← upstream
+}
+```
+
+The policy engine is L7-only. Every request — including IPs with standing block
+rules — completes TLS handshake, HTTP parsing, and full 7-pass evaluation before
+getting a 403.
+
+### Target State
+
+```
+TCP connection → listener_wrappers {
+    layer4 {
+        ddos_mitigator              ← L4: jail check → TCP RST
+        policy_engine               ← L4: IP blocklist → TCP RST (NEW)
+    }
+    ja4                             ← L4: parse ClientHello → JA4
+    layer4 {
+        policy_engine               ← L4: JA4 blocklist → TCP RST (NEW)
+    }
+    tls                             ← TLS termination
+} → HTTP middleware {
+    log_append → ddos_mitigator → policy_engine → reverse_proxy
+}                                   ← L7: unchanged, full 7-pass
+```
+
+Plus L4 server blocks for non-HTTP services (SSH, admin API, honeypots).
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────┐
+│                     wafctl                           │
+│                                                      │
+│  ExclusionStore.GetEnabled() ──→ deploy pipeline     │
+│                                    │                 │
+│                           ┌────────┴─────────┐      │
+│                           │                  │       │
+│                   l4-policy.json    policy-rules.json │
+│                   (IP/JA4/conn)    (full 7-pass)     │
+│                           │                  │       │
+│                   ┌───────▼──┐      ┌────────▼───┐   │
+│                   │ L4 handler│      │ L7 handler  │  │
+│                   │ (plugin)  │◄────►│ (plugin)    │  │
+│                   │ TCP RST   │shared│ HTTP 403    │  │
+│                   │           │ reg  │             │  │
+│                   └───────────┘istry └─────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+### Design Principles
+
+1. **L4 is a fast-path optimization, not a replacement.** L4-eligible rules are
+   always also kept in L7 as fallback. If L4 config is stale during deploy, L7
+   catches it.
+2. **Users never specify enforcement layer.** wafctl classifies rules automatically.
+3. **Same file-sync pattern as DDoS mitigator.** Proven in production. Bidirectional
+   JSON file with flock coordination, shared in-memory state via package-level registry.
+4. **Minimal plugin code.** The L4 handler is enforcement-only (~200-300 lines).
+   All intelligence stays in the L7 handler and wafctl.
+
+---
+
+## 2. Phase 1: Policy Engine L4 Handler
+
+**Repository:** `erfianugrah/caddy-policy-engine`
+**Effort:** ~2-3 days
+
+### 2.1 New File: `policyengine_l4.go`
+
+Following the exact pattern from `caddy-ddos-mitigator/mitigator_l4.go` (204 lines):
+two separate structs in the same package, each registering in its own Caddy module
+namespace.
+
+```go
+package policyengine
+
+import (
+    "errors"
+    "net"
+    "net/netip"
+
+    "github.com/caddyserver/caddy/v2"
+    "github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+    "github.com/mholt/caddy-l4/layer4"
+    "go.uber.org/zap"
+)
+
+func init() {
+    caddy.RegisterModule(PolicyEngineL4{})
+}
+```
+
+#### Struct Definition
+
+```go
+type PolicyEngineL4 struct {
+    // L4PolicyFile is the path to the L4 policy JSON file generated by wafctl.
+    // Must match across all L4 handler instances to share state via the registry.
+    L4PolicyFile string `json:"l4_policy_file,omitempty"`
+
+    // Phase controls when this handler runs in the listener wrapper chain.
+    // "pre_ja4" (default): runs before JA4 parsing — IP/CIDR checks only.
+    // "post_ja4": runs after JA4 parsing — can also check JA4 blocklist.
+    Phase string `json:"phase,omitempty"`
+
+    // Mode controls handler behavior.
+    // "" (default): enforce L4 policy (allow/block).
+    // "honeypot": log connection metadata and close.
+    Mode string `json:"mode,omitempty"`
+
+    // EventLog is the path to write L4 enforcement events (honeypot + block).
+    // wafctl ingests this file alongside the combined access log.
+    EventLog string `json:"event_log,omitempty"`
+
+    policy *l4PolicyState   // shared via registry
+    logger *zap.Logger
+}
+```
+
+#### Module Registration
+
+```go
+func (PolicyEngineL4) CaddyModule() caddy.ModuleInfo {
+    return caddy.ModuleInfo{
+        ID:  "layer4.handlers.policy_engine",
+        New: func() caddy.Module { return new(PolicyEngineL4) },
+    }
+}
+```
+
+Module ID: `"layer4.handlers.policy_engine"`. Value receiver (matches DDoS mitigator
+pattern where `CaddyModule()` uses value receiver).
+
+#### Provision
+
+```go
+func (m *PolicyEngineL4) Provision(ctx caddy.Context) error {
+    m.logger = ctx.Logger()
+
+    if m.Phase == "" {
+        m.Phase = "pre_ja4"
+    }
+
+    if m.L4PolicyFile != "" {
+        m.policy = getOrCreateL4Policy(m.L4PolicyFile)
+
+        // Load from disk if L7 handler hasn't populated the registry yet.
+        if m.policy.IsEmpty() {
+            if err := loadL4PolicyFile(m.L4PolicyFile, m.policy); err != nil {
+                m.logger.Warn("L4 policy_engine: failed to load policy file",
+                    zap.String("path", m.L4PolicyFile), zap.Error(err))
+            }
+        }
+    } else {
+        m.policy = newL4PolicyState()
+    }
+
+    m.logger.Info("policy_engine L4 provisioned",
+        zap.String("l4_policy_file", m.L4PolicyFile),
+        zap.String("phase", m.Phase),
+        zap.String("mode", m.Mode),
+        zap.Int("block_ips", m.policy.BlockIPCount()),
+        zap.Int("allow_ips", m.policy.AllowIPCount()),
+        zap.Int("block_ja4s", m.policy.BlockJA4Count()))
+
+    return nil
+}
+```
+
+#### Handle
+
+```go
+func (m *PolicyEngineL4) Handle(cx *layer4.Connection, next layer4.Handler) error {
+    // Honeypot mode — log probe and close
+    if m.Mode == "honeypot" {
+        addr, _ := extractRemoteIP(cx.Conn.RemoteAddr())
+        m.logEvent(addr, cx.Conn.LocalAddr(), "honeypot_probe", "")
+        return nil // terminal — don't call next
+    }
+
+    addr, ok := extractRemoteIP(cx.Conn.RemoteAddr())
+    if !ok {
+        return next.Handle(cx)
+    }
+
+    // Pass 1: Allow check (mirrors 7-pass priority order)
+    if m.policy.AllowIPs.Contains(addr) {
+        cx.SetVar("policy_engine.l4_action", "allow")
+        return next.Handle(cx)
+    }
+
+    // Pass 2: Block check
+    if m.policy.BlockIPs.Contains(addr) {
+        m.logEvent(addr, cx.Conn.LocalAddr(), "l4_block", "ip_blocklist")
+        cx.SetVar("policy_engine.l4_action", "block")
+        return forceRSTL4(cx)
+    }
+
+    // Post-JA4 phase: JA4 blocklist check
+    if m.Phase == "post_ja4" {
+        // JA4 listener wrapper stores fingerprint in the ja4 registry
+        // (ja4_registry.go sync.Map keyed by remote_addr string).
+        // At this point in the listener chain, JA4 has been parsed but
+        // TLS handshake has NOT completed.
+        ja4 := getJA4ForAddr(cx.Conn.RemoteAddr().String())
+        if ja4 != "" {
+            if m.policy.AllowJA4s.Contains(ja4) {
+                cx.SetVar("policy_engine.l4_action", "allow")
+                return next.Handle(cx)
+            }
+            if m.policy.BlockJA4s.Contains(ja4) {
+                m.logEvent(addr, cx.Conn.LocalAddr(), "l4_block", "ja4_blocklist")
+                cx.SetVar("policy_engine.l4_action", "block")
+                return forceRSTL4(cx)
+            }
+        }
+    }
+
+    // Connection rate limiting (if configured)
+    if m.policy.ConnLimiter != nil && m.policy.ConnLimiter.Exceeds(addr) {
+        m.logEvent(addr, cx.Conn.LocalAddr(), "l4_rate_limit", "conn_rate")
+        cx.SetVar("policy_engine.l4_action", "rate_limit")
+        return forceRSTL4(cx)
+    }
+
+    // No L4 decision — pass to next handler (TLS → L7)
+    return next.Handle(cx)
+}
+```
+
+#### TCP RST
+
+```go
+func forceRSTL4(cx *layer4.Connection) error {
+    conn := cx.Conn
+    // Unwrap to find underlying *net.TCPConn
+    for {
+        if u, ok := conn.(interface{ NetConn() net.Conn }); ok {
+            conn = u.NetConn()
+        } else {
+            break
+        }
+    }
+    if tcp, ok := conn.(*net.TCPConn); ok {
+        _ = tcp.SetLinger(0) // SO_LINGER=0: kernel sends RST, skips TIME_WAIT
+        _ = tcp.Close()
+    } else {
+        _ = cx.Conn.Close()
+    }
+    return errors.New("policy_engine: connection dropped (L4)")
+}
+```
+
+Identical to `forceDropConn` in `caddy-ddos-mitigator`. Same unwrap loop, same
+`SetLinger(0)` + `Close()` pattern.
+
+#### extractRemoteIP
+
+```go
+func extractRemoteIP(addr net.Addr) (netip.Addr, bool) {
+    if ta, ok := addr.(*net.TCPAddr); ok {
+        a, ok := netip.AddrFromSlice(ta.IP)
+        if ok {
+            return a.Unmap(), true
+        }
+        return netip.Addr{}, false
+    }
+    host, _, err := net.SplitHostPort(addr.String())
+    if err != nil {
+        return netip.Addr{}, false
+    }
+    a, err := netip.ParseAddr(host)
+    if err != nil {
+        return netip.Addr{}, false
+    }
+    return a.Unmap(), true
+}
+```
+
+Identical to `caddy-ddos-mitigator`'s `extractRemoteIP`. Fast path for `*net.TCPAddr`,
+fallback via `SplitHostPort`. Always `.Unmap()` for IPv4-mapped-IPv6 normalization.
+
+#### Caddyfile Parsing
+
+```go
+func (m *PolicyEngineL4) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+    d.Next() // consume directive name "policy_engine"
+    for d.NextBlock(0) {
+        switch d.Val() {
+        case "l4_policy_file":
+            if !d.NextArg() {
+                return d.ArgErr()
+            }
+            m.L4PolicyFile = d.Val()
+        case "phase":
+            if !d.NextArg() {
+                return d.ArgErr()
+            }
+            m.Phase = d.Val()
+        case "mode":
+            if !d.NextArg() {
+                return d.ArgErr()
+            }
+            m.Mode = d.Val()
+        case "event_log":
+            if !d.NextArg() {
+                return d.ArgErr()
+            }
+            m.EventLog = d.Val()
+        default:
+            return d.Errf("unknown policy_engine L4 directive: %s", d.Val())
+        }
+    }
+    return nil
+}
+```
+
+#### Interface Guards
+
+```go
+var (
+    _ caddy.Module          = (*PolicyEngineL4)(nil)
+    _ caddy.Provisioner     = (*PolicyEngineL4)(nil)
+    _ layer4.NextHandler    = (*PolicyEngineL4)(nil)
+    _ caddyfile.Unmarshaler = (*PolicyEngineL4)(nil)
+)
+```
+
+### 2.2 New File: `l4_registry.go`
+
+Package-level registry for shared state between L4 and L7 handlers. Same pattern
+as `caddy-ddos-mitigator/jail.go`.
+
+```go
+package policyengine
+
+import "sync"
+
+type l4RegistryEntry struct {
+    policy   *l4PolicyState
+    refCount int
+}
+
+var (
+    l4RegistryMu sync.Mutex
+    l4Registry   = map[string]*l4RegistryEntry{}
+)
+
+func getOrCreateL4Policy(filePath string) *l4PolicyState {
+    l4RegistryMu.Lock()
+    defer l4RegistryMu.Unlock()
+    if entry, ok := l4Registry[filePath]; ok {
+        entry.refCount++
+        return entry.policy
+    }
+    p := newL4PolicyState()
+    l4Registry[filePath] = &l4RegistryEntry{policy: p, refCount: 1}
+    return p
+}
+
+func getL4Policy(filePath string) *l4PolicyState {
+    l4RegistryMu.Lock()
+    defer l4RegistryMu.Unlock()
+    if entry, ok := l4Registry[filePath]; ok {
+        return entry.policy
+    }
+    return nil
+}
+
+func releaseL4Policy(filePath string) {
+    l4RegistryMu.Lock()
+    defer l4RegistryMu.Unlock()
+    entry, ok := l4Registry[filePath]
+    if !ok {
+        return
+    }
+    entry.refCount--
+    if entry.refCount <= 0 {
+        delete(l4Registry, filePath)
+    }
+}
+```
+
+### 2.3 New File: `l4_policy.go`
+
+In-memory representation of the L4 policy. Thread-safe for concurrent reads from
+the L4 handler hot path.
+
+```go
+package policyengine
+
+import (
+    "net/netip"
+    "sync"
+)
+
+type l4PolicyState struct {
+    mu         sync.RWMutex
+    BlockIPs   *ipSet
+    AllowIPs   *ipSet
+    BlockJA4s  *stringSet
+    AllowJA4s  *stringSet
+    ConnLimiter *connRateLimiter // nil if no L4 rate limits
+    version    int
+}
+
+func newL4PolicyState() *l4PolicyState { ... }
+func (p *l4PolicyState) IsEmpty() bool { ... }
+func (p *l4PolicyState) BlockIPCount() int { ... }
+func (p *l4PolicyState) AllowIPCount() int { ... }
+func (p *l4PolicyState) BlockJA4Count() int { ... }
+
+// Update atomically replaces all policy data. Called by L7 handler
+// when it detects l4-policy.json mtime change.
+func (p *l4PolicyState) Update(block, allow *ipSet, blockJA4, allowJA4 *stringSet, lim *connRateLimiter) { ... }
+```
+
+`ipSet` uses the same sharded approach as the DDoS mitigator's `ipJail` for O(1)
+lookups. Contains both individual `netip.Addr` entries and `netip.Prefix` (CIDR)
+entries. `Contains(addr)` checks exact match first, then iterates CIDR prefixes.
+
+`stringSet` is a `map[string]bool` behind a `sync.RWMutex` for JA4 lookups.
+
+### 2.4 Modifications to Existing `policyengine.go`
+
+The L7 handler's `Provision()` must register the shared L4 policy state, and its
+`pollForChanges()` must also watch the L4 policy file.
+
+#### In `Provision()` (add after existing provisioning):
+
+```go
+// Register L4 policy in shared registry so the L4 handler can access it.
+if pe.RulesFile != "" {
+    l4PolicyPath := filepath.Join(filepath.Dir(pe.RulesFile), "l4-policy.json")
+    pe.l4PolicyFile = l4PolicyPath
+    pe.l4Policy = getOrCreateL4Policy(l4PolicyPath)
+    if err := loadL4PolicyFile(l4PolicyPath, pe.l4Policy); err != nil {
+        pe.logger.Info("L4 policy file not found (L4 enforcement disabled until first deploy)",
+            zap.String("path", l4PolicyPath), zap.Error(err))
+    }
+}
+```
+
+#### In `checkReload()` (add as 4th mtime check alongside rules, defaults, denylist):
+
+```go
+// Check L4 policy file
+if pe.l4PolicyFile != "" {
+    if info, err := os.Stat(pe.l4PolicyFile); err == nil {
+        if info.ModTime().After(pe.lastL4Mod) {
+            if err := loadL4PolicyFile(pe.l4PolicyFile, pe.l4Policy); err != nil {
+                pe.logger.Error("L4 policy reload failed", zap.Error(err))
+            } else {
+                pe.lastL4Mod = info.ModTime()
+                pe.logger.Info("L4 policy reloaded",
+                    zap.Int("block_ips", pe.l4Policy.BlockIPCount()),
+                    zap.Int("block_ja4s", pe.l4Policy.BlockJA4Count()))
+            }
+        }
+    }
+}
+```
+
+#### New fields on `PolicyEngine` struct:
+
+```go
+// L4 policy state (shared with L4 handler via registry)
+l4PolicyFile string
+l4Policy     *l4PolicyState
+lastL4Mod    time.Time
+```
+
+#### In `Cleanup()`:
+
+```go
+if pe.l4PolicyFile != "" {
+    releaseL4Policy(pe.l4PolicyFile)
+}
+```
+
+### 2.5 New Dependency in `go.mod`
+
+```
+require github.com/mholt/caddy-l4 v0.1.0
+```
+
+The caddy-l4 import is only needed for the `layer4.NextHandler` interface,
+`layer4.Connection` type, and `layer4.Handler` type. This is already compiled
+into the Caddy binary via xcaddy (Dockerfile line 8:
+`--with github.com/mholt/caddy-l4`).
+
+### 2.6 Plugin Tests
+
+New file: `policyengine_l4_test.go`
+
+```go
+package policyengine
+
+import (
+    "net"
+    "net/netip"
+    "testing"
+
+    "github.com/mholt/caddy-l4/layer4"
+    "go.uber.org/zap"
+)
+```
+
+#### Test: L4 handler blocks IP in blocklist
+
+```go
+func TestL4_BlockIP(t *testing.T) {
+    policy := newL4PolicyState()
+    blockSet := newIPSet()
+    blockSet.Add(netip.MustParseAddr("1.2.3.4"))
+    policy.Update(blockSet, newIPSet(), newStringSet(), newStringSet(), nil)
+
+    handler := &PolicyEngineL4{
+        Phase:  "pre_ja4",
+        policy: policy,
+        logger: zap.NewNop(),
+    }
+
+    cx := newTestConnection("1.2.3.4:12345")
+    nextCalled := false
+    next := layer4.HandlerFunc(func(_ *layer4.Connection) error {
+        nextCalled = true
+        return nil
+    })
+
+    err := handler.Handle(cx, next)
+    if err == nil || err.Error() != "policy_engine: connection dropped (L4)" {
+        t.Fatalf("expected RST error, got: %v", err)
+    }
+    if nextCalled {
+        t.Fatal("next handler should not have been called for blocked IP")
+    }
+}
+```
+
+#### Test: L4 handler passes clean IP
+
+```go
+func TestL4_PassCleanIP(t *testing.T) {
+    policy := newL4PolicyState()
+    blockSet := newIPSet()
+    blockSet.Add(netip.MustParseAddr("1.2.3.4"))
+    policy.Update(blockSet, newIPSet(), newStringSet(), newStringSet(), nil)
+
+    handler := &PolicyEngineL4{
+        Phase:  "pre_ja4",
+        policy: policy,
+        logger: zap.NewNop(),
+    }
+
+    cx := newTestConnection("5.6.7.8:12345")
+    nextCalled := false
+    next := layer4.HandlerFunc(func(_ *layer4.Connection) error {
+        nextCalled = true
+        return nil
+    })
+
+    err := handler.Handle(cx, next)
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+    if !nextCalled {
+        t.Fatal("next handler should have been called for clean IP")
+    }
+}
+```
+
+#### Test: Allow overrides block (priority order)
+
+```go
+func TestL4_AllowOverridesBlock(t *testing.T) {
+    policy := newL4PolicyState()
+    blockSet := newIPSet()
+    blockSet.AddPrefix(netip.MustParsePrefix("10.0.0.0/8"))
+    allowSet := newIPSet()
+    allowSet.Add(netip.MustParseAddr("10.1.2.3"))
+    policy.Update(blockSet, allowSet, newStringSet(), newStringSet(), nil)
+
+    handler := &PolicyEngineL4{
+        Phase:  "pre_ja4",
+        policy: policy,
+        logger: zap.NewNop(),
+    }
+
+    cx := newTestConnection("10.1.2.3:12345")
+    nextCalled := false
+    next := layer4.HandlerFunc(func(_ *layer4.Connection) error {
+        nextCalled = true
+        return nil
+    })
+
+    _ = handler.Handle(cx, next)
+    if !nextCalled {
+        t.Fatal("allowed IP should pass through even when CIDR is blocked")
+    }
+}
+```
+
+#### Test: JA4 blocklist in post_ja4 phase
+
+```go
+func TestL4_BlockJA4PostPhase(t *testing.T) {
+    policy := newL4PolicyState()
+    blockJA4 := newStringSet()
+    blockJA4.Add("t13d1517h2_8daaf6152771_b0da82dd1658")
+    policy.Update(newIPSet(), newIPSet(), blockJA4, newStringSet(), nil)
+
+    // Simulate JA4 registry entry (set by ja4 listener wrapper)
+    ja4Registry.Store("1.2.3.4:12345", "t13d1517h2_8daaf6152771_b0da82dd1658")
+    defer ja4Registry.Delete("1.2.3.4:12345")
+
+    handler := &PolicyEngineL4{
+        Phase:  "post_ja4",
+        policy: policy,
+        logger: zap.NewNop(),
+    }
+
+    cx := newTestConnection("1.2.3.4:12345")
+    err := handler.Handle(cx, layer4.HandlerFunc(func(_ *layer4.Connection) error { return nil }))
+    if err == nil || err.Error() != "policy_engine: connection dropped (L4)" {
+        t.Fatalf("expected RST for blocked JA4, got: %v", err)
+    }
+}
+```
+
+#### Test: JA4 blocklist ignored in pre_ja4 phase
+
+```go
+func TestL4_JA4IgnoredInPrePhase(t *testing.T) {
+    policy := newL4PolicyState()
+    blockJA4 := newStringSet()
+    blockJA4.Add("t13d1517h2_8daaf6152771_b0da82dd1658")
+    policy.Update(newIPSet(), newIPSet(), blockJA4, newStringSet(), nil)
+
+    ja4Registry.Store("1.2.3.4:12345", "t13d1517h2_8daaf6152771_b0da82dd1658")
+    defer ja4Registry.Delete("1.2.3.4:12345")
+
+    handler := &PolicyEngineL4{
+        Phase:  "pre_ja4",
+        policy: policy,
+        logger: zap.NewNop(),
+    }
+
+    cx := newTestConnection("1.2.3.4:12345")
+    nextCalled := false
+    next := layer4.HandlerFunc(func(_ *layer4.Connection) error {
+        nextCalled = true
+        return nil
+    })
+
+    _ = handler.Handle(cx, next)
+    if !nextCalled {
+        t.Fatal("pre_ja4 phase should not check JA4 blocklist")
+    }
+}
+```
+
+#### Test: Honeypot mode
+
+```go
+func TestL4_HoneypotMode(t *testing.T) {
+    handler := &PolicyEngineL4{
+        Mode:   "honeypot",
+        policy: newL4PolicyState(),
+        logger: zap.NewNop(),
+    }
+
+    cx := newTestConnection("1.2.3.4:12345")
+    nextCalled := false
+    next := layer4.HandlerFunc(func(_ *layer4.Connection) error {
+        nextCalled = true
+        return nil
+    })
+
+    err := handler.Handle(cx, next)
+    if err != nil {
+        t.Fatalf("honeypot should not error: %v", err)
+    }
+    if nextCalled {
+        t.Fatal("honeypot mode should be terminal (not call next)")
+    }
+}
+```
+
+#### Test: Registry sharing between L4 and L7
+
+```go
+func TestL4Registry_SharedState(t *testing.T) {
+    path := "/tmp/test-l4-policy.json"
+
+    // L7 creates the policy state
+    p1 := getOrCreateL4Policy(path)
+    blockSet := newIPSet()
+    blockSet.Add(netip.MustParseAddr("1.2.3.4"))
+    p1.Update(blockSet, newIPSet(), newStringSet(), newStringSet(), nil)
+
+    // L4 gets the same state
+    p2 := getOrCreateL4Policy(path)
+    if !p2.BlockIPs.Contains(netip.MustParseAddr("1.2.3.4")) {
+        t.Fatal("L4 should see the IP blocked by L7")
+    }
+
+    // Verify it's the same pointer
+    if p1 != p2 {
+        t.Fatal("registry should return the same *l4PolicyState instance")
+    }
+
+    releaseL4Policy(path)
+    releaseL4Policy(path)
+}
+```
+
+#### Test: CIDR matching
+
+```go
+func TestL4_CIDRBlock(t *testing.T) {
+    policy := newL4PolicyState()
+    blockSet := newIPSet()
+    blockSet.AddPrefix(netip.MustParsePrefix("192.168.0.0/16"))
+    policy.Update(blockSet, newIPSet(), newStringSet(), newStringSet(), nil)
+
+    handler := &PolicyEngineL4{Phase: "pre_ja4", policy: policy, logger: zap.NewNop()}
+
+    // IP within the CIDR
+    cx := newTestConnection("192.168.1.100:12345")
+    err := handler.Handle(cx, layer4.HandlerFunc(func(_ *layer4.Connection) error { return nil }))
+    if err == nil {
+        t.Fatal("expected RST for IP within blocked CIDR")
+    }
+
+    // IP outside the CIDR
+    cx2 := newTestConnection("10.0.0.1:12345")
+    nextCalled := false
+    err = handler.Handle(cx2, layer4.HandlerFunc(func(_ *layer4.Connection) error {
+        nextCalled = true
+        return nil
+    }))
+    if !nextCalled {
+        t.Fatal("IP outside CIDR should pass through")
+    }
+}
+```
+
+#### Test helper: newTestConnection
+
+```go
+func newTestConnection(remoteAddr string) *layer4.Connection {
+    host, port, _ := net.SplitHostPort(remoteAddr)
+    portNum, _ := strconv.Atoi(port)
+    ip := net.ParseIP(host)
+    conn := &net.TCPConn{} // will panic on actual I/O, but Handle doesn't read/write
+    // Use a mock net.Conn that returns the desired RemoteAddr
+    mock := &mockConn{remoteAddr: &net.TCPAddr{IP: ip, Port: portNum}}
+    return layer4.WrapConnection(mock, nil, zap.NewNop())
+}
+
+type mockConn struct {
+    net.Conn
+    remoteAddr net.Addr
+}
+
+func (m *mockConn) RemoteAddr() net.Addr { return m.remoteAddr }
+func (m *mockConn) Close() error         { return nil }
+```
+
+---
+
+## 3. Phase 2: wafctl L4 Policy Extraction
+
+**Repository:** `caddy-compose/wafctl/`
+**Effort:** ~2 days
+
+### 3.1 New File: `l4_policy.go`
+
+#### L4Policy Model
+
+```go
+type L4Policy struct {
+    Version   int       `json:"version"`
+    UpdatedAt time.Time `json:"updated_at"`
+
+    // Global — applies to listener wrappers (:443) and all L4 server blocks
+    BlockIPs   []string `json:"block_ips"`
+    BlockCIDRs []string `json:"block_cidrs"`
+    AllowIPs   []string `json:"allow_ips"`
+    AllowCIDRs []string `json:"allow_cidrs"`
+
+    // Post-JA4 — evaluated after JA4 parse, before TLS
+    BlockJA4s []string `json:"block_ja4s"`
+    AllowJA4s []string `json:"allow_ja4s"`
+
+    // Connection rate limits (Phase 8)
+    ConnRateLimits []L4ConnRateLimit `json:"conn_rate_limits,omitempty"`
+
+    // Per-port overrides for L4 server blocks (Phase 6)
+    Ports map[string]L4PortPolicy `json:"ports,omitempty"`
+}
+
+type L4ConnRateLimit struct {
+    CIDR          string `json:"cidr"`            // "0.0.0.0/0" for global
+    MaxConnsPerSec int   `json:"max_conns_per_sec"`
+    Burst          int   `json:"burst"`
+}
+
+type L4PortPolicy struct {
+    Protocol   string   `json:"protocol,omitempty"` // "ssh", "", etc.
+    AllowCIDRs []string `json:"allow_cidrs,omitempty"`
+    BlockIPs   []string `json:"block_ips,omitempty"`
+    DenyOthers bool     `json:"deny_all_others,omitempty"`
+}
+```
+
+#### Extraction Logic
+
+```go
+func ExtractL4Policy(exclusions []RuleExclusion) L4Policy {
+    policy := L4Policy{Version: 1, UpdatedAt: time.Now()}
+
+    for _, rule := range exclusions {
+        if !rule.Enabled {
+            continue
+        }
+
+        switch rule.Type {
+        case "allow":
+            if ips, cidrs, ok := extractIPOnlyConditions(rule); ok {
+                policy.AllowIPs = append(policy.AllowIPs, ips...)
+                policy.AllowCIDRs = append(policy.AllowCIDRs, cidrs...)
+            }
+            if ja4s, ok := extractJA4OnlyConditions(rule); ok {
+                policy.AllowJA4s = append(policy.AllowJA4s, ja4s...)
+            }
+
+        case "block":
+            if ips, cidrs, ok := extractIPOnlyConditions(rule); ok {
+                policy.BlockIPs = append(policy.BlockIPs, ips...)
+                policy.BlockCIDRs = append(policy.BlockCIDRs, cidrs...)
+            }
+            if ja4s, ok := extractJA4OnlyConditions(rule); ok {
+                policy.BlockJA4s = append(policy.BlockJA4s, ja4s...)
+            }
+        }
+    }
+
+    return policy
+}
+```
+
+#### L4 Eligibility Classification
+
+A rule is L4-eligible when ALL its conditions use only L4-available fields:
+
+```go
+// isIPOnly returns true if the rule has conditions and ALL conditions use
+// field "ip" with positive-match operators (eq, in, ip_match, in_list).
+func isIPOnly(rule RuleExclusion) bool {
+    if len(rule.Conditions) == 0 {
+        return false
+    }
+    for _, c := range rule.Conditions {
+        if c.Field != "ip" {
+            return false
+        }
+        // Negate operators (neq, not_in, not_ip_match) are tricky at L4:
+        // "block everything EXCEPT 1.2.3.4" requires knowing all IPs,
+        // which is only practical as an allow rule. Skip for now.
+        if c.Negate {
+            return false
+        }
+    }
+    return true
+}
+
+// isJA4Only returns true if the rule has conditions and ALL conditions
+// use field "ja4" with positive-match operators.
+func isJA4Only(rule RuleExclusion) bool {
+    if len(rule.Conditions) == 0 {
+        return false
+    }
+    for _, c := range rule.Conditions {
+        if c.Field != "ja4" {
+            return false
+        }
+        if c.Negate {
+            return false
+        }
+    }
+    return true
+}
+
+// extractIPOnlyConditions extracts IP addresses and CIDRs from an IP-only rule.
+// Returns (ips, cidrs, ok). ok is false if the rule is not IP-only.
+func extractIPOnlyConditions(rule RuleExclusion) (ips, cidrs []string, ok bool) {
+    if !isIPOnly(rule) {
+        return nil, nil, false
+    }
+    for _, c := range rule.Conditions {
+        switch c.Operator {
+        case "eq":
+            if strings.Contains(c.Value, "/") {
+                cidrs = append(cidrs, c.Value)
+            } else {
+                ips = append(ips, c.Value)
+            }
+        case "ip_match":
+            // ip_match value is always a CIDR
+            cidrs = append(cidrs, c.Value)
+        case "in":
+            // Comma-separated list of IPs/CIDRs
+            for _, v := range strings.Split(c.Value, ",") {
+                v = strings.TrimSpace(v)
+                if strings.Contains(v, "/") {
+                    cidrs = append(cidrs, v)
+                } else {
+                    ips = append(ips, v)
+                }
+            }
+        case "in_list":
+            // Managed list — resolve list items
+            for _, item := range c.ListItems {
+                item = strings.TrimSpace(item)
+                if strings.Contains(item, "/") {
+                    cidrs = append(cidrs, item)
+                } else {
+                    ips = append(ips, item)
+                }
+            }
+        }
+    }
+    return ips, cidrs, true
+}
+```
+
+### 3.2 Modification: `deploy.go`
+
+Add L4 policy generation to `generatePolicyData()`:
+
+```go
+// After existing L7 generation (line ~110):
+
+// Extract L4-eligible rules from the same exclusion set
+l4Policy := ExtractL4Policy(exclusions)
+
+l4Data, err := json.MarshalIndent(l4Policy, "", "  ")
+if err != nil {
+    return nil, 0, fmt.Errorf("marshal l4 policy: %w", err)
+}
+
+l4PolicyFile := filepath.Join(deployCfg.WafDir, "l4-policy.json")
+if err := atomicWriteFile(l4PolicyFile, l4Data); err != nil {
+    return nil, 0, fmt.Errorf("write l4 policy: %w", err)
+}
+
+log.Printf("[deploy] L4 policy: %d block IPs, %d block CIDRs, %d allow IPs, %d allow CIDRs, %d block JA4s",
+    len(l4Policy.BlockIPs), len(l4Policy.BlockCIDRs),
+    len(l4Policy.AllowIPs), len(l4Policy.AllowCIDRs),
+    len(l4Policy.BlockJA4s))
+```
+
+### 3.3 Modification: `DeployConfig` struct
+
+Add `L4PolicyFile` field:
+
+```go
+type DeployConfig struct {
+    WafDir           string
+    CaddyfilePath    string
+    CaddyAdminURL    string
+    PolicyRulesFile  string
+    ChallengeHMACKey string
+    L4PolicyFile     string // NEW: path to l4-policy.json
+}
+```
+
+In `main.go`, initialize:
+
+```go
+deployCfg := DeployConfig{
+    // ... existing fields ...
+    L4PolicyFile: filepath.Join(envOr("WAF_DIR", "/data/waf"), "l4-policy.json"),
+}
+```
+
+### 3.4 Tests: `l4_policy_test.go`
+
+```go
+package main
+
+import "testing"
+
+func TestExtractL4Policy_IPOnlyBlock(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r1", Name: "block-scanner", Type: "block", Enabled: true,
+        Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 1 || policy.BlockIPs[0] != "1.2.3.4" {
+        t.Fatalf("expected 1.2.3.4 in block IPs, got: %v", policy.BlockIPs)
+    }
+}
+
+func TestExtractL4Policy_IPOnlyAllow(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r2", Name: "allow-office", Type: "allow", Enabled: true,
+        Conditions: []Condition{{Field: "ip", Operator: "ip_match", Value: "10.0.0.0/8"}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.AllowCIDRs) != 1 || policy.AllowCIDRs[0] != "10.0.0.0/8" {
+        t.Fatalf("expected 10.0.0.0/8 in allow CIDRs, got: %v", policy.AllowCIDRs)
+    }
+}
+
+func TestExtractL4Policy_MixedConditionsNotL4(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r3", Name: "block-ip-path", Type: "block", Enabled: true,
+        Conditions: []Condition{
+            {Field: "ip", Operator: "eq", Value: "1.2.3.4"},
+            {Field: "path", Operator: "contains", Value: "/admin"},
+        },
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 0 {
+        t.Fatalf("mixed IP+path rule should NOT be L4-eligible, got: %v", policy.BlockIPs)
+    }
+}
+
+func TestExtractL4Policy_JA4OnlyBlock(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r4", Name: "block-bad-ja4", Type: "block", Enabled: true,
+        Conditions: []Condition{{Field: "ja4", Operator: "eq", Value: "t13d1517h2_8daaf6152771_b0da82dd1658"}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockJA4s) != 1 {
+        t.Fatalf("expected 1 blocked JA4, got: %v", policy.BlockJA4s)
+    }
+}
+
+func TestExtractL4Policy_DisabledRuleSkipped(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r5", Name: "disabled-block", Type: "block", Enabled: false,
+        Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 0 {
+        t.Fatal("disabled rule should be skipped")
+    }
+}
+
+func TestExtractL4Policy_NegatedConditionNotL4(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r6", Name: "block-not-ip", Type: "block", Enabled: true,
+        Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4", Negate: true}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 0 {
+        t.Fatal("negated IP condition should NOT be L4-eligible")
+    }
+}
+
+func TestExtractL4Policy_InOperatorMultipleIPs(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r7", Name: "block-multi", Type: "block", Enabled: true,
+        Conditions: []Condition{{Field: "ip", Operator: "in", Value: "1.2.3.4, 5.6.7.8, 10.0.0.0/24"}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 2 {
+        t.Fatalf("expected 2 block IPs, got: %v", policy.BlockIPs)
+    }
+    if len(policy.BlockCIDRs) != 1 {
+        t.Fatalf("expected 1 block CIDR, got: %v", policy.BlockCIDRs)
+    }
+}
+
+func TestExtractL4Policy_ChallengeRuleNotL4(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r8", Name: "challenge-all", Type: "challenge", Enabled: true,
+        Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 0 && len(policy.AllowIPs) != 0 {
+        t.Fatal("challenge rules should not produce L4 entries")
+    }
+}
+
+func TestExtractL4Policy_InListOperator(t *testing.T) {
+    rules := []RuleExclusion{{
+        ID: "r9", Name: "block-list", Type: "block", Enabled: true,
+        Conditions: []Condition{{
+            Field: "ip", Operator: "in_list",
+            ListItems: []string{"1.2.3.4", "5.6.7.0/24", "9.10.11.12"},
+        }},
+    }}
+    policy := ExtractL4Policy(rules)
+    if len(policy.BlockIPs) != 2 {
+        t.Fatalf("expected 2 block IPs from in_list, got: %v", policy.BlockIPs)
+    }
+    if len(policy.BlockCIDRs) != 1 {
+        t.Fatalf("expected 1 block CIDR from in_list, got: %v", policy.BlockCIDRs)
+    }
+}
+
+func TestExtractL4Policy_DeployIntegration(t *testing.T) {
+    // Full round-trip: create store → add rules → deploy → verify files
+    dir := t.TempDir()
+    store := newTestExclusionStore(t)
+
+    store.Create(RuleExclusion{
+        Name: "block-scanner", Type: "block", Enabled: true,
+        Conditions: []Condition{{Field: "ip", Operator: "eq", Value: "1.2.3.4"}},
+    })
+    store.Create(RuleExclusion{
+        Name: "block-path-ip", Type: "block", Enabled: true,
+        Conditions: []Condition{
+            {Field: "ip", Operator: "eq", Value: "5.6.7.8"},
+            {Field: "path", Operator: "contains", Value: "/admin"},
+        },
+    })
+
+    exclusions := store.EnabledExclusions()
+    policy := ExtractL4Policy(exclusions)
+
+    // Only the IP-only rule should be extracted
+    if len(policy.BlockIPs) != 1 || policy.BlockIPs[0] != "1.2.3.4" {
+        t.Fatalf("expected only IP-only rule in L4 policy, got: %v", policy.BlockIPs)
+    }
+}
+```
+
+---
+
+## 4. Phase 3: L4 Telemetry Pipeline
+
+**Repository:** `caddy-compose/wafctl/`
+**Effort:** ~2 days
+
+### 4.1 L4 Event Log Format
+
+The plugin's L4 handler writes JSONL to `EventLog` (default: `/data/waf/l4-events.log`):
+
+```json
+{"ts":1744099200,"action":"l4_block","ip":"1.2.3.4","reason":"ip_blocklist","port":443}
+{"ts":1744099201,"action":"l4_block","ip":"5.6.7.8","reason":"ja4_blocklist","ja4":"t13d1517h2...","port":443}
+{"ts":1744099202,"action":"honeypot_probe","ip":"9.10.11.12","port":3306}
+{"ts":1744099203,"action":"l4_rate_limit","ip":"1.2.3.4","reason":"conn_rate","port":2222}
+```
+
+### 4.2 New File: `l4_event_store.go`
+
+Minimal event store that tails `l4-events.log`, same offset-based pattern as
+`AccessLogStore`:
+
+```go
+type L4EventStore struct {
+    mu         sync.RWMutex
+    events     []L4Event
+    offset     int64
+    offsetFile string
+    logFile    string
+    maxItems   int
+    maxAge     time.Duration
+    generation atomic.Int64
+}
+
+type L4Event struct {
+    Timestamp time.Time `json:"ts"`
+    Action    string    `json:"action"`  // l4_block, l4_rate_limit, honeypot_probe
+    IP        string    `json:"ip"`
+    JA4       string    `json:"ja4,omitempty"`
+    Reason    string    `json:"reason,omitempty"`
+    Port      int       `json:"port"`
+}
+```
+
+`Load()` tails the log file using the same offset/rotation-detection pattern as
+`AccessLogStore.Load()`.
+
+### 4.3 Conversion to Event Structs
+
+To appear in the unified events timeline, L4 events are converted to `Event`:
+
+```go
+func (e L4Event) ToEvent() Event {
+    eventType := e.Action // "l4_block", "l4_rate_limit", "honeypot_probe"
+    isBlocked := e.Action == "l4_block" || e.Action == "l4_rate_limit"
+
+    return Event{
+        ID:             fmt.Sprintf("l4_%d_%s", e.Timestamp.UnixNano(), e.IP),
+        Timestamp:      e.Timestamp,
+        ClientIP:       e.IP,
+        EventType:      eventType,
+        IsBlocked:      isBlocked,
+        ResponseStatus: 0, // no HTTP response
+        BlockedBy:      "policy-engine-l4",
+        RuleMsg:        fmt.Sprintf("L4 %s: %s", e.Action, e.Reason),
+        JA4:            e.JA4,
+    }
+}
+```
+
+### 4.4 Integration with Summary Counters
+
+#### New fields on `hourBucket`:
+
+```go
+L4Blocked       int
+L4RateLimited   int
+HoneypotProbes  int
+```
+
+#### New per-service/per-client maps:
+
+```go
+ServiceL4Blocked      map[string]int
+ClientL4Blocked       map[string]int
+```
+
+#### Update `classifyEventIntoBucket`:
+
+```go
+case ev.EventType == "l4_block":
+    b.L4Blocked += delta
+    b.Blocked += delta
+case ev.EventType == "l4_rate_limit":
+    b.L4RateLimited += delta
+    b.Blocked += delta
+case ev.EventType == "honeypot_probe":
+    b.HoneypotProbes += delta
+    b.Blocked += delta
+```
+
+#### Update `SummaryResponse`:
+
+```go
+L4Blocked      int `json:"l4_blocked"`
+L4RateLimited  int `json:"l4_rate_limited"`
+HoneypotProbes int `json:"honeypot_probes"`
+```
+
+#### Update `HourCount`:
+
+```go
+L4Blocked      int `json:"l4_blocked"`
+L4RateLimited  int `json:"l4_rate_limited"`
+HoneypotProbes int `json:"honeypot_probes"`
+```
+
+#### Update `ServiceCount`, `ClientCount`, `ServiceDetail`:
+
+Add `L4Blocked int` field to each.
+
+#### Update `buildSummary`:
+
+- Include L4 counters in `svcMap` and `clientMap` tuple expansion
+- Include in `HourCount` population
+- Include in logged derivation: `logged = total - blocked - ... - l4Blocked - l4RateLimited - honeypotProbes`
+
+#### Update `mergeSummaryResponses`:
+
+Merge the 3 new scalar fields.
+
+### 4.5 Integration with Events API
+
+#### Update `query_helpers.go`:
+
+`rlEventTypes` map — add:
+```go
+"l4_block": true, "l4_rate_limit": true, "honeypot_probe": true,
+```
+
+`rleEventType()` — add cases:
+```go
+case "l4_block":       return "l4_block"
+case "l4_rate_limit":  return "l4_rate_limit"
+case "honeypot_probe": return "honeypot_probe"
+```
+
+`rleIsBlocked()` — add to blocking list:
+```go
+case "l4_block", "l4_rate_limit", "honeypot_probe":
+    return true
+```
+
+`rleResponseStatus()` — add case:
+```go
+case "l4_block", "l4_rate_limit", "honeypot_probe":
+    return 0 // no HTTP response
+```
+
+`rleBlockedBy()` — add case:
+```go
+case "l4_block", "l4_rate_limit":
+    return "policy-engine-l4"
+case "honeypot_probe":
+    return "honeypot"
+```
+
+#### Update `handleExclusionHits`:
+
+L4 block events carry rule attribution via the L4 event log's `reason` field.
+The hit scanner (line 99) needs the `"l4_"` prefix in the filter:
+
+```go
+if !strings.HasPrefix(et, "policy_") && !strings.HasPrefix(et, "challenge_") &&
+    !strings.HasPrefix(et, "l4_") && et != "detect_block" {
+    continue
+}
+```
+
+### 4.6 Environment Variables
+
+In `main.go`:
+
+```go
+l4EventLog := envOr("WAF_L4_EVENT_LOG", filepath.Join(wafDir, "l4-events.log"))
+```
+
+### 4.7 Tests: `l4_event_store_test.go`
+
+```go
+func TestL4EventToEvent(t *testing.T) {
+    l4e := L4Event{
+        Timestamp: time.Now(),
+        Action:    "l4_block",
+        IP:        "1.2.3.4",
+        Reason:    "ip_blocklist",
+        Port:      443,
+    }
+    ev := l4e.ToEvent()
+    if ev.EventType != "l4_block" {
+        t.Fatalf("expected l4_block, got: %s", ev.EventType)
+    }
+    if !ev.IsBlocked {
+        t.Fatal("l4_block should be marked as blocked")
+    }
+    if ev.BlockedBy != "policy-engine-l4" {
+        t.Fatalf("expected policy-engine-l4, got: %s", ev.BlockedBy)
+    }
+    if ev.ResponseStatus != 0 {
+        t.Fatalf("L4 events have no HTTP status, expected 0, got: %d", ev.ResponseStatus)
+    }
+}
+
+func TestL4EventStoreLoad(t *testing.T) {
+    dir := t.TempDir()
+    logFile := filepath.Join(dir, "l4-events.log")
+
+    // Write test events
+    lines := []string{
+        `{"ts":1744099200,"action":"l4_block","ip":"1.2.3.4","reason":"ip_blocklist","port":443}`,
+        `{"ts":1744099201,"action":"honeypot_probe","ip":"5.6.7.8","port":3306}`,
+    }
+    os.WriteFile(logFile, []byte(strings.Join(lines, "\n")+"\n"), 0644)
+
+    store := NewL4EventStore(logFile, filepath.Join(dir, "offset"), 10000, 24*time.Hour)
+    store.Load()
+
+    events := store.Events()
+    if len(events) != 2 {
+        t.Fatalf("expected 2 events, got: %d", len(events))
+    }
+    if events[0].Action != "l4_block" {
+        t.Fatalf("expected l4_block, got: %s", events[0].Action)
+    }
+}
+```
+
+---
+
+## 5. Phase 4: Caddyfile Integration
+
+**Repository:** `caddy-compose/` (root)
+**Effort:** ~0.5 day
+
+### 5.1 Updated Caddyfile Global Block
+
+Replace the current `listener_wrappers` block (lines 41-51):
+
+```caddyfile
+servers {
+    strict_sni_host on
+    protocols h1 h2 h3
+    trusted_proxies_strict
+    import /data/waf/cf_trusted_proxies.caddy
+    listener_wrappers {
+        # Pre-JA4 L4 enforcement: DDoS jail + IP blocklist
+        layer4 {
+            route {
+                ddos_mitigator {
+                    jail_file /data/waf/jail.json
+                }
+                policy_engine {
+                    l4_policy_file /data/waf/l4-policy.json
+                    phase pre_ja4
+                    event_log /data/waf/l4-events.log
+                }
+            }
+        }
+        # JA4 TLS fingerprinting
+        ja4
+        # Post-JA4 L4 enforcement: JA4 blocklist
+        layer4 {
+            route {
+                policy_engine {
+                    l4_policy_file /data/waf/l4-policy.json
+                    phase post_ja4
+                    event_log /data/waf/l4-events.log
+                }
+            }
+        }
+        tls
+    }
+    timeouts {
+        idle 30s
+    }
+}
+```
+
+### 5.2 Updated L4 Server Blocks
+
+Replace the current `layer4` block (lines 62-69):
+
+```caddyfile
+layer4 {
+    # SSH docs proxy — protected by DDoS jail + policy engine
+    :2222 {
+        @ssh ssh
+        route @ssh {
+            ddos_mitigator {
+                jail_file /data/waf/jail.json
+            }
+            policy_engine {
+                l4_policy_file /data/waf/l4-policy.json
+                phase pre_ja4
+                event_log /data/waf/l4-events.log
+            }
+            proxy 172.19.50.2:2222
+        }
+        # Non-SSH traffic on :2222 — drop
+        route {
+            close
+        }
+    }
+
+    # Admin API — L4 subnet restriction (replaces L7 :2020 block)
+    :2020 {
+        @wafctl remote_ip 172.19.98.0/24
+        route @wafctl {
+            proxy localhost:2019
+        }
+        route {
+            close
+        }
+    }
+}
+```
+
+### 5.3 Remove Old `:2020` HTTP Block
+
+Delete the `:2020` site block (lines 598-612 of current Caddyfile) since it moves
+to an L4 server block.
+
+### 5.4 Dockerfile Update
+
+Update the caddy-policy-engine version tag:
+
+```dockerfile
+--with github.com/erfianugrah/caddy-policy-engine@v0.43.0 \
+```
+
+(Version bump for the L4 handler addition.)
+
+### 5.5 compose.yaml
+
+No changes needed. The caddy service already has:
+- `network_mode: host` (required for L4 server blocks on dedicated ports)
+- `cap_add: NET_ADMIN` (for nftables, already present)
+- `/mnt/cache/caddy/waf:/data/waf` volume (already shared)
+
+---
+
+## 6. Phase 5: Dashboard Integration
+
+**Repository:** `caddy-compose/waf-dashboard/`
+**Effort:** ~1-2 days
+
+### 6.1 Frontend API Types
+
+#### `waf-events.ts` — EventType union (add 3 new types):
+
+```typescript
+export type EventType =
+  | "detect_block" | "logged" | "rate_limited" | "policy_skip"
+  | "policy_allow" | "policy_block" | "ddos_blocked" | "ddos_jailed"
+  | "challenge_issued" | "challenge_passed" | "challenge_failed"
+  | "challenge_bypassed"
+  | "l4_block" | "l4_rate_limit" | "honeypot_probe";  // NEW
+```
+
+#### `waf-events.ts` — validEventTypes (add 3):
+
+```typescript
+const validEventTypes: string[] = [
+  // ... existing 12 ...
+  "l4_block", "l4_rate_limit", "honeypot_probe"
+];
+```
+
+#### `waf-events.ts` — SummaryData (add 3 scalar fields):
+
+```typescript
+export interface SummaryData {
+  // ... existing 14 scalar fields ...
+  l4_blocked: number;       // NEW
+  l4_rate_limited: number;  // NEW
+  honeypot_probes: number;  // NEW
+  // ... collection fields unchanged ...
+}
+```
+
+#### `waf-events.ts` — TimelinePoint (add 3 fields):
+
+```typescript
+export interface TimelinePoint {
+  // ... existing 14 fields ...
+  l4_blocked: number;       // NEW
+  l4_rate_limited: number;  // NEW
+  honeypot_probes: number;  // NEW
+}
+```
+
+#### `waf-events.ts` — RawSummary + inline types:
+
+Add `l4_blocked`, `l4_rate_limited`, `honeypot_probes` to:
+- Top-level `RawSummary` scalars
+- `events_by_hour` inline type
+- `top_services` inline type
+- `top_clients` inline type
+- `service_breakdown` inline type
+
+#### `waf-events.ts` — fetchSummary():
+
+Add mapping for the 3 new scalars and all sub-object mappers (timeline, services,
+clients, breakdown). Pattern: `field: raw.field ?? 0`.
+
+#### `waf-events.ts` — ServiceStat, ClientStat, ServiceBreakdown:
+
+Add `l4_blocked: number` field to each.
+
+### 6.2 UI Utility Maps
+
+#### `src/lib/utils.ts` — ACTION_LABELS (add 3):
+
+```typescript
+l4_block:        "L4 Block",
+l4_rate_limit:   "L4 Rate Limit",
+honeypot_probe:  "Honeypot Probe",
+```
+
+#### `src/lib/utils.ts` — ACTION_BADGE_CLASSES (add 3):
+
+```typescript
+l4_block:       "bg-lv-pink/20 border-lv-pink/30 text-lv-pink",
+l4_rate_limit:  "bg-lv-peach/20 border-lv-peach/30 text-lv-peach",
+honeypot_probe: "bg-lv-purple/20 border-lv-purple/30 text-lv-purple",
+```
+
+#### `src/lib/utils.ts` — ACTION_COLORS (add 3):
+
+```typescript
+l4_block:       "#ff6b9d",  // distinct pink
+l4_rate_limit:  "#f1a171",  // share peach with rate_limited
+honeypot_probe: "#c9a0dc",  // share purple with ddos
+```
+
+### 6.3 Filter Constants
+
+#### `filters/constants.ts` — EVENT_TYPE_OPTIONS (add 3):
+
+```typescript
+{ value: "l4_block",       label: ACTION_LABELS.l4_block },
+{ value: "l4_rate_limit",  label: ACTION_LABELS.l4_rate_limit },
+{ value: "honeypot_probe", label: ACTION_LABELS.honeypot_probe },
+```
+
+Total goes from 10 → 13.
+
+### 6.4 OverviewDashboard
+
+#### STAT_CARD_DEFS (add 2, keep auto-hide-when-zero):
+
+```typescript
+{ key: "l4_blocked",      label: ACTION_LABELS.l4_block,       icon: ShieldBan,   color: "pink",   href: "/events?type=l4_block" },
+{ key: "honeypot_probes", label: ACTION_LABELS.honeypot_probe, icon: ShieldAlert, color: "purple", href: "/events?type=honeypot_probe" },
+```
+
+#### Timeline chart — add gradient + Area for `l4_blocked`:
+
+```tsx
+<defs>
+  <linearGradient id="gradL4Blocked" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="5%" stopColor={ACTION_COLORS.l4_block} stopOpacity={0.5} />
+    <stop offset="95%" stopColor={ACTION_COLORS.l4_block} stopOpacity={0} />
+  </linearGradient>
+</defs>
+<Area dataKey="l4_blocked" stroke={ACTION_COLORS.l4_block} fill="url(#gradL4Blocked)" ... />
+```
+
+#### Logged computation — subtract L4 types:
+
+```typescript
+const logged = total - blocked - rateLimited - policyAllow - policySkip
+  - challengeIssued - challengePassed - challengeBypassed
+  - l4Blocked - l4RateLimited - honeypotProbes;  // NEW subtractions
+```
+
+### 6.5 EventDetailPanel
+
+Add L4-specific rendering branch:
+
+```tsx
+{(event.event_type === "l4_block" || event.event_type === "l4_rate_limit" ||
+  event.event_type === "honeypot_probe") && (
+  <div>
+    <Badge>Enforced at L4 (pre-TLS TCP RST)</Badge>
+    <p>Connection dropped before TLS handshake — no HTTP response generated.</p>
+    {event.ja4 && <p>JA4: {event.ja4}</p>}
+  </div>
+)}
+```
+
+### 6.6 Frontend Tests
+
+#### `waf-events.test.ts` — update timeline fixture:
+
+Add `l4_blocked: 0`, `l4_rate_limited: 0`, `honeypot_probes: 0` to timeline point
+expectations. Update summary scalar expectations.
+
+#### `constants.test.ts` — update counts:
+
+```typescript
+expect(EVENT_TYPE_OPTIONS).toHaveLength(13);  // was 10
+```
+
+#### `DashboardFilterBar.test.ts` — update event_type option count:
+
+```typescript
+expect(eventTypeOptions).toHaveLength(13);  // was 10
+```
+
+---
+
+## 7. Phase 6: L4 Server Blocks (Non-HTTP Services)
+
+**Effort:** ~1 day
+
+### 7.1 Honeypot Ports
+
+Add to the Caddyfile `layer4` block:
+
+```caddyfile
+layer4 {
+    # ... existing :2222 and :2020 ...
+
+    # Honeypot ports — log probes, feed to wafctl event pipeline
+    :22 :3306 :5432 :6379 :27017 {
+        route {
+            policy_engine {
+                l4_policy_file /data/waf/l4-policy.json
+                mode honeypot
+                event_log /data/waf/l4-events.log
+            }
+            close
+        }
+    }
+}
+```
+
+### 7.2 wafctl Auto-Escalation from Honeypots
+
+In the L4 event store's `Load()`, after ingesting honeypot events:
+
+```go
+// Auto-escalation: IPs probing 3+ distinct honeypot ports get a temporary block rule
+if probeCount >= 3 {
+    store.autoEscalate(ip, "honeypot_multi_probe", 1*time.Hour)
+}
+```
+
+This follows the existing auto-escalation pattern from session tracking
+(`SessionStore.autoEscalate`), creating temporary `RuleExclusion` entries with
+`ExpiresAt` set. The next deploy cycle picks them up and generates both L4 and L7
+config.
+
+### 7.3 Tests
+
+#### E2E: `test/e2e/28_l4_policy_engine_test.go`
+
+```go
+func TestL4_SSHProxyProtected(t *testing.T) {
+    // 1. Verify SSH proxy works for clean IPs
+    // 2. Add IP block rule via wafctl API
+    // 3. Deploy
+    // 4. Verify SSH connection to :2222 fails (TCP RST or connection refused)
+    // 5. Cleanup: remove rule, redeploy
+}
+
+func TestL4_AdminProxySubnetRestriction(t *testing.T) {
+    // 1. Verify :2020 accepts connections from wafctl subnet
+    // 2. Verify :2020 drops connections from outside subnet
+}
+
+func TestL4_HoneypotPortLogging(t *testing.T) {
+    // 1. Connect to :3306 (honeypot)
+    // 2. Verify connection is closed
+    // 3. Wait for wafctl to ingest L4 event log
+    // 4. Verify honeypot_probe event appears in /api/events
+}
+
+func TestL4_IPBlockPreTLS(t *testing.T) {
+    // 1. Create IP block rule via wafctl API
+    // 2. Deploy
+    // 3. Attempt HTTPS connection to :443
+    // 4. Verify connection fails BEFORE TLS handshake
+    //    (no TLS alert — just connection reset)
+    // 5. Verify L4 block event in /api/events
+}
+
+func TestL4_CleanTrafficUnaffected(t *testing.T) {
+    // 1. Verify normal HTTPS traffic works with L4 handlers in the chain
+    // 2. Verify JA4 fingerprint is still computed (ja4 wrapper still runs)
+    // 3. Verify policy engine L7 evaluation still runs
+}
+
+func TestL4_L7Fallback(t *testing.T) {
+    // 1. Create IP block rule
+    // 2. Deploy L7 only (delete l4-policy.json)
+    // 3. Verify L7 still blocks with 403 (L4 config missing = pass-through)
+    // 4. Restore l4-policy.json, verify L4 RST resumes
+}
+```
+
+---
+
+## 8. Phase 7: JA4-Aware L4 Enforcement
+
+**Effort:** ~1-2 days
+
+This uses the post-JA4 listener wrapper block defined in Phase 4. The JA4 listener
+wrapper (`ja4_listener.go`) stores fingerprints in a `sync.Map` (`ja4Registry`)
+keyed by `remote_addr` string. The post-JA4 L4 handler reads from this map.
+
+### 8.1 Integration Point
+
+The existing `ja4_registry.go` in the caddy-policy-engine plugin:
+
+```go
+var ja4Registry sync.Map // map[string]string: "ip:port" -> JA4 fingerprint
+```
+
+The L4 handler calls:
+
+```go
+func getJA4ForAddr(remoteAddr string) string {
+    if v, ok := ja4Registry.Load(remoteAddr); ok {
+        return v.(string)
+    }
+    return ""
+}
+```
+
+### 8.2 Timing Consideration
+
+The listener wrapper chain is: `layer4(pre)` → `ja4` → `layer4(post)` → `tls`.
+
+After `ja4` runs, it has parsed the ClientHello and stored the JA4 in the registry.
+The `layer4(post)` block then runs, and the L4 handler can read the JA4. If the JA4
+is in the blocklist, the connection gets RST before TLS completion (the server never
+sends ServerHello, no certificate exposed, no key exchange CPU).
+
+### 8.3 Tests
+
+```go
+func TestL4_JA4BlockPreTLS(t *testing.T) {
+    // 1. Create JA4 block rule via wafctl API
+    // 2. Deploy
+    // 3. Attempt HTTPS with a TLS client that produces the blocked JA4
+    // 4. Verify connection fails before TLS completion
+    // 5. Verify l4_block event with ja4 field in /api/events
+}
+```
+
+---
+
+## 9. Phase 8: L4 Connection Rate Limiting
+
+**Effort:** ~2-3 days
+
+### 9.1 Plugin: `l4_ratelimit.go`
+
+Sliding-window connection counter per IP, using the same sharded approach as the
+existing `rateLimitState` in `ratelimit.go`:
+
+```go
+type connRateLimiter struct {
+    shards [64]connShard
+    window time.Duration
+    limit  int
+    burst  int
+}
+
+type connShard struct {
+    mu       sync.Mutex
+    counters map[netip.Addr]*connCounter
+}
+
+type connCounter struct {
+    timestamps []int64 // ring buffer of connection timestamps (unix nanos)
+    head       int
+}
+
+func (l *connRateLimiter) Exceeds(addr netip.Addr) bool {
+    // Slide window, count recent connections, compare to limit
+}
+```
+
+### 9.2 wafctl: L4 Rate Limit Extraction
+
+In `ExtractL4Policy`, add support for rate_limit rules with `key=client_ip` and
+no HTTP-level conditions:
+
+```go
+case "rate_limit":
+    if isIPOnlyRL(rule) {
+        policy.ConnRateLimits = append(policy.ConnRateLimits, L4ConnRateLimit{
+            CIDR:           "0.0.0.0/0", // global
+            MaxConnsPerSec: rule.RateLimitEvents,
+            Burst:          rule.RateLimitEvents * 2,
+        })
+    }
+```
+
+### 9.3 Tests
+
+```go
+func TestL4_ConnRateLimitExceeded(t *testing.T) {
+    limiter := newConnRateLimiter(10, 20, 1*time.Second) // 10/sec, burst 20
+    addr := netip.MustParseAddr("1.2.3.4")
+
+    // First 20 should pass (burst)
+    for i := 0; i < 20; i++ {
+        if limiter.Exceeds(addr) {
+            t.Fatalf("connection %d should not exceed burst", i)
+        }
+    }
+
+    // 21st should be rate limited
+    if !limiter.Exceeds(addr) {
+        t.Fatal("should exceed rate limit after burst")
+    }
+}
+
+func TestL4_ConnRateLimitDifferentIPs(t *testing.T) {
+    limiter := newConnRateLimiter(5, 5, 1*time.Second)
+    addr1 := netip.MustParseAddr("1.2.3.4")
+    addr2 := netip.MustParseAddr("5.6.7.8")
+
+    for i := 0; i < 5; i++ {
+        limiter.Exceeds(addr1)
+    }
+
+    // Different IP should have its own counter
+    if limiter.Exceeds(addr2) {
+        t.Fatal("different IP should not be affected by first IP's rate limit")
+    }
+}
+```
+
+---
+
+## 10. Test Plan
+
+### 10.1 Unit Tests (Plugin — `caddy-policy-engine`)
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestL4_BlockIP` | `policyengine_l4_test.go` | Blocked IP gets RST, next not called |
+| `TestL4_PassCleanIP` | `policyengine_l4_test.go` | Clean IP passes through, next called |
+| `TestL4_AllowOverridesBlock` | `policyengine_l4_test.go` | Allow priority > block priority |
+| `TestL4_CIDRBlock` | `policyengine_l4_test.go` | CIDR prefix matching works |
+| `TestL4_BlockJA4PostPhase` | `policyengine_l4_test.go` | JA4 blocklist works in post_ja4 phase |
+| `TestL4_JA4IgnoredInPrePhase` | `policyengine_l4_test.go` | pre_ja4 phase skips JA4 checks |
+| `TestL4_HoneypotMode` | `policyengine_l4_test.go` | Honeypot is terminal, doesn't call next |
+| `TestL4Registry_SharedState` | `policyengine_l4_test.go` | L4 and L7 share same policy pointer |
+| `TestL4_ConnRateLimitExceeded` | `l4_ratelimit_test.go` | Rate limiter triggers after burst |
+| `TestL4_ConnRateLimitDifferentIPs` | `l4_ratelimit_test.go` | Per-IP isolation |
+| `TestL4_ExtractRemoteIP_TCPAddr` | `policyengine_l4_test.go` | Fast path: `*net.TCPAddr` |
+| `TestL4_ExtractRemoteIP_String` | `policyengine_l4_test.go` | Fallback: string parsing |
+| `TestL4_ExtractRemoteIP_IPv4Mapped` | `policyengine_l4_test.go` | IPv4-mapped IPv6 normalization |
+| `TestL4_ForceRST` | `policyengine_l4_test.go` | `SetLinger(0)` + `Close()` called |
+| `TestL4_PolicyFileLoad` | `l4_policy_test.go` | JSON file round-trip |
+| `TestL4_PolicyUpdate` | `l4_policy_test.go` | Atomic update under RWMutex |
+| `TestL4_PolicyConcurrentAccess` | `l4_policy_test.go` | Parallel reads + writes don't race |
+
+### 10.2 Unit Tests (wafctl)
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestExtractL4Policy_IPOnlyBlock` | `l4_policy_test.go` | IP-only block → L4 blocklist |
+| `TestExtractL4Policy_IPOnlyAllow` | `l4_policy_test.go` | IP-only allow → L4 allowlist |
+| `TestExtractL4Policy_MixedConditionsNotL4` | `l4_policy_test.go` | IP+path → L7 only |
+| `TestExtractL4Policy_JA4OnlyBlock` | `l4_policy_test.go` | JA4-only → L4 JA4 blocklist |
+| `TestExtractL4Policy_DisabledRuleSkipped` | `l4_policy_test.go` | Disabled rules excluded |
+| `TestExtractL4Policy_NegatedConditionNotL4` | `l4_policy_test.go` | Negated conditions → L7 only |
+| `TestExtractL4Policy_InOperatorMultipleIPs` | `l4_policy_test.go` | `in` operator splits IPs/CIDRs |
+| `TestExtractL4Policy_ChallengeRuleNotL4` | `l4_policy_test.go` | Challenge type → never L4 |
+| `TestExtractL4Policy_InListOperator` | `l4_policy_test.go` | `in_list` with `ListItems` |
+| `TestExtractL4Policy_DeployIntegration` | `l4_policy_test.go` | Full store → extract → verify |
+| `TestL4EventToEvent` | `l4_event_store_test.go` | L4Event → Event conversion |
+| `TestL4EventStoreLoad` | `l4_event_store_test.go` | JSONL tailing |
+| `TestL4EventStoreRotation` | `l4_event_store_test.go` | Log rotation detection |
+| `TestDeployGeneratesL4Policy` | `deploy_test.go` | Deploy produces both JSON files |
+| `TestDeployL4PolicyContents` | `deploy_test.go` | L4 file has correct IPs/CIDRs |
+
+### 10.3 Frontend Tests
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| Timeline fixture with L4 fields | `waf-events.test.ts` | `l4_blocked`, `l4_rate_limited`, `honeypot_probes` mapped |
+| Summary L4 scalars | `waf-events.test.ts` | 3 new counters present and default to 0 |
+| EVENT_TYPE_OPTIONS count | `constants.test.ts` | 13 options (was 10) |
+| ACTION_LABELS completeness | `constants.test.ts` | All 15 event types + total_blocked have labels |
+| ACTION_COLORS completeness | `constants.test.ts` | All 15 event types have colors |
+
+### 10.4 E2E Tests
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestL4_IPBlockPreTLS` | `28_l4_policy_engine_test.go` | IP block → TCP RST before TLS |
+| `TestL4_CleanTrafficUnaffected` | `28_l4_policy_engine_test.go` | L4 chain doesn't break normal traffic |
+| `TestL4_L7Fallback` | `28_l4_policy_engine_test.go` | L7 blocks when L4 config missing |
+| `TestL4_SSHProxyProtected` | `28_l4_policy_engine_test.go` | SSH :2222 enforces IP blocklist |
+| `TestL4_AdminProxySubnetRestriction` | `28_l4_policy_engine_test.go` | :2020 drops non-wafctl subnet |
+| `TestL4_HoneypotPortLogging` | `28_l4_policy_engine_test.go` | Honeypot events appear in API |
+| `TestL4_JA4BlockPreTLS` | `28_l4_policy_engine_test.go` | JA4 block → TCP RST before TLS |
+| `TestL4_DeployUpdatesL4Policy` | `28_l4_policy_engine_test.go` | API deploy → l4-policy.json written |
+| `TestL4_ModuleLoaded` | `28_l4_policy_engine_test.go` | `layer4.handlers.policy_engine` in Caddy config |
+| `TestL4_EventsInTimeline` | `28_l4_policy_engine_test.go` | L4 events in `/api/summary` counters |
+
+---
+
+## 11. Rollout Checklist
+
+### Phase 1: Plugin L4 Handler
+- [ ] Create `policyengine_l4.go` in caddy-policy-engine
+- [ ] Create `l4_registry.go` in caddy-policy-engine
+- [ ] Create `l4_policy.go` in caddy-policy-engine
+- [ ] Modify `policyengine.go` Provision/checkReload/Cleanup for L4 registry
+- [ ] Add `github.com/mholt/caddy-l4` to `go.mod`
+- [ ] Write plugin unit tests (16 tests)
+- [ ] Tag release (e.g., v0.43.0)
+
+### Phase 2: wafctl L4 Extraction
+- [ ] Create `l4_policy.go` in wafctl
+- [ ] Modify `deploy.go` to generate l4-policy.json
+- [ ] Add `L4PolicyFile` to `DeployConfig`
+- [ ] Update `main.go` with env var
+- [ ] Write wafctl unit tests (10 tests)
+- [ ] Run `make test-go` — all ~1555 tests pass
+
+### Phase 3: L4 Telemetry
+- [ ] Create `l4_event_store.go` in wafctl
+- [ ] Update `models.go` — SummaryResponse, HourCount, ServiceCount, ClientCount, ServiceDetail
+- [ ] Update `summary_counters.go` — hourBucket, classifyRLIntoBucket, classifyEventIntoBucket, buildSummary, mergeSummaryResponses
+- [ ] Update `query_helpers.go` — rlEventTypes, rleEventType, rleIsBlocked, rleResponseStatus, rleBlockedBy
+- [ ] Update `handlers_exclusions.go` — handleExclusionHits filter
+- [ ] Update `main.go` — L4EventStore initialization and tailing
+- [ ] Write telemetry unit tests (5 tests)
+- [ ] Run `make test-go` — all tests pass
+
+### Phase 4: Caddyfile
+- [ ] Update `listener_wrappers` in Caddyfile (pre-JA4 + post-JA4 blocks)
+- [ ] Update `layer4` server blocks (:2222, :2020)
+- [ ] Remove old `:2020` HTTP site block
+- [ ] Update Dockerfile caddy-policy-engine version
+- [ ] Run `make build-caddy` — builds successfully
+- [ ] Test Caddyfile adaptation: `docker exec caddy caddy adapt --config /etc/caddy/Caddyfile`
+
+### Phase 5: Dashboard
+- [ ] Update `waf-events.ts` — EventType, SummaryData, TimelinePoint, RawSummary, fetchSummary, ServiceStat, ClientStat, ServiceBreakdown, validEventTypes, mapEvent
+- [ ] Update `src/lib/utils.ts` — ACTION_LABELS, ACTION_BADGE_CLASSES, ACTION_COLORS
+- [ ] Update `filters/constants.ts` — EVENT_TYPE_OPTIONS
+- [ ] Update `OverviewDashboard.tsx` — STAT_CARD_DEFS, timeline, logged computation
+- [ ] Update `EventDetailPanel.tsx` — L4 enforcement badge
+- [ ] Update frontend tests (5 test updates)
+- [ ] Run `make test-frontend` — all ~355 tests pass
+
+### Phase 6: L4 Server Blocks
+- [ ] Add honeypot ports to Caddyfile
+- [ ] Add honeypot auto-escalation logic to wafctl
+- [ ] Write E2E tests (10 tests)
+- [ ] Run `make test-e2e` — all ~119+ tests pass
+
+### Phase 7: JA4 L4 Enforcement
+- [ ] Verify JA4 registry integration with post-JA4 handler
+- [ ] Write JA4 L4 E2E test
+- [ ] Verify JA4 events in dashboard
+
+### Phase 8: L4 Connection Rate Limiting
+- [ ] Create `l4_ratelimit.go` in caddy-policy-engine
+- [ ] Add L4 RL extraction to wafctl
+- [ ] Write rate limiter unit tests (2+ tests)
+- [ ] Write E2E rate limit test
+
+### Final Validation
+- [ ] `make test` — ALL tests pass (Go + converter + frontend)
+- [ ] `make build` — all images build
+- [ ] `make test-e2e` — E2E smoke tests pass
+- [ ] Manual verification: create IP block rule → deploy → verify TCP RST on :443
+- [ ] Manual verification: verify clean traffic unaffected
+- [ ] Manual verification: verify events appear in dashboard
+- [ ] Version tags synced: Makefile, compose.yaml, Dockerfile
+
+### Files Changed Summary
+
+**caddy-policy-engine (new repo files):**
+- `policyengine_l4.go` (~250 lines)
+- `l4_registry.go` (~60 lines)
+- `l4_policy.go` (~150 lines)
+- `l4_ratelimit.go` (~100 lines) [Phase 8]
+- `policyengine_l4_test.go` (~300 lines)
+- `l4_policy_test.go` (~100 lines)
+- `l4_ratelimit_test.go` (~80 lines) [Phase 8]
+
+**caddy-policy-engine (modified files):**
+- `policyengine.go` — ~30 lines added (Provision, checkReload, Cleanup, struct fields)
+- `go.mod` — 1 dependency added
+
+**wafctl (new files):**
+- `l4_policy.go` (~200 lines)
+- `l4_event_store.go` (~200 lines)
+- `l4_policy_test.go` (~250 lines)
+- `l4_event_store_test.go` (~100 lines)
+
+**wafctl (modified files):**
+- `deploy.go` — ~20 lines added
+- `models.go` — ~15 lines added (3 fields on 5 structs)
+- `summary_counters.go` — ~50 lines added
+- `query_helpers.go` — ~20 lines added
+- `handlers_exclusions.go` — ~3 lines changed
+- `main.go` — ~15 lines added
+
+**caddy-compose (root):**
+- `Caddyfile` — listener_wrappers rewrite + L4 server blocks
+- `Dockerfile` — version bump (1 line)
+
+**waf-dashboard:**
+- `src/lib/api/waf-events.ts` — ~40 lines added
+- `src/lib/utils.ts` — ~9 lines added
+- `src/components/filters/constants.ts` — ~3 lines added
+- `src/components/OverviewDashboard.tsx` — ~15 lines added
+- `src/components/EventDetailPanel.tsx` — ~10 lines added
+- Test files — ~20 lines updated across 3 files
+
+**E2E tests:**
+- `test/e2e/28_l4_policy_engine_test.go` (~400 lines new)
+
+---
+
+## Appendix: API Verification Notes
+
+All code in this plan was verified against official source code and documentation.
+No signatures, interface definitions, or struct fields were assumed from memory.
+
+### Caddy v2 Module System (caddyserver/caddy master)
+
+| API | Verified | Source file |
+|-----|----------|-------------|
+| `caddy.RegisterModule(instance Module)` | Accepts value or pointer; `New` must return pointer | `modules.go` |
+| `caddy.ModuleInfo{ID ModuleID, New func() Module}` | `ID` is `type ModuleID string`, not bare `string` | `modules.go` |
+| `caddy.Module` interface | Single method: `CaddyModule() ModuleInfo` | `modules.go` |
+| `caddy.Provisioner` | `Provision(Context) error`; Context is a **struct** (not interface) | `modules.go` |
+| `caddy.CleanerUpper` | `Cleanup() error` | `modules.go` |
+| `caddy.Validator` | `Validate() error` | `modules.go` |
+| `caddy.ListenerWrapper` | `WrapListener(net.Listener) net.Listener` — **no error return** | `listeners.go` |
+| `caddyhttp.MiddlewareHandler` | `ServeHTTP(http.ResponseWriter, *http.Request, Handler) error` | `caddyhttp.go` |
+| `caddyhttp.SetVar(ctx context.Context, key string, value any)` | **Returns nothing**; nil value deletes key | `vars.go` |
+| `caddyfile.Unmarshaler` | `UnmarshalCaddyfile(d *Dispenser) error` | `adapter.go` |
+| `caddyfile.Dispenser.NextBlock(initialNestingLevel int) bool` | Param is `initialNestingLevel`, called with `0` for top-level | `dispenser.go` |
+
+### caddy-l4 (mholt/caddy-l4 master)
+
+| API | Verified | Source file |
+|-----|----------|-------------|
+| `layer4.Connection` struct | `net.Conn` is **embedded** (anonymous), not named field `Conn` | `connection.go` |
+| `Connection.SetVar(key string, value any)` | Sets on `VarsCtxKey` map; no return | `connection.go` |
+| `Connection.GetVar(key string) any` | Returns `any` (**single return**, not `(any, bool)`); nil if missing | `connection.go` |
+| `layer4.WrapConnection(net.Conn, []byte, *zap.Logger) *Connection` | buf is `[]byte`, nil is valid | `connection.go` |
+| `layer4.NextHandler` interface | `Handle(*Connection, Handler) error` — 2nd param is `Handler` not `NextHandler` | `handlers.go` |
+| `layer4.Handler` interface | `Handle(*Connection) error` | `handlers.go` |
+| `layer4.HandlerFunc` | `type HandlerFunc func(*Connection) error` — implements `Handler` | `handlers.go` |
+| `ListenerWrapper` module ID | `"caddy.listeners.layer4"` | `listener.go` |
+| `App` module ID | `"layer4"` | `app.go` |
+| Handler module namespace | `"layer4.handlers.*"` | Routes JSON tag: `namespace=layer4.handlers` |
+| `Server.MatchingTimeout` default | 3 seconds (`MatchingTimeoutDefault`) | `server.go` |
+| `Server.IdleTimeout` default | 30 seconds (`idleTimeoutDefault`) | `server.go` |
+
+### Go Standard Library (go1.26, pkg.go.dev)
+
+| API | Verified | Notes |
+|-----|----------|-------|
+| `net.TCPConn.SetLinger(sec int) error` | sec=0: OS discards data, sends RST (Linux/BSD); sec<0: graceful FIN | pkg.go.dev/net |
+| `netip.AddrFromSlice([]byte) (Addr, bool)` | Returns `(Addr, bool)`, not `(Addr, error)` | pkg.go.dev/net/netip |
+| `netip.Addr.Unmap() Addr` | Strips IPv4-mapped IPv6 prefix → plain IPv4 | pkg.go.dev/net/netip |
+| `netip.MustParseAddr(string) Addr` | Exists; panics on error (test use) | pkg.go.dev/net/netip |
+| `netip.MustParsePrefix(string) Prefix` | Exists; panics on error (test use) | pkg.go.dev/net/netip |
+| `netip.Prefix.Contains(Addr) bool` | IPv4 addr won't match IPv6 prefix | pkg.go.dev/net/netip |
+| `net.SplitHostPort(string) (string, string, error)` | 3 return values | pkg.go.dev/net |
+| `sync.Map.Store(key, value any)` | No return | pkg.go.dev/sync |
+| `sync.Map.Load(key any) (any, bool)` | Returns `(value, ok)` | pkg.go.dev/sync |
+| `sync.Map.Delete(key any)` | No return | pkg.go.dev/sync |
+| `sync.RWMutex.{RLock,RUnlock,Lock,Unlock}()` | All no-param, no-return | pkg.go.dev/sync |
+| `sync/atomic.Int64` | `.Add(int64) int64`, `.Load() int64`, `.Store(int64)` | pkg.go.dev/sync/atomic |
+| `sync/atomic.Bool` | `.Load() bool`, `.Store(bool)`, `.CompareAndSwap(bool,bool) bool` | pkg.go.dev/sync/atomic |
+
+### caddy-ddos-mitigator (erfianugrah/caddy-ddos-mitigator v0.16.0)
+
+| Pattern | Verified | Source file |
+|---------|----------|-------------|
+| Dual L4/L7 registration | Two structs, two `init()`, two `CaddyModule()` | `mitigator.go` + `mitigator_l4.go` |
+| L4 struct: `DDOSMitigatorL4{JailFile string; jail *ipJail; cidr *cidrAggregator; logger *zap.Logger}` | Exact 1 exported + 3 unexported fields | `mitigator_l4.go` |
+| L4 module ID: `"layer4.handlers.ddos_mitigator"` | Value receiver on `CaddyModule()` | `mitigator_l4.go` |
+| Registry: `jailRegistry map[string]*jailRegistryEntry` with `refCount int` | Package-level `sync.Mutex` (not RWMutex) | `jail.go` |
+| `getOrCreateJail(path) *ipJail` / `getCIDR(path) *cidrAggregator` | Increment refCount; nil if not found | `jail.go` |
+| `ipJail`: 64 shards, FNV-1a hash, `sync.RWMutex` per shard | `IsJailed(addr) bool` uses RLock + lazy expiry | `jail.go` |
+| `forceDropConn`: unwrap loop via `NetConn() net.Conn` → `SetLinger(0)` → `Close()` | Returns `errors.New("ddos_mitigator: connection dropped (L4)")` | `mitigator_l4.go` |
+| L4 `Handle`: `extractRemoteIP(cx.Conn.RemoteAddr())` → jail check → `forceDropL4(cx)` or `next.Handle(cx)` | `cx.Conn` is valid Go syntax for accessing embedded `net.Conn` | `mitigator_l4.go` |
+
+### Accessing Embedded `net.Conn` on `layer4.Connection`
+
+Go spec (https://go.dev/ref/spec#Struct_types): "A field declared with a type but
+no explicit field name is called an *embedded field*. An embedded field must be
+specified as a type name `T` or as a pointer to a non-interface type name `*T`, and
+`T` itself may not be a pointer type."
+
+For an interface embed like `net.Conn`, the promoted field is accessed via the
+**unqualified type name** — in this case `Conn` (not `net.Conn`). So `cx.Conn`
+correctly accesses the embedded `net.Conn` interface value, and
+`cx.Conn.RemoteAddr()` is valid.
+
+This is confirmed by the DDoS mitigator source which uses `cx.Conn.RemoteAddr()`
+and `forceDropL4` passing `cx.Conn` to the unwrap function.
