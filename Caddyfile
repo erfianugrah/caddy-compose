@@ -70,7 +70,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty dockge httpbun httpbin cdn atuin docs
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs
 			erfianugrah.com @
 		}
 		versions ipv4
@@ -502,6 +502,24 @@ copyparty.erfi.io {
 	}
 	import error_pages
 	import site_log copyparty
+}
+
+composer.erfi.io {
+	import waf
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.80.2:8080 {
+		import proxy_headers
+		# SSE streams (container logs, stats, events) and WebSocket (terminal)
+		# require unbuffered proxying for real-time data.
+		flush_interval -1
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 0
+		}
+	}
+	import error_pages
+	import site_log composer
 }
 
 dockge.erfi.io {
