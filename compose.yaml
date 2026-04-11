@@ -42,7 +42,7 @@ services:
         restart: true
     volumes:
       # Config + TLS on cache SSD — fast reads for TLS handshakes + config
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /mnt/user/composer/stacks/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - /mnt/cache/caddy/site:/srv:ro
       - /mnt/cache/caddy/data:/data
       - /mnt/cache/caddy/config:/config
@@ -168,7 +168,7 @@ services:
       # Dynamic WAF overrides — shared with Caddy, on cache
       - /mnt/cache/caddy/waf:/data/waf
       # Caddyfile — read-only, needed for FQDN resolution
-      - ./Caddyfile:/data/Caddyfile:ro
+      - /mnt/user/composer/stacks/caddy/Caddyfile:/data/Caddyfile:ro
       # GeoIP MMDB database
       - /mnt/cache/caddy/wafctl/geoip:/data/geoip:ro
       # Managed list files — on cache
