@@ -1,14 +1,11 @@
 # caddy-compose Makefile
-# Builds images locally, pushes to Docker Hub, deploys to a remote host.
+# Builds images locally, pushes to Docker Hub, deploys via Composer GitOps.
+#
+# Remote operations go through Composer's API (via SSH + docker exec + wget)
+# so they work even when Caddy is down (bypasses the HTTPS proxy).
 #
 # All settings can be overridden via environment variables or a .env.mk file.
-# Example:
-#   echo 'REMOTE=myhost' > .env.mk
-#   echo 'DEPLOY_MODE=compose' >> .env.mk
-#   make deploy
-#
-# Or inline:
-#   make deploy REMOTE=myhost DEPLOY_MODE=compose
+# Required env var: COMPOSER_API_KEY (Composer API key for authenticated requests)
 
 # ── Load overrides from .env.mk if it exists ───────────────────────
 -include .env.mk
@@ -21,42 +18,48 @@ WAFCTL_IMAGE ?= erfianugrah/wafctl:2.97.0
 # SSH host alias or user@host for the deployment target.
 REMOTE ?= servarr
 
-# ── Deploy mode ─────────────────────────────────────────────────────
-# "dockge"  — runs docker compose inside a dockge container (default)
-# "compose" — runs docker compose directly on the remote host
-DEPLOY_MODE ?= dockge
+# ── Composer settings ───────────────────────────────────────────────
+# Container name running Composer on the remote host.
+# All compose commands go through Composer's bundled binary (Unraid has
+# no docker compose plugin). Lifecycle ops (up/restart) use Composer's
+# API which handles SOPS .env decryption automatically.
+COMPOSER_CONTAINER ?= composer
+COMPOSER_STACK     ?= caddy
 
 # ── Remote paths ────────────────────────────────────────────────────
-# Where the compose stack lives on the remote host.
-# Dockge mode: path inside the dockge container (mapped from host).
-# Compose mode: absolute path on the remote host.
-STACK_PATH     ?= /opt/stacks/caddy/compose.yaml
-CADDYFILE_DEST ?= /mnt/cache/caddy/Caddyfile
-COMPOSE_DEST   ?= /mnt/user/data/dockge/stacks/caddy/compose.yaml
-AUTHELIA_DEST  ?= /mnt/user/data/authelia/config
-
-# For dockge mode only — the container name running dockge.
-DOCKGE_CONTAINER ?= dockge
+STACK_PATH    ?= /opt/stacks/$(COMPOSER_STACK)/compose.yaml
+AUTHELIA_DEST ?= /mnt/user/data/authelia/config
 
 # ── WAF data paths (on remote host) ────────────────────────────────
 WAF_CONFIG_PATH    ?= /mnt/user/data/wafctl/waf-config.json
 WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/waf/custom-waf-settings.conf
 
 # ── Computed helpers ────────────────────────────────────────────────
-ifeq ($(DEPLOY_MODE),dockge)
-  COMPOSE_CMD = ssh $(REMOTE) "docker exec $(DOCKGE_CONTAINER) docker compose -f $(STACK_PATH)"
-  EXEC_CMD    = ssh $(REMOTE) "docker exec $(DOCKGE_CONTAINER) docker exec"
-else
-  COMPOSE_CMD = ssh $(REMOTE) "docker compose -f $(STACK_PATH)"
-  EXEC_CMD    = ssh $(REMOTE) "docker exec"
-endif
+# Compose commands via Composer's bundled binary (read-only ops: ps, logs, exec)
+COMPOSE_CMD = ssh $(REMOTE) "docker exec $(COMPOSER_CONTAINER) docker compose -f $(STACK_PATH)"
+
+# Docker exec on running containers
+EXEC_CMD = ssh $(REMOTE) "docker exec"
+
+# Composer API POST via SSH → docker exec → wget
+# Bypasses Caddy proxy — works even when Caddy is down.
+# Usage: $(call composer-api,stacks/caddy/sync)
+define composer-api
+KEY=$$COMPOSER_API_KEY && \
+ssh $(REMOTE) "docker exec $(COMPOSER_CONTAINER) wget -qO- -T 120 \
+	--header=\"Authorization: Bearer $$KEY\" \
+	--header=\"X-Requested-With: XMLHttpRequest\" \
+	--post-data=\"\" \
+	\"http://localhost:8080/api/v1/$(1)\""
+endef
 
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
-        deploy deploy-caddy deploy-wafctl deploy-all scp scp-authelia authelia-notification pull restart restart-force \
-        restart-caddy restart-wafctl restart-authelia \
+        deploy deploy-caddy deploy-wafctl deploy-all scp-authelia authelia-notification \
+        sync pull restart restart-force restart-caddy restart-wafctl restart-authelia \
         test test-go test-frontend test-e2e check status logs logs-caddy logs-wafctl \
-         health version waf-deploy waf-config waf-events caddy-reload caddy-quick-reload config clean \
-        scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl sbom sbom-caddy sbom-wafctl verify
+        health version caddy-reload caddy-quick-reload waf-deploy waf-config waf-events \
+        config clean scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl \
+        sbom sbom-caddy sbom-wafctl verify
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -67,16 +70,12 @@ version: ## Print current image versions
 	@echo "wafctl: $(WAFCTL_IMAGE)"
 
 config: ## Show current configuration
-	@echo "REMOTE:           $(REMOTE)"
-	@echo "DEPLOY_MODE:      $(DEPLOY_MODE)"
-	@echo "CADDY_IMAGE:      $(CADDY_IMAGE)"
-	@echo "WAFCTL_IMAGE:    $(WAFCTL_IMAGE)"
-	@echo "STACK_PATH:       $(STACK_PATH)"
-	@echo "CADDYFILE_DEST:   $(CADDYFILE_DEST)"
-	@echo "COMPOSE_DEST:     $(COMPOSE_DEST)"
-ifeq ($(DEPLOY_MODE),dockge)
-	@echo "DOCKGE_CONTAINER: $(DOCKGE_CONTAINER)"
-endif
+	@echo "REMOTE:              $(REMOTE)"
+	@echo "CADDY_IMAGE:         $(CADDY_IMAGE)"
+	@echo "WAFCTL_IMAGE:        $(WAFCTL_IMAGE)"
+	@echo "COMPOSER_CONTAINER:  $(COMPOSER_CONTAINER)"
+	@echo "COMPOSER_STACK:      $(COMPOSER_STACK)"
+	@echo "STACK_PATH:          $(STACK_PATH)"
 
 # ── Build ───────────────────────────────────────────────────────────
 # Pass NO_CACHE=1 to force --no-cache (needed after plugin version bumps).
@@ -214,25 +213,20 @@ sbom-wafctl: ## Generate SBOM for wafctl image and attest to registry (by digest
 	syft $(WAFCTL_IMAGE) -o spdx-json=$(SBOM_DIR)/wafctl.spdx.json -o cyclonedx-json=$(SBOM_DIR)/wafctl.cdx.json
 	cosign attest --yes --predicate $(SBOM_DIR)/wafctl.spdx.json --type spdxjson $$(docker inspect --format='{{index .RepoDigests 0}}' $(WAFCTL_IMAGE))
 
-# ── SCP / Deploy ────────────────────────────────────────────────────
-scp: ## SCP Caddyfile + compose.yaml to remote
-	@echo "Checking SSH connectivity to $(REMOTE)..."
-	@ssh -o ConnectTimeout=30 $(REMOTE) true
-	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
-	scp compose.yaml $(REMOTE):$(COMPOSE_DEST)
+# ── Remote operations (via Composer) ────────────────────────────────
+# Lifecycle ops (sync/up/restart) use Composer API which handles SOPS
+# decryption of .env automatically. Read-only ops (ps/logs/exec) use
+# Composer's bundled docker compose directly.
 
-scp-authelia: ## SCP Authelia config + users database to remote
-	scp authelia/configuration.yml $(REMOTE):$(AUTHELIA_DEST)/configuration.yml
-	scp authelia/users_database.yml $(REMOTE):$(AUTHELIA_DEST)/users_database.yml
-
-authelia-notification: ## Fetch and display Authelia 2FA notification.txt from remote
-	@ssh $(REMOTE) "cat $(AUTHELIA_DEST)/notification.txt"
+sync: ## Sync stack git repo via Composer
+	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
 
 pull: ## Pull images on remote
 	$(COMPOSE_CMD) pull
 
-restart: ## Recreate containers on remote (force-recreate to pick up same-tag rebuilds)
-	$(COMPOSE_CMD) up -d --force-recreate
+restart: ## Redeploy stack via Composer (handles SOPS, force-recreate)
+	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
+	@$(call composer-api,stacks/$(COMPOSER_STACK)/up)
 
 restart-caddy: ## Recreate only Caddy (preserves Authelia sessions)
 	$(COMPOSE_CMD) up -d --force-recreate caddy
@@ -245,6 +239,9 @@ restart-authelia: ## Recreate only Authelia (will invalidate sessions)
 
 restart-force: ## Force restart all containers (re-reads bind-mounted configs)
 	$(COMPOSE_CMD) restart
+
+down: ## Stop and remove all containers
+	$(COMPOSE_CMD) down
 
 status: ## Show container status on remote
 	$(COMPOSE_CMD) ps
@@ -261,20 +258,29 @@ logs-wafctl: ## Tail wafctl logs
 health: ## Check wafctl API health on remote
 	@$(EXEC_CMD) wafctl wget -qO- http://localhost:8080/api/health 2>/dev/null || echo "Health check failed"
 
+# ── SCP (non-git-managed configs) ──────────────────────────────────
+scp-authelia: ## SCP Authelia config + users database to remote
+	scp authelia/configuration.yml $(REMOTE):$(AUTHELIA_DEST)/configuration.yml
+	scp authelia/users_database.yml $(REMOTE):$(AUTHELIA_DEST)/users_database.yml
+
+authelia-notification: ## Fetch and display Authelia 2FA notification.txt from remote
+	@ssh $(REMOTE) "cat $(AUTHELIA_DEST)/notification.txt"
+
 # ── Composite deploy targets ────────────────────────────────────────
-deploy-caddy: build-caddy scan-caddy push-caddy scp pull restart ## Build, scan, push, SCP, restart Caddy
+# Caddyfile is now git-managed — Composer sync updates it automatically.
+# No SCP needed. Push to main → webhook → Composer sync + redeploy.
+deploy-caddy: build-caddy scan-caddy push-caddy sync restart ## Build, scan, push, sync, restart Caddy
 	@echo "Caddy deployed."
 
-deploy-wafctl: build-wafctl scan-wafctl push-wafctl pull ## Build, scan, push, restart wafctl
-	$(COMPOSE_CMD) up -d wafctl
+deploy-wafctl: build-wafctl scan-wafctl push-wafctl sync restart ## Build, scan, push, sync, restart wafctl
 	@echo "wafctl deployed."
 
-deploy-all: build scan push scp pull restart ## Full deploy: build + scan + push + SCP + restart
+deploy-all: build scan push sync restart ## Full deploy: build + scan + push + sync + restart
 	@echo "Full deploy complete."
 
 deploy: deploy-all ## Alias for deploy-all
 
-deploy-noscan: build push scp pull restart ## Deploy without Trivy scan (use when upstream CVEs block scan)
+deploy-noscan: build push sync restart ## Deploy without Trivy scan (use when upstream CVEs block scan)
 	@echo "Deploy complete (scan skipped)."
 
 # ── Release (deploy + sign + SBOM) ─────────────────────────────────
@@ -288,14 +294,15 @@ release: deploy-all sign sbom ## Full deploy + sign + SBOM
 	@echo "Full release complete (signed + SBOM attached)."
 
 # ── Caddy operations ────────────────────────────────────────────────
-caddy-reload: ## SCP Caddyfile, deploy WAF + CSP + security headers, reload Caddy
-	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
+# Caddyfile is git-managed. Push changes, then reload.
+caddy-reload: ## Sync Caddyfile from git, deploy WAF + CSP + security headers, reload Caddy
+	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/deploy --post-data=""
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/csp/deploy --post-data=""
 	$(EXEC_CMD) wafctl wget -qO- -T 120 http://localhost:8080/api/security-headers/deploy --post-data=""
 
-caddy-quick-reload: ## SCP Caddyfile and reload Caddy (no WAF/RL regeneration)
-	scp Caddyfile $(REMOTE):$(CADDYFILE_DEST)
+caddy-quick-reload: ## Sync Caddyfile from git and reload Caddy (no WAF/RL regeneration)
+	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
 	$(EXEC_CMD) caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 
 # ── WAF operations (via wafctl on remote) ──────────────────────────
