@@ -56,21 +56,27 @@
 			idle 30s
 		}
 	}
-	# L4 TCP proxy — SSH docs server on docs.erfi.io:2222
-	# Raw TCP passthrough, no TLS termination (SSH handles its own crypto).
-	# The docs-ssh container runs on 172.19.50.2:2222.
+	# L4 TCP proxy — SSH passthrough (no TLS, SSH handles its own crypto).
 	layer4 {
+		# docs-ssh: docs.erfi.io:2222 → 172.19.50.2:2222
 		:2222 {
 			@ssh ssh
 			route @ssh {
 				proxy 172.19.50.2:2222
 			}
 		}
+		# gitea-ssh: git.erfi.io:2223 → 172.40.0.2:2222
+		:2223 {
+			@ssh ssh
+			route @ssh {
+				proxy 172.40.0.2:2222
+			}
+		}
 	}
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git
 			erfianugrah.com @
 		}
 		versions ipv4
@@ -502,6 +508,25 @@ copyparty.erfi.io {
 	}
 	import error_pages
 	import site_log copyparty
+}
+
+git.erfi.io {
+	import waf
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.40.0.2:3000 {
+		import proxy_headers
+		# Git HTTP operations (clone/push/pull) and LFS uploads can be
+		# long-running with large payloads. Disable response timeout and
+		# stream unbuffered for Actions SSE / LFS chunked transfers.
+		flush_interval -1
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 0
+		}
+	}
+	import error_pages
+	import site_log gitea
 }
 
 composer.erfi.io {
