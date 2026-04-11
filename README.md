@@ -99,7 +99,7 @@ WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.89.0
 ```bash
 make build     # builds both images locally
 make push      # pushes to your registry
-make deploy    # build + scan + push + SCP config files + pull + restart on remote host
+make deploy    # build + scan + push + sync + restart via Composer
 ```
 
 Or step by step:
@@ -107,8 +107,8 @@ Or step by step:
 ```bash
 make build-caddy       # caddy image only
 make build-wafctl      # wafctl image only
-make scp               # copy Caddyfile + compose.yaml to the remote host
-make restart            # restart the stack on the remote host
+make sync              # sync stack from git via Composer API
+make restart            # redeploy via Composer (handles SOPS .env decryption)
 ```
 
 See `make help` for all available targets.
@@ -128,18 +128,18 @@ curl -s https://your-waf-subdomain.example.com/api/health | jq .
 Override any of these in a `.env.mk` file (gitignored) or inline:
 
 ```bash
-make deploy REMOTE=myhost DEPLOY_MODE=compose
+make deploy REMOTE=myhost
 ```
 
 | Variable | Default | Description |
 |---|---|---|
 | `REMOTE` | (see Makefile) | SSH host alias or `user@host` for the target machine |
-| `DEPLOY_MODE` | `dockge` | `dockge` (runs compose inside a Dockge container) or `compose` (direct `docker compose`) |
+| `COMPOSER_API_KEY` | (env) | Composer API key for authenticated requests (required) |
+| `COMPOSER_CONTAINER` | `composer` | Container name running Composer on the remote host |
+| `COMPOSER_STACK` | `caddy` | Stack name in Composer |
 | `CADDY_IMAGE` | see Makefile | Full image:tag for the Caddy image |
 | `WAFCTL_IMAGE` | see Makefile | Full image:tag for the wafctl image |
-| `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Path to the compose file on the remote host |
-| `CADDYFILE_DEST` | see Makefile | Remote path where the Caddyfile is SCP'd |
-| `COMPOSE_DEST` | see Makefile | Remote path where compose.yaml is SCP'd |
+| `STACK_PATH` | `/opt/stacks/caddy/compose.yaml` | Path to the compose file inside the Composer container |
 
 ### Secrets
 
@@ -674,7 +674,9 @@ make waf-deploy        # trigger WAF config deploy + Caddy reload
 
 ### Reload Caddy without restart
 
+Caddyfile is git-managed — push changes, then reload:
+
 ```bash
-scp Caddyfile <remote>:/path/to/caddy/Caddyfile
-ssh <remote> 'docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile'
+make caddy-quick-reload   # syncs from git + reloads Caddy
+make caddy-reload         # syncs from git + redeploys WAF/CSP/headers + reloads
 ```
