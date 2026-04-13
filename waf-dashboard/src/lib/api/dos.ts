@@ -12,6 +12,9 @@ export interface DosStatus {
   eps_history: number[];
   ddos_events: number;
   updated_at: string;
+  // Three-layer detection stats (v0.17.0+)
+  rate_jail_count: number;
+  behav_jail_count: number;
 }
 
 export interface JailEntry {
@@ -21,6 +24,9 @@ export interface JailEntry {
   reason: string;
   jailed_at: string;
   ttl: string;
+  // Enriched fields (v0.17.0+)
+  anomaly_score: number;
+  host_count: number;
 }
 
 export interface DosConfig {
@@ -36,6 +42,26 @@ export interface DosConfig {
   whitelist: string[];
   kernel_drop: boolean;
   strategy: string;
+  // Three-layer detection config (v0.17.0+)
+  global_rate_threshold: number;
+  min_host_exculpation: number;
+  profile_ttl: string;
+}
+
+// ─── IP Profiles (v0.17.0+) ─────────────────────────────────────────
+
+export interface IPProfile {
+  ip: string;
+  is_jailed: boolean;
+  infractions: number;
+  jail_reason?: string;
+  anomaly_score: number;
+  recent_events: number;
+  blocked_reqs: number;
+  jailed_reqs: number;
+  hosts?: string[];
+  top_paths?: string[];
+  ttl?: string;
 }
 
 // ─── API Functions ──────────────────────────────────────────────────
@@ -62,6 +88,10 @@ export async function getDosConfig(): Promise<DosConfig> {
 
 export async function updateDosConfig(config: DosConfig): Promise<DosConfig> {
   return putJSON<DosConfig>(`${API_BASE}/dos/config`, config);
+}
+
+export async function fetchProfiles(): Promise<IPProfile[]> {
+  return fetchJSON<IPProfile[]>(`${API_BASE}/dos/profiles`);
 }
 
 // ─── Spike Reports ──────────────────────────────────────────────────

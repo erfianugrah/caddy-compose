@@ -31,12 +31,14 @@ type jailFileEntry struct {
 
 // JailEntry is the API-facing representation of a jailed IP.
 type JailEntry struct {
-	IP          string `json:"ip"`
-	ExpiresAt   string `json:"expires_at"`
-	Infractions int32  `json:"infractions"`
-	Reason      string `json:"reason"`
-	JailedAt    string `json:"jailed_at"`
-	TTL         string `json:"ttl"` // human-readable remaining time
+	IP           string  `json:"ip"`
+	ExpiresAt    string  `json:"expires_at"`
+	Infractions  int32   `json:"infractions"`
+	Reason       string  `json:"reason"`
+	JailedAt     string  `json:"jailed_at"`
+	TTL          string  `json:"ttl"`           // human-readable remaining time
+	AnomalyScore float64 `json:"anomaly_score"` // score at time of jail (0.0-1.0), 0 if unknown
+	HostCount    int     `json:"host_count"`    // unique hosts at time of jail, 0 if unknown
 }
 
 // ─── JailStore ──────────────────────────────────────────────────────
@@ -241,22 +243,35 @@ type DosConfig struct {
 	Whitelist     []string `json:"whitelist"`
 	KernelDrop    bool     `json:"kernel_drop"`
 	Strategy      string   `json:"strategy"`
+
+	// Three-layer detection config (v0.17.0+).
+	// GlobalRateThreshold is the sustained req/s (60s window) above which an IP
+	// is jailed via the L1 rate gate, regardless of path diversity. 0 = disabled.
+	GlobalRateThreshold float64 `json:"global_rate_threshold"`
+	// MinHostExculpation is the minimum unique hosts an IP must hit before the L3
+	// host diversity dampening activates. Default 2 (one host = no dampening).
+	MinHostExculpation int `json:"min_host_exculpation"`
+	// ProfileTTL is how long per-(IP,host) behavioral profiles are retained.
+	ProfileTTL string `json:"profile_ttl"`
 }
 
 func defaultDosConfig() DosConfig {
 	return DosConfig{
-		Enabled:       true,
-		Threshold:     0.65,
-		BasePenalty:   "60s",
-		MaxPenalty:    "24h",
-		EPSTrigger:    50,
-		EPSCooldown:   10,
-		CooldownDelay: "30s",
-		MaxBuckets:    10000,
-		MaxReports:    100,
-		Whitelist:     []string{"192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8", "::1/128"},
-		KernelDrop:    false,
-		Strategy:      "auto",
+		Enabled:             true,
+		Threshold:           0.65,
+		BasePenalty:         "60s",
+		MaxPenalty:          "24h",
+		EPSTrigger:          50,
+		EPSCooldown:         10,
+		CooldownDelay:       "30s",
+		MaxBuckets:          10000,
+		MaxReports:          100,
+		Whitelist:           []string{"192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8", "::1/128"},
+		KernelDrop:          false,
+		Strategy:            "auto",
+		GlobalRateThreshold: 0,
+		MinHostExculpation:  2,
+		ProfileTTL:          "10m",
 	}
 }
 
@@ -308,6 +323,19 @@ func validateDosConfig(cfg DosConfig) error {
 	if cfg.CooldownDelay != "" {
 		if _, err := parseExtendedDuration(cfg.CooldownDelay); err != nil {
 			return fmt.Errorf("invalid cooldown_delay duration %q: %w", cfg.CooldownDelay, err)
+		}
+	}
+
+	// Validate new three-layer detection fields.
+	if cfg.GlobalRateThreshold < 0 {
+		return fmt.Errorf("global_rate_threshold must be non-negative, got %f", cfg.GlobalRateThreshold)
+	}
+	if cfg.MinHostExculpation < 0 {
+		return fmt.Errorf("min_host_exculpation must be non-negative, got %d", cfg.MinHostExculpation)
+	}
+	if cfg.ProfileTTL != "" {
+		if _, err := parseExtendedDuration(cfg.ProfileTTL); err != nil {
+			return fmt.Errorf("invalid profile_ttl duration %q: %w", cfg.ProfileTTL, err)
 		}
 	}
 
@@ -407,4 +435,9 @@ type DosStatus struct {
 	EPSHistory []float64 `json:"eps_history"` // EPS per 5s bucket for last 5 min (sparkline)
 	DDoSEvents int       `json:"ddos_events"` // total DDoS block/jail events in store
 	UpdatedAt  string    `json:"updated_at"`  // ISO timestamp of this response
+
+	// Three-layer detection stats (v0.17.0+).
+	// AutoJailRate: proportion of auto-jails in last 24h that were rate-gate (L1) vs behavioral (L2).
+	RateJailCount  int `json:"rate_jail_count"`  // jailed via L1 rate gate in event store
+	BehavJailCount int `json:"behav_jail_count"` // jailed via L2 behavioral scoring in event store
 }

@@ -6,8 +6,9 @@ import {
   removeJail,
   getDosConfig,
   updateDosConfig,
+  fetchProfiles,
 } from "./dos";
-import type { DosStatus, JailEntry, DosConfig } from "./dos";
+import type { DosStatus, JailEntry, DosConfig, IPProfile } from "./dos";
 
 // ─── Mock fetch ─────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ function mockResponse(data: unknown, status = 200) {
 // ─── Tests ──────────────────────────────────────────────────────────
 
 describe("fetchDosStatus", () => {
-  it("returns status from /api/dos/status", async () => {
+  it("returns status from /api/dos/status with new fields", async () => {
     const status: DosStatus = {
       mode: "normal",
       eps: 2.5,
@@ -43,6 +44,8 @@ describe("fetchDosStatus", () => {
       eps_history: [],
       ddos_events: 0,
       updated_at: "2026-03-16T12:00:00Z",
+      rate_jail_count: 1,
+      behav_jail_count: 2,
     };
     mockFetch.mockResolvedValueOnce(mockResponse(status));
 
@@ -50,20 +53,24 @@ describe("fetchDosStatus", () => {
     expect(result.mode).toBe("normal");
     expect(result.eps).toBe(2.5);
     expect(result.jail_count).toBe(3);
+    expect(result.rate_jail_count).toBe(1);
+    expect(result.behav_jail_count).toBe(2);
     expect(mockFetch).toHaveBeenCalledWith("/api/dos/status", undefined);
   });
 });
 
 describe("fetchJail", () => {
-  it("returns jail entries from /api/dos/jail", async () => {
+  it("returns jail entries with new anomaly_score and host_count fields", async () => {
     const entries: JailEntry[] = [
       {
         ip: "192.0.2.1",
         expires_at: "2026-03-16T12:00:00Z",
         infractions: 3,
-        reason: "auto:z-score",
+        reason: "auto:behavioral",
         jailed_at: "2026-03-16T11:00:00Z",
         ttl: "59m30s",
+        anomaly_score: 0.87,
+        host_count: 1,
       },
     ];
     mockFetch.mockResolvedValueOnce(mockResponse(entries));
@@ -71,7 +78,9 @@ describe("fetchJail", () => {
     const result = await fetchJail();
     expect(result).toHaveLength(1);
     expect(result[0].ip).toBe("192.0.2.1");
-    expect(result[0].reason).toBe("auto:z-score");
+    expect(result[0].reason).toBe("auto:behavioral");
+    expect(result[0].anomaly_score).toBe(0.87);
+    expect(result[0].host_count).toBe(1);
   });
 });
 
@@ -113,10 +122,10 @@ describe("removeJail", () => {
 });
 
 describe("getDosConfig", () => {
-  it("returns config from /api/dos/config", async () => {
+  it("returns config with new v0.17.0 fields", async () => {
     const config: DosConfig = {
       enabled: true,
-      threshold: 4.0,
+      threshold: 0.65,
       base_penalty: "60s",
       max_penalty: "24h",
       eps_trigger: 50,
@@ -127,20 +136,26 @@ describe("getDosConfig", () => {
       whitelist: ["10.0.0.0/8"],
       kernel_drop: false,
       strategy: "auto",
+      global_rate_threshold: 50,
+      min_host_exculpation: 2,
+      profile_ttl: "10m",
     };
     mockFetch.mockResolvedValueOnce(mockResponse(config));
 
     const result = await getDosConfig();
-    expect(result.threshold).toBe(4.0);
+    expect(result.threshold).toBe(0.65);
     expect(result.whitelist).toEqual(["10.0.0.0/8"]);
+    expect(result.global_rate_threshold).toBe(50);
+    expect(result.min_host_exculpation).toBe(2);
+    expect(result.profile_ttl).toBe("10m");
   });
 });
 
 describe("updateDosConfig", () => {
-  it("puts config to /api/dos/config", async () => {
+  it("puts config with new fields to /api/dos/config", async () => {
     const config: DosConfig = {
       enabled: true,
-      threshold: 3.5,
+      threshold: 0.65,
       base_penalty: "90s",
       max_penalty: "12h",
       eps_trigger: 75,
@@ -151,15 +166,52 @@ describe("updateDosConfig", () => {
       whitelist: ["10.0.0.0/8"],
       kernel_drop: false,
       strategy: "full",
+      global_rate_threshold: 100,
+      min_host_exculpation: 3,
+      profile_ttl: "5m",
     };
     mockFetch.mockResolvedValueOnce(mockResponse(config));
 
     const result = await updateDosConfig(config);
-    expect(result.threshold).toBe(3.5);
+    expect(result.threshold).toBe(0.65);
+    expect(result.global_rate_threshold).toBe(100);
     expect(mockFetch).toHaveBeenCalledWith("/api/dos/config", expect.objectContaining({
       method: "PUT",
       body: JSON.stringify(config),
     }));
+  });
+});
+
+describe("fetchProfiles", () => {
+  it("returns IP profiles from /api/dos/profiles", async () => {
+    const profiles: IPProfile[] = [
+      {
+        ip: "89.0.95.223",
+        is_jailed: false,
+        infractions: 0,
+        anomaly_score: 0.31,
+        recent_events: 5,
+        blocked_reqs: 3,
+        jailed_reqs: 2,
+        hosts: ["composer.erfi.io", "jellyfin.erfi.io", "waf.erfi.io"],
+        top_paths: ["/api/v1/stacks", "/api/v1/sse/containers/abc/stats"],
+      },
+    ];
+    mockFetch.mockResolvedValueOnce(mockResponse(profiles));
+
+    const result = await fetchProfiles();
+    expect(result).toHaveLength(1);
+    expect(result[0].ip).toBe("89.0.95.223");
+    expect(result[0].hosts).toHaveLength(3);
+    expect(result[0].anomaly_score).toBe(0.31);
+    expect(result[0].is_jailed).toBe(false);
+    expect(mockFetch).toHaveBeenCalledWith("/api/dos/profiles", undefined);
+  });
+
+  it("returns empty array when no suspicious IPs", async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse([]));
+    const result = await fetchProfiles();
+    expect(result).toHaveLength(0);
   });
 });
 

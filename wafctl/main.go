@@ -495,6 +495,7 @@ func runServe() int {
 	mux.HandleFunc("PUT /api/dos/config", handleUpdateDosConfig(dosConfigStore, jailStore, spikeDetector))
 	mux.HandleFunc("GET /api/dos/reports", handleListSpikeReports(spikeReporter))
 	mux.HandleFunc("GET /api/dos/reports/{id}", handleGetSpikeReport(spikeReporter))
+	mux.HandleFunc("GET /api/dos/profiles", handleListProfiles(jailStore, accessLogStore))
 
 	// Backup / Restore (unified export of all config stores)
 	mux.HandleFunc("GET /api/backup", handleBackup(configStore, cspStore, secHeaderStore, exclusionStore, managedListStore, defaultRuleStore))
