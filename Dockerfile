@@ -8,7 +8,7 @@ RUN xcaddy build \
 	--with github.com/mholt/caddy-l4 \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.2.1 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.42.1 \
-	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.1
+	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.2
 
 # Convert CRS rules to policy-engine format at build time.
 # Update CRS_VERSION to pick up new CRS releases.
