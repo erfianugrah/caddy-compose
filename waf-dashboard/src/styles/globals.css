@@ -87,7 +87,7 @@
 
   /* Monospace utility for data-oriented elements */
   .font-data {
-    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace,
       SFMono-Regular, Menlo, Consolas, monospace;
   }
 

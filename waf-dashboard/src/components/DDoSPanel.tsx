@@ -802,7 +802,15 @@ function ConfigPanel({
 function SpikeReports({ reports, loading }: { reports: SpikeReport[]; loading: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (!loading && reports.length === 0) return null;
+  if (!loading && reports.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-muted-foreground">
+          No spike reports recorded — traffic has been within normal parameters.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
