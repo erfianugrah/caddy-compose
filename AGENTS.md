@@ -460,15 +460,29 @@ causes the event to be invisible in parts of the UI.
   - **603 cross-rule passes** resolved via severity-aware events API batch check
     (blocked by OTHER rules, tested rule's score alone below threshold).
 - **DDoS mitigator**: `caddy-ddos-mitigator` plugin (separate repo: `ergo/caddy-ddos-mitigator`).
-  Compiled into Caddy via xcaddy. Uses behavioral IP profiling (path diversity scoring).
+  Compiled into Caddy via xcaddy. Three-layer detection architecture (v0.17.0+):
+  - **L1 — Global rate gate**: per-IP sustained req/s across ALL services (60s sliding window
+    via ring buffer in `hostTracker`). Configurable `global_rate_threshold` (0=disabled).
+  - **L2 — Per-service behavioral**: tracker keyed on `(IP, host)` — each service gets its
+    own `ipProfile` with path diversity scoring. `AnomalyScore(uniqueHosts, recentRate)`.
+  - **L3 — Host diversity exculpation**: `hostTracker` counts unique hosts per IP. At jail
+    decision: `effectiveScore = rawScore / log2(uniqueHosts + 1)`. 8 services → ÷3.17.
+    `min_host_exculpation` (default 2) gates when dampening activates.
   Enforces via 4 layers: L3 nftables kernel drop (primary), L4 TCP RST, L7 HTTP 403, eBPF/XDP NIC drop.
   Immediate nftables sync on jail (v0.14.0+) — zero propagation window between L7 jail and kernel drop.
   CIDR /24 promotion now visible in jail.json and kernel-dropped via nftables interval sets (v0.15.0).
   L4 handler configurable via Caddyfile listener_wrappers (v0.15.0).
   Shares IP jail with wafctl via `/data/waf/jail.json` (bidirectional file sync).
+  Jail reasons: `auto:rate` (L1), `auto:behavioral` (L2+L3), `manual`.
   - wafctl stores: `JailStore`, `DosConfigStore`, `SpikeDetector`, `SpikeReporter`
-  - API: `/api/dos/status`, `/api/dos/jail`, `/api/dos/config`, `/api/dos/reports`
-  - Dashboard: `/dos` page (`DDoSPanel.tsx`); frontend API in `src/lib/api/dos.ts`
+  - API: `/api/dos/status`, `/api/dos/jail`, `/api/dos/config`, `/api/dos/reports`, `/api/dos/profiles`
+  - `DosConfig` fields: `threshold`, `global_rate_threshold`, `min_host_exculpation`, `profile_ttl`,
+    `base_penalty`, `max_penalty`, `eps_trigger`, `eps_cooldown`, `cooldown_delay`, `whitelist`,
+    `kernel_drop`, `strategy`
+  - `DosStatus` fields: `rate_jail_count`, `behav_jail_count` (L1/L2 breakdown)
+  - `JailEntry` fields: `anomaly_score`, `host_count` (enrichment at jail time)
+  - Dashboard: `/dos` page (`DDoSPanel.tsx`) with tabs: IP Jail, Profiles, Spike Reports, Configuration;
+    frontend API in `src/lib/api/dos.ts`
   - Log fields: `ddos_action`, `ddos_fingerprint`, `ddos_z_score`, `ddos_spike_mode`
   - Handler ordering: `order log_append first`, `order ddos_mitigator after log_append`
   - L4 listener wrapper: `servers { listener_wrappers { layer4 { route { ddos_mitigator { ... } } } } }`
