@@ -639,19 +639,40 @@ erfianugrah.com {
 # draw.erfi.io — Self-hosted Excalidraw (busybox httpd + 3 backends).
 # Encryption keys live in URL fragments (#) — never sent to server.
 # Referrer-Policy prevents leaking them to third parties.
+# Ports bound to 127.0.0.1 — only reachable via this proxy.
 draw.erfi.io {
 	import waf
+	import forward_auth
 	import tls_config
 	encode zstd gzip
 
-	# Don't leak encryption keys from URL fragments via Referer header
+	# Security headers
 	header Referrer-Policy "strict-origin-when-cross-origin"
 	header X-Frame-Options "SAMEORIGIN"
 	header X-Content-Type-Options "nosniff"
 	header Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://draw.erfi.io; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:"
+
+	# CORS preflight — browsers never send cookies with OPTIONS,
+	# so this must be handled before forward_auth intercepts.
+	@api_options {
+		method OPTIONS
+		path /api/*
+	}
+	handle @api_options {
+		header Access-Control-Allow-Origin "https://draw.erfi.io"
+		header Access-Control-Allow-Methods "GET, POST, PUT, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, X-API-Key"
+		header Access-Control-Allow-Credentials "true"
+		header Access-Control-Max-Age "86400"
+		respond 204
+	}
 
 	# AI API — must match before the broader /api/* handler
 	handle_path /api/ai/* {
+		header Access-Control-Allow-Origin "https://draw.erfi.io"
+		header Access-Control-Allow-Credentials "true"
+		header Access-Control-Expose-Headers "X-Ratelimit-Limit, X-Ratelimit-Remaining"
 		reverse_proxy localhost:3004 {
 			import proxy_headers
 		}
@@ -659,6 +680,8 @@ draw.erfi.io {
 
 	# Storage API
 	handle_path /api/* {
+		header Access-Control-Allow-Origin "https://draw.erfi.io"
+		header Access-Control-Allow-Credentials "true"
 		reverse_proxy localhost:3003 {
 			import proxy_headers
 		}
