@@ -636,6 +636,67 @@ erfianugrah.com {
 	import site_log erfianugrah
 }
 
+# draw.erfi.io — Self-hosted Excalidraw (busybox httpd + 3 backends).
+# Encryption keys live in URL fragments (#) — never sent to server.
+# Referrer-Policy prevents leaking them to third parties.
+draw.erfi.io {
+	import waf
+	import tls_config
+	encode zstd gzip
+
+	# Don't leak encryption keys from URL fragments via Referer header
+	header Referrer-Policy "strict-origin-when-cross-origin"
+	header X-Frame-Options "SAMEORIGIN"
+	header X-Content-Type-Options "nosniff"
+	header Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+	# AI API — must match before the broader /api/* handler
+	handle_path /api/ai/* {
+		reverse_proxy localhost:3004 {
+			import proxy_headers
+		}
+	}
+
+	# Storage API
+	handle_path /api/* {
+		reverse_proxy localhost:3003 {
+			import proxy_headers
+		}
+	}
+
+	# Socket.io collaboration (WebSocket + long-polling)
+	handle /socket.io/* {
+		reverse_proxy localhost:3002 {
+			import proxy_headers
+			flush_interval -1
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 0
+			}
+		}
+	}
+
+	# Static frontend (busybox httpd)
+	handle {
+		# Hashed assets — immutable, cache 1 year
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		# HTML + service worker — never cache
+		@nocache {
+			path / /index.html /sw.js /workbox-*.js /registerSW.js
+		}
+		header @nocache Cache-Control "no-cache, no-store, must-revalidate"
+
+		reverse_proxy localhost:3001 {
+			import proxy_headers
+		}
+	}
+
+	import error_pages
+	import site_log draw
+}
+
 # Internal admin API proxy — allows wafctl to trigger Caddy reloads.
 # Restricted to the wafctl Docker subnet (172.19.98.0/24).
 :2020 {
