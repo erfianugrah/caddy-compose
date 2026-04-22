@@ -691,6 +691,8 @@ draw.erfi.io {
 		reverse_proxy localhost:3002 {
 			import proxy_headers
 			flush_interval -1
+			# Grace period on config reload — avoids thundering herd of reconnects
+			stream_close_delay 5m
 			transport http {
 				dial_timeout 5s
 				response_header_timeout 0
