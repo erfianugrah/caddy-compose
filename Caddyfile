@@ -76,7 +76,7 @@
 	dynamic_dns {
 		provider cloudflare {$CF_API_TOKEN}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw
 			erfianugrah.com @
 		}
 		versions ipv4
