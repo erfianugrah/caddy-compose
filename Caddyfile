@@ -641,8 +641,7 @@ erfianugrah.com {
 # Referrer-Policy prevents leaking them to third parties.
 # Ports bound to 127.0.0.1 — only reachable via this proxy.
 draw.erfi.io {
-	import waf_off
-	import forward_auth
+	import waf
 	import tls_config
 	encode zstd gzip
 
