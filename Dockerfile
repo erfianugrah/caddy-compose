@@ -1,5 +1,5 @@
 ARG VERSION=2.11.2
-ARG CRS_VERSION=v4.25.0
+ARG CRS_VERSION=v4.26.0
 
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \

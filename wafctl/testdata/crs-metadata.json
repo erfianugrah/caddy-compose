@@ -1,6 +1,6 @@
 {
-  "crs_version": "v4.25.0",
-  "generated_at": "2026-04-06T09:52:06Z",
+  "crs_version": "4.26.0",
+  "generated_at": "2026-05-04T10:43:56Z",
   "categories": [
     {
       "id": "scanner-detection",
@@ -90,7 +90,7 @@
       "rule_range": "934000-934999",
       "tag": "attack-generic",
       "phase": "inbound",
-      "rule_count": 11
+      "rule_count": 12
     },
     {
       "id": "xss",
@@ -131,16 +131,6 @@
       "tag": "attack-injection-java",
       "phase": "inbound",
       "rule_count": 14
-    },
-    {
-      "id": "bot-detection",
-      "name": "Bot Detection",
-      "description": "Bot signal and heuristic rules",
-      "prefix": "9100",
-      "rule_range": "9100030-9100036",
-      "tag": "bot-signal",
-      "phase": "inbound",
-      "rule_count": 7
     },
     {
       "id": "data-leakage",
@@ -211,6 +201,15 @@
       "tag": "leakage-ruby",
       "phase": "outbound",
       "rule_count": 2
+    },
+    {
+      "id": "bot-detection",
+      "name": "Bot Detection",
+      "prefix": "910",
+      "rule_range": "9100000-9100999",
+      "tag": "bot-detection",
+      "phase": "inbound",
+      "rule_count": 6
     }
   ],
   "category_map": {

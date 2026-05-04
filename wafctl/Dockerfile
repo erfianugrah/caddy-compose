@@ -1,4 +1,4 @@
-ARG CRS_VERSION=v4.25.0
+ARG CRS_VERSION=v4.26.0
 
 # Build WAF dashboard static site
 FROM node:22-alpine AS frontend
