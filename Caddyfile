@@ -217,28 +217,21 @@
 	}
 }
 
-# Bearer-token gate for the research stack. Token in SOPS-encrypted .env.
-# Two valid auth paths:
-#   1. `Authorization: Bearer $RESEARCH_TOKEN` header — for MCP/API clients
-#   2. Cookie `research_token=$RESEARCH_TOKEN` — for browsers
-# Browsers obtain the cookie by visiting `https://<host>/?_auth=$RESEARCH_TOKEN`
-# once. Caddy sets a 1-year HttpOnly cookie and redirects to `/`. The query
-# param is stripped on redirect so the token isn't sticky in history.
-# Unauthenticated requests get a body-less 401 with connection close.
-# Usage: import research_bearer
-(research_bearer) {
-	@login query _auth={$RESEARCH_TOKEN}
-	handle @login {
-		header Set-Cookie "research_token={$RESEARCH_TOKEN}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000"
-		redir https://{host}/ 302
-	}
-	@unauth {
-		not header Authorization "Bearer {$RESEARCH_TOKEN}"
-		not header Cookie *research_token={$RESEARCH_TOKEN}*
-	}
-	handle @unauth {
-		respond 401 {
-			close
+# Auth gate for the research stack. Two valid paths:
+#   1. `Authorization: Bearer $RESEARCH_TOKEN` header — for MCP/API clients.
+#      Skips Authelia entirely (no SSO round-trip on every tool call).
+#   2. Authelia forward_auth — for browsers. Redirects to authelia.erfi.io
+#      for SSO login, then continues with the user's session cookie.
+# Usage: import research_auth
+(research_auth) {
+	# Bearer-authed: pass through, no Authelia needed.
+	# `handle` without matcher is the catch-all; we negate it so bearer
+	# requests fall through to the parent site's other directives.
+	@needs_browser_auth not header Authorization "Bearer {$RESEARCH_TOKEN}"
+	handle @needs_browser_auth {
+		forward_auth 172.19.99.2:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 		}
 	}
 }
@@ -756,7 +749,7 @@ draw.erfi.io {
 
 searxng.erfi.io {
 	import tls_config
-	import research_bearer
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8888 {
 		import proxy_headers
@@ -767,7 +760,7 @@ searxng.erfi.io {
 
 crawler.erfi.io {
 	import tls_config
-	import research_bearer
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8889 {
 		import proxy_headers
@@ -778,7 +771,7 @@ crawler.erfi.io {
 
 osint.erfi.io {
 	import tls_config
-	import research_bearer
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8890 {
 		import proxy_headers
