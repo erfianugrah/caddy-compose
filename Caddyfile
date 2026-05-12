@@ -229,12 +229,8 @@
 (research_bearer) {
 	@login query _auth={$RESEARCH_TOKEN}
 	handle @login {
-		# `redir / 302` inside snippets renders Location: 302 (parser
-		# interprets "/" as no-op rather than target). Build manually:
-		# headers first, then respond.
 		header Set-Cookie "research_token={$RESEARCH_TOKEN}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000"
-		header Location "/"
-		respond 302
+		redir https://{host}/ 302
 	}
 	@unauth {
 		not header Authorization "Bearer {$RESEARCH_TOKEN}"
