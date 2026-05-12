@@ -218,10 +218,24 @@
 }
 
 # Bearer-token gate for the research stack. Token in SOPS-encrypted .env.
-# Returns 401 + closes the connection on mismatch — minimal probe surface.
+# Two valid auth paths:
+#   1. `Authorization: Bearer $RESEARCH_TOKEN` header — for MCP/API clients
+#   2. Cookie `research_token=$RESEARCH_TOKEN` — for browsers
+# Browsers obtain the cookie by visiting `https://<host>/?_auth=$RESEARCH_TOKEN`
+# once. Caddy sets a 1-year HttpOnly cookie and redirects to `/`. The query
+# param is stripped on redirect so the token isn't sticky in history.
+# Unauthenticated requests get a body-less 401 with connection close.
 # Usage: import research_bearer
 (research_bearer) {
-	@unauth not header Authorization "Bearer {$RESEARCH_TOKEN}"
+	@login query _auth={$RESEARCH_TOKEN}
+	handle @login {
+		header Set-Cookie "research_token={$RESEARCH_TOKEN}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000"
+		redir / 302
+	}
+	@unauth {
+		not header Authorization "Bearer {$RESEARCH_TOKEN}"
+		not header Cookie *research_token={$RESEARCH_TOKEN}*
+	}
 	handle @unauth {
 		respond 401 {
 			close
