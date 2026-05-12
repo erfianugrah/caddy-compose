@@ -217,6 +217,18 @@
 	}
 }
 
+# Bearer-token gate for the research stack. Token in SOPS-encrypted .env.
+# Returns 401 + closes the connection on mismatch — minimal probe surface.
+# Usage: import research_bearer
+(research_bearer) {
+	@unauth not header Authorization "Bearer {$RESEARCH_TOKEN}"
+	handle @unauth {
+		respond 401 {
+			close
+		}
+	}
+}
+
 # Common reverse proxy headers snippet
 (proxy_headers) {
 	trusted_proxies private_ranges
@@ -719,6 +731,46 @@ draw.erfi.io {
 
 	import error_pages
 	import site_log draw
+}
+
+# ─── research stack ────────────────────────────────────────────────────────
+# Self-hosted search + crawler + OSINT for local LLMs. Stack lives in the
+# `research` composer stack on Unraid, bound to 127.0.0.1:{8888,8889,8890}.
+# MCP server on the dev box sends Authorization: Bearer $RESEARCH_TOKEN.
+# WAF intentionally skipped — bearer is the gate; WAF would add CPU + log
+# noise for a private API surface. Re-add if abuse seen.
+
+searxng.erfi.io {
+	import tls_config
+	import research_bearer
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8888 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log searxng
+}
+
+crawler.erfi.io {
+	import tls_config
+	import research_bearer
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8889 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log crawler
+}
+
+osint.erfi.io {
+	import tls_config
+	import research_bearer
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8890 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log osint
 }
 
 # Internal admin API proxy — allows wafctl to trigger Caddy reloads.
