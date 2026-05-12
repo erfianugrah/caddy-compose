@@ -57,6 +57,7 @@ services:
       - TZ=Asia/Singapore
       - CF_API_TOKEN=${CF_API_TOKEN}
       - EMAIL=${EMAIL}
+      - RESEARCH_TOKEN=${RESEARCH_TOKEN}
 
   authelia:
     image: docker.io/authelia/authelia:4.39
