@@ -68,6 +68,17 @@ access_control:
     - domain: "cdn.erfi.io"
       policy: "two_factor"
 
+    # research stack — browsers use Authelia SSO. MCP/API clients with
+    # `Authorization: Bearer $RESEARCH_TOKEN` bypass forward_auth entirely
+    # via the (research_auth) matcher in the Caddyfile, so they never hit
+    # Authelia. Two-factor matches the rest of the protected services.
+    - domain: "searxng.erfi.io"
+      policy: "two_factor"
+    - domain: "crawler.erfi.io"
+      policy: "two_factor"
+    - domain: "osint.erfi.io"
+      policy: "two_factor"
+
     # Add more rules here as you expand Authelia protection to other services.
 
 session:
