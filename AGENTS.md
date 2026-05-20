@@ -506,3 +506,15 @@ causes the event to be invisible in parts of the UI.
   - Dashboard: `/sessions` page (`sessions.astro` + `SessionsPanel.tsx`);
     frontend API in `src/lib/api/sessions.ts`
   - 17 dashboard pages total, 155 mux routes, 19 frontend API modules.
+
+## Downstream WAF behaviour notes (for callers)
+
+The custom policy engine in front of `composer.erfi.io` blocks the default `curl` User-Agent on **`PUT` and `POST`** requests to its API (cross-referenced from `~/servarr-compose/AGENTS.md`). `GET` works without extra headers. Callers must send:
+
+```
+-H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ...'
+-H 'Origin: https://composer.erfi.io'
+-H 'Referer: https://composer.erfi.io/<page>'
+```
+
+Same pattern applies to any other downstream that goes through this WAF and accepts state-changing verbs — if you see a `403` page with a reference ID on a `PUT`/`POST` and not on `GET`, this is the cause. Check policy-engine event logs by reference ID to confirm the exact rule that triggered.
