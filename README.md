@@ -680,3 +680,28 @@ Caddyfile is git-managed — push changes, then reload:
 make caddy-quick-reload   # syncs from git + reloads Caddy
 make caddy-reload         # syncs from git + redeploys WAF/CSP/headers + reloads
 ```
+
+## Cross-stack proxy entries
+
+The Caddyfile proxies a number of stacks that live in **separate**
+docker-compose projects on the same host (each on its own bridge
+subnet, since Caddy runs `network_mode: host` and can reach any
+bridge IP). When adding a new stack:
+
+1. Pick an unused `/24` in `172.19.x.0/24`. Currently allocated:
+   `1.x` (servarr), `2.x` (tracearr_backend), `22.x` (immich),
+   `25.x` (bonkled), `30.x` (media), `98.x` (waf), `99.x` (authelia).
+2. The stack's `compose.yaml` defines a bridge network with that
+   subnet and pins its primary service to e.g. `.2`.
+3. Add a vhost block here pointing `reverse_proxy` at the stack's
+   bridge IP. WS-heavy services need `flush_interval -1`.
+4. Reload: `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+
+Current cross-stack entries:
+
+| FQDN | Stack | Bridge IP |
+|---|---|---|
+| `bonkled.erfi.io` | [bonkled](https://github.com/erfianugrah/bonkled) (`deploy/unraid/compose.yaml`) | `172.19.25.2:8080` |
+| `immich.erfi.io` | immich-compose | `172.19.22.2:2283` |
+| `radarr.erfi.io`, `sonarr.erfi.io`, ... | [servarr-compose](https://github.com/erfianugrah/servarr-compose) | `172.19.1.x` |
+| `docs.erfi.io` | docs-ssh | `172.19.50.2:8080` |

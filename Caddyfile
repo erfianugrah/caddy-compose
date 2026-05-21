@@ -502,6 +502,23 @@ immich.erfi.io {
 	import site_log immich
 }
 
+# bonkled — multiplayer Wordle-likes game. Public (no Authelia), WAF on.
+# WebSockets used for live versus matches + queue + match-event replay,
+# so flush_interval -1 disables response buffering for the upgraded
+# conn. Stack lives at /mnt/user/composer/stacks/bonkled (compose.yaml
+# in the bonkled repo at deploy/unraid/).
+bonkled.erfi.io {
+	import waf
+	import tls_config
+	encode zstd gzip
+	reverse_proxy 172.19.25.2:8080 {
+		import proxy_headers
+		flush_interval -1
+	}
+	import error_pages
+	import site_log bonkled
+}
+
 caddy-prometheus.erfi.io {
 	import waf_off
 
