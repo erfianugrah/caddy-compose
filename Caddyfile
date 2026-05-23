@@ -364,6 +364,7 @@ bazarr.erfi.io {
 
 tdarr.erfi.io {
 	import waf
+	import forward_auth
 	import tls_config
 	encode zstd gzip
 	reverse_proxy 172.19.1.6:8265 {
