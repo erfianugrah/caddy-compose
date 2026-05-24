@@ -98,6 +98,27 @@ Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
 - **`composer.erfi.io` API gotcha**: the custom WAF in front of it blocks default `curl` User-Agent on PUT and POST. Either set a real UA (`User-Agent: pi-agent-deploy/1.0`) or add a WAF exception. Same applies to any external `curl` against the API — GETs work without extra headers; mutating verbs need the UA tweak.
 - **`PUT /api/v1/stacks/<name>/env`** updates a stack's `.env` directly via API (composer skill route). Useful for out-of-band updates, but redundant if `.env` is committed to git — just `git push` and composer's webhook syncs it.
 
+## Caddy reload vs restart — cert cache gotcha
+
+- `caddy reload` (POST `/load` to the admin socket) short-circuits with
+  `"config is unchanged"` if the JSON is byte-identical. It does NOT
+  re-evaluate cert state, even if cert files have been deleted from disk.
+  Caddy's in-memory cert cache is sticky across reloads.
+- To force Caddy to re-check disk + obtain missing certs, use
+  **`docker restart caddy`** — not `make restart-caddy`.
+  - `docker restart` does `stop` + `start` on the existing container,
+    preserving its already-resolved env vars. SOPS values stay decrypted
+    (composer did the decrypt at container create time). The Caddy
+    process restarts cleanly, the in-memory cert cache empties, and
+    on the next request to a site without a cert it obtains one.
+  - `make restart-caddy` is `docker compose up -d --force-recreate caddy`
+    — it RECREATES the container, which re-reads `.env` directly.
+    `.env` is SOPS-encrypted on disk, so the new container starts with
+    `CF_API_TOKEN=ENC[AES256_GCM,...]` ciphertext and crash-loops.
+    Composer is the only thing that decrypts SOPS at deploy time.
+- See `~/knot-fly/docs/runbooks/cf-to-knot-migration.md` §Force-renewal
+  recipe for the validated end-to-end procedure.
+
 ## Migrating site blocks from CF DNS to Knot DNS
 
 When the underlying zone migrates from Cloudflare to our own Knot DNS
@@ -107,10 +128,13 @@ blocks under that zone MUST change their ACME DNS-01 provider from
 cert renewals start failing silently once recursive caches expire
 (Caddy writes the challenge TXT to CF — but the world now asks Knot).
 
-`erfi.io` was migrated to Knot on 2026-05-24. Caddy site blocks under
-`erfi.io` are running on borrowed time — they keep renewing only while
-resolvers still cache the old NS. Migrate before the next renewal
-window (~30 d before each cert's expiry).
+`erfi.io` was migrated to Knot on 2026-05-24, and all 36 Caddy site
+blocks under `erfi.io` were flipped to `import tls_config_rfc2136` in
+the same session. Production cert renewal verified end-to-end via a
+force-renewal of `caddy.erfi.io` (cert obtained in ~40 s through the
+rfc2136 path).
+
+The pattern stays useful for future zone migrations — see below.
 
 The working pattern, copied from `test.lab.erfi.io`:
 
