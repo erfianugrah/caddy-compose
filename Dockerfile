@@ -1,9 +1,10 @@
-ARG VERSION=2.11.2
+ARG VERSION=2.11.3
 ARG CRS_VERSION=v4.26.0
 
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare@v0.2.3 \
+	--with github.com/caddy-dns/rfc2136@v1.0.0 \
 	--with github.com/mholt/caddy-dynamicdns \
 	--with github.com/mholt/caddy-l4 \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.2.1 \
