@@ -1,5 +1,11 @@
-# Secrets — plaintext .env used by Docker Compose (never committed)
-.env
+# Secrets
+#
+# .env IS committed — it is SOPS-encrypted at rest (recipient =
+# composer's age key) and decrypted by composer at deploy time. The
+# pre-commit hook blocks any commit where .env is plaintext.
+#
+# .env.mk holds dev-only operator-side values (COMPOSER_API_KEY) which
+# never leave the dev machine — stays gitignored.
 .env.mk
 *.pem
 *.key
