@@ -806,6 +806,33 @@ osint.erfi.io {
 	import site_log osint
 }
 
+# MVP: test.lab.erfi.io issues its TLS cert via TSIG-authed nsupdate to our
+# own Knot DNS at knot-fly-mvp on Fly anycast (169.155.56.21). End-to-end
+# validated locally on 2026-05-24 against LE staging (45 s cert issuance).
+# See ~/knot-fly/docs/runbooks/cf-to-knot-migration.md for the full design.
+#
+# `lab.erfi.io` is delegated from erfi.io at CF: `lab.erfi.io NS ns1.lab.erfi.io.`
+# with glue `ns1.lab.erfi.io A 169.155.56.21`. Knot is primary for the whole
+# zone. Caddy here uses RFC 2136 (caddy-dns/rfc2136 plug-in compiled into
+# the image) to insert ACME `_acme-challenge.*` TXT records via TSIG.
+test.lab.erfi.io {
+	tls {
+		issuer acme {
+			dns rfc2136 {
+				key_name "caddy-acme."
+				key_alg "hmac-sha256"
+				key {$TSIG_CADDY_ACME}
+				server "169.155.56.21:53"
+			}
+			propagation_delay 30s
+			resolvers 169.155.56.21
+		}
+	}
+	encode zstd gzip
+	respond "MVP — knot-fly is authoritative for *.lab.erfi.io" 200
+	import site_log test-lab
+}
+
 # Internal admin API proxy — allows wafctl to trigger Caddy reloads.
 # Restricted to the wafctl Docker subnet (172.19.98.0/24).
 :2020 {
