@@ -224,7 +224,22 @@ sync: ## Sync stack git repo via Composer
 pull: ## Pull images on remote
 	$(COMPOSE_CMD) pull
 
-restart: ## Redeploy stack via Composer (handles SOPS, force-recreate)
+# Composer decrypts .env in place, runs compose up, then re-encrypts. The
+# re-encrypt produces new SOPS iv/tag (semantically identical, binary
+# different), leaving the working tree "modified" vs HEAD. The next git
+# sync then refuses with "worktree contains unstaged changes" and the next
+# deploy silently uses stale code. This target discards that noise on the
+# composer side before pulling so sync always succeeds. Safe: only discards
+# SOPS re-encryption churn, never real edits (composer owns .env, never
+# anything else under the stack dir).
+prep-composer-tree: ## Reset composer's working tree to HEAD (clears SOPS re-encrypt noise)
+	@# Use -u composer so reset writes files with uid 99 gid 101 (composer user inside
+	@# the container, maps to nobody:console on the host). `docker exec` without -u
+	@# runs as root, which leaves files root:root and breaks composer's later
+	@# in-place SOPS decrypt (needs write perm as the composer user).
+	@ssh $(REMOTE) 'docker exec -u composer $(COMPOSER_CONTAINER) sh -c "git -C /opt/stacks/$(COMPOSER_STACK) -c safe.directory=\* reset --hard HEAD"' | grep -v '^HEAD is now at' || true
+
+restart: prep-composer-tree ## Redeploy stack via Composer (handles SOPS, force-recreate, cleans dirty tree first)
 	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
 	@$(call composer-api,stacks/$(COMPOSER_STACK)/up)
 
