@@ -147,7 +147,9 @@
 	# No WAF processing — placeholder snippet for services that don't need it.
 }
 
-# Common TLS config snippet
+# Common TLS config snippet — used by sites under zones still served by
+# Cloudflare DNS (erfi.dev, erfianugrah.com, etc.). ACME DNS-01 challenge
+# TXT records get written to CF via their API.
 (tls_config) {
 	tls {
 		issuer acme {
@@ -155,6 +157,26 @@
 			propagation_delay 60s
 			propagation_timeout -1
 			resolvers 1.1.1.1
+		}
+	}
+}
+
+# TLS config for sites under zones served by our own Knot DNS on Fly.
+# Currently: erfi.io (migrated 2026-05-24, lab.erfi.io subzone).
+# Challenge TXT records get written to Knot via TSIG-authed nsupdate.
+# See ~/knot-fly/ and ~/knot-fly/docs/runbooks/cf-to-knot-migration.md
+# §Post-migration for the design.
+(tls_config_rfc2136) {
+	tls {
+		issuer acme {
+			dns rfc2136 {
+				key_name "caddy-acme."
+				key_alg "hmac-sha256"
+				key {$TSIG_CADDY_ACME}
+				server "169.155.56.21:53"
+			}
+			propagation_delay 30s
+			resolvers 169.155.56.21
 		}
 	}
 }
@@ -256,7 +278,7 @@
 # docs.erfi.io — Landing page for the SSH docs server.
 # Static HTML served by busybox httpd inside the docs-ssh container.
 docs.erfi.io {
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.50.2:8080
 	import error_pages
@@ -267,7 +289,7 @@ docs.erfi.io {
 # Use `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` to reload.
 # Or SSH tunnel: ssh -L 2019:localhost:2019 user@host
 caddy.erfi.io {
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	respond "Caddy is running. Admin API available via localhost:2019 only." 200
 	import error_pages
@@ -277,7 +299,7 @@ caddy.erfi.io {
 waf.erfi.io {
 	import forward_auth
 
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	# Hashed assets are immutable — only reached after forward_auth succeeds
 	@waf_hashed path /_astro/*
@@ -295,7 +317,7 @@ waf.erfi.io {
 
 authelia.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.99.2:9091 {
 		import proxy_headers
@@ -306,7 +328,7 @@ authelia.erfi.io {
 
 servarr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 
 	# Unraid GraphQL API — bypass Authelia, rely on Unraid's own x-api-key auth
@@ -331,7 +353,7 @@ servarr.erfi.io {
 
 sonarr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.3:8989 {
 		import proxy_headers
@@ -342,7 +364,7 @@ sonarr.erfi.io {
 
 radarr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.2:7878 {
 		import proxy_headers
@@ -353,7 +375,7 @@ radarr.erfi.io {
 
 bazarr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.4:6767 {
 		import proxy_headers
@@ -365,7 +387,7 @@ bazarr.erfi.io {
 tdarr.erfi.io {
 	import waf
 	import forward_auth
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.6:8265 {
 		import proxy_headers
@@ -376,7 +398,7 @@ tdarr.erfi.io {
 
 tracearr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.23:3000 {
 		import proxy_headers
@@ -387,7 +409,7 @@ tracearr.erfi.io {
 
 vault.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.4.2:80 {
 		import proxy_headers
@@ -399,7 +421,7 @@ vault.erfi.io {
 
 prowlarr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.10:9696 {
 		import proxy_headers
@@ -410,7 +432,7 @@ prowlarr.erfi.io {
 
 jellyfin.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.15:8096 {
 		import proxy_headers
@@ -426,7 +448,7 @@ jellyfin.erfi.io {
 
 qbit.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.22:8080 {
 		import proxy_headers
@@ -438,7 +460,7 @@ qbit.erfi.io {
 change.erfi.io {
 	import waf
 	import forward_auth
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.3.2:5000 {
 		import proxy_headers
@@ -449,7 +471,7 @@ change.erfi.io {
 
 seerr.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.21:5055 {
 		import proxy_headers
@@ -460,7 +482,7 @@ seerr.erfi.io {
 
 keycloak.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.12.2:8080 {
 		import proxy_headers
@@ -471,7 +493,7 @@ keycloak.erfi.io {
 
 joplin.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.13.2:22300 {
 		import proxy_headers
@@ -482,7 +504,7 @@ joplin.erfi.io {
 
 navidrome.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.17:4533 {
 		import proxy_headers
@@ -493,7 +515,7 @@ navidrome.erfi.io {
 
 sabnzbd.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.19:6666 {
 		import proxy_headers
@@ -504,7 +526,7 @@ sabnzbd.erfi.io {
 
 immich.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.22.2:2283 {
 		import proxy_headers
@@ -521,7 +543,7 @@ immich.erfi.io {
 # in the bonkled repo at deploy/unraid/).
 bonkled.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.25.2:8080 {
 		import proxy_headers
@@ -534,7 +556,7 @@ bonkled.erfi.io {
 caddy-prometheus.erfi.io {
 	import waf_off
 
-	import tls_config
+	import tls_config_rfc2136
 	import forward_auth
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
@@ -546,7 +568,7 @@ caddy-prometheus.erfi.io {
 
 copyparty.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.66.2:3923 {
 		import proxy_headers
@@ -557,7 +579,7 @@ copyparty.erfi.io {
 
 git.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.40.0.2:3000 {
 		import proxy_headers
@@ -576,7 +598,7 @@ git.erfi.io {
 
 composer.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.80.2:8080 {
 		import proxy_headers
@@ -594,7 +616,7 @@ composer.erfi.io {
 
 dockge.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.17.0.2:5001 {
 		import proxy_headers
@@ -606,7 +628,7 @@ dockge.erfi.io {
 
 httpbun.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.15.2:80 {
 		import proxy_headers
@@ -617,7 +639,7 @@ httpbun.erfi.io {
 
 httpbin.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.15.3:80 {
 		import proxy_headers
@@ -628,7 +650,7 @@ httpbin.erfi.io {
 
 atuin.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.20.1.2:8888 {
 		import proxy_headers
@@ -639,7 +661,7 @@ atuin.erfi.io {
 
 cdn.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 
 	# S3 API / bucket proxy — bypass Authelia, bucket policies control access
@@ -667,6 +689,7 @@ cdn.erfi.io {
 erfianugrah.com {
 	import waf_off
 
+	# erfianugrah.com is still on CF DNS (only erfi.io migrated to Knot 2026-05-24).
 	import tls_config
 	encode zstd gzip
 	# Astro hashed assets are immutable — cache for 1 year
@@ -687,7 +710,7 @@ erfianugrah.com {
 # Ports bound to 127.0.0.1 — only reachable via this proxy.
 draw.erfi.io {
 	import waf
-	import tls_config
+	import tls_config_rfc2136
 	encode zstd gzip
 
 	# Security headers
@@ -774,7 +797,7 @@ draw.erfi.io {
 # noise for a private API surface. Re-add if abuse seen.
 
 searxng.erfi.io {
-	import tls_config
+	import tls_config_rfc2136
 	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8888 {
@@ -785,7 +808,7 @@ searxng.erfi.io {
 }
 
 crawler.erfi.io {
-	import tls_config
+	import tls_config_rfc2136
 	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8889 {
@@ -796,7 +819,7 @@ crawler.erfi.io {
 }
 
 osint.erfi.io {
-	import tls_config
+	import tls_config_rfc2136
 	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8890 {
@@ -816,18 +839,7 @@ osint.erfi.io {
 # zone. Caddy here uses RFC 2136 (caddy-dns/rfc2136 plug-in compiled into
 # the image) to insert ACME `_acme-challenge.*` TXT records via TSIG.
 test.lab.erfi.io {
-	tls {
-		issuer acme {
-			dns rfc2136 {
-				key_name "caddy-acme."
-				key_alg "hmac-sha256"
-				key {$TSIG_CADDY_ACME}
-				server "169.155.56.21:53"
-			}
-			propagation_delay 30s
-			resolvers 169.155.56.21
-		}
-	}
+	import tls_config_rfc2136
 	encode zstd gzip
 	respond "MVP — knot-fly is authoritative for *.lab.erfi.io" 200
 	import site_log test-lab
