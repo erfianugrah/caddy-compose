@@ -1,6 +1,31 @@
+# Caddy base version. The MINIMUM version is determined by the union of all
+# `--with` modules below — each module's go.mod declares its required
+# caddy/v2 version, and Go module resolution takes the highest. If you bump
+# any module to a release that pulls in a newer caddy/v2 minimum, this
+# version must be bumped to match or the build fails with
+# `requires github.com/caddyserver/caddy/v2@vX.Y.Z, not vX.Y.W`.
+#
+# When bumping this, also update CADDY_VERSION and CADDY_TAG in
+# .github/workflows/build.yml, and the image tags in Makefile, compose.yaml,
+# README.md (Version management section). See README.md §Version management.
 ARG VERSION=2.11.3
 ARG CRS_VERSION=v4.26.0
 
+# xcaddy build manifest.
+#   caddy-dns/cloudflare    — ACME DNS-01 + dynamic_dns + ECH publishing (CF auth DNS)
+#   caddy-dns/rfc2136       — ACME DNS-01 via TSIG-authed nsupdate (own Knot DNS,
+#                              see ~/knot-fly/docs/runbooks/cf-to-knot-migration.md)
+#   caddy-dynamicdns        — home WAN IP → A/AAAA records (~30 hostnames)
+#   caddy-l4                — L4 listener wrapper for DDoS-mitigator's TCP-RST path
+#   caddy-body-matcher      — request body matchers + body_vars handler
+#   caddy-policy-engine     — unified WAF (allow/block/challenge/skip/detect/rate_limit/header)
+#   caddy-ddos-mitigator    — 3-layer DDoS detection (global rate, per-service, host-diversity)
+#
+# Pin all modules at known-good versions. Two modules below are intentionally
+# unpinned (caddy-dynamicdns, caddy-l4); xcaddy resolves them to latest on
+# every cache-bust build. This has bitten us before — e.g. caddy-l4 v0.1.1
+# (2025-04-24) raised its caddy/v2 minimum to 2.11.3 and broke 2.11.2 builds.
+# Pin those two too if you want fully reproducible builds across rebuilds.
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare@v0.2.3 \

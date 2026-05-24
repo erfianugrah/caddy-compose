@@ -349,7 +349,8 @@ causes the event to be invisible in parts of the UI.
 
 - Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload.
 - On startup, `generateOnBoot()` regenerates all config from stored JSON state.
-- Version tags must stay in sync across: `Makefile`, `compose.yaml`, `README.md`, `.github/workflows/build.yml`.
+- Version tags must stay in sync across: `Makefile`, `compose.yaml`, `README.md`, `.github/workflows/build.yml` (which has BOTH `CADDY_TAG` and `CADDY_VERSION` — the published tag vs the upstream Caddy base, see README §Version management).
+- **Caddy module pin discipline**: the `--with` lines in `Dockerfile` are mostly pinned, but `caddy-dynamicdns` and `caddy-l4` are not. Unpinned modules float on every `--no-cache` rebuild and have surfaced surprises (e.g. `caddy-l4 v0.1.1` raised its `caddy/v2` minimum to 2.11.3, breaking 2.11.2 builds in May 2026). When bumping Caddy upstream OR adding a new module, **also bump every module's pin** to the latest known-good version and verify post-build with `docker run --rm <image> /usr/bin/caddy list-modules | grep <id>`. See README §Caddy modules for the full procedure.
 - **Unified rule store**: `ExclusionStore` handles ALL rule types
   (allow/block/challenge/skip/detect/rate_limit/response_header).
   `RuleExclusion` is the single model. `/api/rules` is the canonical CRUD endpoint.

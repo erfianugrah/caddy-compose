@@ -151,10 +151,73 @@ Image tags must stay in sync across four files:
 
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
 - `compose.yaml` (lines 3 and 119: image fields)
-- `.github/workflows/build.yml` (env block: `CADDY_TAG`, `WAFCTL_VERSION`)
+- `.github/workflows/build.yml` (env block: `CADDY_TAG`, `CADDY_VERSION`, `WAFCTL_VERSION`)
 - `README.md` (this file, examples and references)
 
 Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.78.0-2.11.2`), wafctl is plain semver (e.g. `2.82.0`).
+
+The `CADDY_VERSION` env in `build.yml` and `ARG VERSION` in `Dockerfile` are the **Caddy upstream** version (the `caddy:X.Y.Z-builder` base image). The `CADDY_TAG` is what we publish to Docker Hub and reference in `compose.yaml`. The two trail each other — bumping Caddy upstream usually bumps both, but not always (project-version bumps can ship without an upstream Caddy bump).
+
+#### Bumping Caddy upstream
+
+When you bump `ARG VERSION` in the `Dockerfile`, update the same value in:
+- `.github/workflows/build.yml` — `CADDY_VERSION` env
+- `.github/workflows/build.yml` — `CADDY_TAG` env (trailing portion of the tag)
+- `Makefile` — `CADDY_IMAGE` (trailing portion)
+- `compose.yaml` — `image:` field for the `caddy` service
+- `README.md` — any inline examples that mention the tag
+
+The minimum acceptable Caddy version is determined by the **union of all `--with` module requirements** — each xcaddy module's `go.mod` declares its `caddy/v2` minimum, and Go module resolution takes the highest. If a module bump raises the minimum above `ARG VERSION`, the build fails with `requires github.com/caddyserver/caddy/v2@vX.Y.Z, not vX.Y.W` and you must bump `ARG VERSION`.
+
+### Caddy modules (xcaddy `--with`)
+
+The `Dockerfile`'s `RUN xcaddy build` line composes all the Caddy plugins into the binary. There are currently seven (see the inline comments in `Dockerfile` for what each one does).
+
+#### Pin discipline
+
+Five of the seven `--with` lines are pinned to a specific tag (e.g. `@v0.2.3`); two are not (`caddy-dynamicdns`, `caddy-l4`). Unpinned modules float to whatever is latest on `master` at build time. This has bitten us — e.g. `caddy-l4 v0.1.1` (2025-04-24) raised its `caddy/v2` minimum to `2.11.3` and broke our `2.11.2` builds with `make build NO_CACHE=1` until we bumped Caddy.
+
+For reproducible builds, pin everything:
+
+```diff
+- --with github.com/mholt/caddy-l4 \
++ --with github.com/mholt/caddy-l4@v0.1.1 \
+```
+
+The trade-off is: pinned modules don't pick up upstream security fixes on rebuild. For modules we rely on heavily (`caddy-policy-engine` etc.), pinned with manual bumps is right. For peripheral modules where staying current matters more than reproducibility, unpinned is defensible — but expect occasional rebuild surprises.
+
+#### Adding a new module
+
+1. Look up the module's latest stable tag (Go modules tend to use `vX.Y.Z` on GitHub).
+2. Verify its `go.mod` declares a `caddy/v2` requirement compatible with the current `ARG VERSION` in `Dockerfile`:
+   ```bash
+   curl -s https://raw.githubusercontent.com/<owner>/<repo>/<tag>/go.mod | grep caddy/v2
+   ```
+3. Add the `--with` line to `Dockerfile` (pinned).
+4. Build to confirm xcaddy resolves cleanly:
+   ```bash
+   docker build --no-cache --target builder -t caddy-test:dev .
+   ```
+5. Verify the module actually registered in the binary:
+   ```bash
+   docker run --rm caddy-test:dev /usr/bin/caddy list-modules | grep <expected-module-id>
+   ```
+   Module IDs are usually `<namespace>.providers.<name>` (DNS providers), `http.handlers.<name>` (HTTP middleware), or `layer4.<name>` (L4). The module repo's README usually documents the registered ID.
+6. If the build fails with `requires github.com/caddyserver/caddy/v2@vX.Y.Z`, the new module needs a Caddy version newer than what `ARG VERSION` allows — either bump `ARG VERSION` (see *Bumping Caddy upstream* above) or pick an older module version.
+
+#### Verifying a deployed build
+
+After `make deploy-caddy`, confirm the module loaded on the live container:
+
+```bash
+ssh servarr 'docker exec caddy /usr/bin/caddy list-modules | grep <module-id>'
+```
+
+For DNS providers specifically, also verify the Caddyfile actually consumes the new provider (otherwise the module is loaded but inert):
+
+```bash
+make logs-caddy | grep -i 'acme.*<provider-name>\|dns.*<provider-name>'
+```
 
 ## WAF configuration
 
