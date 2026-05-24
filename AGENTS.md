@@ -94,9 +94,48 @@ Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
   2. `compose.yaml` (`- FOO=${FOO}` passthrough in the consuming service's `environment:` block)
   3. The consumer's config (e.g. `{$FOO}` reference in the Caddyfile)
   Ship all three in the same logical change. Stage them together; don't deploy partial.
-- **Composer's SOPS round-trip leaves a dirty working tree.** Composer decrypts `.env` in place → runs `compose up` → re-encrypts. Re-encrypt produces new SOPS iv/tag (semantically identical, binary different), so `git status` shows `.env` as modified vs HEAD. The next `git pull` then refuses with `worktree contains unstaged changes`, and the deploy after that uses the stale compose.yaml. Recovery: `docker exec composer git -C /opt/stacks/<stack> -c safe.directory=* reset --hard HEAD` then re-deploy. Long-term fix: TBD (open issue in composer for `git stash + pull + stash pop`, or commit the re-encrypted form each cycle).
+- **Composer's SOPS round-trip leaves a dirty working tree.** Composer decrypts `.env` in place → runs `compose up` → re-encrypts. Re-encrypt produces new SOPS iv/tag (semantically identical, binary different), so `git status` shows `.env` as modified vs HEAD. The next `git pull` then refuses with `worktree contains unstaged changes`, and the deploy after that uses the stale compose.yaml. **The `restart` target now depends on `prep-composer-tree`** which resets the working tree via `docker exec -u composer composer git -C /opt/stacks/<stack> -c safe.directory=* reset --hard HEAD`. Note the `-u composer` — a reset run as root inside the container would leave files root-owned, breaking the next SOPS in-place write with `permission denied`. Long-term fix: TBD (open issue in composer for `git stash + pull + stash pop`, or commit the re-encrypted form each cycle).
 - **`composer.erfi.io` API gotcha**: the custom WAF in front of it blocks default `curl` User-Agent on PUT and POST. Either set a real UA (`User-Agent: pi-agent-deploy/1.0`) or add a WAF exception. Same applies to any external `curl` against the API — GETs work without extra headers; mutating verbs need the UA tweak.
 - **`PUT /api/v1/stacks/<name>/env`** updates a stack's `.env` directly via API (composer skill route). Useful for out-of-band updates, but redundant if `.env` is committed to git — just `git push` and composer's webhook syncs it.
+
+## Migrating site blocks from CF DNS to Knot DNS
+
+When the underlying zone migrates from Cloudflare to our own Knot DNS
+(see `~/knot-fly/docs/runbooks/cf-to-knot-migration.md`), Caddy site
+blocks under that zone MUST change their ACME DNS-01 provider from
+`dns cloudflare {$CF_API_TOKEN}` to `dns rfc2136 { ... }`. Otherwise
+cert renewals start failing silently once recursive caches expire
+(Caddy writes the challenge TXT to CF — but the world now asks Knot).
+
+`erfi.io` was migrated to Knot on 2026-05-24. Caddy site blocks under
+`erfi.io` are running on borrowed time — they keep renewing only while
+resolvers still cache the old NS. Migrate before the next renewal
+window (~30 d before each cert's expiry).
+
+The working pattern, copied from `test.lab.erfi.io`:
+
+```caddyfile
+foo.erfi.io {
+    tls {
+        issuer acme {
+            dns rfc2136 {
+                key_name "caddy-acme."
+                key_alg "hmac-sha256"
+                key {$TSIG_CADDY_ACME}
+                server "169.155.56.21:53"
+            }
+            propagation_delay 30s
+            resolvers 169.155.56.21
+        }
+    }
+    # ... rest of the site config unchanged
+}
+```
+
+`TSIG_CADDY_ACME` is already wired through `.env` + `compose.yaml`.
+Nothing new to provision — just swap the `import tls_config` line (or
+the inline `dns cloudflare` block) for the explicit rfc2136 block above.
+Deploy via `make restart` (NOT `restart-caddy`).
 
 ## Code Style — Go (wafctl/)
 
