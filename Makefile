@@ -11,7 +11,7 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.95.4-2.11.2
+CADDY_IMAGE   ?= erfianugrah/caddy:3.96.0-2.11.3
 WAFCTL_IMAGE ?= erfianugrah/wafctl:2.101.2
 
 # ── Remote host ─────────────────────────────────────────────────────
