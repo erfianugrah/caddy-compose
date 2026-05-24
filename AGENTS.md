@@ -78,8 +78,25 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 ## Secrets
 
-- `.env` is SOPS-encrypted (age). **Never commit unencrypted secrets.**
-- A pre-commit hook blocks unencrypted `.env`, `.tfvars`, `.tfstate` files.
+- `.env` is SOPS-encrypted (age) and **IS** committed to git. That's the point of SOPS — encrypted secrets live in version control alongside the code that consumes them.
+- The pre-commit hook (`.git/hooks/pre-commit`) blocks any commit where `.env` / `.tfvars` / `.tfstate` is plaintext (checks for `ENC[AES256_GCM,` or `sops_*` markers). Override per-path via `.allow-unencrypted-paths`.
+- Composer (`composer.erfi.io`) decrypts `.env` at deploy time using its loaded age key (`COMPOSER_SOPS_AGE_KEY` env var). The age recipient in `.env`'s SOPS metadata MUST match composer's public key (`age15jdwjecd05un3cclyxdhh32zm8xsrt4uv5fk73tjq70d8che43xqsk8sa9` as of 2026-05-24).
+- `.env.mk` stays gitignored — it holds operator-side `COMPOSER_API_KEY` which never leaves the dev box.
+
+## Deployment — do this, NOT that
+
+Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
+
+- **Use `make restart`** (composer-api: git sync → SOPS decrypt → `compose up`). This is the only deploy path that decrypts SOPS values before passing them to containers.
+- **Do NOT use `make restart-caddy` / `make restart-wafctl` / `make restart-authelia`** for changes that touch `.env` or env-var passthrough. Those targets call raw `docker compose up --force-recreate <svc>`, which bypasses composer's SOPS layer. Containers come up with secrets as `ENC[AES256_GCM,...]` ciphertext strings, fail provisioning, and crash-loop. They're only safe for restarting a container whose config hasn't changed.
+- **Adding a new env var requires THREE simultaneous edits** — missing any one crashes the consuming container:
+  1. `.env` (new `FOO=...` line, SOPS-encrypted before commit)
+  2. `compose.yaml` (`- FOO=${FOO}` passthrough in the consuming service's `environment:` block)
+  3. The consumer's config (e.g. `{$FOO}` reference in the Caddyfile)
+  Ship all three in the same logical change. Stage them together; don't deploy partial.
+- **Composer's SOPS round-trip leaves a dirty working tree.** Composer decrypts `.env` in place → runs `compose up` → re-encrypts. Re-encrypt produces new SOPS iv/tag (semantically identical, binary different), so `git status` shows `.env` as modified vs HEAD. The next `git pull` then refuses with `worktree contains unstaged changes`, and the deploy after that uses the stale compose.yaml. Recovery: `docker exec composer git -C /opt/stacks/<stack> -c safe.directory=* reset --hard HEAD` then re-deploy. Long-term fix: TBD (open issue in composer for `git stash + pull + stash pop`, or commit the re-encrypted form each cycle).
+- **`composer.erfi.io` API gotcha**: the custom WAF in front of it blocks default `curl` User-Agent on PUT and POST. Either set a real UA (`User-Agent: pi-agent-deploy/1.0`) or add a WAF exception. Same applies to any external `curl` against the API — GETs work without extra headers; mutating verbs need the UA tweak.
+- **`PUT /api/v1/stacks/<name>/env`** updates a stack's `.env` directly via API (composer skill route). Useful for out-of-band updates, but redundant if `.env` is committed to git — just `git push` and composer's webhook syncs it.
 
 ## Code Style — Go (wafctl/)
 
