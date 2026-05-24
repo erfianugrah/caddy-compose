@@ -58,6 +58,10 @@ services:
       - CF_API_TOKEN=${CF_API_TOKEN}
       - EMAIL=${EMAIL}
       - RESEARCH_TOKEN=${RESEARCH_TOKEN}
+      # TSIG key for ACME DNS-01 via our own Knot DNS at knot-fly-mvp on Fly.
+      # Used by sites whose `tls { issuer acme { dns rfc2136 { key {$TSIG_CADDY_ACME} ... } } }`
+      # references it (currently: test.lab.erfi.io). See ~/knot-fly/ for the full design.
+      - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
 
   authelia:
     image: docker.io/authelia/authelia:4.39
