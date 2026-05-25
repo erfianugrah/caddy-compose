@@ -118,6 +118,58 @@ Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
     Composer is the only thing that decrypts SOPS at deploy time.
 - See `~/knot-fly/docs/runbooks/cf-to-knot-migration.md` §Force-renewal
   recipe for the validated end-to-end procedure.
+- **Force-renewal validated 2026-05-25 post-TSIG-rotation**:
+  `test.lab.erfi.io` re-issued in ~4 s end-to-end (Caddy reads new
+  `TSIG_CADDY_ACME` from re-encrypted `.env` → nsupdate signed with new
+  key → Knot accepts → LE public-DNS validation succeeds → cert
+  installed). Issuer Let's Encrypt E7, valid until 2026-08-23. Recipe:
+
+  ```bash
+  ssh servarr 'docker exec caddy rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/test.lab.erfi.io'
+  ssh servarr 'docker restart caddy'
+  # then either wait for on-demand TLS or curl the host
+  echo | openssl s_client -servername test.lab.erfi.io -connect test.lab.erfi.io:443 2>/dev/null \
+    | openssl x509 -noout -dates -issuer
+  ssh servarr 'docker logs caddy --since 2m 2>&1 | grep -E "test\.lab\.erfi\.io|tls\.obtain|obtained"'
+  ```
+
+## TSIG rotation (when `TSIG_CADDY_ACME` is compromised or due)
+
+Upstream rotation procedure lives in `~/knot-fly/AGENTS.md` gotcha #25.
+This section covers ONLY the Caddy-side dance.
+
+Order of operations:
+
+1. **Knot side first** — the operator runs the rotation script against
+   `knot-fly-mvp`'s confdb. From that moment, Caddy still holds the OLD
+   key in process memory; any ACME renewal that fires returns `BADSIG`
+   from Knot. Renewals are at ≈60-day cadence, so the practical race
+   window is small, but treat the swap as urgent.
+2. **Decrypt** `.env` here (`sops -d -i .env` or your usual helper).
+3. **Swap** the `TSIG_CADDY_ACME=...` line. Keep quotes around the
+   base64 value (the existing pre-commit lint is loose, but Caddy parses
+   it more reliably when quoted).
+4. **Re-encrypt** `.env` (`sops -e -i .env`).
+5. **Verify** the pre-commit secret-scan passes —
+   `grep -c 'ENC\[AES256' .env` should be ≥1, and there must be no
+   plaintext TSIG value left.
+6. **Commit + push** — message convention
+   `sec(caddy): rotate TSIG_CADDY_ACME after Knot conf leak fix` or
+   similar. Don't include the value or its prefix in the commit
+   message.
+7. **`make restart`** (NOT `restart-caddy` — same SOPS-bypass trap as
+   above). Composer pulls the new commit, decrypts `.env` in place,
+   passes the plaintext through `compose.yaml`'s `- TSIG_CADDY_ACME=${TSIG_CADDY_ACME}`
+   passthrough, and recreates the Caddy container with the new env.
+8. **Verify on the wire** — force-renew `test.lab.erfi.io` per the
+   recipe above. The whole chain should complete in <10s. If you see
+   `BADKEY` / `BADSIG` / `tsig indicates error` in Caddy logs, the env
+   passthrough didn't land; check `docker inspect caddy --format
+   '{{range .Config.Env}}{{println .}}{{end}}'` for the first few
+   characters of `TSIG_CADDY_ACME` against the new value.
+
+Done 2026-05-25 — commit `0fc82d0`. Triggered by `knot-fly` gotcha #22
+(leak in rendered conf comment headers, ~29h exposure window).
 
 ## Migrating site blocks from CF DNS to Knot DNS
 
