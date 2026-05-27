@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: erfianugrah/caddy:3.96.0-2.11.3
+    image: erfianugrah/caddy:3.96.1-2.11.3
     hostname: caddy
     container_name: caddy
     restart: unless-stopped

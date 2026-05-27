@@ -21,7 +21,7 @@ on:
 
 env:
   CADDY_IMAGE: erfianugrah/caddy
-  CADDY_TAG: "3.96.0-2.11.3"
+  CADDY_TAG: "3.96.1-2.11.3"
   CADDY_VERSION: "2.11.3"
   CRS_VERSION: "v4.26.0"
   WAFCTL_IMAGE: erfianugrah/wafctl

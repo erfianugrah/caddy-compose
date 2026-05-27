@@ -3,3 +3,11 @@
 # Not exploitable: gRPC is only used by Caddy's localhost admin API, which
 # is not exposed externally. Will be removed once Caddy bumps to grpc >= 1.79.3.
 CVE-2026-33186
+
+# CVE-2026-34986: go-jose/v3 DoS via crafted JWE (large p2c iteration count).
+# Transitive dependency pulled by Caddy's ACME client (go-acme/lego).
+# Not exploitable: we do not accept JWE-encoded input from external sources;
+# this code path is exercised only against the ACME directory's CA, whose
+# JWE responses we trust. Remove once Caddy bumps lego to a release that
+# pulls go-jose/v3 >= 3.0.5.
+CVE-2026-34986
