@@ -105,7 +105,15 @@
 		decay_interval 30s
 		sync_interval 1s
 		kernel_drop true
-		whitelist 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128
+		# Whitelist is bootstrap-only — wafctl persists the live whitelist into
+		# jail.json and the plugin hot-applies updates from there every sync_interval.
+		# On Caddy restart these values seed the runtime whitelist, then jail.json
+		# overlays additions made via the dashboard / wafctl API. Keep these aligned
+		# with the live whitelist so a fresh `compose up` doesn't drop entries
+		# between Caddy boot and the first jail.json sync tick.
+		#   167.88.158.107/32        — servarr-watchdog-erfi fly egress IPv4
+		#   2605:4c40:158:f110::/64  — servarr-watchdog-erfi fly egress IPv6 prefix
+		whitelist 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128 167.88.158.107/32 2605:4c40:158:f110::/64
 	}
 }
 
