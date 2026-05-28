@@ -532,6 +532,19 @@ sabnzbd.erfi.io {
 	import site_log sabnzbd
 }
 
+# slskd binds 5030 inside wg-pia-slskd's netns; Caddy reaches it via
+# wg-pia-slskd's servarr-network IP (.16) since slskd shares its netns.
+slskd.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 172.19.1.16:5030 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log slskd
+}
+
 immich.erfi.io {
 	import waf
 	import tls_config_rfc2136
