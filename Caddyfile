@@ -73,11 +73,25 @@
 			}
 		}
 	}
+	# Authoritative DNS for erfi.io is Knot (knot-fly-mvp on Fly anycast at
+	# 169.155.56.21:53) since 2026-05-24. We use the rfc2136 libdns provider
+	# with the dedicated caddy-ddns. TSIG key (A/AAAA-only ACL on the Knot
+	# side — see `knotctl` skill for the four-key-role table). The previous
+	# `provider cloudflare` config was a no-op after the NS cutover; CF
+	# updates were going to a zone CF no longer answered for.
+	#
+	# erfianugrah.com is still on Cloudflare — not migrated yet. If you ever
+	# want it back under DDNS, add a SECOND dynamic_dns block with provider
+	# cloudflare for that one domain (caddy-dynamicdns supports multiple).
 	dynamic_dns {
-		provider cloudflare {$CF_API_TOKEN}
+		provider rfc2136 {
+			key_name "caddy-ddns."
+			key_alg "hmac-sha256"
+			key {$TSIG_CADDY_DDNS}
+			server "169.155.56.21:53"
+		}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw bonkled tdarr
-			erfianugrah.com @
+			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw bonkled tdarr slskd
 		}
 		versions ipv4
 		check_interval 5m
