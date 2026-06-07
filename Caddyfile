@@ -887,6 +887,19 @@ osint.erfi.io {
 	import site_log osint
 }
 
+# Local LLM endpoint (servarr GTX 1070, Qwen3.5 sm61) for research.deep_research.
+# servarr-llm stack binds 127.0.0.1:18080. Same bearer gate as the rest.
+llama.erfi.io {
+	import tls_config_rfc2136
+	import research_auth
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:18080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log llama
+}
+
 # MVP: test.lab.erfi.io issues its TLS cert via TSIG-authed nsupdate to our
 # own Knot DNS at knot-fly-mvp on Fly anycast (169.155.56.21). End-to-end
 # validated locally on 2026-05-24 against LE staging (45 s cert issuance).
