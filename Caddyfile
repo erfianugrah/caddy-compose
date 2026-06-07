@@ -900,6 +900,19 @@ llama.erfi.io {
 	import site_log llama
 }
 
+# Open WebUI chat front-end (chat stack on servarr, 127.0.0.1:18081). Browsers
+# use Authelia SSO; Open WebUI auto-logs-in from the forwarded Remote-Email.
+chat.erfi.io {
+	import tls_config_rfc2136
+	import research_auth
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:18081 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log chat
+}
+
 # MVP: test.lab.erfi.io issues its TLS cert via TSIG-authed nsupdate to our
 # own Knot DNS at knot-fly-mvp on Fly anycast (169.155.56.21). End-to-end
 # validated locally on 2026-05-24 against LE staging (45 s cert issuance).

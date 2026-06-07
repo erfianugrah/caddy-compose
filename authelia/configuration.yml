@@ -80,6 +80,8 @@ access_control:
       policy: "two_factor"
     - domain: "llama.erfi.io"
       policy: "two_factor"
+    - domain: "chat.erfi.io"
+      policy: "two_factor"
 
     # Add more rules here as you expand Authelia protection to other services.
 
