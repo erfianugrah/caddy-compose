@@ -946,3 +946,18 @@ test.lab.erfi.io {
 		respond "Forbidden" 403
 	}
 }
+
+# ===== deno-edge app platform =====
+# Apps get *.fn.erfi.io for free (one wildcard cert via Knot rfc2136) — ZERO
+# main-Caddy churn when adding apps. A custom domain is added to the host list
+# below (one line, cert via the same rfc2136 DNS-01). All routing (which host ->
+# which static site / function) lives in deno-edge's OWN Caddyfile (this repo).
+*.fn.erfi.io, revista.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	reverse_proxy 172.19.42.3:80 {
+		import proxy_headers
+		header_up X-Real-IP {remote_host}
+	}
+	import site_log deno-edge
+}
