@@ -88,7 +88,7 @@
 			key_name "caddy-ddns."
 			key_alg "hmac-sha256"
 			key {$TSIG_CADDY_DDNS}
-			server "169.155.56.21:53"
+			server "137.66.1.170:53"
 		}
 		domains {
 			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw bonkled tdarr slskd lidarr soularr
@@ -195,10 +195,10 @@
 				key_name "caddy-acme."
 				key_alg "hmac-sha256"
 				key {$TSIG_CADDY_ACME}
-				server "169.155.56.21:53"
+				server "137.66.1.170:53"
 			}
 			propagation_delay 30s
-			resolvers 169.155.56.21
+			resolvers 137.66.1.170
 		}
 	}
 }
