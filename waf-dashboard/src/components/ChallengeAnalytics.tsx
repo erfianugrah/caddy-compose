@@ -128,32 +128,32 @@ function Timeline({ stats }: { stats: ChallengeStats }) {
           const failedH = total > 0 ? (h.failed / total) * barH : 0;
           const x = i * (barW + gap);
           const y = chartH - barH;
-          // Stack from top to bottom: failed → issued → passed → bypassed.
-          let cy = y;
+          // Stack from top to bottom: failed -> issued -> passed -> bypassed.
+          const failedY = y;
+          const issuedY = failedY + failedH;
+          const passedY = issuedY + issuedH;
+          const bypassedY = passedY + passedH;
           return (
             <g key={h.hour}>
               <title>{`${new Date(h.hour).toLocaleString()}\nIssued: ${h.issued}  Passed: ${h.passed}  Failed: ${h.failed}  Bypassed: ${h.bypassed}`}</title>
-              {/* Failed (red) — top of stack */}
+              {/* Failed (red) - top of stack */}
               {failedH > 0 && (
-                <rect x={x} y={cy} width={barW} height={failedH} rx={1}
+                <rect x={x} y={failedY} width={barW} height={failedH} rx={1}
                   fill="#f37e96" opacity={0.9} />
               )}
-              {((cy += failedH), null)}
-              {/* Issued (amber) — pending challenges */}
+              {/* Issued (amber) - pending challenges */}
               {issuedH > 0 && (
-                <rect x={x} y={cy} width={barW} height={issuedH} rx={1}
+                <rect x={x} y={issuedY} width={barW} height={issuedH} rx={1}
                   fill="#f5b942" opacity={0.7} />
               )}
-              {((cy += issuedH), null)}
-              {/* Passed (green) — successfully solved */}
+              {/* Passed (green) - successfully solved */}
               {passedH > 0 && (
-                <rect x={x} y={cy} width={barW} height={passedH} rx={1}
+                <rect x={x} y={passedY} width={barW} height={passedH} rx={1}
                   fill="#5adecd" opacity={0.7} />
               )}
-              {((cy += passedH), null)}
-              {/* Bypassed (slate) — cookie bypass */}
+              {/* Bypassed (slate) - cookie bypass */}
               {bypassedH > 0 && (
-                <rect x={x} y={cy} width={barW} height={bypassedH} rx={1}
+                <rect x={x} y={bypassedY} width={barW} height={bypassedH} rx={1}
                   fill="#94a3b8" opacity={0.5} />
               )}
             </g>
