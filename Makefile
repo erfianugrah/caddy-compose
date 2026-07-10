@@ -12,7 +12,7 @@
 
 # ── Image tags ──────────────────────────────────────────────────────
 CADDY_IMAGE   ?= erfianugrah/caddy:3.96.1-2.11.3
-WAFCTL_IMAGE ?= erfianugrah/wafctl:2.101.2
+WAFCTL_IMAGE ?= erfianugrah/wafctl:2.101.3
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.

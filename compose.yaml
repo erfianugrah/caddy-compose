@@ -125,7 +125,7 @@ services:
     build:
       context: .
       dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.101.2
+    image: erfianugrah/wafctl:2.101.3
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
