@@ -46,6 +46,32 @@
 			idle 30s
 		}
 	}
+
+	# =========================================================================
+	# CUTOVER-ONLY - enable when this box becomes the real edge (ONT moved).
+	# Until then servarr's caddy owns the erfi.io A records via its own
+	# dynamic_dns block; two writers on the same names would fight.
+	# At cutover: (1) remove the block from the SERVARR Caddyfile, (2) uncomment
+	# here, (3) composer sync + up. The block mirrors servarr's, with the
+	# rfc2136 provider instead of Cloudflare. TSIG_CADDY_DDNS is already in
+	# deploy/edge/.env; the caddy-ddns. TSIG key is A/AAAA-ACL'd on the knot
+	# authority. M1 hands out a static DHCP lease, so this is belt-and-braces
+	# (IP changes are not expected, but a stale A record is a silent outage).
+	# =========================================================================
+	# dynamic_dns {
+	# 	provider rfc2136 {
+	# 		key_name "caddy-ddns."
+	# 		key_alg "hmac-sha256"
+	# 		key {$TSIG_CADDY_DDNS}
+	# 		server "137.66.1.170:53"
+	# 	}
+	# 	check_interval 5m
+	# 	version ipv4
+	# 	domains {
+	# 		erfi.io @
+	# 		# port the full subdomain list from the servarr Caddyfile at cutover
+	# 	}
+	# }
 }
 
 (ddos) {
