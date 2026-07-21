@@ -12,6 +12,11 @@
 #     forward chain allows bridges -> WAN, input allows edgewaf0 -> :2020
 #   - no CF_API_TOKEN / RESEARCH_TOKEN / TSIG_CADDY_DDNS (edge Caddyfile
 #     has no Cloudflare, no research stack, no dynamic_dns)
+#
+# Explicit project name REQUIRED: this file and knotea's deploy/edge/ both
+# default to project "edge" (parent dir name) - one stack's
+# `up --remove-orphans` would delete the other's containers.
+name: edge-services
 services:
   caddy:
     image: erfianugrah/caddy:3.96.1-2.11.3
