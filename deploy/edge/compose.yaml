@@ -85,7 +85,12 @@ services:
       AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: "/secrets/jwt_secret"
       AUTHELIA_SESSION_SECRET_FILE: "/secrets/session_secret"
       AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: "/secrets/storage_encryption_key"
-      AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE: "/secrets/smtp_password"
+      # SMTP password env intentionally NOT set while the filesystem notifier
+      # stopgap is active: authelia treats AUTHELIA_NOTIFIER_SMTP_PASSWORD* as
+      # an smtp-notifier config override, which then conflicts with the
+      # filesystem notifier ("only one of smtp/filesystem" fatal).
+      # Restore together with the smtp notifier block in configuration.yml.
+      # AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE: "/secrets/smtp_password"
 
   wafctl:
     image: erfianugrah/wafctl:2.101.3
