@@ -1,0 +1,214 @@
+# Caddyfile - EDGE variant (MS-01 NixOS edge router).
+#
+# Fronts the edge-services plane under lab.erfi.io:
+#   authelia.lab.erfi.io  -> edge Authelia (SSO for the plane)
+#   composer.lab.erfi.io  -> edge composer UI/API  (127.0.0.1:8080, host-mode)
+#   dns.lab.erfi.io       -> knotea dashboard      (127.0.0.1:8081, host-mode)
+#   waf.lab.erfi.io       -> wafctl dashboard      (172.31.98.2, edge-waf bridge)
+#
+# Deltas vs the servarr Caddyfile:
+#   - no Cloudflare anything (no acme_dns, no ech, no cf_trusted_proxies) -
+#     all sites use rfc2136 DNS-01 against our Knot authority
+#   - no dynamic_dns (servarr's caddy owns the erfi.io A records; two
+#     instances updating the same names would fight)
+#   - no layer4 SSH passthroughs (servarr-specific targets)
+#   - lab.erfi.io A records are RFC1918 (10.68.50.1) - clients are LAN-only,
+#     ACME is DNS-01 so no inbound public path is needed
+{
+	admin localhost:2019
+	metrics
+
+	email {$EMAIL}
+	cert_issuer acme
+	grace_period 5s
+
+	# Same middleware order as servarr: log_append -> ddos_mitigator -> policy_engine
+	order log_append first
+	order ddos_mitigator after log_append
+	order policy_engine after ddos_mitigator
+
+	servers {
+		strict_sni_host on
+		protocols h1 h2 h3
+		# L4 DDoS guard - drops jailed IPs with TCP RST before the TLS handshake.
+		listener_wrappers {
+			layer4 {
+				route {
+					ddos_mitigator {
+						jail_file /data/waf/jail.json
+					}
+				}
+			}
+			ja4
+			tls
+		}
+		timeouts {
+			idle 30s
+		}
+	}
+}
+
+(ddos) {
+	ddos_mitigator {
+		jail_file /data/waf/jail.json
+		threshold 0.75
+		base_penalty 60s
+		max_penalty 24h
+		sweep_interval 10s
+		decay_interval 30s
+		sync_interval 1s
+		kernel_drop true
+		whitelist 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128
+	}
+}
+
+(waf) {
+	import ddos
+	request_header X-Request-Id {http.request.uuid}
+	policy_engine {
+		rules_file /data/waf/policy-rules.json
+		default_rules_file /etc/caddy/waf/default-rules.json
+		reload_interval 5s
+	}
+	handle_errors 400 403 429 {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+(waf_off) {
+	# No WAF processing - placeholder snippet for services that don't need it.
+}
+
+# ACME DNS-01 via our Knot authority (TSIG caddy-acme. key, _acme-challenge
+# TXT ACL). Same key+server as servarr's rfc2136 snippet.
+(tls_config_rfc2136) {
+	tls {
+		issuer acme {
+			dns rfc2136 {
+				key_name "caddy-acme."
+				key_alg "hmac-sha256"
+				key {$TSIG_CADDY_ACME}
+				server "137.66.1.170:53"
+			}
+			propagation_delay 30s
+			resolvers 137.66.1.170
+		}
+	}
+}
+
+(site_log) {
+	log_append request_id {http.request.uuid}
+	log_append ddos_action {http.vars.ddos_mitigator.action}
+	log_append ddos_fingerprint {http.vars.ddos_mitigator.fingerprint}
+	log_append ddos_z_score {http.vars.ddos_mitigator.z_score}
+	log_append ddos_spike_mode {http.vars.ddos_mitigator.spike_mode}
+	log_append policy_action {http.vars.policy_engine.action}
+	log_append policy_rule {http.vars.policy_engine.rule_name}
+	log_append policy_ja4 {http.vars.policy_engine.ja4}
+	log_append policy_score {http.vars.policy_engine.anomaly_score}
+	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
+	log_append policy_detect_matches {http.vars.policy_engine.detect_matches}
+	log combined {
+		level INFO
+		output file /var/log/combined-access.log {
+			mode 0644
+			roll_size 256mb
+			roll_keep 2
+			roll_keep_for 168h
+		}
+		format json {
+			time_format wall
+		}
+	}
+}
+
+# Edge Authelia on the edge-authelia bridge (172.31.99.2).
+(forward_auth) {
+	forward_auth 172.31.99.2:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+	}
+}
+
+(proxy_headers) {
+	trusted_proxies private_ranges
+	header_up X-Forwarded-For {client_ip}
+}
+
+(error_pages) {
+	handle_errors {
+		root * /etc/caddy/errors
+		templates
+		rewrite * /error.html
+		file_server
+	}
+}
+
+authelia.lab.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 172.31.99.2:9091 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log authelia
+}
+
+composer.lab.erfi.io {
+	import waf
+	import forward_auth
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log composer
+}
+
+dns.lab.erfi.io {
+	import waf
+	import forward_auth
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8081 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log knotea
+}
+
+waf.lab.erfi.io {
+	import forward_auth
+	import tls_config_rfc2136
+	encode zstd gzip
+	@waf_hashed path /_astro/*
+	header @waf_hashed Cache-Control "public, max-age=31536000, immutable"
+	header ?Cache-Control "no-store"
+	reverse_proxy 172.31.98.2:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log waf
+}
+
+# wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
+:2020 {
+	log {
+		output stderr
+		level WARN
+	}
+	@allowed remote_ip 172.31.98.0/24
+	handle @allowed {
+		reverse_proxy localhost:2019 {
+			header_up Host localhost:2019
+		}
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+}

@@ -1,0 +1,98 @@
+---
+# Authelia configuration - EDGE variant (MS-01, lab.erfi.io plane).
+# Secrets are loaded from files via AUTHELIA_*_FILE env vars (see compose.yaml).
+# Secret files live in /var/lib/authelia/secrets/ (0600, owned by 1000:1000),
+# provisioned out-of-band. users_database.yml is likewise out-of-band (same
+# user base as servarr's Authelia).
+
+server:
+  address: "tcp4://:9091"
+
+log:
+  level: "info"
+  file_path: "/config/authelia.log"
+  keep_stdout: true
+
+theme: "auto"
+
+identity_validation:
+  elevated_session:
+    require_second_factor: true
+  reset_password:
+    jwt_lifespan: "5 minutes"
+
+totp:
+  disable: false
+  issuer: "erfi.io"
+  period: 30
+  skew: 1
+
+webauthn:
+  disable: false
+  display_name: "Authelia (erfi.io)"
+  attestation_conveyance_preference: "indirect"
+  selection_criteria:
+    user_verification: "preferred"
+
+password_policy:
+  zxcvbn:
+    enabled: true
+    min_score: 4
+
+authentication_backend:
+  file:
+    path: "/config/users_database.yml"
+    watch: true
+    password:
+      algorithm: "argon2"
+      argon2:
+        variant: "argon2id"
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+        key_length: 32
+        salt_length: 16
+
+access_control:
+  default_policy: "deny"
+  rules:
+    # Authelia's own endpoints must be accessible
+    - domain: "authelia.lab.erfi.io"
+      policy: "bypass"
+
+    # Edge-services plane - require two-factor
+    - domain: "composer.lab.erfi.io"
+      policy: "two_factor"
+    - domain: "dns.lab.erfi.io"
+      policy: "two_factor"
+    - domain: "waf.lab.erfi.io"
+      policy: "two_factor"
+
+session:
+  name: "authelia_session"
+  cookies:
+    - domain: "lab.erfi.io"
+      authelia_url: "https://authelia.lab.erfi.io"
+      default_redirection_url: "https://composer.lab.erfi.io"
+      same_site: "lax"
+      inactivity: "1h"
+      expiration: "8h"
+      remember_me: "7d"
+
+regulation:
+  max_retries: 4
+  find_time: "2m"
+  ban_time: "5m"
+
+storage:
+  local:
+    path: "/config/db.sqlite3"
+
+# STOPGAP: filesystem notifier - identity-validation emails land in
+# /config/notification.txt (readable on the box). Switch back to the Resend
+# SMTP notifier (same block as servarr's configuration.yml) once the Resend
+# credential is retrievable (servarr unreachable 2026-07-21; smtp_password
+# secret file on the box is a placeholder until then).
+notifier:
+  filesystem:
+    filename: "/config/notification.txt"

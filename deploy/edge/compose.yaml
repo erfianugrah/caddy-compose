@@ -1,0 +1,176 @@
+# Edge-services compose - MS-01 NixOS edge router variant of the servarr stack.
+# Managed by the EDGE composer instance (stack: caddy), git-synced from this repo.
+#
+# Same published images as servarr - nothing host-specific is baked into them.
+# Differences from ../compose.yaml (servarr):
+#   - host paths: /var/lib/{caddy,authelia,wafctl} (NixOS, no /mnt Unraid layout)
+#   - Caddyfile + authelia configuration.yml mounted from composer's stack
+#     checkout on the HOST (/var/lib/composer/stacks/caddy/...) - docker
+#     resolves bind paths daemon-side, so they must be absolute host paths
+#   - bridge subnets 172.31.98/99.x with STABLE bridge interface names
+#     (edgeauth0/edgewaf0) so the router's nftables can reference them:
+#     forward chain allows bridges -> WAN, input allows edgewaf0 -> :2020
+#   - no CF_API_TOKEN / RESEARCH_TOKEN / TSIG_CADDY_DDNS (edge Caddyfile
+#     has no Cloudflare, no research stack, no dynamic_dns)
+services:
+  caddy:
+    image: erfianugrah/caddy:3.96.1-2.11.3
+    hostname: caddy
+    container_name: caddy
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
+      - NET_ADMIN # ddos_mitigator nftables kernel drop
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    depends_on:
+      authelia:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - /var/lib/composer/stacks/caddy/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/caddy/data:/data
+      - /var/lib/caddy/config:/config
+      - /var/lib/caddy/log:/var/log
+      - /var/lib/caddy/waf:/data/waf
+      - tmpfs_run:/tmp
+      - tmpfs_caddy:/var/run
+    environment:
+      - TZ=Asia/Singapore
+      - EMAIL=${EMAIL}
+      - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
+
+  authelia:
+    image: docker.io/authelia/authelia:4.39
+    hostname: authelia
+    container_name: authelia
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--no-check-certificate", "--tries=1", "--spider", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      authelia:
+        ipv4_address: 172.31.99.2
+    volumes:
+      # configuration.yml is GitOps-managed (this repo, via composer checkout);
+      # users_database.yml + runtime state are provisioned out-of-band.
+      - /var/lib/composer/stacks/caddy/deploy/edge/authelia/configuration.yml:/config/configuration.yml:ro
+      - /var/lib/authelia/config:/config
+      - /var/lib/authelia/config/.healthcheck.env:/app/.healthcheck.env
+      - /var/lib/authelia/secrets:/secrets:ro
+    tmpfs:
+      - /tmp:size=32M
+    environment:
+      TZ: "Asia/Singapore"
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: "/secrets/jwt_secret"
+      AUTHELIA_SESSION_SECRET_FILE: "/secrets/session_secret"
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: "/secrets/storage_encryption_key"
+      AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE: "/secrets/smtp_password"
+
+  wafctl:
+    image: erfianugrah/wafctl:2.101.3
+    hostname: wafctl
+    container_name: wafctl
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      caddy:
+        condition: service_healthy
+        restart: true
+    networks:
+      waf:
+        ipv4_address: 172.31.98.2
+    extra_hosts:
+      # wafctl reaches Caddy's :2020 admin proxy via the edge-waf bridge gateway.
+      - "caddy:172.31.98.1"
+    volumes:
+      - /var/lib/caddy/log:/var/log:ro
+      - /var/lib/wafctl/config:/data
+      - /var/lib/wafctl/events:/data/events
+      - /var/lib/caddy/waf:/data/waf
+      - /var/lib/composer/stacks/caddy/deploy/edge/Caddyfile:/data/Caddyfile:ro
+      - /var/lib/wafctl/geoip:/data/geoip:ro
+      - /var/lib/wafctl/lists:/data/lists
+    environment:
+      - TZ=Asia/Singapore
+      - WAF_EXCLUSIONS_FILE=/data/exclusions.json
+      - WAF_CONFIG_FILE=/data/waf-config.json
+      - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
+      - WAF_DIR=/data/waf
+      - WAF_CADDYFILE_PATH=/data/Caddyfile
+      - WAF_CADDY_ADMIN_URL=http://caddy:2020
+      - WAF_DATA_DIR=/data
+      - WAF_GEOIP_DB=/data/geoip/country.mmdb
+      - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json
+      - WAF_EVENT_FILE=/data/events/events.jsonl
+      - WAF_ACCESS_EVENT_FILE=/data/events/access-events.jsonl
+      - WAF_GENERAL_LOG_FILE=/data/events/general-events.jsonl
+      - WAF_AUDIT_OFFSET_FILE=/data/events/.audit-log-offset
+      - WAF_ACCESS_OFFSET_FILE=/data/events/.access-log-offset
+      - WAF_GENERAL_LOG_OFFSET_FILE=/data/events/.general-log-offset
+      - WAF_MANAGED_LISTS_FILE=/data/lists.json
+      - WAF_MANAGED_LISTS_DIR=/data/lists
+
+networks:
+  authelia:
+    name: edge-authelia
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: edgeauth0
+    ipam:
+      config:
+        - subnet: 172.31.99.0/24
+          gateway: 172.31.99.1
+  waf:
+    name: edge-waf
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: edgewaf0
+    ipam:
+      config:
+        - subnet: 172.31.98.0/24
+          gateway: 172.31.98.1
+
+volumes:
+  tmpfs_run:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=64m
+  tmpfs_caddy:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=64m
