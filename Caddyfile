@@ -456,9 +456,16 @@ vault.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.19.4.2:80 {
+	# vaultwarden moved to the MS-01 edge (2026-07-22). Proxy to the edge caddy
+	# over HTTPS until cutover (edge caddy is the real TLS+WAF point and owns
+	# the vault.erfi.io cert). At cutover this block is deleted and DNS points
+	# straight at the MS-01 WAN.
+	reverse_proxy https://10.68.69.19 {
 		import proxy_headers
 		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name vault.erfi.io
+		}
 	}
 	import error_pages
 	import site_log vaultwarden
