@@ -250,6 +250,19 @@ atuin.erfi.io {
 	import site_log atuin
 }
 
+# joplin server - moved from servarr (2026-07-22). Same proxy-to-edge model
+# as vault.erfi.io / atuin.erfi.io until cutover.
+joplin.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 172.31.6.2:22300 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log joplin
+}
+
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
 :2020 {
 	log {

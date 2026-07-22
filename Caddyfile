@@ -548,8 +548,16 @@ joplin.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.19.13.2:22300 {
+	# joplin moved to the MS-01 edge (2026-07-22). Proxy to the edge caddy over
+	# HTTPS until cutover. header_up Host is REQUIRED - the edge caddy
+	# (strict_sni_host) 421s when caddy rewrites Host to the upstream address.
+	reverse_proxy https://10.68.69.19 {
 		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name joplin.erfi.io
+		}
 	}
 	import error_pages
 	import site_log joplin
