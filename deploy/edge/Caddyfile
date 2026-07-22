@@ -237,6 +237,19 @@ vault.erfi.io {
 	import site_log vaultwarden
 }
 
+# atuin sync server - moved from servarr (2026-07-22). Same proxy-to-edge
+# model as vault.erfi.io until cutover.
+atuin.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 172.31.5.2:8888 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log atuin
+}
+
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
 :2020 {
 	log {
