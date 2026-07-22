@@ -222,6 +222,21 @@ waf.lab.erfi.io {
 	import site_log waf
 }
 
+# vaultwarden - moved from servarr (2026-07-21). Edge caddy is the real TLS+WAF
+# point; servarr's caddy proxies here until cutover. Public-name cert via
+# rfc2136 (the lab plane uses lab.erfi.io; this is the production name).
+vault.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 172.31.4.2:80 {
+		import proxy_headers
+		header_up X-Real-IP {client_ip}
+	}
+	import error_pages
+	import site_log vaultwarden
+}
+
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
 :2020 {
 	log {
