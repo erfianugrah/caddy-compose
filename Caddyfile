@@ -58,11 +58,11 @@
 	}
 	# L4 TCP proxy — SSH passthrough (no TLS, SSH handles its own crypto).
 	layer4 {
-		# docs-ssh: docs.erfi.io:2222 → 172.19.50.2:2222
+		# docs-ssh: docs.erfi.io:2222 -> edge caddy L4 (MS-01) until cutover
 		:2222 {
 			@ssh ssh
 			route @ssh {
-				proxy 172.19.50.2:2222
+				proxy 10.68.69.19:2222
 			}
 		}
 		# gitea-ssh: git.erfi.io:2223 → 172.40.0.2:2222
@@ -302,7 +302,17 @@
 docs.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.19.50.2:8080
+	# docs-ssh moved to the MS-01 edge (2026-07-22). Proxy to the edge caddy
+	# over HTTPS until cutover. header_up Host is REQUIRED - the edge caddy
+	# (strict_sni_host) 421s when caddy rewrites Host to the upstream address.
+	reverse_proxy https://10.68.69.19 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name docs.erfi.io
+		}
+	}
 	import error_pages
 	import site_log docs-ssh
 }

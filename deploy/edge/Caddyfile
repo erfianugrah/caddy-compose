@@ -11,7 +11,8 @@
 #     all sites use rfc2136 DNS-01 against our Knot authority
 #   - no dynamic_dns (servarr's caddy owns the erfi.io A records; two
 #     instances updating the same names would fight)
-#   - no layer4 SSH passthroughs (servarr-specific targets)
+#   - layer4 only for the docs-ssh SSH passthrough (the container moved here;
+#     servarr L4-proxies :2222 to us until cutover)
 #   - lab.erfi.io A records are RFC1918 (10.68.50.1) - clients are LAN-only,
 #     ACME is DNS-01 so no inbound public path is needed
 {
@@ -44,6 +45,17 @@
 		}
 		timeouts {
 			idle 30s
+		}
+	}
+
+	# L4 TCP proxy - docs-ssh SSH passthrough (no TLS, SSH does its own crypto).
+	# servarr's caddy L4-proxies docs.erfi.io:2222 here until cutover.
+	layer4 {
+		:2222 {
+			@ssh ssh
+			route @ssh {
+				proxy 172.31.7.2:2222
+			}
 		}
 	}
 
@@ -261,6 +273,19 @@ joplin.erfi.io {
 	}
 	import error_pages
 	import site_log joplin
+}
+
+# docs-ssh - moved from servarr (2026-07-22). Landing page + /mcp on 8080;
+# the SSH side rides the layer4 block in the global options above.
+docs.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 172.31.7.2:8080 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log docs-ssh
 }
 
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
