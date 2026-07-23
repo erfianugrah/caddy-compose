@@ -37,10 +37,10 @@ cd waf-dashboard && npm ci && npm run build
 
 ```bash
 make test               # Run ALL tests (Go + converter + frontend)
-make test-go            # wafctl Go tests (~1555 test functions)
-make test-crs-converter # CRS converter tests (~51 test functions)
-make test-frontend      # Frontend Vitest (19 test files, ~355 tests)
-make test-e2e           # E2E smoke tests (requires Docker, ~119 tests)
+make test-go            # wafctl Go tests (~632 test functions)
+make test-crs-converter # CRS converter tests (~55 test functions)
+make test-frontend      # Frontend Vitest (18 test files, ~338 tests)
+make test-e2e           # E2E smoke tests (requires Docker, ~122 tests)
 make test-crs-e2e       # CRS regression tests (requires Docker, 4566 tests)
 ```
 
@@ -227,7 +227,7 @@ Deploy via `make restart` (NOT `restart-caddy`).
 - Types: `PascalCase` — `Store`, `WAFConfig`, `RuleExclusion`
 - Exported functions: `PascalCase` — `NewStore`, `LoadConfig`
 - Unexported functions: `camelCase` — `parseEvent`, `headerValue`, `envOr`
-- Variables/constants: `camelCase` — `exclusionStore`, `validWAFModes`
+- Variables/constants: `camelCase` — `exclusionStore`, `validExclusionTypes`
 - Files: lowercase with underscores — `rl_analytics.go`, `crs_rules.go`
 
 ### Error Handling
@@ -638,7 +638,7 @@ causes the event to be invisible in parts of the UI.
     `/api/sessions/alerts`, `/api/sessions/config`
   - Dashboard: `/sessions` page (`sessions.astro` + `SessionsPanel.tsx`);
     frontend API in `src/lib/api/sessions.ts`
-  - 17 dashboard pages total, 155 mux routes, 19 frontend API modules.
+  - 17 dashboard pages total, 94 API routes (+ UI catch-all), 19 frontend API modules.
 
 ## Downstream WAF behaviour notes (for callers)
 

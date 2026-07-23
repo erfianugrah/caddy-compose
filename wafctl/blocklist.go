@@ -38,7 +38,7 @@ type BlocklistStore struct {
 	onRefresh func(ipsByScore map[int][]string)
 
 	// onDeploy is called after managed lists are synced to regenerate
-	// policy-rules.json and reload Caddy.
+	// policy-rules.json (the plugin hot-reloads on mtime; no Caddy reload).
 	onDeploy func() error
 }
 
@@ -117,7 +117,7 @@ func (bs *BlocklistStore) SetOnRefresh(fn func(ipsByScore map[int][]string)) {
 }
 
 // SetOnDeploy sets a callback invoked after managed lists are synced to
-// regenerate policy-rules.json and reload Caddy.
+// regenerate policy-rules.json (no Caddy reload; plugin mtime hot-reload).
 func (bs *BlocklistStore) SetOnDeploy(fn func() error) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
@@ -125,7 +125,7 @@ func (bs *BlocklistStore) SetOnDeploy(fn func() error) {
 }
 
 // Refresh downloads a fresh IPsum blocklist, syncs managed lists, regenerates
-// policy-rules.json, and optionally reloads Caddy. Returns a response suitable
+// policy-rules.json via the deploy callback (no Caddy reload). Returns a response suitable
 // for the API.
 func (bs *BlocklistStore) Refresh() BlocklistRefreshResponse {
 	// Prevent concurrent refreshes — the operation is expensive (HTTP download,
@@ -229,8 +229,8 @@ func (bs *BlocklistStore) Refresh() BlocklistRefreshResponse {
 		cb(ipsByScore)
 	}
 
-	// Regenerate policy-rules.json and reload Caddy so the plugin picks up
-	// the updated IP lists.
+	// Regenerate policy-rules.json so the plugin picks up
+	// the updated IP lists (mtime hot-reload, no Caddy reload).
 	bs.mu.RLock()
 	deployFn := bs.onDeploy
 	bs.mu.RUnlock()
