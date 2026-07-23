@@ -57,6 +57,7 @@ services:
       - TZ=Asia/Singapore
       - EMAIL=${EMAIL}
       - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
+      - CF_API_TOKEN=${CF_API_TOKEN}
 
   authelia:
     image: docker.io/authelia/authelia:4.39

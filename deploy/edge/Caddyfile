@@ -8,7 +8,8 @@
 #
 # Deltas vs the servarr Caddyfile:
 #   - no Cloudflare anything (no acme_dns, no ech, no cf_trusted_proxies) -
-#     all sites use rfc2136 DNS-01 against our Knot authority
+#     all sites use rfc2136 DNS-01 against our Knot authority. ONE exception:
+#     erfianugrah.com (zone still on CF DNS) uses CF DNS-01 via (tls_config_cf).
 #   - no dynamic_dns (servarr's caddy owns the erfi.io A records; two
 #     instances updating the same names would fight)
 #   - layer4 only for the docs-ssh SSH passthrough (the container moved here;
@@ -133,6 +134,19 @@
 			}
 			propagation_delay 30s
 			resolvers 137.66.1.170
+		}
+	}
+}
+
+# CF DNS-01 - ONLY for erfianugrah.com (the one public zone still on
+# Cloudflare DNS; everything else uses rfc2136 against our Knot authority).
+(tls_config_cf) {
+	tls {
+		issuer acme {
+			dns cloudflare {$CF_API_TOKEN}
+			propagation_delay 60s
+			propagation_timeout -1
+			resolvers 1.1.1.1
 		}
 	}
 }
@@ -286,6 +300,629 @@ docs.erfi.io {
 	}
 	import error_pages
 	import site_log docs-ssh
+}
+
+# =========================================================================
+# UNMIGRATED SERVARR SITES - thin HTTPS proxy (2026-07-23 main proxy flip).
+# vyos-sg DNAT rule 10 sends public 80/443 to this box; every name below is
+# TLS-terminated here and proxied to the servarr caddy (https://10.68.71.2),
+# which remains the WAF/auth/routing point until each service migrates.
+# header_up Host is REQUIRED (strict_sni_host on both sides). waf_off on
+# purpose: servarr's WAF stays the inspection layer during the interim -
+# running edge CRS too would double-score every request with a ruleset that
+# has none of servarr's per-service exceptions. The edge L4 ddos_mitigator
+# listener wrapper still jails volumetric abuse pre-TLS.
+# As each service migrates: delete its block here, write a real block above
+# (import waf + local upstream), and delete the servarr-side block.
+# Skipped: test.lab.erfi.io (lab plane, RFC1918 - no public path).
+# =========================================================================
+caddy.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name caddy.erfi.io
+		}
+	}
+	import error_pages
+	import site_log caddy-api
+}
+
+waf.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name waf.erfi.io
+		}
+	}
+	import error_pages
+	import site_log waf
+}
+
+authelia.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name authelia.erfi.io
+		}
+	}
+	import error_pages
+	import site_log authelia
+}
+
+servarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name servarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log servarr
+}
+
+sonarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name sonarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log sonarr
+}
+
+lidarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name lidarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log lidarr
+}
+
+soularr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name soularr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log soularr
+}
+
+radarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name radarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log radarr
+}
+
+bazarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name bazarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log bazarr
+}
+
+tdarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name tdarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log tdarr
+}
+
+tracearr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name tracearr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log tracearr
+}
+
+prowlarr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name prowlarr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log prowlarr
+}
+
+jellyfin.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name jellyfin.erfi.io
+		}
+	}
+	import error_pages
+	import site_log jellyfin
+}
+
+qbit.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name qbit.erfi.io
+		}
+	}
+	import error_pages
+	import site_log qbit
+}
+
+change.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name change.erfi.io
+		}
+	}
+	import error_pages
+	import site_log change
+}
+
+seerr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name seerr.erfi.io
+		}
+	}
+	import error_pages
+	import site_log seerr
+}
+
+keycloak.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name keycloak.erfi.io
+		}
+	}
+	import error_pages
+	import site_log keycloak
+}
+
+navidrome.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name navidrome.erfi.io
+		}
+	}
+	import error_pages
+	import site_log navidrome
+}
+
+sabnzbd.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name sabnzbd.erfi.io
+		}
+	}
+	import error_pages
+	import site_log sabnzbd
+}
+
+slskd.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name slskd.erfi.io
+		}
+	}
+	import error_pages
+	import site_log slskd
+}
+
+immich.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name immich.erfi.io
+		}
+	}
+	import error_pages
+	import site_log immich
+}
+
+bonkled.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name bonkled.erfi.io
+		}
+	}
+	import error_pages
+	import site_log bonkled
+}
+
+caddy-prometheus.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name caddy-prometheus.erfi.io
+		}
+	}
+	import error_pages
+	import site_log caddy-prometheus
+}
+
+copyparty.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name copyparty.erfi.io
+		}
+	}
+	import error_pages
+	import site_log copyparty
+}
+
+git.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name git.erfi.io
+		}
+	}
+	import error_pages
+	import site_log gitea
+}
+
+composer.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name composer.erfi.io
+		}
+	}
+	import error_pages
+	import site_log composer
+}
+
+dockge.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name dockge.erfi.io
+		}
+	}
+	import error_pages
+	import site_log dockge
+}
+
+httpbun.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name httpbun.erfi.io
+		}
+	}
+	import error_pages
+	import site_log httpbun
+}
+
+httpbin.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name httpbin.erfi.io
+		}
+	}
+	import error_pages
+	import site_log httpbin
+}
+
+cdn.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name cdn.erfi.io
+		}
+	}
+	import error_pages
+	import site_log cdn
+}
+
+draw.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name draw.erfi.io
+		}
+	}
+	import error_pages
+	import site_log draw
+}
+
+searxng.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name searxng.erfi.io
+		}
+	}
+	import error_pages
+	import site_log searxng
+}
+
+crawler.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name crawler.erfi.io
+		}
+	}
+	import error_pages
+	import site_log crawler
+}
+
+osint.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name osint.erfi.io
+		}
+	}
+	import error_pages
+	import site_log osint
+}
+
+llama.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name llama.erfi.io
+		}
+	}
+	import error_pages
+	import site_log llama
+}
+
+chat.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name chat.erfi.io
+		}
+	}
+	import error_pages
+	import site_log chat
+}
+
+erfianugrah.com {
+	import waf_off
+	import tls_config_cf
+	encode zstd gzip
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name erfianugrah.com
+		}
+	}
+	import error_pages
+	import site_log erfianugrah
+}
+
+# deno-edge platform: wildcard + custom domain share one block (and one cert).
+# tls_server_name {host} = per-request transport clone (no keepalive pooling
+# on this hop) - acceptable for these low-traffic apps during the interim.
+*.fn.erfi.io, revista.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	reverse_proxy https://10.68.71.2 {
+		import proxy_headers
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_server_name {host}
+		}
+	}
+	import site_log deno-edge
 }
 
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
