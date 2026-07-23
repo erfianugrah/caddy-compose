@@ -253,6 +253,11 @@
 }
 
 # Authelia forward auth — applied to protected services
+# DORMANT 2026-07-23: the erfi.io SSO gate was nuked (all 12 forward_auth /
+# research_auth imports removed from site blocks). These snippets are kept
+# for the restore path: re-add `import forward_auth` (or the route-embedded
+# block / research_auth) per site. The verifier target is the EDGE authelia
+# via authelia.erfi.io (A1 flip); the servarr container is no longer it.
 # Usage: import forward_auth
 (forward_auth) {
 	# Verifier = EDGE authelia via its public name (A1 flip 2026-07-23).
@@ -337,7 +342,6 @@ caddy.erfi.io {
 }
 
 waf.erfi.io {
-	import forward_auth
 
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -371,16 +375,13 @@ servarr.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
 
-	# Unraid GraphQL API — bypass Authelia, rely on Unraid's own x-api-key auth
+	# Unraid GraphQL API + UI - direct proxy (Authelia gate nuked 2026-07-23;
+	# Unraid's own auth is the only gate). Restore path: re-add the
+	# forward_auth block inside this route (see dormant snippet above).
 	route {
 		@unraid_api path /graphql
 		reverse_proxy @unraid_api localhost:90 {
 			import proxy_headers
-		}
-
-		forward_auth 172.19.99.2:9091 {
-			uri /api/authz/forward-auth
-			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 		}
 
 		reverse_proxy localhost:90 {
@@ -415,7 +416,6 @@ lidarr.erfi.io {
 
 soularr.erfi.io {
 	import waf
-	import forward_auth
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.8:8265 {
@@ -449,7 +449,6 @@ bazarr.erfi.io {
 
 tdarr.erfi.io {
 	import waf
-	import forward_auth
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.6:8265 {
@@ -530,7 +529,6 @@ qbit.erfi.io {
 
 change.erfi.io {
 	import waf
-	import forward_auth
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.3.2:5000 {
@@ -649,7 +647,6 @@ caddy-prometheus.erfi.io {
 	import waf_off
 
 	import tls_config_rfc2136
-	import forward_auth
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
 		import proxy_headers
@@ -765,17 +762,13 @@ cdn.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
 
-	# S3 API / bucket proxy — bypass Authelia, bucket policies control access
-	# Console — protected behind Authelia, strip /console prefix for port 9001
+	# S3 API / bucket proxy - bucket policies control access.
+	# Console - direct proxy (Authelia gate nuked 2026-07-23; MinIO's own
+	# login is the gate). strip /console prefix for port 9001.
 	route {
 		@s3_api not path /console /console/*
 		reverse_proxy @s3_api 172.70.0.2:9000 {
 			import proxy_headers
-		}
-
-		forward_auth 172.19.99.2:9091 {
-			uri /api/authz/forward-auth
-			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 		}
 
 		uri strip_prefix /console
@@ -899,7 +892,6 @@ draw.erfi.io {
 
 searxng.erfi.io {
 	import tls_config_rfc2136
-	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8888 {
 		import proxy_headers
@@ -910,7 +902,6 @@ searxng.erfi.io {
 
 crawler.erfi.io {
 	import tls_config_rfc2136
-	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8889 {
 		import proxy_headers
@@ -921,7 +912,6 @@ crawler.erfi.io {
 
 osint.erfi.io {
 	import tls_config_rfc2136
-	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8890 {
 		import proxy_headers
@@ -934,7 +924,6 @@ osint.erfi.io {
 # servarr-llm stack binds 127.0.0.1:18080. Same bearer gate as the rest.
 llama.erfi.io {
 	import tls_config_rfc2136
-	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:18080 {
 		import proxy_headers
@@ -947,7 +936,6 @@ llama.erfi.io {
 # use Authelia SSO; Open WebUI auto-logs-in from the forwarded Remote-Email.
 chat.erfi.io {
 	import tls_config_rfc2136
-	import research_auth
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:18081 {
 		import proxy_headers
