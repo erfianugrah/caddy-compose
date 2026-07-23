@@ -68,12 +68,46 @@ access_control:
     - domain: "waf.lab.erfi.io"
       policy: "two_factor"
 
+    # erfi.io plane (migrated from servarr 2026-07-23, rules verbatim).
+    # Authelia's own erfi.io portal must be accessible.
+    - domain: "authelia.erfi.io"
+      policy: "bypass"
+
+    - domain: "servarr.erfi.io"
+      policy: "two_factor"
+    - domain: "change.erfi.io"
+      policy: "two_factor"
+    - domain: "waf.erfi.io"
+      policy: "two_factor"
+    - domain: "cdn.erfi.io"
+      policy: "two_factor"
+
+    # research stack - browsers use Authelia SSO; bearer-token MCP/API
+    # clients bypass forward_auth at the caddy (research_auth) matcher.
+    - domain: "searxng.erfi.io"
+      policy: "two_factor"
+    - domain: "crawler.erfi.io"
+      policy: "two_factor"
+    - domain: "osint.erfi.io"
+      policy: "two_factor"
+    - domain: "llama.erfi.io"
+      policy: "two_factor"
+    - domain: "chat.erfi.io"
+      policy: "two_factor"
+
 session:
   name: "authelia_session"
   cookies:
     - domain: "lab.erfi.io"
       authelia_url: "https://authelia.lab.erfi.io"
       default_redirection_url: "https://composer.lab.erfi.io"
+      same_site: "lax"
+      inactivity: "1h"
+      expiration: "8h"
+      remember_me: "7d"
+    - domain: "erfi.io"
+      authelia_url: "https://authelia.erfi.io"
+      default_redirection_url: "https://servarr.erfi.io"
       same_site: "lax"
       inactivity: "1h"
       expiration: "8h"
@@ -88,11 +122,11 @@ storage:
   local:
     path: "/config/db.sqlite3"
 
-# STOPGAP: filesystem notifier - identity-validation emails land in
-# /config/notification.txt (readable on the box). Switch back to the Resend
-# SMTP notifier (same block as servarr's configuration.yml) once the Resend
-# credential is retrievable (servarr unreachable 2026-07-21; smtp_password
-# secret file on the box is a placeholder until then).
+# Resend SMTP notifier - restored 2026-07-23 when the erfi.io plane migrated
+# in (password file copied from servarr; AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE
+# wired in compose.yaml).
 notifier:
-  filesystem:
-    filename: "/config/notification.txt"
+  smtp:
+    address: "submissions://smtp.resend.com:465"
+    username: "resend"
+    sender: "Authelia <noreply@erfi.io>"

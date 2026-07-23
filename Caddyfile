@@ -255,8 +255,16 @@
 # Authelia forward auth — applied to protected services
 # Usage: import forward_auth
 (forward_auth) {
-	forward_auth 172.19.99.2:9091 {
+	# Verifier = EDGE authelia via its public name (A1 flip 2026-07-23).
+	# The servarr authelia container is retired as verifier; it stays up only
+	# until A2 finishes. Host + tls_server_name are required (strict_sni_host
+	# on the edge; the upstream is an IP).
+	forward_auth https://10.68.69.19 {
 		uri /api/authz/forward-auth
+		header_up Host authelia.erfi.io
+		transport http {
+			tls_server_name authelia.erfi.io
+		}
 		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 	}
 }
