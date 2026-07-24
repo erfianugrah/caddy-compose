@@ -80,7 +80,7 @@ TypeScript strict mode enforced via `astro/tsconfigs/strict`.
 
 - `.env` is SOPS-encrypted (age) and **IS** committed to git. That's the point of SOPS — encrypted secrets live in version control alongside the code that consumes them.
 - The pre-commit hook (`.git/hooks/pre-commit`) blocks any commit where `.env` / `.tfvars` / `.tfstate` is plaintext (checks for `ENC[AES256_GCM,` or `sops_*` markers). Override per-path via `.allow-unencrypted-paths`.
-- Composer (`composer.erfi.io`) decrypts `.env` at deploy time using its loaded age key (`COMPOSER_SOPS_AGE_KEY` env var). The age recipient in `.env`'s SOPS metadata MUST match composer's public key (`age15jdwjecd05un3cclyxdhh32zm8xsrt4uv5fk73tjq70d8che43xqsk8sa9` as of 2026-05-24).
+- Composer (`composer.erfi.io`) decrypts `.env` at deploy time using its loaded age key (`COMPOSER_SOPS_AGE_KEY` env var). The age recipient in `.env`'s SOPS metadata MUST match composer's public key (`age1yd6fnsq24uz4rx3rk7srrazqh6xkjnaxl44g9jrraa4d69034usqkmp8zs` as of 2026-05-24).
 - `.env.mk` stays gitignored — it holds operator-side `COMPOSER_API_KEY` which never leaves the dev box.
 
 ## Deployment — do this, NOT that
