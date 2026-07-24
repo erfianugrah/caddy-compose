@@ -386,7 +386,7 @@ git.erfi.io {
 	import error_pages
 }
 
-composer.erfi.io {
+composer.servarr.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.80.2:8080 {

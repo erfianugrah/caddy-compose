@@ -1,10 +1,9 @@
 # Caddyfile - EDGE variant (MS-01 NixOS edge router).
 #
-# Fronts the edge-services plane under lab.erfi.io:
-#   authelia.lab.erfi.io  -> edge Authelia (SSO for the plane)
-#   composer.lab.erfi.io  -> edge composer UI/API  (127.0.0.1:8080, host-mode)
-#   dns.lab.erfi.io       -> knotea dashboard      (127.0.0.1:8081, host-mode)
-#   waf.lab.erfi.io       -> wafctl dashboard      (172.31.98.2, edge-waf bridge)
+# Fronts the edge-services plane under edge.erfi.io:
+#   composer.edge.erfi.io -> edge composer UI/API  (127.0.0.1:8080, host-mode)
+#   knotea.edge.erfi.io   -> knotea dashboard      (127.0.0.1:8081, host-mode)
+#   waf.edge.erfi.io      -> wafctl dashboard      (172.31.98.2, edge-waf bridge)
 #
 # Deltas vs the servarr Caddyfile:
 #   - no Cloudflare anything (no acme_dns, no ech, no cf_trusted_proxies) -
@@ -14,7 +13,7 @@
 #     instances updating the same names would fight)
 #   - layer4 only for the docs-ssh SSH passthrough (the container moved here;
 #     servarr L4-proxies :2222 to us until cutover)
-#   - lab.erfi.io A records are RFC1918 (10.68.50.1) - clients are LAN-only,
+#   - edge.erfi.io A records are RFC1918 (10.0.10.1) - clients are LAN-only,
 #     ACME is DNS-01 so no inbound public path is needed
 {
 	admin localhost:2019
@@ -199,7 +198,7 @@
 	}
 }
 
-composer.lab.erfi.io {
+composer.edge.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -210,7 +209,7 @@ composer.lab.erfi.io {
 	import site_log composer
 }
 
-dns.lab.erfi.io {
+knotea.edge.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -221,7 +220,7 @@ dns.lab.erfi.io {
 	import site_log knotea
 }
 
-waf.lab.erfi.io {
+waf.edge.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
 	@waf_hashed path /_astro/*
@@ -684,7 +683,7 @@ git.erfi.io {
 	import site_log gitea
 }
 
-composer.erfi.io {
+composer.servarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
