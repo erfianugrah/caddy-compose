@@ -38,7 +38,7 @@
 		# peers are untrusted, so XFF spoofing from direct clients is ignored.
 		# Static copy of servarr's wafctl-maintained list (2026-07-23); drift
 		# risk is low and this goes away when erfianugrah.com migrates to Knot.
-		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32 10.68.71.2/32  # + servarr caddy (forward_auth subrequests; A1 flip)
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32 10.0.71.2/32  # + servarr caddy (forward_auth subrequests; A1 flip)
 		trusted_proxies_strict
 		# L4 DDoS guard - drops jailed IPs with TCP RST before the TLS handshake.
 		listener_wrappers {
@@ -313,7 +313,7 @@ docs.erfi.io {
 # =========================================================================
 # UNMIGRATED SERVARR SITES - thin HTTPS proxy (2026-07-23 main proxy flip).
 # vyos-sg DNAT rule 10 sends public 80/443 to this box; every name below is
-# TLS-terminated here and proxied to the servarr caddy (https://10.68.71.2),
+# TLS-terminated here and proxied to the servarr caddy (https://10.0.71.2),
 # which remains the WAF/auth/routing point until each service migrates.
 # header_up Host is REQUIRED (strict_sni_host on both sides). waf_off on
 # purpose: servarr's WAF stays the inspection layer during the interim -
@@ -328,7 +328,7 @@ caddy.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -341,7 +341,7 @@ caddy.erfi.io {
 }
 
 # wafctl dashboard - repointed 2026-07-24 from the dead servarr backend
-# (https://10.68.71.2, retired NL-era IP) to the LOCAL wafctl on the edge-waf
+# (https://10.0.71.2, retired NL-era IP) to the LOCAL wafctl on the edge-waf
 # bridge. wafctl runs on the MS-01 now (same box as this edge), plain HTTP.
 waf.erfi.io {
 	import waf_off
@@ -372,7 +372,7 @@ servarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -388,7 +388,7 @@ sonarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -404,7 +404,7 @@ lidarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -420,7 +420,7 @@ soularr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -436,7 +436,7 @@ radarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -452,7 +452,7 @@ bazarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -468,7 +468,7 @@ tdarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -484,7 +484,7 @@ tracearr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -500,7 +500,7 @@ prowlarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -516,7 +516,7 @@ jellyfin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -532,7 +532,7 @@ qbit.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -548,7 +548,7 @@ change.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -564,7 +564,7 @@ seerr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -580,7 +580,7 @@ keycloak.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -596,7 +596,7 @@ navidrome.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -612,7 +612,7 @@ sabnzbd.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -628,7 +628,7 @@ slskd.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -644,7 +644,7 @@ immich.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -660,7 +660,7 @@ bonkled.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -676,7 +676,7 @@ caddy-prometheus.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -692,7 +692,7 @@ copyparty.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -708,7 +708,7 @@ git.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -724,7 +724,7 @@ composer.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -740,7 +740,7 @@ dockge.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -756,7 +756,7 @@ httpbun.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -772,7 +772,7 @@ httpbin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -788,7 +788,7 @@ cdn.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -804,7 +804,7 @@ draw.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -820,7 +820,7 @@ searxng.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -836,7 +836,7 @@ crawler.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -852,7 +852,7 @@ osint.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -868,7 +868,7 @@ llama.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -884,7 +884,7 @@ chat.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -900,7 +900,7 @@ erfianugrah.com {
 	import waf_off
 	import tls_config_cf
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -918,7 +918,7 @@ erfianugrah.com {
 *.fn.erfi.io, revista.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
