@@ -54,12 +54,6 @@ services:
       # Used by sites whose `tls { issuer acme { dns rfc2136 { key {$TSIG_CADDY_ACME} ... } } }`
       # references it. See ~/knot-fly/ for the full design.
       - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
-      # TSIG key for the global `dynamic_dns { provider rfc2136 ... }` block.
-      # Separate ACL on Knot side: A/AAAA-only writes (no other RR types,
-      # no _acme-challenge), so a compromised Caddy can't escalate beyond
-      # rewriting host A records. Provisioned alongside caddy-acme; rotate
-      # via knotctl. See `knotctl` skill for the four-key-role table.
-      - TSIG_CADDY_DDNS=${TSIG_CADDY_DDNS}
 
 volumes:
   tmpfs_run:

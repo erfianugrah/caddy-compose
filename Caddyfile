@@ -10,10 +10,6 @@
 	cert_issuer acme
 	grace_period 5s
 
-	# Encrypted Client Hello - hides real SNI from ISP/eavesdroppers
-	dns cloudflare {$CF_API_TOKEN}
-	ech ech.erfi.io
-
 	# WAF removed 2026-07-24: L7 policy_engine + L4 ddos_mitigator/ja4 listener
 	# wrappers + cf_trusted_proxies import all dropped. servarr caddy is now a
 	# plain TLS-terminating routing hop behind the MS-01 edge; the edge owns
@@ -38,31 +34,6 @@
 				proxy 172.40.0.2:2222
 			}
 		}
-	}
-
-	# Authoritative DNS for erfi.io is Knot (glory-hole Fly anycast at
-	# 137.66.1.170:53). rfc2136 libdns provider with the dedicated caddy-ddns
-	# TSIG key (A/AAAA-only ACL - see `knotctl` skill for the key-role table).
-	dynamic_dns {
-		provider rfc2136 {
-			key_name "caddy-ddns."
-			key_alg "hmac-sha256"
-			key {$TSIG_CADDY_DDNS}
-			server "137.66.1.170:53"
-		}
-		domains {
-			erfi.io caddy servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw bonkled tdarr slskd lidarr soularr
-		}
-		versions ipv4
-		check_interval 5m
-		ip_source upnp
-		ip_source simple_http https://icanhazip.com
-		ip_source simple_http https://api.ipify.org
-		ip_source simple_http https://myip.addr.space
-		ip_source simple_http https://ifconfig.me
-		ip_source simple_http https://ident.me
-		ip_source simple_http https://bot.whatismyipaddress.com
-		ip_source simple_http https://ipecho.net/plain
 	}
 }
 
