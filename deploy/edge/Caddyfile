@@ -692,7 +692,7 @@ composer.servarr.erfi.io {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
 		transport http {
-			tls_server_name composer.erfi.io
+			tls_server_name composer.servarr.erfi.io
 		}
 	}
 	import error_pages
