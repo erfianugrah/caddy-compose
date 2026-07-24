@@ -5,7 +5,7 @@
 # Differences from ../compose.yaml (servarr):
 #   - host paths: /var/lib/{caddy,authelia,wafctl} (NixOS, no /mnt Unraid layout)
 #   - Caddyfile + authelia configuration.yml mounted from composer's stack
-#     checkout on the HOST (/var/lib/composer/stacks/caddy/...) - docker
+#     checkout on the HOST (/var/lib/composer/stacks/edge-services/...) - docker
 #     resolves bind paths daemon-side, so they must be absolute host paths
 #   - bridge subnets 172.31.98/99.x with STABLE bridge interface names
 #     (edgeauth0/edgewaf0) so the router's nftables can reference them:
@@ -46,7 +46,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - /var/lib/composer/stacks/caddy/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/composer/stacks/edge-services/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro
       - /var/lib/caddy/data:/data
       - /var/lib/caddy/config:/config
       - /var/lib/caddy/log:/var/log
@@ -82,7 +82,7 @@ services:
     volumes:
       # configuration.yml is GitOps-managed (this repo, via composer checkout);
       # users_database.yml + runtime state are provisioned out-of-band.
-      - /var/lib/composer/stacks/caddy/deploy/edge/authelia/configuration.yml:/config/configuration.yml:ro
+      - /var/lib/composer/stacks/edge-services/deploy/edge/authelia/configuration.yml:/config/configuration.yml:ro
       - /var/lib/authelia/config:/config
       - /var/lib/authelia/config/.healthcheck.env:/app/.healthcheck.env
       - /var/lib/authelia/secrets:/secrets:ro
@@ -130,7 +130,7 @@ services:
       - /var/lib/wafctl/config:/data
       - /var/lib/wafctl/events:/data/events
       - /var/lib/caddy/waf:/data/waf
-      - /var/lib/composer/stacks/caddy/deploy/edge/Caddyfile:/data/Caddyfile:ro
+      - /var/lib/composer/stacks/edge-services/deploy/edge/Caddyfile:/data/Caddyfile:ro
       - /var/lib/wafctl/geoip:/data/geoip:ro
       - /var/lib/wafctl/lists:/data/lists
     environment:
