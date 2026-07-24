@@ -352,7 +352,6 @@ bonkled.erfi.io {
 }
 
 caddy-prometheus.erfi.io {
-
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy /metrics localhost:2019 {
@@ -471,7 +470,6 @@ cdn.erfi.io {
 }
 
 erfianugrah.com {
-
 	# erfianugrah.com is still on CF DNS (only erfi.io migrated to Knot 2026-05-24).
 	import tls_config
 	encode zstd gzip
