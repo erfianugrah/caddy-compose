@@ -340,17 +340,15 @@ caddy.erfi.io {
 	import site_log caddy-api
 }
 
+# wafctl dashboard - repointed 2026-07-24 from the dead servarr backend
+# (https://10.68.71.2, retired NL-era IP) to the LOCAL wafctl on the edge-waf
+# bridge. wafctl runs on the MS-01 now (same box as this edge), plain HTTP.
 waf.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.68.71.2 {
+	reverse_proxy 172.31.98.2:8080 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name waf.erfi.io
-		}
 	}
 	import error_pages
 	import site_log waf
