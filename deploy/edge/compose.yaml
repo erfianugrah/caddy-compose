@@ -41,10 +41,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
-    depends_on:
-      authelia:
-        condition: service_healthy
-        restart: true
     volumes:
       - /var/lib/composer/stacks/edge-services/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro
       - /var/lib/caddy/data:/data
@@ -58,46 +54,6 @@ services:
       - EMAIL=${EMAIL}
       - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
       - CF_API_TOKEN=${CF_API_TOKEN}
-
-  authelia:
-    image: docker.io/authelia/authelia:4.39
-    hostname: authelia
-    container_name: authelia
-    restart: unless-stopped
-    user: "1000:1000"
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--no-check-certificate", "--tries=1", "--spider", "http://localhost:9091/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    networks:
-      authelia:
-        ipv4_address: 172.31.99.2
-    volumes:
-      # configuration.yml is GitOps-managed (this repo, via composer checkout);
-      # users_database.yml + runtime state are provisioned out-of-band.
-      - /var/lib/composer/stacks/edge-services/deploy/edge/authelia/configuration.yml:/config/configuration.yml:ro
-      - /var/lib/authelia/config:/config
-      - /var/lib/authelia/config/.healthcheck.env:/app/.healthcheck.env
-      - /var/lib/authelia/secrets:/secrets:ro
-    tmpfs:
-      - /tmp:size=32M
-    environment:
-      TZ: "Asia/Singapore"
-      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: "/secrets/jwt_secret"
-      AUTHELIA_SESSION_SECRET_FILE: "/secrets/session_secret"
-      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: "/secrets/storage_encryption_key"
-      # SMTP notifier restored 2026-07-23 (erfi.io plane migration). NOTE:
-      # authelia treats AUTHELIA_NOTIFIER_SMTP_PASSWORD* as an smtp-notifier
-      # config override, so this env must NEVER coexist with the filesystem
-      # notifier ("only one of smtp/filesystem" fatal).
-      AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE: "/secrets/smtp_password"
 
   wafctl:
     image: erfianugrah/wafctl:2.101.3
@@ -154,15 +110,6 @@ services:
       - WAF_MANAGED_LISTS_DIR=/data/lists
 
 networks:
-  authelia:
-    name: edge-authelia
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: edgeauth0
-    ipam:
-      config:
-        - subnet: 172.31.99.0/24
-          gateway: 172.31.99.1
   waf:
     name: edge-waf
     driver: bridge

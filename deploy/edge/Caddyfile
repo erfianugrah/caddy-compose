@@ -185,14 +185,6 @@
 	}
 }
 
-# Edge Authelia on the edge-authelia bridge (172.31.99.2).
-(forward_auth) {
-	forward_auth 172.31.99.2:9091 {
-		uri /api/authz/forward-auth
-		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
-	}
-}
-
 (proxy_headers) {
 	trusted_proxies private_ranges
 	header_up X-Forwarded-For {client_ip}
@@ -207,20 +199,8 @@
 	}
 }
 
-authelia.lab.erfi.io {
-	import waf
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy 172.31.99.2:9091 {
-		import proxy_headers
-	}
-	import error_pages
-	import site_log authelia
-}
-
 composer.lab.erfi.io {
 	import waf
-	import forward_auth
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8080 {
@@ -232,7 +212,6 @@ composer.lab.erfi.io {
 
 dns.lab.erfi.io {
 	import waf
-	import forward_auth
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8081 {
@@ -243,7 +222,6 @@ dns.lab.erfi.io {
 }
 
 waf.lab.erfi.io {
-	import forward_auth
 	import tls_config_rfc2136
 	encode zstd gzip
 	@waf_hashed path /_astro/*
@@ -352,20 +330,6 @@ waf.erfi.io {
 	}
 	import error_pages
 	import site_log waf
-}
-
-# authelia.erfi.io - the erfi.io SSO portal lives HERE (edge authelia,
-# migrated from servarr 2026-07-23, A1). Servarr caddy's (forward_auth)
-# snippet verifies against this name through this caddy until A2 strips it.
-authelia.erfi.io {
-	import waf
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy 172.31.99.2:9091 {
-		import proxy_headers
-	}
-	import error_pages
-	import site_log authelia
 }
 
 servarr.erfi.io {
