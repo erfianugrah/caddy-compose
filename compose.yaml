@@ -11,7 +11,6 @@ services:
     cap_add:
       - NET_BIND_SERVICE
       - DAC_OVERRIDE
-      - NET_ADMIN # ddos_mitigator nftables kernel drop
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -36,10 +35,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
-    depends_on:
-      authelia:
-        condition: service_healthy
-        restart: true
     volumes:
       # Config + TLS on cache SSD — fast reads for TLS handshakes + config
       - /mnt/user/composer/stacks/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
@@ -48,8 +43,6 @@ services:
       - /mnt/cache/caddy/config:/config
       # Logs on cache SSD — write-heavy, log rotation needs native chown support
       - /mnt/cache/caddy/log:/var/log
-      # Dynamic WAF overrides — written by wafctl Policy Engine, polled by plugin
-      - /mnt/cache/caddy/waf:/data/waf
       # Temp dirs for read-only root filesystem
       - tmpfs_run:/tmp
       - tmpfs_caddy:/var/run
@@ -57,7 +50,6 @@ services:
       - TZ=Asia/Singapore
       - CF_API_TOKEN=${CF_API_TOKEN}
       - EMAIL=${EMAIL}
-      - RESEARCH_TOKEN=${RESEARCH_TOKEN}
       # TSIG key for ACME DNS-01 via our own Knot DNS at knot-fly-mvp on Fly.
       # Used by sites whose `tls { issuer acme { dns rfc2136 { key {$TSIG_CADDY_ACME} ... } } }`
       # references it. See ~/knot-fly/ for the full design.
@@ -68,160 +60,6 @@ services:
       # rewriting host A records. Provisioned alongside caddy-acme; rotate
       # via knotctl. See `knotctl` skill for the four-key-role table.
       - TSIG_CADDY_DDNS=${TSIG_CADDY_DDNS}
-
-  authelia:
-    image: docker.io/authelia/authelia:4.39
-    hostname: authelia
-    container_name: authelia
-    restart: unless-stopped
-    user: "1000:1000"
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 256M
-        reservations:
-          cpus: "0.1"
-          memory: 64M
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--no-check-certificate",
-          "--tries=1",
-          "--spider",
-          "http://localhost:9091/api/health",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    networks:
-      authelia:
-        ipv4_address: 172.19.99.2
-    volumes:
-      - /mnt/user/data/authelia/config:/config
-      # Authelia writes healthcheck metadata here at startup; bind-mount so read_only doesn't block it
-      - /mnt/user/data/authelia/config/.healthcheck.env:/app/.healthcheck.env
-      - /mnt/user/data/authelia/secrets:/secrets:ro
-    tmpfs:
-      - /tmp:size=32M
-    environment:
-      TZ: "Asia/Singapore"
-      # Secrets — loaded from files for security (not visible in docker inspect/proc)
-      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: "/secrets/jwt_secret"
-      AUTHELIA_SESSION_SECRET_FILE: "/secrets/session_secret"
-      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: "/secrets/storage_encryption_key"
-      AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE: "/secrets/smtp_password"
-
-  wafctl:
-    build:
-      context: .
-      dockerfile: wafctl/Dockerfile
-    image: erfianugrah/wafctl:2.101.3
-    hostname: wafctl
-    container_name: wafctl
-    restart: unless-stopped
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 1024M
-        reservations:
-          cpus: "1.0"
-          memory: 256M
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8080/api/health",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-    depends_on:
-      caddy:
-        condition: service_healthy
-        restart: true
-    networks:
-      waf:
-        ipv4_address: 172.19.98.2
-    extra_hosts:
-      # Map 'caddy' to the waf network gateway (not host-gateway/docker0) so
-      # wafctl can reach Caddy's :2020 admin proxy. Docker inter-network
-      # isolation blocks traffic via docker0; routing through the waf bridge
-      # keeps traffic within the allowed 172.19.98.0/24 subnet.
-      - "caddy:172.19.98.1"
-    volumes:
-      # Caddy logs — read-only, on cache SSD
-      - /mnt/cache/caddy/log:/var/log:ro
-      # wafctl config on cache SSD — exclusions, rate-limits, lists, etc.
-      - /mnt/cache/caddy/wafctl/config:/data
-      # JSONL event files on array — large, append-heavy
-      - /mnt/user/data/wafctl/events:/data/events
-      # Dynamic WAF overrides — shared with Caddy, on cache
-      - /mnt/cache/caddy/waf:/data/waf
-      # Caddyfile — read-only, needed for FQDN resolution
-      - /mnt/user/composer/stacks/caddy/Caddyfile:/data/Caddyfile:ro
-      # GeoIP MMDB database
-      - /mnt/cache/caddy/wafctl/geoip:/data/geoip:ro
-      # Managed list files — on cache
-      - /mnt/cache/caddy/wafctl/lists:/data/lists
-    environment:
-      - TZ=Asia/Singapore
-      - WAF_EXCLUSIONS_FILE=/data/exclusions.json
-      - WAF_CONFIG_FILE=/data/waf-config.json
-      - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
-      - WAF_DIR=/data/waf
-      - WAF_CADDYFILE_PATH=/data/Caddyfile
-      - WAF_CADDY_ADMIN_URL=http://caddy:2020
-      - WAF_DATA_DIR=/data
-      # Challenge HMAC key — auto-generated and persisted to /data/challenge-hmac.key
-      # if not set. Override with a 64-char hex string for cross-restart stability.
-      # - CHALLENGE_HMAC_KEY=
-      - WAF_GEOIP_DB=/data/geoip/country.mmdb
-      - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json
-      # Event JSONL files — on array via /data/events mount
-      - WAF_EVENT_FILE=/data/events/events.jsonl
-      - WAF_ACCESS_EVENT_FILE=/data/events/access-events.jsonl
-      - WAF_GENERAL_LOG_FILE=/data/events/general-events.jsonl
-      - WAF_AUDIT_OFFSET_FILE=/data/events/.audit-log-offset
-      - WAF_ACCESS_OFFSET_FILE=/data/events/.access-log-offset
-      - WAF_GENERAL_LOG_OFFSET_FILE=/data/events/.general-log-offset
-      # Managed lists
-      - WAF_MANAGED_LISTS_FILE=/data/lists.json
-      - WAF_MANAGED_LISTS_DIR=/data/lists
-
-networks:
-  authelia:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.19.99.0/24
-          gateway: 172.19.99.1
-  waf:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.19.98.0/24
-          gateway: 172.19.98.1
 
 volumes:
   tmpfs_run:

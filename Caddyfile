@@ -1,8 +1,8 @@
 {
-	# Admin API — localhost for healthcheck/metrics + Unix socket for wafctl reload
+	# Admin API - localhost for healthcheck/metrics + reload
 	admin localhost:2019
 
-	# Prometheus metrics — exposed via admin API at localhost:2019/metrics
+	# Prometheus metrics - exposed via admin API at localhost:2019/metrics
 	metrics
 
 	email {$EMAIL}
@@ -10,62 +10,28 @@
 	cert_issuer acme
 	grace_period 5s
 
-	# Encrypted Client Hello — hides real SNI from ISP/eavesdroppers
-	# Requires client DoH/DoT for full privacy benefit
+	# Encrypted Client Hello - hides real SNI from ISP/eavesdroppers
 	dns cloudflare {$CF_API_TOKEN}
 	ech ech.erfi.io
 
-	# Handler execution order (Caddy middleware wrapping, outermost first):
-	#   log_append wraps everything → ddos_mitigator → policy_engine → reverse_proxy
-	#
-	# log_append is outermost so it captures ddos_action/policy_action fields
-	# even when ddos_mitigator or policy_engine blocks (returns without calling next).
-	# Placeholders are resolved lazily at log-write time.
-	#
-	# ddos_mitigator runs before policy_engine: adaptive fingerprint + IP jail.
-	# Blocked traffic never reaches the WAF, saving all downstream CPU.
-	order log_append first
-	order ddos_mitigator after log_append
-	order policy_engine after ddos_mitigator
-
-	# Global access log disabled — the combined log in (site_log) is the single
-	# source of truth, tailed by wafctl for the dashboard event store.
-	# Eliminating duplicate logs reduces per-request I/O from 3 JSON writes to 1.
+	# WAF removed 2026-07-24: L7 policy_engine + L4 ddos_mitigator/ja4 listener
+	# wrappers + cf_trusted_proxies import all dropped. servarr caddy is now a
+	# plain TLS-terminating routing hop behind the MS-01 edge; the edge owns
+	# L4 ddos and (per-service, as they migrate) L7 WAF.
 	servers {
 		strict_sni_host on
 		protocols h1 h2 h3
 		trusted_proxies_strict
-		import /data/waf/cf_trusted_proxies.caddy
-		# L4 DDoS guard — drops jailed IPs with TCP RST before TLS handshake.
-		# Shares the same jail as the L7 handler via the jail_file path.
-		listener_wrappers {
-			layer4 {
-				route {
-					ddos_mitigator {
-						jail_file /data/waf/jail.json
-					}
-				}
-			}
-			ja4
-			tls
-		}
-		# Connection limits — prevent goroutine accumulation during DDoS storms.
-		# Caddy's reverse proxy leaks health-check goroutines when overwhelmed with
-		# 50K+ concurrent connections; these limits keep the connection pool bounded.
 		timeouts {
 			idle 30s
 		}
 	}
-	# L4 TCP proxy — SSH passthrough (no TLS, SSH handles its own crypto).
+
+	# L4 TCP proxy - git-over-SSH passthrough to Gitea (no TLS, SSH does its
+	# own crypto). The docs-ssh :2222 forwarder was dropped (docs-ssh moved to
+	# the MS-01 edge 2026-07-22).
 	layer4 {
-		# docs-ssh: docs.erfi.io:2222 -> edge caddy L4 (MS-01) until cutover
-		:2222 {
-			@ssh ssh
-			route @ssh {
-				proxy 10.68.69.19:2222
-			}
-		}
-		# gitea-ssh: git.erfi.io:2223 → 172.40.0.2:2222
+		# gitea-ssh: git.erfi.io:2223 -> 172.40.0.2:2222
 		:2223 {
 			@ssh ssh
 			route @ssh {
@@ -73,16 +39,10 @@
 			}
 		}
 	}
-	# Authoritative DNS for erfi.io is Knot (knot-fly-mvp on Fly anycast at
-	# 169.155.56.21:53) since 2026-05-24. We use the rfc2136 libdns provider
-	# with the dedicated caddy-ddns. TSIG key (A/AAAA-only ACL on the Knot
-	# side — see `knotctl` skill for the four-key-role table). The previous
-	# `provider cloudflare` config was a no-op after the NS cutover; CF
-	# updates were going to a zone CF no longer answered for.
-	#
-	# erfianugrah.com is still on Cloudflare — not migrated yet. If you ever
-	# want it back under DDNS, add a SECOND dynamic_dns block with provider
-	# cloudflare for that one domain (caddy-dynamicdns supports multiple).
+
+	# Authoritative DNS for erfi.io is Knot (glory-hole Fly anycast at
+	# 137.66.1.170:53). rfc2136 libdns provider with the dedicated caddy-ddns
+	# TSIG key (A/AAAA-only ACL - see `knotctl` skill for the key-role table).
 	dynamic_dns {
 		provider rfc2136 {
 			key_name "caddy-ddns."
@@ -91,7 +51,7 @@
 			server "137.66.1.170:53"
 		}
 		domains {
-			erfi.io authelia caddy waf servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw bonkled tdarr slskd lidarr soularr
+			erfi.io caddy servarr navidrome vault immich caddy-prometheus jellyfin sabnzbd radarr bazarr prowlarr sonarr tracearr joplin keycloak qbit change seerr copyparty composer dockge httpbun httpbin cdn atuin docs git draw bonkled tdarr slskd lidarr soularr
 		}
 		versions ipv4
 		check_interval 5m
@@ -104,69 +64,6 @@
 		ip_source simple_http https://bot.whatismyipaddress.com
 		ip_source simple_http https://ipecho.net/plain
 	}
-}
-
-# DDoS mitigator — adaptive fingerprint + IP jail, runs before WAF.
-# Settings are editable via the wafctl Dashboard → DDoS Protection page.
-# The jail file is shared bidirectionally with wafctl for manual jail/unjail.
-(ddos) {
-	ddos_mitigator {
-		jail_file /data/waf/jail.json
-		threshold 0.75
-		base_penalty 60s
-		max_penalty 24h
-		sweep_interval 10s
-		decay_interval 30s
-		sync_interval 1s
-		kernel_drop true
-		# Whitelist is bootstrap-only — wafctl persists the live whitelist into
-		# jail.json and the plugin hot-applies updates from there every sync_interval.
-		# On Caddy restart these values seed the runtime whitelist, then jail.json
-		# overlays additions made via the dashboard / wafctl API. Keep these aligned
-		# with the live whitelist so a fresh `compose up` doesn't drop entries
-		# between Caddy boot and the first jail.json sync tick.
-		#   167.88.158.107/32        — servarr-watchdog-erfi fly egress IPv4
-		#   2605:4c40:158:f110::/64  — servarr-watchdog-erfi fly egress IPv6 prefix
-		whitelist 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.0/8 ::1/128 167.88.158.107/32 2605:4c40:158:f110::/64
-	}
-}
-
-# WAF — policy engine as sole WAF (CRS rules baked into default-rules.json).
-# CORS and static-asset caching are now managed by the policy engine plugin:
-#   CORS         → /api/cors (preflight + origin validation)
-#   Cache headers → /api/rules/templates/cache-static-assets/apply
-# (waf)     — Unified WAF snippet. Per-service settings (paranoia level,
-#             thresholds, mode) are managed via the wafctl Settings page.
-#             WebSocket upgrade requests ARE inspected — the policy engine
-#             implements http.Hijacker (v0.12.6+) so WS connections pass
-#             through safely after the upgrade request is evaluated.
-# (waf_off) — No WAF processing. For metrics-only or respond-only services.
-(waf) {
-	import ddos
-	# Inject Caddy-generated request UUID for all requests (including WebSocket)
-	# so it appears in access logs for cross-log correlation.
-	request_header X-Request-Id {http.request.uuid}
-	# Policy engine evaluates all WAF rules: allow/block/honeypot,
-	# CRS detection (anomaly scoring), rate limiting.
-	# Rules are hot-reloaded from JSON files written by wafctl.
-	# WebSocket upgrade requests are scored normally — the plugin's
-	# responseHeaderWriter implements http.Hijacker so the WS upgrade
-	# succeeds after evaluation (plugin v0.12.6+).
-	policy_engine {
-		rules_file /data/waf/policy-rules.json
-		default_rules_file /etc/caddy/waf/default-rules.json
-		reload_interval 5s
-	}
-	handle_errors 400 403 429 {
-		root * /etc/caddy/errors
-		templates
-		rewrite * /error.html
-		file_server
-	}
-}
-
-(waf_off) {
-	# No WAF processing — placeholder snippet for services that don't need it.
 }
 
 # Common TLS config snippet — used by sites under zones still served by
@@ -200,93 +97,6 @@
 			propagation_delay 30s
 			resolvers 137.66.1.170
 		}
-	}
-}
-
-# Standard log config — single combined log file tailed by wafctl.
-# Per-site and global logs removed: every request was being JSON-encoded
-# and written 3 times (global + per-site + combined). During DDoS at 50k
-# req/s, the synchronous JSON encoding in request goroutines was the
-# primary CPU bottleneck. Now each request writes to exactly 1 log file.
-#
-# log_append adds custom fields to every access log entry (resolved lazily
-# at log-write time, not during middleware execution):
-# - request_id: Caddy UUID for cross-log correlation
-# - ddos_*: DDoS mitigator decision, fingerprint, anomaly score, spike mode
-# - policy_*: policy engine decision, matched rules, anomaly score, match details
-(site_log) {
-	log_append request_id {http.request.uuid}
-	log_append ddos_action {http.vars.ddos_mitigator.action}
-	log_append ddos_fingerprint {http.vars.ddos_mitigator.fingerprint}
-	log_append ddos_z_score {http.vars.ddos_mitigator.z_score}
-	log_append ddos_spike_mode {http.vars.ddos_mitigator.spike_mode}
-	log_append policy_action {http.vars.policy_engine.action}
-	log_append policy_rule {http.vars.policy_engine.rule_name}
-	log_append policy_ja4 {http.vars.policy_engine.ja4}
-	log_append policy_challenge_bot_score {http.vars.policy_engine.challenge_bot_score}
-	log_append policy_challenge_jti {http.vars.policy_engine.challenge_jti}
-	log_append policy_challenge_difficulty {http.vars.policy_engine.challenge_difficulty}
-	log_append policy_challenge_elapsed_ms {http.vars.policy_engine.challenge_elapsed_ms}
-	log_append policy_challenge_pre_score {http.vars.policy_engine.challenge_pre_score}
-	log_append policy_challenge_fail_reason {http.vars.policy_engine.challenge_fail_reason}
-	log_append policy_challenge_signals {http.vars.policy_engine.challenge_signals}
-	log_append policy_session_beacon {http.vars.policy_engine.session_beacon}
-	log_append policy_session_jti {http.vars.policy_engine.session_jti}
-	log_append policy_tags {http.vars.policy_engine.tags}
-	log_append policy_score {http.vars.policy_engine.anomaly_score}
-	log_append policy_detect_rules {http.vars.policy_engine.detect_rules}
-	log_append policy_detect_matches {http.vars.policy_engine.detect_matches}
-	log_append policy_request_headers {http.vars.policy_engine.request_headers}
-	log_append policy_request_body {http.vars.policy_engine.request_body}
-	log combined {
-		level INFO
-		output file /var/log/combined-access.log {
-			mode 0644
-			roll_size 256mb
-			roll_keep 2
-			roll_keep_for 168h
-		}
-		format json {
-			time_format wall
-		}
-	}
-}
-
-# Authelia forward auth — applied to protected services
-# DORMANT 2026-07-23: the erfi.io SSO gate was nuked (all 12 forward_auth /
-# research_auth imports removed from site blocks). These snippets are kept
-# for the restore path: re-add `import forward_auth` (or the route-embedded
-# block / research_auth) per site. The verifier target is the EDGE authelia
-# via authelia.erfi.io (A1 flip); the servarr container is no longer it.
-# Usage: import forward_auth
-(forward_auth) {
-	# Verifier = EDGE authelia via its public name (A1 flip 2026-07-23).
-	# The servarr authelia container is retired as verifier; it stays up only
-	# until A2 finishes. Host + tls_server_name are required (strict_sni_host
-	# on the edge; the upstream is an IP).
-	forward_auth https://10.68.69.19 {
-		uri /api/authz/forward-auth
-		header_up Host authelia.erfi.io
-		transport http {
-			tls_server_name authelia.erfi.io
-		}
-		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
-	}
-}
-
-# Auth gate for the research stack. Two valid paths:
-#   1. `Authorization: Bearer $RESEARCH_TOKEN` header — for MCP/API clients.
-#      Skips Authelia entirely (no SSO round-trip on every tool call).
-#   2. Authelia forward_auth — for browsers. Redirects to authelia.erfi.io
-#      for SSO login, then continues with the user's session cookie.
-# forward_auth supports a matcher; we apply it only when the bearer is
-# absent so MCP calls don't get redirected to a login page.
-# Usage: import research_auth
-(research_auth) {
-	@needs_authelia not header Authorization "Bearer {$RESEARCH_TOKEN}"
-	forward_auth @needs_authelia 172.19.99.2:9091 {
-		uri /api/authz/forward-auth
-		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
 	}
 }
 
@@ -327,7 +137,6 @@ docs.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log docs-ssh
 }
 
 # caddy.erfi.io — Admin API is localhost-only.
@@ -338,46 +147,15 @@ caddy.erfi.io {
 	encode zstd gzip
 	respond "Caddy is running. Admin API available via localhost:2019 only." 200
 	import error_pages
-	import site_log caddy-api
-}
-
-waf.erfi.io {
-
-	import tls_config_rfc2136
-	encode zstd gzip
-	# Hashed assets are immutable — only reached after forward_auth succeeds
-	@waf_hashed path /_astro/*
-	header @waf_hashed Cache-Control "public, max-age=31536000, immutable"
-	# Fallback: auth redirects and HTML get no-store (prevents Cloudflare/browser caching 302s)
-	header ?Cache-Control "no-store"
-	# All requests (API + dashboard UI) go to wafctl sidecar.
-	# wafctl serves API on /api/* and dashboard static files on all other paths.
-	reverse_proxy 172.19.98.2:8080 {
-		import proxy_headers
-	}
-	import error_pages
-	import site_log waf
-}
-
-authelia.erfi.io {
-	import waf
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy 172.19.99.2:9091 {
-		import proxy_headers
-	}
-	import error_pages
-	import site_log authelia
 }
 
 servarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 
 	# Unraid GraphQL API + UI - direct proxy (Authelia gate nuked 2026-07-23;
-	# Unraid's own auth is the only gate). Restore path: re-add the
-	# forward_auth block inside this route (see dormant snippet above).
+	# Unraid's own auth is the only gate). Restore path: re-add a
+	# forward_auth block inside this route (see git history / edge Caddyfile).
 	route {
 		@unraid_api path /graphql
 		reverse_proxy @unraid_api localhost:90 {
@@ -389,88 +167,72 @@ servarr.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log servarr
 }
 
 sonarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.3:8989 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log sonarr
 }
 
 lidarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.7:8686 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log lidarr
 }
 
 soularr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.8:8265 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log soularr
 }
 
 radarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.2:7878 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log radarr
 }
 
 bazarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.4:6767 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log bazarr
 }
 
 tdarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.6:8265 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log tdarr
 }
 
 tracearr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.23:3000 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log tracearr
 }
 
 vault.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	# vaultwarden moved to the MS-01 edge (2026-07-22). Proxy to the edge caddy
@@ -486,22 +248,18 @@ vault.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log vaultwarden
 }
 
 prowlarr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.10:9696 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log prowlarr
 }
 
 jellyfin.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.15:8096 {
@@ -513,55 +271,45 @@ jellyfin.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log jellyfin
 }
 
 qbit.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.22:8080 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log qbit
 }
 
 change.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.3.2:5000 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log change
 }
 
 seerr.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.21:5055 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log seerr
 }
 
 keycloak.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.12.2:8080 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log keycloak
 }
 
 joplin.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	# joplin moved to the MS-01 edge (2026-07-22). Proxy to the edge caddy over
@@ -576,46 +324,38 @@ joplin.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log joplin
 }
 
 navidrome.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.17:4533 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log navidrome
 }
 
 sabnzbd.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.19:6666 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log sabnzbd
 }
 
 # slskd binds 5030 inside wg-pia-slskd's netns; Caddy reaches it via
 # wg-pia-slskd's servarr-network IP (.16) since slskd shares its netns.
 slskd.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.1.16:5030 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log slskd
 }
 
 immich.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.22.2:2283 {
@@ -623,16 +363,14 @@ immich.erfi.io {
 		flush_interval -1
 	}
 	import error_pages
-	import site_log immich
 }
 
-# bonkled — multiplayer Wordle-likes game. Public (no Authelia), WAF on.
+# bonkled - multiplayer Wordle-likes game. Public, no auth gate.
 # WebSockets used for live versus matches + queue + match-event replay,
 # so flush_interval -1 disables response buffering for the upgraded
 # conn. Stack lives at /mnt/user/composer/stacks/bonkled (compose.yaml
 # in the bonkled repo at deploy/unraid/).
 bonkled.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.25.2:8080 {
@@ -640,11 +378,9 @@ bonkled.erfi.io {
 		flush_interval -1
 	}
 	import error_pages
-	import site_log bonkled
 }
 
 caddy-prometheus.erfi.io {
-	import waf_off
 
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -652,22 +388,18 @@ caddy-prometheus.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log caddy-prometheus
 }
 
 copyparty.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.66.2:3923 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log copyparty
 }
 
 git.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.40.0.2:3000 {
@@ -682,11 +414,9 @@ git.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log gitea
 }
 
 composer.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.80.2:8080 {
@@ -700,11 +430,9 @@ composer.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log composer
 }
 
 dockge.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.17.0.2:5001 {
@@ -712,33 +440,27 @@ dockge.erfi.io {
 		flush_interval -1
 	}
 	import error_pages
-	import site_log dockge
 }
 
 httpbun.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.15.2:80 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log httpbun
 }
 
 httpbin.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 172.19.15.3:80 {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log httpbin
 }
 
 atuin.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 	# atuin moved to the MS-01 edge (2026-07-22). Proxy to the edge caddy over
@@ -754,11 +476,9 @@ atuin.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log atuin
 }
 
 cdn.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 
@@ -777,11 +497,9 @@ cdn.erfi.io {
 		}
 	}
 	import error_pages
-	import site_log cdn
 }
 
 erfianugrah.com {
-	import waf_off
 
 	# erfianugrah.com is still on CF DNS (only erfi.io migrated to Knot 2026-05-24).
 	import tls_config
@@ -795,7 +513,6 @@ erfianugrah.com {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log erfianugrah
 }
 
 # draw.erfi.io — Self-hosted Excalidraw (busybox httpd + 3 backends).
@@ -803,7 +520,6 @@ erfianugrah.com {
 # Referrer-Policy prevents leaking them to third parties.
 # Ports bound to 127.0.0.1 — only reachable via this proxy.
 draw.erfi.io {
-	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
 
@@ -814,8 +530,8 @@ draw.erfi.io {
 	header Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://draw.erfi.io; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:"
 
-	# CORS preflight — browsers never send cookies with OPTIONS,
-	# so this must be handled before forward_auth intercepts.
+	# CORS preflight - browsers never send cookies with OPTIONS,
+	# so this must be handled early.
 	@api_options {
 		method OPTIONS
 		path /api/*
@@ -880,7 +596,6 @@ draw.erfi.io {
 	}
 
 	import error_pages
-	import site_log draw
 }
 
 # ─── research stack ────────────────────────────────────────────────────────
@@ -897,7 +612,6 @@ searxng.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log searxng
 }
 
 crawler.erfi.io {
@@ -907,7 +621,6 @@ crawler.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log crawler
 }
 
 osint.erfi.io {
@@ -917,7 +630,6 @@ osint.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log osint
 }
 
 # Local LLM endpoint (servarr GTX 1070, Qwen3.5 sm61) for research.deep_research.
@@ -929,11 +641,10 @@ llama.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log llama
 }
 
-# Open WebUI chat front-end (chat stack on servarr, 127.0.0.1:18081). Browsers
-# use Authelia SSO; Open WebUI auto-logs-in from the forwarded Remote-Email.
+# Open WebUI chat front-end (chat stack on servarr, 127.0.0.1:18081). Open WebUI
+# manages its own auth (Authelia SSO gate removed 2026-07-23).
 chat.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -941,7 +652,6 @@ chat.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log chat
 }
 
 # MVP: test.lab.erfi.io issues its TLS cert via TSIG-authed nsupdate to our
@@ -957,38 +667,4 @@ test.lab.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
 	respond "MVP — knot-fly is authoritative for *.lab.erfi.io" 200
-	import site_log test-lab
-}
-
-# Internal admin API proxy — allows wafctl to trigger Caddy reloads.
-# Restricted to the wafctl Docker subnet (172.19.98.0/24).
-:2020 {
-	log {
-		output stderr
-		level WARN
-	}
-	@allowed remote_ip 172.19.98.0/24
-	handle @allowed {
-		reverse_proxy localhost:2019 {
-			header_up Host localhost:2019
-		}
-	}
-	handle {
-		respond "Forbidden" 403
-	}
-}
-
-# ===== deno-edge app platform =====
-# Apps get *.fn.erfi.io for free (one wildcard cert via Knot rfc2136) — ZERO
-# main-Caddy churn when adding apps. A custom domain is added to the host list
-# below (one line, cert via the same rfc2136 DNS-01). All routing (which host ->
-# which static site / function) lives in deno-edge's OWN Caddyfile (this repo).
-*.fn.erfi.io, revista.erfi.io {
-	import waf
-	import tls_config_rfc2136
-	reverse_proxy 172.19.42.3:80 {
-		import proxy_headers
-		header_up X-Real-IP {remote_host}
-	}
-	import site_log deno-edge
 }
