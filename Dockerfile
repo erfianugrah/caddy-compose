@@ -8,7 +8,7 @@
 # When bumping this, also update CADDY_VERSION and CADDY_TAG in
 # .github/workflows/build.yml, and the image tags in Makefile, compose.yaml,
 # README.md (Version management section). See README.md §Version management.
-ARG VERSION=2.11.3
+ARG VERSION=2.11.4
 ARG CRS_VERSION=v4.26.0
 
 # xcaddy build manifest.
@@ -26,8 +26,9 @@ ARG CRS_VERSION=v4.26.0
 # All modules pinned at known-good versions - unpinned modules float on
 # cache-bust builds and have bitten us repeatedly: caddy-l4 v0.1.1 raised the
 # caddy/v2 minimum to 2.11.3 (broke 2.11.2 builds), then v0.1.2 raised it to
-# 2.11.4 (broke 2.11.3 builds on 2026-07-25). caddy-l4 stays on v0.1.1 until
-# the base bumps to 2.11.4; caddy-dynamicdns has no tags, pinned by commit.
+# 2.11.4 (broke 2.11.3 builds on 2026-07-25). Now that the base is 2.11.4,
+# caddy-l4 is on v0.1.2; caddy-dynamicdns has no tags, pinned by commit
+# (a5890c9 is master HEAD as of 2026-07-26).
 #
 # souin is replaced with our fork (erfianugrah/souin, tag v1.7.7-erfi.1,
 # branched off v1.7.7) which carries two erfi.io patches to
@@ -42,10 +43,10 @@ ARG CRS_VERSION=v4.26.0
 # `// erfi.io patch:` comments in the fork.
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
-	--with github.com/caddy-dns/cloudflare@v0.2.3 \
+	--with github.com/caddy-dns/cloudflare@v0.2.4 \
 	--with github.com/caddy-dns/rfc2136@v1.0.0 \
 	--with github.com/mholt/caddy-dynamicdns@a5890c9 \
-	--with github.com/mholt/caddy-l4@v0.1.1 \
+	--with github.com/mholt/caddy-l4@v0.1.2 \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.2.1 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.42.1 \
 	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.3 \

@@ -176,13 +176,13 @@ The `Dockerfile`'s `RUN xcaddy build` line composes all the Caddy plugins into t
 
 #### Pin discipline
 
-All `--with` lines are pinned since 2026-07-25 (`caddy-dynamicdns` has no tags, so it's pinned by commit `@a5890c9`; `caddy-l4` stays on `v0.1.1` until the base image bumps to 2.11.4). Unpinned modules floated to whatever was latest on `master` at build time. This has bitten us — e.g. `caddy-l4 v0.1.1` (2025-04-24) raised its `caddy/v2` minimum to `2.11.3` and broke our `2.11.2` builds with `make build NO_CACHE=1` until we bumped Caddy. It happened again on 2026-07-25: `caddy-l4 v0.1.2` raised the minimum to `2.11.4`, breaking 2.11.3 builds - after which both previously-unpinned modules were pinned.
+All `--with` lines are pinned since 2026-07-25 (`caddy-dynamicdns` has no tags, so it's pinned by commit `@a5890c9`). With the base now on 2.11.4, `caddy-l4` is pinned at `v0.1.2` (the release that requires 2.11.4). Unpinned modules floated to whatever was latest on `master` at build time. This has bitten us — e.g. `caddy-l4 v0.1.1` (2025-04-24) raised its `caddy/v2` minimum to `2.11.3` and broke our `2.11.2` builds with `make build NO_CACHE=1` until we bumped Caddy. It happened again on 2026-07-25: `caddy-l4 v0.1.2` raised the minimum to `2.11.4`, breaking 2.11.3 builds - after which both previously-unpinned modules were pinned.
 
 Pin everything (done for all modules since 2026-07-25):
 
 ```diff
 - --with github.com/mholt/caddy-l4 \
-+ --with github.com/mholt/caddy-l4@v0.1.1 \
++ --with github.com/mholt/caddy-l4@v0.1.2 \
 ```
 
 The trade-off: pinned modules don't pick up upstream security fixes on rebuild, so pins need deliberate bumps. For modules we rely on heavily (`caddy-policy-engine` etc.), pinned with manual bumps is right. For peripheral modules, floating to latest trades reproducibility for freshness — but expect occasional rebuild surprises.
