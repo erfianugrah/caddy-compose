@@ -147,7 +147,7 @@ The `.env` file and `authelia/users_database.yml` are SOPS-encrypted with age. A
 
 ### Version management
 
-Image tags must stay in sync across four files:
+Image tags must stay in sync across five files:
 
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
 - `compose.yaml` (lines 3 and 119: image fields)
@@ -172,7 +172,12 @@ The minimum acceptable Caddy version is determined by the **union of all `--with
 
 ### Caddy modules (xcaddy `--with`)
 
-The `Dockerfile`'s `RUN xcaddy build` line composes all the Caddy plugins into the binary. There are currently nine (see the inline comments in `Dockerfile` for what each one does), including the edge HTTP cache pair (`caddyserver/cache-handler` + `darkweak/storages/nuts`).
+The `Dockerfile`'s `RUN xcaddy build` line composes all the Caddy plugins into the binary. There are currently ten `--with` plugins (see the inline comments in `Dockerfile` for what each one does), including the edge HTTP cache pair (`caddyserver/cache-handler` + `darkweak/storages/nuts`).
+
+Two of the build lines are not plain versioned plugins:
+
+- **Souin fork** - `--with github.com/darkweak/souin=github.com/erfianugrah/souin@v1.7.7-erfi.1`. The cache core is our fork (branched off upstream v1.7.7) carrying two patches for bugs the local harness (`test/cache/`) reproduced upstream: (1) `Store()` subtracted the full upstream fetch latency from the fresh TTL, so slow origins were stored born-stale; (2) a successful stale-if-error `Revalidate()` fell through to a second `Upstream()` fetch and stored the doubled body. Details + evidence in `test/cache/README.md` quirks #6/#7.
+- **grpc replace** - `--replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1`. Forces the transitive gRPC dep (pulled in indirectly by `caddy-l4`) off v1.81.0, which has a HIGH vuln (GHSA-hrxh-6v49-42gf) fixed in v1.82.1. `--replace` (not `--with`) is the xcaddy lever for non-plugin deps: it writes a `go.mod` replace directive without a blank import. Drop it once a pinned module requires >= v1.82.1.
 
 #### Pin discipline
 
@@ -219,6 +224,27 @@ For DNS providers specifically, also verify the Caddyfile actually consumes the 
 ```bash
 make logs-caddy | grep -i 'acme.*<provider-name>\|dns.*<provider-name>'
 ```
+
+## Edge HTTP cache
+
+Edge variant only (`deploy/edge/Caddyfile`). RFC 7234 caching via `caddyserver/cache-handler` (Souin core, our fork - see *Caddy modules* above) with `darkweak/storages/nuts` on-disk storage so entries survive container restarts.
+
+A global `cache {}` block sets defaults (`ttl 60s`, `stale 1h`, `default_cache_control no-store` so upstreams without Cache-Control are never implicitly cached); caching activates per-site where the `cache` handler directive appears. Ordering: `order cache after policy_engine` - the WAF inspects every request, so blocked traffic never enters the cache.
+
+Enabled sites:
+
+| Site | Scope | Fresh | Keep | Notes |
+|------|-------|-------|------|-------|
+| `docs.erfi.io` | whole site | 5m | 24h | `key { disable_query }` collapses arbitrary `?spam=N` variants into one entry (cache-blowing mitigation) |
+| `jellyfin.erfi.io` | `/Items/*/Images/*` only | 24h | 72h | media streams / API / sockets stay uncached; query kept in key (`api_key`) |
+
+`stale-if-error` in the site `default_cache_control` is what makes the cache origin-down insurance: on the error path Souin serves the stale entry when the cached response carries `stale-if-error`. Without it, origin-down past TTL = 502.
+
+Operational notes (full evidence + source refs in `test/cache/README.md`):
+
+- **No working purge.** The souin admin API (`localhost:2019/souin-api/souin`) permanently returns `[]` and admin PURGE is a no-op (Caddy provisions the admin server before the cache app, so the API snapshots an empty Storers list - unfixed upstream as of cache-handler v0.16.0). Direct `PURGE <url>` is a passthrough that only evicts on upstream 2xx. Emergency reclaim = delete `/data/cache/nuts` + `docker restart caddy`.
+- **Unbounded storage.** No size cap is configured; nutsdb keeps its value index in RAM. Bounded by the small site set + short TTLs today, but watch RAM if more sites are added.
+- `make test-cache` runs the local harness (`test/cache/run-tests.sh`) against the binary extracted from `CADDY_IMAGE`; suite test 17 asserts the souin fork patch is active (`souin fork patch active`).
 
 ## WAF configuration
 
@@ -598,6 +624,7 @@ make test              # all tests (Go + frontend)
 make test-go           # Go tests only (~626 tests across 31 files)
 make test-frontend     # Vitest frontend tests (~384 tests across 19 files)
 make test-e2e          # Docker-based e2e smoke tests (~119 tests across 20 files)
+make test-cache        # edge HTTP cache harness (extracts binary from CADDY_IMAGE)
 ```
 
 Run a single test:

@@ -8,10 +8,16 @@ deterministic and safe to re-run.
 
 Versions under test (pinned in `../../Dockerfile`):
 
-- `github.com/caddyserver/cache-handler@v0.16.0` (Souin core `v1.7.7`,
+- `github.com/caddyserver/cache-handler@v0.16.0` (Souin core = our fork
+  `github.com/erfianugrah/souin@v1.7.7-erfi.1`,
   `github.com/darkweak/storages/core@v0.0.15`)
 - `github.com/darkweak/storages/nuts/caddy@v0.0.19` (nutsdb `v1.0.4`)
-- Caddy `v2.11.3`
+- Caddy `v2.11.4`
+
+(The quirks below were first characterized reading `caddy/v2@v2.11.3`
+source; the suite last ran green against `erfianugrah/caddy:3.97.0-2.11.4`
+on Caddy `v2.11.4` - the behaviors are unchanged across the 2.11.3 ->
+2.11.4 bump.)
 
 ## Running
 
@@ -32,10 +38,14 @@ Versions under test (pinned in `../../Dockerfile`):
   would match the test script's own argv under `bash -x` style tracing and
   kill the run itself).
 - `.work/caddy` is a **prebuilt** binary extracted once from the built
-  image (`erfianugrah/caddy:3.96.1-2.11.3`, see the `IMAGE` var at the top
-  of `run-tests.sh`) - the suite never invokes `docker build`. If
-  `.work/caddy` is missing it's re-extracted from that image via
-  `docker create` + `docker cp`; it is never deleted by the suite itself.
+  image - the suite never invokes `docker build`. The image is the
+  `IMAGE` var at the top of `run-tests.sh`, which defaults to the
+  `CADDY_IMAGE` from the `Makefile` (currently
+  `erfianugrah/caddy:3.97.0-2.11.4`) and is overridable via the
+  `CADDY_IMAGE` env var. If `.work/caddy` is missing it's re-extracted
+  from that image via `docker create` + `docker cp`; it is never deleted
+  by the suite itself (delete it manually after an image bump to
+  re-extract the fresh binary).
 
 ### Files
 
