@@ -20,21 +20,38 @@ ARG CRS_VERSION=v4.26.0
 #   caddy-body-matcher      — request body matchers + body_vars handler
 #   caddy-policy-engine     — unified WAF (allow/block/challenge/skip/detect/rate_limit/header)
 #   caddy-ddos-mitigator    — 3-layer DDoS detection (global rate, per-service, host-diversity)
+#   cache-handler           - RFC 7234 HTTP cache (Souin core) for the edge tier
+#   storages/nuts           - on-disk embedded storage backend for the cache
 #
-# Pin all modules at known-good versions. Two modules below are intentionally
-# unpinned (caddy-dynamicdns, caddy-l4); xcaddy resolves them to latest on
-# every cache-bust build. This has bitten us before — e.g. caddy-l4 v0.1.1
-# (2025-04-24) raised its caddy/v2 minimum to 2.11.3 and broke 2.11.2 builds.
-# Pin those two too if you want fully reproducible builds across rebuilds.
+# All modules pinned at known-good versions - unpinned modules float on
+# cache-bust builds and have bitten us repeatedly: caddy-l4 v0.1.1 raised the
+# caddy/v2 minimum to 2.11.3 (broke 2.11.2 builds), then v0.1.2 raised it to
+# 2.11.4 (broke 2.11.3 builds on 2026-07-25). caddy-l4 stays on v0.1.1 until
+# the base bumps to 2.11.4; caddy-dynamicdns has no tags, pinned by commit.
+#
+# souin is replaced with our fork (erfianugrah/souin, tag v1.7.7-erfi.1,
+# branched off v1.7.7) which carries two erfi.io patches to
+# pkg/middleware/middleware.go: (1) Store() no longer subtracts the full
+# upstream fetch latency from the computed max-age (was: response born
+# stale whenever the origin was slower than its own max-age - see
+# test/cache/README.md "Slow origins are born stale"), and (2) a successful
+# stale-if-error Revalidate() now returns immediately instead of falling
+# through to a second Upstream() fetch, which previously double-fetched and
+# double-stored the body on every stale revalidation (see test/cache/README.md
+# "Revalidation doubles the stored body"). Both fixes are marked with
+# `// erfi.io patch:` comments in the fork.
 FROM caddy:${VERSION}-builder AS builder
 RUN xcaddy build \
 	--with github.com/caddy-dns/cloudflare@v0.2.3 \
 	--with github.com/caddy-dns/rfc2136@v1.0.0 \
-	--with github.com/mholt/caddy-dynamicdns \
-	--with github.com/mholt/caddy-l4 \
+	--with github.com/mholt/caddy-dynamicdns@a5890c9 \
+	--with github.com/mholt/caddy-l4@v0.1.1 \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.2.1 \
 	--with github.com/erfianugrah/caddy-policy-engine@v0.42.1 \
-	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.3
+	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.3 \
+	--with github.com/caddyserver/cache-handler@v0.16.0 \
+	--with github.com/darkweak/storages/nuts/caddy@v0.0.19 \
+	--with github.com/darkweak/souin=github.com/erfianugrah/souin@v1.7.7-erfi.1
 
 # Convert CRS rules to policy-engine format at build time.
 # Update CRS_VERSION to pick up new CRS releases.

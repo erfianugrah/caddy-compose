@@ -27,6 +27,31 @@
 	order log_append first
 	order ddos_mitigator after log_append
 	order policy_engine after ddos_mitigator
+	order cache after policy_engine
+
+	# HTTP cache (caddyserver/cache-handler, Souin core). Global defaults
+	# only - caching activates per-site where the `cache` handler directive
+	# appears. nuts (nutsdb) storage on disk so entries survive container
+	# restarts: stale keeps serving during origin/servarr downtime.
+	# default_cache_control no-store: upstreams that send no Cache-Control
+	# are treated as uncacheable; cacheable sites opt in with their own
+	# default_cache_control in their site-level `cache` block.
+	# Inspect/purge via the admin API (localhost-only):
+	#   localhost:2019/souin-api/souin    - stored keys
+	#   localhost:2019/souin-api/metrics  - prometheus
+	cache {
+		ttl 60s
+		stale 1h
+		default_cache_control no-store
+		nuts {
+			path /data/cache/nuts
+		}
+		api {
+			souin
+			prometheus
+		}
+		log_level warn
+	}
 
 	servers {
 		strict_sni_host on
@@ -37,7 +62,7 @@
 		# peers are untrusted, so XFF spoofing from direct clients is ignored.
 		# Static copy of servarr's wafctl-maintained list (2026-07-23); drift
 		# risk is low and this goes away when erfianugrah.com migrates to Knot.
-		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32 10.0.71.2/32  # + servarr caddy (forward_auth subrequests; A1 flip)
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32 10.0.71.2/32 # + servarr caddy (forward_auth subrequests; A1 flip)
 		trusted_proxies_strict
 		# L4 DDoS guard - drops jailed IPs with TCP RST before the TLS handshake.
 		listener_wrappers {
@@ -280,6 +305,27 @@ docs.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
+	# Fully public static content - the clean cache win. 5m fresh, entries
+	# kept 24h. stale-if-error is REQUIRED for the origin-down insurance:
+	# Souin only serves stale on the error path when the cached response
+	# carries stale-if-error (or the request sends max-stale, which browsers
+	# never do). Verified in test/cache (suite test 6).
+	cache {
+		ttl 5m
+		stale 24h
+		default_cache_control "public, max-age=300, stale-if-error=86400"
+		# Flat `key { disable_query }` (cache-handler v0.16.0 configuration.go
+		# case "key", sibling to ttl/stale inside the site-level cache{} block -
+		# NOT the pattern-based `cache_keys{}` mechanism, which is a different
+		# mechanism keyed by regex). Whole-site + fully public + no query
+		# validation upstream means arbitrary ?spam=N query strings would
+		# otherwise mint an unbounded number of distinct cache entries per
+		# path - a cache-blowing/amplification vector with no auth gate.
+		# Verified empirically in test/cache (suite section 16).
+		key {
+			disable_query
+		}
+	}
 	reverse_proxy 172.31.7.2:8080 {
 		import proxy_headers
 	}
@@ -479,6 +525,20 @@ jellyfin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
+	# Cache image endpoints only (posters/backdrops/thumbs - the hot path
+	# for remote clients). Media streams, /socket and the API stay uncached.
+	# Query string stays in the cache key (api_key lives there -> per-client
+	# entries, no cross-user leakage).
+	@jf_images path /Items/*/Images/*
+	route @jf_images {
+		cache {
+			ttl 24h
+			stale 72h
+			# stale-if-error: keep serving posters when servarr is down
+			# (see docs.erfi.io cache block above for why it's required)
+			default_cache_control "public, max-age=86400, stale-if-error=259200"
+		}
+	}
 	reverse_proxy https://10.0.71.2 {
 		import proxy_headers
 		header_up Host {host}

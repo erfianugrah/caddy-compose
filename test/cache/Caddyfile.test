@@ -1,0 +1,61 @@
+{
+	admin localhost:2021
+	# Mirrors the prod order chain exactly: `order X after Y` requires Y to
+	# already be anchored in the order list, so the full chain is needed.
+	order log_append first
+	order ddos_mitigator after log_append
+	order policy_engine after ddos_mitigator
+	order cache after policy_engine
+
+	# Mirrors deploy/edge/Caddyfile global block, with ttl 2s so expiry is
+	# testable in seconds. stale 1h -> stale-if-error insurance.
+	cache {
+		ttl 2s
+		stale 1h
+		default_cache_control no-store
+		nuts {
+			path {$NUTS_PATH}
+		}
+		api {
+			souin
+			prometheus
+		}
+		log_level debug
+	}
+}
+
+# docs.erfi.io shape: whole-site cache, static public content.
+# Plain :port listener -> no auto-https machinery (a named site would make
+# Caddy try to bind :80 for the HTTP->HTTPS redirect).
+:8091 {
+	cache {
+		ttl 2s
+		stale 1h
+		# stale-if-error mirrors prod: lets a PLAIN request (no max-stale)
+		# be served stale when the origin errors (test 6 asserts both paths).
+		default_cache_control "public, max-age=2, stale-if-error=3600"
+		# Flat `key { disable_query }` (cache-handler v0.16.0 configuration.go
+		# case "key" at ~line 579, sibling to ttl/stale inside the site-level
+		# cache{} block - distinct from the pattern-based `cache_keys{}`
+		# mechanism). Mirrors deploy/edge/Caddyfile: this whole-site public
+		# cache would otherwise mint one entry per arbitrary query string
+		# (cache-blowing/amplification vector) - see README section 16.
+		key {
+			disable_query
+		}
+	}
+	reverse_proxy 127.0.0.1:8090
+}
+
+# jellyfin.erfi.io shape: route-scoped cache for image paths only.
+:8092 {
+	@jf_images path /Items/*/Images/*
+	route @jf_images {
+		cache {
+			ttl 2s
+			stale 1h
+			default_cache_control "public, max-age=86400, stale-if-error=259200"
+		}
+	}
+	reverse_proxy 127.0.0.1:8090
+}

@@ -11,7 +11,7 @@
 -include .env.mk
 
 # ── Image tags ──────────────────────────────────────────────────────
-CADDY_IMAGE   ?= erfianugrah/caddy:3.96.1-2.11.3
+CADDY_IMAGE   ?= erfianugrah/caddy:3.97.0-2.11.3
 WAFCTL_IMAGE ?= erfianugrah/wafctl:2.101.3
 
 # ── Remote host ─────────────────────────────────────────────────────
@@ -117,6 +117,9 @@ test-crs-converter: ## Run CRS converter tests
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
+
+test-cache: ## Run edge HTTP cache loop tests (extracts binary from CADDY_IMAGE)
+	./test/cache/run-tests.sh make
 
 test-e2e: ## Run e2e smoke tests (requires Docker)
 	docker build -t caddy-e2e:local .

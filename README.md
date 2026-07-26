@@ -152,6 +152,7 @@ Image tags must stay in sync across four files:
 - `Makefile` (lines 17-18: `CADDY_IMAGE`, `WAFCTL_IMAGE`)
 - `compose.yaml` (lines 3 and 119: image fields)
 - `.github/workflows/build.yml` (env block: `CADDY_TAG`, `CADDY_VERSION`, `WAFCTL_VERSION`)
+- `deploy/edge/compose.yaml` (line 22: image field, edge variant)
 - `README.md` (this file, examples and references)
 
 Tag format: Caddy is `<project-version>-<caddy-version>` (e.g. `3.78.0-2.11.2`), wafctl is plain semver (e.g. `2.82.0`).
@@ -160,7 +161,7 @@ The `CADDY_VERSION` env in `build.yml` and `ARG VERSION` in `Dockerfile` are the
 
 #### Bumping Caddy upstream
 
-When you bump `ARG VERSION` in the `Dockerfile`, update the same value in:
+When you bump `ARG VERSION` in the `Dockerfile`, update the same value in the list below plus `deploy/edge/compose.yaml`'s `image:` field:
 - `.github/workflows/build.yml` — `CADDY_VERSION` env
 - `.github/workflows/build.yml` — `CADDY_TAG` env (trailing portion of the tag)
 - `Makefile` — `CADDY_IMAGE` (trailing portion)
@@ -171,20 +172,20 @@ The minimum acceptable Caddy version is determined by the **union of all `--with
 
 ### Caddy modules (xcaddy `--with`)
 
-The `Dockerfile`'s `RUN xcaddy build` line composes all the Caddy plugins into the binary. There are currently seven (see the inline comments in `Dockerfile` for what each one does).
+The `Dockerfile`'s `RUN xcaddy build` line composes all the Caddy plugins into the binary. There are currently nine (see the inline comments in `Dockerfile` for what each one does), including the edge HTTP cache pair (`caddyserver/cache-handler` + `darkweak/storages/nuts`).
 
 #### Pin discipline
 
-Five of the seven `--with` lines are pinned to a specific tag (e.g. `@v0.2.3`); two are not (`caddy-dynamicdns`, `caddy-l4`). Unpinned modules float to whatever is latest on `master` at build time. This has bitten us — e.g. `caddy-l4 v0.1.1` (2025-04-24) raised its `caddy/v2` minimum to `2.11.3` and broke our `2.11.2` builds with `make build NO_CACHE=1` until we bumped Caddy.
+All `--with` lines are pinned since 2026-07-25 (`caddy-dynamicdns` has no tags, so it's pinned by commit `@a5890c9`; `caddy-l4` stays on `v0.1.1` until the base image bumps to 2.11.4). Unpinned modules floated to whatever was latest on `master` at build time. This has bitten us — e.g. `caddy-l4 v0.1.1` (2025-04-24) raised its `caddy/v2` minimum to `2.11.3` and broke our `2.11.2` builds with `make build NO_CACHE=1` until we bumped Caddy. It happened again on 2026-07-25: `caddy-l4 v0.1.2` raised the minimum to `2.11.4`, breaking 2.11.3 builds - after which both previously-unpinned modules were pinned.
 
-For reproducible builds, pin everything:
+Pin everything (done for all modules since 2026-07-25):
 
 ```diff
 - --with github.com/mholt/caddy-l4 \
 + --with github.com/mholt/caddy-l4@v0.1.1 \
 ```
 
-The trade-off is: pinned modules don't pick up upstream security fixes on rebuild. For modules we rely on heavily (`caddy-policy-engine` etc.), pinned with manual bumps is right. For peripheral modules where staying current matters more than reproducibility, unpinned is defensible — but expect occasional rebuild surprises.
+The trade-off: pinned modules don't pick up upstream security fixes on rebuild, so pins need deliberate bumps. For modules we rely on heavily (`caddy-policy-engine` etc.), pinned with manual bumps is right. For peripheral modules, floating to latest trades reproducibility for freshness — but expect occasional rebuild surprises.
 
 #### Adding a new module
 

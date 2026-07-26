@@ -42,6 +42,7 @@ make test-crs-converter # CRS converter tests (~55 test functions)
 make test-frontend      # Frontend Vitest (18 test files, ~338 tests)
 make test-e2e           # E2E smoke tests (requires Docker, ~122 tests)
 make test-crs-e2e       # CRS regression tests (requires Docker, 4566 tests)
+make test-cache         # Edge HTTP cache loop tests (local, uses binary from CADDY_IMAGE)
 ```
 
 ### Running a single test
@@ -481,8 +482,8 @@ causes the event to be invisible in parts of the UI.
 
 - Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload.
 - On startup, `generateOnBoot()` regenerates all config from stored JSON state.
-- Version tags must stay in sync across: `Makefile`, `compose.yaml`, `README.md`, `.github/workflows/build.yml` (which has BOTH `CADDY_TAG` and `CADDY_VERSION` — the published tag vs the upstream Caddy base, see README §Version management).
-- **Caddy module pin discipline**: the `--with` lines in `Dockerfile` are mostly pinned, but `caddy-dynamicdns` and `caddy-l4` are not. Unpinned modules float on every `--no-cache` rebuild and have surfaced surprises (e.g. `caddy-l4 v0.1.1` raised its `caddy/v2` minimum to 2.11.3, breaking 2.11.2 builds in May 2026). When bumping Caddy upstream OR adding a new module, **also bump every module's pin** to the latest known-good version and verify post-build with `docker run --rm <image> /usr/bin/caddy list-modules | grep <id>`. See README §Caddy modules for the full procedure.
+- Version tags must stay in sync across: `Makefile`, `compose.yaml`, `deploy/edge/compose.yaml`, `README.md`, `.github/workflows/build.yml` (which has BOTH `CADDY_TAG` and `CADDY_VERSION` — the published tag vs the upstream Caddy base, see README §Version management).
+- **Caddy module pin discipline**: ALL `--with` lines in `Dockerfile` are pinned since 2026-07-25 (`caddy-dynamicdns` has no tags - pinned by commit `@a5890c9`; `caddy-l4` stays on `v0.1.1` until the base bumps to 2.11.4). Unpinned modules floated on every cache-bust rebuild and broke us twice: `caddy-l4 v0.1.1` raised its `caddy/v2` minimum to 2.11.3 (broke 2.11.2 builds), then `caddy-l4 v0.1.2` raised it to 2.11.4 (broke 2.11.3 builds on 2026-07-25). When bumping Caddy upstream OR adding a new module, **also bump every module's pin** to the latest known-good version and verify post-build with `docker run --rm <image> /usr/bin/caddy list-modules | grep <id>`. See README §Caddy modules for the full procedure.
 - **Unified rule store**: `ExclusionStore` handles ALL rule types
   (allow/block/challenge/skip/detect/rate_limit/response_header).
   `RuleExclusion` is the single model. `/api/rules` is the canonical CRUD endpoint.
@@ -554,6 +555,14 @@ causes the event to be invisible in parts of the UI.
   "expired" (invalid cookie), or "none" (no cookie). Enables rules that enforce
   challenge requirements on specific paths. Escalation template available at
   `/api/rules/templates` (challenge-escalation: block unchallenged + block expired).
+- **Edge HTTP cache** (`caddyserver/cache-handler` Souin core + `darkweak/storages/nuts` on-disk storage, pinned in `Dockerfile`). Edge variant only (`deploy/edge/Caddyfile`): global `cache {}` block sets defaults (`ttl 60s`, `stale 1h`, `default_cache_control no-store` so upstreams without Cache-Control are never implicitly cached); caching activates per-site via the `cache` handler. Enabled sites: `docs.erfi.io` (whole-site, 5m fresh / 24h keep) and `jellyfin.erfi.io` (route-scoped to `/Items/*/Images/*` only, 24h fresh / 72h keep; media streams/API untouched). Ordering: `order cache after policy_engine` (WAF inspects every request; blocks never enter the cache). Behavioral quirks verified by the local harness in `test/cache/` (`make test-cache`, full evidence + source refs in `test/cache/README.md`):
+  - **Origin-down insurance REQUIRES `stale-if-error` in `default_cache_control`** (RFC 5861). On the non-error path Souin only serves stale when the request sends `max-stale` (browsers never do); on the error path it honors response-side `stale-if-error` for plain requests. Without it, origin-down past TTL = 502.
+  - nuts persistence across restarts works (disk-backed; cache survives container restarts).
+  - The souin admin API (`localhost:2019/souin-api/souin`) permanently returns `[]` and admin PURGE is a no-op: Caddy provisions the admin server (and `admin.api.souin`) before the cache app, so the API snapshots an empty Storers list (unfixed upstream as of cache-handler v0.16.0). Real-world purge = delete the nuts dir + restart.
+  - Direct `PURGE <url>` is a passthrough: forwarded to the upstream, evicts only on upstream 2xx. Backends without PURGE support (Jellyfin) = no eviction, by design.
+  - With a `stale-*` directive on the cached response, Souin issues coalesced background revalidations (~1/s per hot key) even on fresh hits; they never refresh the stored entry (souin#699 context-cancellation) but add bounded origin traffic. TTL freshness semantics are intact.
+  - Stale-while-revalidate background refresh is broken in the Caddy plugin (souin#699) - treat `stale` as stale-if-error insurance, not SWR. Skip the redis storage backend entirely (eviction SCAN storms, souin#646/#671).
+  - Souin core is OUR FORK (`github.com/erfianugrah/souin@v1.7.7-erfi.1`, replace in the Dockerfile xcaddy manifest) carrying two patches for bugs verified by the harness: (1) upstream `Store()` subtracted the full upstream fetch latency from the fresh TTL, so origins slower than max-age were stored born-stale (never a fresh hit); (2) a successful stale-if-error `Revalidate()` fell through to a second `Upstream()` fetch and re-stored the doubled buffer - every revalidated entry served its body twice (`Content-Length` 28 for a 14-byte body). Both fixed in the fork; source refs + evidence in `test/cache/README.md` quirks #6/#7, regression gate is suite test 17 (`souin fork patch active`).
 - **JA4 TLS fingerprinting**: `caddy.ListenerWrapper` module (`caddy.listeners.ja4`)
   between L4 DDoS and TLS in the listener chain. Hand-rolled ClientHello binary parser
   (zero deps). Full FoxIO JA4 spec. Available as `ja4` condition field and
