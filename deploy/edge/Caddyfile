@@ -273,6 +273,29 @@ vault.erfi.io {
 	import site_log vaultwarden
 }
 
+# composer (edge instance) - canonical composer going forward; servarr's
+# instance keeps composer.servarr.erfi.io until retirement. Native site
+# (container publishes *:8080 on this host). No `import waf`: mirrors the
+# servarr-side posture - the API needs curl + github webhook access, which
+# the policy engine's UA rules would block; composer's own API-key/session
+# auth is the gate.
+composer.erfi.io {
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		import proxy_headers
+		# SSE streams (container logs, stats, events) and WebSocket (terminal)
+		# require unbuffered proxying for real-time data.
+		flush_interval -1
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 0
+		}
+	}
+	import error_pages
+	import site_log composer
+}
+
 # atuin sync server - moved from servarr (2026-07-22). Same proxy-to-edge
 # model as vault.erfi.io until cutover.
 atuin.erfi.io {
