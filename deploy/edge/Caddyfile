@@ -90,6 +90,16 @@
 				proxy 172.31.7.2:2222
 			}
 		}
+		# gitea-ssh (3a flip): servarr's caddy L4-proxied :2223 -> 172.40.0.2:2222.
+		# Prepped here pointing at gitea's macvlan IP; WAN input needs :2223 added
+		# to router.nix's {80,443,2222} accept rule before this is reachable -
+		# harmless until then.
+		:2223 {
+			@ssh ssh
+			route @ssh {
+				proxy 10.0.71.56:2222
+			}
+		}
 	}
 
 	# =========================================================================
@@ -356,39 +366,37 @@ docs.erfi.io {
 	import site_log docs-ssh
 }
 
+# Phase 3a flip (2026-07-28/29): every servarr-hosted site now has a direct
+# upstream reachable from MS-01 - either the macvlan `lan` IP
+# (servarr-compose runbooks/lan-macvlan.md, 10.0.71.20-99 range), a
+# host-published port on 10.0.71.2 (the two VPN-netns services + the two
+# dual-bound-on-127.0.0.1 groups), or an edge-local address for stacks that
+# moved outright (httpbin-bun). The interim hairpin-to-servarr-caddy model
+# is retired for every site below.
+#
+# WAF posture: `waf_off` everywhere in this section, matching CURRENT
+# behavior exactly - servarr's caddy dropped its WAF entirely on 2026-07-24
+# and the interim edge blocks never ran CRS against these either (see the
+# comment this section replaces). Flipping upstreams and turning on WAF at
+# the same time would conflate two changes; enabling `import waf` per site
+# is a deliberate follow-up, one site at a time, watching wafctl for false
+# positives (git LFS pushes, S3 sigv4, Subsonic/Jellyfin API clients, etc.)
+#
+# Dropped (dead backends, no longer serve anything): tdarr.erfi.io,
+# tracearr.erfi.io, change.erfi.io, dockge.erfi.io, *.fn.erfi.io (deno-edge
+# wildcard - platform stopped 2026-06+, no payload).
 # =========================================================================
-# UNMIGRATED SERVARR SITES - thin HTTPS proxy (2026-07-23 main proxy flip).
-# vyos-sg DNAT rule 10 sends public 80/443 to this box; every name below is
-# TLS-terminated here and proxied to the servarr caddy (https://10.0.71.2),
-# which remains the WAF/auth/routing point until each service migrates.
-# header_up Host is REQUIRED (strict_sni_host on both sides). waf_off on
-# purpose: servarr's WAF stays the inspection layer during the interim -
-# running edge CRS too would double-score every request with a ruleset that
-# has none of servarr's per-service exceptions. The edge L4 ddos_mitigator
-# listener wrapper still jails volumetric abuse pre-TLS.
-# As each service migrates: delete its block here, write a real block above
-# (import waf + local upstream), and delete the servarr-side block.
-# Skipped: test.lab.erfi.io (lab plane, RFC1918 - no public path).
-# =========================================================================
+
 caddy.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name caddy.erfi.io
-		}
-	}
+	respond "Caddy (edge) is running. Admin API available via localhost:2019 only." 200
 	import error_pages
 	import site_log caddy-api
 }
 
-# wafctl dashboard - repointed 2026-07-24 from the dead servarr backend
-# (https://10.0.71.2, retired NL-era IP) to the LOCAL wafctl on the edge-waf
-# bridge. wafctl runs on the MS-01 now (same box as this edge), plain HTTP.
+# wafctl dashboard - already local (repointed 2026-07-24, predates this flip).
 waf.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
@@ -404,13 +412,10 @@ servarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	# Unraid GraphQL API + UI - direct proxy (Authelia gate nuked 2026-07-23;
+	# Unraid's own auth is the only gate).
+	reverse_proxy 10.0.71.2:90 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name servarr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log servarr
@@ -420,13 +425,8 @@ sonarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.23:8989 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name sonarr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log sonarr
@@ -436,13 +436,8 @@ lidarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.27:8686 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name lidarr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log lidarr
@@ -452,13 +447,8 @@ soularr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.28:8265 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name soularr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log soularr
@@ -468,13 +458,8 @@ radarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.22:7878 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name radarr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log radarr
@@ -484,61 +469,19 @@ bazarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.24:6767 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name bazarr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log bazarr
-}
-
-tdarr.erfi.io {
-	import waf_off
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name tdarr.erfi.io
-		}
-	}
-	import error_pages
-	import site_log tdarr
-}
-
-tracearr.erfi.io {
-	import waf_off
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name tracearr.erfi.io
-		}
-	}
-	import error_pages
-	import site_log tracearr
 }
 
 prowlarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.30:9696 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name prowlarr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log prowlarr
@@ -548,26 +491,12 @@ jellyfin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	# Cache image endpoints only (posters/backdrops/thumbs - the hot path
-	# for remote clients). Media streams, /socket and the API stay uncached.
-	# Query string stays in the cache key (api_key lives there -> per-client
-	# entries, no cross-user leakage).
-	@jf_images path /Items/*/Images/*
-	route @jf_images {
-		cache {
-			ttl 24h
-			stale 72h
-			# stale-if-error: keep serving posters when servarr is down
-			# (see docs.erfi.io cache block above for why it's required)
-			default_cache_control "public, max-age=86400, stale-if-error=259200"
-		}
-	}
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.35:8096 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
+		flush_interval -1
 		transport http {
-			tls_server_name jellyfin.erfi.io
+			dial_timeout 10s
+			response_header_timeout 0
 		}
 	}
 	import error_pages
@@ -578,45 +507,21 @@ qbit.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	# qbittorrentvpn owns its netns via WireGuard - can't macvlan like the
+	# arrs. Host-published on 10.0.71.2:8180 (8080 is composer's own port).
+	reverse_proxy 10.0.71.2:8180 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name qbit.erfi.io
-		}
 	}
 	import error_pages
 	import site_log qbit
-}
-
-change.erfi.io {
-	import waf_off
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name change.erfi.io
-		}
-	}
-	import error_pages
-	import site_log change
 }
 
 seerr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.41:5055 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name seerr.erfi.io
-		}
 	}
 	import error_pages
 	import site_log seerr
@@ -626,13 +531,8 @@ keycloak.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.50:8080 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name keycloak.erfi.io
-		}
 	}
 	import error_pages
 	import site_log keycloak
@@ -642,13 +542,8 @@ navidrome.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.37:4533 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name navidrome.erfi.io
-		}
 	}
 	import error_pages
 	import site_log navidrome
@@ -658,29 +553,21 @@ sabnzbd.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.39:6666 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name sabnzbd.erfi.io
-		}
 	}
 	import error_pages
 	import site_log sabnzbd
 }
 
+# slskd shares wg-pia-slskd's netns - can't macvlan. Host-published on
+# 10.0.71.2:5030.
 slskd.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:5030 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name slskd.erfi.io
-		}
 	}
 	import error_pages
 	import site_log slskd
@@ -690,29 +577,26 @@ immich.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	# Stack is down pending postgres recovery (2026-07-28 crash-loop from
+	# crash #5 corruption) - this block is ready for when it's back.
+	reverse_proxy 10.0.71.53:2283 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name immich.erfi.io
-		}
+		flush_interval -1
 	}
 	import error_pages
 	import site_log immich
 }
 
+# bonkled - multiplayer Wordle-likes game. Public, no auth gate.
+# WebSockets used for live versus matches + queue + match-event replay,
+# so flush_interval -1 disables response buffering for the upgraded conn.
 bonkled.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.54:8080 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name bonkled.erfi.io
-		}
+		flush_interval -1
 	}
 	import error_pages
 	import site_log bonkled
@@ -722,13 +606,9 @@ caddy-prometheus.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	# Now the EDGE caddy's own metrics (was servarr's pre-flip).
+	reverse_proxy /metrics localhost:2019 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name caddy-prometheus.erfi.io
-		}
 	}
 	import error_pages
 	import site_log caddy-prometheus
@@ -738,13 +618,8 @@ copyparty.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.55:3923 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name copyparty.erfi.io
-		}
 	}
 	import error_pages
 	import site_log copyparty
@@ -754,61 +629,47 @@ git.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.56:3000 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
+		# Git HTTP operations (clone/push/pull) and LFS uploads can be
+		# long-running with large payloads. Disable response timeout and
+		# stream unbuffered for Actions SSE / LFS chunked transfers.
+		flush_interval -1
 		transport http {
-			tls_server_name git.erfi.io
+			dial_timeout 5s
+			response_header_timeout 0
 		}
 	}
 	import error_pages
-	import site_log gitea
+	import site_log git
 }
 
 composer.servarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:8080 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
+		# SSE streams (container logs, stats, events) and WebSocket (terminal)
+		# require unbuffered proxying for real-time data.
+		flush_interval -1
 		transport http {
-			tls_server_name composer.servarr.erfi.io
+			dial_timeout 5s
+			response_header_timeout 0
 		}
 	}
 	import error_pages
-	import site_log composer
+	import site_log composer-servarr
 }
 
-dockge.erfi.io {
-	import waf_off
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name dockge.erfi.io
-		}
-	}
-	import error_pages
-	import site_log dockge
-}
-
+# httpbin-bun moved to MS-01 outright (2026-07-28, stateless test service) -
+# edge-local bridge, not macvlan.
 httpbun.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 172.31.15.2:80 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name httpbun.erfi.io
-		}
 	}
 	import error_pages
 	import site_log httpbun
@@ -818,13 +679,8 @@ httpbin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 172.31.15.3:80 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name httpbin.erfi.io
-		}
 	}
 	import error_pages
 	import site_log httpbin
@@ -834,45 +690,142 @@ cdn.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name cdn.erfi.io
+
+	# S3 API / bucket proxy - bucket policies control access.
+	# Console - direct proxy (Authelia gate nuked 2026-07-23; MinIO's own
+	# login is the gate). strip /console prefix for port 9001.
+	route {
+		@s3_api not path /console /console/*
+		reverse_proxy @s3_api 10.0.71.57:9000 {
+			import proxy_headers
+		}
+
+		uri strip_prefix /console
+		reverse_proxy 10.0.71.57:9001 {
+			import proxy_headers
 		}
 	}
 	import error_pages
 	import site_log cdn
 }
 
+erfianugrah.com {
+	import waf_off
+	# erfianugrah.com is still on CF DNS (only erfi.io migrated to Knot).
+	import tls_config_cf
+	encode zstd gzip
+	# Astro hashed assets are immutable - cache for 1 year
+	@hashed path /_astro/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	# HTML pages - revalidate on every request
+	header ?Cache-Control "public, max-age=0, must-revalidate"
+	reverse_proxy 10.0.71.58:80 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log erfianugrah
+}
+
+# revista - same backend as erfianugrah.com, separate erfi.io name. Was
+# grouped with the dead *.fn.erfi.io deno-edge wildcard in the interim;
+# split out now that the wildcard is gone.
+revista.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 10.0.71.58:80 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log revista
+}
+
+# draw.erfi.io - Self-hosted Excalidraw (busybox httpd + 3 backends).
+# Encryption keys live in URL fragments (#) - never sent to server.
+# Referrer-Policy prevents leaking them to third parties. Backends are
+# dual-bound on servarr (127.0.0.1 + 10.0.71.2) - this reaches the LAN side.
 draw.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name draw.erfi.io
+
+	header Referrer-Policy "strict-origin-when-cross-origin"
+	header X-Frame-Options "SAMEORIGIN"
+	header X-Content-Type-Options "nosniff"
+	header Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://draw.erfi.io; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:"
+
+	@api_options {
+		method OPTIONS
+		path /api/*
+	}
+	handle @api_options {
+		header Access-Control-Allow-Origin "https://draw.erfi.io"
+		header Access-Control-Allow-Methods "GET, POST, PUT, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, X-API-Key"
+		header Access-Control-Allow-Credentials "true"
+		header Access-Control-Max-Age "86400"
+		respond 204
+	}
+
+	handle_path /api/ai/* {
+		header Access-Control-Allow-Origin "https://draw.erfi.io"
+		header Access-Control-Allow-Credentials "true"
+		header Access-Control-Expose-Headers "X-Ratelimit-Limit, X-Ratelimit-Remaining"
+		reverse_proxy 10.0.71.2:3004 {
+			import proxy_headers
 		}
 	}
+
+	handle_path /api/* {
+		header Access-Control-Allow-Origin "https://draw.erfi.io"
+		header Access-Control-Allow-Credentials "true"
+		reverse_proxy 10.0.71.2:3003 {
+			import proxy_headers
+		}
+	}
+
+	handle /socket.io/* {
+		reverse_proxy 10.0.71.2:3002 {
+			import proxy_headers
+			flush_interval -1
+			stream_close_delay 5m
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 0
+			}
+		}
+	}
+
+	handle {
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		@nocache {
+			path / /index.html /sw.js /workbox-*.js /registerSW.js
+		}
+		header @nocache Cache-Control "no-cache, no-store, must-revalidate"
+
+		reverse_proxy 10.0.71.2:3001 {
+			import proxy_headers
+		}
+	}
+
 	import error_pages
 	import site_log draw
 }
+
+# research stack - self-hosted search + crawler + OSINT for local LLMs.
+# Dual-bound on servarr (127.0.0.1 + 10.0.71.2). WAF intentionally skipped -
+# bearer token is the gate; WAF would add CPU + log noise for a private
+# API surface.
 
 searxng.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:8888 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name searxng.erfi.io
-		}
 	}
 	import error_pages
 	import site_log searxng
@@ -882,13 +835,8 @@ crawler.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:8889 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name crawler.erfi.io
-		}
 	}
 	import error_pages
 	import site_log crawler
@@ -898,81 +846,37 @@ osint.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:8890 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name osint.erfi.io
-		}
 	}
 	import error_pages
 	import site_log osint
 }
 
+# Local LLM endpoint (servarr GTX 1070) for research.deep_research. Same
+# bearer gate as the rest. Dual-bound on servarr.
 llama.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:18080 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name llama.erfi.io
-		}
 	}
 	import error_pages
 	import site_log llama
 }
 
+# Open WebUI chat front-end. Manages its own auth (Authelia SSO gate removed
+# 2026-07-23). Dual-bound on servarr.
 chat.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
+	reverse_proxy 10.0.71.2:18081 {
 		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name chat.erfi.io
-		}
 	}
 	import error_pages
 	import site_log chat
-}
-
-erfianugrah.com {
-	import waf_off
-	import tls_config_cf
-	encode zstd gzip
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name erfianugrah.com
-		}
-	}
-	import error_pages
-	import site_log erfianugrah
-}
-
-# deno-edge platform: wildcard + custom domain share one block (and one cert).
-# tls_server_name {host} = per-request transport clone (no keepalive pooling
-# on this hop) - acceptable for these low-traffic apps during the interim.
-*.fn.erfi.io, revista.erfi.io {
-	import waf_off
-	import tls_config_rfc2136
-	reverse_proxy https://10.0.71.2 {
-		import proxy_headers
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		transport http {
-			tls_server_name {host}
-		}
-	}
-	import site_log deno-edge
 }
 
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
