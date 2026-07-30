@@ -644,23 +644,8 @@ git.erfi.io {
 	import site_log git
 }
 
-composer.servarr.erfi.io {
-	import waf_off
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy 10.0.71.2:8080 {
-		import proxy_headers
-		# SSE streams (container logs, stats, events) and WebSocket (terminal)
-		# require unbuffered proxying for real-time data.
-		flush_interval -1
-		transport http {
-			dial_timeout 5s
-			response_header_timeout 0
-		}
-	}
-	import error_pages
-	import site_log composer-servarr
-}
+# composer.servarr.erfi.io removed 2026-07-30 - the legacy servarr composer
+# instance is decommissioned; composer.erfi.io (MS-01 native) is canonical.
 
 # httpbin-bun moved to MS-01 outright (2026-07-28, stateless test service) -
 # edge-local bridge, not macvlan.
