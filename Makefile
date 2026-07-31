@@ -121,6 +121,24 @@ test-frontend: ## Run frontend tests
 test-cache: ## Run edge HTTP cache loop tests (extracts binary from CADDY_IMAGE)
 	./test/cache/run-tests.sh make
 
+# ── Edge stack (MS-01, composer stack edge-services) ────────────────
+# Deploy loop: git push -> composer syncs (webhook) -> edge-restart.
+# verify is the post-deploy gate: it fails if any cache handler fell
+# back to in-memory storage or a nuts DB landed on the tmpfs default.
+EDGE_REMOTE ?= nixos
+EDGE_STACK  ?= edge-services
+
+edge-sync: ## Git-sync the edge-services stack on the edge composer
+	ssh $(EDGE_REMOTE) "curl -sf -X POST -H \"X-API-Key: $$COMPOSER_API_KEY\" localhost:8080/api/v1/stacks/$(EDGE_STACK)/sync"
+
+edge-restart: edge-sync ## Restart edge caddy + verify cache storage layout
+	ssh $(EDGE_REMOTE) 'docker restart caddy'
+	@sleep 8
+	$(MAKE) --no-print-directory edge-verify
+
+edge-verify: ## Post-deploy gate: cache storage layout asserts on the live edge
+	./scripts/cachectl.sh verify
+
 test-e2e: ## Run e2e smoke tests (requires Docker)
 	docker build -t caddy-e2e:local .
 	docker build -t wafctl-e2e:local --build-arg VERSION=e2e -f wafctl/Dockerfile .
