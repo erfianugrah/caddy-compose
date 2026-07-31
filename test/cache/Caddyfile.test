@@ -9,13 +9,19 @@
 
 	# Mirrors deploy/edge/Caddyfile global block, with ttl 2s so expiry is
 	# testable in seconds. stale 1h -> stale-if-error insurance.
+	# NO global nuts block here on purpose: storage provider configs are
+	# inherited by site handlers only when the handler has NO provider of
+	# its own (cache-handler@v0.16.0 httpcache.go FromApp ~line 220), and
+	# every inherited handler then races to dispatch+register its own nutsdb
+	# instance on the SAME path during concurrent provisioning - losers of
+	# the registration race silently fall back to in-memory (the
+	# "default storage" warning), and concurrent winners are independent
+	# writers on one nutsdb dir (offset-clobber hazard). Each site block
+	# below carries its OWN nuts{} with a UNIQUE path instead.
 	cache {
 		ttl 2s
 		stale 1h
 		default_cache_control no-store
-		nuts {
-			path {$NUTS_PATH}
-		}
 		api {
 			souin
 			prometheus
@@ -43,6 +49,16 @@
 		key {
 			disable_query
 		}
+		# Own storage, unique path (see global block comment). Dir must be
+		# INSIDE configuration: nuts.Factory ignores provider.Path entirely
+		# when Configuration is non-nil (storages/nuts@v0.0.19 nuts.go
+		# ~line 133) and falls back to /tmp/souin-nuts.
+		nuts {
+			configuration {
+				Dir "{$NUTS_PATH}/a"
+				EntryIdxMode HintKeyAndRAMIdxMode
+			}
+		}
 	}
 	reverse_proxy 127.0.0.1:8090
 }
@@ -55,6 +71,13 @@
 			ttl 2s
 			stale 1h
 			default_cache_control "public, max-age=86400, stale-if-error=259200"
+			# Own storage, unique path (see :8091 + global block comments).
+			nuts {
+				configuration {
+					Dir "{$NUTS_PATH}/b"
+					EntryIdxMode HintKeyAndRAMIdxMode
+				}
+			}
 		}
 	}
 	reverse_proxy 127.0.0.1:8090

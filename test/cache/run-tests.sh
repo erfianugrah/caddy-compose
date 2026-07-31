@@ -125,7 +125,17 @@ cs=$(printf '%s' "$out" | tr -d '\r' | grep -i '^cache-status:')
 start_origin
 
 hdr "7. nuts persistence across caddy restart"
+# Storage-layout guards (2026-07-31): every site handler must provision its
+# OWN nutsdb at its OWN configured path - no in-memory fallback, and never
+# the /tmp/souin-nuts default (nuts.Factory drops provider.Path whenever
+# Configuration is non-nil, so a missing Dir inside configuration silently
+# relocates the DB; see README "per-site storage").
+if grep -q 'default storage' "$WORK/caddy.log"; then bad "a cache handler fell back to in-memory default storage"; else ok "no handler on in-memory default storage"; fi
+[ -f "$NUTS/a/0.dat" ] && ok ":8091 nuts db at configured path ($NUTS/a)" || bad ":8091 nuts db missing at $NUTS/a"
+[ -f "$NUTS/b/0.dat" ] && ok ":8092 nuts db at configured path ($NUTS/b)" || bad ":8092 nuts db missing at $NUTS/b"
+[ ! -e /tmp/souin-nuts/0.dat ] && ok "no fallback to /tmp/souin-nuts default path" || bad "nuts fell back to /tmp/souin-nuts (Dir dropped)"
 before=$(origin_hits 'GET /static')
+before_img=$(origin_hits 'GET /Items/42/Images/Primary')
 [ -n "$CADDY_PID" ] && { kill "$CADDY_PID" 2>/dev/null; wait "$CADDY_PID" 2>/dev/null; CADDY_PID=""; }
 start_caddy
 # /static's TTL (2s) is long expired by this point in the suite (tests 1-6
@@ -140,6 +150,11 @@ start_caddy
 # the process restart.
 assert_cs "GET /static after caddy restart" hit -H 'Cache-Control: max-stale=3600' http://localhost:$DOCS_PORT/static
 after=$(origin_hits 'GET /static'); [ "$after" -eq "$before" ] && ok "no origin fetch after restart (disk cache)" || bad "origin refetched after restart (before=$before after=$after)"
+# Same proof for the SECOND handler (:8092, route-scoped) - the blind spot
+# that let the per-handler storage fallback ship undetected: image entries
+# carry max-age=86400 so a plain GET must be a fresh HIT off disk.
+assert_cs "GET image after caddy restart" hit "http://localhost:$JF_PORT/Items/42/Images/Primary?api_key=tokenA"
+after_img=$(origin_hits 'GET /Items/42/Images/Primary'); [ "$after_img" -eq "$before_img" ] && ok "no image refetch after restart (disk cache, :8092)" || bad "image refetched after restart (before=$before_img after=$after_img)"
 
 hdr "8. souin admin API"
 # KNOWN LIMITATION, reproduced from source (see README "Admin API storers

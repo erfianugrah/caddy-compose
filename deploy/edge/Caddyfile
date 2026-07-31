@@ -39,23 +39,24 @@
 	# Inspect/purge via the admin API (localhost-only):
 	#   localhost:2019/souin-api/souin    - stored keys
 	#   localhost:2019/souin-api/metrics  - prometheus
+	# NO global nuts block on purpose. Storage provider configs are inherited
+	# by a site handler only when the handler configures NO provider of its
+	# own (cache-handler@v0.16.0 httpcache.go FromApp ~line 220). With a
+	# global nuts block, EVERY site handler dispatches its own nutsdb
+	# instance on the SAME path during concurrent provisioning: losers of
+	# the registration race silently fall back to in-memory storage (the
+	# "default storage" warning - nondeterministic, 3-4 of 5 handlers),
+	# and multiple winners are independent writers on one nutsdb dir
+	# (offset-clobber hazard). Verified live 2026-07-31. Every cache-enabled
+	# site below therefore carries its OWN nuts{} with a UNIQUE path.
+	# Dir must sit INSIDE configuration: nuts.Factory ignores provider.Path
+	# entirely when Configuration is non-nil and silently falls back to
+	# /tmp/souin-nuts (storages/nuts@v0.0.19 nuts.go ~line 133) - which is a
+	# tmpfs in this container, wiping the cache on every restart.
 	cache {
 		ttl 60s
 		stale 1h
 		default_cache_control no-store
-		nuts {
-			path /data/cache/nuts
-			# Keys-only RAM index (HintKeyAndRAMIdxMode): the default
-			# HintKeyValAndRAMIdxMode keeps the full VALUE index in RAM,
-			# so container RAM scaled with cached bytes. With keys-only,
-			# values are read from disk (NVMe on the MS-01) and RAM stays
-			# flat as the cache grows. No size-based bound or LRU exists
-			# in this stack - bounds are ttl+stale and disable_query
-			# (test/cache/README.md "Bounded storage and eviction").
-			configuration {
-				EntryIdxMode HintKeyAndRAMIdxMode
-			}
-		}
 		api {
 			souin
 			prometheus
@@ -368,6 +369,13 @@ docs.erfi.io {
 		key {
 			disable_query
 		}
+		# Own storage, unique path (see the global block comment).
+		nuts {
+			configuration {
+				Dir /data/cache/nuts/docs
+				EntryIdxMode HintKeyAndRAMIdxMode
+			}
+		}
 	}
 	reverse_proxy 172.31.7.2:8080 {
 		import proxy_headers
@@ -514,6 +522,12 @@ jellyfin.erfi.io {
 			# stale-if-error: keep serving posters when servarr is down
 			# (see docs.erfi.io cache block above for why it's required)
 			default_cache_control "public, max-age=86400, stale-if-error=259200"
+			nuts {
+				configuration {
+					Dir /data/cache/nuts/jellyfin
+					EntryIdxMode HintKeyAndRAMIdxMode
+				}
+			}
 		}
 	}
 	reverse_proxy 10.0.71.35:8096 {
@@ -577,6 +591,12 @@ navidrome.erfi.io {
 			ttl 24h
 			stale 72h
 			default_cache_control "public, max-age=86400, stale-if-error=259200"
+			nuts {
+				configuration {
+					Dir /data/cache/nuts/navidrome
+					EntryIdxMode HintKeyAndRAMIdxMode
+				}
+			}
 		}
 	}
 	reverse_proxy 10.0.71.37:4533 {
@@ -752,6 +772,12 @@ erfianugrah.com {
 		key {
 			disable_query
 		}
+		nuts {
+			configuration {
+				Dir /data/cache/nuts/erfianugrah
+				EntryIdxMode HintKeyAndRAMIdxMode
+			}
+		}
 	}
 	reverse_proxy 10.0.71.58:80 {
 		import proxy_headers
@@ -776,6 +802,12 @@ revista.erfi.io {
 	cache {
 		key {
 			disable_query
+		}
+		nuts {
+			configuration {
+				Dir /data/cache/nuts/revista
+				EntryIdxMode HintKeyAndRAMIdxMode
+			}
 		}
 	}
 	reverse_proxy 10.0.71.58:80 {
