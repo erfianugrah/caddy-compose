@@ -802,8 +802,8 @@ draw.erfi.io {
 
 # research stack - self-hosted search + crawler + OSINT for local LLMs.
 # Dual-bound on servarr (127.0.0.1 + 10.0.71.2). WAF intentionally skipped -
-# bearer token is the gate; WAF would add CPU + log noise for a private
-# API surface.
+# private API surface for local LLMs; WAF would add CPU + log noise.
+# NOTE: no auth gate (the old bearer-token gate was removed 2026-08).
 
 searxng.erfi.io {
 	import waf_off
@@ -839,7 +839,7 @@ osint.erfi.io {
 }
 
 # Local LLM endpoint (servarr GTX 1070) for research.deep_research. Same
-# bearer gate as the rest. Dual-bound on servarr.
+# no-auth posture as the rest. Dual-bound on servarr.
 llama.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
