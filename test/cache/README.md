@@ -456,6 +456,67 @@ marked `// erfi.io patch:`): the block now does
 revalidation, so the fresh response is sent to the client and stored
 exactly once, with no second origin fetch.
 
+## Per-site storage (REQUIRED since 2026-07-31)
+
+Every cache-enabled site block MUST carry its own `nuts {}` sub-block
+with a UNIQUE `Dir`. Never put `nuts` in the global `cache {}` block.
+Three stacked upstream behaviors make this load-bearing (all verified
+against the pinned sources + live on the edge, 2026-07-31):
+
+1. **Provider inheritance is all-or-nothing and shared-path.** A site
+   handler inherits the APP's storage provider config only when it
+   configures NO provider of its own (`cache-handler@v0.16.0`
+   `httpcache.go` `FromApp` ~line 220). With a global `nuts` block,
+   EVERY site handler calls `nuts.Factory` for the SAME path during
+   provisioning - they do not share one storer; each opens its own
+   nutsdb instance on the same directory.
+2. **Concurrent provisioning races; losers silently go in-memory.**
+   Each handler registers its storer (`core.RegisterStorage`, keyed
+   `NUTS-<dir>-<stale>`) and immediately looks it up
+   (`souin@v1.7.7` `pkg/middleware/middleware.go` ~line 96). Handlers
+   whose lookup runs before the first registration completes find
+   nothing and fall back to souin's in-memory `Default` storer,
+   logging the "default storage ... development purpose" warning.
+   Observed live: 3-4 of 5 handlers on memory, nondeterministic per
+   restart. Multiple winners are also independent WRITERS on one
+   nutsdb dir (independent write offsets -> record clobbering hazard).
+3. **`nuts.Factory` drops `Path` when `Configuration` is non-nil** (see
+   the EntryIdxMode trap above) - the DB silently lands in
+   `/tmp/souin-nuts` (tmpfs in the edge container -> wiped per restart).
+
+The required per-site shape:
+
+```caddyfile
+cache {
+    ttl 24h
+    stale 72h
+    default_cache_control "public, max-age=86400, stale-if-error=259200"
+    nuts {
+        configuration {
+            Dir /data/cache/nuts/<site-name>
+            EntryIdxMode HintKeyAndRAMIdxMode
+        }
+    }
+}
+```
+
+A handler with its own provider config is self-sufficient: it registers
+and looks up its own storer synchronously inside its own `Provision`,
+so the race disappears, and unique dirs remove the multi-writer hazard.
+The harness enforces the layout (suite section 7): zero "default
+storage" warnings in caddy.log, `0.dat` present at each configured
+path, no `/tmp/souin-nuts` fallback, and post-restart persistence for
+EVERY site handler - the previous suite only tested the first handler,
+which is how the fallback shipped undetected.
+
+Diagnosis cheatsheet:
+
+- `Cache-Status: Souin; hit; ...; detail=NUTS` = disk storer serving;
+  `detail=DEFAULT` = in-memory fallback (entry gone on restart).
+- `grep -c 'default storage' <(docker logs caddy --since 5m)` on the
+  edge MUST be 0. Anything else means a handler is on memory.
+- Live ops: `scripts/cachectl.sh status|verify|probe|purge`.
+
 ## Bounded storage and eviction
 
 There is **no size-based bound on the cache anywhere in this stack**, and
@@ -491,23 +552,29 @@ Two consequences worth knowing operationally:
 
 - **RAM, not just disk, scales with stored bytes under the defaults.**
   nutsdb `DefaultOptions` sets `EntryIdxMode: HintKeyValAndRAMIdxMode` -
-  the full value index lives in RAM. If the cache grows large, switch to
-  `HintKeyAndRAMIdxMode` (keys only in RAM, values read from disk) via the
-  global block: `cache { nuts { path /data/cache/nuts; configuration {
-  EntryIdxMode HintKeyAndRAMIdxMode } } }` (directive shape verified:
-  `cache-handler@v0.16.0` `configuration.go` `case "nuts"` ~line 633,
-  option strings mapped in `storages/nuts@v0.0.19` `nuts.go`
-  `sanitizeProperties`). Other accepted nutsdb knobs there include
-  `SegmentSize` (default 256MB), `MergeInterval`, `SyncEnable`,
-  `ExpiredDeleteType` (`TimeWheel` default / `TimeHeap`).
+  the full value index lives in RAM. This stack runs
+  `HintKeyAndRAMIdxMode` (keys only in RAM, values read from disk) since
+  2026-07-31, set per site - see "Per-site storage" below for the
+  REQUIRED shape. WARNING - the obvious shape is a trap:
+  `configuration { EntryIdxMode HintKeyAndRAMIdxMode }` WITHOUT a `Dir`
+  inside the same configuration map silently relocates the DB to
+  `/tmp/souin-nuts`, because `nuts.Factory` ignores `provider.Path`
+  entirely whenever `Configuration` is non-nil (`storages/nuts@v0.0.19`
+  `nuts.go` ~line 133: the `Dir = Path` assignment is in the `else`
+  branch). In the edge container /tmp is a tmpfs, so the cache then
+  wipes on every restart - this actually happened on 2026-07-31 and the
+  harness initially PASSED anyway because /tmp persists on the dev box.
+  `Dir` must sit inside `configuration`, and the handler-side lookup key
+  is derived from `configuration.Dir` too (`cache-handler@v0.16.0`
+  `dispatch.go` ~line 86), so the two stay consistent. Other accepted
+  nutsdb knobs in `configuration` include `SegmentSize` (default 256MB),
+  `MergeInterval`, `SyncEnable`, `RWMode` (`MMap`), `ExpiredDeleteType`
+  (`TimeWheel` default / `TimeHeap`); enum/int/duration strings are
+  mapped in `storages/nuts@v0.0.19` `nuts.go` `sanitizeProperties`.
 - **There is no emergency size brake.** With the admin purge API broken
   (quirk #3) and direct PURGE gated on origin cooperation (quirk #4), the
-  only hard reclaim today is deleting `/data/cache/nuts` and restarting the
-  container. The preventive levers are: lower `stale`/`ttl` per site, and
-  `key { disable_query }` (suite section 16) to keep URL cardinality -
-  and therefore entry count - proportional to real content paths rather
-  than attacker-controlled query strings. (This was also the reason the
-  redis backend was rejected: its eviction path is SCAN-based and storms
+  only hard reclaim today is deleting the site's `/data/cache/nuts/<site>`
+  dir and restarting the container (`scripts/cachectl.sh purge <site>`).
   under load, souin#646/#671.)
 
 ## Summary: what's actually broken vs. what was just tested wrong
@@ -517,6 +584,13 @@ Two consequences worth knowing operationally:
 | 7 | Plain GET after restart is `fwd`, not `hit` | TTL had already expired from earlier tests' wall-clock time; Souin correctly revalidates a stale entry against a reachable origin unless the request sends `max-stale` (quirk #1) | Test now sends `max-stale`, proving persistence directly |
 | 8 | `GET /souin-api/souin` always `[]` | Caddy provisions the admin server before the `cache` app; `admin.go` bakes in an empty `Storers` snapshot forever (quirk #3) | Test now asserts the documented-empty behavior, plus an explicit admin-PURGE-is-a-no-op check |
 | 9 | `PURGE <url>` never evicts | Direct PURGE is a generic mutation-invalidation bypass gated on the *origin's* response to PURGE, not an admin/cache-aware operation (quirk #4); the mock origin didn't implement PURGE at all | Test now covers both a non-cooperating origin (`/static`, expect no eviction) and a cooperating one (new `/purge-ok` path, expect eviction) |
+| 10 | (2026-07-31, live) Cache empty after every container restart | Two stacked config bugs: (a) global `nuts` block -> every site handler raced to open its own nutsdb on the SAME path; registration-race losers silently fell back to in-memory (nondeterministic 3-4 of 5), and (b) `configuration { EntryIdxMode }` without `Dir` made `nuts.Factory` drop `provider.Path`, relocating the DB to the container-tmpfs `/tmp/souin-nuts` | Per-site `nuts{}` with unique `Dir` inside `configuration` (see "Per-site storage"); harness now asserts storage layout + per-handler persistence (suite 7) |
+
+The 2026-07-31 incident also proved the harness can give false confidence
+twice over: test 7 only exercised the first site handler, and the
+`/tmp/souin-nuts` relocation was invisible because /tmp persists on the
+dev box (unlike the edge container's tmpfs). Both gaps are now asserted
+against directly.
 
 No changes were made to `Caddyfile.test` or `../../deploy/edge/Caddyfile` -
 every failure traced back to either a test-timing assumption (test 7) or
