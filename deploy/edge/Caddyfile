@@ -491,6 +491,21 @@ jellyfin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
+	# Cache image endpoints only (posters/backdrops/thumbs - the hot path
+	# for remote clients). Media streams (.ts HLS segments are per-session
+	# transcode artifacts, not shareable), /socket and the API stay uncached.
+	# Query string stays in the cache key (api_key lives there -> per-client
+	# entries, no cross-user leakage).
+	@jf_images path /Items/*/Images/*
+	route @jf_images {
+		cache {
+			ttl 24h
+			stale 72h
+			# stale-if-error: keep serving posters when servarr is down
+			# (see docs.erfi.io cache block above for why it's required)
+			default_cache_control "public, max-age=86400, stale-if-error=259200"
+		}
+	}
 	reverse_proxy 10.0.71.35:8096 {
 		import proxy_headers
 		flush_interval -1
@@ -542,6 +557,18 @@ navidrome.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
+	# Cache cover art only (same model as jellyfin images): immutable
+	# content, Subsonic auth params (u/t/s) live in the query string so
+	# entries are per-client with no cross-user leakage. Media streams,
+	# /rest/* API calls and the web UI stay uncached.
+	@nf_covers path /rest/getCoverArt /rest/getCoverArt.view
+	route @nf_covers {
+		cache {
+			ttl 24h
+			stale 72h
+			default_cache_control "public, max-age=86400, stale-if-error=259200"
+		}
+	}
 	reverse_proxy 10.0.71.37:4533 {
 		import proxy_headers
 	}
@@ -702,8 +729,20 @@ erfianugrah.com {
 	# Astro hashed assets are immutable - cache for 1 year
 	@hashed path /_astro/*
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
-	# HTML pages - revalidate on every request
-	header ?Cache-Control "public, max-age=0, must-revalidate"
+	# HTML pages - revalidate on every request; stale-if-error keeps the
+	# edge serving cached HTML when the origin is down (RFC 5861 - Souin
+	# only serves stale on the error path when the response carries it,
+	# see docs.erfi.io cache block)
+	header ?Cache-Control "public, max-age=0, must-revalidate, stale-if-error=86400"
+	# Response Cache-Control (set above) governs TTL: hashed assets 1y,
+	# HTML always revalidated. disable_query: static origin with no query
+	# handling - arbitrary ?spam=N would mint unbounded entries per path
+	# (same argument as docs.erfi.io, test/cache suite section 16).
+	cache {
+		key {
+			disable_query
+		}
+	}
 	reverse_proxy 10.0.71.58:80 {
 		import proxy_headers
 	}
@@ -718,6 +757,17 @@ revista.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
+	# Same Astro backend as erfianugrah.com - same cache semantics:
+	# hashed /_astro/* immutable 1y, HTML revalidates with stale-if-error
+	# origin-down insurance (RFC 5861, see docs.erfi.io cache block).
+	@hashed path /_astro/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	header ?Cache-Control "public, max-age=0, must-revalidate, stale-if-error=86400"
+	cache {
+		key {
+			disable_query
+		}
+	}
 	reverse_proxy 10.0.71.58:80 {
 		import proxy_headers
 	}
