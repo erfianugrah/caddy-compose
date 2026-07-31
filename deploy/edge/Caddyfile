@@ -45,6 +45,16 @@
 		default_cache_control no-store
 		nuts {
 			path /data/cache/nuts
+			# Keys-only RAM index (HintKeyAndRAMIdxMode): the default
+			# HintKeyValAndRAMIdxMode keeps the full VALUE index in RAM,
+			# so container RAM scaled with cached bytes. With keys-only,
+			# values are read from disk (NVMe on the MS-01) and RAM stays
+			# flat as the cache grows. No size-based bound or LRU exists
+			# in this stack - bounds are ttl+stale and disable_query
+			# (test/cache/README.md "Bounded storage and eviction").
+			configuration {
+				EntryIdxMode HintKeyAndRAMIdxMode
+			}
 		}
 		api {
 			souin
@@ -853,11 +863,23 @@ draw.erfi.io {
 # research stack - self-hosted search + crawler + OSINT for local LLMs.
 # Dual-bound on servarr (127.0.0.1 + 10.0.71.2). WAF intentionally skipped -
 # private API surface for local LLMs; WAF would add CPU + log noise.
-# NOTE: no auth gate (the old bearer-token gate was removed 2026-08).
+#
+# (research_auth) bearer gate (re-added 2026-08-01 after a no-auth interval):
+# LAN (10/8, 192.168/16, 172.16/12) + tailnet (100.64/10) clients pass
+# unauthenticated; WAN clients need Authorization: Bearer $RESEARCH_TOKEN.
+# pi extensions + the opencode MCP attach it when RESEARCH_TOKEN is set.
+(research_auth) {
+	@denied {
+		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+		not header Authorization "Bearer {$RESEARCH_TOKEN}"
+	}
+	respond @denied 401
+}
 
 searxng.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 10.0.71.2:8888 {
 		import proxy_headers
@@ -869,6 +891,7 @@ searxng.erfi.io {
 crawler.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 10.0.71.2:8889 {
 		import proxy_headers
@@ -880,6 +903,7 @@ crawler.erfi.io {
 osint.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 10.0.71.2:8890 {
 		import proxy_headers
@@ -889,10 +913,11 @@ osint.erfi.io {
 }
 
 # Local LLM endpoint (servarr GTX 1070) for research.deep_research. Same
-# no-auth posture as the rest. Dual-bound on servarr.
+# bearer gate as the rest of the research surface. Dual-bound on servarr.
 llama.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
+	import research_auth
 	encode zstd gzip
 	reverse_proxy 10.0.71.2:18080 {
 		import proxy_headers
@@ -902,13 +927,17 @@ llama.erfi.io {
 }
 
 # Open WebUI chat front-end. Manages its own auth (Authelia SSO gate removed
-# 2026-07-23). Dual-bound on servarr.
+# 2026-07-23). Dual-bound on servarr. The Remote-Email/Remote-Name strip is
+# load-bearing: OWUI has WEBUI_AUTH_TRUSTED_*_HEADER set, so a client-supplied
+# header would be trusted SSO - never let them through from outside.
 chat.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 10.0.71.2:18081 {
 		import proxy_headers
+		header_up -Remote-Email
+		header_up -Remote-Name
 	}
 	import error_pages
 	import site_log chat

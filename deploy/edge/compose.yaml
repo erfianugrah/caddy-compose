@@ -10,8 +10,8 @@
 #   - bridge subnets 172.31.98/99.x with STABLE bridge interface names
 #     (edgeauth0/edgewaf0) so the router's nftables can reference them:
 #     forward chain allows bridges -> WAN, input allows edgewaf0 -> :2020
-#   - no CF_API_TOKEN / RESEARCH_TOKEN / TSIG_CADDY_DDNS (edge Caddyfile
-#     has no Cloudflare, no research stack, no dynamic_dns)
+#   - no TSIG_CADDY_DDNS usage (dynamic_dns block is commented out in the
+#     edge Caddyfile); CF_API_TOKEN + RESEARCH_TOKEN + TSIG_CADDY_ACME are used
 #
 # Explicit project name REQUIRED: this file and knotea's deploy/edge/ both
 # default to project "edge" (parent dir name) - one stack's
@@ -54,6 +54,7 @@ services:
       - EMAIL=${EMAIL}
       - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
       - CF_API_TOKEN=${CF_API_TOKEN}
+      - RESEARCH_TOKEN=${RESEARCH_TOKEN}
 
   wafctl:
     image: erfianugrah/wafctl:2.101.3
