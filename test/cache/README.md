@@ -515,7 +515,7 @@ Diagnosis cheatsheet:
   `detail=DEFAULT` = in-memory fallback (entry gone on restart).
 - `grep -c 'default storage' <(docker logs caddy --since 5m)` on the
   edge MUST be 0. Anything else means a handler is on memory.
-- Live ops: `scripts/cachectl.sh status|verify|probe|purge`.
+- Live ops: `tools/cachectl` (Go CLI, `cd tools/cachectl && go run . status|verify|probe|purge`).
 
 ## Bounded storage and eviction
 
@@ -574,7 +574,7 @@ Two consequences worth knowing operationally:
 - **There is no emergency size brake.** With the admin purge API broken
   (quirk #3) and direct PURGE gated on origin cooperation (quirk #4), the
   only hard reclaim today is deleting the site's `/data/cache/nuts/<site>`
-  dir and restarting the container (`scripts/cachectl.sh purge <site>`).
+  dir and restarting the container (`cd tools/cachectl && go run . purge <site>`).
   under load, souin#646/#671.)
 
 ## Summary: what's actually broken vs. what was just tested wrong

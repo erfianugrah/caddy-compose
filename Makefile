@@ -107,13 +107,19 @@ push-wafctl: ## Push wafctl image
 
 # ── Test ────────────────────────────────────────────────────────────
 test: ## Run all tests in parallel
-	$(MAKE) -j3 test-go test-crs-converter test-frontend
+	$(MAKE) -j4 test-go test-crs-converter test-cachectl test-frontend
 
 test-go: ## Run wafctl Go tests
 	cd wafctl && go test -count=1 -timeout 60s ./...
 
 test-crs-converter: ## Run CRS converter tests
 	cd tools/crs-converter && go test -count=1 -timeout 60s ./...
+
+test-cachectl: ## Run cachectl Go tests
+	cd tools/cachectl && go test -race -count=1 -timeout 60s ./...
+
+build-cachectl: ## Build the cachectl edge-cache ops binary
+	cd tools/cachectl && go build -o cachectl .
 
 test-frontend: ## Run frontend tests
 	cd waf-dashboard && npx vitest run
@@ -137,7 +143,7 @@ edge-restart: edge-sync ## Restart edge caddy + verify cache storage layout
 	$(MAKE) --no-print-directory edge-verify
 
 edge-verify: ## Post-deploy gate: cache storage layout asserts on the live edge
-	./scripts/cachectl.sh verify
+	cd tools/cachectl && go run . verify
 
 test-e2e: ## Run e2e smoke tests (requires Docker)
 	docker build -t caddy-e2e:local .

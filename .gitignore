@@ -51,6 +51,7 @@ test/playwright/playwright-report/
 # OS
 .DS_Store
 tools/crs-converter/crs-converter
+tools/cachectl/cachectl
 caddy-policy-engine/
 
 # Local backups - may contain live secrets (challenge HMAC key etc.);

@@ -1,10 +1,9 @@
 {
-  "task": "Wire the souin fork (~/ergo/souin) into the Caddy build and document the two patched upstream bugs. State: the fork is cloned at ~/ergo/souin @v1.7.7 with TWO UNCOMMITTED patches in pkg/middleware/middleware.go (marked with '// erfi.io patch:' comments): (A) born-stale fix - Store() no longer subtracts full upstream latency from fresh TTL, it now subtracts only the response's apparent age from its Date header (upstream line ~314 did `ma = ma - time.Since(context.Now)`); (B) revalidation-doubling fix - added the missing `_, _ = customWriter.Send(); return err` after a successful Revalidate in the stale-if-error block (~line 937), which previously FELL THROUGH to the bottom Upstream() call, causing a second origin fetch and a doubled-body store that corrupted entries (verified: hits served 'static-body-v1static-body-v1', Content-Length 28). The local cache suite (test/cache, `make test-cache`) is 65/65 green on the UNPATCHED image; test 17 is dual-mode: it passes with 'KNOWN BUG reproduced' on upstream souin and with 'souin fork patch active' once the patched binary is in the image.\n\nDo, in order:\n1. Commit the patch in ~/ergo/souin: plain git commit (no author overrides, NO AI attribution/trailers), conventional-commit message like `fix(middleware): stop born-stale stores and revalidation double-store`.\n2. Publish the fork: `cd ~/ergo/souin && gh repo fork --remote=false` or `gh repo create erfianugrah/souin --public --source . --push` (fork of a public repo is fine to be public). Push the commit.\n3. Dockerfile (~/ergo/caddy-compose/Dockerfile): add to the xcaddy manifest `--with github.com/darkweak/souin=github.com/erfianugrah/souin@<commit-sha>` (xcaddy replace syntax) with a comment in the house style (see the pinning-discipline comment block above the RUN) explaining the fork carries the two erfi.io patches. Follow AGENTS.md Caddy-module pin discipline.\n4. Rebuild: `make build-caddy`, then `rm -f test/cache/.work/caddy` so the suite re-extracts the binary from the fresh image.\n5. Verify `make test-cache` is green AND its output contains 'souin fork patch active' (test 17's fixed branch). Also expect: test 14 /slow post-warm-up hit still passes (bug A fix), no doubled bodies (bug B fix).\n6. Docs: add two quirks to test/cache/README.md in the exact style of the existing numbered quirks ('### 6. Slow origins are born stale (fixed in the erfi.io souin fork)' and '### 7. Revalidation doubles the stored body (fixed in the erfi.io souin fork)') with the source citations already present in run-tests.sh test 14/17 comments, and the empirical evidence (nuts dump: doubled Date/Via, 28-byte body; debug log: 'Store the response ... with duration -669.340244ms'). Add a one-line bullet each to the AGENTS.md 'Edge HTTP cache' behavioral-quirks list. Fix the test 17 comment to say the fix is LANDED (keep the dual-mode assertion as the regression gate).\n7. Do NOT touch version tags, compose files, or deploy. Do NOT commit in caddy-compose - leave the working tree dirty.\n\nSensors must all pass; the cache-suite sensor runs the full suite so keep it green throughout.",
-  "maxIterations": 12,
+  "task": "Finish the cachectl Go CLI in tools/cachectl/ (module github.com/erfianugrah/cachectl, stdlib ONLY, zero external deps). It replaces scripts/cachectl.sh - READ THAT SCRIPT FIRST, it is the exact semantic spec for the four subcommands (status/verify/probe/purge). Also read runner.go: the Runner interface is the test seam, all remote ops flow through it.\n\nCurrent state: go.mod, main.go, runner.go, status.go, verify.go, probe.go are written. The build FAILS because main.go calls cmdPurge which does not exist yet, and there are no tests.\n\nDo, in order:\n1. Write tools/cachectl/purge.go implementing cmdPurge with the exact semantics of cmd_purge in scripts/cachectl.sh: validate the site arg ('all' or ^[a-z0-9-]+$, reject anything else with exit-2-style usage error), interactive y/N confirmation unless -y (read from stdin), 'all' = rm -rf <ctrRoot> + mkdir -p <ctrRoot> inside the container via edge.dockerExec, a named site = rm -rf <ctrRoot>/<site>, then restart the container via edge.ssh(\"docker restart <container>\"), then print 'purged <target> + restarted <container> (nuts re-creates dirs at open)'. Use fmt.Errorf with %w for wrapped errors, repo Go style (section headers, camelCase).\n2. verify.go contains a dead helper tmpfsTrapPresent that nothing calls - remove it (and any import left unused).\n3. Write the test suite (one or more *_test.go files, white-box package main, stdlib testing only, table-driven with t.Run subtests). Cover: parseConfiguredDirs (tab-indented Caddyfile fixture, duplicates deduped, sorted, Dir outside ctrRoot ignored), parseCacheStatus (fwd=uri-miss;stored, hit;detail=NUTS, missing fields), shellQuote (embedded single quotes), parsePurgeArgs + the site-name validator, cmdVerify against a scripted fake Runner (all-PASS path returns 0, injected failure returns 1), cmdPurge against a scripted fake Runner (invalid site rejected; -y issues rm -rf + docker restart in the right order; 'all' issues rm -rf + mkdir). Capture command output via the edge.out io.Writer field.\n4. Tests must be HERMETIC: no network, no ssh, no docker, no filesystem writes outside t.TempDir(). The loop sandbox masks ~/.ssh, so any test that really shells out to ssh will fail.\n5. Make all sensors green: gofmt clean, go build, go vet, go test -race -count=1.\n\nConstraints: stdlib only (go.mod must gain NO require lines). Do NOT modify scripts/cachectl.sh (it is the reference). Do NOT run the tool against the live edge (no ssh to nixos, ssh is masked in the sandbox). Do NOT weaken or delete sensor-facing behavior to force green. Do NOT git commit, git reset, or git checkout - leave the working tree dirty. Match the existing file style: package main, '// ─── Section ───' headers, fmt.Errorf(\"context: %w\", err), early returns.",
+  "maxIterations": 8,
   "models": [
-    "anthropic/claude-sonnet-5",
-    "opencode/glm-5.2",
-    "opencode/deepseek-v4-pro"
+    "openrouter/deepseek/deepseek-v4-pro",
+    "openrouter/moonshotai/kimi-k3"
   ],
   "stallPatience": 3,
   "tools": [
@@ -14,46 +13,44 @@
     "bash"
   ],
   "writeScope": [
-    "test/cache/**",
-    "deploy/edge/Caddyfile",
-    "Dockerfile",
+    "tools/cachectl/**",
     ".pi/**"
   ],
   "sensors": [
     {
-      "name": "adapt-edge",
-      "cmd": "./test/cache/adapt-edge.sh",
-      "hint": "The prod edge Caddyfile must parse+provision inside the built image. If you added cache_keys or other directives to deploy/edge/Caddyfile, verify syntax against the cache-handler Caddyfile docs/source first."
+      "name": "purge-exists",
+      "cmd": "test -f tools/cachectl/purge.go && rg -q 'func cmdPurge' tools/cachectl/purge.go",
+      "hint": "purge.go must exist and define cmdPurge. Mirror cmd_purge in scripts/cachectl.sh exactly: validate site, confirm unless -y, rm -rf in container, docker restart, print confirmation."
     },
     {
-      "name": "cache-suite",
-      "cmd": "./test/cache/run-tests.sh loop",
-      "hint": "Round 2 adds: Vary/encoding, Authorization isolation, HEAD, If-None-Match, singleflight coalescing, 404 policy, query keying + disable_query mitigation on docs. New tests must PASS; existing 31 assertions must keep passing. Do not weaken assertions - evidence-based expectation changes only, documented in test/cache/README.md."
+      "name": "gofmt",
+      "cmd": "cd tools/cachectl && test -z \"$(gofmt -l .)\"",
+      "hint": "Run gofmt -w . inside tools/cachectl."
     },
     {
-      "name": "disable-query-docs",
-      "cmd": "rg -q 'disable_query' deploy/edge/Caddyfile && rg -q 'disable_query' test/cache/Caddyfile.test",
-      "hint": "Verified directive (configuration.go v0.16.0): a flat `key { disable_query }` block inside the site-level `cache {}` block. Apply to the docs.erfi.io cache block in deploy/edge/Caddyfile AND the :8091 block in test/cache/Caddyfile.test, plus a suite assertion that ?spam=N variants HIT the same entry."
+      "name": "build",
+      "cmd": "cd tools/cachectl && go build ./...",
+      "hint": "Fix compile errors. cmdPurge is referenced from main.go; verify.go has a dead tmpfsTrapPresent helper to remove. Stdlib only - no go get."
     },
     {
-      "name": "round2-deliverables",
-      "cmd": "rg -q 'If-None-Match' test/cache/run-tests.sh && rg -q 'Authorization' test/cache/run-tests.sh && rg -qi 'singleflight|coalesc' test/cache/run-tests.sh && rg -qi 'bounded storage' test/cache/README.md",
-      "hint": "Feature-present gates for the round-2 work items: If-None-Match conditional test, Authorization isolation test, singleflight/coalescing test, and the 'Bounded storage / eviction' README section."
+      "name": "vet",
+      "cmd": "cd tools/cachectl && go vet ./...",
+      "hint": "Fix what go vet reports (printf mismatches, unreachable code, etc)."
     },
     {
-      "name": "fork-replace-wired",
-      "cmd": "rg -q 'darkweak/souin=github.com/erfianugrah/souin' Dockerfile && git -C ~/ergo/souin log --oneline -3 | rg -qi 'born-stale|revalid|middleware'",
-      "hint": "Dockerfile xcaddy manifest must carry the replace `--with github.com/darkweak/souin=github.com/erfianugrah/souin@<sha>` and the fork must have the patch committed."
+      "name": "stdlib-only",
+      "cmd": "cd tools/cachectl && ! go list -deps . | grep -E '^[a-z0-9-]+\\.[a-z]+/' | grep -v '^github.com/erfianugrah/cachectl' | grep -q .",
+      "hint": "An external (non-stdlib) dependency crept in. Remove the import and implement with the stdlib; go.mod must have no require block."
     },
     {
-      "name": "fork-fix-verified",
-      "cmd": "cd ~/ergo/caddy-compose && make test-cache 2>&1 | rg 'souin fork patch active'",
-      "hint": "Rebuild the image with the fork (make build-caddy), rm test/cache/.work/caddy so the suite re-extracts the patched binary, then the suite must be green with test 17 printing 'souin fork patch active' (single body, no doubling)."
+      "name": "tests-exist",
+      "cmd": "cd tools/cachectl && go test -v -count=1 ./... 2>&1 | grep -q '^=== RUN'",
+      "hint": "No tests actually ran. Write *_test.go files with real TestXxx functions (table-driven, t.Run subtests) - the suite must exercise parseConfiguredDirs, parseCacheStatus, shellQuote, purge arg/site validation, cmdVerify and cmdPurge via a scripted fake Runner."
     },
     {
-      "name": "readme-quirks",
-      "cmd": "cd ~/ergo/caddy-compose && rg -qi 'born stale' test/cache/README.md && rg -qi 'doubles the stored body' test/cache/README.md",
-      "hint": "README quirks #6 (slow origins born stale) and #7 (revalidation doubles the stored body), same citation-heavy style as quirks 1-5."
+      "name": "test",
+      "cmd": "cd tools/cachectl && go test -race -count=1 -timeout 60s ./...",
+      "hint": "Fix failing tests. Tests must be hermetic (fake Runner, bytes.Buffer for edge.out) - no real ssh/docker/network; the sandbox masks ~/.ssh."
     }
   ]
 }
