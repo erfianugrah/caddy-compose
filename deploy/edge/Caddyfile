@@ -900,6 +900,14 @@ draw.erfi.io {
 # LAN (10/8, 192.168/16, 172.16/12) + tailnet (100.64/10) clients pass
 # unauthenticated; WAN clients need Authorization: Bearer $RESEARCH_TOKEN.
 # pi extensions + the opencode MCP attach it when RESEARCH_TOKEN is set.
+# Private-ranges-only gate, for a service with no auth of its own: LAN, tailnet
+# and docker space in, everything else 401. Same shape as research_auth without
+# the bearer escape hatch - no token is provisioned for the lab endpoints.
+(lan_only) {
+	@denied not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+	respond @denied 401
+}
+
 (research_auth) {
 	@denied {
 		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
@@ -973,6 +981,37 @@ chat.erfi.io {
 	}
 	import error_pages
 	import site_log chat
+}
+
+# sbperf lab: Prometheus scraping a Supabase project's privileged metrics
+# endpoint (30d retention). It has no auth of its own, so it is private-ranges
+# only. Proxies a LAN IP, not a bridge IP: the container sits on the servarr_lan
+# macvlan (10.0.71.59) like every other externally-proxied servarr service, and
+# this Caddy has no route into servarr's docker bridges.
+prometheus-sb.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	import lan_only
+	encode zstd gzip
+	reverse_proxy 10.0.71.59:9090 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log prometheus-sb
+}
+
+# sbperf lab: Grafana over that Prometheus. Manages its own auth (admin login,
+# password in the sbperf-monitoring composer stack env), so no edge gate - same
+# treatment as chat.erfi.io.
+grafana-sb.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 10.0.71.60:3000 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log grafana-sb
 }
 
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
