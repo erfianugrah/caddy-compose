@@ -27,7 +27,6 @@
 	order log_append first
 	order ddos_mitigator after log_append
 	order policy_engine after ddos_mitigator
-	order cache after policy_engine
 
 	# HTTP cache (caddyserver/cache-handler, Souin core). Global defaults
 	# only - caching activates per-site where the `cache` handler directive
@@ -53,16 +52,6 @@
 	# entirely when Configuration is non-nil and silently falls back to
 	# /tmp/souin-nuts (storages/nuts@v0.0.19 nuts.go ~line 133) - which is a
 	# tmpfs in this container, wiping the cache on every restart.
-	cache {
-		ttl 60s
-		stale 1h
-		default_cache_control no-store
-		api {
-			souin
-			prometheus
-		}
-		log_level warn
-	}
 
 	servers {
 		strict_sni_host on
@@ -354,29 +343,6 @@ docs.erfi.io {
 	# Souin only serves stale on the error path when the cached response
 	# carries stale-if-error (or the request sends max-stale, which browsers
 	# never do). Verified in test/cache (suite test 6).
-	cache {
-		ttl 5m
-		stale 24h
-		default_cache_control "public, max-age=300, stale-if-error=86400"
-		# Flat `key { disable_query }` (cache-handler v0.16.0 configuration.go
-		# case "key", sibling to ttl/stale inside the site-level cache{} block -
-		# NOT the pattern-based `cache_keys{}` mechanism, which is a different
-		# mechanism keyed by regex). Whole-site + fully public + no query
-		# validation upstream means arbitrary ?spam=N query strings would
-		# otherwise mint an unbounded number of distinct cache entries per
-		# path - a cache-blowing/amplification vector with no auth gate.
-		# Verified empirically in test/cache (suite section 16).
-		key {
-			disable_query
-		}
-		# Own storage, unique path (see the global block comment).
-		nuts {
-			configuration {
-				Dir /data/cache/nuts/docs
-				EntryIdxMode HintKeyAndRAMIdxMode
-			}
-		}
-	}
 	reverse_proxy 172.31.7.2:8080 {
 		import proxy_headers
 	}
@@ -514,22 +480,6 @@ jellyfin.erfi.io {
 	# transcode artifacts, not shareable), /socket and the API stay uncached.
 	# Query string stays in the cache key (api_key lives there -> per-client
 	# entries, no cross-user leakage).
-	@jf_images path /Items/*/Images/*
-	route @jf_images {
-		cache {
-			ttl 24h
-			stale 72h
-			# stale-if-error: keep serving posters when servarr is down
-			# (see docs.erfi.io cache block above for why it's required)
-			default_cache_control "public, max-age=86400, stale-if-error=259200"
-			nuts {
-				configuration {
-					Dir /data/cache/nuts/jellyfin
-					EntryIdxMode HintKeyAndRAMIdxMode
-				}
-			}
-		}
-	}
 	reverse_proxy 10.0.71.35:8096 {
 		import proxy_headers
 		flush_interval -1
@@ -585,20 +535,6 @@ navidrome.erfi.io {
 	# content, Subsonic auth params (u/t/s) live in the query string so
 	# entries are per-client with no cross-user leakage. Media streams,
 	# /rest/* API calls and the web UI stay uncached.
-	@nf_covers path /rest/getCoverArt /rest/getCoverArt.view
-	route @nf_covers {
-		cache {
-			ttl 24h
-			stale 72h
-			default_cache_control "public, max-age=86400, stale-if-error=259200"
-			nuts {
-				configuration {
-					Dir /data/cache/nuts/navidrome
-					EntryIdxMode HintKeyAndRAMIdxMode
-				}
-			}
-		}
-	}
 	reverse_proxy 10.0.71.37:4533 {
 		import proxy_headers
 	}
@@ -768,17 +704,6 @@ erfianugrah.com {
 	# HTML always revalidated. disable_query: static origin with no query
 	# handling - arbitrary ?spam=N would mint unbounded entries per path
 	# (same argument as docs.erfi.io, test/cache suite section 16).
-	cache {
-		key {
-			disable_query
-		}
-		nuts {
-			configuration {
-				Dir /data/cache/nuts/erfianugrah
-				EntryIdxMode HintKeyAndRAMIdxMode
-			}
-		}
-	}
 	reverse_proxy 10.0.71.58:80 {
 		import proxy_headers
 	}
@@ -799,17 +724,6 @@ revista.erfi.io {
 	@hashed path /_astro/*
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 	header ?Cache-Control "public, max-age=0, must-revalidate, stale-if-error=86400"
-	cache {
-		key {
-			disable_query
-		}
-		nuts {
-			configuration {
-				Dir /data/cache/nuts/revista
-				EntryIdxMode HintKeyAndRAMIdxMode
-			}
-		}
-	}
 	reverse_proxy 10.0.71.58:80 {
 		import proxy_headers
 	}

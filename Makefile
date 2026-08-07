@@ -137,12 +137,13 @@ EDGE_STACK  ?= edge-services
 edge-sync: ## Git-sync the edge-services stack on the edge composer
 	ssh $(EDGE_REMOTE) "curl -sf -X POST -H \"X-API-Key: $$COMPOSER_API_KEY\" localhost:8080/api/v1/stacks/$(EDGE_STACK)/sync"
 
-edge-restart: edge-sync ## Restart edge caddy + verify cache storage layout
+edge-restart: edge-sync ## Sync + restart edge caddy
 	ssh $(EDGE_REMOTE) 'docker restart caddy'
 	@sleep 8
-	$(MAKE) --no-print-directory edge-verify
+	ssh $(EDGE_REMOTE) 'docker exec caddy caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/dev/null 2>&1 && echo "PASS  live Caddyfile validates" || echo "FAIL  live Caddyfile invalid"'
+	@echo "note: edge-verify is NOT run - the edge cache is removed (docs/edge-cache-removal.md)"
 
-edge-verify: ## Post-deploy gate: cache storage layout asserts on the live edge
+edge-verify-cache: ## Souin storage asserts. Only meaningful while the cache is enabled.
 	cd tools/cachectl && go run . verify
 
 test-e2e: ## Run e2e smoke tests (requires Docker)
