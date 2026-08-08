@@ -16,23 +16,22 @@ WAFCTL_IMAGE ?= erfianugrah/wafctl:2.101.3
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
-REMOTE ?= servarr
+# The stack lives only on the MS-01 router (nixos).
+REMOTE ?= nixos
 
 # ── Composer settings ───────────────────────────────────────────────
 # Container name running Composer on the remote host.
-# All compose commands go through Composer's bundled binary (Unraid has
-# no docker compose plugin). Lifecycle ops (up/restart) use Composer's
-# API which handles SOPS .env decryption automatically.
+# Lifecycle ops (up/restart) go through Composer's API, which handles
+# SOPS .env decryption automatically. Read-only compose ops (ps, logs)
+# use Composer's bundled binary via docker exec.
 COMPOSER_CONTAINER ?= composer
-COMPOSER_STACK     ?= caddy
+COMPOSER_STACK     ?= edge-services
 
 # ── Remote paths ────────────────────────────────────────────────────
 STACK_PATH    ?= /opt/stacks/$(COMPOSER_STACK)/compose.yaml
-AUTHELIA_DEST ?= /mnt/user/data/authelia/config
 
 # ── WAF data paths (on remote host) ────────────────────────────────
-WAF_CONFIG_PATH    ?= /mnt/user/data/wafctl/waf-config.json
-WAF_SETTINGS_PATH  ?= /mnt/user/data/caddy/waf/custom-waf-settings.conf
+WAF_CONFIG_PATH    ?= /var/lib/wafctl/config/waf-config.json
 
 # ── Computed helpers ────────────────────────────────────────────────
 # Compose commands via Composer's bundled binary (read-only ops: ps, logs, exec)
@@ -54,8 +53,8 @@ ssh $(REMOTE) "docker exec $(COMPOSER_CONTAINER) wget -qO- -T 120 \
 endef
 
 .PHONY: help build build-caddy build-wafctl push push-caddy push-wafctl \
-        deploy deploy-caddy deploy-wafctl deploy-all scp-authelia authelia-notification \
-        sync pull restart restart-force restart-caddy restart-wafctl restart-authelia \
+        deploy deploy-caddy deploy-wafctl deploy-all \
+        sync pull restart restart-force restart-caddy restart-wafctl \
         test test-go test-frontend test-e2e check status logs logs-caddy logs-wafctl \
         health version caddy-reload caddy-quick-reload waf-deploy waf-config waf-events \
         config clean scan scan-caddy scan-wafctl sign sign-caddy sign-wafctl \
@@ -131,16 +130,14 @@ test-cache: ## Run edge HTTP cache loop tests (extracts binary from CADDY_IMAGE)
 # Deploy loop: git push -> composer syncs (webhook) -> edge-restart.
 # verify is the post-deploy gate: it fails if any cache handler fell
 # back to in-memory storage or a nuts DB landed on the tmpfs default.
-EDGE_REMOTE ?= nixos
-EDGE_STACK  ?= edge-services
 
 edge-sync: ## Git-sync the edge-services stack on the edge composer
-	ssh $(EDGE_REMOTE) "curl -sf -X POST -H \"X-API-Key: $$COMPOSER_API_KEY\" localhost:8080/api/v1/stacks/$(EDGE_STACK)/sync"
+	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
 
 edge-restart: edge-sync ## Sync + restart edge caddy
-	ssh $(EDGE_REMOTE) 'docker restart caddy'
+	ssh $(REMOTE) 'docker restart caddy'
 	@sleep 8
-	ssh $(EDGE_REMOTE) 'docker exec caddy caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/dev/null 2>&1 && echo "PASS  live Caddyfile validates" || echo "FAIL  live Caddyfile invalid"'
+	ssh $(REMOTE) 'docker exec caddy caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/dev/null 2>&1 && echo "PASS  live Caddyfile validates" || echo "FAIL  live Caddyfile invalid"'
 	@echo "note: edge-verify is NOT run - the edge cache is removed (docs/edge-cache-removal.md)"
 
 edge-verify-cache: ## Souin storage asserts. Only meaningful while the cache is enabled.
@@ -271,14 +268,11 @@ restart: prep-composer-tree ## Redeploy stack via Composer (handles SOPS, force-
 	@$(call composer-api,stacks/$(COMPOSER_STACK)/sync)
 	@$(call composer-api,stacks/$(COMPOSER_STACK)/up)
 
-restart-caddy: ## Recreate only Caddy (preserves Authelia sessions)
+restart-caddy: ## Recreate only Caddy
 	$(COMPOSE_CMD) up -d --force-recreate caddy
 
-restart-wafctl: ## Recreate only wafctl (preserves Authelia sessions)
+restart-wafctl: ## Recreate only wafctl
 	$(COMPOSE_CMD) up -d --force-recreate wafctl
-
-restart-authelia: ## Recreate only Authelia (will invalidate sessions)
-	$(COMPOSE_CMD) up -d --force-recreate authelia
 
 restart-force: ## Force restart all containers (re-reads bind-mounted configs)
 	$(COMPOSE_CMD) restart
@@ -300,14 +294,6 @@ logs-wafctl: ## Tail wafctl logs
 
 health: ## Check wafctl API health on remote
 	@$(EXEC_CMD) wafctl wget -qO- http://localhost:8080/api/health 2>/dev/null || echo "Health check failed"
-
-# ── SCP (non-git-managed configs) ──────────────────────────────────
-scp-authelia: ## SCP Authelia config + users database to remote
-	scp authelia/configuration.yml $(REMOTE):$(AUTHELIA_DEST)/configuration.yml
-	scp authelia/users_database.yml $(REMOTE):$(AUTHELIA_DEST)/users_database.yml
-
-authelia-notification: ## Fetch and display Authelia 2FA notification.txt from remote
-	@ssh $(REMOTE) "cat $(AUTHELIA_DEST)/notification.txt"
 
 # ── Composite deploy targets ────────────────────────────────────────
 # Caddyfile is now git-managed — Composer sync updates it automatically.
@@ -355,8 +341,6 @@ waf-deploy: ## Trigger WAF config deploy (generate + reload Caddy)
 waf-config: ## Show current WAF config from remote
 	@echo "=== waf-config.json ==="
 	@ssh $(REMOTE) "cat $(WAF_CONFIG_PATH)"
-	@echo "\n=== custom-waf-settings.conf ==="
-	@ssh $(REMOTE) "cat $(WAF_SETTINGS_PATH)"
 
 waf-events: ## Show recent WAF events from remote (last 1h, limit 20)
 	@$(EXEC_CMD) wafctl wget -qO- "http://localhost:8080/api/events?hours=1&limit=20" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
