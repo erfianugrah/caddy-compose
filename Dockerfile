@@ -48,7 +48,7 @@ RUN xcaddy build \
 	--with github.com/mholt/caddy-dynamicdns@a5890c9 \
 	--with github.com/mholt/caddy-l4@v0.1.2 \
 	--with github.com/erfianugrah/caddy-body-matcher@v0.2.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.42.1 \
+	--with github.com/erfianugrah/caddy-policy-engine@v0.42.2 \
 	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.3 \
 	--with github.com/caddyserver/cache-handler@v0.16.0 \
 	--with github.com/darkweak/storages/nuts/caddy@v0.0.19 \
