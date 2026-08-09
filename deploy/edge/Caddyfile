@@ -859,7 +859,7 @@ memledger.erfi.io {
 
 	# MCP endpoint (read-only tools) - bearer required from EVERY network:
 	# MCP clients send Authorization; nothing else should reach this surface
-	handle_path /mcp* {
+	handle /mcp* {
 		@mcp_noauth not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
 		respond @mcp_noauth 401
 		reverse_proxy 172.20.2.40:8000 {
