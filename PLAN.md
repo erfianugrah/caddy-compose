@@ -1,6 +1,8 @@
-# PLAN.md — WAF Platform Roadmap
+# PLAN.md - WAF Platform Roadmap
 
 ## Table of Contents
+
+- [Direction Change (2026-08-09)](#direction-change-2026-08-09) - READ THIS FIRST
 
 1. [Current State](#current-state)
 2. [Near-Term](#near-term)
@@ -35,9 +37,92 @@
 
 ---
 
+## Direction Change (2026-08-09)
+
+Decisions taken after a full review of the stack (repo state, session history,
+and an ecosystem comparison against Traefik / HAProxy / Envoy / nginx):
+
+1. **Nuke the CRS/WAF side.** The policy-engine WAF pipeline (CRS converter,
+   342-rule CRS surface, 7-pass evaluation, PoW challenge, session tracking,
+   bot scoring, JA4) is slated for removal. Rationale: it has become a
+   maintenance sink (93 standing CRS regressions, doc drift, most production
+   sites run `waf_off`, the cache interplay already cost one incident) and the
+   protection value at this traffic level does not justify the upkeep. What
+   survives:
+   - `caddy-ddos-mitigator` (L3/L4/L7/XDP enforcement, IP jail) - stays.
+   - `caddy-l4` (SSH/VPN passthrough, listener wrappers) - stays.
+   - `caddy-body-matcher` - keep for now; re-evaluate during the nuke (its
+     main consumer is the policy engine).
+   - wafctl's events/logs/jail/ddos surface - stays.
+   Removal scope and sequencing is a separate working session; nothing in this
+   section has been executed yet. Sections 4 (WS/SSE inspection) and 6 (PoW
+   challenge) below are dead - retained as design records.
+
+2. **wafctl will be renamed edgectl.** Its future role is the edge control
+   plane, not a WAF manager: ddos/jail/events today, host lifecycle next. The
+   dashboard follows (waf.erfi.io -> edge.erfi.io). The rename touches image
+   names, compose files, the Makefile, DNS, and the pi skills - do it in the
+   same session as the WAF nuke.
+
+3. **The real gap is host config management, and Caddy already solves it.**
+   Adding a host currently means editing a git-managed Caddyfile +
+   `make caddy-reload` + a knotctl DNS record. The Caddy admin API exposes
+   incremental config mutation (`POST/PUT/PATCH/DELETE /config/[path]`, with
+   ETag/If-Match for safe concurrent writes) - every change is a graceful,
+   zero-downtime swap. edgectl should own host lifecycle: add/remove site ->
+   push a JSON fragment; the dashboard reads `GET /config/` as the source of
+   truth instead of parsing the Caddyfile. Ownership rule: `/load` wipes
+   API-pushed state, so partition config ownership first (Caddyfile = static
+   skeleton, edgectl = dynamic sites).
+   The alternative-proxy evaluation was done and all four were rejected at
+   this scale: Traefik's L4 matchers and Yaegi-only plugin model can't host
+   ddos-mitigator/JA4-style hooks and its distributed ACME is Hub-gated;
+   Envoy demands an xDS control plane and has no built-in ACME; nginx OSS has
+   no runtime API at all. HAProxy (Runtime API + Data Plane API + coraza-spoa)
+   is the strongest alternative and stays bookmarked in case a WAF is ever
+   rebuilt as an external engine.
+
+4. **Multi-node prerequisites (do when a second node exists, not before):**
+   - Storage migration Phase 0 (interface extraction) + Phase 1 (config
+     stores to Postgres) below become the prerequisite for a clustered
+     edgectl. The event-store phases (2/4) can be descoped with the WAF nuke;
+     Phase 3 (IP jail to Valkey) stays - jail.json flock sync is the current
+     multi-writer hazard.
+   - Cert sharing across nodes: CertMagic is fleet-native ("any instances
+     that use the same storage are part of the cluster"). Adopt
+     `github.com/pberkel/caddy-storage-redis` (active as of 2026-07) against
+     Valkey when a second edge appears; until then per-node rfc2136 DNS-01 is
+     correct.
+   - Config fan-out: Caddy has no cross-instance transaction (caddy#5954);
+     edgectl pushes to each node's admin API with per-node health checks and
+     rollback.
+   - Single-edge SPOF: keepalived/VRRP is the homelab-standard fix, or
+     explicitly accept it. Undecided is the only bad state.
+
+5. **Housekeeping debt to clear in the nuke session:**
+   - Makefile pins caddy `3.97.1-2.11.4` (ja4 accept-loop wedge fix); both
+     compose files still deploy `3.97.0-2.11.4`. Deploy or revert the pin.
+     (Moot if the WAF nuke removes the ja4 listener wrapper entirely.)
+   - `caddy-ddos-mitigator` main carries the threshold-dampening fix but is
+     untagged; the Dockerfile pins v0.17.3. Tag + bump.
+   - `caddy-body-matcher` v0.2.2 is tagged locally but unpushed; the
+     Dockerfile pins v0.2.1. Push the tag + bump, or drop the module.
+   - `tools/cachectl` `verify` asserts a global cache block that no longer
+     exists (cache removed 2026-08-07). Fix or retire cachectl.
+   - The four sibling plugin repos have no CI; only caddy-compose does.
+   - `L4_INTEGRATION_PLAN.md` was written against the retired servarr
+     topology (its Caddyfile line references and `:2020` admin proxy are
+     gone). Rewrite against the edge topology or retire it.
+
+---
+
 ## Current State
 
-**v2.95.0 / caddy 3.91.0-2.11.2 / body-matcher v0.2.1 / policy-engine v0.42.1 / ddos-mitigator v0.16.0**
+**wafctl 2.101.3 / caddy 3.97.1-2.11.4 (Makefile; deployed compose pins 3.97.0) / body-matcher v0.2.1 (v0.2.2 tagged locally, unpushed) / policy-engine v0.42.2 / ddos-mitigator v0.17.3 (main ahead, untagged) / caddy-l4 v0.1.2**
+
+> 2026-08-09: the WAF/CRS/challenge functionality described below is slated
+> for removal - see Direction Change above. The inventory remains accurate as
+> of this date and is the reference for what the nuke must unwind.
 
 Fully operational WAF with custom policy engine, CRS 4.25.0 (342 rules: 283 inbound +
 59 outbound, per-field condition groups), 7-pass evaluation (allow → block → challenge → skip → rate_limit → detect →

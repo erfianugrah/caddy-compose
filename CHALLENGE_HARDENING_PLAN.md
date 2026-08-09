@@ -1,5 +1,14 @@
 # Challenge Platform Hardening Plan
 
+> **SUPERSEDED (2026-08-09).** This plan's status section says P1-P6 are "not
+> started" - that is stale in the good direction: the code implemented P1-P5
+> (adaptive difficulty, JA4 cookie binding, timing validation, app-state
+> verification, signal obfuscation) ahead of this document being updated.
+> More importantly, the 2026-08-09 direction change (see PLAN.md) shelves the
+> entire CRS/WAF/challenge stack for removal, so P6 and any further hardening
+> work here will not happen. Retained as a design record of the Turnstile
+> comparison and the techniques that were built.
+
 Comparative analysis against Cloudflare Turnstile (decrypted by Buchodi, March 2026).
 Goal: close gaps and extend advantages of the self-hosted challenge system.
 

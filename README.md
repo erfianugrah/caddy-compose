@@ -1,39 +1,40 @@
 # caddy-compose
 
-Docker Compose stack for a Caddy reverse proxy with a custom policy engine WAF (OWASP CRS v4), Authelia 2FA, condition-based rate limiting, and a WAF management sidecar + dashboard.
+Docker Compose stack for the edge Caddy reverse proxy (host-mode on the MS-01 NixOS router) with custom Go plugins (policy engine WAF, DDoS mitigation, L4 proxying) and a management sidecar (wafctl) + dashboard. Deployed via Composer as the `edge-services` stack; backends live on servarr over the LAN.
+
+> **2026-08-09 direction change:** the CRS/WAF/challenge stack is slated for removal and wafctl will be renamed **edgectl** (edge control plane: ddos/jail/events now, host-config management via the Caddy admin API next). See PLAN.md "Direction Change". Authelia was retired 2026-07 - there is no IdP in the stack.
 
 ## Architecture
 
 ```mermaid
 graph LR
-    Internet -->|HTTPS| CF[Cloudflare]
-    CF -->|:443| Caddy[Caddy - host network]
-    Caddy -->|forward auth :9091| Authelia[Authelia - bridge]
+    Internet -->|:443| Caddy[Caddy - host network, MS-01 router]
     Caddy -->|admin proxy :2020| wafctl[wafctl - bridge]
-    Caddy -->|reverse proxy| Backends[Backend containers]
+    Caddy -->|reverse proxy over LAN| Backends[Backends on servarr]
+    Caddy -->|rfc2136 DNS-01| Knot[Knot DNS]
 
-    subgraph WAF Pipeline
-        direction TB
+    subgraph Management plane
         AccessLog[Caddy access log] --> wafctl2[wafctl]
-        wafctl2 -->|generate policy rules + reload| CaddyAdmin[Caddy Admin API :2019]
+        wafctl2 -->|policy-rules.json + reload| CaddyAdmin[Caddy Admin API]
     end
 
-    wafctl2 -.- Dashboard[WAF Dashboard - Astro/React]
+    wafctl2 -.- Dashboard[Dashboard - Astro/React]
 ```
 
-Three containers run on separate Docker networks:
+Two containers:
 
-- **Caddy** uses `network_mode: host` and binds ports 80, 443, and 2019 (admin). It reaches backend containers by their static bridge IPs.
-- **Authelia** sits on an isolated bridge network. Caddy calls it at `:9091` for forward authentication.
-- **wafctl** sits on its own bridge network. It reads Caddy access logs, generates policy engine rules, and reloads Caddy through a restricted admin proxy on `:2020`. The WAF dashboard (Astro + React + shadcn/ui) is bundled into the wafctl image and served by it.
+- **Caddy** uses `network_mode: host` on the MS-01 router and binds ports 80 and 443 (admin API on localhost:2019 only). It reaches backends over the LAN (servarr `10.0.71.x`) and local bridge networks (`172.31.x`, `172.40.x`).
+- **wafctl** (being renamed **edgectl**) sits on its own bridge network. It reads Caddy access logs, generates policy engine rules, and reaches Caddy through an IP-restricted admin proxy on `:2020`. The dashboard (Astro + React + shadcn/ui) is bundled into the wafctl image and served by it.
+
+Authelia was retired 2026-07. Private API surfaces use the bearer-or-LAN `(research_auth)` snippet instead of forward auth. ACME uses rfc2136 DNS-01 against the self-hosted Knot DNS (TSIG); one zone (`erfianugrah.com`) is still on Cloudflare.
 
 ## Quick start
 
 ### Prerequisites
 
 - Docker and Docker Compose
-- A domain with DNS managed by Cloudflare (for ACME DNS challenges and `dynamic_dns`)
-- A Cloudflare API token with Zone:DNS:Edit permission
+- A domain served by the self-hosted Knot DNS (ACME via rfc2136/TSIG), or Cloudflare DNS for legacy zones
+- The TSIG key for the rfc2136 issuer (or a Cloudflare API token with Zone:DNS:Edit for legacy zones)
 
 ### 1. Clone and configure
 
@@ -51,50 +52,30 @@ EMAIL=<your-email-for-acme>
 EOF
 ```
 
-### 2. Set up Authelia secrets
+### 2. Customize the Caddyfile
 
-Authelia reads secrets from individual files, not environment variables. This keeps them out of `docker inspect` and `/proc/PID/environ`.
+The LIVE config is `deploy/edge/Caddyfile` - the repo-root `Caddyfile` is the legacy servarr config, never edit it for prod changes. Site blocks use the snippet idiom: `import waf` (or `waf_off`), `import tls_config_rfc2136`, `import proxy_headers`, `import error_pages`, `import site_log <name>`. To add a service:
 
-```bash
-SECRETS_DIR=/path/to/authelia/secrets  # adjust to your host
-mkdir -p "$SECRETS_DIR"
-openssl rand -hex 32 > "$SECRETS_DIR/jwt_secret"
-openssl rand -hex 32 > "$SECRETS_DIR/session_secret"
-openssl rand -hex 32 > "$SECRETS_DIR/storage_encryption_key"
-chmod 700 "$SECRETS_DIR"
-chmod 600 "$SECRETS_DIR"/*
-chown -R 1000:1000 "$SECRETS_DIR"
-```
+1. Add a site block pointing `reverse_proxy` at the backend (LAN IP on servarr or a local bridge IP).
+2. Add the DNS record via knotctl.
+3. `make caddy-reload` (syncs from git + redeploys WAF/CSP/headers + reloads).
 
-Generate a password hash and add it to `authelia/users_database.yml`:
+The 2026-08-09 direction change (PLAN.md) moves host lifecycle into edgectl via the Caddy admin API; the Caddyfile remains the static skeleton.
 
-```bash
-docker run --rm authelia/authelia:latest \
-  authelia crypto hash generate argon2 --password 'your_password'
-```
-
-### 3. Customize the Caddyfile
-
-Open `Caddyfile` and replace the placeholder domain with your own. The file uses a `dynamic_dns` block to register subdomains with Cloudflare automatically, plus individual site blocks for each service. At minimum you need to:
-
-1. Replace the domain in the `dynamic_dns` block and all site block addresses.
-2. Update backend IPs/ports to match your container network layout.
-3. Decide which services need Authelia protection (see [Site block patterns](#site-block-patterns) below).
-
-### 4. Update image references
+### 3. Update image references
 
 The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names. Search for the current values and replace them with your own registry path:
 
 ```bash
-# In Makefile (lines 17-18)
-CADDY_IMAGE   ?= <your-registry>/caddy:3.85.0-2.11.2
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.89.0
+# In Makefile (lines 14-15)
+CADDY_IMAGE   ?= <your-registry>/caddy:3.97.1-2.11.4
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.101.3
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block
 ```
 
-### 5. Build and deploy
+### 4. Build and deploy
 
 ```bash
 make build     # builds both images locally
@@ -113,7 +94,7 @@ make restart            # redeploy via Composer (handles SOPS .env decryption)
 
 See `make help` for all available targets.
 
-### 6. Verify
+### 5. Verify
 
 ```bash
 make status   # container health on the remote host
@@ -227,26 +208,13 @@ make logs-caddy | grep -i 'acme.*<provider-name>\|dns.*<provider-name>'
 
 ## Edge HTTP cache
 
-Edge variant only (`deploy/edge/Caddyfile`). RFC 7234 caching via `caddyserver/cache-handler` (Souin core, our fork - see *Caddy modules* above) with `darkweak/storages/nuts` on-disk storage so entries survive container restarts.
+REMOVED from the running config 2026-08-07 (commit 02b0706). The souin fork (`github.com/erfianugrah/souin@v1.7.7-erfi.1`) + nuts storage modules are still compiled into the Caddy image, but no `cache` handler is configured in `deploy/edge/Caddyfile` - and the `stale-if-error` origin-down insurance for docs/jellyfin/navidrome went with it.
 
-A global `cache {}` block sets defaults (`ttl 60s`, `stale 1h`, `default_cache_control no-store` so upstreams without Cache-Control are never implicitly cached); caching activates per-site where the `cache` handler directive appears. Ordering: `order cache after policy_engine` - the WAF inspects every request, so blocked traffic never enters the cache.
-
-Enabled sites:
-
-| Site | Scope | Fresh | Keep | Notes |
-|------|-------|-------|------|-------|
-| `docs.erfi.io` | whole site | 5m | 24h | `key { disable_query }` collapses arbitrary `?spam=N` variants into one entry (cache-blowing mitigation) |
-| `jellyfin.erfi.io` | `/Items/*/Images/*` only | 24h | 72h | media streams / API / sockets stay uncached; query kept in key (`api_key`) |
-
-`stale-if-error` in the site `default_cache_control` is what makes the cache origin-down insurance: on the error path Souin serves the stale entry when the cached response carries `stale-if-error`. Without it, origin-down past TTL = 502.
-
-Operational notes (full evidence + source refs in `test/cache/README.md`):
-
-- **No working purge.** The souin admin API (`localhost:2019/souin-api/souin`) permanently returns `[]` and admin PURGE is a no-op (Caddy provisions the admin server before the cache app, so the API snapshots an empty Storers list - unfixed upstream as of cache-handler v0.16.0). Direct `PURGE <url>` is a passthrough that only evicts on upstream 2xx. Emergency reclaim = delete `/data/cache/nuts` + `docker restart caddy`.
-- **Unbounded storage.** No size cap is configured; nutsdb keeps its value index in RAM. Bounded by the small site set + short TTLs today, but watch RAM if more sites are added.
-- `make test-cache` runs the local harness (`test/cache/run-tests.sh`) against the binary extracted from `CADDY_IMAGE`; suite test 17 asserts the souin fork patch is active (`souin fork patch active`).
+The full quirk list is preserved in `test/cache/README.md` - read it before re-enabling: the broken souin admin purge API, SWR broken by souin#699, the per-site nuts storage requirements from the 2026-07-31 incident (unique `Dir` inside `configuration`, never a global nuts block), and the two fork patches. The local harness still runs: `make test-cache`. Note `tools/cachectl verify` asserts a global cache block that no longer exists - fix or retire it when the cache question is decided.
 
 ## WAF configuration
+
+> Slated for removal per the 2026-08-09 direction change (PLAN.md "Direction Change"). This section documents the system as-built and is the reference for what the removal must unwind. The DDoS mitigator and L4 proxying are NOT being removed.
 
 All WAF settings are managed through the dashboard or wafctl CLI.
 
@@ -318,7 +286,7 @@ Fast mode uses native WebCrypto (~2μs/hash). Slow mode adds a 10ms `setTimeout`
 
 ## WAF dashboard
 
-The dashboard is an Astro 6 + React 19 static site bundled in the wafctl image and served by wafctl, protected by Authelia 2FA.
+The dashboard is an Astro 7 + React 19 static site bundled in the wafctl image and served by wafctl, bearer-gated at the edge.
 
 **Pages:**
 
@@ -339,7 +307,7 @@ Cross-page navigation ties everything together: clicking a stat card on Overview
 
 ## wafctl
 
-wafctl is both an HTTP API server and a CLI tool. When run without arguments (or with `serve`), it starts the API server. Otherwise it acts as a thin client that talks to a running instance.
+wafctl is both an HTTP API server and a CLI tool (being renamed **edgectl** - see PLAN.md "Direction Change"). When run without arguments (or with `serve`), it starts the API server. Otherwise it acts as a thin client that talks to a running instance.
 
 It manages WAF configuration (including full CRS v4 settings), the WAF policy engine (exclusions with condition-based matching and tag-based classification), managed lists (reusable value sets for conditions), condition-based rate limiting with a traffic advisor, IPsum blocklist operations, and GeoIP resolution with a three-tier lookup (Cloudflare header → local MMDB → online API).
 
@@ -391,22 +359,29 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | Group | Routes |
 |-------|--------|
 | Core | `GET /api/health`, `GET /api/summary`, `GET /api/events`, `GET /api/services` |
-| Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris`, `GET /api/analytics/top-countries` |
+| Analytics | `GET /api/analytics/top-ips`, `GET /api/analytics/top-uris`, `GET /api/analytics/top-countries`, `GET /api/analytics/cf` |
 | IP Lookup | `GET /api/lookup/{ip}` |
-| Exclusions | `GET\|POST /api/exclusions`, `GET\|PUT\|DELETE /api/exclusions/{id}` |
-| Exclusion ops | `GET /api/exclusions/export`, `POST /api/exclusions/import`, `POST /api/exclusions/generate`, `GET /api/exclusions/hits`, `PUT /api/exclusions/reorder` |
+| Rules | `GET\|POST /api/rules`, `GET\|PUT\|DELETE /api/rules/{id}` (canonical; `/api/exclusions` kept as alias) |
+| Rule ops | `GET /api/rules/export`, `POST /api/rules/import`, `POST /api/rules/generate`, `GET /api/rules/hits`, `PUT /api/rules/reorder` |
+| Rule templates | `GET /api/rules/templates`, `POST /api/rules/templates/{id}/apply` |
 | CRS | `GET /api/crs/rules` |
 | Config | `GET\|PUT /api/config`, `POST /api/config/generate`, `POST /api/config/validate`, `POST /api/config/deploy` |
-| RL Rules | `GET\|POST /api/rate-rules`, `GET\|PUT\|DELETE /api/rate-rules/{id}` |
-| RL Rule ops | `POST /api/rate-rules/deploy`, `GET\|PUT /api/rate-rules/global`, `GET /api/rate-rules/export`, `POST /api/rate-rules/import`, `GET /api/rate-rules/hits`, `PUT /api/rate-rules/reorder` |
-| RL Advisor | `GET /api/rate-rules/advisor?window=&service=&path=&method=&limit=` |
-| RL Analytics | `GET /api/rate-limits/summary`, `GET /api/rate-limits/events` |
+| Rate limits | `GET\|POST /api/rate-limit/rules`, `GET\|PUT\|DELETE /api/rate-limit/rules/{id}`, `POST /api/rate-limit/deploy`, `GET\|PUT /api/rate-limit/global` |
+| RL analytics | `GET /api/rate-limit/summary`, `GET /api/rate-limit/events`, `GET /api/rate-limit/advisor` |
+| Challenge | `GET /api/challenge/stats`, `GET /api/challenge/reputation` |
+| DDoS | `GET /api/dos/status`, `GET /api/dos/jail`, `GET\|PUT /api/dos/config`, `GET /api/dos/reports`, `GET /api/dos/profiles` |
 | Managed Lists | `GET\|POST /api/lists`, `GET\|PUT\|DELETE /api/lists/{id}` |
-| CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview` |
+| CSP | `GET\|PUT /api/csp`, `POST /api/csp/deploy`, `GET /api/csp/preview`, `GET /api/csp/violations` |
+| Security headers | `GET\|PUT /api/security-headers`, `POST /api/security-headers/deploy` |
+| Discovery | `GET /api/discovery/endpoints` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
 | CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
-| Sessions | `GET /api/sessions/stats`, `GET /api/sessions/list`, `GET /api/sessions/{jti}`, `GET /api/sessions/alerts`, `GET\|PUT /api/sessions/config` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
+| Backup | `GET /api/backup`, `POST /api/backup/restore` |
+| DNS | `GET\|PUT /api/dns`, `POST /api/dns/test` |
+| Ops | `GET /api/upstreams/{service}`, `GET /api/upgrade/status`, `POST /api/upgrade/run` |
+
+~90 endpoints total (plus blocked-hostnames, ports, and the UI catch-all). The Sessions endpoints are retired (store remains, routes not registered). The CLI (`wafctl <group>`) is the stable surface; this table drifts - `wafctl --help` wins.
 
 ### Environment variables
 
@@ -489,16 +464,16 @@ For high-traffic deployments, reduce `WAF_EVENT_MAX_AGE` to keep memory bounded.
 
 ## Site block patterns
 
-Since Caddy runs with `network_mode: host`, it reaches backend containers by their static bridge IPs. Every site block imports a standard set of snippets. Three patterns cover most use cases:
+Since Caddy runs with `network_mode: host` on the MS-01, it reaches backends over the LAN (servarr `10.0.71.x`, incl. host-published ports on `10.0.71.2`) or via local bridge IPs (`172.31.x`, `172.40.x`). Every site block imports a standard set of snippets. Three patterns cover most use cases:
 
 ### Pattern A: no authentication
 
 For public services or services with their own auth:
 
 ```
-myservice.example.com {
+myservice.erfi.io {
     import waf
-    import tls_config
+    import tls_config_rfc2136
     encode zstd gzip
     reverse_proxy <backend-ip>:<port> {
         import proxy_headers
@@ -508,15 +483,15 @@ myservice.example.com {
 }
 ```
 
-### Pattern B: full Authelia protection
+### Pattern B: bearer-or-LAN gate
 
-Every request must pass through Authelia:
+For private API surfaces (the post-Authelia auth pattern): LAN + tailnet pass open, WAN needs `Authorization: Bearer $RESEARCH_TOKEN`:
 
 ```
-myservice.example.com {
+myservice.erfi.io {
     import waf
-    import forward_auth
-    import tls_config
+    import research_auth
+    import tls_config_rfc2136
     encode zstd gzip
     reverse_proxy <backend-ip>:<port> {
         import proxy_headers
@@ -526,25 +501,20 @@ myservice.example.com {
 }
 ```
 
-### Pattern C: mixed (some paths bypass auth)
+### Pattern C: mixed (some paths bypass the gate)
 
-Use `route` to control evaluation order. Matching requests hit the first `reverse_proxy` and skip auth:
+Use `route` to control evaluation order - first match wins:
 
 ```
-myservice.example.com {
+myservice.erfi.io {
     import waf
-    import tls_config
+    import tls_config_rfc2136
     encode zstd gzip
 
     route {
         @public path /api/* /webhooks/*
         reverse_proxy @public <backend-ip>:<port> {
             import proxy_headers
-        }
-
-        forward_auth <authelia-ip>:9091 {
-            uri /api/authz/forward-auth
-            copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
         }
 
         reverse_proxy <backend-ip>:<port> {
@@ -562,9 +532,10 @@ Every site block should include these, in order:
 
 | Snippet | Required | Purpose |
 |---------|----------|---------|
-| `import waf` or `import waf_off` | yes | Policy engine WAF with OWASP CRS + rate limiting |
-| `import forward_auth` | if authenticated | Authelia forward authentication |
-| `import tls_config` | yes | ACME DNS challenge via Cloudflare |
+| `import waf` or `import waf_off` | yes (until the WAF removal lands) | Policy engine + ddos guard; `waf_off` is the empty placeholder |
+| `import research_auth` | for private API surfaces | Bearer-or-LAN gate (post-Authelia) |
+| `import tls_config_rfc2136` | yes | ACME DNS-01 via TSIG to Knot DNS |
+| `import tls_config` | CF-DNS zones only | ACME via Cloudflare (legacy; `erfianugrah.com` only) |
 | `encode zstd gzip` | recommended | Response compression |
 | `import proxy_headers` | yes (inside `reverse_proxy`) | Trusted proxy headers for real client IP |
 | `import error_pages` | yes | Custom error page templates |
@@ -581,15 +552,15 @@ Rate limit rules are managed by wafctl. Rate limiting is handled by the policy e
 
 ### Container security
 
-| Feature | Caddy | Authelia | wafctl |
-|---------|-------|----------|--------|
-| `read_only: true` | yes | yes | yes |
-| `cap_drop: ALL` | yes | yes | yes |
-| `cap_add` | `NET_BIND_SERVICE`, `DAC_OVERRIDE` | none | none |
-| `no-new-privileges` | yes | yes | yes |
-| `user` | root (needs port 443) | `1000:1000` | `65534` (nobody) |
-| Healthcheck | yes | yes | yes |
-| Resource limits | 8 CPU / 2048M | 1 CPU / 256M | 0.5 CPU / 128M |
+| Feature | Caddy | wafctl |
+|---------|-------|--------|
+| `read_only: true` | yes | yes |
+| `cap_drop: ALL` | yes | yes |
+| `cap_add` | `NET_BIND_SERVICE`, `DAC_OVERRIDE` | none |
+| `no-new-privileges` | yes | yes |
+| `user` | root (needs port 443) | `65534` (nobody) |
+| Healthcheck | yes | yes |
+| Resource limits | 8 CPU / 2048M | 0.5 CPU / 128M |
 
 ### Additional layers
 
@@ -644,11 +615,13 @@ caddy-compose/
   Caddyfile              # Caddy config (snippets + site blocks)
   Dockerfile             # 4-stage multi-stage build (caddy-body-matcher + caddy-policy-engine + caddy-ddos-mitigator plugins)
   Makefile               # Build, push, deploy, test, WAF operations
-  compose.yaml           # Caddy + Authelia + wafctl services
-  .env                   # SOPS-encrypted secrets (CF token, email)
-  authelia/
-    configuration.yml    # Authelia config
-    users_database.yml   # SOPS-encrypted user/password hashes
+  compose.yaml           # Legacy servarr-era stack file; the LIVE deploy is deploy/edge/
+  .env                   # SOPS-encrypted secrets (TSIG keys, email)
+  deploy/
+    edge/
+      Caddyfile          # LIVE edge config (MS-01 router)
+      compose.yaml       # edge-services stack (Caddy host-mode + wafctl bridge)
+      authelia/          # Retired 2026-07 - historical
   errors/
     error.html           # Custom error page template
   scripts/
@@ -749,6 +722,10 @@ caddy-compose/
       01_infra_test.go .. 33_session_tracking_test.go  # ~119 tests across 20 files
       helpers_test.go       # HTTP/JSON/assertion helpers
       go.mod
+  waf/                   # Committed crs-converter outputs (custom-rules.json, default-rules.json, crs-metadata.json)
+  tools/
+    crs-converter/       # CRS .conf -> JSON converter (runs at Docker build time)
+    cachectl/            # Edge-cache ops CLI (verify assert is stale post-removal)
   .github/
     workflows/
       build.yml          # CI: build, scan, push, sign, SBOM
@@ -772,27 +749,13 @@ make caddy-quick-reload   # syncs from git + reloads Caddy
 make caddy-reload         # syncs from git + redeploys WAF/CSP/headers + reloads
 ```
 
-## Cross-stack proxy entries
+## Backends and cross-host proxying
 
-The Caddyfile proxies a number of stacks that live in **separate**
-docker-compose projects on the same host (each on its own bridge
-subnet, since Caddy runs `network_mode: host` and can reach any
-bridge IP). When adding a new stack:
+The edge Caddy (MS-01 router, `network_mode: host`) proxies to:
 
-1. Pick an unused `/24` in `172.19.x.0/24`. Currently allocated:
-   `1.x` (servarr), `2.x` (tracearr_backend), `22.x` (immich),
-   `25.x` (bonkled), `30.x` (media), `98.x` (waf), `99.x` (authelia).
-2. The stack's `compose.yaml` defines a bridge network with that
-   subnet and pins its primary service to e.g. `.2`.
-3. Add a vhost block here pointing `reverse_proxy` at the stack's
-   bridge IP. WS-heavy services need `flush_interval -1`.
-4. Reload: `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+- **servarr over the LAN** (`10.0.71.x`) - most app stacks, via macvlan service IPs or host-published ports on `10.0.71.2`. See the servarr-compose runbooks for the LAN IP allocation scheme.
+- **Local bridge networks on the MS-01 itself** (`172.31.x`, `172.40.x`) - edge-local stacks (docs, memledger, gitea).
 
-Current cross-stack entries:
+Adding a site today: new block in `deploy/edge/Caddyfile` + knotctl DNS record + `make caddy-reload`. The 2026-08-09 direction change (PLAN.md) moves host lifecycle into edgectl via the Caddy admin API; the Caddyfile remains the static skeleton.
 
-| FQDN | Stack | Bridge IP |
-|---|---|---|
-| `bonkled.erfi.io` | [bonkled](https://github.com/erfianugrah/bonkled) (`deploy/unraid/compose.yaml`) | `172.19.25.2:8080` |
-| `immich.erfi.io` | immich-compose | `172.19.22.2:2283` |
-| `radarr.erfi.io`, `sonarr.erfi.io`, ... | [servarr-compose](https://github.com/erfianugrah/servarr-compose) | `172.19.1.x` |
-| `docs.erfi.io` | docs-ssh | `172.19.50.2:8080` |
+L4 (non-HTTP) proxying lives in the global `layer4` block: gitea SSH passthrough (`:2223`) and the VPN tunnels.

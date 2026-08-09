@@ -28,30 +28,11 @@
 	order ddos_mitigator after log_append
 	order policy_engine after ddos_mitigator
 
-	# HTTP cache (caddyserver/cache-handler, Souin core). Global defaults
-	# only - caching activates per-site where the `cache` handler directive
-	# appears. nuts (nutsdb) storage on disk so entries survive container
-	# restarts: stale keeps serving during origin/servarr downtime.
-	# default_cache_control no-store: upstreams that send no Cache-Control
-	# are treated as uncacheable; cacheable sites opt in with their own
-	# default_cache_control in their site-level `cache` block.
-	# Inspect/purge via the admin API (localhost-only):
-	#   localhost:2019/souin-api/souin    - stored keys
-	#   localhost:2019/souin-api/metrics  - prometheus
-	# NO global nuts block on purpose. Storage provider configs are inherited
-	# by a site handler only when the handler configures NO provider of its
-	# own (cache-handler@v0.16.0 httpcache.go FromApp ~line 220). With a
-	# global nuts block, EVERY site handler dispatches its own nutsdb
-	# instance on the SAME path during concurrent provisioning: losers of
-	# the registration race silently fall back to in-memory storage (the
-	# "default storage" warning - nondeterministic, 3-4 of 5 handlers),
-	# and multiple winners are independent writers on one nutsdb dir
-	# (offset-clobber hazard). Verified live 2026-07-31. Every cache-enabled
-	# site below therefore carries its OWN nuts{} with a UNIQUE path.
-	# Dir must sit INSIDE configuration: nuts.Factory ignores provider.Path
-	# entirely when Configuration is non-nil and silently falls back to
-	# /tmp/souin-nuts (storages/nuts@v0.0.19 nuts.go ~line 133) - which is a
-	# tmpfs in this container, wiping the cache on every restart.
+	# Edge HTTP cache REMOVED 2026-08-07 (commit 02b0706): the souin
+	# cache-handler + nuts config is gone from this file. The modules are
+	# still compiled into the image. The per-site nuts pitfalls and souin
+	# quirks that used to be documented here are preserved in
+	# test/cache/README.md - read that before re-enabling.
 
 	servers {
 		strict_sni_host on
@@ -338,11 +319,6 @@ docs.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
-	# Fully public static content - the clean cache win. 5m fresh, entries
-	# kept 24h. stale-if-error is REQUIRED for the origin-down insurance:
-	# Souin only serves stale on the error path when the cached response
-	# carries stale-if-error (or the request sends max-stale, which browsers
-	# never do). Verified in test/cache (suite test 6).
 	reverse_proxy 172.31.7.2:8080 {
 		import proxy_headers
 	}
@@ -695,15 +671,10 @@ erfianugrah.com {
 	# Astro hashed assets are immutable - cache for 1 year
 	@hashed path /_astro/*
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
-	# HTML pages - revalidate on every request; stale-if-error keeps the
-	# edge serving cached HTML when the origin is down (RFC 5861 - Souin
-	# only serves stale on the error path when the response carries it,
-	# see docs.erfi.io cache block)
+	# HTML pages - revalidate on every request. stale-if-error is kept as
+	# a hint for any downstream cache (no-op at this edge since the Souin
+	# cache was removed 2026-08-07).
 	header ?Cache-Control "public, max-age=0, must-revalidate, stale-if-error=86400"
-	# Response Cache-Control (set above) governs TTL: hashed assets 1y,
-	# HTML always revalidated. disable_query: static origin with no query
-	# handling - arbitrary ?spam=N would mint unbounded entries per path
-	# (same argument as docs.erfi.io, test/cache suite section 16).
 	reverse_proxy 10.0.71.58:80 {
 		import proxy_headers
 	}
@@ -718,9 +689,9 @@ revista.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	# Same Astro backend as erfianugrah.com - same cache semantics:
-	# hashed /_astro/* immutable 1y, HTML revalidates with stale-if-error
-	# origin-down insurance (RFC 5861, see docs.erfi.io cache block).
+	# Same Astro backend as erfianugrah.com - same Cache-Control semantics:
+	# hashed /_astro/* immutable 1y, HTML revalidates (stale-if-error is a
+	# downstream-cache hint only; no edge cache since 2026-08-07).
 	@hashed path /_astro/*
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 	header ?Cache-Control "public, max-age=0, must-revalidate, stale-if-error=86400"
