@@ -857,6 +857,14 @@ memledger.erfi.io {
 		file_server
 	}
 
+	# semantic (pgvector) search - the stack's embedder service
+	handle_path /semantic* {
+		reverse_proxy 172.20.2.40:8000 {
+			header_up -Authorization
+			import proxy_headers
+		}
+	}
+
 	# router-local stack: postgrest on the memledger frontend bridge
 	reverse_proxy 172.20.2.2:3000 {
 		# PostgREST would mistake the gate bearer for a JWT - strip it
