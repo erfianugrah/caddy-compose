@@ -47,8 +47,9 @@ Create a `.env` file (SOPS-encrypted in production — see [Secrets](#secrets) b
 
 ```bash
 cat > .env <<'EOF'
-CF_API_TOKEN=<your-cloudflare-api-token>
+TSIG_CADDY_ACME=<tsig-key-for-rfc2136-issuer>
 EMAIL=<your-email-for-acme>
+# CF_API_TOKEN=<cloudflare-token>  # legacy zones only (erfianugrah.com)
 EOF
 ```
 
@@ -197,7 +198,7 @@ The trade-off: pinned modules don't pick up upstream security fixes on rebuild, 
 After `make deploy-caddy`, confirm the module loaded on the live container:
 
 ```bash
-ssh servarr 'docker exec caddy /usr/bin/caddy list-modules | grep <module-id>'
+ssh nixos 'docker exec caddy /usr/bin/caddy list-modules | grep <module-id>'
 ```
 
 For DNS providers specifically, also verify the Caddyfile actually consumes the new provider (otherwise the module is loaded but inert):
@@ -684,7 +685,7 @@ caddy-compose/
     *_test.go            # Test files
     Dockerfile           # wafctl image (includes waf-dashboard build)
     go.mod
-  waf-dashboard/         # Astro 6 + React 19 + shadcn/ui frontend
+  waf-dashboard/         # Astro 7 + React 19 + shadcn/ui frontend
     src/
       components/        # Dashboard components
         RateLimitsPanel.tsx   # RL rules CRUD + global settings

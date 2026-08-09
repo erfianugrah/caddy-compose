@@ -148,7 +148,7 @@ configurable via Caddyfile `listener_wrappers`. ~90ns/req hot path. Load tested 
 | Area | Files | Tests | Notes |
 |---|---|---|---|
 | **wafctl** (Go) | 57 source + 29 test | ~1555 test functions, 17 benchmarks | Zero external deps (stdlib only), `package main`, 40K LoC + 20K test LoC |
-| **waf-dashboard** (Astro/React) | 38 components + 16 API modules | ~355 tests across 19 files | Astro 6, React 19, TypeScript 5.7, shadcn/ui, Tailwind CSS 4 |
+| **waf-dashboard** (Astro/React) | 38 components + 16 API modules | ~355 tests across 19 files | Astro 7, React 19, TypeScript 5.7, shadcn/ui, Tailwind CSS 4 |
 | **e2e** | 16 test files + helpers | ~148 subtests across 67 functions | Go + Docker, stdlib + `gopkg.in/yaml.v3` only |
 | **crs-converter** | 13 files | 3 test files, ~51 test functions | Standalone Go tool, zero deps |
 | **crs-e2e** | 1 test file + baseline | 4566 tests (baseline-driven) | Go + Docker, official CRS YAML test cases |
