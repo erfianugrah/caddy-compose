@@ -927,12 +927,14 @@ chat.erfi.io {
 	import site_log chat
 }
 
-# sbperf lab: Prometheus scraping a Supabase project's privileged metrics
-# endpoint (30d retention). It has no auth of its own, so it is private-ranges
-# only. Proxies a LAN IP, not a bridge IP: the container sits on the servarr_lan
-# macvlan (10.0.71.59) like every other externally-proxied servarr service, and
-# this Caddy has no route into servarr's docker bridges.
-prometheus-sb.erfi.io {
+# central monitoring (composer stack `monitoring` on servarr, renamed from
+# sbperf-monitoring 2026-08-09): Prometheus, 30d retention, scrapes the
+# Supabase project metrics endpoints AND the router's vector edge-metrics
+# exporter. It has no auth of its own, so it is private-ranges only. Proxies
+# a LAN IP, not a bridge IP: the container sits on the servarr_lan macvlan
+# (10.0.71.59) like every other externally-proxied servarr service, and this
+# Caddy has no route into servarr's docker bridges.
+prometheus.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	import lan_only
@@ -941,13 +943,13 @@ prometheus-sb.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log prometheus-sb
+	import site_log prometheus
 }
 
-# sbperf lab: Grafana over that Prometheus. Manages its own auth (admin login,
-# password in the sbperf-monitoring composer stack env), so no edge gate - same
-# treatment as chat.erfi.io.
-grafana-sb.erfi.io {
+# central monitoring: Grafana over that Prometheus. Manages its own auth
+# (admin login, password in the monitoring composer stack env), so no edge
+# gate - same treatment as chat.erfi.io.
+grafana.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -955,7 +957,7 @@ grafana-sb.erfi.io {
 		import proxy_headers
 	}
 	import error_pages
-	import site_log grafana-sb
+	import site_log grafana
 }
 
 # wafctl -> Caddy admin API proxy, restricted to the edge-waf bridge subnet.
