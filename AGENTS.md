@@ -4,12 +4,13 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Docker Compose infrastructure for a Caddy reverse proxy with a custom policy engine WAF,
-Authelia 2FA forward auth, and a WAF management sidecar. Two codebases:
+Docker Compose infrastructure for a Caddy reverse proxy with custom Go plugins (policy engine WAF, DDoS mitigation, L4 proxying) and a WAF management sidecar. Deployed via Composer as the `edge-services` stack on the MS-01 NixOS router (ssh alias `nixos`). Two codebases:
 
-- **wafctl/** — Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.26+)
-- **waf-dashboard/** — Astro 6 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
-- Root level: Caddyfile, Dockerfile (4-stage multi-stage), compose.yaml, Makefile
+- **wafctl/** - Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.26+)
+- **waf-dashboard/** - Astro 7 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
+- Root level: Caddyfile (legacy servarr config - the LIVE config is `deploy/edge/Caddyfile`), Dockerfile (4-stage multi-stage), compose.yaml, Makefile
+
+> **2026-08-09 direction change:** the CRS/WAF/challenge stack is slated for removal and wafctl will be renamed **edgectl** (edge control plane: ddos/jail/events now, host-config management via the Caddy admin API next). See PLAN.md "Direction Change". Authelia was retired 2026-07 - there is no IdP in the stack.
 
 ## Build Commands
 
@@ -22,7 +23,7 @@ make build-wafctl       # Build the standalone wafctl image only
 ### Go (wafctl)
 
 ```bash
-cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.83.0" -o wafctl .
+cd wafctl && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=2.101.3" -o wafctl .
 ```
 
 Version injected via `-ldflags "-X main.version=..."`. Fallback: `var version = "dev"` in `main.go`.
@@ -117,7 +118,7 @@ Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
     `.env` is SOPS-encrypted on disk, so the new container starts with
     `CF_API_TOKEN=ENC[AES256_GCM,...]` ciphertext and crash-loops.
     Composer is the only thing that decrypts SOPS at deploy time.
-- See `~/knot-fly/docs/runbooks/cf-to-knot-migration.md` §Force-renewal
+- See `~/knotea/authority/docs/runbooks/cf-to-knot-migration.md` §Force-renewal
   recipe for the validated end-to-end procedure.
 - **Force-renewal validated 2026-05-25 post-TSIG-rotation**:
   `test.lab.erfi.io` re-issued in ~4 s end-to-end (Caddy reads new
@@ -126,23 +127,23 @@ Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
   installed). Issuer Let's Encrypt E7, valid until 2026-08-23. Recipe:
 
   ```bash
-  ssh servarr 'docker exec caddy rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/test.lab.erfi.io'
-  ssh servarr 'docker restart caddy'
+  ssh nixos 'docker exec caddy rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/test.lab.erfi.io'
+  ssh nixos 'docker restart caddy'
   # then either wait for on-demand TLS or curl the host
   echo | openssl s_client -servername test.lab.erfi.io -connect test.lab.erfi.io:443 2>/dev/null \
     | openssl x509 -noout -dates -issuer
-  ssh servarr 'docker logs caddy --since 2m 2>&1 | grep -E "test\.lab\.erfi\.io|tls\.obtain|obtained"'
+  ssh nixos 'docker logs caddy --since 2m 2>&1 | grep -E "test\.lab\.erfi\.io|tls\.obtain|obtained"'
   ```
 
 ## TSIG rotation (when `TSIG_CADDY_ACME` is compromised or due)
 
-Upstream rotation procedure lives in `~/knot-fly/AGENTS.md` gotcha #25.
+Upstream rotation procedure lives in the knot-dns skill / knotea authority AGENTS.md (`~/knotea/authority/AGENTS.md` gotcha #25).
 This section covers ONLY the Caddy-side dance.
 
 Order of operations:
 
-1. **Knot side first** — the operator runs the rotation script against
-   `knot-fly-mvp`'s confdb. From that moment, Caddy still holds the OLD
+1. **Knot side first** - the operator runs the rotation script against
+   the knotea authority's confdb (glory-hole Fly app at 137.66.1.170). From that moment, Caddy still holds the OLD
    key in process memory; any ACME renewal that fires returns `BADSIG`
    from Knot. Renewals are at ≈60-day cadence, so the practical race
    window is small, but treat the swap as urgent.
@@ -169,13 +170,13 @@ Order of operations:
    '{{range .Config.Env}}{{println .}}{{end}}'` for the first few
    characters of `TSIG_CADDY_ACME` against the new value.
 
-Done 2026-05-25 — commit `0fc82d0`. Triggered by `knot-fly` gotcha #22
+Done 2026-05-25 - commit `0fc82d0`. Triggered by the knotea authority gotcha #22
 (leak in rendered conf comment headers, ~29h exposure window).
 
 ## Migrating site blocks from CF DNS to Knot DNS
 
 When the underlying zone migrates from Cloudflare to our own Knot DNS
-(see `~/knot-fly/docs/runbooks/cf-to-knot-migration.md`), Caddy site
+(see `~/knotea/authority/docs/runbooks/cf-to-knot-migration.md`), Caddy site
 blocks under that zone MUST change their ACME DNS-01 provider from
 `dns cloudflare {$CF_API_TOKEN}` to `dns rfc2136 { ... }`. Otherwise
 cert renewals start failing silently once recursive caches expire
@@ -481,6 +482,7 @@ causes the event to be invisible in parts of the UI.
 ## Key Architecture Notes
 
 - Deploy pipeline: generate config → write `policy-rules.json` → plugin detects mtime change → hot-reload.
+- **wafctl → Caddy admin routing**: wafctl never talks to Caddy's admin API on `:2019` directly. It reaches Caddy through an IP-restricted admin proxy on port `:2020` (configured in `deploy/edge/Caddyfile`). The `extra_hosts: caddy:<bridge-gateway>` in compose.yaml is load-bearing - Docker inter-network isolation blocks docker0, so the bridge gateway IP is the only route from the wafctl bridge network to the host network where Caddy listens.
 - On startup, `generateOnBoot()` regenerates all config from stored JSON state.
 - Version tags must stay in sync across: `Makefile`, `compose.yaml`, `deploy/edge/compose.yaml`, `README.md`, `.github/workflows/build.yml` (which has BOTH `CADDY_TAG` and `CADDY_VERSION` — the published tag vs the upstream Caddy base, see README §Version management).
 - **Caddy module pin discipline**: ALL `--with` lines in `Dockerfile` are pinned since 2026-07-25 (`caddy-dynamicdns` has no tags - pinned by commit `@a5890c9`). The base is now Caddy 2.11.4 and `caddy-l4` is on `v0.1.2` (the release that requires 2.11.4). Unpinned modules floated on every cache-bust rebuild and broke us twice: `caddy-l4 v0.1.1` raised its `caddy/v2` minimum to 2.11.3 (broke 2.11.2 builds), then `caddy-l4 v0.1.2` raised it to 2.11.4 (broke 2.11.3 builds on 2026-07-25). When bumping Caddy upstream OR adding a new module, **also bump every module's pin** to the latest known-good version and verify post-build with `docker run --rm <image> /usr/bin/caddy list-modules | grep <id>`. Two non-plugin build lines ride along: the souin fork `--with github.com/darkweak/souin=github.com/erfianugrah/souin@v1.7.7-erfi.1` (see the Edge HTTP cache bullet) and `--replace google.golang.org/grpc=...@v1.82.1` (forces a transitive dep off the HIGH-vuln v1.81.0, GHSA-hrxh-6v49-42gf; `--replace` is the xcaddy lever for non-plugin deps - drop it once a pinned module requires >= v1.82.1). See README §Caddy modules for the full procedure.
@@ -555,7 +557,7 @@ causes the event to be invisible in parts of the UI.
   "expired" (invalid cookie), or "none" (no cookie). Enables rules that enforce
   challenge requirements on specific paths. Escalation template available at
   `/api/rules/templates` (challenge-escalation: block unchallenged + block expired).
-- **Edge HTTP cache** (`caddyserver/cache-handler` Souin core + `darkweak/storages/nuts` on-disk storage, pinned in `Dockerfile`). Edge variant only (`deploy/edge/Caddyfile`): global `cache {}` block sets defaults (`ttl 60s`, `stale 1h`, `default_cache_control no-store` so upstreams without Cache-Control are never implicitly cached); caching activates per-site via the `cache` handler. Enabled sites: `docs.erfi.io` (whole-site, 5m fresh / 24h keep, `disable_query`), `jellyfin.erfi.io` (route-scoped to `/Items/*/Images/*` only, 24h fresh / 72h keep; media streams/API untouched), `navidrome.erfi.io` (route-scoped to `/rest/getCoverArt*`, 24h fresh / 72h keep; Subsonic auth params in query -> per-client keys), and `erfianugrah.com` + `revista.erfi.io` (whole-site static Astro, TTL governed by response Cache-Control set in the site block: hashed `/_astro/*` 1y immutable, HTML revalidates with `stale-if-error=86400`; `disable_query`). The jellyfin scope was dropped in the 3a flip (c2e063e) and restored 2026-07-31 along with the three additions. Ordering: `order cache after policy_engine` (WAF inspects every request; blocks never enter the cache). Behavioral quirks verified by the local harness in `test/cache/` (`make test-cache`, full evidence + source refs in `test/cache/README.md`):
+- **Edge HTTP cache** (`caddyserver/cache-handler` Souin core + `darkweak/storages/nuts` on-disk storage, pinned in `Dockerfile`). **REMOVED from the running config 2026-08-07 (commit 02b0706)** - the souin fork + nuts modules are still compiled into the Caddy image, but no `cache` handler is configured in `deploy/edge/Caddyfile`. Everything below in this bullet is the pre-removal behavior, kept as the reference for re-enabling; the canonical quirk list with evidence lives in `test/cache/README.md`. Note `tools/cachectl verify` asserts a global cache block that no longer exists. What it was: a global `cache {}` block set defaults (`ttl 60s`, `stale 1h`, `default_cache_control no-store`); caching activated per-site via the `cache` handler. Sites that had it: `docs.erfi.io` (whole-site, 5m fresh / 24h keep, `disable_query`), `jellyfin.erfi.io` (route-scoped to `/Items/*/Images/*` only, 24h fresh / 72h keep; media streams/API untouched), `navidrome.erfi.io` (route-scoped to `/rest/getCoverArt*`, 24h fresh / 72h keep; Subsonic auth params in query -> per-client keys), and `erfianugrah.com` + `revista.erfi.io` (whole-site static Astro, TTL governed by response Cache-Control; `disable_query`). Ordering was `order cache after policy_engine` (WAF inspected every request; blocks never entered the cache). Behavioral quirks verified by the local harness in `test/cache/` (`make test-cache`, full evidence + source refs in `test/cache/README.md`):
   - **Origin-down insurance REQUIRES `stale-if-error` in `default_cache_control`** (RFC 5861). On the non-error path Souin only serves stale when the request sends `max-stale` (browsers never do); on the error path it honors response-side `stale-if-error` for plain requests. Without it, origin-down past TTL = 502.
   - nuts persistence across restarts works (disk-backed; cache survives container restarts).
   - The souin admin API (`localhost:2019/souin-api/souin`) permanently returns `[]` and admin PURGE is a no-op: Caddy provisions the admin server (and `admin.api.souin`) before the cache app, so the API snapshots an empty Storers list (unfixed upstream as of cache-handler v0.16.0). Real-world purge = delete the nuts dir + restart.
@@ -653,7 +655,7 @@ causes the event to be invisible in parts of the UI.
 
 ## Downstream WAF behaviour notes (for callers)
 
-The custom policy engine in front of `composer.erfi.io` blocks the default `curl` User-Agent on **`PUT` and `POST`** requests to its API (cross-referenced from `~/servarr-compose/AGENTS.md`). `GET` works without extra headers. Callers must send:
+The custom policy engine in front of `composer.erfi.io` blocks the default `curl` User-Agent on **`PUT` and `POST`** requests to its API (cross-referenced from `~/infra/servarr-compose/AGENTS.md`). `GET` works without extra headers. Callers must send:
 
 ```
 -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ...'
