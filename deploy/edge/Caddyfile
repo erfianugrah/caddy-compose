@@ -830,6 +830,36 @@ draw.erfi.io {
 	respond @denied 401
 }
 
+(memledger_auth) {
+	# writes always need the bearer, even from LAN (the ingester sends it)
+	@denied_write {
+		method POST PUT PATCH DELETE
+		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
+	}
+	respond @denied_write 401
+	# reads are open on LAN/tailnet, bearer-gated from WAN
+	@denied_read {
+		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
+	}
+	respond @denied_read 401
+}
+
+memledger.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	import memledger_auth
+	encode zstd gzip
+	# router-local stack: postgrest on the memledger frontend bridge
+	reverse_proxy 172.20.2.2:3000 {
+		# PostgREST would mistake the gate bearer for a JWT - strip it
+		header_up -Authorization
+		import proxy_headers
+	}
+	import error_pages
+	import site_log memledger
+}
+
 searxng.erfi.io {
 	import waf_off
 	import tls_config_rfc2136

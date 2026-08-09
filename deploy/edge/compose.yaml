@@ -55,6 +55,7 @@ services:
       - TSIG_CADDY_ACME=${TSIG_CADDY_ACME}
       - CF_API_TOKEN=${CF_API_TOKEN}
       - RESEARCH_TOKEN=${RESEARCH_TOKEN}
+      - MEMLEDGER_TOKEN=${MEMLEDGER_TOKEN}
 
   wafctl:
     image: erfianugrah/wafctl:2.101.3
