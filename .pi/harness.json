@@ -1,56 +1,56 @@
 {
-  "task": "Finish the cachectl Go CLI in tools/cachectl/ (module github.com/erfianugrah/cachectl, stdlib ONLY, zero external deps). It replaces scripts/cachectl.sh - READ THAT SCRIPT FIRST, it is the exact semantic spec for the four subcommands (status/verify/probe/purge). Also read runner.go: the Runner interface is the test seam, all remote ops flow through it.\n\nCurrent state: go.mod, main.go, runner.go, status.go, verify.go, probe.go are written. The build FAILS because main.go calls cmdPurge which does not exist yet, and there are no tests.\n\nDo, in order:\n1. Write tools/cachectl/purge.go implementing cmdPurge with the exact semantics of cmd_purge in scripts/cachectl.sh: validate the site arg ('all' or ^[a-z0-9-]+$, reject anything else with exit-2-style usage error), interactive y/N confirmation unless -y (read from stdin), 'all' = rm -rf <ctrRoot> + mkdir -p <ctrRoot> inside the container via edge.dockerExec, a named site = rm -rf <ctrRoot>/<site>, then restart the container via edge.ssh(\"docker restart <container>\"), then print 'purged <target> + restarted <container> (nuts re-creates dirs at open)'. Use fmt.Errorf with %w for wrapped errors, repo Go style (section headers, camelCase).\n2. verify.go contains a dead helper tmpfsTrapPresent that nothing calls - remove it (and any import left unused).\n3. Write the test suite (one or more *_test.go files, white-box package main, stdlib testing only, table-driven with t.Run subtests). Cover: parseConfiguredDirs (tab-indented Caddyfile fixture, duplicates deduped, sorted, Dir outside ctrRoot ignored), parseCacheStatus (fwd=uri-miss;stored, hit;detail=NUTS, missing fields), shellQuote (embedded single quotes), parsePurgeArgs + the site-name validator, cmdVerify against a scripted fake Runner (all-PASS path returns 0, injected failure returns 1), cmdPurge against a scripted fake Runner (invalid site rejected; -y issues rm -rf + docker restart in the right order; 'all' issues rm -rf + mkdir). Capture command output via the edge.out io.Writer field.\n4. Tests must be HERMETIC: no network, no ssh, no docker, no filesystem writes outside t.TempDir(). The loop sandbox masks ~/.ssh, so any test that really shells out to ssh will fail.\n5. Make all sensors green: gofmt clean, go build, go vet, go test -race -count=1.\n\nConstraints: stdlib only (go.mod must gain NO require lines). Do NOT modify scripts/cachectl.sh (it is the reference). Do NOT run the tool against the live edge (no ssh to nixos, ssh is masked in the sandbox). Do NOT weaken or delete sensor-facing behavior to force green. Do NOT git commit, git reset, or git checkout - leave the working tree dirty. Match the existing file style: package main, '// ─── Section ───' headers, fmt.Errorf(\"context: %w\", err), early returns.",
-  "maxIterations": 8,
-  "models": [
-    "openrouter/deepseek/deepseek-v4-pro",
-    "openrouter/moonshotai/kimi-k3"
+  "task": "Update AGENTS.md (this repo's agent-facing operational doc) to match the current edge reality. README.md and PLAN.md are already updated - follow them. Required changes: (1) Project Overview: remove Authelia from the stack description (retired 2026-07, no IdP in the stack); the dashboard is Astro 7 (not Astro 6). (2) All deploy/ops content must target the edge deployment: the stack lives on the MS-01 NixOS router (ssh alias nixos) as the composer stack 'edge-services'; the LIVE Caddyfile is deploy/edge/Caddyfile and the repo-root Caddyfile is legacy servarr config; caddy ops recipes must use 'ssh nixos', never 'ssh servarr'. (3) Replace every ~/knot-fly reference: the Knot app merged into the knotea monorepo - ~/knot-fly/AGENTS.md becomes ~/knotea/authority/AGENTS.md and ~/knot-fly/docs/runbooks/cf-to-knot-migration.md becomes ~/knotea/authority/docs/runbooks/cf-to-knot-migration.md (gotcha #25 cross-references become 'the knot-dns skill / knotea authority AGENTS.md'). (4) The Edge HTTP cache bullet must state the cache was REMOVED from the running config 2026-08-07 (commit 02b0706), modules still compiled into the image, quirks preserved in test/cache/README.md, and that tools/cachectl verify has a stale assert. (5) Add the 2026-08-09 direction change as a prominent note near the top: CRS/WAF slated for removal, wafctl being renamed edgectl - see PLAN.md 'Direction Change'. Document the system AS DEPLOYED TODAY; the nuke is planned, not executed. (6) Fix the stale cross-reference ~/servarr-compose/AGENTS.md to ~/infra/servarr-compose/AGENTS.md (keep the curl-UA gotcha itself - still true). (7) Document the wafctl -> Caddy admin routing: wafctl never talks to :2019 directly, it goes through the IP-restricted admin proxy on :2020 (extra_hosts: caddy:<bridge-gateway> is load-bearing). (8) Update version pins ONLY where verifiable in Makefile/Dockerfile (caddy image 3.97.1-2.11.4 per Makefile, wafctl 2.101.3, body-matcher v0.2.1, policy-engine v0.42.2, ddos-mitigator v0.17.3, caddy-l4 v0.1.2); keep test counts approximate. Do NOT delete durable operational knowledge: the SOPS re-encrypt / make restart vs restart-caddy gotcha, the three-edit rule for env vars, the /load fingerprint trick, TSIG rotation order, the composer curl-UA gotcha, the 7-pass pipeline and CRS converter descriptions (still the running system), the zone-migration pattern.",
+  "maxIterations": 5,
+  "models": ["openrouter/deepseek/deepseek-v4-pro"],
+  "stallPatience": 2,
+  "tools": ["read", "edit", "write", "bash", "grep"],
+  "writeScope": ["AGENTS.md"],
+  "guide": [
+    "README.md",
+    "PLAN.md",
+    "/home/erfi/.pi/agent/skills/caddy/SKILL.md"
   ],
-  "stallPatience": 3,
-  "tools": [
-    "read",
-    "edit",
-    "write",
-    "bash"
-  ],
-  "writeScope": [
-    "tools/cachectl/**",
-    ".pi/**"
+  "rules": [
+    "Only AGENTS.md may be modified; do not touch any other file.",
+    "Do not run git commit, git reset, git checkout, or git stash - leave git refs alone.",
+    "Preserve durable operational knowledge; this is an update, not a rewrite. Match the existing file's tone and density.",
+    "ASCII punctuation only in your edits: hyphens not em-dashes, straight quotes, no ellipsis character.",
+    "Do not invent version numbers or test counts. If you cannot verify a number from Makefile/Dockerfile/package.json in this repo, keep it approximate.",
+    "The WAF nuke and edgectl rename are PLANNED, not done: describe them as direction/next-steps, never as current state."
   ],
   "sensors": [
-    {
-      "name": "purge-exists",
-      "cmd": "test -f tools/cachectl/purge.go && rg -q 'func cmdPurge' tools/cachectl/purge.go",
-      "hint": "purge.go must exist and define cmdPurge. Mirror cmd_purge in scripts/cachectl.sh exactly: validate site, confirm unless -y, rm -rf in container, docker restart, print confirmation."
-    },
-    {
-      "name": "gofmt",
-      "cmd": "cd tools/cachectl && test -z \"$(gofmt -l .)\"",
-      "hint": "Run gofmt -w . inside tools/cachectl."
-    },
-    {
-      "name": "build",
-      "cmd": "cd tools/cachectl && go build ./...",
-      "hint": "Fix compile errors. cmdPurge is referenced from main.go; verify.go has a dead tmpfsTrapPresent helper to remove. Stdlib only - no go get."
-    },
-    {
-      "name": "vet",
-      "cmd": "cd tools/cachectl && go vet ./...",
-      "hint": "Fix what go vet reports (printf mismatches, unreachable code, etc)."
-    },
-    {
-      "name": "stdlib-only",
-      "cmd": "cd tools/cachectl && ! go list -deps . | grep -E '^[a-z0-9-]+\\.[a-z]+/' | grep -v '^github.com/erfianugrah/cachectl' | grep -q .",
-      "hint": "An external (non-stdlib) dependency crept in. Remove the import and implement with the stdlib; go.mod must have no require block."
-    },
-    {
-      "name": "tests-exist",
-      "cmd": "cd tools/cachectl && go test -v -count=1 ./... 2>&1 | grep -q '^=== RUN'",
-      "hint": "No tests actually ran. Write *_test.go files with real TestXxx functions (table-driven, t.Run subtests) - the suite must exercise parseConfiguredDirs, parseCacheStatus, shellQuote, purge arg/site validation, cmdVerify and cmdPurge via a scripted fake Runner."
-    },
-    {
-      "name": "test",
-      "cmd": "cd tools/cachectl && go test -race -count=1 -timeout 60s ./...",
-      "hint": "Fix failing tests. Tests must be hermetic (fake Runner, bytes.Buffer for edge.out) - no real ssh/docker/network; the sandbox masks ~/.ssh."
-    }
+    { "name": "keep-sops-gotcha",
+      "cmd": "rg -q 'restart-caddy' AGENTS.md",
+      "hint": "the make restart vs restart-caddy SOPS footgun gotcha must be preserved" },
+    { "name": "keep-deploy-pipeline",
+      "cmd": "rg -q 'policy-rules.json' AGENTS.md",
+      "hint": "the deploy pipeline architecture note (policy-rules.json mtime hot-reload) must be preserved" },
+    { "name": "keeps-wafctl-name",
+      "cmd": "rg -q 'wafctl' AGENTS.md",
+      "hint": "the rename to edgectl is planned, not executed - the doc must still describe wafctl as the running system, with the rename as a forward note" },
+    { "name": "fences-balanced",
+      "cmd": "test $(( $(rg -c '^```' AGENTS.md) % 2 )) -eq 0",
+      "hint": "unbalanced code fences - a code block was left open" },
+    { "name": "rename-noted", "expect": "fail",
+      "cmd": "rg -q 'edgectl' AGENTS.md",
+      "hint": "add the 2026-08-09 direction-change note: wafctl being renamed edgectl, CRS/WAF slated for removal, see PLAN.md Direction Change" },
+    { "name": "no-knot-fly", "expect": "fail",
+      "cmd": "! rg -q 'knot-fly' AGENTS.md",
+      "hint": "knot-fly merged into the knotea monorepo: ~/knot-fly/AGENTS.md -> ~/knotea/authority/AGENTS.md, runbooks under ~/knotea/authority/docs/runbooks/" },
+    { "name": "no-astro-6", "expect": "fail",
+      "cmd": "! rg -q 'Astro 6' AGENTS.md",
+      "hint": "dashboard is Astro 7 now (README.md says so)" },
+    { "name": "cache-removal-noted", "expect": "fail",
+      "cmd": "rg -qi 'cache removed|removed from the running config' AGENTS.md",
+      "hint": "the Edge HTTP cache bullet must say the cache was removed from the running config 2026-08-07 (commit 02b0706), modules still in the image, quirks in test/cache/README.md" },
+    { "name": "edge-stack-named", "expect": "fail",
+      "cmd": "rg -q 'edge-services' AGENTS.md",
+      "hint": "the deploy story must name the composer stack 'edge-services' on the MS-01 (ssh nixos)" },
+    { "name": "admin-proxy-documented", "expect": "fail",
+      "cmd": "rg -q ':2020' AGENTS.md",
+      "hint": "document wafctl -> Caddy admin routing via the IP-restricted admin proxy on :2020 (never :2019 directly)" },
+    { "name": "no-ssh-servarr", "expect": "fail",
+      "cmd": "! rg -q 'ssh servarr' AGENTS.md",
+      "hint": "caddy ops recipes target the edge router: ssh nixos, not ssh servarr" }
   ]
 }
