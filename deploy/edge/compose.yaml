@@ -43,6 +43,7 @@ services:
       start_period: 120s
     volumes:
       - /var/lib/composer/stacks/edge-services/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/composer/stacks/memledger/ui:/srv/memledger:ro
       - /var/lib/caddy/data:/data
       - /var/lib/caddy/config:/config
       - /var/lib/caddy/log:/var/log

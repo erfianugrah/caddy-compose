@@ -850,6 +850,13 @@ memledger.erfi.io {
 	import tls_config_rfc2136
 	import memledger_auth
 	encode zstd gzip
+
+	# search UI - static single page, API calls go same-origin to PostgREST
+	handle_path /ui* {
+		root * /srv/memledger
+		file_server
+	}
+
 	# router-local stack: postgrest on the memledger frontend bridge
 	reverse_proxy 172.20.2.2:3000 {
 		# PostgREST would mistake the gate bearer for a JWT - strip it
