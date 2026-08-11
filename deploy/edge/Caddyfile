@@ -264,35 +264,6 @@ vault.erfi.io {
 	import site_log vaultwarden
 }
 
-# Home Assistant on erfipie (10.0.69.7, admin leg; added 2026-08-11).
-# Pattern A: HA has its own login. hearth modules/iot.nix trusts 10.0.69.1
-# (use_x_forwarded_for + trusted_proxies) or HA 400s proxied requests.
-# Websockets (/api/websocket) pass through fine.
-ha.erfi.io {
-	import waf
-	import tls_config_rfc2136
-	encode zstd gzip
-	reverse_proxy 10.0.69.7:8123 {
-		import proxy_headers
-	}
-	import error_pages
-	import site_log ha
-}
-
-# ESPHome dashboard on erfipie. NO auth of its own and it can push OTA
-# writes - bearer/LAN gate (pattern B), never expose ungated.
-esphome.erfi.io {
-	import waf
-	import tls_config_rfc2136
-	import research_auth
-	encode zstd gzip
-	reverse_proxy 10.0.69.7:6052 {
-		import proxy_headers
-	}
-	import error_pages
-	import site_log esphome
-}
-
 # composer (edge instance) - canonical composer going forward; servarr's
 # instance keeps composer.servarr.erfi.io until retirement. Native site
 # (container publishes *:8080 on this host). No `import waf`: mirrors the
@@ -843,6 +814,37 @@ draw.erfi.io {
 		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
 	}
 	respond @denied_read 401
+}
+
+# Home Assistant on erfipie (10.0.69.7, admin leg; added 2026-08-11).
+# Pattern A: HA has its own login. hearth modules/iot.nix trusts 10.0.69.1
+# (use_x_forwarded_for + trusted_proxies) or HA 400s proxied requests.
+# Websockets (/api/websocket) pass through fine. NOTE: site blocks that
+# import research_auth must sit AFTER the snippet definitions below - the
+# caddyfile adapter resolves snippets top-down (learned the crash-loop way).
+ha.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 10.0.69.7:8123 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log ha
+}
+
+# ESPHome dashboard on erfipie. NO auth of its own and it can push OTA
+# writes - bearer/LAN gate (pattern B), never expose ungated.
+esphome.erfi.io {
+	import waf
+	import tls_config_rfc2136
+	import research_auth
+	encode zstd gzip
+	reverse_proxy 10.0.69.7:6052 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log esphome
 }
 
 memledger.erfi.io {
