@@ -853,6 +853,15 @@ memledger.erfi.io {
 	import memledger_auth
 	encode zstd gzip
 
+	# root serves the UI (exact match only) - without this / falls through to
+	# PostgREST and returns the raw OpenAPI JSON. Assets keep resolving via the
+	# /ui* handle_path below; every API path (/rpc/*, /sessions, ...) still proxies.
+	@root path /
+	handle @root {
+		root * /srv/memledger
+		file_server
+	}
+
 	# search UI - static single page, API calls go same-origin to PostgREST
 	handle_path /ui* {
 		root * /srv/memledger
