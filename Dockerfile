@@ -83,7 +83,7 @@ RUN crs-converter \
 
 # Fetch Cloudflare IP ranges at build time for trusted_proxies.
 # Rebuild the image periodically to pick up any Cloudflare IP changes.
-FROM alpine:3.21 AS cloudflare-ips
+FROM alpine:3.24 AS cloudflare-ips
 RUN wget -qO /tmp/cf_ipv4 https://www.cloudflare.com/ips-v4 \
 	&& wget -qO /tmp/cf_ipv6 https://www.cloudflare.com/ips-v6 \
 	&& { echo '# AUTO-GENERATED at build time — Cloudflare IP ranges'; \
