@@ -39,8 +39,8 @@ jobs:
       caddy: ${{ steps.filter.outputs.caddy }}
       wafctl: ${{ steps.filter.outputs.wafctl }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
         id: filter
         with:
           filters: |
@@ -61,8 +61,8 @@ jobs:
   test-go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache: false  # wafctl has zero external deps, no go.sum
@@ -76,8 +76,8 @@ jobs:
   test-frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -93,9 +93,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache-dependency-path: test/e2e/go.sum
@@ -134,11 +134,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: false
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache-dependency-path: test/crs/go.sum
@@ -177,21 +177,21 @@ jobs:
     if: needs.changes.outputs.caddy == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set image ref
         id: meta
         run: echo "full=${CADDY_IMAGE}:${CADDY_TAG}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and load locally
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         id: build-local
         with:
           context: .
@@ -204,7 +204,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.full }}
           format: table
@@ -213,7 +213,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         id: build
         with:
           context: .
@@ -225,14 +225,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
+      - uses: sigstore/cosign-installer@874852de93c66509b01dc7cd80f7a5385182d017  # main
 
       - name: Sign image
         continue-on-error: true
         run: cosign sign --yes "${CADDY_IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
         with:
           image: ${{ steps.meta.outputs.full }}
           format: spdx-json
@@ -250,21 +250,21 @@ jobs:
     if: needs.changes.outputs.wafctl == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set image tag
         id: meta
         run: echo "full=${WAFCTL_IMAGE}:${WAFCTL_VERSION}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and load locally
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         id: build-local
         with:
           context: .
@@ -278,7 +278,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.full }}
           format: table
@@ -287,7 +287,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         id: build
         with:
           context: .
@@ -300,14 +300,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - uses: sigstore/cosign-installer@430b6a704fe0c92f1b1261d84376a900f38d90ff  # main
+      - uses: sigstore/cosign-installer@874852de93c66509b01dc7cd80f7a5385182d017  # main
 
       - name: Sign image
         continue-on-error: true
         run: cosign sign --yes "${WAFCTL_IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11  # v0.23.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
         with:
           image: ${{ steps.meta.outputs.full }}
           format: spdx-json
