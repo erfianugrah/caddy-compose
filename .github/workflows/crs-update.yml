@@ -17,7 +17,7 @@ jobs:
   check-crs-update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Get current CRS version
         id: current
@@ -60,7 +60,7 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: steps.compare.outputs.up_to_date == 'false' && steps.existing_pr.outputs.exists == 'false'
         with:
           go-version: '1.26'
