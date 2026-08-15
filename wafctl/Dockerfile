@@ -1,7 +1,7 @@
 ARG CRS_VERSION=v4.26.0
 
 # Build WAF dashboard static site
-FROM node:22-alpine AS frontend
+FROM node:26-alpine AS frontend
 WORKDIR /build
 COPY waf-dashboard/package.json waf-dashboard/package-lock.json ./
 RUN npm ci
@@ -33,7 +33,7 @@ RUN crs-converter \
       -output /build/default-rules.json \
       -metadata-output /build/crs-metadata.json
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache wget
 COPY --from=builder /build/wafctl /usr/local/bin/wafctl
 COPY --from=frontend /build/dist/ /app/waf-ui/
