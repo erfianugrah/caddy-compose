@@ -47,9 +47,9 @@ RUN xcaddy build \
 	--with github.com/caddy-dns/rfc2136@v1.0.0 \
 	--with github.com/mholt/caddy-dynamicdns@a5890c9 \
 	--with github.com/mholt/caddy-l4@v0.1.2 \
-	--with github.com/erfianugrah/caddy-body-matcher@v0.2.1 \
-	--with github.com/erfianugrah/caddy-policy-engine@v0.42.2 \
-	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.3 \
+	--with github.com/erfianugrah/caddy-body-matcher@v0.2.3 \
+	--with github.com/erfianugrah/caddy-policy-engine@v0.42.3 \
+	--with github.com/erfianugrah/caddy-ddos-mitigator@v0.17.4 \
 	--with github.com/caddyserver/cache-handler@v0.16.0 \
 	--with github.com/darkweak/storages/nuts/caddy@v0.0.19 \
 	--with github.com/darkweak/souin=github.com/erfianugrah/souin@v1.7.7-erfi.1 \
