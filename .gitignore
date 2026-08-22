@@ -57,3 +57,5 @@ caddy-policy-engine/
 # Local backups - may contain live secrets (challenge HMAC key etc.);
 # this repo is public. SOPS-encrypt before committing any backup.
 archive/
+
+.pi/harness-*
