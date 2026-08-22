@@ -344,7 +344,7 @@ immich.erfi.io {
 bonkled.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.19.25.2:8080 {
+	reverse_proxy 172.20.4.2:8080 {
 		import proxy_headers
 		flush_interval -1
 	}
