@@ -339,8 +339,9 @@ immich.erfi.io {
 # bonkled - multiplayer Wordle-likes game. Public, no auth gate.
 # WebSockets used for live versus matches + queue + match-event replay,
 # so flush_interval -1 disables response buffering for the upgraded
-# conn. Stack lives at /mnt/user/composer/stacks/bonkled (compose.yaml
-# in the bonkled repo at deploy/unraid/).
+# conn. Router-local stack since 2026-08-23 (bonkled0 bridge, compose.yaml
+# in the bonkled repo at deploy/router/); servarr deploy/unraid/ is the
+# rollback path.
 bonkled.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip

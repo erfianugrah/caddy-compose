@@ -684,7 +684,9 @@ erfianugrah.com {
 
 # revista - same backend as erfianugrah.com, separate erfi.io name. Was
 # grouped with the dead *.fn.erfi.io deno-edge wildcard in the interim;
-# split out now that the wildcard is gone.
+# split out now that the wildcard is gone. Router-local stack since
+# 2026-08-23 (revista0 bridge, compose.router.yaml in the revista-3
+# repo); servarr compose.yaml is the rollback path.
 revista.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
