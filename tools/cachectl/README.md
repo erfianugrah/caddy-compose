@@ -22,7 +22,7 @@ go run . purge <site|all>    # delete the site's nuts dir + restart caddy (-y sk
 make build-cachectl          # -> tools/cachectl/cachectl
 ```
 
-Env overrides: `SSH_HOST` (nixos), `CONTAINER` (caddy), `EDGE_IP`
+Env overrides: `SSH_HOST` (router), `CONTAINER` (caddy), `EDGE_IP`
 (auto-detected via ifconfig.me from the edge), `HOST_ROOT`, `CTR_ROOT`.
 
 ## Semantics
