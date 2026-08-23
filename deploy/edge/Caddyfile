@@ -72,13 +72,13 @@
 			}
 		}
 		# gitea-ssh (3a flip): servarr's caddy L4-proxied :2223 -> 172.40.0.2:2222.
-		# Prepped here pointing at gitea's macvlan IP; WAN input needs :2223 added
-		# to router.nix's {80,443,2222} accept rule before this is reachable -
+		# Forgejo runs on the same host (router bridge); caddy L4-proxies :2223 -> 172.20.6.2:2222.
+		# Same port as old gitea; :2223 is already in the router firewall accept list.
 		# harmless until then.
 		:2223 {
 			@ssh ssh
 			route @ssh {
-				proxy 10.0.71.56:2222
+				proxy 172.20.6.2:2222
 			}
 		}
 	}
@@ -598,7 +598,7 @@ git.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 10.0.71.56:3000 {
+	reverse_proxy 172.20.6.2:3000 {
 		import proxy_headers
 		# Git HTTP operations (clone/push/pull) and LFS uploads can be
 		# long-running with large payloads. Disable response timeout and
