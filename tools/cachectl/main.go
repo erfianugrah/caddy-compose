@@ -18,7 +18,7 @@ package main
 //   cachectl probe <url> [url..] request each URL twice via the edge, print Cache-Status
 //   cachectl purge <site|all>    delete <ctrRoot>/<site> + restart caddy (-y skips confirm)
 //
-// Env overrides: SSH_HOST (nixos), CONTAINER (caddy), EDGE_IP (auto-detected
+// Env overrides: SSH_HOST (router), CONTAINER (caddy), EDGE_IP (auto-detected
 // via ifconfig.me from the edge), HOST_ROOT, CTR_ROOT.
 
 import (
@@ -73,7 +73,7 @@ Usage:
   cachectl probe <url> [url..] request each URL twice via the edge, print Cache-Status
   cachectl purge <site|all>    delete the site's nuts dir + restart caddy (-y skips confirm)
 
-Env overrides: SSH_HOST (nixos), CONTAINER (caddy), EDGE_IP, HOST_ROOT, CTR_ROOT`)
+Env overrides: SSH_HOST (router), CONTAINER (caddy), EDGE_IP, HOST_ROOT, CTR_ROOT`)
 }
 
 // parsePurgeArgs extracts the site name and -y flag from purge args.

@@ -29,7 +29,7 @@ func envOr(key, def string) string {
 
 func loadConfig() config {
 	return config{
-		sshHost:   envOr("SSH_HOST", "nixos"),
+		sshHost:   envOr("SSH_HOST", "router"),
 		container: envOr("CONTAINER", "caddy"),
 		hostRoot:  envOr("HOST_ROOT", "/var/lib/caddy/data/cache/nuts"),
 		ctrRoot:   envOr("CTR_ROOT", "/data/cache/nuts"),

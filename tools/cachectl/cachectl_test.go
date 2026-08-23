@@ -57,7 +57,7 @@ func failResp(msg string) fakeResp { return fakeResp{err: fmt.Errorf("%s", msg)}
 func newTestEdge(r *fakeRunner, in io.Reader) edge {
 	return edge{
 		cfg: config{
-			sshHost:   "nixos",
+			sshHost:   "router",
 			container: "caddy",
 			hostRoot:  "/var/lib/caddy/data/cache/nuts",
 			ctrRoot:   "/data/cache/nuts",
