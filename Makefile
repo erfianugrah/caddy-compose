@@ -16,8 +16,8 @@ WAFCTL_IMAGE ?= erfianugrah/wafctl:2.101.3
 
 # ── Remote host ─────────────────────────────────────────────────────
 # SSH host alias or user@host for the deployment target.
-# The stack lives only on the MS-01 router (nixos).
-REMOTE ?= nixos
+# The stack lives only on the MS-01 router (router).
+REMOTE ?= router
 
 # ── Composer settings ───────────────────────────────────────────────
 # Container name running Composer on the remote host.

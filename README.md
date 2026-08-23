@@ -198,7 +198,7 @@ The trade-off: pinned modules don't pick up upstream security fixes on rebuild, 
 After `make deploy-caddy`, confirm the module loaded on the live container:
 
 ```bash
-ssh nixos 'docker exec caddy /usr/bin/caddy list-modules | grep <module-id>'
+ssh router 'docker exec caddy /usr/bin/caddy list-modules | grep <module-id>'
 ```
 
 For DNS providers specifically, also verify the Caddyfile actually consumes the new provider (otherwise the module is loaded but inert):

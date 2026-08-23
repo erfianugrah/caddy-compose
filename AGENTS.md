@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Docker Compose infrastructure for a Caddy reverse proxy with custom Go plugins (policy engine WAF, DDoS mitigation, L4 proxying) and a WAF management sidecar. Deployed via Composer as the `edge-services` stack on the MS-01 NixOS router (ssh alias `nixos`). Two codebases:
+Docker Compose infrastructure for a Caddy reverse proxy with custom Go plugins (policy engine WAF, DDoS mitigation, L4 proxying) and a WAF management sidecar. Deployed via Composer as the `edge-services` stack on the MS-01 NixOS router (ssh alias `router`). Two codebases:
 
 - **wafctl/** - Go HTTP service + CLI tool (stdlib only, zero external deps, Go 1.26+)
 - **waf-dashboard/** - Astro 7 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
@@ -128,12 +128,12 @@ Learned the hard way 2026-05-24 (caused a ~15 min prod outage):
   installed). Issuer Let's Encrypt E7, valid until 2026-08-23. Recipe:
 
   ```bash
-  ssh nixos 'docker exec caddy rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/test.lab.erfi.io'
-  ssh nixos 'docker restart caddy'
+  ssh router 'docker exec caddy rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/test.lab.erfi.io'
+  ssh router 'docker restart caddy'
   # then either wait for on-demand TLS or curl the host
   echo | openssl s_client -servername test.lab.erfi.io -connect test.lab.erfi.io:443 2>/dev/null \
     | openssl x509 -noout -dates -issuer
-  ssh nixos 'docker logs caddy --since 2m 2>&1 | grep -E "test\.lab\.erfi\.io|tls\.obtain|obtained"'
+  ssh router 'docker logs caddy --since 2m 2>&1 | grep -E "test\.lab\.erfi\.io|tls\.obtain|obtained"'
   ```
 
 ## TSIG rotation (when `TSIG_CADDY_ACME` is compromised or due)
