@@ -522,7 +522,7 @@ sabnzbd.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 10.0.71.39:6666 {
+	reverse_proxy 10.0.71.39:8080 {
 		import proxy_headers
 	}
 	import error_pages
