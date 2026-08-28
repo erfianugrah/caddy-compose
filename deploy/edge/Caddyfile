@@ -289,8 +289,18 @@ composer.erfi.io {
 
 # atuin sync server - moved from servarr (2026-07-22). Same proxy-to-edge
 # model as vault.erfi.io until cutover.
+#
+# `import waf_off` (2026-08-29): the policy_engine body scan costs ~23us/byte
+# (~43KB/s) and atuin record-sync POSTs are hundreds of KB per batch, so every
+# batch cost 3-5s while the upstream answered in ~1ms - a 36k-record upload
+# projected to ~35h. Measured on the same caddy over loopback with one 200KB
+# body: atuin vhost (import waf) 4680ms, httpbin vhost (no waf) 11ms, straight
+# to the upstream 1ms; cost scaled linearly 5KB->400KB. Body inspection buys
+# nothing here regardless - atuin sync payloads are client-side-encrypted
+# opaque ciphertext, so CRS body regexes have nothing to match, and the
+# endpoint is authenticated by bearer session token.
 atuin.erfi.io {
-	import waf
+	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
 	reverse_proxy 10.0.71.64:8888 {
