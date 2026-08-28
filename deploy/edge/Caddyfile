@@ -293,7 +293,7 @@ atuin.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.31.5.2:8888 {
+	reverse_proxy 10.0.71.64:8888 {
 		import proxy_headers
 	}
 	import error_pages
