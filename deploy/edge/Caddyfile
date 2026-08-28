@@ -256,7 +256,7 @@ vault.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.31.4.2:80 {
+	reverse_proxy 10.0.71.63:80 {
 		import proxy_headers
 		header_up X-Real-IP {client_ip}
 	}
