@@ -664,4 +664,14 @@ The custom policy engine in front of `composer.erfi.io` blocks the default `curl
 -H 'Referer: https://composer.erfi.io/<page>'
 ```
 
-Same pattern applies to any other downstream that goes through this WAF and accepts state-changing verbs — if you see a `403` page with a reference ID on a `PUT`/`POST` and not on `GET`, this is the cause. Check policy-engine event logs by reference ID to confirm the exact rule that triggered.
+Same pattern applies to any other downstream that goes through this WAF and accepts state-changing verbs - if you see a `403` page with a reference ID on a `PUT`/`POST` and not on `GET`, this is the cause. Check policy-engine event logs by reference ID to confirm the exact rule that triggered.
+
+### Body-scan throughput ceiling - ~43KB/s per request (OPEN, 2026-08-29)
+
+`import waf` makes request cost scale linearly with request-body size. Measured end-to-end totals via loopback, one POST each: 5KB=0.11s, 10KB=0.22s, 50KB=1.11s, 100KB=2.24s, 200KB=4.68s, 400KB=9.34s. Dividing any of those gives ~43KB/s sustained (~23us/byte derived, not directly instrumented). Same rate whether the request is ultimately blocked or allowed, so it is the scan path and not the block path. Controls on the same caddy, same 200KB body: non-waf vhost 11ms, straight to an upstream 1ms. Any client POSTing large bodies through a waf vhost is throttled to dial-up speed.
+
+This is NOT explained by rule count: the CRS set has 62 body-matching regexes totalling ~5.8KB of pattern, which should be single-digit ms over 200KB. Suspected per-byte allocation / unbuffered reads in `caddy-policy-engine` (pinned `v0.42.3`) - **plugin source not yet read, so unconfirmed**.
+
+Still paying the tax: `vault.erfi.io` (4.88s/200KB - attachment upload + cold vault sync post large bodies), `joplin.erfi.io` (4.79s), `docs.erfi.io` (4.84s), plus the other waf vhosts. `atuin.erfi.io` was moved to `waf_off` (commit 9beb6bc) after a 36k-record sync projected to ~35h; that is a workaround, not the fix, and it is only defensible there because atuin payloads are client-encrypted opaque ciphertext behind bearer auth.
+
+Full investigation, per-size timings, reproduction commands, and the three candidate fixes: `docs/2026-08-29-policy-engine-body-scan-throughput.md`.
