@@ -563,7 +563,7 @@ bonkled.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.20.4.2:8080 {
+	reverse_proxy 10.0.71.54:8080 {
 		import proxy_headers
 		flush_interval -1
 	}
