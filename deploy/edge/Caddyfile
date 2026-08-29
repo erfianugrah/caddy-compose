@@ -914,8 +914,8 @@ memledger.erfi.io {
 		}
 	}
 
-	# servarr stack: postgrest on servarr lan (.69)
-	reverse_proxy 10.0.71.69:3000 {
+	# servarr stack: postgrest on servarr lan (.70)
+	reverse_proxy 10.0.71.70:3000 {
 		# PostgREST would mistake the gate bearer for a JWT - strip it
 		header_up -Authorization
 		import proxy_headers
