@@ -755,7 +755,7 @@ make caddy-reload         # syncs from git + redeploys WAF/CSP/headers + reloads
 The edge Caddy (MS-01 router, `network_mode: host`) proxies to:
 
 - **servarr over the LAN** (`10.0.71.x`) - most app stacks, via macvlan service IPs or host-published ports on `10.0.71.2`. See the servarr-compose runbooks for the LAN IP allocation scheme.
-- **Local bridge networks on the MS-01 itself** (`172.31.x`, `172.40.x`) - edge-local stacks (docs, memledger, gitea).
+- **Local bridge networks on the MS-01 itself** (`172.31.x`, `172.40.x`) - edge-local stacks (docs, gitea). memledger moved to servarr 2026-08-29 (now at 10.0.71.70 postgrest / .68 ui / .67 embedder).
 
 Adding a site today: new block in `deploy/edge/Caddyfile` + knotctl DNS record + `make caddy-reload`. The 2026-08-09 direction change (PLAN.md) moves host lifecycle into edgectl via the Caddy admin API; the Caddyfile remains the static skeleton.
 
