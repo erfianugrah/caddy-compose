@@ -881,16 +881,18 @@ memledger.erfi.io {
 	# root serves the UI (exact match only) - without this / falls through to
 	# PostgREST and returns the raw OpenAPI JSON. Assets keep resolving via the
 	# /ui* handle_path below; every API path (/rpc/*, /sessions, ...) still proxies.
-	@root path /
+	# root serves the UI via the stack's caddy file-server on servarr lan (.68)
 	handle @root {
-		root * /srv/memledger
-		file_server
+		reverse_proxy 10.0.71.68:8080 {
+			import proxy_headers
+		}
 	}
 
 	# search UI - static single page, API calls go same-origin to PostgREST
 	handle_path /ui* {
-		root * /srv/memledger
-		file_server
+		reverse_proxy 10.0.71.68:8080 {
+			import proxy_headers
+		}
 	}
 
 	# MCP endpoint (read-only tools) - bearer required from EVERY network:
@@ -898,7 +900,7 @@ memledger.erfi.io {
 	handle /mcp* {
 		@mcp_noauth not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
 		respond @mcp_noauth 401
-		reverse_proxy 172.20.2.40:8000 {
+		reverse_proxy 10.0.71.67:8000 {
 			header_up -Authorization
 			import proxy_headers
 		}
@@ -906,14 +908,14 @@ memledger.erfi.io {
 
 	# semantic (pgvector) search - the stack's embedder service
 	handle_path /semantic* {
-		reverse_proxy 172.20.2.40:8000 {
+		reverse_proxy 10.0.71.67:8000 {
 			header_up -Authorization
 			import proxy_headers
 		}
 	}
 
-	# router-local stack: postgrest on the memledger frontend bridge
-	reverse_proxy 172.20.2.2:3000 {
+	# servarr stack: postgrest on servarr lan (.66)
+	reverse_proxy 10.0.71.66:3000 {
 		# PostgREST would mistake the gate bearer for a JWT - strip it
 		header_up -Authorization
 		import proxy_headers
