@@ -645,7 +645,7 @@ httpbun.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.31.15.2:80 {
+	reverse_proxy 10.0.71.2:18088 {
 		import proxy_headers
 	}
 	import error_pages
@@ -656,7 +656,7 @@ httpbin.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 172.31.15.3:80 {
+	reverse_proxy 10.0.71.2:18089 {
 		import proxy_headers
 	}
 	import error_pages
