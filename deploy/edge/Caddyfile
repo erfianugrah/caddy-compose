@@ -881,7 +881,8 @@ memledger.erfi.io {
 	# root serves the UI (exact match only) - without this / falls through to
 	# PostgREST and returns the raw OpenAPI JSON. Assets keep resolving via the
 	# /ui* handle_path below; every API path (/rpc/*, /sessions, ...) still proxies.
-	# root serves the UI via the stack's caddy file-server on servarr lan (.68)
+	# Served by the stack's caddy file-server on servarr lan (.68).
+	@root path /
 	handle @root {
 		reverse_proxy 10.0.71.68:8080 {
 			import proxy_headers
