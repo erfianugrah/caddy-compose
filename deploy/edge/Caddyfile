@@ -539,6 +539,19 @@ sabnzbd.erfi.io {
 	import site_log sabnzbd
 }
 
+# rustnzb TEST instance (2026-08-29) - bridge-only on servarr, host port
+# 19090 (9090 is discord-wipe's). Delete this block when the evaluation ends.
+rustnzb.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 10.0.71.2:19090 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log rustnzb
+}
+
 # slskd shares wg-pia-slskd's netns - can't macvlan. Host-published on
 # 10.0.71.2:5030.
 slskd.erfi.io {
