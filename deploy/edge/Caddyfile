@@ -68,7 +68,7 @@
 		:2222 {
 			@ssh ssh
 			route @ssh {
-				proxy 10.0.71.2:18087
+				proxy 10.0.71.65:2222
 			}
 		}
 		# forgejo-ssh: Forgejo on forgejo0 bridge, same host as edge Caddy.
@@ -329,7 +329,7 @@ docs.erfi.io {
 	import waf
 	import tls_config_rfc2136
 	encode zstd gzip
-	reverse_proxy 10.0.71.2:18086 {
+	reverse_proxy 10.0.71.65:8080 {
 		import proxy_headers
 	}
 	import error_pages
