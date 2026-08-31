@@ -539,6 +539,17 @@ sabnzbd.erfi.io {
 	import site_log sabnzbd
 }
 
+nzbget.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 10.0.71.44:6789 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log nzbget
+}
+
 # rustnzb TEST instance (2026-08-29) - bridge-only on servarr, host port
 # 19090 (9090 is discord-wipe's). Delete this block when the evaluation ends.
 rustnzb.erfi.io {
