@@ -65,7 +65,7 @@ RUN xcaddy build \
 
 # Convert CRS rules to policy-engine format at build time.
 # Update CRS_VERSION to pick up new CRS releases.
-FROM golang:1.26-alpine AS crs-rules
+FROM golang:1.27-alpine AS crs-rules
 ARG CRS_VERSION
 RUN apk add --no-cache git
 WORKDIR /build
