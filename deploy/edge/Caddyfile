@@ -353,8 +353,9 @@ docs.erfi.io {
 # positives (git LFS pushes, S3 sigv4, Subsonic/Jellyfin API clients, etc.)
 #
 # Dropped (dead backends, no longer serve anything): tdarr.erfi.io,
-# tracearr.erfi.io, change.erfi.io, dockge.erfi.io, *.fn.erfi.io (deno-edge
+# change.erfi.io, dockge.erfi.io, *.fn.erfi.io (deno-edge
 # wildcard - platform stopped 2026-06+, no payload).
+# (tracearr.erfi.io un-parked 2026-09-03 - it is live again; block below.)
 # =========================================================================
 
 caddy.erfi.io {
@@ -455,6 +456,20 @@ prowlarr.erfi.io {
 	}
 	import error_pages
 	import site_log prowlarr
+}
+
+# tracearr (media-request/library tracker) UI on servarr, macvlan LAN IP.
+# Un-parked 2026-09-03: backend is live again (was in the dropped-backends list
+# above while parked). Upstream is the static servarr_lan macvlan IP :3000.
+tracearr.erfi.io {
+	import waf_off
+	import tls_config_rfc2136
+	encode zstd gzip
+	reverse_proxy 10.0.71.45:3000 {
+		import proxy_headers
+	}
+	import error_pages
+	import site_log tracearr
 }
 
 jellyfin.erfi.io {
