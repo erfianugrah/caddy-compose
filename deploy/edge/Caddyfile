@@ -383,10 +383,16 @@ servarr.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
-	# Unraid GraphQL API + UI - direct proxy (Authelia gate nuked 2026-07-23;
-	# Unraid's own auth is the only gate).
-	reverse_proxy 10.0.71.2:90 {
+	# Servarr GraphQL API + dashboard (Go binary at 10.0.71.21:8080 on servarr_lan).
+	# Caddy injects x-api-key before proxying; the Go handler validates constant-time.
+	#
+	# POST /graphql      -- dashboard
+	# POST /api/graphql   -- nzb360 adapter
+	# GET  /healthz       -- health check
+	# GET  /*             -- SPA
+	reverse_proxy 10.0.71.21:8080 {
 		import proxy_headers
+		header_up +x-api-key {$SERVARR_API_KEY}
 	}
 	import error_pages
 	import site_log servarr
