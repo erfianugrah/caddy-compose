@@ -384,15 +384,27 @@ servarr.erfi.io {
 	import tls_config_rfc2136
 	encode zstd gzip
 	# Servarr GraphQL API + dashboard (Go binary at 10.0.71.21:8080 on servarr_lan).
-	# Caddy injects x-api-key before proxying; the Go handler validates constant-time.
+	# Auth model (memledger pattern): the edge is the source-IP gate.
+	#  - LAN + tailnet source -> trusted: Caddy injects the key so the Go
+	#    gate passes; the browser never sees it.
+	#  - everyone else (WAN) -> must present x-api-key; Caddy injects nothing
+	#    and 401s a missing key before proxying, so the Go handler validates
+	#    the client-supplied key. nzb360 external access enters its key in-app.
 	#
 	# POST /graphql      -- dashboard
 	# POST /api/graphql   -- nzb360 adapter
 	# GET  /healthz       -- health check
 	# GET  /*             -- SPA
+	@trusted remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+	@untrusted_nokey {
+		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+		not header x-api-key *
+	}
+	respond @untrusted_nokey 401
 	reverse_proxy 10.0.71.21:8080 {
 		import proxy_headers
-		header_up +x-api-key {$SERVARR_API_KEY}
+		# inject only for trusted sources; untrusted requests carry the client's key
+		header_up @trusted x-api-key {$SERVARR_API_KEY}
 	}
 	import error_pages
 	import site_log servarr
