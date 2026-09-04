@@ -57,6 +57,8 @@ services:
       - CF_API_TOKEN=${CF_API_TOKEN}
       - RESEARCH_TOKEN=${RESEARCH_TOKEN}
       - MEMLEDGER_TOKEN=${MEMLEDGER_TOKEN}
+      # servarr.erfi.io: injected as x-api-key by the Caddyfile header_up
+      - SERVARR_API_KEY=${SERVARR_API_KEY}
 
   wafctl:
     image: erfianugrah/wafctl:2.101.3
