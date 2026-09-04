@@ -43,7 +43,9 @@ Client receives response from 118.189.189.102 ✓ connection completes
 
 **Real client IPs.** No SNAT masquerade is in play. `X-Forwarded-For`,
 `X-Real-IP`, and the connection's `RemoteAddr` all carry the actual
-LAN IP of the client (10.68.69.x / 10.68.70.x / 10.68.73.x).
+LAN IP of the client (10.0.69.x admin, 10.0.70.x, 10.0.72.x wireless; the
+IoT segment 10.0.73.x reaches only the router-hosted services plane). The
+10.68.x ranges retired with the 2026-09-04 renumbering.
 
 Practical consequences:
 
