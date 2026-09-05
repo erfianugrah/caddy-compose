@@ -13,8 +13,10 @@
 #     instances updating the same names would fight)
 #   - layer4 only for the docs-ssh SSH passthrough (the container moved here;
 #     servarr L4-proxies :2222 to us until cutover)
-#   - edge.erfi.io A records are RFC1918 (10.0.10.1) - clients are LAN-only,
-#     ACME is DNS-01 so no inbound public path is needed
+#   - edge.erfi.io names resolve to the WAN address since cutover, so
+#     anything without its own login is gated with (lan_only) or a bearer
+#     snippet; the wafctl dashboard hosts (waf.edge.erfi.io, waf.erfi.io)
+#     are LAN/tailnet-only (2026-09-05)
 {
 	admin localhost:2019
 	metrics
@@ -214,6 +216,44 @@
 	}
 }
 
+# Access gates. Defined here, before any site block, because the caddyfile
+# adapter resolves snippet imports top-down (a forward reference is treated
+# as a file import and crash-loops Caddy - learned 2026-08-11).
+# (research_auth) bearer gate (re-added 2026-08-01 after a no-auth interval):
+# LAN (10/8, 192.168/16, 172.16/12) + tailnet (100.64/10) clients pass
+# unauthenticated; WAN clients need Authorization: Bearer $RESEARCH_TOKEN.
+# pi extensions + the opencode MCP attach it when RESEARCH_TOKEN is set.
+# Private-ranges-only gate, for a service with no auth of its own: LAN, tailnet
+# and docker space in, everything else 401. Same shape as research_auth without
+# the bearer escape hatch - no token is provisioned for the lab endpoints.
+(lan_only) {
+	@denied not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+	respond @denied 401
+}
+
+(research_auth) {
+	@denied {
+		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+		not header Authorization "Bearer {$RESEARCH_TOKEN}"
+	}
+	respond @denied 401
+}
+
+(memledger_auth) {
+	# writes always need the bearer, even from LAN (the ingester sends it)
+	@denied_write {
+		method POST PUT PATCH DELETE
+		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
+	}
+	respond @denied_write 401
+	# reads are open on LAN/tailnet, bearer-gated from WAN
+	@denied_read {
+		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
+		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
+	}
+	respond @denied_read 401
+}
+
 composer.edge.erfi.io {
 	import waf
 	import tls_config_rfc2136
@@ -237,6 +277,7 @@ knotea.edge.erfi.io {
 }
 
 waf.edge.erfi.io {
+	import lan_only
 	import tls_config_rfc2136
 	encode zstd gzip
 	@waf_hashed path /_astro/*
@@ -369,6 +410,7 @@ caddy.erfi.io {
 
 # wafctl dashboard - already local (repointed 2026-07-24, predates this flip).
 waf.erfi.io {
+	import lan_only
 	import waf_off
 	import tls_config_rfc2136
 	encode zstd gzip
@@ -857,51 +899,10 @@ draw.erfi.io {
 	import site_log draw
 }
 
-# research stack - self-hosted search + crawler + OSINT for local LLMs.
-# Dual-bound on servarr (127.0.0.1 + 10.0.71.2). WAF intentionally skipped -
-# private API surface for local LLMs; WAF would add CPU + log noise.
-#
-# (research_auth) bearer gate (re-added 2026-08-01 after a no-auth interval):
-# LAN (10/8, 192.168/16, 172.16/12) + tailnet (100.64/10) clients pass
-# unauthenticated; WAN clients need Authorization: Bearer $RESEARCH_TOKEN.
-# pi extensions + the opencode MCP attach it when RESEARCH_TOKEN is set.
-# Private-ranges-only gate, for a service with no auth of its own: LAN, tailnet
-# and docker space in, everything else 401. Same shape as research_auth without
-# the bearer escape hatch - no token is provisioned for the lab endpoints.
-(lan_only) {
-	@denied not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
-	respond @denied 401
-}
-
-(research_auth) {
-	@denied {
-		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
-		not header Authorization "Bearer {$RESEARCH_TOKEN}"
-	}
-	respond @denied 401
-}
-
-(memledger_auth) {
-	# writes always need the bearer, even from LAN (the ingester sends it)
-	@denied_write {
-		method POST PUT PATCH DELETE
-		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
-	}
-	respond @denied_write 401
-	# reads are open on LAN/tailnet, bearer-gated from WAN
-	@denied_read {
-		not remote_ip 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16
-		not header Authorization "Bearer {$MEMLEDGER_TOKEN}"
-	}
-	respond @denied_read 401
-}
-
 # Home Assistant on erfipie (10.0.69.7, admin leg; added 2026-08-11).
 # Pattern A: HA has its own login. hearth modules/iot.nix trusts 10.0.69.1
 # (use_x_forwarded_for + trusted_proxies) or HA 400s proxied requests.
-# Websockets (/api/websocket) pass through fine. NOTE: site blocks that
-# import research_auth must sit AFTER the snippet definitions below - the
-# caddyfile adapter resolves snippets top-down (learned the crash-loop way).
+# Websockets (/api/websocket) pass through fine.
 ha.erfi.io {
 	import waf
 	import tls_config_rfc2136
@@ -988,6 +989,9 @@ memledger.erfi.io {
 	import site_log memledger
 }
 
+# research stack - self-hosted search + crawler + OSINT for local LLMs.
+# Dual-bound on servarr (127.0.0.1 + 10.0.71.2). WAF intentionally skipped -
+# private API surface for local LLMs; WAF would add CPU + log noise.
 searxng.erfi.io {
 	import waf_off
 	import tls_config_rfc2136
