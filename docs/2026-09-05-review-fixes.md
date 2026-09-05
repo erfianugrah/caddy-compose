@@ -6,7 +6,7 @@ this order.
 
 | # | Guide | Severity | Touches |
 |---|---|---|---|
-| 1 | Edge access-control hardening (tracked out of band; guide lands once deployed) | high | `deploy/edge/Caddyfile` |
+| 1 | [wafctl API reachable from the internet with no auth](2026-09-05-fix-waf-api-exposure.md) (layer 1 deployed 2026-09-05, commit d904752) | high | `deploy/edge/Caddyfile`, optionally `.env` + `deploy/edge/compose.yaml` |
 | 2 | [Weekly forced Caddy `/load` from the CF proxy refresher](2026-09-05-fix-cfproxy-weekly-reload.md) | high (fires Mon 2026-09-07 06:00 UTC) | `wafctl/cfproxy.go`, `wafctl/main.go`, `Dockerfile`, `scripts/entrypoint.sh` |
 | 3 | [`tsc --noEmit` broken by TypeScript 7 `baseUrl` removal](2026-09-05-fix-tsconfig-baseurl.md) | medium | `waf-dashboard/tsconfig.json`, `.github/workflows/build.yml` |
 | 4 | [Image tag drift across the five version files](2026-09-05-fix-version-tag-sync.md) | medium | `Makefile`, `compose.yaml`, `deploy/edge/compose.yaml`, `README.md`, `.github/workflows/build.yml` |
