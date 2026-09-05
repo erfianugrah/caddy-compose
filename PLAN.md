@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Direction Change (2026-08-09)](#direction-change-2026-08-09) - READ THIS FIRST
+- [Review Backlog (2026-09-05)](#review-backlog-2026-09-05) - fix status + improvement backlog by area
 
 1. [Current State](#current-state)
 2. [Near-Term](#near-term)
@@ -99,26 +100,160 @@ and an ecosystem comparison against Traefik / HAProxy / Envoy / nginx):
    - Single-edge SPOF: keepalived/VRRP is the homelab-standard fix, or
      explicitly accept it. Undecided is the only bad state.
 
-5. **Housekeeping debt to clear in the nuke session:**
-   - Makefile pins caddy `3.97.1-2.11.4` (ja4 accept-loop wedge fix); both
-     compose files still deploy `3.97.0-2.11.4`. Deploy or revert the pin.
-     (Moot if the WAF nuke removes the ja4 listener wrapper entirely.)
-   - `caddy-ddos-mitigator` main carries the threshold-dampening fix but is
-     untagged; the Dockerfile pins v0.17.3. Tag + bump.
-   - `caddy-body-matcher` v0.2.2 is tagged locally but unpushed; the
-     Dockerfile pins v0.2.1. Push the tag + bump, or drop the module.
+5. **Housekeeping debt to clear in the nuke session** (refreshed 2026-09-05;
+   the original list from 2026-08-09 is mostly done or superseded):
+   - DONE: caddy `3.97.2-2.11.4` is deployed and pinned in Makefile +
+     `deploy/edge/compose.yaml`; ddos-mitigator `v0.17.4` and body-matcher
+     `v0.2.3` are tagged, pushed and pinned in the Dockerfile. The local
+     body-matcher `v0.2.2` tag was never pushed; harmless, delete it.
+   - Root `compose.yaml` + root `Caddyfile` (servarr variant, pins 3.97.0)
+     have no live consumer: no caddy container runs on servarr. Delete or move
+     to `deploy/servarr/` - see `docs/2026-09-05-fix-version-tag-sync.md` §4.
+   - `README.md` and `.github/workflows/build.yml` still carry stale tags;
+     CI publish tags should be derived from the Makefile with an
+     overwrite guard - same guide.
    - `tools/cachectl` `verify` asserts a global cache block that no longer
      exists (cache removed 2026-08-07). Fix or retire cachectl.
-   - The four sibling plugin repos have no CI; only caddy-compose does.
+   - The three sibling plugin repos have no CI (dependabot only); only
+     caddy-compose does, and its CI has no vet/gofmt/tsc gate.
    - `L4_INTEGRATION_PLAN.md` was written against the retired servarr
-     topology (its Caddyfile line references and `:2020` admin proxy are
-     gone). Rewrite against the edge topology or retire it.
+     topology. Rewrite against the edge topology or retire it.
+   - `LAN_ACCESS.md` still describes VyOS and the pre-renumbering `10.68.x`
+     addressing. Rewrite or retire.
+   - Authelia leftovers: `deploy/edge/authelia/`, `AUTHELIA_*` keys in `.env`,
+     mentions in ~10 files. Authelia was retired 2026-07.
+
+---
+
+## Review Backlog (2026-09-05)
+
+Full-stack review of `ergo/` (CRS side excluded). Findings that need a fix
+have one guide each under `docs/` (index: `docs/2026-09-05-review-fixes.md`).
+Everything else lives here as the improvement backlog, grouped by area and
+sequenced against the WAF nuke so no work is done twice.
+
+### Fix status
+
+| # | Item | Status |
+|---|---|---|
+| 1 | wafctl API reachable from the internet with no auth | Layer 1 DEPLOYED 2026-09-05 (`d904752`, `lan_only` on both dashboard hosts). Open: off-LAN 401 check from outside the house; layer 2 bearer for WAN access (guide has two options). |
+| 2 | Weekly forced Caddy `/load` from the CF proxy refresher | OPEN. Next fire Mon 2026-09-07 06:00 UTC. Stopgap is one compose line; full removal listed in the guide. |
+| 3 | `tsc --noEmit` broken by TypeScript 7 `baseUrl` removal | OPEN. One-line tsconfig fix + add `tsc` to CI. |
+| 4 | Image tag drift across the five version files | OPEN. Add registry overwrite guard first, then single-source tags from the Makefile. |
+| 5 | CSP / security-header deploy paths skip the challenge HMAC injection | OPEN. Red test written in the guide; collapse to one `writePolicyRules`. Moot after the nuke but the dedupe stands. |
+| - | Dependabot: 13 open alerts on the default branch (9 high) at 2026-09-05 | OPEN. Not part of the review; surfaced by the push output. Trivy gates images, not lockfiles. |
+
+Deploy lesson recorded in AGENTS.md "Deployment": a Caddyfile-only change
+needs `docker restart caddy` after `make restart`; the single-file bind mount
+keeps the pre-sync inode, so `make restart` and `make caddy-quick-reload`
+both deploy nothing.
+
+### Improvement backlog
+
+Ordering rule: do the WAF nuke (Direction Change item 1) before touching the
+policy builder or the dashboard panels. Most of their size problems disappear
+with it.
+
+**API (wafctl)**
+
+- Four deploy routes do the same thing (`/api/deploy`, `/api/config/deploy`,
+  `/api/csp/deploy`, `/api/security-headers/deploy`). Keep one. Two rule
+  aliases (`/api/exclusions`, `/api/rules`); the dashboard still calls the
+  non-canonical `/api/exclusions`.
+- Handlers take up to 13 concrete store pointers (`handleHealth`). This is
+  the Phase 0 interface extraction below; it is the prerequisite for testing
+  edgectl handlers without constructing every store.
+- No OpenAPI document, no version prefix. The edgectl rename is the moment to
+  add `/api/v1` and a generated spec.
+- Rule save and deploy are two round trips driven by the UI. A rule created
+  via CLI or API sits undeployed with no indicator. Options: auto-deploy on
+  mutation (debounced), or expose `deployed_version` vs `store_version` in
+  `/api/health` and the rules list.
+- `WAF_AUTH_TOKEN` exists server-side but the dashboard cannot send it. Add
+  token support to `fetchJSON` (sessionStorage + 401 prompt) so the wafctl
+  layer can be switched on; today only the Caddy gate protects it.
+
+**Config management (Caddyfile / deploy)**
+
+- The live config is a ~1100-line hand-edited Caddyfile with 48 site blocks;
+  wafctl discovers services by regex over it (`BuildServiceFQDNMap`). The
+  target shape is Direction Change item 3: Caddyfile as static skeleton,
+  edgectl pushes site fragments via the admin API, `GET /config/` is the
+  source of truth. The cfproxy weekly `/load` (fix #2) must be gone first or
+  it wipes pushed state every Monday.
+- Version tags: Makefile as single source, CI derives, drift check in
+  pre-commit and CI (fix #4).
+- Remove dead deployment artifacts: root `compose.yaml`, root `Caddyfile`,
+  `deploy/edge/authelia/`, the three `AUTHELIA_*` variables in `.env`,
+  `L4_INTEGRATION_PLAN.md`, `LAN_ACCESS.md` (or rewrite), and
+  `tools/cachectl` `verify`.
+- Every site block without `import lan_only` or a bearer snippet is
+  internet-facing with only the upstream's own login. Run the audit awk from
+  the exposure guide and decide per block; `caddy.erfi.io` first.
+- Stale comments in the edge Caddyfile header ("CUTOVER-ONLY" dynamic_dns
+  block, servarr ownership of A records) need a decision now that MS-01 is
+  the edge.
+
+**Policy building**
+
+- `PolicyForms.tsx` (1405 lines), `PolicyEngine.tsx` (995), `RulesPanel.tsx`
+  (1364) all exceed the project's own 500-line split rule. The condition
+  model exposes 60+ fields, most of them CRS aggregates. Do not refactor
+  before the nuke: the survivors are roughly ip, path, host, method,
+  user_agent, header, country and the rate-limit keys, and the form shrinks
+  to a third on its own.
+- After the nuke: one rule type set (allow/block/rate_limit, maybe
+  response_header), one form, conditions limited to the surviving fields,
+  and the `/policy` vs `/rules` split collapses to one page.
+
+**UI (waf-dashboard)**
+
+- 14 nav entries, 8 slated for removal (Challenge Analytics, Sessions,
+  Policy Engine, WAF Settings/CRS, Managed Lists, CSP, Security Headers,
+  CORS). Survivors: Overview, Events, Logs, IP Lookup, Services, DDoS. Prune
+  the nav with the nuke.
+- 20 components hand-roll fetch/loading/error/polling in `useEffect`; no
+  shared query layer. `useStaleSafeRequest` exists to fix the resulting race
+  and has zero callers. Before adding edgectl host-management screens, adopt
+  one data-fetching primitive (a small `useApi(url, deps)` hook with
+  AbortController + stale guard is enough; TanStack Query if polling and
+  cache invalidation grow) and migrate the six surviving pages to it.
+- `DDoSPanel.tsx` (1073), `OverviewDashboard.tsx` (1022),
+  `ChallengeAnalytics.tsx` (1278) exceed 1000 lines. Split DDoS and Overview
+  after the data-layer change; Challenge goes with the nuke.
+- Type-checking has been dead since the TypeScript 7 bump (fix #3). Expect a
+  backlog of type errors when it comes back.
+
+**Hygiene / CI**
+
+- caddy-compose CI runs tests only: add `gofmt -l`, `go vet`, `tsc --noEmit`,
+  and the version drift check as gates.
+- Plugin repos (`caddy-body-matcher`, `caddy-policy-engine`,
+  `caddy-ddos-mitigator`) have dependabot but no test CI. Add a
+  `go test -race -count=1 ./...` workflow to each; the nuke removes
+  policy-engine, so do body-matcher and ddos-mitigator first.
+- Dependabot alerts: triage the 13 open ones; most likely in
+  `waf-dashboard/package-lock.json` and `test/e2e/go.sum`.
+- Docs drift: AGENTS.md (caddy-compose) still lists CFProxyStore, the
+  challenge/session/JA4 pipeline and the `wafctl -> :2020` note as current.
+  Trim after fixes #2 and the nuke.
+
+### Suggested sequence
+
+1. Fixes #2 (before Monday), #3, #4, #5 from the guides. Small, independent.
+2. Off-LAN check + layer 2 for fix #1 when remote API access is wanted.
+3. WAF nuke session (Direction Change item 1) including the nav prune, the
+   dead-artifact removals above, and the edgectl rename.
+4. Phase 0 interface extraction on the surviving stores.
+5. Dashboard data-layer primitive, then split DDoS/Overview.
+6. edgectl host-config API on the Caddy admin API, dashboard reads
+   `GET /config/`.
 
 ---
 
 ## Current State
 
-**wafctl 2.101.3 / caddy 3.97.1-2.11.4 (Makefile; deployed compose pins 3.97.0) / body-matcher v0.2.1 (v0.2.2 tagged locally, unpushed) / policy-engine v0.42.2 / ddos-mitigator v0.17.3 (main ahead, untagged) / caddy-l4 v0.1.2**
+**wafctl 2.101.3 / caddy 3.97.2-2.11.4 (deployed on the router 2026-09-05) / body-matcher v0.2.3 / policy-engine v0.42.3 / ddos-mitigator v0.17.4 / caddy-l4 v0.1.2 / caddy upstream 2.11.4 / CRS v4.26.0**
 
 > 2026-08-09: the WAF/CRS/challenge functionality described below is slated
 > for removal - see Direction Change above. The inventory remains accurate as

@@ -12,6 +12,10 @@ this order.
 | 4 | [Image tag drift across the five version files](2026-09-05-fix-version-tag-sync.md) | medium | `Makefile`, `compose.yaml`, `deploy/edge/compose.yaml`, `README.md`, `.github/workflows/build.yml` |
 | 5 | [CSP and header deploy paths drop the challenge HMAC key](2026-09-05-fix-deploy-paths-hmac.md) | low (moot after WAF removal) | `wafctl/csp.go`, `wafctl/security_headers.go`, `wafctl/deploy.go` |
 
+The non-fix findings (API shape, config management, policy builder, UI data
+layer, CI gates) are tracked as the improvement backlog in
+`../PLAN.md` "Review Backlog (2026-09-05)", sequenced against the WAF nuke.
+
 Verified state at review time:
 
 - Router runs `erfianugrah/caddy:3.97.2-2.11.4` and `erfianugrah/wafctl:2.101.3`
