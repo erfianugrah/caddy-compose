@@ -70,7 +70,7 @@ The Makefile, compose.yaml, and CI workflow all reference Docker Hub image names
 ```bash
 # In Makefile (lines 14-15)
 CADDY_IMAGE   ?= <your-registry>/caddy:3.97.1-2.11.4
-WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.101.3
+WAFCTL_IMAGE  ?= <your-registry>/wafctl:2.102.0
 
 # In compose.yaml — the image fields for caddy and wafctl services
 # In .github/workflows/build.yml — the env block

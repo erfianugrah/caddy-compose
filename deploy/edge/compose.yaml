@@ -61,7 +61,7 @@ services:
       - SERVARR_API_KEY=${SERVARR_API_KEY}
 
   wafctl:
-    image: erfianugrah/wafctl:2.101.3
+    image: erfianugrah/wafctl:2.102.0
     hostname: wafctl
     container_name: wafctl
     restart: unless-stopped
