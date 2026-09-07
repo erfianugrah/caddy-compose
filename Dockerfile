@@ -53,13 +53,14 @@ RUN xcaddy build \
 	--with github.com/caddyserver/cache-handler@v0.16.0 \
 	--with github.com/darkweak/storages/nuts/caddy@v0.0.19 \
 	--with github.com/darkweak/souin=github.com/erfianugrah/souin@v1.7.7-erfi.1 \
-	--replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1 \
+	--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.1 \
+	--replace golang.org/x/crypto=golang.org/x/crypto@v0.55.0 \
 	--replace golang.org/x/text=golang.org/x/text@v0.39.0
-# ^ --replace bumps a transitive (non-plugin) dep with a known HIGH vuln that no
-# pinned module pulls a fixed version of yet. It writes a go.mod replace directive
-# (no blank import) - the xcaddy-documented lever for Caddy's non-module deps.
-#   google.golang.org/grpc v1.81.0 (via caddy-l4 v0.1.2) -> GHSA-hrxh-6v49-42gf,
-#   fixed in v1.82.1. Drop this once caddy-l4 (or another module) requires >= v1.82.1.
+# ^ --replace bumps a transitive (non-plugin) dep with a known HIGH/CRITICAL vuln
+# that no pinned module pulls a fixed version of yet. It writes a go.mod replace
+# directive (no blank import) - the xcaddy-documented lever for non-module deps.
+#   google.golang.org/grpc -> v1.83.1 fixes CVE-2026-84304 (HIGH).
+#   golang.org/x/crypto  -> v0.55.0 fixes CVE-2026-56854 (CRITICAL, ssh).
 #   golang.org/x/text v0.38.0 (via caddy v2.11.4) -> CVE-2026-56852 (trivy gate),
 #   fixed in v0.39.0. Drop once caddy requires >= v0.39.0.
 

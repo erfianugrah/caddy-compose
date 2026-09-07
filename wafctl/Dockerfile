@@ -34,7 +34,7 @@ RUN crs-converter \
       -metadata-output /build/crs-metadata.json
 
 FROM alpine:3.24
-RUN apk add --no-cache wget
+RUN apk upgrade --no-cache && apk add --no-cache wget
 COPY --from=builder /build/wafctl /usr/local/bin/wafctl
 COPY --from=frontend /build/dist/ /app/waf-ui/
 COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/default-rules.json
