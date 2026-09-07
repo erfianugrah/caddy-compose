@@ -376,7 +376,6 @@ Flags: `--addr` (API address, default from `WAFCTL_ADDR` env), `--json` (raw JSO
 | Security headers | `GET\|PUT /api/security-headers`, `POST /api/security-headers/deploy` |
 | Discovery | `GET /api/discovery/endpoints` |
 | General Logs | `GET /api/logs`, `GET /api/logs/summary` |
-| CF Proxy | `GET /api/cfproxy/stats`, `POST /api/cfproxy/refresh` |
 | Blocklist | `GET /api/blocklist/stats`, `GET /api/blocklist/check/{ip}`, `POST /api/blocklist/refresh` |
 | Backup | `GET /api/backup`, `POST /api/backup/restore` |
 | DNS | `GET\|PUT /api/dns`, `POST /api/dns/test` |
@@ -397,7 +396,6 @@ All configurable via `envOr()` with sensible defaults:
 | `WAF_EXCLUSIONS_FILE` | — | Path to exclusions JSON store |
 | `WAF_CONFIG_FILE` | — | Path to WAF config JSON store |
 | `WAF_RATELIMIT_FILE` | — | Path to rate limit JSON store |
-| `WAF_CADDY_ADMIN_URL` | `http://caddy:2019` | Caddy admin API endpoint |
 | `WAF_EVENT_FILE` | `/data/events.jsonl` | JSONL persistence for WAF events |
 | `WAF_ACCESS_EVENT_FILE` | `/data/access-events.jsonl` | JSONL persistence for access log events |
 | `WAF_EVENT_MAX_AGE` | `2160h` (90 days) | Event retention period |
@@ -566,7 +564,6 @@ Rate limit rules are managed by wafctl. Rate limiting is handled by the policy e
 ### Additional layers
 
 - **IPsum blocklist** — ~200k+ known-malicious IPs (all 8 IPsum threat levels, min_score=1), managed as 8 per-level managed lists evaluated by the policy engine plugin, updated daily at 06:00 UTC by wafctl, refreshable on demand from the dashboard.
-- **Cloudflare trusted proxies** — IP ranges fetched at build time so Caddy resolves the real client IP from `X-Forwarded-For`.
 - **Security headers** — HSTS (2yr, preload), nosniff, SAMEORIGIN, strict referrer, permissions-policy, COOP, CORP. Per-service CSP headers managed via wafctl CSP system (global defaults + per-service overrides with set/default/none modes, report-only, and global enable/disable).
 - **ECH** (Encrypted Client Hello) — hides SNI from network observers.
 - **Admin API** locked to localhost.
@@ -678,7 +675,6 @@ caddy-compose/
     security_headers.go  # Security headers management
     session_store.go     # Session behavioral tracking store + API handlers
     rule_templates.go    # Rule template definitions
-    cfproxy.go           # Cloudflare proxy stats/refresh
     cache.go             # In-memory cache (24h/100k entries)
     ui_server.go         # Dashboard static file server
     util.go              # Shared utilities (envOr, atomicWriteFile)

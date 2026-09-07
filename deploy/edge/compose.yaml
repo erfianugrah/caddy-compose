@@ -83,9 +83,6 @@ services:
     networks:
       waf:
         ipv4_address: 172.31.98.2
-    extra_hosts:
-      # wafctl reaches Caddy's :2020 admin proxy via the edge-waf bridge gateway.
-      - "caddy:172.31.98.1"
     volumes:
       - /var/lib/caddy/log:/var/log:ro
       - /var/lib/wafctl/config:/data
@@ -101,7 +98,6 @@ services:
       - WAF_COMBINED_ACCESS_LOG=/var/log/combined-access.log
       - WAF_DIR=/data/waf
       - WAF_CADDYFILE_PATH=/data/Caddyfile
-      - WAF_CADDY_ADMIN_URL=http://caddy:2020
       - WAF_DATA_DIR=/data
       - WAF_GEOIP_DB=/data/geoip/country.mmdb
       - WAF_POLICY_RULES_FILE=/data/waf/policy-rules.json

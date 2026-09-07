@@ -1,21 +1,27 @@
 # Fix: weekly forced Caddy `/load` from the Cloudflare proxy refresher
 
-Status: OPEN (2026-09-05). Severity: high. Next fire: Monday 2026-09-07 06:00 UTC.
+Status: RESOLVED 2026-09-06 (decision: feature removed). Stage 1 (compose
+stopgap for the running container) and stage 2 (source deletion) are executed
+as Task 1 of the router migration plan
+(`~/infra/router/docs/plans/2026-09-06-caddy-native-migration.md`). The
+deletion ships in the **native nix-built wafctl binary at cutover**, not in a
+container image bump - see "What changed 2026-09-06" below.
 
 ## What is wrong
 
 `CFProxyStore.StartScheduledRefresh` (`wafctl/cfproxy.go`) wakes every Monday
 at `WAF_BLOCKLIST_REFRESH_HOUR` (default 06 UTC), downloads Cloudflare's IP
-ranges, rewrites `/data/waf/cf_trusted_proxies.caddy`, then calls
-`reloadCaddy` (`wafctl/deploy.go`). `reloadCaddy` POSTs the entire Caddyfile
-to the admin API `/load` with `Cache-Control: must-revalidate`, which forces
-a full re-provision of every module even when the adapted JSON is unchanged.
+ranges, rewrites `$WAF_DIR/cf_trusted_proxies.caddy`, then calls
+`reloadCaddy` (`wafctl/deploy.go:171`). `reloadCaddy` POSTs the entire
+Caddyfile to the admin API `/load`, which forces a full re-provision of every
+module even when the adapted JSON is unchanged.
 
 Nothing consumes the file it refreshes:
 
 - `deploy/edge/Caddyfile` has no `import` of `cf_trusted_proxies.caddy`. The
   only mention is the header comment saying "no cf_trusted_proxies". The
-  `erfianugrah.com` trusted-proxy list is inline and static.
+  `erfianugrah.com` trusted-proxy list is inline and static (Caddyfile line
+  48); lan_only sites use `trusted_proxies private_ranges` (line 206).
 - The servarr `Caddyfile` header records that the import was dropped on
   2026-07-24, and no caddy container runs on servarr today.
 
@@ -37,80 +43,104 @@ Log evidence on the router (wafctl boot lines, 2026-09-04):
 [cfproxy] next scheduled refresh at 2026-09-07T06:00:00Z (in 66h16m23s)
 ```
 
-## Fix plan
+## What changed 2026-09-06
 
-Two stages. Stage 1 is a compose-only stopgap that can ship today. Stage 2
-removes the feature.
+- Trusted proxies are settled as a plain **per-site Caddyfile config surface**
+  (`trusted_proxies static <cidrs>` / `trusted_proxies private_ranges`). No
+  runtime refresh store, no build-time seed. A programmatic refresh API, if
+  ever wanted, belongs to the control-plane backlog (PLAN.md), not here.
+- The NixOS native migration means the deletion needs no image bump, no
+  `make restart` deploy, and no version-sync edit: the router builds wafctl
+  from the pinned `caddy-compose` flake input at cutover (plan Task 3 pins the
+  post-deletion HEAD).
+- `WAF_CADDY_ADMIN_URL` and the `:2020` admin-proxy vhost are removed
+  entirely, not kept "for edgectl host management": native edgectl runs on the
+  router host and reaches Caddy's admin API at `127.0.0.1:2019` directly; the
+  `:2020` bridge hop existed only for the container. (Plan Tasks 6-7.)
 
-### Stage 1: stopgap before Monday (compose only)
+## Stage 1: stopgap before Monday (compose only) - plan Task 1 half (a)
 
-`reloadCaddy` is the only consumer of `DeployConfig.CaddyAdminURL` (confirm
-with `rg -n 'CaddyAdminURL|reloadCaddy\(' wafctl/*.go`). Pointing it at a
-closed port makes the reload fail fast and harmlessly:
+The running container executes the old CI binary, so the source deletion alone
+does not stop the 2026-09-07 06:00 UTC fire. `reloadCaddy` is the only
+consumer of `DeployConfig.CaddyAdminURL`, and pointing it at a closed port
+makes the reload fail fast and harmlessly:
 
 1. In `deploy/edge/compose.yaml`, wafctl service environment, change
    `WAF_CADDY_ADMIN_URL=http://caddy:2020` to
    `WAF_CADDY_ADMIN_URL=http://127.0.0.1:1` with a comment pointing at this
    doc.
 2. `git commit -m "chore(edge): neutralise wafctl weekly caddy reload"`,
-   `git push`, `make restart`.
-3. Verify: `ssh router 'docker logs wafctl 2>&1 | grep -E "cfproxy|admin"'`
-   still shows the schedule line (expected; the timer still runs). On Monday
-   after 06:00 UTC expect `[cfproxy] warning: Caddy reload failed` and no
-   `config reload`/`serving initial configuration` lines in
-   `docker logs caddy --since 2026-09-07T05:55:00Z`.
+   `git push`, `make edge-restart` (Makefile `edge-restart: edge-sync` -
+   composer stack `edge-services`; wafctl container restarts, WAN untouched).
+3. Verify the env took:
+   `ssh router 'docker exec wafctl env | grep WAF_CADDY_ADMIN_URL'` ->
+   `WAF_CADDY_ADMIN_URL=http://127.0.0.1:1`.
+4. After Monday 06:00 UTC: one `[cfproxy] warning: Caddy reload failed` in
+   `docker logs wafctl`, and no `config reload` / `serving initial
+   configuration` lines in `docker logs caddy --since 2026-09-07T05:55:00Z`.
 
-Skip this stage if stage 2 ships before Monday.
+## Stage 2: remove the CF proxy store - plan Task 1 half (b)
 
-### Stage 2: remove the CF proxy store
-
-The store, its handlers, the build stage and the seed step all serve the
-same dead feature. Removal list (verified by `rg -l 'cfproxy|CFProxy|cf_trusted_proxies'`):
+The store, its handlers, the model types, the build-time seed and the image
+seed step all serve the same dead feature. Removal list (verified by
+`rg -l 'cfproxy|CFProxy|cf_trusted_proxies'` on 2026-09-06):
 
 | File | Change |
 |---|---|
 | `wafctl/cfproxy.go` | delete |
 | `wafctl/cfproxy_test.go` | delete |
-| `wafctl/main.go` | remove `cfProxyStore` construction, `StartScheduledRefresh` call, routes `GET /api/cfproxy/stats` and `POST /api/cfproxy/refresh`, and the `cfProxyStore` argument to `handleHealth` |
+| `wafctl/main.go` | remove `cfProxyStore` construction + `StartScheduledRefresh`, the `cfProxyPath` line, routes `GET /api/cfproxy/stats` and `POST /api/cfproxy/refresh`, the `cfProxyStore` argument to `handleHealth`, and the `WAF_CADDY_ADMIN_URL` env read |
 | `wafctl/handlers_events.go` | drop the `cfProxyStore *CFProxyStore` parameter and the `"cfproxy"` entry in the health `stores` map |
 | `wafctl/models.go` | delete `CFProxyStatsResponse`, `CFProxyRefreshResponse` |
-| `wafctl/testhelpers_test.go` | drop the `NewCFProxyStore` argument from the `handleHealth` helper |
-| `wafctl/deploy.go` | delete `reloadCaddy` and `deployFingerprint` (no remaining callers); drop the `CaddyAdminURL` field and the `CaddyfilePath` comment that says it is used for reload (`CaddyfilePath` stays: `BuildServiceFQDNMap` reads it) |
-| `wafctl/deploy_test.go` | delete `TestDeployFingerprint` |
-| `wafctl/main.go` | the `WriteTimeout: 150 * time.Second` comment references the 120 s reload client; lower to 60 s or reword |
-| `Dockerfile` | delete the `cloudflare-ips` build stage and its `COPY --from=cloudflare-ips` line |
-| `scripts/entrypoint.sh` | delete the CF seed block; keep `mkdir -p /data/waf` and the `exec` |
-| `README.md` | drop the "Cloudflare trusted proxies" bullet under Security hardening and any `/api/cfproxy` rows |
-| `AGENTS.md` (caddy-compose) | remove `CFProxyStore` from store lists and the "wafctl -> Caddy admin routing" note if nothing else uses `:2020` (edgectl will; keep the proxy block in the Caddyfile) |
+| `wafctl/deploy.go` | delete `reloadCaddy` (line 171) and `deployFingerprint` (line 221, its only caller); drop the `CaddyAdminURL` field (line 30) and fix the `CaddyfilePath` comment (it feeds Caddyfile service discovery for CSP/security-header deploy, not reloads); fix the `WafDir` comment (drop "trusted proxies") |
+| `wafctl/deploy_test.go` | delete `TestDeployFingerprint` (line 124) and the `CaddyAdminURL` literal in the test `DeployConfig` |
+| `wafctl/testhelpers_test.go` | drop the `NewCFProxyStore` creation and the `cfStore` argument from the `handleHealth` helper |
+| `deploy/edge/compose.yaml` | remove the `WAF_CADDY_ADMIN_URL` line (reconciles stage 1) |
+| `Dockerfile` | delete the `cloudflare-ips` build stage (line 86) and its `COPY --from=cloudflare-ips` line (line 99) |
+| `scripts/entrypoint.sh` | delete the CF seed block (`CF_SEED` / `CF_RUNTIME`); keep `mkdir -p /data/waf` and the `exec` |
+| `README.md` | drop the `/api/cfproxy` API row (line 379), the "Cloudflare trusted proxies" Security bullet (line 569), and the `cfproxy.go` file-tree row (line 681) |
+| `AGENTS.md` (caddy-compose) | remove `CFProxyStore` from store lists and the "wafctl -> Caddy admin routing" note (nothing else uses `:2020` after the migration) |
 
 The dashboard has no references (`rg -i cfproxy waf-dashboard/src` is empty).
-
-Keep `WAF_CADDY_ADMIN_URL` and the `:2020` admin proxy block in the Caddyfile
-if edgectl host management is coming next; otherwise remove both.
 
 Steps:
 
 1. Make the code changes above.
-2. `cd wafctl && gofmt -l . && go vet ./... && go test -count=1 -timeout 60s ./...`
-3. `make build-caddy build-wafctl` to prove the Dockerfile and entrypoint
-   edits build, then `make test-e2e` (needs Docker) to prove both containers
-   still start and wafctl reaches healthy without the seed step.
-4. Bump `WAFCTL_IMAGE` and `CADDY_IMAGE` project versions (see
-   `2026-09-05-fix-version-tag-sync.md` for the file list), commit, push, let
-   CI build, then `make restart`.
-5. Revert the stage 1 stopgap in the same commit if it shipped.
+2. `cd wafctl && gofmt -l . && go vet ./... && go test -count=1 -timeout 120s ./...`
+3. `rg -n 'cfproxy|CFProxy|CaddyAdminURL|WAF_CADDY_ADMIN_URL|n\.caddy' wafctl/ Dockerfile scripts/ README.md`
+   -> no matches (or only doc comments).
+4. Commit `refactor(wafctl): remove CFProxyStore - trusted proxies are Caddyfile
+   config`, push. CI rebuilds the images (used by `test/e2e`, `test/crs`, and
+   as the dashboard-dist source). No version bump, no `make restart`: the
+   change reaches production via the router's nix pin at cutover (plan Task 3
+   sets `caddyCompose` rev to this commit's SHA; Task 10 cuts over).
+5. Revert the stage 1 stopgap line in `deploy/edge/compose.yaml` in the same
+   commit (it is deleted, not flipped back).
 
 ## Verification
 
+Pre-cutover (after stage 1):
+
 ```bash
-ssh router 'docker logs wafctl 2>&1 | grep -c cfproxy'       # expect 0 after stage 2
-ssh router 'docker exec wafctl wget -qO- http://localhost:8080/api/health' | jq '.stores | keys'
-# expect no "cfproxy" key
+ssh router 'docker exec wafctl env | grep WAF_CADDY_ADMIN_URL'   # expect 127.0.0.1:1
+# Monday morning:
+ssh router 'docker logs wafctl --since 2026-09-07T05:55:00Z 2>&1 | grep cfproxy'
+# expect one warning line
 ssh router 'docker logs caddy --since 2026-09-07T05:55:00Z 2>&1 | grep -iE "reload|initial configuration"'
-# expect nothing on Monday morning
+# expect nothing
+```
+
+Post-cutover (native binary):
+
+```bash
+ssh router 'journalctl -u edgectl --since "2026-09-07 05:55" | grep -c cfproxy'   # expect 0 - the store no longer exists
+ssh router 'curl -s http://127.0.0.1:8080/api/health' | jq '.stores | keys'      # expect no "cfproxy" key
 ```
 
 ## Rollback
 
-Stage 1: revert the compose line, `make restart`. Stage 2: redeploy the
-previous image tags in `deploy/edge/compose.yaml` and `make restart`.
+Stage 1: revert the compose line, `make edge-restart`. Stage 2: `git revert`
+the deletion commit - it affects no running system until the router's flake
+pin moves to that commit (plan Task 3), which happens atomically with the
+cutover (plan Task 10), whose own rollback is `nixos-rebuild switch
+--rollback` + container re-up while the composer checkout still exists.

@@ -54,7 +54,6 @@ func runServe() int {
 	deployCfg := DeployConfig{
 		WafDir:           envOr("WAF_DIR", "/data/waf"),
 		CaddyfilePath:    envOr("WAF_CADDYFILE_PATH", "/data/Caddyfile"),
-		CaddyAdminURL:    envOr("WAF_CADDY_ADMIN_URL", "http://caddy:2020"),
 		PolicyRulesFile:  policyRulesFile,
 		ChallengeHMACKey: challengeHMACKey,
 	}
@@ -346,17 +345,10 @@ func runServe() int {
 	// IP intelligence store — aggregates Team Cymru, RIPE, GreyNoise, Shodan.
 	intelStore := NewIPIntelStore(blocklistStore)
 
-	// Cloudflare trusted proxy store — refreshes CF IP ranges at runtime.
-	cfProxyPath := filepath.Join(deployCfg.WafDir, "cf_trusted_proxies.caddy")
-	cfProxyStore := NewCFProxyStore(cfProxyPath)
-
-	// Schedule weekly CF IP refresh (Monday at the same hour as blocklist).
-	cfProxyStore.StartScheduledRefresh(ctx, refreshHour, deployCfg)
-
 	mux := http.NewServeMux()
 
 	// Existing endpoints (with hours filter support) — merged WAF + 429 events
-	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cfProxyStore, cspStore, secHeaderStore, defaultRuleStore, jailStore, spikeDetector, spikeReporter))
+	mux.HandleFunc("GET /api/health", handleHealth(store, accessLogStore, generalLogStore, geoStore, exclusionStore, blocklistStore, cspStore, secHeaderStore, defaultRuleStore, jailStore, spikeDetector, spikeReporter))
 	mux.HandleFunc("GET /api/summary", handleSummary(store, accessLogStore))
 	mux.HandleFunc("GET /api/events", handleEvents(store, accessLogStore))
 	mux.HandleFunc("GET /api/services", handleServices(store, accessLogStore, deployCfg.CaddyfilePath))
@@ -438,10 +430,6 @@ func runServe() int {
 	// CORS
 	mux.HandleFunc("GET /api/cors", handleGetCORS(corsStore))
 	mux.HandleFunc("PUT /api/cors", handleUpdateCORS(corsStore))
-
-	// Cloudflare trusted proxies
-	mux.HandleFunc("GET /api/cfproxy/stats", handleCFProxyStats(cfProxyStore))
-	mux.HandleFunc("POST /api/cfproxy/refresh", handleCFProxyRefresh(cfProxyStore, deployCfg))
 
 	// Managed Lists
 	mux.HandleFunc("GET /api/lists", handleListManagedLists(managedListStore))

@@ -81,22 +81,9 @@ RUN crs-converter \
       -output /build/default-rules.json \
       -metadata-output /build/crs-metadata.json
 
-# Fetch Cloudflare IP ranges at build time for trusted_proxies.
-# Rebuild the image periodically to pick up any Cloudflare IP changes.
-FROM alpine:3.24 AS cloudflare-ips
-RUN wget -qO /tmp/cf_ipv4 https://www.cloudflare.com/ips-v4 \
-	&& wget -qO /tmp/cf_ipv6 https://www.cloudflare.com/ips-v6 \
-	&& { echo '# AUTO-GENERATED at build time — Cloudflare IP ranges'; \
-	     printf 'trusted_proxies static'; \
-	     while IFS= read -r cidr; do [ -n "$cidr" ] && printf ' %s' "$cidr"; done < /tmp/cf_ipv4; \
-	     while IFS= read -r cidr; do [ -n "$cidr" ] && printf ' %s' "$cidr"; done < /tmp/cf_ipv6; \
-	     echo; \
-	   } > /tmp/cf_trusted_proxies.caddy
-
 FROM caddy:${VERSION}-alpine
 RUN apk upgrade --no-cache && apk add --no-cache nftables
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-COPY --from=cloudflare-ips /tmp/cf_trusted_proxies.caddy /etc/caddy/cf_trusted_proxies.caddy
 COPY errors/ /etc/caddy/errors/
 COPY --from=crs-rules /build/default-rules.json /etc/caddy/waf/default-rules.json
 COPY --from=crs-rules /build/crs-metadata.json /etc/caddy/waf/crs-metadata.json
