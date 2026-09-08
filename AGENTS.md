@@ -10,7 +10,7 @@ Docker Compose infrastructure for a Caddy reverse proxy with custom Go plugins (
 - **waf-dashboard/** - Astro 7 + React 19 + TypeScript 5.7 frontend (shadcn/ui, Tailwind CSS 4)
 - Root level: Caddyfile (legacy servarr config - the LIVE config is `deploy/edge/Caddyfile`), Dockerfile (4-stage multi-stage), compose.yaml, Makefile
 
-> **2026-08-09 direction change:** the CRS/WAF/challenge stack is slated for removal and wafctl will be renamed **edgectl** (edge control plane: ddos/jail/events now, host-config management via the Caddy admin API next). See PLAN.md "Direction Change". Authelia was retired 2026-07 - there is no IdP in the stack.
+> **2026-08-09 direction change:** the CRS/WAF/challenge stack is slated for removal and wafctl will be renamed **edgectl** (edge control plane: ddos/jail/events now, host-config management via the Caddy admin API next). See PLAN.md "Direction Change". Note (2026-09-07): the native NixOS migration (router repo plan docs/plans/2026-09-06-caddy-native-migration.md) supersedes the container-era parts of this direction - edgectl runs native on the router, and the Caddy admin API integration was REMOVED (CFProxyStore deletion, 53b6b9a) after it clobbered the live config from a stale bind mount; a programmatic control plane is backlog, not current design. Authelia was retired 2026-07 - there is no IdP in the stack.
 
 ## Build Commands
 
