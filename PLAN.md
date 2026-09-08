@@ -74,7 +74,13 @@ and an ecosystem comparison against Traefik / HAProxy / Envoy / nginx):
    push a JSON fragment; the dashboard reads `GET /config/` as the source of
    truth instead of parsing the Caddyfile. Ownership rule: `/load` wipes
    API-pushed state, so partition config ownership first (Caddyfile = static
-   skeleton, edgectl = dynamic sites).
+   skeleton, edgectl = dynamic sites). **Settled 2026-09-08 (see the router
+   migration plan Task 13 note):** edgectl uses granular JSON PATCH against
+   `/config/...` (read-modify-write individual paths, ETag/If-Match), never a
+   whole-Caddyfile `/load` replace - the 2026-09-07 incident was exactly a
+   stale-whole-file `/load` clobbering a route it didn't own. The Caddyfile
+   stays the git-tracked skeleton; the JSON API is the runtime control surface;
+   the live JSON is derived, never git-tracked.
    The alternative-proxy evaluation was done and all four were rejected at
    this scale: Traefik's L4 matchers and Yaegi-only plugin model can't host
    ddos-mitigator/JA4-style hooks and its distributed ACME is Hub-gated;
