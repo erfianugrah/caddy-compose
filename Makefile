@@ -277,6 +277,26 @@ restart-wafctl: ## Recreate only wafctl
 restart-force: ## Force restart all containers (re-reads bind-mounted configs)
 	$(COMPOSE_CMD) restart
 
+# The Caddyfile is a SINGLE-FILE bind mount, so a git sync replaces the inode
+# and the running container keeps the old one: `caddy reload` adapts the STALE
+# file and `make restart` reports "Container caddy Running" having changed
+# nothing. Only a container restart re-resolves the inode. Adapt errors surface
+# ONLY at start, so verify health afterwards (2026-08-29: a `handle @root` whose
+# `@root path /` line had been deleted crash-looped the edge for minutes).
+.PHONY: restart-edge
+restart-edge: restart ## Deploy + restart caddy so the new Caddyfile inode is picked up, then verify
+	@ssh $(REMOTE) 'docker restart caddy' >/dev/null
+	@for i in $$(seq 1 20); do \
+		st=$$(ssh $(REMOTE) 'docker ps --filter name=caddy --format "{{.Status}}"'); \
+		case "$$st" in \
+			*healthy*) echo "PASS  caddy healthy: $$st"; exit 0 ;; \
+			*Restarting*) echo "FAIL  caddy is crash-looping - adapt error:"; \
+				ssh $(REMOTE) 'docker logs --tail 5 caddy 2>&1 | grep -i error'; exit 1 ;; \
+		esac; \
+		sleep 3; \
+	done; \
+	echo "FAIL  caddy did not become healthy in 60s"; exit 1
+
 down: ## Stop and remove all containers
 	$(COMPOSE_CMD) down
 
