@@ -1,30 +1,42 @@
 # caddy-compose
 
-Docker Compose stack for the edge Caddy reverse proxy (host-mode on the MS-01 NixOS router) with custom Go plugins (policy engine WAF, DDoS mitigation, L4 proxying) and a management sidecar (wafctl) + dashboard. Deployed via Composer as the `edge-services` stack; backends live on servarr over the LAN.
+> **2026-09-08: the edge Caddy + edgectl (wafctl) now run NATIVELY on the router**
+> (NixOS systemd services, not Docker). The live config is the router repo's
+> `edge/Caddyfile`; the router builds caddy from `pkgs/caddy-edge.nix` (plugin
+> manifest) and edgectl from `pkgs/wafctl.nix` (this repo's `wafctl/` source).
+> See the migration plan + its progress log: `~/infra/router/docs/plans/2026-09-06-caddy-native-migration.md`.
+>
+> This repo remains the **source + build home** for the edge plane: the
+> `Dockerfile` is the plugin manifest of record (the 9 plugins + CVE
+> version-replaces the nix derivation mirrors), CI builds + Trivy-scans +
+> signs the images here (used for vuln gating and as a fallback runtime), and
+> `wafctl/` + `waf-dashboard/` are the edgectl codebase. The `compose.yaml` /
+> `deploy/edge/` stack path is retained as the container fallback and for the
+> e2e/CRS test harnesses - it is no longer how the edge runs.
 
-> **2026-08-09 direction change:** the CRS/WAF/challenge stack is slated for removal and wafctl will be renamed **edgectl** (edge control plane: ddos/jail/events now, host-config management via the Caddy admin API next). See PLAN.md "Direction Change". Note (2026-09-07): the native NixOS migration (router repo plan docs/plans/2026-09-06-caddy-native-migration.md) supersedes the container-era parts of this direction - edgectl runs native on the router, and the Caddy admin API integration was REMOVED (CFProxyStore deletion, 53b6b9a) after it clobbered the live config from a stale bind mount; a programmatic control plane is backlog, not current design. Authelia was retired 2026-07 - there is no IdP in the stack.
+> **2026-08-09 direction change:** the CRS/WAF/challenge stack is slated for removal and wafctl will be renamed **edgectl** (edge control plane: ddos/jail/events now, host-config management via the Caddy admin API next). See PLAN.md "Direction Change". Note (2026-09-07): the Caddy admin API integration was REMOVED (CFProxyStore deletion, 53b6b9a) after it clobbered the live config from a stale bind mount - a future edgectl control plane should PATCH granular JSON paths against the admin API (never POST a whole stale Caddyfile). Authelia was retired 2026-07 - there is no IdP in the stack.
 
 ## Architecture
 
 ```mermaid
 graph LR
-    Internet -->|:443| Caddy[Caddy - host network, MS-01 router]
-    wafctl[wafctl - bridge] -->|reads logs| Caddy
+    Internet -->|:443| Caddy[Caddy - native systemd, MS-01 router]
+    edgectl[edgectl - native systemd] -->|reads logs| Caddy
     Caddy -->|reverse proxy over LAN| Backends[Backends on servarr]
     Caddy -->|rfc2136 DNS-01| Knot[Knot DNS]
 
     subgraph Management plane
-        AccessLog[Caddy access log] --> wafctl2[wafctl]
-        wafctl2 -->|policy-rules.json + reload| CaddyAdmin[Caddy Admin API]
+        AccessLog[Caddy access log] --> edgectl2[edgectl]
+        edgectl2 -->|policy-rules.json mtime| Caddy
     end
 
-    wafctl2 -.- Dashboard[Dashboard - Astro/React]
+    edgectl2 -.- Dashboard[Dashboard - Astro/React]
 ```
 
-Two containers:
+Both run as native NixOS services on the router:
 
-- **Caddy** uses `network_mode: host` on the MS-01 router and binds ports 80 and 443 (admin API on localhost:2019 only). It reaches backends over the LAN (servarr `10.0.71.x`) and local bridge networks (`172.31.x`, `172.40.x`).
-- **wafctl** (being renamed **edgectl**) sits on its own bridge network. It reads Caddy access logs and generates policy engine rules (the policy engine hot-reloads its rules file via mtime polling; wafctl no longer talks to Caddy's admin API). The dashboard (Astro + React + shadcn/ui) is bundled into the wafctl image and served by it.
+- **Caddy** (`services.caddy`, pkgs/caddy-edge.nix) binds host ports 80/443 (admin API on localhost:2019, unused by edgectl today). It reaches backends over the LAN (servarr `10.0.71.x`).
+- **edgectl** (`systemd.services.edgectl`, pkgs/wafctl.nix, user `wafctl`) reads the Caddy access log and generates policy engine rules (the policy engine hot-reloads its rules file via mtime polling; no admin API calls). The dashboard (Astro + React + shadcn/ui) is bundled into the binary and served by it.
 
 Authelia was retired 2026-07. Private API surfaces use the bearer-or-LAN `(research_auth)` snippet instead of forward auth. ACME uses rfc2136 DNS-01 against the self-hosted Knot DNS (TSIG); one zone (`erfianugrah.com`) is still on Cloudflare.
 
