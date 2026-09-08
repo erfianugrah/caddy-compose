@@ -1,11 +1,14 @@
 # Fix: weekly forced Caddy `/load` from the Cloudflare proxy refresher
 
-Status: RESOLVED 2026-09-06 (decision: feature removed). Stage 1 (compose
-stopgap for the running container) and stage 2 (source deletion) are executed
-as Task 1 of the router migration plan
-(`~/infra/router/docs/plans/2026-09-06-caddy-native-migration.md`). The
-deletion ships in the **native nix-built wafctl binary at cutover**, not in a
-container image bump - see "What changed 2026-09-06" below.
+Status: RESOLVED 2026-09-07 (deletion DEPLOYED). Stage 2 (source deletion,
+53b6b9a) landed and shipped the same day as container image wafctl:2.102.0 -
+the 2026-09-07 06:00 UTC fire actually HAPPENED that morning and clobbered the
+live Caddy config with wafctl's stale bind-mount view (ntop.erfi.io dropped;
+restored via `caddy reload` through composer), so stage 1 was skipped in favour
+of immediate image deploy. Task 1 of the router migration plan
+(`~/infra/router/docs/plans/2026-09-06-caddy-native-migration.md`) is complete:
+running wafctl no longer has WAF_CADDY_ADMIN_URL, reloadCaddy, or the CFProxy
+store. The "stage 1"/"post-cutover" sections below are kept for history.
 
 ## What is wrong
 

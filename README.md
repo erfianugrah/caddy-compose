@@ -9,7 +9,7 @@ Docker Compose stack for the edge Caddy reverse proxy (host-mode on the MS-01 Ni
 ```mermaid
 graph LR
     Internet -->|:443| Caddy[Caddy - host network, MS-01 router]
-    Caddy -->|admin proxy :2020| wafctl[wafctl - bridge]
+    wafctl[wafctl - bridge] -->|reads logs| Caddy
     Caddy -->|reverse proxy over LAN| Backends[Backends on servarr]
     Caddy -->|rfc2136 DNS-01| Knot[Knot DNS]
 
@@ -24,7 +24,7 @@ graph LR
 Two containers:
 
 - **Caddy** uses `network_mode: host` on the MS-01 router and binds ports 80 and 443 (admin API on localhost:2019 only). It reaches backends over the LAN (servarr `10.0.71.x`) and local bridge networks (`172.31.x`, `172.40.x`).
-- **wafctl** (being renamed **edgectl**) sits on its own bridge network. It reads Caddy access logs, generates policy engine rules, and reaches Caddy through an IP-restricted admin proxy on `:2020`. The dashboard (Astro + React + shadcn/ui) is bundled into the wafctl image and served by it.
+- **wafctl** (being renamed **edgectl**) sits on its own bridge network. It reads Caddy access logs and generates policy engine rules (the policy engine hot-reloads its rules file via mtime polling; wafctl no longer talks to Caddy's admin API). The dashboard (Astro + React + shadcn/ui) is bundled into the wafctl image and served by it.
 
 Authelia was retired 2026-07. Private API surfaces use the bearer-or-LAN `(research_auth)` snippet instead of forward auth. ACME uses rfc2136 DNS-01 against the self-hosted Knot DNS (TSIG); one zone (`erfianugrah.com`) is still on Cloudflare.
 
