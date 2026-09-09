@@ -401,7 +401,7 @@ All configurable via `envOr()` with sensible defaults:
 
 | Variable | Default | Description |
 |---|---|---|
-| `WAFCTL_PORT` | `8080` | API server port |
+| `WAFCTL_PORT` | `8080` | API server port. On the router the native edgectl.service overrides to `8082` - the composer container owns host `:8080` (2026-09-09 bind race) |
 | `WAF_CORS_ORIGINS` | `*` | Allowed CORS origins |
 | `WAF_AUDIT_LOG` | — | Path to audit log (legacy, unused) |
 | `WAF_COMBINED_ACCESS_LOG` | — | Path to Caddy combined access log |

@@ -1,5 +1,11 @@
 # Caddyfile - EDGE variant (MS-01 NixOS edge router).
 #
+# SUPERSEDED 2026-09-08: the edge runs NATIVE on the router now. This file is
+# the frozen container-era reference; the LIVE config is edge/Caddyfile in the
+# router repo (~/infra/router). Do not deploy from here. Post-cutover changes
+# (waf.edge.erfi.io -> edge.erfi.io rename, composer.edge deletion, wafctl on
+# :8082, combined log -> /var/log/caddy/) exist only in the router copy.
+#
 # Fronts the edge-services plane under edge.erfi.io:
 #   composer.edge.erfi.io -> edge composer UI/API  (127.0.0.1:8080, host-mode)
 #   knotea.edge.erfi.io   -> knotea dashboard      (127.0.0.1:8081, host-mode)
