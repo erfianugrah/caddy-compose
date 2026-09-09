@@ -53,7 +53,11 @@ along the way (it is a maintenance sink, most sites run `waf_off`).
 - Nav prune in the dashboard; drop the dead pages.
 - **Rename wafctl -> edgectl** in the same session (image name, service name,
   binary, DNS `waf.erfi.io` -> `edge.erfi.io` via knotctl, the pi skills).
-  Doing it here avoids a second rename pass later.
+  Doing it here avoids a second rename pass later. Partially pre-done
+  2026-09-09: `edge.erfi.io` already fronts the wafctl dashboard (the
+  `waf.edge.erfi.io` rename landed during the port-collision fix; `waf.erfi.io`
+  remains as a legacy alias to retire here). wafctl serves on :8082, NOT the
+  compiled :8080 default - composer owns :8080.
 
 ## Phase 2 - ergo consolidation (structural)
 
